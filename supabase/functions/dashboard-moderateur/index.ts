@@ -36,11 +36,18 @@ Deno.serve(async (req: Request) => {
     const { data: roleRow } = await sb.from("user_roles").select("role").eq("user_id", userId).eq("role", "moderateur").maybeSingle();
     if (!roleRow) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: user } = await sb.from("users").select("id,full_name,email").eq("id", userId).maybeSingle();
+    // Only return safe fields — never expose email/phone/password_hash to moderator dashboard
+    const { data: user } = await sb.from("users").select("id,full_name").eq("id", userId).maybeSingle();
 
     // Load permissions (default all false if no row)
     const { data: permsRow } = await sb.from("moderator_permissions").select("*").eq("moderator_user_id", userId).maybeSingle();
     const perms = permsRow ? { ...EMPTY_PERMS, ...permsRow } : { ...EMPTY_PERMS };
+
+    // Collect IDs of protected accounts (super_admin + moderateur) for exclusion in KPI counts
+    const { data: protectedRows } = await sb.from("user_roles")
+      .select("user_id")
+      .in("role", ["super_admin", "moderateur"]);
+    const protectedIds: string[] = (protectedRows ?? []).map((r) => (r as unknown as { user_id: string }).user_id);
 
     // Dynamic KPIs
     const kpis: Record<string, number> = {};
@@ -59,6 +66,23 @@ Deno.serve(async (req: Request) => {
         kyc += count ?? 0;
       }
       kpis.kyc_en_attente = kyc;
+    }
+    if (perms.can_see_learners_list) {
+      // Count apprenants, excluding protected accounts
+      let countQuery = sb.from("user_roles").select("*", { count: "exact", head: true }).eq("role", "apprenant");
+      if (protectedIds.length > 0) {
+        countQuery = countQuery.not("user_id", "in", `(${protectedIds.join(",")})`);
+      }
+      const { count } = await countQuery;
+      kpis.apprenants_total = count ?? 0;
+    }
+    if (perms.can_see_professors_list) {
+      let countQuery = sb.from("user_roles").select("*", { count: "exact", head: true }).eq("role", "professeur");
+      if (protectedIds.length > 0) {
+        countQuery = countQuery.not("user_id", "in", `(${protectedIds.join(",")})`);
+      }
+      const { count } = await countQuery;
+      kpis.professeurs_total = count ?? 0;
     }
     if (perms.can_moderate_forum) {
       const { count } = await sb.from("forum_posts").select("*", { count: "exact", head: true }).eq("is_flagged", true).eq("is_visible", true);
@@ -119,7 +143,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Sort by created_at (oldest first), take top 10
     queue.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     const priorityQueue = queue.slice(0, 10);
 

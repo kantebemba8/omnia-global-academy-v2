@@ -10,6 +10,18 @@ function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Returns first name + last initial: "Jean-Pierre Bemba" → "Jean-Pierre B."
+function maskName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const last = parts[parts.length - 1];
+  const firsts = parts.slice(0, -1).join(" ");
+  return `${firsts} ${last[0]}.`;
+}
+
+// Protected roles — never visible to a moderator
+const PROTECTED_ROLES = ["super_admin", "moderateur"];
+
 async function verifyModerator(sb: ReturnType<typeof createClient>, token: string) {
   const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!sess) return null;
@@ -29,55 +41,127 @@ Deno.serve(async (req: Request) => {
     const modId = await verifyModerator(sb, token);
     if (!modId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions").select("can_see_learners_list,can_see_professors_list,can_suspend_account").eq("moderator_user_id", modId).maybeSingle();
+    const { data: permsRow } = await sb.from("moderator_permissions")
+      .select("can_see_learners_list,can_see_professors_list,can_validate_establishment_kyc")
+      .eq("moderator_user_id", modId)
+      .maybeSingle();
     const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
 
-    // GET — list users
+    // GET — list users (never returns email, phone, password_hash, session tokens)
     if (req.method === "GET") {
-      if (!perms.can_see_learners_list && !perms.can_see_professors_list) return json({ error: "FORBIDDEN" }, 403);
+      if (!perms.can_see_learners_list && !perms.can_see_professors_list && !perms.can_validate_establishment_kyc) {
+        return json({ error: "FORBIDDEN" }, 403);
+      }
       const url = new URL(req.url);
       const search = url.searchParams.get("search") || "";
       const statusFilter = url.searchParams.get("status") || "";
       const userType = url.searchParams.get("type") || "all";
 
-      let query = sb.from("users").select("id,full_name,email,phone_number,status,country_code,created_at").limit(100).order("created_at", { ascending: false });
-      if (search) query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+      // Determine which role types this moderator may see
+      const allowedTypes: string[] = [];
+      if (perms.can_see_learners_list) allowedTypes.push("apprenant");
+      if (perms.can_see_professors_list) allowedTypes.push("professeur");
+      if (perms.can_validate_establishment_kyc) allowedTypes.push("etablissement_directeur", "etablissement_enseignant");
+
+      if (userType !== "all" && !allowedTypes.some((t) => t.startsWith(userType))) {
+        return json({ users: [] });
+      }
+
+      // Fetch IDs of protected roles (super_admin, moderateur) — never expose these users
+      const { data: protectedRows } = await sb.from("user_roles")
+        .select("user_id")
+        .in("role", PROTECTED_ROLES);
+      const protectedIds: string[] = (protectedRows ?? []).map((r) => (r as unknown as { user_id: string }).user_id);
+
+      // Build base query — safe fields only (NO email, phone_number, password_hash)
+      let query = sb.from("users")
+        .select("id,full_name,status,country_code,created_at")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (protectedIds.length > 0) {
+        query = query.not("id", "in", `(${protectedIds.join(",")})`);
+      }
+      if (search) query = query.ilike("full_name", `%${search}%`);
       if (statusFilter) query = query.eq("status", statusFilter);
 
       const { data: users } = await query;
-      // Get roles for each user
-      const enriched = await Promise.all((users ?? []).map(async (u) => {
-        const uu = u as unknown as { id: string; full_name: string; email: string; status: string; country_code: string; created_at: string };
+
+      const enriched: unknown[] = [];
+      for (const u of users ?? []) {
+        const uu = u as unknown as { id: string; full_name: string; status: string; country_code: string; created_at: string };
+
         const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", uu.id);
-        const roleList = (roles ?? []).map((r) => (r as unknown as { role: string }).role);
-        // Filter by type
-        if (userType === "apprenant" && !perms.can_see_learners_list) return null;
-        if (userType === "professeur" && !perms.can_see_professors_list) return null;
-        if (userType === "apprenant" && !roleList.includes("apprenant")) return null;
-        if (userType === "professeur" && !roleList.includes("professeur")) return null;
-        return { ...uu, roles: roleList };
-      }));
+        const roleList: string[] = (roles ?? []).map((r) => (r as unknown as { role: string }).role);
 
-      return json({ users: enriched.filter(Boolean) });
+        // Double-check: skip if user has a protected role (safety net)
+        if (roleList.some((r) => PROTECTED_ROLES.includes(r))) continue;
+
+        // Filter by requested type
+        if (userType === "apprenant" && !roleList.includes("apprenant")) continue;
+        if (userType === "professeur" && !roleList.includes("professeur")) continue;
+        if (userType === "etablissement" && !roleList.some((r) => r.startsWith("etablissement"))) continue;
+
+        // Permission gate per type
+        if (roleList.includes("apprenant") && !perms.can_see_learners_list) continue;
+        if (roleList.includes("professeur") && !perms.can_see_professors_list) continue;
+        if (roleList.some((r) => r.startsWith("etablissement")) && !perms.can_validate_establishment_kyc) continue;
+
+        enriched.push({
+          id: uu.id,
+          full_name: maskName(uu.full_name),
+          status: uu.status,
+          country_code: uu.country_code,
+          created_at: uu.created_at,
+          roles: roleList,
+        });
+      }
+
+      return json({ users: enriched });
     }
 
-    // POST — suspend / reactivate
+    // POST — action (suspend / reactivate). Moderators can NO longer execute directly.
+    // This path is now only reachable from the Super-admin approval flow (admin_override=true).
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-    if (!perms.can_suspend_account) return json({ error: "FORBIDDEN", message: "Permission can_suspend_account requise." }, 403);
 
-    const body = await req.json();
-    const { target_user_id, action } = body as { target_user_id: string; action: "suspend" | "reactivate" };
-    if (!target_user_id || !["suspend", "reactivate"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
+    const body = await req.json() as { target_user_id: string; action: string; admin_override?: boolean };
+    const { target_user_id, action, admin_override } = body;
 
-    const newStatus = action === "suspend" ? "suspendu" : "actif";
-    await sb.from("users").update({ status: newStatus }).eq("id", target_user_id);
+    if (!target_user_id || !action) return json({ error: "INVALID_PARAMS" }, 400);
 
-    // Invalidate sessions if suspending
-    if (action === "suspend") {
-      await sb.from("user_sessions").update({ expires_at: new Date().toISOString() }).eq("user_id", target_user_id);
+    // Moderators must NOT execute actions directly — require admin_override
+    if (!admin_override) {
+      return json({
+        error: "FORBIDDEN",
+        message: "Les actions directes ne sont pas autorisées. Soumettez une demande au Super-admin.",
+      }, 403);
     }
 
-    await sb.from("moderation_log").insert({ moderator_id: modId, action_type: action === "suspend" ? "account_suspended" : "account_reactivated", target_type: "user", target_id: target_user_id });
+    // Safety check: never act on a protected account
+    const { data: targetRoles } = await sb.from("user_roles").select("role").eq("user_id", target_user_id);
+    if ((targetRoles ?? []).some((r) => PROTECTED_ROLES.includes((r as unknown as { role: string }).role))) {
+      return json({ error: "FORBIDDEN", message: "Action non autorisée sur ce compte." }, 403);
+    }
+
+    if (!["suspend", "reactivate", "validate"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
+
+    if (action === "suspend") {
+      await sb.from("users").update({ status: "suspendu" }).eq("id", target_user_id);
+      await sb.from("user_sessions").update({ expires_at: new Date().toISOString() }).eq("user_id", target_user_id);
+    } else if (action === "reactivate") {
+      await sb.from("users").update({ status: "actif" }).eq("id", target_user_id);
+    } else if (action === "validate") {
+      await sb.from("users").update({ status: "actif" }).eq("id", target_user_id);
+    }
+
+    await sb.from("moderation_log").insert({
+      moderator_id: modId,
+      action_type: `account_${action}`,
+      target_type: "user",
+      target_id: target_user_id,
+      comment: "admin_override",
+    });
+
     return json({ success: true });
   } catch (err) {
     console.error(err);

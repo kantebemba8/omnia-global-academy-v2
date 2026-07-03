@@ -5,8 +5,7 @@ import { Users, Search, Send, CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface UserRow {
   id: string;
-  full_name: string;
-  email: string;
+  full_name: string; // already masked server-side: "Jean B."
   status: string;
   country_code: string;
   created_at: string;
@@ -67,8 +66,10 @@ function UserTable({
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-100">
-            <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Utilisateur</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Nom</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Rôles</th>
             <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Statut</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Pays</th>
             <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Inscription</th>
             <th className="px-5 py-3"></th>
           </tr>
@@ -84,15 +85,22 @@ function UserTable({
                       style={{ backgroundColor: '#002050', color: '#BF8813' }}>
                       {monogram(u.full_name)}
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{u.full_name}</p>
-                      <p className="text-xs text-gray-400">{u.email}</p>
-                    </div>
+                    <p className="text-sm font-medium text-gray-800">{u.full_name}</p>
+                  </div>
+                </td>
+                <td className="px-5 py-3.5">
+                  <div className="flex flex-wrap gap-1">
+                    {u.roles.map((r) => (
+                      <span key={r} className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{r}</span>
+                    ))}
                   </div>
                 </td>
                 <td className="px-5 py-3.5">
                   <span className="text-xs px-2.5 py-1 rounded-full font-medium"
                     style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-gray-500 uppercase">
+                  {u.country_code || '—'}
                 </td>
                 <td className="px-5 py-3.5 text-xs text-gray-500">
                   {new Date(u.created_at).toLocaleDateString('fr-FR')}
