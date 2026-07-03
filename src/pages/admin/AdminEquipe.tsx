@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Plus, Save, Trash2, User, ChevronDown, ChevronUp, X, Check } from 'lucide-react';
+import { Shield, Plus, Save, Trash2, User, ChevronDown, ChevronUp, X, Check, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 
 interface Permission {
@@ -23,6 +23,16 @@ interface User {
   id: string;
   full_name: string;
   email: string;
+}
+
+interface ActionRequest {
+  id: string;
+  action_type: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  moderator: { full_name: string; email: string };
+  target_user: { full_name: string; email: string };
 }
 
 const PERMISSION_SECTIONS: PermissionSection[] = [
@@ -76,6 +86,9 @@ export default function AdminEquipe() {
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionRequests, setActionRequests] = useState<ActionRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   // Fetch moderators list
   useEffect(() => {
@@ -308,8 +321,94 @@ export default function AdminEquipe() {
     }
   };
 
-  const hasChanges = (userId: string) => {
-    return JSON.stringify(localPermissions[userId]) !== JSON.stringify(moderators.find(m => m.user_id === userId)?.permissions || {});
+  // Fetch pending action requests
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        setRequestsLoading(true);
+        const token = localStorage.getItem('omnia_session_token');
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_action_requests?status=eq.pending&select=id,action_type,reason,status,created_at,moderator:moderator_id(full_name,email),target_user:target_user_id(full_name,email)&order=created_at.desc`,
+          {
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setActionRequests(data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching action requests:', err);
+      } finally {
+        setRequestsLoading(false);
+      }
+    };
+    fetchRequests();
+  }, []);
+
+  const reviewRequest = async (id: string, approve: boolean) => {
+    try {
+      setReviewingId(id);
+      const token = localStorage.getItem('omnia_session_token');
+      const adminRaw = localStorage.getItem('omnia_user');
+      let adminId = '';
+      try { adminId = JSON.parse(adminRaw || '{}')?.id ?? ''; } catch { /* */ }
+
+      const req = actionRequests.find((r) => r.id === id);
+      if (!req) return;
+
+      if (approve) {
+        // Execute the action via moderator-account-action
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/moderator-account-action`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              target_user_id: req.target_user,
+              action: req.action_type === 'suspend' ? 'suspend' : req.action_type === 'reactivate' ? 'reactivate' : 'validate',
+              admin_override: true,
+            }),
+          }
+        );
+      }
+
+      // Update request status
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_action_requests?id=eq.${id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            status: approve ? 'approved' : 'rejected',
+            reviewed_by: adminId || null,
+            reviewed_at: new Date().toISOString(),
+          }),
+        }
+      );
+
+      setActionRequests((prev) => prev.filter((r) => r.id !== id));
+      setSuccessMessage(approve ? 'Demande approuvée et action exécutée.' : 'Demande rejetée.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Error reviewing request:', err);
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const hasChanges = (userId: string) => {    return JSON.stringify(localPermissions[userId]) !== JSON.stringify(moderators.find(m => m.user_id === userId)?.permissions || {});
   };
 
   return (
@@ -486,6 +585,81 @@ export default function AdminEquipe() {
             )}
           </div>
         )}
+
+        {/* Pending Moderator Action Requests */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={20} style={{ color: '#BF8813' }} />
+            <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Demandes en attente</h2>
+            {actionRequests.length > 0 && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                {actionRequests.length}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mb-4">Actions proposées par les modérateurs nécessitant votre validation</p>
+
+          {requestsLoading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />)}
+            </div>
+          ) : actionRequests.length === 0 ? (
+            <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
+              <CheckCircle size={36} className="mx-auto mb-3 text-green-400" />
+              <p className="text-gray-500">Aucune demande en attente</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {actionRequests.map((req) => {
+                const ACTION_FR: Record<string, string> = {
+                  suspend: 'Suspension de compte',
+                  reactivate: 'Réactivation de compte',
+                  validate_kyc: 'Validation KYC',
+                };
+                return (
+                  <div key={req.id} className="bg-white border rounded-xl p-5 shadow-sm" style={{ borderColor: '#BF8813' }}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                            {ACTION_FR[req.action_type] ?? req.action_type}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-gray-800">
+                          Cible : {(req.target_user as unknown as { full_name: string })?.full_name ?? '—'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Proposé par : {(req.moderator as unknown as { full_name: string })?.full_name ?? '—'}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-2 italic">"{req.reason}"</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => reviewRequest(req.id, true)}
+                          disabled={reviewingId === req.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                          style={{ backgroundColor: '#1E7A52' }}
+                        >
+                          <CheckCircle size={14} /> Approuver
+                        </button>
+                        <button
+                          onClick={() => reviewRequest(req.id, false)}
+                          disabled={reviewingId === req.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors bg-red-600 hover:bg-red-700"
+                        >
+                          <XCircle size={14} /> Rejeter
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Warning Note */}
         <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">

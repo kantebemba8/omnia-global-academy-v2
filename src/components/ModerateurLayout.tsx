@@ -36,7 +36,7 @@ function buildModNav(perms: ModPerms) {
     items.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield, always: false });
   }
   if (perms.can_see_learners_list || perms.can_see_professors_list || perms.can_suspend_account) {
-    items.push({ path: '/moderator/users', label: 'Utilisateurs', icon: Users, always: false });
+    items.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users, always: false });
   }
   if (perms.can_moderate_forum) {
     items.push({ path: '/moderator/forum', label: 'Forum', icon: MessageSquare, always: false });
