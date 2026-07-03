@@ -77,7 +77,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
   const [user, setUser] = useState<StoredUser | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isPreview = new URLSearchParams(location.search).get('preview') === 'true';
+  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
   const isSuperAdmin = (() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
@@ -85,14 +85,29 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
   const previewMode = isPreview && isSuperAdmin;
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const isPreview = searchParams.get('preview') === 'true';
     const token = localStorage.getItem('omnia_session_token');
     const stored = localStorage.getItem('omnia_user');
-    if (!token && !previewMode) { navigate('/connexion'); return; }
+    // Mode aperçu Super-admin : bypass total
+    if (isPreview && stored) {
+      try {
+        const u = JSON.parse(stored);
+        if (u?.roles?.includes('super_admin')) {
+          setUser(u);
+          return; // pas de vérification de rôle
+        }
+      } catch { /* ignore */ }
+    }
+    // Mode normal : vérification token
+    if (!token) { navigate('/connexion'); return; }
     if (stored) { try { setUser(JSON.parse(stored)); } catch { /* ignore */ } }
-  }, [navigate, previewMode]);
+  }, [navigate]);
 
   function handleLogout() {
-    if (previewMode) { navigate('/admin/dashboard'); return; }
+    const searchParams = new URLSearchParams(window.location.search);
+    const isPreview = searchParams.get('preview') === 'true';
+    if (isPreview) { navigate('/admin/dashboard'); return; }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
     navigate('/connexion');

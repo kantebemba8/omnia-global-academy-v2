@@ -57,31 +57,31 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [navItems, setNavItems] = useState<ReturnType<typeof buildModNav> | null>(null);
 
-  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
-  const isSuperAdmin = (() => {
-    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
-    catch { return false; }
-  })();
-  const previewMode = isPreview && isSuperAdmin;
-
   useEffect(() => {
-    const token = localStorage.getItem('omnia_session_token');
-    if (!token && !previewMode) { navigate('/connexion'); return; }
-
-    if (previewMode) {
-      // Show all nav items in preview
-      setNavItems(buildModNav({
-        can_see_pending_courses: true, can_validate_course_price: true,
-        can_reject_course: true, can_transmit_course_to_admin: true,
-        can_validate_professor_kyc: true, can_validate_establishment_kyc: true,
-        can_see_learners_list: true, can_see_professors_list: true,
-        can_suspend_account: true, can_moderate_forum: true,
-        can_post_job_offers: true, can_moderate_jobs: true,
-        can_manage_support: true, can_view_moderation_log: true,
-        can_view_analytics: true, can_view_financial_summary: true,
-      }));
-      return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const isPreview = searchParams.get('preview') === 'true';
+    const stored = localStorage.getItem('omnia_user');
+    // Mode aperçu Super-admin : bypass total
+    if (isPreview && stored) {
+      try {
+        const u = JSON.parse(stored);
+        if (u?.roles?.includes('super_admin')) {
+          setNavItems(buildModNav({
+            can_see_pending_courses: true, can_validate_course_price: true,
+            can_reject_course: true, can_transmit_course_to_admin: true,
+            can_validate_professor_kyc: true, can_validate_establishment_kyc: true,
+            can_see_learners_list: true, can_see_professors_list: true,
+            can_suspend_account: true, can_moderate_forum: true,
+            can_post_job_offers: true, can_moderate_jobs: true,
+            can_manage_support: true, can_view_moderation_log: true,
+            can_view_analytics: true, can_view_financial_summary: true,
+          }));
+          return;
+        }
+      } catch { /* ignore */ }
     }
+    const token = localStorage.getItem('omnia_session_token');
+    if (!token) { navigate('/connexion'); return; }
 
     const cached = localStorage.getItem('mod_perms');
     if (cached) {
@@ -105,7 +105,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => navigate('/connexion'));
-  }, [navigate, previewMode]);
+  }, [navigate]);
 
   if (!navItems) {
     return (
