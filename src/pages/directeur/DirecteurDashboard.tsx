@@ -116,15 +116,15 @@ export function DirecteurDashboard() {
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { navigate('/connexion'); return; }
+    if (!token) { if (!previewMode) navigate('/connexion'); setLoading(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-directeur`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 403) { navigate('/connexion'); return; }
+      if (res.status === 403) { if (!previewMode) navigate('/connexion'); setLoading(false); return; }
       const json = await res.json();
       if (res.ok) setData(json);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [navigate]);
+  }, [navigate, previewMode]);
 
   useEffect(() => { load(); }, [load]);
 

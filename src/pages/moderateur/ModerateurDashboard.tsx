@@ -66,6 +66,7 @@ export default function ModerateurDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem('omnia_session_token');
+    if (!token) { setLoading(false); return; }
     fetch(ENDPOINTS.dashboardModerateur, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })

@@ -53,7 +53,7 @@ export function DashboardApprenant() {
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) return;
+    if (!token) { setLoading(false); return; }
     try {
       const res = await fetch((ENDPOINTS as Record<string, string>)['dashboardApprenant'] || `${(ENDPOINTS as Record<string, string>)['authRegister'].replace('/auth-register', '')}/dashboard-apprenant`, {
         headers: { Authorization: `Bearer ${token}` },
