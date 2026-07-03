@@ -66,6 +66,8 @@ export default function ModerateurDashboard() {
   const [renderError, setRenderError] = useState<string | null>(null);
   void renderError;
 
+  console.log('ModerateurDashboard render', { loading, data, bypassAuth });
+
   function handlePreviewAction() {
     if (!bypassAuth) return;
     setPreviewToast(true);
@@ -88,6 +90,16 @@ export default function ModerateurDashboard() {
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
             style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
+        </div>
+      </ModerateurLayout>
+    );
+  }
+
+  if (!loading && !data) {
+    return (
+      <ModerateurLayout>
+        <div className="p-8">
+          <p>Données non chargées. Vérifiez la console.</p>
         </div>
       </ModerateurLayout>
     );
