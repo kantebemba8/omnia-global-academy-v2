@@ -1,0 +1,85 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+function json(d: unknown, s = 200) {
+  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  const body = await req.json() as {
+    company_name: string; contact_name: string; contact_email: string; contact_phone?: string;
+    job_title: string; job_description: string; location: string; contract_type: string;
+    category: string; salary_range?: string; deadline?: string; skills_required?: string[];
+    required_level?: string;
+  };
+
+  const { company_name, contact_name, contact_email, job_title, job_description, location, contract_type, category } = body;
+  if (!company_name || !contact_name || !contact_email || !job_title || !job_description) {
+    return json({ error: "MISSING_REQUIRED_FIELDS" }, 400);
+  }
+  if (job_description.length < 100) return json({ error: "DESCRIPTION_TOO_SHORT", min: 100 }, 422);
+
+  // Upsert recruiter
+  let recruiterId: string | null = null;
+  const { data: existing } = await sb.from("external_recruiters").select("id").eq("contact_email", contact_email).maybeSingle();
+  if (existing) {
+    recruiterId = existing.id;
+  } else {
+    const { data: newRec } = await sb.from("external_recruiters").insert({
+      company_name, contact_name, contact_email, contact_phone: body.contact_phone || null,
+    }).select("id").single();
+    recruiterId = newRec?.id ?? null;
+  }
+
+  await sb.from("job_offers").insert({
+    title: job_title,
+    description: job_description,
+    location: location || "",
+    contract_type: contract_type || "CDI",
+    category: category || "",
+    salary_range: body.salary_range || null,
+    deadline: body.deadline || null,
+    skills_required: body.skills_required || null,
+    required_level: body.required_level || null,
+    status: "pending_moderation",
+    is_external_recruiter: true,
+    recruiter_company: company_name,
+    recruiter_name: contact_name,
+    recruiter_email: contact_email,
+    views_count: 0,
+    applications_count: 0,
+  });
+
+  // Notify moderators
+  const { data: mods } = await sb.from("moderator_permissions").select("user_id").eq("can_moderate_jobs", true);
+  if (mods?.length) {
+    const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
+    if (brevoKey) {
+      const { data: modUsers } = await sb.from("users").select("email").in("id", mods.map((m: { user_id: string }) => m.user_id));
+      for (const mu of modUsers ?? []) {
+        fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: { email: "contact@omniaglobalacademy.com", name: "Omnia Global Academy" },
+            to: [{ email: mu.email }],
+            subject: `Nouvelle offre d'emploi externe à modérer — ${job_title}`,
+            htmlContent: `<p>Une nouvelle offre d'emploi externe de <strong>${company_name}</strong> attend validation : <strong>${job_title}</strong>.</p>`,
+          }),
+        }).catch(() => {});
+      }
+    }
+  }
+
+  return json({ success: true, message: "Votre offre est en cours de validation (24-48h ouvrées)." });
+});
