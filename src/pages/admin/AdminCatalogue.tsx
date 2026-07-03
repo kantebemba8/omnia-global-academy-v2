@@ -433,7 +433,7 @@ function AssisteeTab() {
             </select>
           </div>
           <button
-            onClick={() => selectedProf && navigate(`/professeur/courses/new?assisted=true&creator_id=${selectedProf}`)}
+            onClick={() => selectedProf && navigate(`/admin/courses/new?assisted=true&creator_id=${selectedProf}`)}
             disabled={!selectedProf}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: '#BF8813' }}>

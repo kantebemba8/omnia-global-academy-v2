@@ -50,7 +50,7 @@ const CATEGORIES = [
   'Comptabilité & Finance', 'Fiscalité', 'Droit des affaires', 'Gestion de projet',
   'Management & Leadership', 'Ressources humaines', 'Marketing digital', 'Vente & Négociation',
   'Entrepreneuriat', 'Informatique de gestion', 'Bureautique & Productivité',
-  'Langues professionnelles', 'Communication professionnelle', 'Logistique & Supply chain',
+  'Langues & Linguistique', 'Communication professionnelle', 'Logistique & Supply chain',
   'Qualité & Processus', 'Banque & Microfinance', 'Agriculture & Agribusiness',
   'Santé & Sécurité au travail', 'Développement personnel', 'Secteur public & Gouvernance',
   'Commerce international', 'Énergie & Environnement',
@@ -128,7 +128,7 @@ function ScoreCard({ score, preview }: { score: ScorePreview | null; preview: bo
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export function ProfesseurStudioCreation() {
+export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: boolean }) {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -140,6 +140,7 @@ export function ProfesseurStudioCreation() {
   const [scorePreview, setScorePreview] = useState<ScorePreview | null>(null);
   const [scoreFetching, setScoreFetching] = useState(false);
   const scoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [plateformeMode, setPlateformeMode] = useState(false);
 
   const [course, setCourse] = useState<CourseData>({
     id: id || null, title: '', description: '', category: '', level: 'debutant',
@@ -153,7 +154,7 @@ export function ProfesseurStudioCreation() {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}').role ?? ''; }
     catch { return ''; }
   })();
-  const canAddExternalLesson = userRole === 'super_admin' || userRole === 'etablissement_directeur' || userRole === 'etablissement_enseignant';
+  const canAddExternalLesson = is_admin || userRole === 'super_admin' || userRole === 'etablissement_directeur' || userRole === 'etablissement_enseignant';
 
   // ── Language-specific state ────────────────────────────────────────────────
   const [langueEnseignee, setLangueEnseignee] = useState('');
@@ -431,7 +432,7 @@ export function ProfesseurStudioCreation() {
 
   if (submitted) {
     return (
-      <DashboardLayout role="professeur">
+      <DashboardLayout role={is_admin ? 'admin' : 'professeur'}>
         <div className="p-6 lg:p-8 max-w-2xl mx-auto text-center py-20">
           <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#1E7A52' + '15' }}>
             <CheckCircle className="w-8 h-8" style={{ color: '#1E7A52' }} />
@@ -441,10 +442,10 @@ export function ProfesseurStudioCreation() {
             Votre formation est en cours de validation. Vous recevrez une notification
             dès qu'elle aura été examinée par notre équipe.
           </p>
-          <button onClick={() => navigate('/professeur/courses')}
+          <button onClick={() => navigate(is_admin ? '/admin/courses' : '/professeur/courses')}
             className="px-6 py-3 rounded-xl text-white font-semibold"
             style={{ backgroundColor: '#002050' }}>
-            Retour à mes formations
+            {is_admin ? 'Retour au catalogue admin' : 'Retour à mes formations'}
           </button>
         </div>
       </DashboardLayout>
@@ -452,7 +453,7 @@ export function ProfesseurStudioCreation() {
   }
 
   return (
-    <DashboardLayout role="professeur">
+    <DashboardLayout role={is_admin ? 'admin' : 'professeur'}>
       <div className="p-4 lg:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -461,6 +462,80 @@ export function ProfesseurStudioCreation() {
           </h1>
           <p className="text-gray-400 text-sm mt-0.5">Assistant de création en 5 étapes</p>
         </div>
+
+        {/* Admin-only: mode switcher */}
+        {is_admin && (
+          <div className="mb-6 flex items-center gap-3 p-4 rounded-xl border" style={{ borderColor: '#002050', backgroundColor: '#F0F4FF' }}>
+            <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#002050' }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: '#002050' }}>Mode saisie assistée (Super-admin)</p>
+              <p className="text-xs text-gray-500">Toutes les options avancées sont déverrouillées.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPlateformeMode(v => !v)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
+              style={{
+                borderColor: plateformeMode ? '#002050' : '#D1D5DB',
+                backgroundColor: plateformeMode ? '#002050' : '#FFFFFF',
+                color: plateformeMode ? '#FFFFFF' : '#374151',
+              }}>
+              <FileText className="w-3.5 h-3.5" />
+              {plateformeMode ? 'Mode Plateforme actif' : 'Mode Plateforme'}
+            </button>
+          </div>
+        )}
+
+        {/* Admin: Plateforme mode — simplified upload without mandatory architecture */}
+        {is_admin && plateformeMode && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6 space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="w-4 h-4" style={{ color: '#BF8813' }} />
+              <h2 className="font-semibold text-gray-900">Formation Plateforme — Import direct</h2>
+            </div>
+            <p className="text-sm text-gray-500">Ce mode permet de créer une formation en important directement un PDF, Word ou SCORM sans architecture de modules obligatoire. Le contenu sera traité par la plateforme.</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Titre de la formation *</label>
+                <input value={course.title} onChange={(e) => setCourse((c) => ({ ...c, title: e.target.value }))}
+                  placeholder="Ex: Comptabilité générale"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+                <select value={course.category} onChange={(e) => setCourse((c) => ({ ...c, category: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white">
+                  <option value="">Choisir...</option>
+                  {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fichier de contenu (PDF / Word / SCORM)</label>
+              <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50">
+                <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-500">Glissez-déposez un fichier ou cliquez pour sélectionner</p>
+                  <p className="text-xs text-gray-400 mt-0.5">.pdf, .docx, .zip (SCORM) — max 50 Mo</p>
+                </div>
+                <label className="px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer" style={{ backgroundColor: '#002050' }}>
+                  Parcourir
+                  <input type="file" accept=".pdf,.docx,.zip" className="hidden" onChange={() => {}} />
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Note : le traitement du fichier sera effectué manuellement par l'équipe technique.</p>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={handleNext}
+                disabled={!course.title || !course.category}
+                className="flex items-center gap-2 text-sm font-semibold text-white px-5 py-2.5 rounded-xl disabled:opacity-50"
+                style={{ backgroundColor: '#002050' }}>
+                Continuer avec l'assistant <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Stepper */}
         <div className="flex items-center gap-0 mb-8 bg-white rounded-xl border border-gray-100 shadow-sm p-4 overflow-x-auto">
@@ -532,7 +607,7 @@ export function ProfesseurStudioCreation() {
                     </div>
 
                     {/* ── Language-specific fields ── */}
-                    {course.category === 'Langues & Linguistique' && (
+                    {course.category?.toLowerCase().includes('langue') && (
                       <div className="space-y-4 pt-3 border-t border-gray-100">
                         <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#002050' }}>Paramètres de langue</p>
                         <div className="grid sm:grid-cols-2 gap-4">
@@ -791,7 +866,7 @@ export function ProfesseurStudioCreation() {
                           </button>
                         )}
                         {/* Language competences — only for Langues & Linguistique */}
-                        {course.category === 'Langues & Linguistique' && (
+                        {course.category?.toLowerCase().includes('langue') && (
                           <div className="mt-4 pt-4 border-t border-gray-100">
                             <p className="text-sm font-semibold mb-2" style={{ color: '#002050' }}>Compétences linguistiques couvertes dans ce module *</p>
                             <p className="text-xs mb-3" style={{ color: '#6B7280' }}>
@@ -947,7 +1022,7 @@ export function ProfesseurStudioCreation() {
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none resize-none" />
                             </div>
                             {/* Audio for language courses */}
-                            {course.category === 'Langues & Linguistique' && !lesson.is_external && (
+                            {course.category?.toLowerCase().includes('langue') && !lesson.is_external && (
                               <div className="p-4 rounded-xl border" style={{ borderColor: '#BF8813', backgroundColor: 'rgba(191,136,19,0.03)' }}>
                                 <p className="font-semibold text-sm mb-3" style={{ color: '#002050' }}>
                                   Support audio (obligatoire — au moins 1 par module)
@@ -1057,7 +1132,7 @@ export function ProfesseurStudioCreation() {
                 </div>
 
                 {/* Oral exam — only for language courses */}
-                {course.category === 'Langues & Linguistique' && (
+                {course.category?.toLowerCase().includes('langue') && (
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                     <div className="flex items-center justify-between mb-3">
                       <div>
@@ -1201,7 +1276,7 @@ export function ProfesseurStudioCreation() {
                     { label: '5+ questions par leçon', ok: course.modules.every((m) => m.lessons.every((l) => l.questions.length >= 5)) },
                     { label: 'Contenu ≥100 mots par leçon', ok: course.modules.every((m) => m.lessons.every((l) => l.content_text.trim().split(/\s+/).filter(Boolean).length >= 100)) },
                     { label: 'Type d\'évaluation finale défini', ok: !!course.final_validation_type },
-                    ...(course.category === 'Langues & Linguistique' ? [
+                    ...(course.category?.toLowerCase().includes('langue') ? [
                       { label: 'Langue enseignée renseignée', ok: !!langueEnseignee.trim() },
                       { label: 'Niveau CECRL défini', ok: !!niveauCecrl },
                       { label: 'Type de formation de langue défini', ok: !!sousCategorie },
@@ -1256,7 +1331,7 @@ export function ProfesseurStudioCreation() {
 
             {/* Navigation */}
             <div className="flex items-center justify-between mt-6">
-              <button onClick={() => step === 0 ? navigate('/professeur/courses') : setStep((s) => s - 1)}
+              <button onClick={() => step === 0 ? navigate(is_admin ? '/admin/courses' : '/professeur/courses') : setStep((s) => s - 1)}
                 className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">
                 <ChevronLeft className="w-4 h-4" />
                 {step === 0 ? 'Annuler' : 'Précédent'}

@@ -133,6 +133,8 @@ export default function App() {
         <Route path="/admin/payouts" element={<AdminRetraits />} />
         <Route path="/admin/marketing" element={<AdminMarketing />} />
         <Route path="/admin/courses" element={<AdminCatalogue />} />
+        <Route path="/admin/courses/new" element={<ProfesseurStudioCreation is_admin={true} />} />
+        <Route path="/admin/courses/:id/edit" element={<ProfesseurStudioCreation is_admin={true} />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
