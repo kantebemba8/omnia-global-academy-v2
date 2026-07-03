@@ -39,6 +39,14 @@ function formatDate(iso: string) {
 }
 
 export function DashboardApprenant() {
+  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
+  const storedUser = localStorage.getItem('omnia_user');
+  const isSuperAdmin = (() => {
+    try { return JSON.parse(storedUser || '{}')?.roles?.includes('super_admin') ?? false; }
+    catch { return false; }
+  })();
+  const bypassAuth = isPreview && isSuperAdmin;
+
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,6 +60,7 @@ export function DashboardApprenant() {
   }
 
   const load = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) { setLoading(false); return; }
     try {

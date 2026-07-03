@@ -98,6 +98,14 @@ function AddTeacherModal({ onClose, onSuccess }: AddTeacherModalProps) {
 }
 
 export function DirecteurDashboard() {
+  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
+  const storedUser = localStorage.getItem('omnia_user');
+  const isSuperAdmin = (() => {
+    try { return JSON.parse(storedUser || '{}')?.roles?.includes('super_admin') ?? false; }
+    catch { return false; }
+  })();
+  const bypassAuth = isPreview && isSuperAdmin;
+
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
   const [addModal, setAddModal] = useState(false);
@@ -115,6 +123,7 @@ export function DirecteurDashboard() {
   }
 
   const load = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) { if (!previewMode) navigate('/connexion'); setLoading(false); return; }
     try {
@@ -124,7 +133,7 @@ export function DirecteurDashboard() {
       if (res.ok) setData(json);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [navigate, previewMode]);
+  }, [navigate, previewMode, bypassAuth]);
 
   useEffect(() => { load(); }, [load]);
 
