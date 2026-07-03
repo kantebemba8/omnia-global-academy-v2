@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  let body: { course_id?: string };
+  let body: { course_id?: string; sous_categorie_langue?: string; champs_sous_categorie?: unknown; niveau_cecrl?: string; langue_enseignee?: string; langue_instruction?: string; examen_oral_statut?: string; examen_oral_consignes?: string; examen_oral_criteres?: string; requested_cpd?: boolean };
   try { body = await req.json(); } catch { return json({ error: "Invalid body" }, 400); }
   const { course_id } = body;
   if (!course_id) return json({ error: "course_id requis" }, 400);
@@ -195,11 +195,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // Update course status
+    const langueFields: Record<string, unknown> = {};
+    if (body.sous_categorie_langue !== undefined) langueFields.sous_categorie_langue = body.sous_categorie_langue;
+    if (body.champs_sous_categorie !== undefined) langueFields.champs_sous_categorie = body.champs_sous_categorie;
+    if (body.niveau_cecrl !== undefined) langueFields.niveau_cecrl = body.niveau_cecrl;
+    if (body.langue_enseignee !== undefined) langueFields.langue_enseignee = body.langue_enseignee;
+    if (body.langue_instruction !== undefined) langueFields.langue_instruction = body.langue_instruction;
+    if (body.examen_oral_statut !== undefined) langueFields.examen_oral_statut = body.examen_oral_statut;
+    if (body.examen_oral_consignes !== undefined) langueFields.examen_oral_consignes = body.examen_oral_consignes;
+    if (body.examen_oral_criteres !== undefined) langueFields.examen_oral_criteres = body.examen_oral_criteres;
+    if (body.requested_cpd !== undefined) langueFields.requested_cpd = body.requested_cpd;
+
     await sb.from("courses").update({
       status: "en_attente_validation_manuelle",
       score_calcule: score,
       prix_provisoire_xof: price_xof,
       updated_at: new Date().toISOString(),
+      ...langueFields,
     }).eq("id", course_id);
 
     return json({ success: true, score, prix_provisoire: price_xof });

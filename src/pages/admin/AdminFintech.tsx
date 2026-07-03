@@ -1,13 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { CreditCard, CheckCircle, XCircle, Eye, EyeOff, Save, AlertTriangle } from 'lucide-react';
+import { CreditCard, Eye, EyeOff, Save, AlertTriangle, Lock, Plus, Trash2 } from 'lucide-react';
+
+interface PricingTier {
+  id: string; label: string; score_min: number; score_max: number;
+  price_xof: number; is_base_tier: boolean; is_protected: boolean;
+}
 
 export default function AdminFintech() {
   const [showPubKey, setShowPubKey] = useState(false);
   const [fedaMode, setFedaMode] = useState<'test' | 'production'>('test');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
+  const [tierToast, setTierToast] = useState('');
+
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000); }
+  function showTierToast(msg: string) { setTierToast(msg); setTimeout(() => setTierToast(''), 3000); }
+
+  useEffect(() => {
+    const token = localStorage.getItem('omnia_session_token');
+    fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (d.pricing_tiers) setPricingTiers(d.pricing_tiers); })
+      .catch(() => {});
+  }, []);
   const [settings, setSettings] = useState({
     payout_minimum_xof: '',
     payout_delay_label: '24 à 48 heures ouvrées',
@@ -38,8 +56,7 @@ export default function AdminFintech() {
       }),
     });
     setSaving(false);
-    setToast('Paramètres enregistrés.');
-    setTimeout(() => setToast(''), 3000);
+    showToast('Paramètres enregistrés.');
   }
 
   return (
@@ -168,6 +185,73 @@ export default function AdminFintech() {
               <input type="number" value={settings.ai_token_per_purchase} onChange={(e) => set('ai_token_per_purchase', e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
             </div>
+          </div>
+        </div>
+
+        {/* Pricing tiers */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold" style={{ color: '#002050' }}>Paliers de prix</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Les paliers de base sont protégés contre la suppression.</p>
+            </div>
+            <button
+              onClick={async () => {
+                const token = localStorage.getItem('omnia_session_token');
+                await fetch(ENDPOINTS.adminCmsUpdate, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'upsert_pricing_tier', tier: { label: 'Nouveau palier', score_min: 0, score_max: 10, price_xof: 5000 } }),
+                });
+                const r = await fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } });
+                const d = await r.json();
+                if (d.pricing_tiers) setPricingTiers(d.pricing_tiers);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+              style={{ backgroundColor: '#002050' }}>
+              <Plus className="w-3 h-3" /> Ajouter un palier
+            </button>
+          </div>
+          {tierToast && (
+            <div className="p-2 rounded-lg text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>{tierToast}</div>
+          )}
+          <div className="space-y-2">
+            {pricingTiers.map((tier) => (
+              <div key={tier.id} className="flex items-center gap-3 p-3 rounded-lg border" style={{ borderColor: tier.is_protected ? '#BF881330' : '#E4E7EC', backgroundColor: tier.is_protected ? '#FFFBEB' : '#FAFAFA' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-gray-800">{tier.label}</span>
+                    {tier.is_protected && (
+                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#BF881320', color: '#BF8813' }}>
+                        <Lock className="w-2.5 h-2.5" /> Protégé
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">Score {tier.score_min}–{tier.score_max} · {tier.price_xof.toLocaleString()} XOF</p>
+                </div>
+                <button
+                  disabled={tier.is_protected}
+                  title={tier.is_protected ? 'Ce palier est protégé — modifiable uniquement' : 'Supprimer ce palier'}
+                  onClick={async () => {
+                    const token = localStorage.getItem('omnia_session_token');
+                    const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'delete_pricing_tier', tier_id: tier.id }),
+                    });
+                    const d = await res.json();
+                    if (d.error === 'PALIER_PROTECTED') { showTierToast(d.message); return; }
+                    setPricingTiers(prev => prev.filter(t => t.id !== tier.id));
+                  }}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{ color: '#DC2626' }}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            {pricingTiers.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">Aucun palier configuré.</p>
+            )}
           </div>
         </div>
 

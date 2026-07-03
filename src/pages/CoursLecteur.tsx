@@ -29,6 +29,14 @@ interface LessonContent {
   video_url?: string; audio_url?: string; text_content?: string;
   lesson_summary?: string; duration_seconds: number; cloudflare_stream_uid?: string;
   is_external?: boolean; external_url?: string; external_partner?: string;
+  course_category?: string;
+  exercices_auto?: Array<{
+    type: 'flashcards_vocabulaire' | 'texte_a_trous' | 'dictee_audio';
+    mots?: string[];
+    phrase?: string;
+    reponse?: string;
+    texteReference?: string;
+  }>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,6 +71,55 @@ function SimpleMarkdown({ text }: { text: string }) {
         if (!line.trim()) return <div key={i} className="h-1" />;
         return <p key={i} className="text-sm leading-relaxed" style={{ color: '#374151' }}>{renderInline(line)}</p>;
       })}
+    </div>
+  );
+}
+
+// ── Exercice composants ───────────────────────────────────────────────────────
+function TextATrousExercise({ answer }: { answer: string }) {
+  const [input, setInput] = useState('');
+  const [checked, setChecked] = useState(false);
+  const correct = input.trim().toLowerCase() === answer.toLowerCase();
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <input type="text" value={input}
+        onChange={e => { setInput(e.target.value); setChecked(false); }}
+        placeholder="Votre réponse…"
+        className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:outline-none"
+        style={{ borderColor: checked ? (correct ? '#1E7A52' : '#DC2626') : '#E4E7EC' }} />
+      <button onClick={() => setChecked(true)}
+        className="px-3 py-2 rounded-lg text-sm font-medium text-white flex-shrink-0"
+        style={{ backgroundColor: '#002050' }}>
+        Vérifier
+      </button>
+      {checked && (
+        <span className="text-sm font-medium flex-shrink-0"
+          style={{ color: correct ? '#1E7A52' : '#DC2626' }}>
+          {correct ? '✓ Correct !' : `✗ Réponse : ${answer}`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DicteeAudioExercise({ texteReference, audioUrl }: { texteReference: string; audioUrl?: string }) {
+  const [input, setInput] = useState('');
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className="space-y-3">
+      {audioUrl && <audio controls className="w-full"><source src={audioUrl} /></audio>}
+      <textarea value={input} onChange={e => setInput(e.target.value)}
+        placeholder="Transcrivez ce que vous entendez…" rows={3}
+        className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none"
+        style={{ borderColor: '#E4E7EC' }} />
+      <button onClick={() => setRevealed(true)} className="text-sm underline" style={{ color: '#BF8813' }}>
+        Voir la transcription
+      </button>
+      {revealed && (
+        <div className="p-3 rounded-lg" style={{ backgroundColor: '#E4F1EA' }}>
+          <p className="text-sm" style={{ color: '#1E7A52' }}>{texteReference}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -490,6 +547,41 @@ export function CoursLecteur() {
               {lesson.content_type === 'text' && lesson.text_content && (
                 <div className="rounded-2xl p-6 mb-5" style={{ border: '1px solid #E4E7EC' }}>
                   <SimpleMarkdown text={lesson.text_content} />
+                </div>
+              )}
+
+              {/* Auto exercises for language courses */}
+              {(lesson.exercices_auto?.length ?? 0) > 0 && lesson.course_category?.toLowerCase().includes('langue') && (
+                <div className="mb-5 space-y-4">
+                  <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Exercices interactifs</h3>
+                  {lesson.exercices_auto!.map((ex, i) => (
+                    <div key={i} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#FAFAFA' }}>
+                      {ex.type === 'flashcards_vocabulaire' && ex.mots && (
+                        <div>
+                          <p className="text-sm font-medium mb-3" style={{ color: '#002050' }}>Vocabulaire clé</p>
+                          <div className="flex flex-wrap gap-2">
+                            {ex.mots.map((mot, j) => (
+                              <span key={j} className="px-3 py-1 rounded-full text-sm font-medium"
+                                style={{ backgroundColor: 'rgba(0,32,80,0.08)', color: '#002050' }}>{mot}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {ex.type === 'texte_a_trous' && ex.phrase && ex.reponse && (
+                        <div>
+                          <p className="text-sm font-medium mb-2" style={{ color: '#002050' }}>Complétez la phrase</p>
+                          <p className="text-sm mb-3" style={{ color: '#374151' }}>{ex.phrase}</p>
+                          <TextATrousExercise answer={ex.reponse} />
+                        </div>
+                      )}
+                      {ex.type === 'dictee_audio' && ex.texteReference && (
+                        <div>
+                          <p className="text-sm font-medium mb-2" style={{ color: '#002050' }}>Dictée — Écoutez et transcrivez</p>
+                          <DicteeAudioExercise texteReference={ex.texteReference} audioUrl={lesson.audio_url} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 

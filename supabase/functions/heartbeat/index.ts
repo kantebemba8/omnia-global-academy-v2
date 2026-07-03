@@ -31,7 +31,13 @@ Deno.serve(async (req: Request) => {
     const safeSeconds = Math.min(Math.max(0, seconds_since_last_heartbeat ?? 0), 35);
     if (!is_active || safeSeconds === 0) return json({ success: true, credited: 0 });
 
-    const { data: lesson } = await sb.from("course_lessons").select("duration_seconds").eq("id", lesson_id).maybeSingle();
+    const { data: lesson } = await sb.from("course_lessons").select("duration_seconds, is_external").eq("id", lesson_id).maybeSingle();
+
+    // External lessons are excluded from CPD tracking
+    if (lesson?.is_external) {
+      return json({ success: true, credited: 0, reason: "external_lesson_excluded_from_cpd" });
+    }
+
     const required = lesson?.duration_seconds ?? 0;
 
     const { data: existing } = await sb.from("user_lesson_progress").select("id,time_spent_seconds,quiz_passed").eq("user_id", userId).eq("lesson_id", lesson_id).maybeSingle();

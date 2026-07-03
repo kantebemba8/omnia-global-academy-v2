@@ -141,6 +141,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
   const [scoreFetching, setScoreFetching] = useState(false);
   const scoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [plateformeMode, setPlateformeMode] = useState(false);
+  const [generatingAudio, setGeneratingAudio] = useState<string | null>(null);
 
   const [course, setCourse] = useState<CourseData>({
     id: id || null, title: '', description: '', category: '', level: 'debutant',
@@ -1064,6 +1065,38 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
                                     <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
                                       La plateforme convertira ce texte en audio automatiquement (~150 mots/minute)
                                     </p>
+                                    {lesson.audio_text_to_generate && !lesson.id.startsWith('new_') && (
+                                      <button
+                                        type="button"
+                                        disabled={generatingAudio === lesson.id}
+                                        onClick={async () => {
+                                          setGeneratingAudio(lesson.id);
+                                          try {
+                                            const res = await fetch(`${getApiBase()}/tts-generate`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+                                              body: JSON.stringify({ lesson_id: lesson.id, text: lesson.audio_text_to_generate }),
+                                            });
+                                            const data = await res.json();
+                                            if (data.audio_url) updateLesson(mIdx, lIdx, 'audio_url', data.audio_url);
+                                          } catch { /* ignore */ }
+                                          finally { setGeneratingAudio(null); }
+                                        }}
+                                        className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                                        style={{ backgroundColor: '#002050' }}>
+                                        {generatingAudio === lesson.id
+                                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Génération en cours...</>
+                                          : <><Headphones className="w-3.5 h-3.5" /> Générer l'audio</>}
+                                      </button>
+                                    )}
+                                    {lesson.audio_url && (
+                                      <div className="mt-2">
+                                        <p className="text-xs font-medium mb-1" style={{ color: '#1E7A52' }}>Audio disponible</p>
+                                        <audio controls className="w-full h-8">
+                                          <source src={lesson.audio_url} type="audio/mpeg" />
+                                        </audio>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

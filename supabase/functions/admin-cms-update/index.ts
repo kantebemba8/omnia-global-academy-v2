@@ -1,11 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -106,10 +101,35 @@ Deno.serve(async (req: Request) => {
 
     if (req.method === "GET") {
       const { data: settings } = await sb.from("site_settings").select("key,value");
-      return json({ settings: settings ?? [] });
+      const { data: pricingTiers } = await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min");
+      return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [] });
     }
 
-    const { updates } = await req.json() as { updates: { key: string; value: string }[] };
+    const body = await req.json() as { updates?: { key: string; value: string }[]; action?: string; tier_id?: string; tier?: Record<string, unknown> };
+
+    // Pricing tier management
+    if (body.action === "delete_pricing_tier") {
+      if (!body.tier_id) return json({ error: "tier_id requis" }, 400);
+      const { data: palier } = await sb.from("pricing_tiers").select("is_protected,label").eq("id", body.tier_id).maybeSingle();
+      if (!palier) return json({ error: "TIER_NOT_FOUND" }, 404);
+      const p = palier as { is_protected: boolean; label: string };
+      if (p.is_protected) return json({ error: "PALIER_PROTECTED", message: `Le palier "${p.label}" est protégé et ne peut pas être supprimé.` }, 403);
+      await sb.from("pricing_tiers").delete().eq("id", body.tier_id);
+      return json({ success: true });
+    }
+
+    if (body.action === "upsert_pricing_tier") {
+      if (!body.tier) return json({ error: "tier requis" }, 400);
+      const t = body.tier as { id?: string; label: string; score_min: number; score_max: number; price_xof: number };
+      if (t.id) {
+        await sb.from("pricing_tiers").update({ label: t.label, score_min: t.score_min, score_max: t.score_max, price_xof: t.price_xof }).eq("id", t.id);
+      } else {
+        await sb.from("pricing_tiers").insert({ label: t.label, score_min: t.score_min, score_max: t.score_max, price_xof: t.price_xof, created_by: adminId });
+      }
+      return json({ success: true });
+    }
+
+    const { updates } = body;
     if (!Array.isArray(updates)) return json({ error: "INVALID_PARAMS" }, 400);
 
     const invalid = updates.filter((u) => !ALLOWED_CMS_KEYS.has(u.key));

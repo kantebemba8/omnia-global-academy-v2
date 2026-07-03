@@ -41,9 +41,9 @@ Deno.serve(async (req: Request) => {
     const { course_id, action, final_price_xof, school_split, comment } = body;
     if (!course_id || !["publish", "reject", "request_modification"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
 
-    const { data: course } = await sb.from("courses").select("id,title,instructor_id,establishment_id,status").eq("id", course_id).maybeSingle();
+    const { data: course } = await sb.from("courses").select("id,title,instructor_id,establishment_id,status,category").eq("id", course_id).maybeSingle();
     if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
-    const cr = course as { id: string; title: string; instructor_id: string; establishment_id: string | null; status: string };
+    const cr = course as { id: string; title: string; instructor_id: string; establishment_id: string | null; status: string; category: string | null };
     const now = new Date().toISOString();
 
     if (action === "publish") {
@@ -68,6 +68,40 @@ Deno.serve(async (req: Request) => {
         headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ course_id }),
       }).catch(() => {});
+
+      // Generate auto exercises for language courses (fire-and-forget)
+      if (cr.category?.toLowerCase().includes("langue")) {
+        (async () => {
+          const { data: lessons } = await sb
+            .from("course_lessons")
+            .select("id, text_content, audio_text_to_generate")
+            .eq("course_id", course_id);
+          for (const lesson of lessons ?? []) {
+            const l = lesson as { id: string; text_content: string | null; audio_text_to_generate: string | null };
+            const texte = l.text_content || l.audio_text_to_generate || "";
+            if (!texte.trim()) continue;
+            const exercices: unknown[] = [];
+            const mots = texte.replace(/[.,;:!?()\n]/g, " ").split(/\s+/).filter((m: string) => m.length >= 6);
+            const uniqueMots = [...new Set(mots)].slice(0, 8);
+            if (uniqueMots.length > 0) exercices.push({ type: "flashcards_vocabulaire", mots: uniqueMots });
+            const phrases = texte.split(/[.!?]+/).map((p: string) => p.trim()).filter((p: string) => p.split(" ").length >= 4);
+            if (phrases.length > 0) {
+              const phrase = phrases[0];
+              const words = phrase.split(" ");
+              const idx = Math.min(2, words.length - 1);
+              const motMasque = words[idx];
+              const phraseATrou = words.map((w: string, i: number) => i === idx ? "____" : w).join(" ");
+              exercices.push({ type: "texte_a_trous", phrase: phraseATrou, reponse: motMasque });
+            }
+            if (l.audio_text_to_generate) {
+              exercices.push({ type: "dictee_audio", texteReference: l.audio_text_to_generate.slice(0, 120) });
+            }
+            if (exercices.length > 0) {
+              await sb.from("course_lessons").update({ exercices_auto: exercices }).eq("id", l.id);
+            }
+          }
+        })().catch(() => {});
+      }
 
       // Notify instructor via Brevo
       const { data: u } = await sb.from("users").select("email,full_name").eq("id", cr.instructor_id).maybeSingle();
