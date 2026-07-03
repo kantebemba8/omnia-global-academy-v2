@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { usePreviewMode } from '../../hooks/usePreviewMode';
+
 import {
   BookOpen, Users, Shield, MessageSquare, Briefcase, HelpCircle,
   Clock, CheckCircle, XCircle, Lock, AlertTriangle, BarChart2
@@ -54,9 +54,8 @@ function timeAgo(iso: string): string {
 
 export default function ModerateurDashboard() {
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
-  const storedUser = localStorage.getItem('omnia_user');
   const isSuperAdmin = (() => {
-    try { return JSON.parse(storedUser || '{}')?.roles?.includes('super_admin') ?? false; }
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
   })();
   const bypassAuth = isPreview && isSuperAdmin;
@@ -64,10 +63,9 @@ export default function ModerateurDashboard() {
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewToast, setPreviewToast] = useState(false);
-  const previewMode = usePreviewMode();
 
   function handlePreviewAction() {
-    if (!previewMode) return;
+    if (!bypassAuth) return;
     setPreviewToast(true);
     setTimeout(() => setPreviewToast(false), 3000);
   }

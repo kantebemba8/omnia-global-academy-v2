@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { usePreviewMode } from '../../hooks/usePreviewMode';
+
 import {
   Wallet, TrendingUp, Users, Star, PlusCircle, AlertCircle,
   ChevronRight, Clock, CheckCircle, XCircle, AlertTriangle, Eye
@@ -73,9 +73,8 @@ function kpiCard(label: string, value: string, icon: React.ReactNode, color: str
 
 export function DashboardProfesseur() {
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
-  const storedUser = localStorage.getItem('omnia_user');
   const isSuperAdmin = (() => {
-    try { return JSON.parse(storedUser || '{}')?.roles?.includes('super_admin') ?? false; }
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
   })();
   const bypassAuth = isPreview && isSuperAdmin;
@@ -86,10 +85,9 @@ export function DashboardProfesseur() {
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [previewToast, setPreviewToast] = useState(false);
   const navigate = useNavigate();
-  const previewMode = usePreviewMode();
 
   function handlePreviewAction() {
-    if (!previewMode) return;
+    if (!bypassAuth) return;
     setPreviewToast(true);
     setTimeout(() => setPreviewToast(false), 3000);
   }
@@ -97,17 +95,17 @@ export function DashboardProfesseur() {
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { if (!previewMode) navigate('/connexion'); setLoading(false); return; }
+    if (!token) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 403) { if (!previewMode) navigate('/connexion'); setLoading(false); return; }
+      if (res.status === 403) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
       const json = await res.json();
       if (res.ok) setData(json);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [navigate, previewMode, bypassAuth]);
+  }, [navigate, bypassAuth]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -159,7 +157,7 @@ export function DashboardProfesseur() {
             </h1>
             <p className="text-gray-500 text-sm mt-1">Espace professeur</p>
           </div>
-          {previewMode ? (
+          {bypassAuth ? (
             <button onClick={handlePreviewAction}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white opacity-50 cursor-not-allowed"
               style={{ backgroundColor: '#002050' }}>
