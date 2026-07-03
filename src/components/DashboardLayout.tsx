@@ -4,6 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
+  ArrowLeft,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -76,14 +77,22 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
   const [user, setUser] = useState<StoredUser | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isPreview = new URLSearchParams(location.search).get('preview') === 'true';
+  const isSuperAdmin = (() => {
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
+    catch { return false; }
+  })();
+  const previewMode = isPreview && isSuperAdmin;
+
   useEffect(() => {
     const token = localStorage.getItem('omnia_session_token');
     const stored = localStorage.getItem('omnia_user');
-    if (!token) { navigate('/connexion'); return; }
+    if (!token && !previewMode) { navigate('/connexion'); return; }
     if (stored) { try { setUser(JSON.parse(stored)); } catch { /* ignore */ } }
-  }, [navigate]);
+  }, [navigate, previewMode]);
 
   function handleLogout() {
+    if (previewMode) { navigate('/admin/dashboard'); return; }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
     navigate('/connexion');
@@ -218,7 +227,28 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
             </div>
           )}
         </div>
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto">
+          {previewMode && (
+            <div className="flex items-center gap-3 px-5 py-3" style={{ backgroundColor: '#002050' }}>
+              <span className="text-white text-xs font-medium flex-1">
+                👁 Mode aperçu Super-admin — Tableau de bord {
+                  role === 'apprenant' ? 'Apprenant'
+                  : role === 'professeur' ? 'Formateur'
+                  : role === 'directeur' ? 'École'
+                  : role === 'moderateur' ? 'Modérateur'
+                  : 'Utilisateur'
+                } — Lecture seule
+              </span>
+              <button
+                onClick={() => navigate('/admin/dashboard')}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white border border-white/30 hover:bg-white/10 transition-colors flex-shrink-0">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Retour au dashboard admin
+              </button>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

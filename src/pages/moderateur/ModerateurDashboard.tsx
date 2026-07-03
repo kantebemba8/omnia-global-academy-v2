@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { usePreviewMode } from '../../hooks/usePreviewMode';
 import {
   BookOpen, Users, Shield, MessageSquare, Briefcase, HelpCircle,
   Clock, CheckCircle, XCircle, Lock, AlertTriangle, BarChart2
@@ -54,6 +55,14 @@ function timeAgo(iso: string): string {
 export default function ModerateurDashboard() {
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [previewToast, setPreviewToast] = useState(false);
+  const previewMode = usePreviewMode();
+
+  function handlePreviewAction() {
+    if (!previewMode) return;
+    setPreviewToast(true);
+    setTimeout(() => setPreviewToast(false), 3000);
+  }
 
   useEffect(() => {
     const token = localStorage.getItem('omnia_session_token');
@@ -78,6 +87,11 @@ export default function ModerateurDashboard() {
 
   return (
     <ModerateurLayout>
+      {previewToast && (
+        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
+          Mode aperçu — Action désactivée
+        </div>
+      )}
       <div className="p-6 max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <div>

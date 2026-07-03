@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { usePreviewMode } from '../../hooks/usePreviewMode';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
@@ -103,7 +104,15 @@ export function DirecteurDashboard() {
   const [validateModal, setValidateModal] = useState<PendingCourse | null>(null);
   const [rejectComment, setRejectComment] = useState('');
   const [validating, setValidating] = useState(false);
+  const [previewToast, setPreviewToast] = useState(false);
   const navigate = useNavigate();
+  const previewMode = usePreviewMode();
+
+  function handlePreviewAction() {
+    if (!previewMode) return;
+    setPreviewToast(true);
+    setTimeout(() => setPreviewToast(false), 3000);
+  }
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('omnia_session_token');
@@ -154,6 +163,11 @@ export function DirecteurDashboard() {
 
   return (
     <DashboardLayout role="directeur">
+      {previewToast && (
+        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
+          Mode aperçu — Action désactivée
+        </div>
+      )}
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -164,8 +178,8 @@ export function DirecteurDashboard() {
             </div>
             <p className="text-gray-500 text-sm">Pilotez votre établissement</p>
           </div>
-          <button onClick={() => setAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
+          <button onClick={() => previewMode ? handlePreviewAction() : setAddModal(true)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 ${previewMode ? 'opacity-50 cursor-not-allowed' : ''}`}
             style={{ backgroundColor: '#002050' }}>
             <PlusCircle className="w-4 h-4" /> Nouvel enseignant
           </button>

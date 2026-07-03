@@ -5,7 +5,8 @@ import { ENDPOINTS } from '../../lib/config';
 import { useSiteMode } from '../../context/SiteModeContext';
 import {
   TrendingUp, DollarSign, Lock, Users, AlertTriangle, BookOpen,
-  Wallet, Shield, Briefcase, ArrowRight, Clock,
+  Wallet, Shield, Briefcase, ArrowRight, Clock, Eye,
+  GraduationCap, School, UserCheck,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -124,6 +125,32 @@ export default function AdminDashboard() {
             </Link>
           </div>
         )}
+
+        {/* Preview spaces */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Eye className="w-4 h-4" style={{ color: '#002050' }} />
+            <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Prévisualiser les espaces</h3>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">Accédez en lecture seule aux tableaux de bord de chaque rôle</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Espace Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
+              { label: 'Espace Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
+              { label: 'Espace École', icon: School, path: '/school/dashboard?preview=true' },
+              { label: 'Espace Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
+            ].map((item) => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-center transition-colors hover:bg-gray-50"
+                style={{ borderColor: '#002050', color: '#002050' }}>
+                <item.icon className="w-5 h-5" />
+                <span className="text-xs font-semibold leading-tight">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center h-64">

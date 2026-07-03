@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { usePreviewMode } from '../../hooks/usePreviewMode';
 import {
   Wallet, TrendingUp, Users, Star, PlusCircle, AlertCircle,
   ChevronRight, Clock, CheckCircle, XCircle, AlertTriangle, Eye
@@ -75,7 +76,15 @@ export function DashboardProfesseur() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [previewToast, setPreviewToast] = useState(false);
   const navigate = useNavigate();
+  const previewMode = usePreviewMode();
+
+  function handlePreviewAction() {
+    if (!previewMode) return;
+    setPreviewToast(true);
+    setTimeout(() => setPreviewToast(false), 3000);
+  }
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('omnia_session_token');
@@ -128,6 +137,11 @@ export function DashboardProfesseur() {
 
   return (
     <DashboardLayout role="professeur">
+      {previewToast && (
+        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
+          Mode aperçu — Action désactivée
+        </div>
+      )}
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -136,11 +150,19 @@ export function DashboardProfesseur() {
             </h1>
             <p className="text-gray-500 text-sm mt-1">Espace professeur</p>
           </div>
-          <Link to="/professeur/courses/new"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#002050' }}>
-            <PlusCircle className="w-4 h-4" /> Nouvelle formation
-          </Link>
+          {previewMode ? (
+            <button onClick={handlePreviewAction}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white opacity-50 cursor-not-allowed"
+              style={{ backgroundColor: '#002050' }}>
+              <PlusCircle className="w-4 h-4" /> Nouvelle formation
+            </button>
+          ) : (
+            <Link to="/professeur/courses/new"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#002050' }}>
+              <PlusCircle className="w-4 h-4" /> Nouvelle formation
+            </Link>
+          )}
         </div>
 
         {loading ? (

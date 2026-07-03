@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { usePreviewMode } from '../../hooks/usePreviewMode';
 import {
   BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, Users, ArrowRight
 } from 'lucide-react';
@@ -41,6 +42,14 @@ export function DashboardApprenant() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [previewToast, setPreviewToast] = useState(false);
+  const previewMode = usePreviewMode();
+
+  function handlePreviewAction() {
+    if (!previewMode) return;
+    setPreviewToast(true);
+    setTimeout(() => setPreviewToast(false), 3000);
+  }
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('omnia_session_token');
@@ -70,6 +79,11 @@ export function DashboardApprenant() {
 
   return (
     <DashboardLayout>
+      {previewToast && (
+        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
+          Mode aperçu — Action désactivée
+        </div>
+      )}
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">

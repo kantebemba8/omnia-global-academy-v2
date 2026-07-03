@@ -3,17 +3,36 @@ import { ComingSoon } from '../pages/ComingSoon';
 import { LandingPage } from '../pages/LandingPage';
 import { MaintenancePage } from '../pages/MaintenancePage';
 
+function getSuperAdminState(): { isSuperAdmin: boolean; modeLabel: string | null } {
+  try {
+    const stored = localStorage.getItem('omnia_user');
+    const user = stored ? JSON.parse(stored) : null;
+    const isSuperAdmin = user?.roles?.includes('super_admin') ?? false;
+    return { isSuperAdmin, modeLabel: null };
+  } catch {
+    return { isSuperAdmin: false, modeLabel: null };
+  }
+}
+
+export function SuperAdminPreviewBadge({ mode }: { mode: 'coming_soon' | 'maintenance' }) {
+  const label = mode === 'coming_soon'
+    ? 'Le site est en mode Coming Soon pour le public'
+    : 'Le site est en Maintenance pour le public';
+  return (
+    <div
+      className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white"
+      style={{ backgroundColor: '#F59E0B' }}>
+      <span>🔧 Mode aperçu Super-admin —</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function RootGate() {
   const { comingSoon, loading, maintenanceEnabled, maintenanceMessage, maintenanceEndTime } =
     useSiteMode();
 
-  let isSuperAdmin = false;
-  try {
-    const stored = localStorage.getItem('omnia_user');
-    isSuperAdmin = stored ? JSON.parse(stored)?.roles?.includes('super_admin') : false;
-  } catch {
-    // If parsing fails, isSuperAdmin remains false
-  }
+  const { isSuperAdmin } = getSuperAdminState();
 
   if (loading) {
     return (
@@ -28,7 +47,15 @@ export function RootGate() {
     );
   }
 
-  if (maintenanceEnabled && !isSuperAdmin) {
+  if (maintenanceEnabled) {
+    if (isSuperAdmin) {
+      return (
+        <>
+          <SuperAdminPreviewBadge mode="maintenance" />
+          <div style={{ paddingTop: '40px' }}><LandingPage /></div>
+        </>
+      );
+    }
     return (
       <MaintenancePage
         maintenanceMessage={maintenanceMessage}
@@ -37,5 +64,17 @@ export function RootGate() {
     );
   }
 
-  return comingSoon ? <ComingSoon /> : <LandingPage />;
+  if (comingSoon) {
+    if (isSuperAdmin) {
+      return (
+        <>
+          <SuperAdminPreviewBadge mode="coming_soon" />
+          <div style={{ paddingTop: '40px' }}><LandingPage /></div>
+        </>
+      );
+    }
+    return <ComingSoon />;
+  }
+
+  return <LandingPage />;
 }

@@ -77,7 +77,12 @@ import { PwaInstallBanner } from './components/PwaInstallBanner';
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
   if (loading) return null;
-  if (comingSoon) return <Navigate to="/" replace />;
+  let isSuperAdmin = false;
+  try {
+    const stored = localStorage.getItem('omnia_user');
+    isSuperAdmin = stored ? JSON.parse(stored)?.roles?.includes('super_admin') ?? false : false;
+  } catch { /* ignore */ }
+  if (comingSoon && !isSuperAdmin) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
