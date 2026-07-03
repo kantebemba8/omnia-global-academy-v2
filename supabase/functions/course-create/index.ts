@@ -45,7 +45,6 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   let body: {
@@ -53,6 +52,14 @@ Deno.serve(async (req: Request) => {
     data?: Record<string, unknown>;
     module_id?: string; lesson_id?: string;
     question_text?: string; resource?: Record<string, unknown>;
+    // flat lesson fields (from saveStep spread)
+    title?: string; text_content?: string; lesson_summary?: string;
+    video_url?: string; audio_url?: string; duration_seconds?: number;
+    cloudflare_stream_uid?: string; content_type?: string;
+    audio_text_to_generate?: string; is_external?: boolean;
+    external_url?: string; external_partner?: string;
+    // flat module fields
+    objective?: string; competences_linguistiques?: string[];
   };
   try { body = await req.json(); } catch { return json({ error: "Invalid body" }, 400); }
   const { action, course_id, data } = body;
@@ -90,11 +97,11 @@ Deno.serve(async (req: Request) => {
 
     // ── action: save_step ──
     if (action === "save_step") {
-      if (!data) return json({ error: "data requis" }, 400);
+      const src = (data ?? body) as Record<string, unknown>;
       const allowedFields = ["title", "description", "description_courte", "category", "level", "language", "prerequisites", "objectives", "presentation_video_url", "cover_image_url", "requested_cpd", "final_validation_type", "final_project_instructions", "has_oral_exam", "oral_exam_instructions"];
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
       for (const k of allowedFields) {
-        if (data[k] !== undefined) updates[k] = data[k];
+        if (src[k] !== undefined) updates[k] = src[k];
       }
       await sb.from("courses").update(updates).eq("id", course_id);
       return json({ success: true });
@@ -165,11 +172,24 @@ Deno.serve(async (req: Request) => {
     // ── action: save_lesson_content ──
     if (action === "save_lesson_content") {
       const { lesson_id } = body;
-      if (!lesson_id || !data) return json({ error: "lesson_id + data requis" }, 400);
-      const allowed = ["title", "text_content", "lesson_summary", "video_url", "audio_url", "duration_seconds", "cloudflare_stream_uid", "content_type"];
+      if (!lesson_id) return json({ error: "lesson_id requis" }, 400);
+      const src = (data ?? body) as Record<string, unknown>;
+      const allowed = ["title", "text_content", "lesson_summary", "video_url", "audio_url", "duration_seconds", "cloudflare_stream_uid", "content_type", "audio_text_to_generate", "is_external", "external_url", "external_partner"];
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      for (const k of allowed) { if (data[k] !== undefined) updates[k] = data[k]; }
+      for (const k of allowed) { if (src[k] !== undefined) updates[k] = src[k]; }
       await sb.from("course_lessons").update(updates).eq("id", lesson_id).eq("course_id", course_id);
+      return json({ success: true });
+    }
+
+    // ── action: save_module_content ──
+    if (action === "save_module_content") {
+      const { module_id } = body;
+      if (!module_id) return json({ error: "module_id requis" }, 400);
+      const src = (data ?? body) as Record<string, unknown>;
+      const allowed = ["title", "objective", "competences_linguistiques"];
+      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      for (const k of allowed) { if (src[k] !== undefined) updates[k] = src[k]; }
+      await sb.from("course_modules").update(updates).eq("id", module_id).eq("course_id", course_id);
       return json({ success: true });
     }
 

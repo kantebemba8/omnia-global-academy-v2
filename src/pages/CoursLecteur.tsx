@@ -76,28 +76,39 @@ function SimpleMarkdown({ text }: { text: string }) {
 }
 
 // ── Exercice composants ───────────────────────────────────────────────────────
-function TextATrousExercise({ answer }: { answer: string }) {
+function TextATrousExercise({ phrase, answer }: { phrase: string; answer: string }) {
   const [input, setInput] = useState('');
   const [checked, setChecked] = useState(false);
   const correct = input.trim().toLowerCase() === answer.toLowerCase();
+  const parts = phrase.split('___');
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <input type="text" value={input}
-        onChange={e => { setInput(e.target.value); setChecked(false); }}
-        placeholder="Votre réponse…"
-        className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:outline-none"
-        style={{ borderColor: checked ? (correct ? '#1E7A52' : '#DC2626') : '#E4E7EC' }} />
-      <button onClick={() => setChecked(true)}
-        className="px-3 py-2 rounded-lg text-sm font-medium text-white flex-shrink-0"
-        style={{ backgroundColor: '#002050' }}>
-        Vérifier
-      </button>
-      {checked && (
-        <span className="text-sm font-medium flex-shrink-0"
-          style={{ color: correct ? '#1E7A52' : '#DC2626' }}>
-          {correct ? '✓ Correct !' : `✗ Réponse : ${answer}`}
-        </span>
-      )}
+    <div className="space-y-2">
+      <div className="flex items-center gap-1 flex-wrap text-sm" style={{ color: '#374151' }}>
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && (
+              <input type="text" value={input}
+                onChange={e => { setInput(e.target.value); setChecked(false); }}
+                placeholder="___"
+                className="inline-block w-28 px-2 py-0.5 border rounded text-sm mx-1 focus:outline-none"
+                style={{ borderColor: checked ? (correct ? '#1E7A52' : '#DC2626') : '#E4E7EC' }} />
+            )}
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={() => setChecked(true)}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+          style={{ backgroundColor: '#002050' }}>
+          Vérifier
+        </button>
+        {checked && (
+          <span className="text-sm font-medium" style={{ color: correct ? '#1E7A52' : '#DC2626' }}>
+            {correct ? '✓ Correct !' : `✗ Réponse : ${answer}`}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -570,8 +581,7 @@ export function CoursLecteur() {
                       {ex.type === 'texte_a_trous' && ex.phrase && ex.reponse && (
                         <div>
                           <p className="text-sm font-medium mb-2" style={{ color: '#002050' }}>Complétez la phrase</p>
-                          <p className="text-sm mb-3" style={{ color: '#374151' }}>{ex.phrase}</p>
-                          <TextATrousExercise answer={ex.reponse} />
+                          <TextATrousExercise phrase={ex.phrase} answer={ex.reponse} />
                         </div>
                       )}
                       {ex.type === 'dictee_audio' && ex.texteReference && (
