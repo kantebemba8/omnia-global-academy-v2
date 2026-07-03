@@ -53,7 +53,11 @@ function UserTable({
       </div>
     );
   }
-  if (users.length === 0) {
+  // Frontend double-protection: strip any protected accounts that slipped through
+  const safeUsers = users.filter(
+    (u) => !u.roles?.includes('super_admin') && !u.roles?.includes('moderateur')
+  );
+  if (safeUsers.length === 0) {
     return (
       <div className="bg-white rounded-xl p-12 text-center border border-gray-100 shadow-sm">
         <Users className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: '#002050' }} />
@@ -75,7 +79,7 @@ function UserTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
-          {users.map((u) => {
+          {safeUsers.map((u) => {
             const st = STATUS_STYLES[u.status] ?? { label: u.status, color: '#6b7280', bg: '#f9fafb' };
             return (
               <tr key={u.id} className="hover:bg-gray-50 transition-colors">
