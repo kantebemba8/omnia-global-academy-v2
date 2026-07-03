@@ -83,6 +83,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
     catch { return false; }
   })();
   const previewMode = isPreview && isSuperAdmin;
+  const buildPath = (path: string) => previewMode ? `${path}?preview=true` : path;
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -155,7 +156,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
             </div>
           )}
           {role === 'professeur' && (
-            <Link to="/professeur/courses/new" onClick={() => setSidebarOpen(false)}
+            <Link to={buildPath('/professeur/courses/new')} onClick={() => setSidebarOpen(false)}
               className="mt-3 flex items-center gap-1.5 text-xs font-semibold py-1.5 px-2 rounded-lg justify-center hover:opacity-90 transition-opacity"
               style={{ backgroundColor: '#BF8813', color: '#002050' }}>
               <PlusCircle className="w-3.5 h-3.5" /> Nouvelle formation
@@ -167,7 +168,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
             </div>
           )}
           {role === 'enseignant' && (
-            <Link to="/staff/courses/new" onClick={() => setSidebarOpen(false)}
+            <Link to={buildPath('/staff/courses/new')} onClick={() => setSidebarOpen(false)}
               className="mt-3 flex items-center gap-1.5 text-xs font-semibold py-1.5 px-2 rounded-lg justify-center hover:opacity-90 transition-opacity"
               style={{ backgroundColor: '#BF8813', color: '#002050' }}>
               <PlusCircle className="w-3.5 h-3.5" /> Nouvelle formation
@@ -192,7 +193,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
         {NAV_ITEMS.map((item) => {
           const active = isActive(item);
           return (
-            <Link key={item.path} to={item.path} onClick={() => setSidebarOpen(false)}
+            <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
               style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
               <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />

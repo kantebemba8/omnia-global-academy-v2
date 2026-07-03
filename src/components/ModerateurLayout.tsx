@@ -81,7 +81,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
       } catch { /* ignore */ }
     }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { navigate('/connexion'); return; }
+    if (!token) { navigate(isPreview ? '/admin/dashboard' : '/connexion'); return; }
 
     const cached = localStorage.getItem('mod_perms');
     if (cached) {
@@ -101,10 +101,10 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
           localStorage.setItem('mod_perms', JSON.stringify(data.permissions));
           setNavItems(buildModNav(data.permissions as ModPerms));
         } else {
-          navigate('/connexion');
+          navigate(isPreview ? '/admin/dashboard' : '/connexion');
         }
       })
-      .catch(() => navigate('/connexion'));
+      .catch(() => navigate(isPreview ? '/admin/dashboard' : '/connexion'));
   }, [navigate]);
 
   if (!navItems) {
