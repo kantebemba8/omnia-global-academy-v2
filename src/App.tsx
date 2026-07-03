@@ -144,15 +144,23 @@ export default function App() {
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
 
-        {/* Moderator — always accessible */}
+        {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
+        <Route path="/moderateur/dashboard" element={<ModerateurDashboard />} />
         <Route path="/moderator/courses" element={<ModerateurCours />} />
+        <Route path="/moderateur/cours" element={<ModerateurCours />} />
         <Route path="/moderator/kyc" element={<ModerateurKyc />} />
+        <Route path="/moderateur/kyc" element={<ModerateurKyc />} />
         <Route path="/moderator/users" element={<ModerateurUtilisateurs />} />
+        <Route path="/moderateur/utilisateurs" element={<ModerateurUtilisateurs />} />
         <Route path="/moderator/forum" element={<ModerateurForum />} />
+        <Route path="/moderateur/forum" element={<ModerateurForum />} />
         <Route path="/moderator/jobs" element={<ModerateurOffresEmploi />} />
+        <Route path="/moderateur/emploi" element={<ModerateurOffresEmploi />} />
         <Route path="/moderator/support" element={<ModerateurSupport />} />
+        <Route path="/moderateur/support" element={<ModerateurSupport />} />
         <Route path="/moderator/analytics" element={<ModerateurAnalytique />} />
+        <Route path="/moderateur/analytique" element={<ModerateurAnalytique />} />
 
         {/* Module 6 — Dashboard apprenant — always accessible */}
         <Route path="/dashboard" element={<DashboardApprenant />} />
