@@ -63,6 +63,8 @@ export default function ModerateurDashboard() {
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewToast, setPreviewToast] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  void renderError;
 
   function handlePreviewAction() {
     if (!bypassAuth) return;
@@ -91,7 +93,13 @@ export default function ModerateurDashboard() {
     );
   }
 
-  if (!data) return <ModerateurLayout><div className="p-8 text-red-600">Erreur de chargement.</div></ModerateurLayout>;
+  if (!data) return (
+    <ModerateurLayout>
+      <div className="p-8 text-center">
+        <p style={{ color: '#6B7280' }}>Chargement du tableau de bord...</p>
+      </div>
+    </ModerateurLayout>
+  );
 
   return (
     <ModerateurLayout>
@@ -108,7 +116,7 @@ export default function ModerateurDashboard() {
         </div>
 
         {/* No permissions banner */}
-        {!data.has_any_permission && (
+        {!data?.has_any_permission && (
           <div className="rounded-xl p-6 flex items-start gap-4 border border-amber-200 bg-amber-50">
             <Lock className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -122,9 +130,9 @@ export default function ModerateurDashboard() {
         )}
 
         {/* KPIs */}
-        {data.kpis?.length > 0 && (
+        {data?.kpis?.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {data.kpis.map((kpi, i) => (
+            {(data?.kpis ?? []).map((kpi, i) => (
               <div key={i} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <p className="text-sm text-gray-500">{kpi.label}</p>
                 <p className="text-3xl font-bold mt-1" style={{ color: '#002050' }}>{kpi.value}</p>
@@ -135,15 +143,15 @@ export default function ModerateurDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Priority queue */}
-          {data.priority_queue?.length > 0 && (
+          {data?.priority_queue?.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                 <Clock className="w-4 h-4" style={{ color: '#BF8813' }} />
                 <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>File de priorité</h2>
-                <span className="ml-auto text-xs text-gray-400">{data.priority_queue.length} éléments</span>
+                <span className="ml-auto text-xs text-gray-400">{data?.priority_queue?.length ?? 0} éléments</span>
               </div>
               <div className="divide-y divide-gray-50">
-                {data.priority_queue.map((item) => (
+                {(data?.priority_queue ?? []).map((item) => (
                   <Link key={item.id} to={item.link}
                     className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors"
                     style={{ borderLeft: `3px solid ${TYPE_COLOR[item.type] ?? '#002050'}` }}>
@@ -170,18 +178,18 @@ export default function ModerateurDashboard() {
               <CheckCircle className="w-4 h-4" style={{ color: '#1E7A52' }} />
               <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>Décisions aujourd'hui</h2>
             </div>
-            {data.todays_decisions?.length === 0 ? (
+            {data?.todays_decisions?.length === 0 ? (
               <div className="px-5 py-8 text-center text-gray-400 text-sm">
                 <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 Aucune décision aujourd'hui
               </div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {(data.todays_decisions ?? []).map((log) => (
+                {(data?.todays_decisions ?? []).map((log) => (
                   <div key={log.id} className="flex items-center gap-3 px-5 py-3.5">
                     <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: log.action_type.includes('reject') || log.action_type.includes('suspend') ? '#fee2e2' : '#dcfce7' }}>
-                      {log.action_type.includes('reject') || log.action_type.includes('suspend')
+                      style={{ backgroundColor: (log.action_type ?? '').includes('reject') || (log.action_type ?? '').includes('suspend') ? '#fee2e2' : '#dcfce7' }}>
+                      {(log.action_type ?? '').includes('reject') || (log.action_type ?? '').includes('suspend')
                         ? <XCircle className="w-3.5 h-3.5 text-red-500" />
                         : <CheckCircle className="w-3.5 h-3.5 text-green-600" />}
                     </div>
@@ -197,7 +205,7 @@ export default function ModerateurDashboard() {
         </div>
 
         {/* Quick access cards */}
-        {data.has_any_permission && (
+        {data?.has_any_permission && (
           <div>
             <h2 className="font-semibold mb-4" style={{ color: '#002050' }}>Accès rapide</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
