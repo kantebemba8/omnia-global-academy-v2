@@ -37,7 +37,11 @@ export function DashboardProfil() {
   const [notifs, setNotifs] = useState({ allow_email: true, allow_sms: true, allow_push: false, subscribe_newsletter: false });
   const [notifSaving, setNotifSaving] = useState(false);
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   const load = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) return;
     try {

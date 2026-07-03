@@ -49,12 +49,16 @@ export function ProfesseurAnalytique() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   const loadFormations = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { navigate('/connexion'); return; }
+    if (!token && !bypassAuth) { navigate('/connexion'); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 403) { navigate('/connexion'); return; }
+      if (res.status === 403 && !bypassAuth) { navigate('/connexion'); return; }
       const json = await res.json();
       if (res.ok) {
         const published = (json.formations ?? []).filter((f: Formation & { status: string }) => f.status === 'publiee');
@@ -91,7 +95,7 @@ export function ProfesseurAnalytique() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [navigate, period, selectedCourse]);
+  }, [navigate, bypassAuth, period, selectedCourse]);
 
   useEffect(() => { loadFormations(); }, [loadFormations]);
 

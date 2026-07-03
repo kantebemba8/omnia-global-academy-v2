@@ -170,7 +170,11 @@ export function DashboardCvBuilder() {
   const [genError, setGenError] = useState('');
   const [userTokens, setUserTokens] = useState(0);
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   const load = useCallback(async () => {
+    if (bypassAuth) return;
     const token = localStorage.getItem('omnia_session_token');
     if (!token) return;
     try {

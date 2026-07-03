@@ -57,7 +57,11 @@ export function DashboardMesCours() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'en_cours' | 'termines'>('en_cours');
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   const load = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) return;
     try {

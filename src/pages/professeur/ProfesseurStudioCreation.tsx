@@ -169,6 +169,9 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
     prononciation: 20, vocabulaire: 20, grammaire: 20, fluidite: 20, comprehension: 20,
   });
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   // ── Load existing course ──────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;

@@ -53,7 +53,11 @@ export function DashboardCertificats() {
     would_recommend: null, suggestions: '', submitting: false, done: false, error: '',
   });
 
+  const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
   const load = useCallback(async () => {
+    if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');
     const userId = userData?.id;
