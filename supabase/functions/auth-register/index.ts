@@ -6,26 +6,62 @@ import { corsHeaders } from "../_shared/cors.ts";
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
+async function sendSMS(phone: string, otp: string, email?: string, fullName?: string): Promise<void> {
+  const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
+  if (!brevoKey) return;
 
-async function sendSMS(phone: string, otp: string): Promise<void> {
-  const username = Deno.env.get("AFRICASTALKING_USERNAME") || "sandbox";
-  const apiUrl = username === "sandbox"
-    ? "https://api.sandbox.africastalking.com/version1/messaging"
-    : "https://api.africastalking.com/version1/messaging";
-  const res = await fetch(apiUrl, {
+  const message = `Omnia Academy : Votre code de vérification est ${otp}. Valable 5 minutes. Ne le partagez jamais.`;
+
+  const res = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
     method: "POST",
     headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      apiKey: Deno.env.get("AFRICASTALKING_API_KEY") ?? "",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "api-key": brevoKey,
     },
-    body: new URLSearchParams({
-      username,
-      to: phone,
-      message: `Omnia Academy : Votre code de vérification est ${otp}. Valable 5 minutes. Ne le partagez jamais.`,
-      from: Deno.env.get("AFRICASTALKING_SENDER_ID") || "OmniaAcad",
+    body: JSON.stringify({
+      sender: "OmniaAcad",
+      recipient: phone,
+      content: message,
+      type: "transactional",
     }),
-  });
+  }).catch(() => null);
+
+  if ((!res || !res.ok) && email) {
+    const prenom = fullName?.split(" ")[0] || "";
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "api-key": brevoKey,
+      },
+      body: JSON.stringify({
+        sender: { name: "Omnia Global Academy", email: "admission@omniaglobalacademy.com" },
+        to: [{ email }],
+        subject: "Votre code de vérification — Omnia Academy",
+        htmlContent: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px">
+          <div style="background:#002050;padding:24px;text-align:center;border-radius:8px 8px 0 0">
+            <h2 style="color:#BF8813;margin:0">OMNIA GLOBAL ACADEMY</h2>
+          </div>
+          <div style="background:#fff;padding:32px;border:1px solid #E4E7EC;text-align:center">
+            <p style="color:#374151">Bonjour ${prenom},</p>
+            <p style="color:#374151">SMS indisponible. Voici votre code de vérification :</p>
+            <div style="font-size:36px;font-weight:900;color:#002050;
+              letter-spacing:8px;padding:16px;background:#F8F9FA;
+              border-radius:8px;margin:16px 0">${otp}</div>
+            <p style="color:#6B7280;font-size:13px">Valable 5 minutes. Ne le partagez jamais.</p>
+          </div>
+          <div style="background:#002050;padding:16px;text-align:center;border-radius:0 0 8px 8px">
+            <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0">
+              admission@omniaglobalacademy.com
+            </p>
+          </div>
+        </div>`,
+      }),
+    }).catch(() => {});
+  }
+}
   if (!res.ok) console.error("Africa's Talking error:", await res.text());
 }
 
@@ -287,7 +323,7 @@ Deno.serve(async (req: Request) => {
     });
     if (otpError) throw otpError;
 
-    await sendSMS(sanitizedPhone, otp);
+    await sendSMS(sanitizedPhone, otp, sanitizedEmail, fullName);
     await supabase.from("sms_rate_limits").insert({ phone_number: sanitizedPhone, ip_address: ipAddress });
 
     if (body.subscribe_newsletter === true) {
