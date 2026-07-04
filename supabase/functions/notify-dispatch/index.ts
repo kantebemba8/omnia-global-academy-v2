@@ -375,12 +375,14 @@ Deno.serve(async (req: Request) => {
         await notifyUser({
           userId: payload.userId as string,
           emailConfig: {
-            templateId: 4,
+            templateId: 10,
             from: "admission@omniaglobalacademy.com",
             params: {
               ROLE_NAME: "Apprenant",
               MESSAGE_SPECIFIQUE: `Votre formation "${payload.formation_titre}" vous attend ! Vous en êtes à ${payload.completion_percent ?? 0}%. Continuez sur votre lancée !`,
-              DASHBOARD_URL: courseUrl,
+              COURSE_URL: courseUrl,
+FORMATION_TITRE: payload.formation_titre as string,
+COMPLETION_PERCENT: payload.completion_percent ?? 0,
             },
           },
           smsMessage: `Omnia Academy : Votre formation "${payload.formation_titre}" vous attend ! Reprenez dès maintenant.`,
