@@ -113,11 +113,11 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
     if (otpError) throw otpError;
 
     const { data: userFull } = await supabase
-  .from("users")
-  .select("email, full_name")
-  .eq("phone_number", sanitizedPhone)
-  .maybeSingle();
-await sendSMS(sanitizedPhone, otp, userFull?.email, userFull?.full_name);
+      .from("users")
+      .select("email, full_name")
+      .eq("phone_number", sanitizedPhone)
+      .maybeSingle();
+    await sendSMS(sanitizedPhone, otp, userFull?.email, userFull?.full_name);
 
     await supabase.from("sms_rate_limits").insert({
       phone_number: sanitizedPhone,
