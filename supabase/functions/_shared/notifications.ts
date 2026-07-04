@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 export function getSupabase() {
-  return createClient(Deno.env.get("DB_URL")!, Deno.env.get("DB_SERVICE_ROLE_KEY")!);
+  return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 }
 
 export interface SendEmailParams {
@@ -30,7 +30,6 @@ export interface NotifyUserParams {
 export async function sendBrevoEmail({ templateId, to, params, from, userId, sb }: SendEmailParams): Promise<boolean> {
   const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
   if (!brevoKey) return false;
-
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
@@ -45,9 +44,7 @@ export async function sendBrevoEmail({ templateId, to, params, from, userId, sb 
       params,
     }),
   }).catch(() => null);
-
   const ok = response?.ok ?? false;
-
   if (sb) {
     await sb.from("notification_log").insert({
       user_id: userId ?? null,
@@ -59,32 +56,25 @@ export async function sendBrevoEmail({ templateId, to, params, from, userId, sb 
       metadata: { templateId, params },
     }).catch(() => {});
   }
-
   return ok;
 }
 
-export async function sendAfricasTalkingSMS({ to, message, userId, sb }: SendSMSParams): Promise<boolean> {
-  const apiKey = Deno.env.get("AFRICASTALKING_API_KEY") ?? "";
-  if (!apiKey) return false;
+export async function sendBrevoSMS({ to, message, userId, sb }: SendSMSParams): Promise<boolean> {
+  const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
+  if (!brevoKey) return false;
 
-  const isSandbox = Deno.env.get("AFRICASTALKING_ENV") === "sandbox";
-  const baseUrl = isSandbox
-    ? "https://api.sandbox.africastalking.com"
-    : "https://api.africastalking.com";
-  const username = Deno.env.get("AFRICASTALKING_USERNAME") || "sandbox";
-
-  const response = await fetch(`${baseUrl}/version1/messaging`, {
+  const response = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
     method: "POST",
     headers: {
       "Accept": "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      "apiKey": apiKey,
+      "Content-Type": "application/json",
+      "api-key": brevoKey,
     },
-    body: new URLSearchParams({
-      username,
-      to,
-      message: message.substring(0, 160),
-      from: "OmniaAcad",
+    body: JSON.stringify({
+      sender: "OmniaAcad",
+      recipient: to,
+      content: message.substring(0, 160),
+      type: "transactional",
     }),
   }).catch(() => null);
 
@@ -94,7 +84,7 @@ export async function sendAfricasTalkingSMS({ to, message, userId, sb }: SendSMS
     await sb.from("notification_log").insert({
       user_id: userId ?? null,
       channel: "sms",
-      template_id: "sms_custom",
+      template_id: "sms_brevo",
       recipient: to,
       status: ok ? "sent" : "failed",
       error_message: ok ? null : (response ? await response.text().catch(() => "unknown") : "fetch_error"),
@@ -105,19 +95,18 @@ export async function sendAfricasTalkingSMS({ to, message, userId, sb }: SendSMS
   return ok;
 }
 
+// Alias pour compatibilité avec l'ancien code
+export const sendAfricasTalkingSMS = sendBrevoSMS;
+
 export async function notifyUser({ userId, emailConfig, smsMessage, sb }: NotifyUserParams): Promise<void> {
   const client = sb ?? getSupabase();
-
   const { data: user } = await client
     .from("users")
     .select("email, phone_number, full_name, allow_email, allow_sms, email_status")
     .eq("id", userId)
     .maybeSingle();
-
   if (!user) return;
-
   const prenom = (user.full_name || "").split(" ")[0] || user.full_name;
-
   if (emailConfig && user.allow_email !== false && user.email_status !== "invalide") {
     await sendBrevoEmail({
       templateId: emailConfig.templateId,
@@ -128,9 +117,8 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
       sb: client,
     });
   }
-
   if (smsMessage && user.allow_sms === true && user.phone_number) {
-    await sendAfricasTalkingSMS({
+    await sendBrevoSMS({
       to: user.phone_number,
       message: smsMessage,
       userId,
