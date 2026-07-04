@@ -85,17 +85,22 @@ Deno.serve(async (req: Request) => {
       }, 429);
     }
 
-    const { email, password } = await req.json();
-
-    if (!email || !password) {
-      return json({ success: false, message: "Email et mot de passe requis" }, 400);
+    const { email, phone_number, password } = await req.json();
+    if ((!email && !phone_number) || !password) {
+      return json({ success: false, message: "Identifiants requis" }, 400);
     }
 
-    const { data: user } = await supabase
+    let userQuery = supabase
       .from("users")
-      .select("id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change")
-      .eq("email", email.trim().toLowerCase())
-      .maybeSingle();
+      .select("id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change");
+
+    if (email) {
+      userQuery = userQuery.eq("email", email.trim().toLowerCase());
+    } else {
+      userQuery = userQuery.eq("phone_number", phone_number.trim());
+    }
+
+    const { data: user } = await userQuery.maybeSingle();
 
     if (!user) {
       await logSecurityEvent(supabase, {
@@ -104,11 +109,10 @@ Deno.serve(async (req: Request) => {
         user_agent: userAgent,
         endpoint: "auth-login",
         severity: "info",
-        details: { reason: "user_not_found", email: email.trim().toLowerCase() },
+        details: { reason: "user_not_found", identifier: email || phone_number },
       });
       return json({ success: false, message: "Identifiants incorrects" }, 401);
     }
-
     const passwordValid = await bcrypt.compare(password, user.password_hash);
     if (!passwordValid) {
       await logSecurityEvent(supabase, {
@@ -122,7 +126,6 @@ Deno.serve(async (req: Request) => {
       });
       return json({ success: false, message: "Identifiants incorrects" }, 401);
     }
-
     // Demo account branch
     if (user.email === DEMO_EMAIL) {
       const { data: demoConfig } = await supabase
