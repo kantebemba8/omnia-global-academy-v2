@@ -45,8 +45,8 @@ Deno.serve(async (req: Request) => {
   const userAgent = req.headers.get("user-agent") ?? "";
 
   const supabase = createClient(
-    Deno.env.get("DB_URL") ?? "",
-    Deno.env.get("DB_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
   function json(d: unknown, s = 200) {
