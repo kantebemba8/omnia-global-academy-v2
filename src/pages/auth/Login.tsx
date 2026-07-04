@@ -91,26 +91,37 @@ export function Login() {
     }
   };
 
+  const [phonePassword, setPhonePassword] = useState('');
+  const [showPhonePwd, setShowPhonePwd] = useState(false);
+
   const handlePhoneLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     clearErrors();
     setLoading(true);
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
-      const data = await authFetch<OtpResponse>('auth-login-otp', { phone_number });
-      if (!data.success) {
-        if (data.not_found) setNotFound(true);
-        else setError(data.message || 'Une erreur est survenue');
-        return;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone_number, password: phonePassword }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        localStorage.setItem('omnia_session_token', data.session_token);
+        localStorage.setItem('omnia_user', JSON.stringify(data.user));
+        window.location.href = data.redirect_url || '/dashboard';
+      } else {
+        setError(data.message || 'Identifiants incorrects');
       }
-      navigate('/verifier-otp', { state: { phone_number, purpose: 'connexion' } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <AuthLayout title="Se connecter">
       {/* Tabs */}
@@ -227,7 +238,7 @@ export function Login() {
             </div>
           )}
 
-          <div>
+         <div>
             <label className={labelCls}>Numéro de téléphone</label>
             <div className="flex gap-2">
               <select
@@ -250,13 +261,32 @@ export function Login() {
             </div>
           </div>
 
+          <div className="relative">
+            <label className={labelCls}>Mot de passe</label>
+            <input
+              className={inputCls}
+              type={showPhonePwd ? 'text' : 'password'}
+              placeholder="Votre mot de passe"
+              required
+              value={phonePassword}
+              onChange={e => setPhonePassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-9 text-gray-400"
+              onClick={() => setShowPhonePwd(v => !v)}
+            >
+              {showPhonePwd ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
             className="w-full py-3 rounded-lg font-semibold text-white transition-all"
             style={{ backgroundColor: '#002050' }}
           >
-            {loading ? 'Envoi du code...' : 'Recevoir un code SMS'}
+            {loading ? 'Connexion...' : 'Se connecter'}
           </button>
         </form>
       )}
