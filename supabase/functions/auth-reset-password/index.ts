@@ -8,52 +8,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-async function sendBrevoResetConfirmation(apiKey: string, email: string, prenom: string): Promise<void> {
-  const templateId = parseInt(Deno.env.get("BREVO_RESET_CONFIRM_TEMPLATE_ID") || "2");
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "api-key": apiKey,
-    },
-    body: JSON.stringify({
-      to: [{ email, name: prenom }],
-      templateId,
-      params: { PRENOM: prenom, EMAIL: email },
-    }),
+function json(d: unknown, s = 200) {
+  return new Response(JSON.stringify(d), {
+    status: s,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-
-  if (!res.ok) {
-    console.error("Brevo reset confirm error:", await res.text());
-  }
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ success: false, message: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ success: false, message: "Method not allowed" }, 405);
 
   try {
-    const { reset_token, new_password } = await req.json();
+    const body = await req.json();
+    const { reset_token, token, new_password } = body;
 
-    if (!reset_token || !new_password) {
-      return new Response(JSON.stringify({ success: false, message: "Token et nouveau mot de passe requis" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Accepter reset_token (OTP) ou token (lien email)
+    const tokenValue = reset_token || token;
+
+    if (!tokenValue || !new_password) {
+      return json({ success: false, message: "Token et nouveau mot de passe requis" }, 400);
     }
 
     if (new_password.length < 8) {
-      return new Response(JSON.stringify({ success: false, message: "Mot de passe trop court (minimum 8 caractères)" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: false, message: "Mot de passe trop court (minimum 8 caractères)" }, 400);
     }
 
     const supabase = createClient(
@@ -61,73 +39,86 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { data: tokenRecord } = await supabase
-      .from("password_reset_tokens")
-      .select("*")
-      .eq("reset_token", reset_token.trim())
-      .eq("used", false)
-      .maybeSingle();
+    let userId: string | null = null;
 
-    if (!tokenRecord) {
-      return new Response(JSON.stringify({ success: false, message: "Token invalide ou déjà utilisé" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // CAS 1 — Token URL (lien email) : chercher dans password_reset_tokens
+    if (token) {
+      const { data: tokenRecord } = await supabase
+        .from("password_reset_tokens")
+        .select("*")
+        .eq("token", token.trim())
+        .eq("used", false)
+        .maybeSingle();
+
+      if (!tokenRecord) {
+        return json({ success: false, message: "Lien invalide ou déjà utilisé" }, 400);
+      }
+
+      if (new Date(tokenRecord.expires_at) < new Date()) {
+        return json({ success: false, message: "Lien expiré. Demandez un nouveau lien." }, 400);
+      }
+
+      userId = tokenRecord.user_id;
+
+      // Marquer le token comme utilisé
+      await supabase.from("password_reset_tokens")
+        .update({ used: true })
+        .eq("id", tokenRecord.id);
     }
 
-    if (new Date(tokenRecord.expires_at) < new Date()) {
-      return new Response(JSON.stringify({ success: false, message: "Token expiré. Demandez un nouveau code." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // CAS 2 — reset_token (OTP SMS) : chercher dans password_reset_tokens
+    if (reset_token && !token) {
+      const { data: tokenRecord } = await supabase
+        .from("password_reset_tokens")
+        .select("*")
+        .eq("reset_token", reset_token.trim())
+        .eq("used", false)
+        .maybeSingle();
+
+      if (!tokenRecord) {
+        return json({ success: false, message: "Token invalide ou déjà utilisé" }, 400);
+      }
+
+      if (new Date(tokenRecord.expires_at) < new Date()) {
+        return json({ success: false, message: "Token expiré. Demandez un nouveau code." }, 400);
+      }
+
+      userId = tokenRecord.user_id;
+
+      await supabase.from("password_reset_tokens")
+        .update({ used: true })
+        .eq("id", tokenRecord.id);
     }
 
+    if (!userId) {
+      return json({ success: false, message: "Token invalide" }, 400);
+    }
+
+    // Mettre à jour le mot de passe
     const newPasswordHash = hashSync(new_password, 12);
 
     const { error: updateError } = await supabase
       .from("users")
-      .update({ password_hash: newPasswordHash, updated_at: new Date().toISOString() })
-      .eq("id", tokenRecord.user_id);
+      .update({
+        password_hash: newPasswordHash,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
 
     if (updateError) throw updateError;
 
-    // Mark token as used
-    await supabase
-      .from("password_reset_tokens")
-      .update({ used: true })
-      .eq("id", tokenRecord.id);
-
-    // Invalidate all active sessions for security
-    await supabase
-      .from("user_sessions")
+    // Invalider toutes les sessions actives
+    await supabase.from("user_sessions")
       .delete()
-      .eq("user_id", tokenRecord.user_id);
+      .eq("user_id", userId);
 
-    // Send Brevo confirmation email (template #2)
-    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-    if (brevoApiKey) {
-      const { data: user } = await supabase
-        .from("users")
-        .select("email, full_name")
-        .eq("id", tokenRecord.user_id)
-        .maybeSingle();
-
-      if (user) {
-        try {
-          await sendBrevoResetConfirmation(brevoApiKey, user.email, user.full_name);
-        } catch (e) {
-          console.error("Brevo confirmation error:", e);
-        }
-      }
-    }
-
-    return new Response(JSON.stringify({ success: true, message: "Mot de passe mis à jour. Connectez-vous." }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return json({
+      success: true,
+      message: "Mot de passe mis à jour avec succès. Connectez-vous.",
     });
+
   } catch (error) {
     console.error("auth-reset-password error:", error);
-    return new Response(JSON.stringify({ success: false, message: "Une erreur est survenue" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: false, message: "Une erreur est survenue" }, 500);
   }
 });
