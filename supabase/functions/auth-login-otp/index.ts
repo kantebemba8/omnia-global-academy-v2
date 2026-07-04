@@ -14,9 +14,7 @@ function generateOTP(): string {
 async function sendSMS(phone: string, otp: string, email?: string, fullName?: string): Promise<void> {
   const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
   if (!brevoKey) return;
-
   const message = `Omnia Academy : Votre code de connexion est ${otp}. Valable 5 minutes. Ne le partagez jamais.`;
-
   const res = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
     method: "POST",
     headers: {
@@ -67,7 +65,34 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
     }).catch(() => {});
   }
 }
-    // Check user exists and is active
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ success: false, message: "Method not allowed" }), {
+      status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const { phone_number } = await req.json();
+
+    if (!phone_number || phone_number.trim().length < 8) {
+      return new Response(JSON.stringify({ success: false, message: "Numéro de téléphone invalide" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const sanitizedPhone = phone_number.trim();
+    const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null;
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
     const { data: user } = await supabase
       .from("users").select("id, status").eq("phone_number", sanitizedPhone).maybeSingle();
 
@@ -87,7 +112,6 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
       });
     }
 
-    // Rate limit: max 3 SMS/heure
     const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
     const { count: recentSms } = await supabase
       .from("sms_rate_limits")
@@ -101,7 +125,6 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
       });
     }
 
-    // Generate and store OTP
     const otp = generateOTP();
     const { error: otpError } = await supabase.from("otp_codes").insert({
       phone_number: sanitizedPhone,
