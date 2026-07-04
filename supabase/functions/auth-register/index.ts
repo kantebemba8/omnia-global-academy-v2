@@ -62,8 +62,6 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
     }).catch(() => {});
   }
 }
-  if (!res.ok) console.error("Africa's Talking error:", await res.text());
-}
 
 function base64ToBytes(b64: string): Uint8Array {
   const binStr = atob(b64);
