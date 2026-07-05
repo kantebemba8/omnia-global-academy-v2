@@ -380,7 +380,59 @@ export function LandingPage() {
           </div>
         </div>
       </section>
-
+{/* ── SECTION CV BUILDER ───────────────────────────────────────── */}
+      <section className="px-6 py-16" style={{ backgroundColor: '#002050' }}>
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-12">
+          <div className="flex-1 text-white">
+            <div className="inline-block text-xs font-bold uppercase px-3 py-1 rounded-full mb-5"
+              style={{ backgroundColor: 'rgba(191,136,19,0.20)', color: '#BF8813', letterSpacing: '0.10em' }}>
+              CV Builder IA
+            </div>
+            <h2 className="font-bold mb-4" style={{ fontSize: 'clamp(22px, 3vw, 34px)', color: 'white' }}>
+              Créez un CV professionnel en quelques minutes
+            </h2>
+            <p className="mb-7 max-w-lg" style={{ color: 'rgba(255,255,255,0.75)', fontSize: '16px', lineHeight: 1.65 }}>
+              8 modèles conçus pour le marché africain. Vos formations Omnia s'ajoutent automatiquement avec lien de vérification. L'IA améliore vos textes. Téléchargez en PDF.
+            </p>
+            <ul className="space-y-3 mb-8">
+              {[
+                '8 templates professionnels (ATS, Étudiant, IT, Business...)',
+                'Formations Omnia intégrées automatiquement',
+                'Assistant IA pour améliorer vos textes',
+                'Aperçu temps réel en format A4',
+                '1 jeton offert à l\'inscription',
+              ].map(b => (
+                <li key={b} className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'rgba(191,136,19,0.25)' }}>
+                    <Check size={11} style={{ color: '#BF8813' }} />
+                  </div>
+                  <span className="text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>{b}</span>
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => navigate('/dashboard/cv-builder')}
+              className="px-6 py-3 rounded-lg font-semibold transition-opacity hover:opacity-85"
+              style={{ backgroundColor: '#BF8813', color: 'white' }}>
+              Créer mon CV gratuitement →
+            </button>
+          </div>
+          <div className="flex-shrink-0 w-full md:w-[42%] grid grid-cols-2 gap-3">
+            {[
+              { emoji: '📄', title: 'CV Classique', desc: 'Structure traditionnelle et professionnelle' },
+              { emoji: '🤖', title: 'CV ATS', desc: 'Optimisé pour les recruteurs automatiques' },
+              { emoji: '💻', title: 'CV IT/Digital', desc: 'Pour les profils techniques et numériques' },
+              { emoji: '🌍', title: 'CV International', desc: 'Pour les candidatures à l\'international' },
+            ].map(({ emoji, title, desc }) => (
+              <div key={title} className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <span className="text-2xl">{emoji}</span>
+                <p className="text-sm font-semibold mt-2" style={{ color: 'white' }}>{title}</p>
+                <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.55)' }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
       {/* ── SECTION 8 : PARTENAIRES (conditionnel) ───────────────────── */}
       {data.collaborations_logos?.length > 0 && (
         <section className="px-6 py-12 bg-white" style={{ borderTop: '1px solid #E4E7EC' }}>
