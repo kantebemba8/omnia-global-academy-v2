@@ -236,7 +236,27 @@ Deno.serve(async (req: Request) => {
       if (order.payment_status === "completed") {
         return new Response(JSON.stringify({ received: true, note: "already_completed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      await processApprovedPayment(sb, order, fedapayId);
+
+      // ── Achat de jetons CV ──────────────────────────────────────────
+      if (order.order_type === "cv_tokens") {
+        const cvTokensPack = (order.cv_tokens_pack as number) || 0;
+        await sb.from("orders").update({
+          payment_status: "completed",
+          fedapay_transaction_id: fedapayId,
+          paid_at: new Date().toISOString(),
+        }).eq("id", order.id);
+
+        if (cvTokensPack > 0) {
+          const { data: userRow } = await sb.from("users").select("cv_tokens").eq("id", order.user_id).maybeSingle();
+          await sb.from("users").update({
+            cv_tokens: (userRow?.cv_tokens || 0) + cvTokensPack,
+          }).eq("id", order.user_id);
+        }
+      } else {
+        // ── Achat de formation (flux normal) ───────────────────────────
+        await processApprovedPayment(sb, order, fedapayId);
+      }
+
     } else if (eventName === "transaction.declined" || eventName === "transaction.canceled" ||
                txn.status === "declined" || txn.status === "canceled") {
       if (order.payment_status === "pending") {
