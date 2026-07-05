@@ -1326,12 +1326,6 @@ async function downloadPdfById(cvId: string) {
       } else {
         showToast('✓ PDF téléchargé (contenu inchangé — jeton conservé)');
       }
-    } catch (err) {
-      showToast('❌ Erreur lors du téléchargement');
-    } finally {
-      setDownloading(false);
-    }
-  }
 
   async function downloadPdf() {
     if (!currentCvId) {
