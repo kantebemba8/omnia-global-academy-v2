@@ -970,8 +970,12 @@ export default function DashboardCvBuilder() {
   const [showPreview, setShowPreview] = useState(false);
  const [showAi, setShowAi] = useState(false);
   const [toast, setToast] = useState('');
-  const [showBuyTokens, setShowBuyTokens] = useState(false);
+ const [showBuyTokens, setShowBuyTokens] = useState(false);
   const [buyingTokens, setBuyingTokens] = useState(false);
+  const [tokenPacks, setTokenPacks] = useState<Array<{ id: string; tokens: number; price_xof: number; label: string; popular: boolean }>>([
+    { id: 'pack_3', tokens: 3, price_xof: 500, label: '3 jetons', popular: false },
+    { id: 'pack_5', tokens: 5, price_xof: 1000, label: '5 jetons', popular: true },
+  ]);
   const [aiResult, setAiResult] = useState('');
 
   const TOTAL_STEPS = 5;
@@ -1008,6 +1012,12 @@ export default function DashboardCvBuilder() {
       const settingsRes = await fetch(`${SUPABASE_URL}/functions/v1/site-settings-public`);
       const s = await settingsRes.json();
       setSettings(s);
+      if (s.cv_token_packs) {
+        try {
+          const packs = JSON.parse(s.cv_token_packs);
+          if (Array.isArray(packs) && packs.length > 0) setTokenPacks(packs);
+        } catch (_) {}
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1181,10 +1191,7 @@ async function buyTokens(packId: string) {
                 </button>
               </div>
               <div className="space-y-3 mb-5">
-                {[
-                  { id: 'pack_3', tokens: 3, price: '500 FCFA', popular: false },
-                  { id: 'pack_5', tokens: 5, price: '1 000 FCFA', popular: true },
-                ].map(pack => (
+                {tokenPacks.map(pack => (
                   <button key={pack.id} onClick={() => buyTokens(pack.id)} disabled={buyingTokens}
                     className="w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all disabled:opacity-50 hover:border-[#BF8813]"
                     style={{ borderColor: pack.popular ? '#BF8813' : '#E4E7EC', backgroundColor: pack.popular ? 'rgba(191,136,19,0.04)' : 'white' }}>
@@ -1193,13 +1200,13 @@ async function buyTokens(packId: string) {
                         <Coins size={20} style={{ color: '#BF8813' }} />
                       </div>
                       <div className="text-left">
-                        <div className="font-bold" style={{ color: '#002050' }}>{pack.tokens} jetons</div>
+                        <div className="font-bold" style={{ color: '#002050' }}>{pack.label}</div>
                         {pack.popular && <div className="text-xs font-semibold" style={{ color: '#BF8813' }}>⭐ Meilleure valeur</div>}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold" style={{ color: '#002050' }}>{pack.price}</div>
-                      <div className="text-xs" style={{ color: '#6B7280' }}>{Math.round(parseInt(pack.price) / pack.tokens)} FCFA/jeton</div>
+                      <div className="font-bold" style={{ color: '#002050' }}>{pack.price_xof.toLocaleString('fr-FR')} FCFA</div>
+                      <div className="text-xs" style={{ color: '#6B7280' }}>{Math.round(pack.price_xof / pack.tokens)} FCFA/jeton</div>
                     </div>
                   </button>
                 ))}
