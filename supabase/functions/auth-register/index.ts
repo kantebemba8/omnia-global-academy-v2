@@ -275,22 +275,8 @@ Deno.serve(async (req: Request) => {
       const cvPath = await uploadFile(supabase, "cv-documents", `${userId}/cv_${Date.now()}.pdf`, body.cv_diploma_base64, body.cv_diploma_mime || "application/pdf");
       if (cvPath) await supabase.from("professeur_profiles").update({ cv_diploma_url: cvPath }).eq("user_id", userId);
     }
-
-    if (role === "etablissement") {
-      const updates: Record<string, string> = {};
-      if (body.logo_base64) {
-        const ext = body.logo_mime === "image/png" ? "png" : "jpg";
-        const logoPath = await uploadFile(supabase, "school-documents", `${userId}/logo_${Date.now()}.${ext}`, body.logo_base64, body.logo_mime || "image/png");
-        if (logoPath) updates.logo_url = logoPath;
-      }
-      if (body.signature_base64) {
-        const sigPath = await uploadFile(supabase, "school-documents", `${userId}/signature_${Date.now()}.png`, body.signature_base64, "image/png");
-        if (sigPath) updates.signature_url = sigPath;
-      }
-      if (Object.keys(updates).length > 0) {
-        await supabase.from("etablissement_profiles").update(updates).eq("user_id", userId);
-      }
-    }
+    // Logo et signature établissement retirés de l'inscription
+    // Ils seront ajoutés dans le menu Certificats de l'établissement
 
     // Etablissement: no OTP — return pending directly
     if (role === "etablissement") {
