@@ -1197,6 +1197,7 @@ function AiPanel({ onResult }: { onResult: (text: string, action: string) => voi
 
 // ─── MAIN COMPONENT ───────────────────────────────────────
 export default function DashboardCvBuilder() {
+  const navigate = useNavigate();
   const [view, setView] = useState<'list' | 'wizard' | 'editor'>('list');
   const [cvs, setCvs] = useState<any[]>([]);
   const [tokens, setTokens] = useState(0);
@@ -1396,6 +1397,11 @@ async function downloadPdf() {
 
         <div className="flex items-center justify-between">
           <div>
+            <button onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 text-sm mb-2"
+              style={{ color: '#6B7280' }}>
+              <ChevronLeft size={16} /> Retour au tableau de bord
+            </button>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>CV Builder IA</h1>
             <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
               Créez des CV professionnels avec l'aide de l'intelligence artificielle
@@ -1478,7 +1484,7 @@ async function downloadPdf() {
                   <div className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
                     Modifié le {new Date(cv.updated_at).toLocaleDateString('fr-FR')}
                   </div>
-                  <div className="flex gap-2">
+                 <div className="flex gap-2 flex-wrap">
                     <button onClick={() => openEditCv(cv)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
                       style={{ backgroundColor: '#002050', color: 'white' }}>
@@ -1488,6 +1494,14 @@ async function downloadPdf() {
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border"
                       style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                       <Copy size={13} /> Dupliquer
+                    </button>
+                    <button
+                      onClick={() => { setCurrentCvId(cv.id); setCvData(cv.cv_data); setTemplateId(cv.template_id); setWithPhoto(cv.with_photo); setCvTitle(cv.title); downloadPdf(); }}
+                      disabled={downloading || tokens < 1}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50"
+                      style={{ backgroundColor: '#BF8813', color: 'white' }}>
+                      <Download size={13} />
+                      {downloading ? '...' : 'PDF'}
                     </button>
                     <button onClick={() => deleteCv(cv.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
