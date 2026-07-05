@@ -28,13 +28,25 @@ export function useSiteMode() {
 }
 
 export function SiteModeProvider({ children }: { children: ReactNode }) {
-  const [comingSoon, setComingSoon] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [launchDate, setLaunchDate] = useState<string | null>(null);
-  const [waitlistCount, setWaitlistCount] = useState(0);
-  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
-  const [maintenanceMessage, setMaintenanceMessage] = useState('');
-  const [maintenanceEndTime, setMaintenanceEndTime] = useState<string | null>(null);
+ setComingSoon(data.coming_soon_enabled !== false);
+      setLaunchDate(data.launch_date ?? null);
+      setWaitlistCount(data.waitlist_count ?? 0);
+      setMaintenanceEnabled(data.maintenance_enabled === true || data.maintenance_enabled === 'true');
+      setMaintenanceMessage(data.maintenance_message_fr ?? '');
+      setMaintenanceEndTime(data.maintenance_end_time ?? null);
+
+      // Favicon dynamique
+      if (data.favicon_url) {
+        const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+        if (link) {
+          link.href = data.favicon_url;
+        } else {
+          const newLink = document.createElement('link');
+          newLink.rel = 'icon';
+          newLink.href = data.favicon_url;
+          document.head.appendChild(newLink);
+        }
+      }
 
   async function fetchSiteMode() {
     try {
