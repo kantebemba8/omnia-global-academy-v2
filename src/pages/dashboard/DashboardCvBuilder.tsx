@@ -90,189 +90,484 @@ function uid() { return Math.random().toString(36).slice(2); }
 function CvPreview({ cvData, templateId, withPhoto }: {
   cvData: CvData; templateId: string; withPhoto: boolean;
 }) {
-  const colors: Record<string, { primary: string; accent: string; sidebar: string; dark?: boolean }> = {
-    classique: { primary: '#002050', accent: '#BF8813', sidebar: '#F8F9FA' },
-    moderne_ats: { primary: '#1A1A2E', accent: '#E94560', sidebar: '#FFFFFF' },
-    etudiant: { primary: '#002050', accent: '#BF8813', sidebar: '#EEF2FF' },
-    international: { primary: '#002050', accent: '#BF8813', sidebar: '#F0F4F8' },
-    qse: { primary: '#1B4332', accent: '#52B788', sidebar: '#D8F3DC' },
-    it_digital: { primary: '#0D1B2A', accent: '#00B4D8', sidebar: '#1B263B', dark: true },
-    business: { primary: '#002050', accent: '#BF8813', sidebar: '#FFF8F0' },
-    formateur: { primary: '#2D3561', accent: '#C84B31', sidebar: '#F5F5F5' },
-  };
-  const c = colors[templateId] || colors.classique;
-  const isAts = templateId === 'moderne_ats';
-  const isDark = c.dark;
-
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }) : '';
 
-  return (
-    <div style={{
-      fontFamily: 'Arial, sans-serif',
-      fontSize: '9px',
-      background: '#fff',
-      display: 'flex',
-      minHeight: '842px',
-      transform: 'scale(0.75)',
-      transformOrigin: 'top left',
-      width: '133%',
-    }}>
-      {!isAts && (
-        <div style={{
-          width: '180px', minWidth: '180px',
-          background: isDark ? '#1B263B' : c.sidebar,
-          padding: '20px 14px',
-          color: isDark ? '#fff' : '#374151',
-        }}>
-          {withPhoto && (
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              {cvData.photo_url ? (
-                <img src={cvData.photo_url} style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
-                  objectFit: 'cover', border: `2px solid ${c.accent}`
-                }} alt="" />
-              ) : (
-                <div style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
-                  background: c.primary, display: 'inline-flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  fontSize: '18px', fontWeight: 900, color: 'white',
-                  margin: '0 auto',
-                }}>
-                  {(cvData.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2)}
+  const Avatar = ({ size = 64, primary = '#002050', accent = '#BF8813' }) => (
+    withPhoto && cvData.photo_url ? (
+      <img src={cvData.photo_url} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${accent}` }} alt="" />
+    ) : withPhoto ? (
+      <div style={{ width: size, height: size, borderRadius: '50%', background: primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.3, fontWeight: 900, color: 'white' }}>
+        {(cvData.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+      </div>
+    ) : null
+  );
+
+  // ── TEMPLATE CLASSIQUE ─────────────────────────────────
+  if (templateId === 'classique') {
+    const p = '#002050', a = '#BF8813';
+    return (
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: '9px', background: '#fff', display: 'flex', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ width: '200px', minWidth: '200px', background: '#F8F9FA', padding: '28px 16px', borderRight: `3px solid ${a}` }}>
+          {withPhoto && <div style={{ textAlign: 'center', marginBottom: '20px' }}><Avatar size={72} primary={p} accent={a} /></div>}
+          <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px' }}>Contact</div>
+          {cvData.contact.email && <div style={{ marginBottom: '5px', wordBreak: 'break-all', color: '#374151' }}>✉ {cvData.contact.email}</div>}
+          {cvData.contact.phone && <div style={{ marginBottom: '5px', color: '#374151' }}>☎ {cvData.contact.phone}</div>}
+          {cvData.contact.location && <div style={{ marginBottom: '5px', color: '#374151' }}>⊙ {cvData.contact.location}</div>}
+          {cvData.contact.linkedin && <div style={{ marginBottom: '5px', color: a }}>in LinkedIn</div>}
+
+          {cvData.skills.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '18px' }}>Compétences</div>
+            {cvData.skills.map(s => (
+              <div key={s.id} style={{ marginBottom: '7px' }}>
+                <div style={{ fontWeight: 600, color: '#374151' }}>{s.name}</div>
+                <div style={{ background: '#ddd', borderRadius: '3px', height: '3px', marginTop: '2px' }}>
+                  <div style={{ background: a, borderRadius: '3px', height: '3px', width: `${s.level}%` }} />
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Contact */}
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '8px', fontWeight: 700, color: isDark ? '#aaa' : c.primary, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-              Contact
-            </div>
-            {cvData.contact.email && <div style={{ marginBottom: '4px', wordBreak: 'break-all' }}>📧 {cvData.contact.email}</div>}
-            {cvData.contact.phone && <div style={{ marginBottom: '4px' }}>📞 {cvData.contact.phone}</div>}
-            {cvData.contact.location && <div style={{ marginBottom: '4px' }}>📍 {cvData.contact.location}</div>}
-            {cvData.contact.linkedin && <div style={{ marginBottom: '4px', color: c.accent }}>🔗 LinkedIn</div>}
-          </div>
-
-          {/* Compétences */}
-          {cvData.skills.length > 0 && (
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '8px', fontWeight: 700, color: isDark ? '#aaa' : c.primary, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-                Compétences
-              </div>
-              {cvData.skills.map(s => (
-                <div key={s.id} style={{ marginBottom: '6px' }}>
-                  <div style={{ fontWeight: 600 }}>{s.name}</div>
-                  {!isAts && s.level > 0 && (
-                    <div style={{ background: '#e0e0e0', borderRadius: '3px', height: '3px', marginTop: '2px' }}>
-                      <div style={{ background: c.accent, borderRadius: '3px', height: '3px', width: `${s.level}%` }} />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Langues */}
-          {cvData.languages.length > 0 && (
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '8px', fontWeight: 700, color: isDark ? '#aaa' : c.primary, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-                Langues
-              </div>
-              {cvData.languages.map(l => (
-                <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontWeight: 600 }}>{l.name}</span>
-                  <span style={{ color: c.accent }}>{l.level}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main */}
-      <div style={{ flex: 1, padding: isAts ? '30px' : '20px 22px' }}>
-        {/* Header */}
-        <div style={{ borderBottom: `2px solid ${c.accent}`, paddingBottom: '10px', marginBottom: '16px' }}>
-          <div style={{ fontSize: '20px', fontWeight: 900, color: c.primary, lineHeight: 1.1 }}>
-            {cvData.name || 'Votre Nom'}
-          </div>
-          <div style={{ fontSize: '11px', color: c.accent, fontWeight: 600, marginTop: '3px' }}>
-            {cvData.title || 'Titre professionnel'}
-          </div>
-          {isAts && (
-            <div style={{ fontSize: '8px', color: '#6B7280', marginTop: '6px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              {cvData.contact.email && <span>{cvData.contact.email}</span>}
-              {cvData.contact.phone && <span>{cvData.contact.phone}</span>}
-              {cvData.contact.location && <span>{cvData.contact.location}</span>}
-            </div>
-          )}
-        </div>
-
-        {/* Résumé */}
-        {cvData.summary && (
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: c.primary, letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-              Profil
-            </div>
-            <p style={{ color: '#374151', lineHeight: 1.6, textAlign: 'justify' }}>{cvData.summary}</p>
-          </div>
-        )}
-
-        {/* Expériences */}
-        {cvData.experiences.length > 0 && (
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: c.primary, letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-              Expériences
-            </div>
-            {cvData.experiences.map(exp => (
-              <div key={exp.id} style={{ marginBottom: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: c.primary }}>{exp.position}</div>
-                    <div style={{ color: c.accent, fontWeight: 600 }}>{exp.company}</div>
-                  </div>
-                  <div style={{ color: '#6B7280', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '8px' }}>
-                    {fmtDate(exp.start_date)} — {exp.current ? 'Présent' : fmtDate(exp.end_date || '')}
-                  </div>
-                </div>
-                {exp.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '3px' }}>{exp.description}</p>}
               </div>
             ))}
-          </div>
-        )}
+          </>}
 
-        {/* Formations Omnia */}
-        {cvData.omnia_formations.filter(f => f.show).length > 0 && (
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: c.primary, letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-              Formations Omnia Academy
-            </div>
-            {cvData.omnia_formations.filter(f => f.show).map(f => (
-              <div key={f.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: c.primary }}>{f.title}</div>
-                  <div style={{ color: c.accent }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div>
+          {cvData.languages.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '18px' }}>Langues</div>
+            {cvData.languages.map(l => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span style={{ fontWeight: 600, color: '#374151' }}>{l.name}</span>
+                <span style={{ color: a, fontSize: '8px' }}>{l.level}</span>
+              </div>
+            ))}
+          </>}
+        </div>
+        <div style={{ flex: 1, padding: '28px 24px' }}>
+          <div style={{ borderBottom: `3px solid ${p}`, paddingBottom: '12px', marginBottom: '18px' }}>
+            <div style={{ fontSize: '26px', fontWeight: 900, color: p, fontFamily: 'Georgia, serif' }}>{cvData.name || 'Votre Nom'}</div>
+            <div style={{ fontSize: '13px', color: a, fontWeight: 600, letterSpacing: '0.05em', marginTop: '3px' }}>{cvData.title || 'Titre professionnel'}</div>
+          </div>
+          {cvData.summary && <><div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `1px solid ${a}`, paddingBottom: '3px', marginBottom: '8px' }}>Profil</div><p style={{ color: '#374151', lineHeight: 1.7, textAlign: 'justify', marginBottom: '16px' }}>{cvData.summary}</p></>}
+          {cvData.experiences.length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `1px solid ${a}`, paddingBottom: '3px', marginBottom: '10px' }}>Expériences</div>
+            {cvData.experiences.map(e => (
+              <div key={e.id} style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div><div style={{ fontWeight: 700, color: p }}>{e.position}</div><div style={{ color: a, fontWeight: 600 }}>{e.company}</div></div>
+                  <div style={{ color: '#6B7280', fontSize: '8px', textAlign: 'right' }}>{fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
                 </div>
+                {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
+              </div>
+            ))}
+          </>}
+          {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `1px solid ${a}`, paddingBottom: '3px', marginBottom: '10px' }}>Formations Omnia</div>
+            {cvData.omnia_formations.filter(f => f.show).map(f => (
+              <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                <div><div style={{ fontWeight: 700, color: p }}>{f.title}</div><div style={{ color: a }}>Omnia Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
                 <div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}
-          </div>
-        )}
+          </>}
+        </div>
+      </div>
+    );
+  }
 
-        {/* ATS : compétences en ligne */}
-        {isAts && cvData.skills.length > 0 && (
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: c.primary, letterSpacing: '0.1em', textTransform: 'uppercase', borderBottom: `1px solid ${c.accent}`, paddingBottom: '3px', marginBottom: '8px' }}>
-              Compétences
+  // ── TEMPLATE MODERNE ATS ───────────────────────────────
+  if (templateId === 'moderne_ats') {
+    const p = '#1A1A2E', a = '#E94560';
+    return (
+      <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '9px', background: '#fff', width: '794px', minHeight: '1123px', padding: '40px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ borderBottom: `4px solid ${a}`, paddingBottom: '14px', marginBottom: '20px' }}>
+          <div style={{ fontSize: '28px', fontWeight: 900, color: p }}>{cvData.name || 'Votre Nom'}</div>
+          <div style={{ fontSize: '13px', color: a, fontWeight: 700, marginTop: '3px' }}>{cvData.title || 'Titre professionnel'}</div>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontSize: '8px', color: '#6B7280' }}>
+            {cvData.contact.email && <span>✉ {cvData.contact.email}</span>}
+            {cvData.contact.phone && <span>☎ {cvData.contact.phone}</span>}
+            {cvData.contact.location && <span>⊙ {cvData.contact.location}</span>}
+            {cvData.contact.linkedin && <span>in LinkedIn</span>}
+          </div>
+        </div>
+        {cvData.summary && <><div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>PROFIL PROFESSIONNEL</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '18px' }}>{cvData.summary}</p></>}
+        {cvData.experiences.length > 0 && <>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.1em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '12px' }}>EXPÉRIENCES PROFESSIONNELLES</div>
+          {cvData.experiences.map(e => (
+            <div key={e.id} style={{ marginBottom: '14px', paddingLeft: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div><div style={{ fontWeight: 700, color: p, fontSize: '10px' }}>{e.position}</div><div style={{ color: a, fontWeight: 600 }}>{e.company}</div></div>
+                <div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
+              </div>
+              {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
             </div>
-            <div style={{ color: '#374151', lineHeight: 1.8 }}>
-              {cvData.skills.map(s => s.name).join(' • ')}
+          ))}
+        </>}
+        {cvData.skills.length > 0 && <>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.1em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>COMPÉTENCES</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+            {cvData.skills.map(s => (
+              <span key={s.id} style={{ padding: '3px 10px', border: `1px solid ${a}`, borderRadius: '3px', fontSize: '8px', color: p, fontWeight: 600 }}>{s.name}</span>
+            ))}
+          </div>
+        </>}
+        {cvData.languages.length > 0 && <>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.1em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>LANGUES</div>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '18px' }}>
+            {cvData.languages.map(l => <span key={l.id} style={{ fontSize: '9px', color: '#374151' }}><b>{l.name}</b> — {l.level}</span>)}
+          </div>
+        </>}
+        {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.1em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>FORMATIONS OMNIA ACADEMY</div>
+          {cvData.omnia_formations.filter(f => f.show).map(f => (
+            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontWeight: 600, color: p }}>{f.title}{f.cpd_accredited ? ' (CPD)' : ''}</span>
+              <span style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</span>
+            </div>
+          ))}
+        </>}
+      </div>
+    );
+  }
+
+  // ── TEMPLATE ÉTUDIANT ──────────────────────────────────
+  if (templateId === 'etudiant') {
+    const p = '#002050', a = '#BF8813';
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ background: p, padding: '28px 32px', color: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            {withPhoto && <div style={{ flexShrink: 0 }}><Avatar size={72} primary={a} accent={a} /></div>}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '26px', fontWeight: 900, letterSpacing: '0.02em' }}>{cvData.name || 'Votre Nom'}</div>
+              <div style={{ fontSize: '13px', color: a, fontWeight: 600, marginTop: '4px' }}>{cvData.title || 'Titre professionnel'}</div>
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '10px', fontSize: '8px', color: 'rgba(255,255,255,0.75)' }}>
+                {cvData.contact.email && <span>✉ {cvData.contact.email}</span>}
+                {cvData.contact.phone && <span>☎ {cvData.contact.phone}</span>}
+                {cvData.contact.location && <span>⊙ {cvData.contact.location}</span>}
+              </div>
             </div>
           </div>
-        )}
+        </div>
+        <div style={{ display: 'flex', flex: 1 }}>
+          <div style={{ flex: 1, padding: '24px' }}>
+            {cvData.summary && <><div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: `linear-gradient(to right, ${a}22, transparent)`, padding: '4px 8px', marginBottom: '8px' }}>Objectif professionnel</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '16px' }}>{cvData.summary}</p></>}
+            {cvData.experiences.length > 0 && <>
+              <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: `linear-gradient(to right, ${a}22, transparent)`, padding: '4px 8px', marginBottom: '10px' }}>Expériences & Stages</div>
+              {cvData.experiences.map(e => (
+                <div key={e.id} style={{ marginBottom: '12px', borderLeft: `3px solid ${a}`, paddingLeft: '10px' }}>
+                  <div style={{ fontWeight: 700, color: p }}>{e.position}</div>
+                  <div style={{ color: a }}>{e.company} · {fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
+                  {e.description && <p style={{ color: '#374151', marginTop: '3px', lineHeight: 1.5 }}>{e.description}</p>}
+                </div>
+              ))}
+            </>}
+            {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+              <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: `linear-gradient(to right, ${a}22, transparent)`, padding: '4px 8px', marginBottom: '10px' }}>Formations Omnia</div>
+              {cvData.omnia_formations.filter(f => f.show).map(f => (
+                <div key={f.id} style={{ marginBottom: '7px', borderLeft: `3px solid ${a}`, paddingLeft: '10px' }}>
+                  <div style={{ fontWeight: 700, color: p }}>{f.title}</div>
+                  <div style={{ color: a }}>Omnia Academy{f.cpd_accredited ? ' · CPD' : ''} · {fmtDate(f.completed_at)}</div>
+                </div>
+              ))}
+            </>}
+          </div>
+          <div style={{ width: '190px', minWidth: '190px', background: '#EEF2FF', padding: '24px 16px' }}>
+            {cvData.education.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px' }}>Formation</div>
+              {cvData.education.map(e => <div key={e.id} style={{ marginBottom: '10px' }}><div style={{ fontWeight: 700, color: p }}>{e.degree}</div><div style={{ color: '#374151' }}>{e.school}</div><div style={{ color: '#6B7280', fontSize: '8px' }}>{e.year}</div></div>)}
+            </>}
+            {cvData.skills.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '16px' }}>Compétences</div>
+              {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '6px' }}><div style={{ color: '#374151', fontWeight: 600 }}>{s.name}</div><div style={{ background: '#ddd', borderRadius: '3px', height: '3px', marginTop: '2px' }}><div style={{ background: a, borderRadius: '3px', height: '3px', width: `${s.level}%` }} /></div></div>)}
+            </>}
+            {cvData.languages.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '16px' }}>Langues</div>
+              {cvData.languages.map(l => <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ fontWeight: 600, color: '#374151' }}>{l.name}</span><span style={{ color: a, fontSize: '8px' }}>{l.level}</span></div>)}
+            </>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE IT / DIGITAL ──────────────────────────────
+  if (templateId === 'it_digital') {
+    const p = '#00B4D8', a = '#00B4D8', bg = '#0D1B2A', bg2 = '#1B263B';
+    return (
+      <div style={{ fontFamily: 'Courier New, monospace', fontSize: '9px', background: bg, color: '#E0E0E0', display: 'flex', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ width: '200px', minWidth: '200px', background: bg2, padding: '28px 16px', borderRight: `2px solid ${a}` }}>
+          {withPhoto && <div style={{ textAlign: 'center', marginBottom: '20px' }}><Avatar size={72} primary={a} accent={a} /></div>}
+          <div style={{ fontSize: '8px', fontWeight: 700, color: a, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '10px', fontFamily: 'Courier New' }}>// Contact</div>
+          {cvData.contact.email && <div style={{ marginBottom: '5px', fontSize: '8px', color: '#aaa', wordBreak: 'break-all' }}>{cvData.contact.email}</div>}
+          {cvData.contact.phone && <div style={{ marginBottom: '5px', fontSize: '8px', color: '#aaa' }}>{cvData.contact.phone}</div>}
+          {cvData.contact.location && <div style={{ marginBottom: '5px', fontSize: '8px', color: '#aaa' }}>{cvData.contact.location}</div>}
+          {cvData.contact.linkedin && <div style={{ marginBottom: '5px', fontSize: '8px', color: a }}>LinkedIn</div>}
+          {cvData.skills.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: a, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '10px', marginTop: '20px', fontFamily: 'Courier New' }}>// Skills</div>
+            {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '6px' }}><div style={{ color: '#E0E0E0', fontWeight: 600 }}>{s.name}</div><div style={{ background: '#333', borderRadius: '2px', height: '3px', marginTop: '2px' }}><div style={{ background: a, borderRadius: '2px', height: '3px', width: `${s.level}%` }} /></div></div>)}
+          </>}
+          {cvData.languages.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: a, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '10px', marginTop: '20px', fontFamily: 'Courier New' }}>// Languages</div>
+            {cvData.languages.map(l => <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ color: '#E0E0E0' }}>{l.name}</span><span style={{ color: a, fontSize: '8px' }}>{l.level}</span></div>)}
+          </>}
+        </div>
+        <div style={{ flex: 1, padding: '28px 24px' }}>
+          <div style={{ borderBottom: `2px solid ${a}`, paddingBottom: '12px', marginBottom: '18px' }}>
+            <div style={{ fontSize: '24px', fontWeight: 900, color: a, fontFamily: 'Courier New' }}>{cvData.name || 'Votre Nom'}</div>
+            <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{`> ${cvData.title || 'Titre professionnel'}`}</div>
+          </div>
+          {cvData.summary && <><div style={{ fontSize: '8px', fontWeight: 700, color: a, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '6px', fontFamily: 'Courier New' }}>// README.md</div><p style={{ color: '#ccc', lineHeight: 1.7, marginBottom: '16px' }}>{cvData.summary}</p></>}
+          {cvData.experiences.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: a, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', fontFamily: 'Courier New' }}>// Experience.json</div>
+            {cvData.experiences.map(e => (
+              <div key={e.id} style={{ marginBottom: '12px', background: '#ffffff08', padding: '10px', borderRadius: '4px', borderLeft: `2px solid ${a}` }}>
+                <div style={{ fontWeight: 700, color: '#E0E0E0' }}>{e.position}</div>
+                <div style={{ color: a }}>{e.company} | {fmtDate(e.start_date)} → {e.current ? 'now' : fmtDate(e.end_date || '')}</div>
+                {e.description && <p style={{ color: '#aaa', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
+              </div>
+            ))}
+          </>}
+          {cvData.projects.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: a, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', fontFamily: 'Courier New' }}>// Projects</div>
+            {cvData.projects.map(pr => <div key={pr.id} style={{ marginBottom: '10px', background: '#ffffff08', padding: '10px', borderRadius: '4px' }}><div style={{ fontWeight: 700, color: '#E0E0E0' }}>{pr.name}</div>{pr.technologies && <div style={{ color: a, fontSize: '8px', marginTop: '2px' }}>{pr.technologies}</div>}{pr.description && <p style={{ color: '#aaa', lineHeight: 1.5, marginTop: '3px' }}>{pr.description}</p>}</div>)}
+          </>}
+          {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: a, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', fontFamily: 'Courier New' }}>// Certifications</div>
+            {cvData.omnia_formations.filter(f => f.show).map(f => <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ color: '#E0E0E0' }}>{f.title}{f.cpd_accredited ? ' [CPD]' : ''}</span><span style={{ color: '#aaa', fontSize: '8px' }}>{fmtDate(f.completed_at)}</span></div>)}
+          </>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE BUSINESS ──────────────────────────────────
+  if (templateId === 'business') {
+    const p = '#002050', a = '#BF8813';
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ background: `linear-gradient(135deg, ${p} 0%, #003580 100%)`, padding: '32px', display: 'flex', alignItems: 'center', gap: '24px' }}>
+          {withPhoto && <Avatar size={80} primary={a} accent={a} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '28px', fontWeight: 900, color: 'white', letterSpacing: '0.02em' }}>{cvData.name || 'Votre Nom'}</div>
+            <div style={{ fontSize: '14px', color: a, fontWeight: 700, marginTop: '4px', letterSpacing: '0.05em' }}>{cvData.title || 'Titre professionnel'}</div>
+          </div>
+          <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.75)', fontSize: '8px' }}>
+            {cvData.contact.email && <div style={{ marginBottom: '4px' }}>{cvData.contact.email}</div>}
+            {cvData.contact.phone && <div style={{ marginBottom: '4px' }}>{cvData.contact.phone}</div>}
+            {cvData.contact.location && <div style={{ marginBottom: '4px' }}>{cvData.contact.location}</div>}
+            {cvData.contact.linkedin && <div style={{ color: a }}>LinkedIn</div>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flex: 1 }}>
+          <div style={{ flex: 1, padding: '24px' }}>
+            {cvData.summary && <><div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '8px' }}>Profil exécutif</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '18px', textAlign: 'justify' }}>{cvData.summary}</p></>}
+            {cvData.experiences.length > 0 && <>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '12px' }}>Parcours professionnel</div>
+              {cvData.experiences.map(e => (
+                <div key={e.id} style={{ marginBottom: '14px', paddingLeft: '12px', borderLeft: `1px solid #ddd` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div><div style={{ fontWeight: 700, color: p, fontSize: '10px' }}>{e.position}</div><div style={{ color: a, fontWeight: 600 }}>{e.company}</div></div>
+                    <div style={{ background: p, color: 'white', fontSize: '7px', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>{fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
+                  </div>
+                  {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '5px' }}>{e.description}</p>}
+                </div>
+              ))}
+            </>}
+            {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>Formations certifiées</div>
+              {cvData.omnia_formations.filter(f => f.show).map(f => <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px', paddingLeft: '12px' }}><div><div style={{ fontWeight: 700, color: p }}>{f.title}</div><div style={{ color: a }}>Omnia Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div><div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</div></div>)}
+            </>}
+          </div>
+          <div style={{ width: '190px', minWidth: '190px', background: '#FFF8F0', padding: '24px 16px', borderLeft: `3px solid ${a}` }}>
+            {cvData.skills.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px' }}>Expertises</div>
+              {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '7px' }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontWeight: 600, color: p }}>{s.name}</span></div><div style={{ background: '#ddd', borderRadius: '3px', height: '3px', marginTop: '2px' }}><div style={{ background: a, borderRadius: '3px', height: '3px', width: `${s.level}%` }} /></div></div>)}
+            </>}
+            {cvData.languages.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '18px' }}>Langues</div>
+              {cvData.languages.map(l => <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ fontWeight: 600, color: p }}>{l.name}</span><span style={{ color: a, fontSize: '8px' }}>{l.level}</span></div>)}
+            </>}
+            {cvData.education.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '18px' }}>Formation</div>
+              {cvData.education.map(e => <div key={e.id} style={{ marginBottom: '8px' }}><div style={{ fontWeight: 700, color: p }}>{e.degree}</div><div style={{ color: '#374151' }}>{e.school}</div><div style={{ color: '#6B7280', fontSize: '8px' }}>{e.year}</div></div>)}
+            </>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE QSE / HSE ─────────────────────────────────
+  if (templateId === 'qse') {
+    const p = '#1B4332', a = '#52B788', bg = '#D8F3DC';
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', display: 'flex', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ width: '200px', minWidth: '200px', background: p, padding: '28px 16px', color: 'white' }}>
+          {withPhoto && <div style={{ textAlign: 'center', marginBottom: '20px', padding: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '50%', display: 'inline-flex' }}><Avatar size={68} primary={a} accent={a} /></div>}
+          <div style={{ fontSize: '10px', fontWeight: 700, color: a, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `1px solid ${a}30`, paddingBottom: '4px', marginBottom: '10px' }}>Contact</div>
+          {cvData.contact.email && <div style={{ marginBottom: '5px', fontSize: '8px', color: 'rgba(255,255,255,0.8)', wordBreak: 'break-all' }}>✉ {cvData.contact.email}</div>}
+          {cvData.contact.phone && <div style={{ marginBottom: '5px', fontSize: '8px', color: 'rgba(255,255,255,0.8)' }}>☎ {cvData.contact.phone}</div>}
+          {cvData.contact.location && <div style={{ marginBottom: '5px', fontSize: '8px', color: 'rgba(255,255,255,0.8)' }}>⊙ {cvData.contact.location}</div>}
+          {cvData.skills.length > 0 && <>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: a, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `1px solid ${a}30`, paddingBottom: '4px', marginBottom: '10px', marginTop: '20px' }}>Compétences</div>
+            {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '6px' }}><div style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>{s.name}</div><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: '3px', height: '3px', marginTop: '2px' }}><div style={{ background: a, borderRadius: '3px', height: '3px', width: `${s.level}%` }} /></div></div>)}
+          </>}
+          {cvData.certifications_external.length > 0 && <>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: a, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `1px solid ${a}30`, paddingBottom: '4px', marginBottom: '10px', marginTop: '20px' }}>Certifications</div>
+            {cvData.certifications_external.map(c => <div key={c.id} style={{ marginBottom: '7px' }}><div style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>{c.name}</div><div style={{ color: a, fontSize: '8px' }}>{c.issuer} {c.year}</div></div>)}
+          </>}
+        </div>
+        <div style={{ flex: 1, padding: '28px 24px' }}>
+          <div style={{ background: bg, padding: '16px 20px', borderRadius: '8px', marginBottom: '18px' }}>
+            <div style={{ fontSize: '22px', fontWeight: 900, color: p }}>{cvData.name || 'Votre Nom'}</div>
+            <div style={{ fontSize: '12px', color: a, fontWeight: 700, marginTop: '3px' }}>{cvData.title || 'Titre QSE / HSE'}</div>
+          </div>
+          {cvData.summary && <><div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: bg, padding: '3px 8px', borderLeft: `3px solid ${a}`, marginBottom: '8px' }}>Profil QSE</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '16px' }}>{cvData.summary}</p></>}
+          {cvData.experiences.length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: bg, padding: '3px 8px', borderLeft: `3px solid ${a}`, marginBottom: '10px' }}>Expériences HSE/QSE</div>
+            {cvData.experiences.map(e => (
+              <div key={e.id} style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div><div style={{ fontWeight: 700, color: p }}>{e.position}</div><div style={{ color: a, fontWeight: 600 }}>{e.company}</div></div>
+                  <div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
+                </div>
+                {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
+              </div>
+            ))}
+          </>}
+          {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', background: bg, padding: '3px 8px', borderLeft: `3px solid ${a}`, marginBottom: '10px' }}>Formations</div>
+            {cvData.omnia_formations.filter(f => f.show).map(f => <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}><div><div style={{ fontWeight: 700, color: p }}>{f.title}</div><div style={{ color: a }}>Omnia Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div><div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</div></div>)}
+          </>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE INTERNATIONAL ─────────────────────────────
+  if (templateId === 'international') {
+    const p = '#002050', a = '#BF8813';
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ padding: '28px 32px', borderBottom: `3px solid ${a}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: 900, color: p }}>{cvData.name || 'Votre Nom'}</div>
+            <div style={{ fontSize: '13px', color: a, fontWeight: 600, marginTop: '4px' }}>{cvData.title || 'Titre professionnel'}</div>
+            {cvData.objective && <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '6px', fontStyle: 'italic', maxWidth: '400px' }}>{cvData.objective}</div>}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            {withPhoto && <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'flex-end' }}><Avatar size={64} primary={p} accent={a} /></div>}
+            <div style={{ fontSize: '8px', color: '#6B7280', lineHeight: 1.8 }}>
+              {cvData.contact.email && <div>{cvData.contact.email}</div>}
+              {cvData.contact.phone && <div>{cvData.contact.phone}</div>}
+              {cvData.contact.location && <div>{cvData.contact.location}</div>}
+              {cvData.contact.linkedin && <div style={{ color: a }}>LinkedIn</div>}
+              {cvData.contact.portfolio && <div style={{ color: a }}>Portfolio</div>}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex' }}>
+          <div style={{ flex: 1, padding: '24px 32px' }}>
+            {cvData.summary && <><div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '8px' }}>Professional Summary</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '18px', textAlign: 'justify' }}>{cvData.summary}</p></>}
+            {cvData.experiences.length > 0 && <>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '12px', paddingBottom: '4px', borderBottom: `1px solid #E4E7EC` }}>Professional Experience</div>
+              {cvData.experiences.map(e => (
+                <div key={e.id} style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div><div style={{ fontWeight: 700, color: p, fontSize: '10px' }}>{e.position}</div><div style={{ color: a }}>{e.company}{e.location ? `, ${e.location}` : ''}</div></div>
+                    <div style={{ color: '#6B7280', fontSize: '8px', fontStyle: 'italic', whiteSpace: 'nowrap' }}>{fmtDate(e.start_date)} – {e.current ? 'Present' : fmtDate(e.end_date || '')}</div>
+                  </div>
+                  {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
+                </div>
+              ))}
+            </>}
+            {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', paddingBottom: '4px', borderBottom: `1px solid #E4E7EC` }}>Training & Certifications</div>
+              {cvData.omnia_formations.filter(f => f.show).map(f => <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}><div><div style={{ fontWeight: 700, color: p }}>{f.title}</div><div style={{ color: a }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD Certified' : ''}</div></div><div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</div></div>)}
+            </>}
+          </div>
+          <div style={{ width: '185px', minWidth: '185px', background: '#F0F4F8', padding: '24px 16px', borderLeft: `1px solid #E4E7EC` }}>
+            {cvData.education.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', borderBottom: `2px solid ${a}`, paddingBottom: '4px' }}>Education</div>
+              {cvData.education.map(e => <div key={e.id} style={{ marginBottom: '10px' }}><div style={{ fontWeight: 700, color: p }}>{e.degree}</div><div style={{ color: '#374151' }}>{e.school}</div><div style={{ color: a, fontSize: '8px', fontStyle: 'italic' }}>{e.year}</div></div>)}
+            </>}
+            {cvData.skills.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginTop: '18px' }}>Core Skills</div>
+              {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '6px' }}><div style={{ fontWeight: 600, color: '#374151' }}>{s.name}</div><div style={{ background: '#ddd', borderRadius: '3px', height: '3px', marginTop: '2px' }}><div style={{ background: a, borderRadius: '3px', height: '3px', width: `${s.level}%` }} /></div></div>)}
+            </>}
+            {cvData.languages.length > 0 && <>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '10px', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginTop: '18px' }}>Languages</div>
+              {cvData.languages.map(l => <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ fontWeight: 600, color: p }}>{l.name}</span><span style={{ color: a, fontSize: '8px' }}>{l.level}</span></div>)}
+            </>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE FORMATEUR ─────────────────────────────────
+  if (templateId === 'formateur') {
+    const p = '#2D3561', a = '#C84B31';
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', display: 'flex', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+        <div style={{ width: '200px', minWidth: '200px', background: '#F5F5F5', padding: '28px 16px', borderRight: `4px solid ${p}` }}>
+          {withPhoto && <div style={{ textAlign: 'center', marginBottom: '20px' }}><Avatar size={72} primary={p} accent={a} /></div>}
+          <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px' }}>Contact</div>
+          {cvData.contact.email && <div style={{ marginBottom: '5px', color: '#374151', wordBreak: 'break-all' }}>✉ {cvData.contact.email}</div>}
+          {cvData.contact.phone && <div style={{ marginBottom: '5px', color: '#374151' }}>☎ {cvData.contact.phone}</div>}
+          {cvData.contact.location && <div style={{ marginBottom: '5px', color: '#374151' }}>⊙ {cvData.contact.location}</div>}
+          {cvData.skills.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '20px' }}>Domaines d'expertise</div>
+            {cvData.skills.map(s => <div key={s.id} style={{ marginBottom: '6px', padding: '4px 8px', background: `${p}10`, borderLeft: `2px solid ${a}`, color: p, fontWeight: 600 }}>{s.name}</div>)}
+          </>}
+          {cvData.languages.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '20px' }}>Langues d'enseignement</div>
+            {cvData.languages.map(l => <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><span style={{ fontWeight: 600, color: p }}>{l.name}</span><span style={{ color: a, fontSize: '8px' }}>{l.level}</span></div>)}
+          </>}
+          {cvData.certifications_external.length > 0 && <>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: p, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: `2px solid ${a}`, paddingBottom: '4px', marginBottom: '10px', marginTop: '20px' }}>Accréditations</div>
+            {cvData.certifications_external.map(c => <div key={c.id} style={{ marginBottom: '7px' }}><div style={{ fontWeight: 600, color: p }}>{c.name}</div><div style={{ color: '#6B7280', fontSize: '8px' }}>{c.issuer} · {c.year}</div></div>)}
+          </>}
+        </div>
+        <div style={{ flex: 1, padding: '28px 24px' }}>
+          <div style={{ background: p, padding: '16px 20px', borderRadius: '6px', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '22px', fontWeight: 900, color: 'white' }}>{cvData.name || 'Votre Nom'}</div>
+              <div style={{ fontSize: '12px', color: a, fontWeight: 700, marginTop: '3px' }}>{cvData.title || 'Formateur / Enseignant'}</div>
+            </div>
+          </div>
+          {cvData.summary && <><div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '8px' }}>Philosophie pédagogique</div><p style={{ color: '#374151', lineHeight: 1.7, marginBottom: '16px', fontStyle: 'italic' }}>"{cvData.summary}"</p></>}
+          {cvData.experiences.length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>Expériences pédagogiques</div>
+            {cvData.experiences.map(e => (
+              <div key={e.id} style={{ marginBottom: '12px', padding: '10px', background: '#F5F5F5', borderRadius: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div><div style={{ fontWeight: 700, color: p }}>{e.position}</div><div style={{ color: a, fontWeight: 600 }}>{e.company}</div></div>
+                  <div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(e.start_date)} — {e.current ? 'Présent' : fmtDate(e.end_date || '')}</div>
+                </div>
+                {e.description && <p style={{ color: '#374151', lineHeight: 1.5, marginTop: '4px' }}>{e.description}</p>}
+              </div>
+            ))}
+          </>}
+          {cvData.omnia_formations.filter(f => f.show).length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>Formations & Certifications</div>
+            {cvData.omnia_formations.filter(f => f.show).map(f => <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px', padding: '6px 10px', background: '#F5F5F5', borderRadius: '4px' }}><div><div style={{ fontWeight: 700, color: p }}>{f.title}</div><div style={{ color: a }}>Omnia Academy{f.cpd_accredited ? ' · CPD Certifié' : ''}</div></div><div style={{ color: '#6B7280', fontSize: '8px' }}>{fmtDate(f.completed_at)}</div></div>)}
+          </>}
+          {cvData.education.length > 0 && <>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: p, textTransform: 'uppercase', letterSpacing: '0.12em', borderLeft: `4px solid ${a}`, paddingLeft: '8px', marginBottom: '10px' }}>Formation académique</div>
+            {cvData.education.map(e => <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}><div><div style={{ fontWeight: 700, color: p }}>{e.degree}</div><div style={{ color: '#374151' }}>{e.school}</div></div><div style={{ color: '#6B7280', fontSize: '8px' }}>{e.year}</div></div>)}
+          </>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── FALLBACK (classique) ───────────────────────────────
+  return (
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', background: '#fff', display: 'flex', width: '794px', minHeight: '1123px', transform: 'scale(0.55)', transformOrigin: 'top left', marginBottom: '-500px' }}>
+      <div style={{ width: '200px', background: '#F8F9FA', padding: '28px 16px' }}>
+        <div style={{ fontWeight: 700, color: '#002050', marginBottom: '10px' }}>Contact</div>
+        {cvData.contact.email && <div style={{ marginBottom: '5px', color: '#374151' }}>{cvData.contact.email}</div>}
+        {cvData.contact.phone && <div style={{ marginBottom: '5px', color: '#374151' }}>{cvData.contact.phone}</div>}
+      </div>
+      <div style={{ flex: 1, padding: '28px 24px' }}>
+        <div style={{ fontSize: '22px', fontWeight: 900, color: '#002050', marginBottom: '4px' }}>{cvData.name || 'Votre Nom'}</div>
+        <div style={{ color: '#BF8813' }}>{cvData.title || 'Titre professionnel'}</div>
       </div>
     </div>
   );
