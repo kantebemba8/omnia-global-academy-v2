@@ -62,6 +62,7 @@ import AdminDemoAccess from './pages/admin/AdminDemoAccess';
 import AdminCpdCredits from './pages/admin/AdminCpdCredits';
 import AdminCertificates from './pages/admin/AdminCertificates';
 import AdminCertificateSettings from './pages/admin/AdminCertificateSettings';
+import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
 import Checkout from './pages/Checkout';
 import PaymentConfirmation from './pages/PaymentConfirmation';
 import PaymentFailed from './pages/PaymentFailed';
@@ -149,6 +150,7 @@ export default function App() {
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
+          <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
 
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
