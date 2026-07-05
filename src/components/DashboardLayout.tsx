@@ -40,6 +40,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/forum', label: 'Forums & Entraide', icon: MessageSquare },
   { path: '/professeur/profile', label: 'Configuration profil', icon: Settings },
+  { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
 ];
 
 const DIRECTEUR_NAV = [
@@ -49,6 +50,7 @@ const DIRECTEUR_NAV = [
   { path: '/school/licenses', label: 'Licences B2B', icon: Key },
   { path: '/school/payouts', label: 'Retraits établissement', icon: Wallet },
   { path: '/forum', label: 'Forum école', icon: MessageSquare },
+  { path: '/school/certificats', label: 'Certificats', icon: Award },
 ];
 
 const ENSEIGNANT_NAV = [
@@ -68,6 +70,8 @@ const ADMIN_NAV = [
   { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
   { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
   { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
+  { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
+  { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 
