@@ -33,11 +33,13 @@ import { ProfesseurStudioCreation } from './pages/professeur/ProfesseurStudioCre
 import { ProfesseurPortefeuille } from './pages/professeur/ProfesseurPortefeuille';
 import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
 import { ProfesseurProfil } from './pages/professeur/ProfesseurProfil';
+import ProfesseurCertificats from './pages/professeur/ProfesseurCertificats';
 import { DirecteurDashboard } from './pages/directeur/DirecteurDashboard';
 import { DirecteurEnseignants } from './pages/directeur/DirecteurEnseignants';
 import { DirecteurCatalogueInterne } from './pages/directeur/DirecteurCatalogueInterne';
 import { DirecteurLicences } from './pages/directeur/DirecteurLicences';
 import { DirecteurPortefeuille } from './pages/directeur/DirecteurPortefeuille';
+import DirecteurCertificats from './pages/directeur/DirecteurCertificats';
 import { EnseignantDashboard } from './pages/enseignant/EnseignantDashboard';
 import { EnseignantMesCours } from './pages/enseignant/EnseignantMesCours';
 import { EnseignantAnalytique } from './pages/enseignant/EnseignantAnalytique';
@@ -58,6 +60,8 @@ import AdminCatalogue from './pages/admin/AdminCatalogue';
 import AdminEquipe from './pages/admin/AdminEquipe';
 import AdminDemoAccess from './pages/admin/AdminDemoAccess';
 import AdminCpdCredits from './pages/admin/AdminCpdCredits';
+import AdminCertificates from './pages/admin/AdminCertificates';
+import AdminCertificateSettings from './pages/admin/AdminCertificateSettings';
 import Checkout from './pages/Checkout';
 import PaymentConfirmation from './pages/PaymentConfirmation';
 import PaymentFailed from './pages/PaymentFailed';
@@ -143,6 +147,8 @@ export default function App() {
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
+          <Route path="/admin/certificates" element={<AdminCertificates />} />
+<Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
 
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
@@ -178,9 +184,11 @@ export default function App() {
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
         <Route path="/professeur/profile" element={<ProfesseurProfil />} />
+          <Route path="/professeur/certificats" element={<ProfesseurCertificats />} />
 
         {/* Module 8 — Dashboard directeur — always accessible */}
         <Route path="/school/dashboard" element={<DirecteurDashboard />} />
+          <Route path="/school/certificats" element={<DirecteurCertificats />} />
         <Route path="/school/teachers" element={<DirecteurEnseignants />} />
         <Route path="/school/courses" element={<DirecteurCatalogueInterne />} />
         <Route path="/school/licenses" element={<DirecteurLicences />} />
