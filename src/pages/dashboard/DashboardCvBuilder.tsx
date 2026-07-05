@@ -1278,7 +1278,8 @@ export default function DashboardCvBuilder() {
     }
   }
 
-  async function downloadPdf() {
+  // ✅ NOUVEAU CODE
+async function downloadPdf() {
     if (!currentCvId) {
       await saveCV();
     }
@@ -1290,32 +1291,47 @@ export default function DashboardCvBuilder() {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ cv_id: currentCvId }),
       });
-      const data = await res.json();
 
-      if (data.error === 'INSUFFICIENT_TOKENS') {
-        showToast('❌ Jetons insuffisants. Achetez une formation pour en obtenir.');
+      // Vérifier si c'est une erreur JSON (jetons insuffisants, etc.)
+      const contentType = res.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.error === 'INSUFFICIENT_TOKENS') {
+          showToast('❌ Jetons insuffisants. Achetez une formation pour en obtenir.');
+          return;
+        }
+        showToast('❌ Erreur lors de la génération du PDF.');
         return;
       }
 
-      if (data.pdf_url) {
-        window.open(data.pdf_url, '_blank');
-        setTokens(data.tokens_remaining ?? tokens);
-        if (data.token_consumed) {
-          showToast(`✓ PDF téléchargé — ${data.tokens_remaining} jeton(s) restant(s)`);
-        } else {
-          showToast('✓ PDF téléchargé (contenu inchangé — jeton conservé)');
-        }
-      } else if (data.html) {
-        const blob = new Blob([data.html], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${cvTitle}.html`;
-        a.click();
-        showToast('✓ CV exporté en HTML (utilisez Ctrl+P pour imprimer en PDF)');
+      // C'est bien un PDF binaire — déclencher le téléchargement
+      if (!res.ok) {
+        showToast('❌ Erreur serveur lors de la génération du PDF.');
+        return;
+      }
+
+      const pdfBlob = await res.blob();
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cv-omnia-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Lire les jetons depuis les headers de réponse
+      const tokensRemaining = parseInt(res.headers.get('X-Tokens-Remaining') || String(tokens));
+      const tokenConsumed = res.headers.get('X-Token-Consumed') === 'true';
+      setTokens(tokensRemaining);
+
+      if (tokenConsumed) {
+        showToast(`✓ PDF téléchargé — ${tokensRemaining} jeton(s) restant(s)`);
+      } else {
+        showToast('✓ PDF téléchargé (contenu inchangé — jeton conservé)');
       }
     } catch (err) {
-      showToast('Erreur lors du téléchargement');
+      showToast('❌ Erreur lors du téléchargement');
     } finally {
       setDownloading(false);
     }
