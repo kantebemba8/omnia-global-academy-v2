@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
   { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
   { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
+  { path: '/admin/certificate-preview', label: 'Aperçu Certificats', icon: Eye },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 
