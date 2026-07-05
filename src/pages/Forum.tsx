@@ -21,6 +21,14 @@ export default function Forum() {
   const [stats, setStats] = useState<ForumStats>({ general: 0, carriere: 0, jobs: 0 });
   const [enrollments, setEnrollments] = useState<Array<{ course_id: string; title: string }>>([]);
   const isLoggedIn = !!localStorage.getItem('omnia_session_token');
+  const userRoles: string[] = (() => {
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles || []; } catch { return []; }
+  })();
+  const dashboardPath = userRoles.includes('super_admin') ? '/admin/dashboard'
+    : userRoles.includes('moderateur') ? '/moderateur/dashboard'
+    : userRoles.includes('professeur') ? '/professeur/dashboard'
+    : userRoles.includes('directeur') ? '/school/dashboard'
+    : '/dashboard';
 
   useEffect(() => {
     const stored = localStorage.getItem('omnia_user');
@@ -59,9 +67,20 @@ export default function Forum() {
     <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
 
-      {/* Hero */}
+{/* Hero */}
       <section className="py-16 px-4" style={{ background: 'linear-gradient(135deg, #001840 0%, #002050 60%, #003580 100%)' }}>
         <div className="max-w-4xl mx-auto text-center">
+          {isLoggedIn && (
+            <div className="flex justify-start mb-6">
+              <button onClick={() => navigate(dashboardPath)}
+                className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all"
+                style={{ backgroundColor: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.80)', border: '1px solid rgba(255,255,255,0.15)' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.18)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.10)'}>
+                ← Retour au tableau de bord
+              </button>
+            </div>
+          )}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 border border-amber-400/30" style={{ backgroundColor: 'rgba(191,136,19,0.12)' }}>
             <MessageCircle className="w-4 h-4" style={{ color: '#BF8813' }} />
             <span className="text-sm font-medium" style={{ color: '#BF8813' }}>Communauté Omnia</span>
