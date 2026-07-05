@@ -1,7 +1,8 @@
 import { ReactNode } from 'react';
 import { DashboardLayout } from './DashboardLayout';
 import {
-  LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor
+  LayoutDashboard, Settings, CreditCard, Wallet, Tag, 
+  BookOpen, Users, Monitor, Award
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -12,6 +13,9 @@ const ADMIN_NAV = [
   { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
   { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
   { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
+  { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
+  { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
+  { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 
