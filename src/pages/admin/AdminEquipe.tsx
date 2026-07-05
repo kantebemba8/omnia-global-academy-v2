@@ -82,10 +82,10 @@ export default function AdminEquipe() {
   const [localPermissions, setLocalPermissions] = useState<Record<string, Record<string, boolean>>>({});
   const [savingModeratorId, setSavingModeratorId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [searchingUsers, setSearchingUsers] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [newMod, setNewMod] = useState({ full_name: '', email: '', phone_number: '' });
+  const [newModPermissions, setNewModPermissions] = useState<Record<string, boolean>>({});
+  const [creatingMod, setCreatingMod] = useState(false);
   const [actionRequests, setActionRequests] = useState<ActionRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -98,28 +98,24 @@ export default function AdminEquipe() {
         setError(null);
         const token = localStorage.getItem('omnia_session_token');
 
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_permissions?select=user_id,users(full_name,email,id)`,
+       const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`,
           {
-            headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-              'Authorization': `Bearer ${token}`,
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
           }
         );
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch moderators: ${response.statusText}`);
+          throw new Error(`Impossible de charger les modérateurs`);
         }
 
         const data = await response.json();
-        const moderatorsData: ModeratorPermissions[] = data.map((item: any) => ({
-          user_id: item.user_id,
-          full_name: item.users?.full_name || 'Unknown',
-          email: item.users?.email || 'N/A',
+        const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map((item: any) => ({
+          user_id: item.id,
+          full_name: item.full_name || 'Inconnu',
+          email: item.email || 'N/A',
           permissions: item.permissions || {}
         }));
-
         setModerators(moderatorsData);
 
         // Initialize local permissions state
@@ -239,63 +235,64 @@ export default function AdminEquipe() {
       setError(err instanceof Error ? err.message : 'Failed to delete moderator');
     }
   };
-
-  // Search users for adding new moderators
-  const handleSearchUsers = async (query: string) => {
-    if (!query.trim()) {
-      setAvailableUsers([]);
-      return;
-    }
-
-    try {
-      setSearchingUsers(true);
-      const token = localStorage.getItem('omnia_session_token');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/users?full_name=ilike.*${encodeURIComponent(query)}*&select=id,full_name,email`,
-        {
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-            'Authorization': `Bearer ${token}`,
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to search users');
-      }
-
-      const data = await response.json();
-      setAvailableUsers(data || []);
-    } catch (err) {
-      console.error('Error searching users:', err);
-    } finally {
-      setSearchingUsers(false);
-    }
-  };
-
-  // Add new moderator
-  const addModerator = async (userId: string) => {
+  
+  // Créer un nouveau modérateur
+  const createModerator = async () => {
+    if (!newMod.full_name.trim() || !newMod.email.trim()) return;
+    setCreatingMod(true);
     try {
       const token = localStorage.getItem('omnia_session_token');
-      const selectedUser = availableUsers.find(u => u.id === userId);
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ user_id: userId })
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            full_name: newMod.full_name.trim(),
+            email: newMod.email.trim(),
+            phone_number: newMod.phone_number.trim() || undefined,
+            permissions: newModPermissions,
+          })
         }
       );
-
-      if (!response.ok) {
-        throw new Error(`Failed to add moderator: ${response.statusText}`);
+      const data = await response.json();
+      if (data.error === 'EMAIL_TAKEN') {
+        setError('Cet email est déjà utilisé.');
+        return;
       }
+      if (!response.ok) throw new Error('Échec de la création');
 
+      setSuccessMessage(`✅ Compte modérateur créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
+      setTimeout(() => setSuccessMessage(null), 6000);
+      setShowAddModal(false);
+      setNewMod({ full_name: '', email: '', phone_number: '' });
+      setNewModPermissions({});
+
+      // Recharger la liste
+      const fetchModerators = async () => {
+        const token = localStorage.getItem('omnia_session_token');
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const d = await res.json();
+        const moderatorsData: ModeratorPermissions[] = (d.moderators || []).map((item: any) => ({
+          user_id: item.id,
+          full_name: item.full_name || 'Inconnu',
+          email: item.email || 'N/A',
+          permissions: item.permissions || {}
+        }));
+        setModerators(moderatorsData);
+        const initialPermissions: Record<string, Record<string, boolean>> = {};
+        moderatorsData.forEach(mod => { initialPermissions[mod.user_id] = { ...mod.permissions }; });
+        setLocalPermissions(initialPermissions);
+      };
+      fetchModerators();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la création');
+    } finally {
+      setCreatingMod(false);
+    }
+  };
       // Add to list
       const newModerator: ModeratorPermissions = {
         user_id: userId,
@@ -670,88 +667,93 @@ export default function AdminEquipe() {
         </div>
       </div>
 
-      {/* Add Moderator Modal */}
+  {/* Modal création modérateur */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            {/* Modal Header */}
-            <div
-              className="px-6 py-4 flex items-center justify-between border-b"
-              style={{ borderColor: '#BF8813', backgroundColor: '#f9f5f0' }}
-            >
-              <h2 className="text-xl font-bold" style={{ color: '#002050' }}>
-                Ajouter un modérateur
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setSearchQuery('');
-                  setAvailableUsers([]);
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X size={24} />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E4E7EC' }}>
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Créer un modérateur</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Un email avec le mot de passe temporaire sera envoyé automatiquement</p>
+              </div>
+              <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); }}>
+                <X size={24} style={{ color: '#6B7280' }} />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-6">
-              {/* Search Input */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Rechercher un utilisateur
-                </label>
-                <input
-                  type="text"
-                  placeholder="Nom ou email..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    handleSearchUsers(e.target.value);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
-                  style={{ focusRingColor: '#BF8813' }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#BF8813'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                />
+            <div className="p-6 space-y-5">
+              {/* Informations du compte */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: '#002050' }}>Informations du compte</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Nom complet *</label>
+                    <input type="text" value={newMod.full_name}
+                      onChange={e => setNewMod(p => ({ ...p, full_name: e.target.value }))}
+                      placeholder="Prénom Nom"
+                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
+                      style={{ borderColor: '#E4E7EC' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Email *</label>
+                    <input type="email" value={newMod.email}
+                      onChange={e => setNewMod(p => ({ ...p, email: e.target.value }))}
+                      placeholder="moderateur@example.com"
+                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
+                      style={{ borderColor: '#E4E7EC' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Téléphone (optionnel)</label>
+                    <input type="tel" value={newMod.phone_number}
+                      onChange={e => setNewMod(p => ({ ...p, phone_number: e.target.value }))}
+                      placeholder="+223 70 00 00 00"
+                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
+                      style={{ borderColor: '#E4E7EC' }} />
+                  </div>
+                </div>
               </div>
 
-              {/* Search Results */}
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {searchingUsers && (
-                  <div className="text-center py-4 text-gray-500">Recherche en cours...</div>
-                )}
-
-                {!searchingUsers && availableUsers.length === 0 && searchQuery && (
-                  <div className="text-center py-4 text-gray-500">Aucun utilisateur trouvé</div>
-                )}
-
-                {!searchingUsers && availableUsers.map(user => {
-                  const isAlreadyModerator = moderators.some(m => m.user_id === user.id);
-                  return (
-                    <div
-                      key={user.id}
-                      className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg border border-gray-200"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">{user.full_name}</p>
-                        <p className="text-sm text-gray-600">{user.email}</p>
+              {/* Permissions */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: '#002050' }}>Permissions initiales</h3>
+                <div className="space-y-4">
+                  {PERMISSION_SECTIONS.map(section => (
+                    <div key={section.title}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>{section.title}</p>
+                      <div className="space-y-2">
+                        {section.perms.map(perm => (
+                          <label key={perm.key} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-gray-50">
+                            <div
+                              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 cursor-pointer"
+                              style={{
+                                backgroundColor: newModPermissions[perm.key] ? '#002050' : 'white',
+                                borderColor: newModPermissions[perm.key] ? '#002050' : '#D1D5DB'
+                              }}
+                              onClick={() => setNewModPermissions(p => ({ ...p, [perm.key]: !p[perm.key] }))}>
+                              {newModPermissions[perm.key] && <Check size={12} color="white" />}
+                            </div>
+                            <span className="text-sm" style={{ color: '#374151' }}>{perm.label}</span>
+                          </label>
+                        ))}
                       </div>
-                      <button
-                        onClick={() => addModerator(user.id)}
-                        disabled={isAlreadyModerator || savingModeratorId === user.id}
-                        className="px-3 py-1 rounded font-medium text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        style={{
-                          backgroundColor: isAlreadyModerator ? '#ccc' : '#002050'
-                        }}
-                        onMouseEnter={(e) => !isAlreadyModerator && (e.currentTarget.style.backgroundColor = '#001a3a')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#002050')}
-                      >
-                        {savingModeratorId === user.id ? 'Ajout...' : isAlreadyModerator ? 'Déjà mod.' : 'Ajouter'}
-                      </button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl border text-sm font-medium"
+                  style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+                  Annuler
+                </button>
+                <button onClick={createModerator}
+                  disabled={creatingMod || !newMod.full_name.trim() || !newMod.email.trim()}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#002050' }}>
+                  {creatingMod ? '⏳ Création...' : '✅ Créer le compte'}
+                </button>
               </div>
             </div>
           </div>
