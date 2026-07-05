@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
-import { Award, Search, Download, XCircle, Eye, Filter } from 'lucide-react';
+import { Award, Search, Download, XCircle, Eye } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -11,9 +11,7 @@ export default function AdminCertificates() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
 
-  useEffect(() => {
-    loadCertificates();
-  }, []);
+  useEffect(() => { loadCertificates(); }, []);
 
   async function loadCertificates() {
     setLoading(true);
@@ -37,10 +35,7 @@ export default function AdminCertificates() {
       const token = localStorage.getItem('omnia_session_token');
       await fetch(`${SUPABASE_URL}/functions/v1/certificate-revoke`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ certificate_id: certId }),
       });
       loadCertificates();
@@ -62,8 +57,6 @@ export default function AdminCertificates() {
   return (
     <AdminLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>
@@ -75,34 +68,22 @@ export default function AdminCertificates() {
           </div>
         </div>
 
-        {/* Filtres */}
         <div className="flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-48">
-            <Search size={16} className="absolute left-3 top-3"
-              style={{ color: '#9CA3AF' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+            <Search size={16} className="absolute left-3 top-3" style={{ color: '#9CA3AF' }} />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Rechercher par étudiant, formation, ID..."
               className="w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm"
-              style={{ borderColor: '#E4E7EC' }}
-            />
+              style={{ borderColor: '#E4E7EC' }} />
           </div>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="px-3 py-2.5 border rounded-lg text-sm"
-            style={{ borderColor: '#E4E7EC' }}>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }}>
             <option value="all">Tous les statuts</option>
             <option value="active">Actif</option>
             <option value="revoked">Révoqué</option>
           </select>
-          <select
-            value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-2.5 border rounded-lg text-sm"
-            style={{ borderColor: '#E4E7EC' }}>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            className="px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }}>
             <option value="all">Tous les types</option>
             <option value="A">Template A — Professeur</option>
             <option value="B">Template B — Établissement</option>
@@ -110,7 +91,6 @@ export default function AdminCertificates() {
           </select>
         </div>
 
-        {/* Stats cards */}
         <div className="grid grid-cols-4 gap-4">
           {[
             { label: 'Total', value: certificates.length, color: '#002050' },
@@ -118,21 +98,14 @@ export default function AdminCertificates() {
             { label: 'CPD certifiés', value: certificates.filter(c => c.cpd_accredited).length, color: '#BF8813' },
             { label: 'Révoqués', value: certificates.filter(c => c.status === 'revoked').length, color: '#DC2626' },
           ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 border"
-              style={{ borderColor: '#E4E7EC' }}>
-              <div className="text-2xl font-bold" style={{ color: stat.color }}>
-                {stat.value}
-              </div>
-              <div className="text-sm mt-1" style={{ color: '#6B7280' }}>
-                {stat.label}
-              </div>
+            <div key={i} className="bg-white rounded-xl p-4 border" style={{ borderColor: '#E4E7EC' }}>
+              <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
+              <div className="text-sm mt-1" style={{ color: '#6B7280' }}>{stat.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-xl border overflow-hidden"
-          style={{ borderColor: '#E4E7EC' }}>
+        <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: '#E4E7EC' }}>
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="w-6 h-6 border-2 rounded-full animate-spin"
@@ -149,15 +122,13 @@ export default function AdminCertificates() {
                 <tr style={{ borderBottom: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
                   {['ID Certificat', 'Étudiant', 'Formation', 'Type', 'CPD', 'Date', 'Statut', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
-                      style={{ color: '#6B7280' }}>
-                      {h}
-                    </th>
+                      style={{ color: '#6B7280' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((cert, i) => (
-                  <tr key={cert.id}
+                  <tr key={cert.id || i}
                     style={{ borderBottom: i < filtered.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs" style={{ color: '#002050' }}>
@@ -177,16 +148,11 @@ export default function AdminCertificates() {
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium"
                         style={{
-                          backgroundColor: cert.template_type === 'A'
-                            ? 'rgba(0,32,80,0.08)'
-                            : cert.template_type === 'B'
-                            ? 'rgba(191,136,19,0.08)'
+                          backgroundColor: cert.template_type === 'A' ? 'rgba(0,32,80,0.08)'
+                            : cert.template_type === 'B' ? 'rgba(191,136,19,0.08)'
                             : 'rgba(30,122,82,0.08)',
-                          color: cert.template_type === 'A'
-                            ? '#002050'
-                            : cert.template_type === 'B'
-                            ? '#BF8813'
-                            : '#1E7A52'
+                          color: cert.template_type === 'A' ? '#002050'
+                            : cert.template_type === 'B' ? '#BF8813' : '#1E7A52'
                         }}>
                         Template {cert.template_type || 'A'}
                       </span>
@@ -199,45 +165,32 @@ export default function AdminCertificates() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs" style={{ color: '#6B7280' }}>
-                        {cert.issued_at
-                          ? new Date(cert.issued_at).toLocaleDateString('fr-FR')
-                          : '—'}
+                        {cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('fr-FR') : '—'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        cert.status === 'revoked'
-                          ? 'bg-red-50 text-red-600'
-                          : 'bg-green-50 text-green-700'
+                        cert.status === 'revoked' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
                       }`}>
                         {cert.status === 'revoked' ? 'Révoqué' : 'Actif'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                          href={`/verify/${cert.omnia_certificate_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 rounded hover:bg-gray-100"
-                          title="Vérifier">
+                        <a href={`/verify/${cert.omnia_certificate_id}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-gray-100" title="Vérifier">
                           <Eye size={14} style={{ color: '#6B7280' }} />
                         </a>
-                       {cert.pdf_url && (
-                          
-                            href={cert.pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 rounded hover:bg-gray-100"
-                            title="Télécharger PDF">
+                        {cert.pdf_url ? (
+                          <a href={cert.pdf_url} target="_blank" rel="noopener noreferrer"
+                            className="p-1.5 rounded hover:bg-gray-100" title="Télécharger PDF">
                             <Download size={14} style={{ color: '#6B7280' }} />
                           </a>
-                        )}
-                        )}
+                        ) : null}
                         {cert.status !== 'revoked' && (
-                          <button
-                            onClick={() => revokeCertificate(cert.omnia_certificate_id)}
-                            className="p-1.5 rounded hover:bg-red-50"
-                            title="Révoquer">
+                          <button onClick={() => revokeCertificate(cert.omnia_certificate_id)}
+                            className="p-1.5 rounded hover:bg-red-50" title="Révoquer">
                             <XCircle size={14} style={{ color: '#DC2626' }} />
                           </button>
                         )}
