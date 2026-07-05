@@ -170,7 +170,14 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Niveau</span><span style="font-size:13px;font-weight:700;color:#002050">${d.course_level}</span></div>
     <div style="width:1px;height:40px;background:#E4E7EC"></div>
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Catégorie</span><span style="font-size:13px;font-weight:700;color:#002050">${d.course_category}</span></div>
-  </div>
+  </div>${d.external_accreditation_logo ? `
+  <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;border:1px solid #E4E7EC;border-radius:8px;margin-bottom:8px">
+    <img src="${d.external_accreditation_logo}" style="height:32px;object-fit:contain" alt="Accréditation"/>
+    <div>
+      <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Accréditation</div>
+      <div style="font-size:12px;font-weight:700;color:#002050">${d.external_accreditation_number || ""}</div>
+    </div>
+  </div>` : ""}
   <div class="footer">
     <div class="sig-block"><div class="sig-line"></div><div class="sig-name">${d.director_name || "Le Directeur"}</div><div class="sig-title">${d.establishment_name}</div></div>
     <div class="qr-block">${qrSvg}<div class="cert-id">${d.omnia_certificate_id}</div><div style="font-size:8px;color:#6B7280">Vérifier l'authenticité</div><div style="font-size:9px;color:#6B7280">${certDate}</div></div>
@@ -179,7 +186,100 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
 </div>
 </body></html>`;
 }
-
+function buildTemplateC(d: Record<string, unknown>, qrSvg: string): string {
+  const certDate = new Date(d.issued_at as string).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.border-outer{position:absolute;inset:12px;border:3px solid #002050;border-radius:8px}
+.border-inner{position:absolute;inset:18px;border:1px solid rgba(0,32,80,.2);border-radius:6px}
+.content{position:absolute;inset:40px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 60px}
+.header{display:flex;align-items:center;justify-content:center;width:100%;border-bottom:2px solid #002050;padding-bottom:16px;gap:16px}
+.brand-name{font-size:22px;font-weight:900;color:#002050;letter-spacing:.1em}
+.brand-sub{font-size:9px;font-weight:600;color:#BF8813;letter-spacing:.2em}
+.cert-title{font-size:13px;font-weight:600;color:#BF8813;letter-spacing:.25em;text-transform:uppercase;border-bottom:1px solid #BF8813;padding-bottom:8px}
+.student-name{font-size:40px;font-weight:900;color:#002050;text-align:center;line-height:1.1}
+.course-name{font-weight:700;color:#002050;font-size:18px}
+.platform-mention{font-size:13px;color:#6B7280;font-style:italic;text-align:center;margin-top:8px}
+.footer{display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding-top:14px;border-top:1px solid #E4E7EC}
+.sig-block{display:flex;flex-direction:column;align-items:center;gap:4px}
+.sig-line{width:140px;height:1px;background:#002050}
+.sig-name{font-size:11px;font-weight:600;color:#002050}
+.sig-title{font-size:10px;color:#6B7280}
+.qr-block{display:flex;flex-direction:column;align-items:center;gap:3px}
+.cert-id{font-size:8px;font-family:monospace;color:#9CA3AF;letter-spacing:.08em}
+.cpd-badge{display:flex;align-items:center;gap:8px;padding:6px 14px;border:2px solid #BF8813;border-radius:24px;background:rgba(191,136,19,.05)}
+.cpd-text{font-size:11px;font-weight:700;color:#BF8813;letter-spacing:.08em}
+</style>
+</head>
+<body>
+<div class="border-outer"></div>
+<div class="border-inner"></div>
+<div class="content">
+  <div class="header">
+    <div style="text-align:center">
+      <div class="brand-name">OMNIA</div>
+      <div class="brand-sub">GLOBAL ACADEMY</div>
+    </div>
+    ${d.cpd_accredited ? `<div class="cpd-badge">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="#BF8813" stroke-width="2"/>
+        <path d="M8 12l3 3 5-5" stroke="#BF8813" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="cpd-text">CPD CERTIFIED</span>
+    </div>
+    <div style="font-size:9px;color:#6B7280;text-align:center;margin-top:4px">
+      ${d.cpd_hours}h · ${d.cpd_provider_code || "Omnia CPD"}
+    </div>` : ""}
+  </div>
+  <div style="text-align:center">
+    <div class="cert-title">CERTIFICAT DE RÉUSSITE</div>
+    <div style="margin:14px 0 8px;font-size:13px;color:#6B7280">Ce certificat est décerné à</div>
+    <div class="student-name">${d.student_full_name}</div>
+  </div>
+  <div style="font-size:15px;color:#374151;text-align:center;line-height:1.6;max-width:700px">
+    pour avoir complété avec succès la formation<br/>
+    <span class="course-name">${d.course_title}</span>
+  </div>
+  <div class="platform-mention">Formation certifiée par Omnia Global Academy</div>
+  <div style="display:flex;gap:24px;align-items:center">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Niveau</span>
+      <span style="font-size:13px;font-weight:700;color:#002050">${d.course_level}</span>
+    </div>
+    <div style="width:1px;height:40px;background:#E4E7EC"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Catégorie</span>
+      <span style="font-size:13px;font-weight:700;color:#002050">${d.course_category}</span>
+    </div>
+    ${d.cpd_hours ? `<div style="width:1px;height:40px;background:#E4E7EC"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Durée CPD</span>
+      <span style="font-size:13px;font-weight:700;color:#002050">${d.cpd_hours} heures</span>
+    </div>` : ""}
+  </div>
+  <div class="footer">
+    <div style="width:140px"></div>
+    <div class="qr-block">
+      ${qrSvg}
+      <div class="cert-id">${d.omnia_certificate_id}</div>
+      <div style="font-size:8px;color:#6B7280">Vérifier l'authenticité</div>
+      <div style="font-size:9px;color:#6B7280">${certDate}</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">Administration</div>
+      <div class="sig-title">Omnia Global Academy</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+}
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -220,6 +320,7 @@ Deno.serve(async (req: Request) => {
     if (!user || !course) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const isTemplateB = !!course.establishment_id;
+const isTemplateC = course.creator_type === 'plateforme' && !course.establishment_id;
     const certId = await generateUniqueCertId(sb);
     const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
     const verifyUrl = `${appUrl}/verify/${certId}`;
@@ -249,11 +350,18 @@ Deno.serve(async (req: Request) => {
       establishment_name: establishmentName,
       establishment_logo_url: establishmentLogoUrl,
       director_name: directorName,
+      external_accreditation_logo: course.external_accreditation_logo || null,
+external_accreditation_number: course.external_accreditation_number || null,
+creator_type: course.creator_type || 'professeur',
       issued_at: new Date().toISOString(),
     };
 
     const qrSvgStr = await generateQrSvg(verifyUrl);
-    const html = isTemplateB ? buildTemplateB(certData, qrSvgStr) : buildTemplateA(certData, qrSvgStr);
+    const htmlContent = isTemplateC 
+  ? buildTemplateC(certData, qrSvg)
+  : isTemplateB 
+    ? buildTemplateB(certData, qrSvg) 
+    : buildTemplateA(certData, qrSvg);
 
     // Upload HTML to Supabase Storage
     const filename = `certificates/${user_id}/${certId}.html`;
