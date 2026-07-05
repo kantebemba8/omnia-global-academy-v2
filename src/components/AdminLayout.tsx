@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { DashboardLayout } from './DashboardLayout';
 import {
  LayoutDashboard, Settings, CreditCard, Wallet, Tag, 
-  BookOpen, Users, Monitor, Award, Eye
+  BookOpen, Users, Monitor, Award, Eye, MessageSquare
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -18,6 +18,7 @@ const ADMIN_NAV = [
   { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
   { path: '/admin/certificate-preview', label: 'Aperçu Certificats', icon: Eye },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
+ { path: '/admin/forum', label: 'Forum & Modération', icon: MessageSquare },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
