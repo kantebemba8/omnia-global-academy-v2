@@ -2,10 +2,21 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const PACKS = [
-  { id: "pack_3", tokens: 3, price_xof: 500,  label: "3 jetons" },
-  { id: "pack_5", tokens: 5, price_xof: 1000, label: "5 jetons" },
-];
+async function getPacks(sb: ReturnType<typeof createClient>) {
+  const { data } = await sb.from("site_settings")
+    .select("value").eq("key", "cv_token_packs").maybeSingle();
+  if (data?.value) {
+    try {
+      const packs = JSON.parse(data.value);
+      if (Array.isArray(packs) && packs.length > 0) return packs;
+    } catch (_) {}
+  }
+  // Packs par défaut si non configurés
+  return [
+    { id: "pack_3", tokens: 3, price_xof: 500,  label: "3 jetons", popular: false },
+    { id: "pack_5", tokens: 5, price_xof: 1000, label: "5 jetons", popular: true },
+  ];
+}
 
 async function verifySession(sb: ReturnType<typeof createClient>, token: string) {
   const { data: sess } = await sb.from("user_sessions").select("user_id")
@@ -43,7 +54,8 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { pack_id } = body;
 
-    const pack = PACKS.find(p => p.id === pack_id);
+   const PACKS = await getPacks(sb);
+    const pack = PACKS.find((p: any) => p.id === pack_id);
     if (!pack) return new Response(JSON.stringify({ error: "INVALID_PACK" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const orderNum = generateOrderNumber();
