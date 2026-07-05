@@ -1238,9 +1238,9 @@ async function buyTokens(packId: string) {
               <span className="text-xs" style={{ color: '#6B7280' }}>jeton(s)</span>
             </div>
             <button onClick={() => setShowBuyTokens(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold border"
-              style={{ borderColor: '#BF8813', color: '#BF8813', backgroundColor: 'rgba(191,136,19,0.05)' }}>
-              <Plus size={16} /> Acheter
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold"
+              style={{ backgroundColor: '#BF8813', color: 'white', border: 'none' }}>
+              <Coins size={16} /> Acheter des jetons
             </button>
             <button onClick={openNewCv} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white" style={{ backgroundColor: '#002050' }}>
               <Plus size={18} /> Nouveau CV
