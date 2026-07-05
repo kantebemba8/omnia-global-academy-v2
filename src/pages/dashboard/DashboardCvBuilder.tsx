@@ -1339,16 +1339,6 @@ async function downloadPdfById(cvId: string) {
     }
     if (currentCvId) await downloadPdfById(currentCvId);
   }
-      // Télécharger le PDF binaire
-      const pdfBlob = await res.blob();
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `cv-omnia-${Date.now()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
 
       // Mettre à jour les jetons depuis les headers — sans refresh
       const tokensRemaining = parseInt(res.headers.get('X-Tokens-Remaining') || String(tokens));
