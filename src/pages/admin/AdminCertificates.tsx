@@ -223,7 +223,7 @@ export default function AdminCertificates() {
                           title="Vérifier">
                           <Eye size={14} style={{ color: '#6B7280' }} />
                         </a>
-                        {cert.pdf_url && (
+                       {cert.pdf_url && (
                           
                             href={cert.pdf_url}
                             target="_blank"
