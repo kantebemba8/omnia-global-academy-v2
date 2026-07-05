@@ -968,8 +968,10 @@ export default function DashboardCvBuilder() {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [showAi, setShowAi] = useState(false);
+ const [showAi, setShowAi] = useState(false);
   const [toast, setToast] = useState('');
+  const [showBuyTokens, setShowBuyTokens] = useState(false);
+  const [buyingTokens, setBuyingTokens] = useState(false);
   const [aiResult, setAiResult] = useState('');
 
   const TOTAL_STEPS = 5;
@@ -980,7 +982,16 @@ export default function DashboardCvBuilder() {
     setTimeout(() => setToast(''), 3000);
   }
 
-  useEffect(() => { loadData(); }, []);
+ useEffect(() => {
+    loadData();
+    // Détecter retour FedaPay après achat jetons
+    const params = new URLSearchParams(window.location.search);
+    const purchased = params.get('tokens_purchased');
+    if (purchased) {
+      showToast(`✅ ${purchased} jeton(s) crédité(s) sur votre compte !`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   async function loadData() {
     setLoading(true);
@@ -1085,7 +1096,27 @@ export default function DashboardCvBuilder() {
     }
     if (currentCvId) await downloadPdfById(currentCvId);
   }
-
+async function buyTokens(packId: string) {
+    setBuyingTokens(true);
+    try {
+      const token = localStorage.getItem('omnia_session_token');
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cv-tokens-checkout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pack_id: packId }),
+      });
+      const data = await res.json();
+      if (data.payment_url) {
+        window.location.href = data.payment_url;
+      } else {
+        showToast('❌ Erreur lors de l\'initialisation du paiement.');
+      }
+    } catch {
+      showToast('❌ Erreur réseau.');
+    } finally {
+      setBuyingTokens(false);
+    }
+  }
   async function deleteCv(cvId: string) {
     if (!confirm('Supprimer ce CV ?')) return;
     const token = localStorage.getItem('omnia_session_token');
@@ -1133,9 +1164,52 @@ export default function DashboardCvBuilder() {
   }
 
   // ── LIST VIEW ─────────────────────────────────────────────
-  if (view === 'list') {
+ if (view === 'list') {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-6">
+        {/* Modal achat jetons */}
+        {showBuyTokens && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="text-lg font-bold" style={{ color: '#002050' }}>Acheter des jetons CV</h3>
+                  <p className="text-xs mt-1" style={{ color: '#6B7280' }}>1 jeton = 1 téléchargement PDF</p>
+                </div>
+                <button onClick={() => setShowBuyTokens(false)}>
+                  <X size={20} style={{ color: '#6B7280' }} />
+                </button>
+              </div>
+              <div className="space-y-3 mb-5">
+                {[
+                  { id: 'pack_3', tokens: 3, price: '500 FCFA', popular: false },
+                  { id: 'pack_5', tokens: 5, price: '1 000 FCFA', popular: true },
+                ].map(pack => (
+                  <button key={pack.id} onClick={() => buyTokens(pack.id)} disabled={buyingTokens}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all disabled:opacity-50 hover:border-[#BF8813]"
+                    style={{ borderColor: pack.popular ? '#BF8813' : '#E4E7EC', backgroundColor: pack.popular ? 'rgba(191,136,19,0.04)' : 'white' }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(0,32,80,0.08)' }}>
+                        <Coins size={20} style={{ color: '#BF8813' }} />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-bold" style={{ color: '#002050' }}>{pack.tokens} jetons</div>
+                        {pack.popular && <div className="text-xs font-semibold" style={{ color: '#BF8813' }}>⭐ Meilleure valeur</div>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold" style={{ color: '#002050' }}>{pack.price}</div>
+                      <div className="text-xs" style={{ color: '#6B7280' }}>{Math.round(parseInt(pack.price) / pack.tokens)} FCFA/jeton</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-center" style={{ color: '#9CA3AF' }}>
+                Paiement sécurisé via FedaPay · Mobile Money & Carte
+              </p>
+            </div>
+          </div>
+        )}
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg" style={{ backgroundColor: '#002050' }}>
             {toast}
@@ -1150,11 +1224,17 @@ export default function DashboardCvBuilder() {
             <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Créez des CV professionnels avec l'aide de l'intelligence artificielle</p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl border" style={{ borderColor: '#BF8813', backgroundColor: 'rgba(191,136,19,0.05)' }}>
+           <div className="flex items-center gap-2 px-4 py-2 rounded-xl border"
+              style={{ borderColor: '#BF8813', backgroundColor: 'rgba(191,136,19,0.05)' }}>
               <Coins size={16} style={{ color: '#BF8813' }} />
               <span className="font-bold" style={{ color: '#BF8813' }}>{tokens}</span>
               <span className="text-xs" style={{ color: '#6B7280' }}>jeton(s)</span>
             </div>
+            <button onClick={() => setShowBuyTokens(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold border"
+              style={{ borderColor: '#BF8813', color: '#BF8813', backgroundColor: 'rgba(191,136,19,0.05)' }}>
+              <Plus size={16} /> Acheter
+            </button>
             <button onClick={openNewCv} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white" style={{ backgroundColor: '#002050' }}>
               <Plus size={18} /> Nouveau CV
             </button>
