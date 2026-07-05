@@ -912,7 +912,8 @@ export default function AdminCMS() {
                     <h4 className="text-sm font-semibold text-gray-700">Packs de jetons achetables</h4>
                     <button
                       onClick={() => {
-                        const packs = JSON.parse(settings['cv_token_packs'] || '[]');
+                       const defaultPacks = [{"id":"pack_3","tokens":3,"price_xof":500,"label":"3 jetons","popular":false},{"id":"pack_5","tokens":5,"price_xof":1000,"label":"5 jetons","popular":true}];
+                        const packs = JSON.parse(settings['cv_token_packs'] || JSON.stringify(defaultPacks));
                         packs.push({ id: `pack_${Date.now()}`, tokens: 3, price_xof: 500, label: 'Nouveau pack', popular: false });
                         set('cv_token_packs', JSON.stringify(packs));
                       }}
