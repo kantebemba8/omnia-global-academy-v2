@@ -5,7 +5,7 @@ import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   Save, Settings, Eye, EyeOff, Plus, Trash2, AlertTriangle, Send, Mail,
   MessageSquare, Clock, Bot, Image, Captions, ToggleLeft, ToggleRight,
-  Users, BarChart2, MapPin, TrendingUp,
+  Users, BarChart2, MapPin, TrendingUp, Coins, X,
 } from 'lucide-react';
 
 type Settings = Record<string, string>;
@@ -874,27 +874,122 @@ export default function AdminCMS() {
                 </div>
               </div>
 
-              {/* CV Builder IA */}
+             {/* CV Builder IA */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-5 h-5" style={{ color: '#002050' }} />
-                  <h3 className="font-bold" style={{ color: '#002050' }}>CV Builder IA</h3>
+                  <Coins className="w-5 h-5" style={{ color: '#002050' }} />
+                  <h3 className="font-bold" style={{ color: '#002050' }}>CV Builder IA — Jetons & Packs</h3>
                 </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Jetons offerts à l'inscription</label>
-                    <input type="number" min="0" value={settings['ai_tokens_on_register'] || '3'}
-                      onChange={e => set('ai_tokens_on_register', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Jetons par parrainage</label>
-                    <input type="number" min="0" value={settings['ai_tokens_per_referral'] || '2'}
-                      onChange={e => set('ai_tokens_per_referral', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
+
+                {/* Jetons automatiques */}
+                <div className="p-4 rounded-xl border border-gray-200 mb-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Jetons offerts automatiquement</h4>
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">À l'inscription</label>
+                      <input type="number" min="0" value={settings['cv_tokens_inscription'] || '1'}
+                        onChange={e => set('cv_tokens_inscription', e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Par formation achetée</label>
+                      <input type="number" min="0" value={settings['cv_tokens_per_purchase'] || '1'}
+                        onChange={e => set('cv_tokens_per_purchase', e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Par parrainage</label>
+                      <input type="number" min="0" value={settings['cv_tokens_per_referral'] || '1'}
+                        onChange={e => set('cv_tokens_per_referral', e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
+                    </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Note : configurable uniquement ici — jamais codé en dur dans le code.</p>
+
+                {/* Packs achetables */}
+                <div className="p-4 rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-700">Packs de jetons achetables</h4>
+                    <button
+                      onClick={() => {
+                        const packs = JSON.parse(settings['cv_token_packs'] || '[]');
+                        packs.push({ id: `pack_${Date.now()}`, tokens: 3, price_xof: 500, label: 'Nouveau pack', popular: false });
+                        set('cv_token_packs', JSON.stringify(packs));
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                      style={{ backgroundColor: '#002050' }}>
+                      <Plus size={13} /> Ajouter un pack
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const packs = JSON.parse(settings['cv_token_packs'] || '[{"id":"pack_3","tokens":3,"price_xof":500,"label":"3 jetons","popular":false},{"id":"pack_5","tokens":5,"price_xof":1000,"label":"5 jetons","popular":true}]');
+                    return (
+                      <div className="space-y-3">
+                        {packs.map((pack: any, idx: number) => (
+                          <div key={pack.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
+                            <div className="flex-1 grid grid-cols-4 gap-3">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Label</label>
+                                <input type="text" value={pack.label}
+                                  onChange={e => {
+                                    const updated = [...packs];
+                                    updated[idx] = { ...pack, label: e.target.value };
+                                    set('cv_token_packs', JSON.stringify(updated));
+                                  }}
+                                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Jetons</label>
+                                <input type="number" min="1" value={pack.tokens}
+                                  onChange={e => {
+                                    const updated = [...packs];
+                                    updated[idx] = { ...pack, tokens: parseInt(e.target.value) };
+                                    set('cv_token_packs', JSON.stringify(updated));
+                                  }}
+                                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Prix (FCFA)</label>
+                                <input type="number" min="0" step="100" value={pack.price_xof}
+                                  onChange={e => {
+                                    const updated = [...packs];
+                                    updated[idx] = { ...pack, price_xof: parseInt(e.target.value) };
+                                    set('cv_token_packs', JSON.stringify(updated));
+                                  }}
+                                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1" />
+                              </div>
+                              <div className="flex items-end gap-2">
+                                <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5 cursor-pointer">
+                                  <input type="checkbox" checked={pack.popular}
+                                    onChange={e => {
+                                      const updated = [...packs];
+                                      updated[idx] = { ...pack, popular: e.target.checked };
+                                      set('cv_token_packs', JSON.stringify(updated));
+                                    }}
+                                    style={{ accentColor: '#BF8813' }} />
+                                  Populaire
+                                </label>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const updated = packs.filter((_: any, i: number) => i !== idx);
+                                set('cv_token_packs', JSON.stringify(updated));
+                              }}
+                              className="flex-shrink-0 p-1 rounded hover:bg-red-50">
+                              <X size={14} className="text-red-400" />
+                            </button>
+                          </div>
+                        ))}
+                        {packs.length === 0 && (
+                          <p className="text-xs text-gray-400 text-center py-4">Aucun pack configuré — cliquez sur "Ajouter un pack"</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <p className="text-xs text-gray-400 mt-3">Ces packs apparaissent dans la modal d'achat sur la page CV Builder.</p>
+                </div>
               </div>
 
               {/* DALL-E Couvertures */}
