@@ -1,8 +1,8 @@
 import { ReactNode } from 'react';
 import { DashboardLayout } from './DashboardLayout';
 import {
-  LayoutDashboard, Settings, CreditCard, Wallet, Tag, 
-  BookOpen, Users, Monitor, Award
+ LayoutDashboard, Settings, CreditCard, Wallet, Tag, 
+  BookOpen, Users, Monitor, Award, Eye
 } from 'lucide-react';
 
 const ADMIN_NAV = [
