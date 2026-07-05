@@ -215,7 +215,6 @@ export default function AdminCertificates() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        
                           href={`/verify/${cert.omnia_certificate_id}`}
                           target="_blank"
                           rel="noopener noreferrer"
