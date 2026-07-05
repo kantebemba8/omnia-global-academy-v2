@@ -13,15 +13,6 @@ function json(d: unknown, s = 200) {
   });
 }
 
-async function sha256(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 function buildCvHtml(cvData: any, template: string, withPhoto: boolean): string {
   const d = cvData;
   const colors: Record<string, { primary: string; accent: string; sidebar: string }> = {
@@ -38,7 +29,6 @@ function buildCvHtml(cvData: any, template: string, withPhoto: boolean): string 
   const c = colors[template] || colors.classique;
   const isAts = template === 'moderne_ats';
   const isDark = template === 'it_digital';
-  const isTwoCol = ['classique', 'etudiant', 'international', 'qse', 'it_digital', 'business', 'formateur'].includes(template);
 
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }) : '';
 
@@ -208,7 +198,7 @@ function buildCvHtml(cvData: any, template: string, withPhoto: boolean): string 
         ${withPhoto && !d.photo_url ? `
         <div style="text-align:center;margin-bottom:20px">
           <div style="width:80px;height:80px;border-radius:50%;background:${c.primary};display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:white">
-            ${(d.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2)}
+            ${(d.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
           </div>
         </div>` : ''}
         ${sidebarContent}
@@ -270,16 +260,20 @@ Deno.serve(async (req) => {
 
   if (!cv) return json({ error: "CV non trouvé" }, 404);
 
+  // Générer le HTML
+  const html = buildCvHtml(cv.cv_data, cv.template_id, cv.with_photo);
+
   // Mode aperçu — gratuit, retourne juste le HTML
   if (preview_only) {
-    const html = buildCvHtml(cv.cv_data, cv.template_id, cv.with_photo);
     return new Response(html, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
-  // Mode téléchargement PDF — vérifie les jetons
+  // ── MODE TÉLÉCHARGEMENT PDF ──
+
+  // Vérifier les jetons
   const { data: user } = await sb
     .from("users")
     .select("cv_tokens")
@@ -289,8 +283,11 @@ Deno.serve(async (req) => {
   const currentTokens = user?.cv_tokens ?? 0;
 
   // Vérifier si le contenu a changé depuis le dernier téléchargement
-  const contentUnchanged = cv.content_hash && cv.last_pdf_hash && 
-    cv.content_hash === cv.last_pdf_hash;
+  const contentUnchanged = !!(
+    cv.content_hash &&
+    cv.last_pdf_hash &&
+    cv.content_hash === cv.last_pdf_hash
+  );
 
   if (!contentUnchanged && currentTokens < 1) {
     return json({
@@ -300,65 +297,53 @@ Deno.serve(async (req) => {
     }, 402);
   }
 
-  // Générer le HTML
-  const html = buildCvHtml(cv.cv_data, cv.template_id, cv.with_photo);
-
-  // Générer PDF via API externe (HTML to PDF)
-  let pdfUrl = cv.last_pdf_url;
+  // Appel à html2pdf.app pour obtenir le PDF binaire
+  const apiKey = Deno.env.get("HTML2PDF_API_KEY") ?? "";
   
-  try {
-    const pdfResp = await fetch("https://api.html2pdf.app/v1/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        html,
-        apiKey: Deno.env.get("HTML2PDF_API_KEY") || "",
-        format: "A4",
-        landscape: false,
-        margin: { top: 0, right: 0, bottom: 0, left: 0 },
-        scale: 1,
-      }),
-    });
+  const pdfResp = await fetch("https://api.html2pdf.app/v1/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      html,
+      apiKey,
+      format: "A4",
+      landscape: false,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      scale: 1,
+    }),
+  });
 
-    if (pdfResp.ok) {
-      const pdfBuffer = await pdfResp.arrayBuffer();
-      const r2Key = `cvs/${sess.user_id}/${cv_id}_${Date.now()}.pdf`;
-      const r2AccountId = Deno.env.get("CF_ACCOUNT_ID") ?? "";
-      const r2Bucket = Deno.env.get("CF_R2_BUCKET") ?? "";
-      
-      await fetch(
-        `https://${r2AccountId}.r2.cloudflarestorage.com/${r2Bucket}/${r2Key}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/pdf" },
-          body: pdfBuffer,
-        }
-      );
-      pdfUrl = `https://pub-${r2AccountId}.r2.dev/${r2Key}`;
-    }
-  } catch (err) {
-    console.error("PDF generation error:", err);
+  if (!pdfResp.ok) {
+    const errText = await pdfResp.text();
+    console.error("html2pdf.app error:", pdfResp.status, errText);
+    return json({ error: "PDF_GENERATION_FAILED", detail: errText }, 500);
   }
 
-  // Consommer 1 jeton si contenu changé
+  // Récupérer le PDF en binaire
+  const pdfBuffer = await pdfResp.arrayBuffer();
+
+  // Consommer 1 jeton si le contenu a changé
   if (!contentUnchanged) {
     await sb.from("users")
       .update({ cv_tokens: Math.max(0, currentTokens - 1) })
       .eq("id", sess.user_id);
   }
 
-  // Mettre à jour le CV avec le hash du dernier téléchargement
+  // Mettre à jour le hash du dernier téléchargement
   await sb.from("cv_profiles").update({
-    last_pdf_url: pdfUrl,
     last_pdf_hash: cv.content_hash,
     updated_at: new Date().toISOString(),
   }).eq("id", cv_id);
 
-  return json({
-    success: true,
-    pdf_url: pdfUrl,
-    tokens_remaining: contentUnchanged ? currentTokens : Math.max(0, currentTokens - 1),
-    token_consumed: !contentUnchanged,
-    html,
+  // ✅ Retourner le PDF directement au navigateur (pas de R2)
+  return new Response(pdfBuffer, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="cv-omnia.pdf"`,
+      "X-Tokens-Remaining": String(contentUnchanged ? currentTokens : Math.max(0, currentTokens - 1)),
+      "X-Token-Consumed": contentUnchanged ? "false" : "true",
+    },
   });
 });
