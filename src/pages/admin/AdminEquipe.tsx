@@ -19,12 +19,6 @@ interface ModeratorPermissions {
   permissions: Record<string, boolean>;
 }
 
-interface User {
-  id: string;
-  full_name: string;
-  email: string;
-}
-
 interface ActionRequest {
   id: string;
   action_type: string;
@@ -74,6 +68,9 @@ const PERMISSION_SECTIONS: PermissionSection[] = [
   },
 ];
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
 export default function AdminEquipe() {
   const [moderators, setModerators] = useState<ModeratorPermissions[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,253 +87,47 @@ export default function AdminEquipe() {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
-  // Fetch moderators list
-  useEffect(() => {
-    const fetchModerators = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const token = localStorage.getItem('omnia_session_token');
+  const token = () => localStorage.getItem('omnia_session_token') || '';
 
-       const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`,
-          {
-            headers: { 'Authorization': `Bearer ${token}` }
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Impossible de charger les modérateurs`);
-        }
-
-        const data = await response.json();
-        const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map((item: any) => ({
-          user_id: item.id,
-          full_name: item.full_name || 'Inconnu',
-          email: item.email || 'N/A',
-          permissions: item.permissions || {}
-        }));
-        setModerators(moderatorsData);
-
-        // Initialize local permissions state
-        const initialPermissions: Record<string, Record<string, boolean>> = {};
-        moderatorsData.forEach(mod => {
-          initialPermissions[mod.user_id] = { ...mod.permissions };
-        });
-        setLocalPermissions(initialPermissions);
-      } catch (err) {
-        console.error('Error fetching moderators:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load moderators');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchModerators();
-  }, []);
-
-  // Toggle permission
-  const togglePermission = (userId: string, permKey: string) => {
-    setLocalPermissions(prev => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        [permKey]: !prev[userId]?.[permKey]
-      }
-    }));
-  };
-
-  // Toggle section expansion
-  const toggleModeratorExpanded = (userId: string) => {
-    setExpandedModerators(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
-  };
-
-  // Save permissions
-  const savePermissions = async (userId: string) => {
+  // ── Charger la liste des modérateurs ─────────────────────
+  const fetchModerators = async () => {
     try {
-      setSavingModeratorId(userId);
-      const token = localStorage.getItem('omnia_session_token');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-update`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            permissions: localPermissions[userId]
-          })
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to save permissions: ${response.statusText}`);
-      }
-
-      // Update the moderators list with new permissions
-      setModerators(prev =>
-        prev.map(mod =>
-          mod.user_id === userId
-            ? { ...mod, permissions: localPermissions[userId] }
-            : mod
-        )
-      );
-
-      setSuccessMessage(`Permissions de ${moderators.find(m => m.user_id === userId)?.full_name} mises à jour`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      console.error('Error saving permissions:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save permissions');
-    } finally {
-      setSavingModeratorId(null);
-    }
-  };
-
-  // Delete moderator
-  const deleteModerator = async (userId: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir révoquer les permissions de ce modérateur ?')) return;
-
-    try {
-      const token = localStorage.getItem('omnia_session_token');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-delete`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ user_id: userId })
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete moderator: ${response.statusText}`);
-      }
-
-      setModerators(prev => prev.filter(m => m.user_id !== userId));
-      setLocalPermissions(prev => {
-        const updated = { ...prev };
-        delete updated[userId];
-        return updated;
+      setLoading(true);
+      setError(null);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+        headers: { 'Authorization': `Bearer ${token()}` }
       });
-
-      setSuccessMessage('Modérateur révoqué');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      console.error('Error deleting moderator:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete moderator');
-    }
-  };
-  
-  // Créer un nouveau modérateur
-  const createModerator = async () => {
-    if (!newMod.full_name.trim() || !newMod.email.trim()) return;
-    setCreatingMod(true);
-    try {
-      const token = localStorage.getItem('omnia_session_token');
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            full_name: newMod.full_name.trim(),
-            email: newMod.email.trim(),
-            phone_number: newMod.phone_number.trim() || undefined,
-            permissions: newModPermissions,
-          })
-        }
-      );
-      const data = await response.json();
-      if (data.error === 'EMAIL_TAKEN') {
-        setError('Cet email est déjà utilisé.');
-        return;
-      }
-      if (!response.ok) throw new Error('Échec de la création');
-
-      setSuccessMessage(`✅ Compte modérateur créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
-      setTimeout(() => setSuccessMessage(null), 6000);
-      setShowAddModal(false);
-      setNewMod({ full_name: '', email: '', phone_number: '' });
-      setNewModPermissions({});
-
-      // Recharger la liste
-      const fetchModerators = async () => {
-        const token = localStorage.getItem('omnia_session_token');
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderator-create`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const d = await res.json();
-        const moderatorsData: ModeratorPermissions[] = (d.moderators || []).map((item: any) => ({
-          user_id: item.id,
-          full_name: item.full_name || 'Inconnu',
-          email: item.email || 'N/A',
-          permissions: item.permissions || {}
-        }));
-        setModerators(moderatorsData);
-        const initialPermissions: Record<string, Record<string, boolean>> = {};
-        moderatorsData.forEach(mod => { initialPermissions[mod.user_id] = { ...mod.permissions }; });
-        setLocalPermissions(initialPermissions);
-      };
-      fetchModerators();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création');
-    } finally {
-      setCreatingMod(false);
-    }
-  };
-      // Add to list
-      const newModerator: ModeratorPermissions = {
-        user_id: userId,
-        full_name: selectedUser?.full_name || 'Unknown',
-        email: selectedUser?.email || 'N/A',
-        permissions: {}
-      };
-
-      setModerators(prev => [...prev, newModerator]);
-      setLocalPermissions(prev => ({
-        ...prev,
-        [userId]: {}
+      if (!res.ok) throw new Error('Impossible de charger les modérateurs');
+      const data = await res.json();
+      const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map((item: any) => ({
+        user_id: item.id,
+        full_name: item.full_name || 'Inconnu',
+        email: item.email || 'N/A',
+        permissions: item.permissions || {}
       }));
-
-      setShowAddModal(false);
-      setSearchQuery('');
-      setAvailableUsers([]);
-      setSuccessMessage(`${selectedUser?.full_name || 'User'} ajouté en tant que modérateur`);
-      setTimeout(() => setSuccessMessage(null), 3000);
+      setModerators(moderatorsData);
+      const initialPermissions: Record<string, Record<string, boolean>> = {};
+      moderatorsData.forEach(mod => { initialPermissions[mod.user_id] = { ...mod.permissions }; });
+      setLocalPermissions(initialPermissions);
     } catch (err) {
-      console.error('Error adding moderator:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add moderator');
+      setError(err instanceof Error ? err.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Fetch pending action requests
+  useEffect(() => { fetchModerators(); }, []);
+
+  // ── Charger les demandes en attente ──────────────────────
   useEffect(() => {
     const fetchRequests = async () => {
       try {
         setRequestsLoading(true);
-        const token = localStorage.getItem('omnia_session_token');
         const res = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_action_requests?status=eq.pending&select=id,action_type,reason,status,created_at,moderator:moderator_id(full_name,email),target_user:target_user_id(full_name,email)&order=created_at.desc`,
-          {
-            headers: {
-              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-              Authorization: `Bearer ${token}`,
-            },
-          }
+          `${SUPABASE_URL}/rest/v1/moderator_action_requests?status=eq.pending&select=id,action_type,reason,status,created_at,moderator:moderator_id(full_name,email),target_user:target_user_id(full_name,email)&order=created_at.desc`,
+          { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token()}` } }
         );
-        if (res.ok) {
-          const data = await res.json();
-          setActionRequests(data || []);
-        }
+        if (res.ok) setActionRequests(await res.json() || []);
       } catch (err) {
         console.error('Error fetching action requests:', err);
       } finally {
@@ -346,56 +137,113 @@ export default function AdminEquipe() {
     fetchRequests();
   }, []);
 
+  // ── Toggle permission ─────────────────────────────────────
+  const togglePermission = (userId: string, permKey: string) => {
+    setLocalPermissions(prev => ({
+      ...prev,
+      [userId]: { ...prev[userId], [permKey]: !prev[userId]?.[permKey] }
+    }));
+  };
+
+  const toggleModeratorExpanded = (userId: string) => {
+    setExpandedModerators(prev => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
+  const hasChanges = (userId: string) => {
+    return JSON.stringify(localPermissions[userId]) !== JSON.stringify(moderators.find(m => m.user_id === userId)?.permissions || {});
+  };
+
+  // ── Sauvegarder les permissions ───────────────────────────
+  const savePermissions = async (userId: string) => {
+    try {
+      setSavingModeratorId(userId);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        body: JSON.stringify({ user_id: userId, permissions: localPermissions[userId] })
+      });
+      if (!res.ok) throw new Error('Échec de la sauvegarde');
+      setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
+      setSuccessMessage(`Permissions de ${moderators.find(m => m.user_id === userId)?.full_name} mises à jour`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de sauvegarde');
+    } finally {
+      setSavingModeratorId(null);
+    }
+  };
+
+  // ── Supprimer un modérateur ───────────────────────────────
+  const deleteModerator = async (userId: string) => {
+    if (!confirm('Révoquer les permissions de ce modérateur ?')) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        body: JSON.stringify({ user_id: userId })
+      });
+      if (!res.ok) throw new Error('Échec de la suppression');
+      setModerators(prev => prev.filter(m => m.user_id !== userId));
+      setLocalPermissions(prev => { const u = { ...prev }; delete u[userId]; return u; });
+      setSuccessMessage('Modérateur révoqué');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de suppression');
+    }
+  };
+
+  // ── Créer un nouveau modérateur ───────────────────────────
+  const createModerator = async () => {
+    if (!newMod.full_name.trim() || !newMod.email.trim()) return;
+    setCreatingMod(true);
+    setError(null);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        body: JSON.stringify({
+          full_name: newMod.full_name.trim(),
+          email: newMod.email.trim(),
+          phone_number: newMod.phone_number.trim() || undefined,
+          permissions: newModPermissions,
+        })
+      });
+      const data = await res.json();
+      if (data.error === 'EMAIL_TAKEN') { setError('Cet email est déjà utilisé.'); return; }
+      if (!res.ok) throw new Error('Échec de la création');
+      setSuccessMessage(`✅ Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
+      setTimeout(() => setSuccessMessage(null), 6000);
+      setShowAddModal(false);
+      setNewMod({ full_name: '', email: '', phone_number: '' });
+      setNewModPermissions({});
+      fetchModerators();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la création');
+    } finally {
+      setCreatingMod(false);
+    }
+  };
+
+  // ── Réviser une demande ───────────────────────────────────
   const reviewRequest = async (id: string, approve: boolean) => {
     try {
       setReviewingId(id);
-      const token = localStorage.getItem('omnia_session_token');
-      const adminRaw = localStorage.getItem('omnia_user');
-      let adminId = '';
-      try { adminId = JSON.parse(adminRaw || '{}')?.id ?? ''; } catch { /* */ }
-
-      const req = actionRequests.find((r) => r.id === id);
+      const req = actionRequests.find(r => r.id === id);
       if (!req) return;
-
       if (approve) {
-        // Execute the action via moderator-account-action
-        await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/moderator-account-action`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              target_user_id: req.target_user,
-              action: req.action_type === 'suspend' ? 'suspend' : req.action_type === 'reactivate' ? 'reactivate' : 'validate',
-              admin_override: true,
-            }),
-          }
-        );
+        await fetch(`${SUPABASE_URL}/functions/v1/moderator-account-action`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_user_id: req.target_user, action: req.action_type === 'suspend' ? 'suspend' : req.action_type === 'reactivate' ? 'reactivate' : 'validate', admin_override: true }),
+        });
       }
-
-      // Update request status
-      await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_action_requests?id=eq.${id}`,
-        {
-          method: 'PATCH',
-          headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            Prefer: 'return=minimal',
-          },
-          body: JSON.stringify({
-            status: approve ? 'approved' : 'rejected',
-            reviewed_by: adminId || null,
-            reviewed_at: new Date().toISOString(),
-          }),
-        }
-      );
-
-      setActionRequests((prev) => prev.filter((r) => r.id !== id));
+      const adminId = (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.id ?? ''; } catch { return ''; } })();
+      await fetch(`${SUPABASE_URL}/rest/v1/moderator_action_requests?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: approve ? 'approved' : 'rejected', reviewed_by: adminId || null, reviewed_at: new Date().toISOString() }),
+      });
+      setActionRequests(prev => prev.filter(r => r.id !== id));
       setSuccessMessage(approve ? 'Demande approuvée et action exécutée.' : 'Demande rejetée.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -405,32 +253,23 @@ export default function AdminEquipe() {
     }
   };
 
-  const hasChanges = (userId: string) => {    return JSON.stringify(localPermissions[userId]) !== JSON.stringify(moderators.find(m => m.user_id === userId)?.permissions || {});
-  };
-
   return (
     <AdminLayout>
       <div className="p-8">
+
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Shield size={32} style={{ color: '#002050' }} />
             <div>
-              <h1 className="text-3xl font-bold" style={{ color: '#002050' }}>
-                Équipe de modération
-              </h1>
+              <h1 className="text-3xl font-bold" style={{ color: '#002050' }}>Équipe de modération</h1>
               <p className="text-gray-600 mt-1">Gérer les permissions des modérateurs</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors"
-            style={{ backgroundColor: '#002050' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#001a3a'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#002050'}
-          >
-            <Plus size={20} />
-            Ajouter un modérateur
+          <button onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white"
+            style={{ backgroundColor: '#002050' }}>
+            <Plus size={20} /> Ajouter un modérateur
           </button>
         </div>
 
@@ -438,25 +277,23 @@ export default function AdminEquipe() {
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
+            <button onClick={() => setError(null)} className="ml-2 font-bold">✕</button>
           </div>
         )}
         {successMessage && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center gap-2">
-            <Check size={20} />
-            {successMessage}
+            <Check size={20} /> {successMessage}
           </div>
         )}
 
-        {/* Loading State */}
+        {/* Loading */}
         {loading && (
           <div className="space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-24 bg-gray-200 rounded-lg animate-pulse"></div>
-            ))}
+            {[1, 2, 3].map(i => <div key={i} className="h-24 bg-gray-200 rounded-lg animate-pulse" />)}
           </div>
         )}
 
-        {/* Moderators List */}
+        {/* Liste modérateurs */}
         {!loading && (
           <div className="space-y-4">
             {moderators.length === 0 ? (
@@ -467,22 +304,12 @@ export default function AdminEquipe() {
               </div>
             ) : (
               moderators.map(mod => (
-                <div
-                  key={mod.user_id}
-                  className="border rounded-lg bg-white shadow-sm overflow-hidden"
-                  style={{ borderColor: '#BF8813' }}
-                >
-                  {/* Moderator Header */}
-                  <div
-                    className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                <div key={mod.user_id} className="border rounded-lg bg-white shadow-sm overflow-hidden" style={{ borderColor: '#BF8813' }}>
+                  <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
                     onClick={() => toggleModeratorExpanded(mod.user_id)}
-                    style={{ backgroundColor: expandedModerators[mod.user_id] ? '#f9f5f0' : 'white' }}
-                  >
+                    style={{ backgroundColor: expandedModerators[mod.user_id] ? '#f9f5f0' : 'white' }}>
                     <div className="flex items-center gap-4 flex-1">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white"
-                        style={{ backgroundColor: '#002050' }}
-                      >
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: '#002050' }}>
                         <User size={20} />
                       </div>
                       <div className="flex-1">
@@ -490,87 +317,46 @@ export default function AdminEquipe() {
                         <p className="text-sm text-gray-600">{mod.email}</p>
                       </div>
                     </div>
-
                     <div className="flex items-center gap-2">
                       {hasChanges(mod.user_id) && (
-                        <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">
-                          Modifications non sauvegardées
-                        </span>
+                        <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Modifications non sauvegardées</span>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteModerator(mod.user_id);
-                        }}
-                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
+                      <button onClick={e => { e.stopPropagation(); deleteModerator(mod.user_id); }}
+                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 size={20} />
                       </button>
-                      {expandedModerators[mod.user_id] ? (
-                        <ChevronUp size={20} style={{ color: '#002050' }} />
-                      ) : (
-                        <ChevronDown size={20} style={{ color: '#002050' }} />
-                      )}
+                      {expandedModerators[mod.user_id] ? <ChevronUp size={20} style={{ color: '#002050' }} /> : <ChevronDown size={20} style={{ color: '#002050' }} />}
                     </div>
                   </div>
 
-                  {/* Expanded Permissions Panel */}
                   {expandedModerators[mod.user_id] && (
                     <div className="border-t p-6" style={{ borderColor: '#BF8813' }}>
-                      {/* Permission Sections */}
                       {PERMISSION_SECTIONS.map(section => (
                         <div key={section.title} className="mb-6 last:mb-0">
-                          <h3 className="font-semibold text-gray-900 mb-4" style={{ color: '#002050' }}>
-                            {section.title}
-                          </h3>
+                          <h3 className="font-semibold mb-4" style={{ color: '#002050' }}>{section.title}</h3>
                           <div className="space-y-3 ml-4">
                             {section.perms.map(perm => (
-                              <label
-                                key={perm.key}
-                                className="flex items-center gap-3 cursor-pointer group"
-                              >
-                                <input
-                                  type="checkbox"
+                              <label key={perm.key} className="flex items-center gap-3 cursor-pointer group">
+                                <input type="checkbox"
                                   checked={localPermissions[mod.user_id]?.[perm.key] || false}
                                   onChange={() => togglePermission(mod.user_id, perm.key)}
                                   className="w-5 h-5 rounded border-gray-300 cursor-pointer"
-                                  style={{
-                                    accentColor: '#BF8813'
-                                  }}
-                                />
-                                <span className="text-gray-700 group-hover:text-gray-900">
-                                  {perm.label}
-                                </span>
+                                  style={{ accentColor: '#BF8813' }} />
+                                <span className="text-gray-700 group-hover:text-gray-900">{perm.label}</span>
                               </label>
                             ))}
                           </div>
                         </div>
                       ))}
-
-                      {/* Save Button */}
                       <div className="mt-8 pt-6 border-t flex gap-3">
-                        <button
-                          onClick={() => {
-                            const originalPerms = moderators.find(m => m.user_id === mod.user_id)?.permissions || {};
-                            setLocalPermissions(prev => ({
-                              ...prev,
-                              [mod.user_id]: { ...originalPerms }
-                            }));
-                          }}
-                          className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
+                        <button onClick={() => setLocalPermissions(prev => ({ ...prev, [mod.user_id]: { ...moderators.find(m => m.user_id === mod.user_id)?.permissions || {} } }))}
+                          className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">
                           Annuler
                         </button>
-                        <button
-                          onClick={() => savePermissions(mod.user_id)}
+                        <button onClick={() => savePermissions(mod.user_id)}
                           disabled={savingModeratorId === mod.user_id || !hasChanges(mod.user_id)}
-                          className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          style={{
-                            backgroundColor: '#1E7A52'
-                          }}
-                          onMouseEnter={(e) => !savingModeratorId && (e.currentTarget.style.backgroundColor = '#164d38')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1E7A52')}
-                        >
+                          className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: '#1E7A52' }}>
                           <Save size={18} />
                           {savingModeratorId === mod.user_id ? 'Sauvegarde...' : 'Sauvegarder'}
                         </button>
@@ -583,23 +369,19 @@ export default function AdminEquipe() {
           </div>
         )}
 
-        {/* Pending Moderator Action Requests */}
+        {/* Demandes en attente */}
         <div className="mt-10">
           <div className="flex items-center gap-2 mb-4">
             <Clock size={20} style={{ color: '#BF8813' }} />
             <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Demandes en attente</h2>
             {actionRequests.length > 0 && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                {actionRequests.length}
-              </span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{actionRequests.length}</span>
             )}
           </div>
           <p className="text-sm text-gray-500 mb-4">Actions proposées par les modérateurs nécessitant votre validation</p>
 
           {requestsLoading ? (
-            <div className="space-y-3">
-              {[1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />)}
-            </div>
+            <div className="space-y-3">{[1, 2].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />)}</div>
           ) : actionRequests.length === 0 ? (
             <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
               <CheckCircle size={36} className="mx-auto mb-3 text-green-400" />
@@ -607,46 +389,28 @@ export default function AdminEquipe() {
             </div>
           ) : (
             <div className="space-y-3">
-              {actionRequests.map((req) => {
-                const ACTION_FR: Record<string, string> = {
-                  suspend: 'Suspension de compte',
-                  reactivate: 'Réactivation de compte',
-                  validate_kyc: 'Validation KYC',
-                };
+              {actionRequests.map(req => {
+                const ACTION_FR: Record<string, string> = { suspend: 'Suspension de compte', reactivate: 'Réactivation de compte', validate_kyc: 'Validation KYC' };
                 return (
                   <div key={req.id} className="bg-white border rounded-xl p-5 shadow-sm" style={{ borderColor: '#BF8813' }}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-                            {ACTION_FR[req.action_type] ?? req.action_type}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </span>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700">{ACTION_FR[req.action_type] ?? req.action_type}</span>
+                          <span className="text-xs text-gray-400">{new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                         </div>
-                        <p className="text-sm font-medium text-gray-800">
-                          Cible : {(req.target_user as unknown as { full_name: string })?.full_name ?? '—'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Proposé par : {(req.moderator as unknown as { full_name: string })?.full_name ?? '—'}
-                        </p>
+                        <p className="text-sm font-medium text-gray-800">Cible : {(req.target_user as unknown as { full_name: string })?.full_name ?? '—'}</p>
+                        <p className="text-xs text-gray-500">Proposé par : {(req.moderator as unknown as { full_name: string })?.full_name ?? '—'}</p>
                         <p className="text-sm text-gray-600 mt-2 italic">"{req.reason}"</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => reviewRequest(req.id, true)}
-                          disabled={reviewingId === req.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
-                          style={{ backgroundColor: '#1E7A52' }}
-                        >
+                        <button onClick={() => reviewRequest(req.id, true)} disabled={reviewingId === req.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: '#1E7A52' }}>
                           <CheckCircle size={14} /> Approuver
                         </button>
-                        <button
-                          onClick={() => reviewRequest(req.id, false)}
-                          disabled={reviewingId === req.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors bg-red-600 hover:bg-red-700"
-                        >
+                        <button onClick={() => reviewRequest(req.id, false)} disabled={reviewingId === req.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 bg-red-600">
                           <XCircle size={14} /> Rejeter
                         </button>
                       </div>
@@ -658,16 +422,15 @@ export default function AdminEquipe() {
           )}
         </div>
 
-        {/* Warning Note */}
+        {/* Note */}
         <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
-          <p className="font-semibold mb-1">Note importante:</p>
-          <p>
-            Tous les accès financiers sont réservés au Super-admin et ne peuvent pas être délégués.
-          </p>
+          <p className="font-semibold mb-1">Note importante :</p>
+          <p>Tous les accès financiers sont réservés au Super-admin et ne peuvent pas être délégués.</p>
         </div>
+
       </div>
 
-  {/* Modal création modérateur */}
+      {/* Modal création modérateur */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -676,36 +439,35 @@ export default function AdminEquipe() {
                 <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Créer un modérateur</h2>
                 <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Un email avec le mot de passe temporaire sera envoyé automatiquement</p>
               </div>
-              <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); }}>
+              <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }}>
                 <X size={24} style={{ color: '#6B7280' }} />
               </button>
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Informations du compte */}
+              {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
+
+              {/* Infos compte */}
               <div>
                 <h3 className="text-sm font-semibold mb-3" style={{ color: '#002050' }}>Informations du compte</h3>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Nom complet *</label>
-                    <input type="text" value={newMod.full_name}
-                      onChange={e => setNewMod(p => ({ ...p, full_name: e.target.value }))}
+                    <input type="text" value={newMod.full_name} onChange={e => setNewMod(p => ({ ...p, full_name: e.target.value }))}
                       placeholder="Prénom Nom"
                       className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
                       style={{ borderColor: '#E4E7EC' }} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Email *</label>
-                    <input type="email" value={newMod.email}
-                      onChange={e => setNewMod(p => ({ ...p, email: e.target.value }))}
+                    <input type="email" value={newMod.email} onChange={e => setNewMod(p => ({ ...p, email: e.target.value }))}
                       placeholder="moderateur@example.com"
                       className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
                       style={{ borderColor: '#E4E7EC' }} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Téléphone (optionnel)</label>
-                    <input type="tel" value={newMod.phone_number}
-                      onChange={e => setNewMod(p => ({ ...p, phone_number: e.target.value }))}
+                    <input type="tel" value={newMod.phone_number} onChange={e => setNewMod(p => ({ ...p, phone_number: e.target.value }))}
                       placeholder="+223 70 00 00 00"
                       className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
                       style={{ borderColor: '#E4E7EC' }} />
@@ -723,12 +485,8 @@ export default function AdminEquipe() {
                       <div className="space-y-2">
                         {section.perms.map(perm => (
                           <label key={perm.key} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-gray-50">
-                            <div
-                              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 cursor-pointer"
-                              style={{
-                                backgroundColor: newModPermissions[perm.key] ? '#002050' : 'white',
-                                borderColor: newModPermissions[perm.key] ? '#002050' : '#D1D5DB'
-                              }}
+                            <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 cursor-pointer"
+                              style={{ backgroundColor: newModPermissions[perm.key] ? '#002050' : 'white', borderColor: newModPermissions[perm.key] ? '#002050' : '#D1D5DB' }}
                               onClick={() => setNewModPermissions(p => ({ ...p, [perm.key]: !p[perm.key] }))}>
                               {newModPermissions[perm.key] && <Check size={12} color="white" />}
                             </div>
@@ -741,9 +499,9 @@ export default function AdminEquipe() {
                 </div>
               </div>
 
-              {/* Actions */}
+              {/* Boutons */}
               <div className="flex gap-3 pt-2">
-                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); }}
+                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }}
                   className="flex-1 px-4 py-2.5 rounded-xl border text-sm font-medium"
                   style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                   Annuler
