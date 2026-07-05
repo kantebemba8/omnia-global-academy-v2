@@ -1280,20 +1280,17 @@ export default function DashboardCvBuilder() {
   }
 
   // ✅ NOUVEAU CODE
-async function downloadPdf() {
-    if (!currentCvId) {
-      await saveCV();
-    }
+async function downloadPdfById(cvId: string) {
+    if (downloading) return;
     setDownloading(true);
     try {
       const token = localStorage.getItem('omnia_session_token');
       const res = await fetch(`${SUPABASE_URL}/functions/v1/cv-builder-generate`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cv_id: currentCvId }),
+        body: JSON.stringify({ cv_id: cvId }),
       });
 
-      // Si erreur JSON (jetons insuffisants, etc.)
       const contentType = res.headers.get('Content-Type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
@@ -1310,6 +1307,38 @@ async function downloadPdf() {
         return;
       }
 
+      const pdfBlob = await res.blob();
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cv-omnia-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const tokensRemaining = parseInt(res.headers.get('X-Tokens-Remaining') || String(tokens - 1));
+      const tokenConsumed = res.headers.get('X-Token-Consumed') === 'true';
+      setTokens(tokensRemaining);
+
+      if (tokenConsumed) {
+        showToast(`✓ PDF téléchargé — ${tokensRemaining} jeton(s) restant(s)`);
+      } else {
+        showToast('✓ PDF téléchargé (contenu inchangé — jeton conservé)');
+      }
+    } catch (err) {
+      showToast('❌ Erreur lors du téléchargement');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!currentCvId) {
+      await saveCV();
+    }
+    if (currentCvId) await downloadPdfById(currentCvId);
+  }
       // Télécharger le PDF binaire
       const pdfBlob = await res.blob();
       const url = URL.createObjectURL(pdfBlob);
