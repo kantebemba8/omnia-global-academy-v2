@@ -356,12 +356,11 @@ creator_type: course.creator_type || 'professeur',
       issued_at: new Date().toISOString(),
     };
 
-    const qrSvgStr = await generateQrSvg(verifyUrl);
     const htmlContent = isTemplateC 
-  ? buildTemplateC(certData, qrSvg)
+  ? buildTemplateC(certData, qrSvgStr)
   : isTemplateB 
-    ? buildTemplateB(certData, qrSvg) 
-    : buildTemplateA(certData, qrSvg);
+    ? buildTemplateB(certData, qrSvgStr) 
+    : buildTemplateA(certData, qrSvgStr);
 
     // Upload HTML to Supabase Storage
     const filename = `certificates/${user_id}/${certId}.html`;
