@@ -97,7 +97,11 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
 
 <div class="content">
   <div class="header">
-    <div><div class="brand-name">OMNIA</div><div class="brand-sub">GLOBAL ACADEMY</div></div>
+    ${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
+<div>
+  <div class="brand-name">OMNIA</div>
+  <div class="brand-sub">GLOBAL ACADEMY</div>
+</div>
     ${d.cpd_accredited ? `<div style="margin-left:auto"><div class="cpd-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#BF8813" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="#BF8813" stroke-width="2" stroke-linecap="round"/></svg><span class="cpd-text">CPD CERTIFIED</span></div><div style="font-size:9px;color:#6B7280;text-align:center;margin-top:4px">${d.cpd_hours}h · ${d.cpd_provider_code || "Omnia CPD"}</div></div>` : ""}
   </div>
   <div style="text-align:center">
@@ -157,7 +161,11 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
 <div class="border-inner"></div>
 <div class="content">
   <div class="header">
-    <div class="logo-block"><div><div class="brand-name">OMNIA</div><div class="brand-sub">GLOBAL ACADEMY</div></div></div>
+    <div class="logo-block">${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
+<div>
+  <div class="brand-name">OMNIA</div>
+  <div class="brand-sub">GLOBAL ACADEMY</div>
+</div>
     <div style="display:flex;align-items:center;gap:12px">${d.establishment_logo_url ? `<img src="${d.establishment_logo_url}" style="height:40px;object-fit:contain" alt="">` : ""}<div><div class="est-name">${d.establishment_name}</div><div class="est-sub">Établissement partenaire</div></div></div>
   </div>
   <div style="text-align:center">
@@ -223,9 +231,11 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
 <div class="content">
   <div class="header">
     <div style="text-align:center">
-      <div class="brand-name">OMNIA</div>
-      <div class="brand-sub">GLOBAL ACADEMY</div>
-    </div>
+     ${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
+<div>
+  <div class="brand-name">OMNIA</div>
+  <div class="brand-sub">GLOBAL ACADEMY</div>
+</div>
     ${d.cpd_accredited ? `<div class="cpd-badge">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="12" r="10" stroke="#BF8813" stroke-width="2"/>
@@ -379,6 +389,9 @@ Deno.serve(async (req: Request) => {
       cpd_accredited: course.cpd_accredited,
       cpd_hours: course.cpd_hours ?? 0,
       cpd_provider_code: "Omnia-CPD",
+      logo_url: logoUrl,
+certificate_text: certificateText,
+allow_professor_signature: certSettings.allow_professor_signature === 'true',
       creator_name: creatorName,
       establishment_name: establishmentName,
       establishment_logo_url: establishmentLogoUrl,
