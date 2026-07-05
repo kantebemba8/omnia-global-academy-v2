@@ -1292,7 +1292,7 @@ async function downloadPdf() {
         body: JSON.stringify({ cv_id: currentCvId }),
       });
 
-      // Vérifier si c'est une erreur JSON (jetons insuffisants, etc.)
+      // Si erreur JSON (jetons insuffisants, etc.)
       const contentType = res.headers.get('Content-Type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
@@ -1304,12 +1304,12 @@ async function downloadPdf() {
         return;
       }
 
-      // C'est bien un PDF binaire — déclencher le téléchargement
       if (!res.ok) {
         showToast('❌ Erreur serveur lors de la génération du PDF.');
         return;
       }
 
+      // Télécharger le PDF binaire
       const pdfBlob = await res.blob();
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
@@ -1320,7 +1320,7 @@ async function downloadPdf() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Lire les jetons depuis les headers de réponse
+      // Mettre à jour les jetons depuis les headers — sans refresh
       const tokensRemaining = parseInt(res.headers.get('X-Tokens-Remaining') || String(tokens));
       const tokenConsumed = res.headers.get('X-Token-Consumed') === 'true';
       setTokens(tokensRemaining);
