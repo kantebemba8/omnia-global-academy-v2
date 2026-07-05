@@ -312,18 +312,51 @@ Deno.serve(async (req: Request) => {
     const { data: existingCert } = await sb.from("certificates").select("omnia_certificate_id, pdf_url, cpd_pending").eq("user_id", user_id).eq("course_id", course_id).maybeSingle();
     if (existingCert) return new Response(JSON.stringify({ certificate_id: existingCert.omnia_certificate_id, pdf_url: existingCert.pdf_url, cpd_pending: existingCert.cpd_pending }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Load user and course
+   // Load user and course
     const [{ data: user }, { data: course }] = await Promise.all([
       sb.from("users").select("full_name, email").eq("id", user_id).maybeSingle(),
-      sb.from("courses").select("title, level, category, cpd_accredited, cpd_hours, establishment_id, creator_id, is_assisted").eq("id", course_id).maybeSingle(),
+      sb.from("courses").select("title, level, category, cpd_accredited, cpd_hours, establishment_id, creator_id, is_assisted, creator_type").eq("id", course_id).maybeSingle(),
     ]);
     if (!user || !course) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const isTemplateB = !!course.establishment_id;
-const isTemplateC = course.creator_type === 'plateforme' && !course.establishment_id;
+    const isTemplateC = course.creator_type === 'plateforme' && !course.establishment_id;
+
+    // Vérifier que l'établissement a bien uploadé logo et signature
+    if (isTemplateB) {
+      const { data: estProfile } = await sb
+        .from("etablissement_profiles")
+        .select("logo_url, signature_url, school_name, director_name")
+        .eq("id", course.establishment_id)
+        .maybeSingle();
+
+      if (!estProfile?.logo_url || !estProfile?.signature_url) {
+        return new Response(JSON.stringify({
+          error: "ESTABLISHMENT_MISSING_ASSETS",
+          message: "L'établissement doit uploader son logo et la signature du directeur dans son espace Certificats avant de générer un certificat.",
+          missing: {
+            logo: !estProfile?.logo_url,
+            signature: !estProfile?.signature_url,
+          }
+        }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Charger les paramètres certificat depuis certificate_settings
+    const { data: certSettingsRows } = await sb
+      .from("certificate_settings")
+      .select("key, value");
+
+    const certSettings: Record<string, string> = {};
+    for (const row of certSettingsRows || []) {
+      certSettings[row.key] = row.value;
+    }
+
     const certId = await generateUniqueCertId(sb);
     const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
     const verifyUrl = `${appUrl}/verify/${certId}`;
+    const logoUrl = certSettings.certificate_logo_url || "/IMG_0349.png";
+    const certificateText = certSettings.certificate_text_fr || "pour avoir complété avec succès la formation";
 
     // Get template-specific data
     let creatorName = "";
