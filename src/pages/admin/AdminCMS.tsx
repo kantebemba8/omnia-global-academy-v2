@@ -256,6 +256,12 @@ export default function AdminCMS() {
               <h3 className="font-semibold" style={{ color: '#002050' }}>Identité de la plateforme</h3>
               <Field label="Slogan" k="site_slogan" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Favicon & Identité visuelle</h3>
+              <Field label="URL du Favicon" k="favicon_url" placeholder="https://... (.png, .ico, .svg)" />
+              <p className="text-xs text-gray-400 -mt-2">
+                Lien public vers l'icône de l'onglet. Recommandé : image carrée 32×32 ou 64×64px.
+                Après sauvegarde, le favicon se met à jour au prochain chargement de la page.
+              </p>
                 <Field label="Email Admission" k="email_admission" type="email" placeholder="admission@omniaglobalacademy.com" />
                 <Field label="Email Support" k="email_support" type="email" placeholder="support@omniaglobalacademy.com" />
                 <Field label="Email Contact" k="email_contact" type="email" placeholder="contact@omniaglobalacademy.com" />
