@@ -233,6 +233,7 @@ export default function AdminCertificates() {
                             <Download size={14} style={{ color: '#6B7280' }} />
                           </a>
                         )}
+                        )}
                         {cert.status !== 'revoked' && (
                           <button
                             onClick={() => revokeCertificate(cert.omnia_certificate_id)}
