@@ -4,7 +4,7 @@ import {
   Search, Brain, Code, Shield, TrendingUp, DollarSign, Scale, Megaphone, Heart,
   Building2, GraduationCap, Globe, Leaf, Compass, TreePine, Smile, Wrench,
   ChefHat, Shirt, Bird, Palette, Music, Gamepad2, Award, Monitor, Users,
-  Check, type LucideIcon,
+  Check, MessageCircle, type LucideIcon,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
@@ -430,6 +430,64 @@ export function LandingPage() {
                 <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.55)' }}>{desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+      {/* ── SECTION FORUM COMMUNAUTÉ ─────────────────────────────────── */}
+      <section className="px-6 py-16 bg-white" style={{ borderTop: '1px solid #E4E7EC' }}>
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-12">
+          {/* Cards communauté */}
+          <div className="flex-shrink-0 w-full md:w-[42%] grid grid-cols-2 gap-3">
+            {[
+              { emoji: '💬', title: 'Forum général', desc: 'Posez vos questions, partagez vos connaissances' },
+              { emoji: '🌍', title: 'Par pays', desc: 'Rejoignez la communauté de votre région' },
+              { emoji: '📚', title: 'Forum de cours', desc: 'Discutez directement avec vos formateurs' },
+              { emoji: '💼', title: 'Offres d\'emploi', desc: 'Trouvez des opportunités dans votre domaine' },
+            ].map(({ emoji, title, desc }) => (
+              <div key={title} className="p-4 rounded-xl border hover:shadow-md transition-shadow"
+                style={{ borderColor: '#E4E7EC', backgroundColor: '#F8F9FA' }}>
+                <span className="text-2xl">{emoji}</span>
+                <p className="text-sm font-semibold mt-2" style={{ color: '#002050' }}>{title}</p>
+                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Texte */}
+          <div className="flex-1">
+            <div className="inline-block text-xs font-bold uppercase px-3 py-1 rounded-full mb-5"
+              style={{ backgroundColor: 'rgba(0,32,80,0.08)', color: '#002050', letterSpacing: '0.10em' }}>
+              Communauté
+            </div>
+            <h2 className="font-bold mb-3" style={{ color: '#002050', fontSize: 'clamp(22px, 3vw, 34px)' }}>
+              Apprenez ensemble, progressez plus vite
+            </h2>
+            <p className="mb-7 max-w-lg" style={{ color: '#6B7280', fontSize: '16px', lineHeight: 1.65 }}>
+              Rejoignez une communauté active d'apprenants et de formateurs à travers toute l'Afrique. Posez vos questions, partagez vos expériences, trouvez des opportunités.
+            </p>
+            <ul className="space-y-3 mb-8">
+              {[
+                'Forum général filtré par pays',
+                'Espaces de discussion par formation',
+                'Offres d\'emploi et opportunités professionnelles',
+                'Échanges directs avec les formateurs',
+                'Communauté modérée et bienveillante',
+              ].map(b => (
+                <li key={b} className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'rgba(191,136,19,0.14)' }}>
+                    <Check size={11} style={{ color: '#BF8813' }} />
+                  </div>
+                  <span className="text-sm" style={{ color: '#374151' }}>{b}</span>
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => navigate('/forum')}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-white transition-opacity hover:opacity-85"
+              style={{ backgroundColor: '#002050' }}>
+              <MessageCircle size={18} />
+              Rejoindre la communauté →
+            </button>
           </div>
         </div>
       </section>
