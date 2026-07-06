@@ -43,6 +43,26 @@ const ALLOWED_CMS_KEYS = new Set([
   "waitlist_count","waitlist_enabled",
   "cv_allow_photo","cv_photo_warning_fr",
   "ai_tokens_on_register","ai_tokens_per_referral",
+  // Hero & landing
+  "hero_media_url","hero_media_type","hero_video_poster",
+  // IA & automatisation
+  "follow_us_label_en",
+  "ai_conversations_log_enabled","ai_max_tokens_per_response",
+  "ai_token_per_registration","ai_token_per_referral",
+  "anti_abandon_delay_hours","anti_abandon_enabled",
+  "certificate_cpd_enabled","certificate_cpd_hours_default",
+  "certificate_validity_years","certificate_logo_url",
+  "cv_tokens_on_register",
+  "newsletter_auto_enabled","newsletter_auto_delay_days",
+  "referral_enabled","referral_code_length",
+  "sms_enabled","sms_provider",
+  "support_email","support_phone",
+  "platform_name","platform_tagline_fr","platform_tagline_en",
+  "landing_cta_title_fr","landing_cta_desc_fr",
+  "coming_soon_bg_url","coming_soon_video_url",
+  "maintenance_bypass_token",
+  "forum_enabled","forum_moderation_auto",
+  "jobs_enabled","jobs_moderation_auto",
 ]);
 
 async function sendBrevoLaunchEmail(sb: ReturnType<typeof createClient>) {
