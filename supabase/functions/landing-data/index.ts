@@ -82,12 +82,18 @@ Deno.serve(async (req: Request) => {
     const distinctPays = new Set((usersWithCountry ?? []).map((u: { country_code: string }) => u.country_code)).size;
 
    // Lire les stats custom depuis site_settings (clés individuelles)
-    const [statForm, statApp, statPays, statForm2, statEtab] = await Promise.all([
+   const [statForm, statApp, statPays, statForm2, statEtab,
+           showForm, showApp, showPays, showForm2, showEtab] = await Promise.all([
       supabase.from("site_settings").select("value").eq("key", "stat_formations").maybeSingle(),
       supabase.from("site_settings").select("value").eq("key", "stat_apprenants").maybeSingle(),
       supabase.from("site_settings").select("value").eq("key", "stat_pays").maybeSingle(),
       supabase.from("site_settings").select("value").eq("key", "stat_formateurs").maybeSingle(),
       supabase.from("site_settings").select("value").eq("key", "stat_etablissements").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_show_formations").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_show_apprenants").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_show_pays").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_show_formateurs").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_show_etablissements").maybeSingle(),
     ]);
 
     // Stats : valeur CMS si définie et non vide, sinon valeur réelle de la base, sinon null
@@ -104,6 +110,13 @@ Deno.serve(async (req: Request) => {
         subtitle_fr: settings["landing_hero_subtitle_fr"] ?? "Des formations certifiées CPD, accessibles partout en Afrique de l'Ouest, payables par Mobile Money.",
       },
       stats,
+      stats_visibility: {
+        formations:     showForm.data?.value === 'true',
+        apprenants:     showApp.data?.value === 'true',
+        pays:           showPays.data?.value === 'true',
+        formateurs:     showForm2.data?.value === 'true',
+        etablissements: showEtab.data?.value === 'true',
+      },
       piliers:         settings["landing_piliers"]                     ?? [],
       featured_courses: coursesResult.data ?? [],
       devenir_formateur: {
