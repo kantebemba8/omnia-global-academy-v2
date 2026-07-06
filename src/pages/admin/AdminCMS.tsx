@@ -570,18 +570,50 @@ export default function AdminCMS() {
               <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
               <Field label="Titre principal" k="landing_hero_title_fr" />
               <Field label="Sous-titre" k="landing_hero_subtitle_fr" />
-             <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques (5 compteurs)</h3>
-              <p className="text-xs text-gray-400 -mt-2">Laissez vide pour ne pas afficher le compteur sur la landing page.</p>
-              <div className="grid grid-cols-2 gap-4">
+            <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques — Données réelles</h3>
+              <p className="text-xs text-gray-400 -mt-2">
+                Les valeurs viennent directement de la base de données. Activez ou désactivez l'affichage de chaque compteur sur la landing page.
+                Si la valeur est 0, le compteur ne peut pas être affiché.
+              </p>
+              <div className="space-y-3">
                 {[
-                  { label: 'Formations', k: 'stat_formations' },
-                  { label: 'Apprenants', k: 'stat_apprenants' },
-                  { label: 'Pays', k: 'stat_pays' },
-                  { label: 'Formateurs', k: 'stat_formateurs' },
-                  { label: 'Établissements partenaires', k: 'stat_etablissements' },
-                ].map(({ label, k }) => (
-                  <Field key={k} label={label} k={k} placeholder="ex: 12+ (vide = masqué)" />
-                ))}
+                  { label: 'Formations publiées', k: 'stat_formations', showKey: 'stat_show_formations' },
+                  { label: 'Apprenants actifs', k: 'stat_apprenants', showKey: 'stat_show_apprenants' },
+                  { label: 'Pays représentés', k: 'stat_pays', showKey: 'stat_show_pays' },
+                  { label: 'Formateurs', k: 'stat_formateurs', showKey: 'stat_show_formateurs' },
+                  { label: 'Établissements partenaires', k: 'stat_etablissements', showKey: 'stat_show_etablissements' },
+                ].map(({ label, k, showKey }) => {
+                  const value = settings[k];
+                  const isVisible = settings[showKey] === 'true';
+                  const hasValue = value && value !== '0' && value !== '';
+                  return (
+                    <div key={k} className="flex items-center justify-between p-3 rounded-xl border"
+                      style={{ borderColor: '#E4E7EC', backgroundColor: '#F8F9FA' }}>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: '#002050' }}>{label}</p>
+                        <p className="text-xs mt-0.5" style={{ color: hasValue ? '#1E7A52' : '#9CA3AF' }}>
+                          {hasValue ? `Valeur actuelle : ${value}` : 'Aucune donnée (0 dans le système)'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasValue ? (
+                          <button
+                            onClick={() => set(showKey, isVisible ? 'false' : 'true')}
+                            className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isVisible ? 'bg-green-500' : 'bg-gray-300'}`}>
+                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isVisible ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                          </button>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: '#F3F4F6', color: '#9CA3AF' }}>
+                            Indisponible
+                          </span>
+                        )}
+                        <span className="text-xs font-medium w-12 text-right" style={{ color: isVisible && hasValue ? '#1E7A52' : '#9CA3AF' }}>
+                          {isVisible && hasValue ? 'Visible' : 'Masqué'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Section "Devenir Formateur"</h3>
               <Field label="Titre" k="landing_devenir_formateur_title_fr" />
