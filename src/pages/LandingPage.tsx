@@ -17,7 +17,7 @@ const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 interface Pilier { icon: string; title: string; desc: string }
 interface LandingData {
   hero: { title_fr: string; subtitle_fr: string };
-  stats: { formations: string; apprenants: string; pays: string; formateurs: string };
+ stats: { formations: string | null; apprenants: string | null; pays: string | null; formateurs: string | null; etablissements: string | null };
   piliers: Pilier[];
   featured_courses: CourseCardData[];
   devenir_formateur: { title_fr: string; desc_fr: string };
@@ -66,7 +66,7 @@ const DEFAULT: LandingData = {
     title_fr: 'Formez-vous, certifiez-vous, transformez votre avenir',
     subtitle_fr: "Des formations certifiées CPD, accessibles partout en Afrique de l'Ouest, payables par Mobile Money.",
   },
-  stats: { formations: '500+', apprenants: '10 000+', pays: '15+', formateurs: '200+' },
+ stats: { formations: null, apprenants: null, pays: null, formateurs: null, etablissements: null },
   piliers: [
     { icon: 'Award',   title: 'Certifications CPD internationales',  desc: 'Reconnues mondialement, valorisables sur LinkedIn en un clic' },
     { icon: 'Monitor', title: 'Mode éco-data',                       desc: "Apprenez même avec une connexion limitée — optimisé pour l'Afrique de l'Ouest" },
@@ -166,22 +166,28 @@ export function LandingPage() {
               ))}
             </div>
 
-            {/* Stats strip */}
-            <div className="flex flex-wrap gap-6">
-              {([
-                ['formations',  'Formations'],
-                ['apprenants',  'Apprenants'],
-                ['pays',        'Pays'],
-              ] as [keyof typeof data.stats, string][]).map(([k, label], i) => (
-                <div key={k} className="flex items-center gap-3">
-                  {i > 0 && <div className="h-8 w-px" style={{ backgroundColor: '#E4E7EC' }} />}
-                  <div>
-                    <p className="font-bold leading-none" style={{ color: '#002050', fontSize: '22px' }}>{data.stats[k]}</p>
-                    <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+           {/* Stats strip — affiché uniquement si au moins une stat est non nulle */}
+            {Object.values(data.stats).some(v => v !== null) && (
+              <div className="flex flex-wrap gap-6">
+                {([
+                  ['formations',     'Formations'],
+                  ['apprenants',     'Apprenants'],
+                  ['pays',           'Pays'],
+                  ['formateurs',     'Formateurs'],
+                  ['etablissements', 'Établissements partenaires'],
+                ] as [keyof typeof data.stats, string][])
+                  .filter(([k]) => data.stats[k] !== null)
+                  .map(([k, label], i) => (
+                    <div key={k} className="flex items-center gap-3">
+                      {i > 0 && <div className="h-8 w-px" style={{ backgroundColor: '#E4E7EC' }} />}
+                      <div>
+                        <p className="font-bold leading-none" style={{ color: '#002050', fontSize: '22px' }}>{data.stats[k]}</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{label}</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
 
           {/* Right */}
