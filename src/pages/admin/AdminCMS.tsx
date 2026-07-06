@@ -95,11 +95,19 @@ export default function AdminCMS() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function save(extraUpdates?: { key: string; value: string }[]) {
+ async function save(extraUpdates?: { key: string; value: string }[]) {
     setSaving(true);
     const token = localStorage.getItem('omnia_session_token');
-    const updates = Object.entries(settings).map(([key, value]) => ({ key, value }));
-    if (extraUpdates) updates.push(...extraUpdates);
+
+    // Clés interdites — ne jamais envoyer au backend
+    const FORBIDDEN = new Set(['super_admin_id','service_role_key','fedapay_secret_key','brevo_api_key','html2pdf_api_key','cron_secret']);
+
+    const updates = Object.entries(settings)
+      .filter(([key]) => !FORBIDDEN.has(key.toLowerCase()))
+      .map(([key, value]) => ({ key, value }));
+
+    if (extraUpdates) updates.push(...extraUpdates.filter(u => !FORBIDDEN.has(u.key.toLowerCase())));
+
     const res = await fetch(ENDPOINTS.adminCmsUpdate, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -107,8 +115,12 @@ export default function AdminCMS() {
     });
     const d = await res.json();
     setSaving(false);
-    if (d.success) { setToast(`${d.updated} paramètre(s) enregistré(s).`); setTimeout(() => setToast(''), 3000); }
-    else setToast(d.message ?? 'Erreur.');
+    if (d.success) {
+      setToast(`${d.updated} paramètre(s) enregistré(s).${d.launched ? ' 🚀 Plateforme lancée !' : ''}`);
+      setTimeout(() => setToast(''), 4000);
+    } else {
+      setToast(d.message ?? `Erreur : ${d.error}`);
+    }
   }
 
   async function saveMultipliers() {
