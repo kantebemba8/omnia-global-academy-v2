@@ -570,10 +570,17 @@ export default function AdminCMS() {
               <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
               <Field label="Titre principal" k="landing_hero_title_fr" />
               <Field label="Sous-titre" k="landing_hero_subtitle_fr" />
-              <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques (4 compteurs)</h3>
+             <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques (5 compteurs)</h3>
+              <p className="text-xs text-gray-400 -mt-2">Laissez vide pour ne pas afficher le compteur sur la landing page.</p>
               <div className="grid grid-cols-2 gap-4">
-                {['Formations', 'Apprenants', 'Pays', 'Formateurs'].map((stat) => (
-                  <Field key={stat} label={stat} k={`stat_${stat.toLowerCase()}`} placeholder="ex: 200+" />
+                {[
+                  { label: 'Formations', k: 'stat_formations' },
+                  { label: 'Apprenants', k: 'stat_apprenants' },
+                  { label: 'Pays', k: 'stat_pays' },
+                  { label: 'Formateurs', k: 'stat_formateurs' },
+                  { label: 'Établissements partenaires', k: 'stat_etablissements' },
+                ].map(({ label, k }) => (
+                  <Field key={k} label={label} k={k} placeholder="ex: 12+ (vide = masqué)" />
                 ))}
               </div>
               <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Section "Devenir Formateur"</h3>
