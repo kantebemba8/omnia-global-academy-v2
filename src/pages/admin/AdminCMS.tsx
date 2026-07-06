@@ -348,7 +348,7 @@ export default function AdminCMS() {
           {/* COMING SOON */}
           {tab === 'coming_soon' && (
             <div className="space-y-4">
-              {/* Toggle card */}
+             {/* Toggle card */}
               <div className="flex items-center justify-between p-4 rounded-xl border-2 transition-colors"
                 style={{
                   borderColor: settings.coming_soon_enabled === 'true' ? '#dc2626' : '#1E7A52',
@@ -356,7 +356,7 @@ export default function AdminCMS() {
                 }}>
                 <div>
                   <p className="font-semibold text-sm" style={{ color: settings.coming_soon_enabled === 'true' ? '#dc2626' : '#1E7A52' }}>
-                    Mode liste d'attente {settings.coming_soon_enabled === 'true' ? '— ACTIF' : '— Inactif'}
+                    {settings.coming_soon_enabled === 'true' ? '🔴 Coming Soon — ACTIF' : '🟢 Landing Page — ACTIVE'}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {settings.coming_soon_enabled === 'true'
@@ -364,17 +364,41 @@ export default function AdminCMS() {
                       : 'Le site affiche normalement la Landing Page.'}
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    if (settings.coming_soon_enabled === 'true') {
-                      setShowLaunchModal(true);
-                    } else {
-                      set('coming_soon_enabled', 'true');
-                    }
-                  }}
-                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${settings.coming_soon_enabled === 'true' ? 'bg-red-500' : 'bg-green-500'}`}>
-                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.coming_soon_enabled === 'true' ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                </button>
+                <div className="flex items-center gap-3">
+                  {settings.coming_soon_enabled !== 'true' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Repasser en mode Coming Soon ? La Landing Page ne sera plus accessible aux visiteurs.')) return;
+                        const token = localStorage.getItem('omnia_session_token');
+                        const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ updates: [{ key: 'coming_soon_enabled', value: 'true' }] }),
+                        });
+                        const d = await res.json();
+                        if (d.success) {
+                          set('coming_soon_enabled', 'true');
+                          setToast('Mode Coming Soon réactivé.');
+                          setTimeout(() => setToast(''), 3000);
+                        }
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg border font-medium"
+                      style={{ borderColor: '#dc2626', color: '#dc2626', backgroundColor: 'white' }}>
+                      Repasser en Coming Soon
+                    </button>
+                  )}
+                  {settings.coming_soon_enabled === 'true' && (
+                    <button
+                      onClick={() => setShowLaunchModal(true)}
+                      className="text-xs px-3 py-1.5 rounded-lg font-medium text-white"
+                      style={{ backgroundColor: '#1E7A52' }}>
+                      🚀 Lancer la plateforme
+                    </button>
+                  )}
+                  <div className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${settings.coming_soon_enabled === 'true' ? 'bg-red-500' : 'bg-green-500'}`}>
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.coming_soon_enabled === 'true' ? 'translate-x-0.5' : 'translate-x-6'}`} />
+                  </div>
+                </div>
               </div>
 
               {settings.coming_soon_enabled === 'true' && (
