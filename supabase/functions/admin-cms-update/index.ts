@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
+
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -13,56 +14,14 @@ async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: stri
   return (sess as { user_id: string }).user_id;
 }
 
-const ALLOWED_CMS_KEYS = new Set([
-  "coming_soon_enabled","coming_soon_title_fr","coming_soon_subtitle_fr","launch_date",
-  "social_networks","app_downloads","collaborations_logos","fintech_logos",
-  "landing_hero_title_fr","landing_hero_subtitle_fr","landing_stats","landing_piliers",
-  "landing_devenir_formateur_title_fr","landing_devenir_formateur_desc_fr","landing_testimonials",
-  "a_propos_content_fr","confidentialite_content_fr","referral_reward_referrer_xof",
-  "referral_reward_referred_xof","ai_token_per_registration","ai_token_per_purchase",
-  "payout_minimum_xof","cpd_premium_price_xof","commission_normal_sans_cpd",
-  "commission_normal_avec_cpd","commission_assistee_sans_cpd","commission_assistee_avec_cpd",
-  "follow_us_label_fr","category_multipliers","pricing_tiers_json",
-  // Colors
-  "color_primary","color_accent","color_bg_light","color_success",
-  // Maintenance
-  "maintenance_enabled","maintenance_message_fr","maintenance_end_time",
-  // CPD quiz thresholds
-  "quiz_lesson_threshold","quiz_module_threshold","quiz_final_threshold",
-  // AI tokens (CPD-related)
-  "ai_tokens_inscription","ai_tokens_per_purchase",
- // Text / legal
-  "site_slogan","cgu_content_fr","mentions_legales_fr",
-  // Favicon & identité visuelle
-  "favicon_url",
-  // CV Builder jetons
-  "cv_tokens_inscription","cv_tokens_per_purchase","cv_tokens_per_referral","cv_token_packs",
-  // Newsletter & emails
-  "email_admission","email_contact",
-  // Divers
-  "waitlist_count","waitlist_enabled",
-  "cv_allow_photo","cv_photo_warning_fr",
-  "ai_tokens_on_register","ai_tokens_per_referral",
-  // Hero & landing
-  "hero_media_url","hero_media_type","hero_video_poster",
-  // IA & automatisation
-  "follow_us_label_en",
-  "ai_conversations_log_enabled","ai_max_tokens_per_response",
-  "ai_token_per_registration","ai_token_per_referral",
-  "anti_abandon_delay_hours","anti_abandon_enabled",
-  "certificate_cpd_enabled","certificate_cpd_hours_default",
-  "certificate_validity_years","certificate_logo_url",
-  "cv_tokens_on_register",
-  "newsletter_auto_enabled","newsletter_auto_delay_days",
-  "referral_enabled","referral_code_length",
-  "sms_enabled","sms_provider",
-  "support_email","support_phone",
-  "platform_name","platform_tagline_fr","platform_tagline_en",
-  "landing_cta_title_fr","landing_cta_desc_fr",
-  "coming_soon_bg_url","coming_soon_video_url",
-  "maintenance_bypass_token",
-  "forum_enabled","forum_moderation_auto",
-  "jobs_enabled","jobs_moderation_auto",
+// Clés interdites — ne peuvent jamais être modifiées via le CMS
+const FORBIDDEN_KEYS = new Set([
+  "super_admin_id",
+  "service_role_key",
+  "fedapay_secret_key",
+  "brevo_api_key",
+  "html2pdf_api_key",
+  "cron_secret",
 ]);
 
 async function sendBrevoLaunchEmail(sb: ReturnType<typeof createClient>) {
@@ -107,7 +66,6 @@ async function sendBrevoLaunchEmail(sb: ReturnType<typeof createClient>) {
 
     if (res.ok) {
       const campaign = await res.json();
-      // Immediately send the campaign
       await fetch(`https://api.brevo.com/v3/emailCampaigns/${campaign.id}/sendNow`, {
         method: "POST",
         headers: { "api-key": brevoKey },
@@ -135,7 +93,12 @@ Deno.serve(async (req: Request) => {
       return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [] });
     }
 
-    const body = await req.json() as { updates?: { key: string; value: string }[]; action?: string; tier_id?: string; tier?: Record<string, unknown> };
+    const body = await req.json() as {
+      updates?: { key: string; value: string }[];
+      action?: string;
+      tier_id?: string;
+      tier?: Record<string, unknown>;
+    };
 
     // Pricing tier management
     if (body.action === "delete_pricing_tier") {
@@ -162,8 +125,11 @@ Deno.serve(async (req: Request) => {
     const { updates } = body;
     if (!Array.isArray(updates)) return json({ error: "INVALID_PARAMS" }, 400);
 
-    const invalid = updates.filter((u) => !ALLOWED_CMS_KEYS.has(u.key));
-    if (invalid.length > 0) return json({ error: "INVALID_KEY", keys: invalid.map((u) => u.key) }, 400);
+    // Vérifier uniquement les clés interdites (secrets)
+    const forbidden = updates.filter((u) => FORBIDDEN_KEYS.has(u.key.toLowerCase()));
+    if (forbidden.length > 0) {
+      return json({ error: "FORBIDDEN_KEY", keys: forbidden.map((u) => u.key) }, 400);
+    }
 
     // Detect coming_soon → live toggle
     const comingSoonUpdate = updates.find((u) => u.key === "coming_soon_enabled");
@@ -184,7 +150,7 @@ Deno.serve(async (req: Request) => {
       updated++;
     }
 
-    // Site launch detected — log + send Brevo email to waitlist list #8
+    // Site launch detected — log + send Brevo email
     if (wasComingSoon) {
       await sb.from("security_audit_log").insert({
         event_type: "site_launched",
