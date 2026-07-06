@@ -118,6 +118,8 @@ export default function AdminCMS() {
     if (d.success) {
       setToast(`${d.updated} paramètre(s) enregistré(s).${d.launched ? ' 🚀 Plateforme lancée !' : ''}`);
       setTimeout(() => setToast(''), 4000);
+      // Recharger la page pour que SiteModeContext relise les settings
+      setTimeout(() => window.location.reload(), 1500);
     } else {
       setToast(d.message ?? `Erreur : ${d.error}`);
     }
@@ -376,10 +378,10 @@ export default function AdminCMS() {
                           body: JSON.stringify({ updates: [{ key: 'coming_soon_enabled', value: 'true' }] }),
                         });
                         const d = await res.json();
-                        if (d.success) {
+                       if (d.success) {
                           set('coming_soon_enabled', 'true');
                           setToast('Mode Coming Soon réactivé.');
-                          setTimeout(() => setToast(''), 3000);
+                          setTimeout(() => window.location.reload(), 1500);
                         }
                       }}
                       className="text-xs px-3 py-1.5 rounded-lg border font-medium"
