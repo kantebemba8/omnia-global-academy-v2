@@ -22,9 +22,7 @@ function parseSetting(value: string): unknown {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "GET") {
     return new Response(JSON.stringify({ success: false, message: "Method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -37,7 +35,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const [settingsResult, coursesResult, catResult] = await Promise.all([
+    const [settingsResult, coursesResult, catResult, statsResult] = await Promise.all([
       supabase.from("site_settings").select("key, value").in("key", LANDING_KEYS),
       supabase
         .from("courses")
@@ -47,6 +45,14 @@ Deno.serve(async (req: Request) => {
         .order("total_students", { ascending: false })
         .limit(8),
       supabase.from("courses").select("category").eq("is_published", true),
+      // Calculer les vraies stats depuis la base
+      Promise.all([
+        supabase.from("courses").select("id", { count: "exact", head: true }).eq("is_published", true),
+        supabase.from("users").select("id", { count: "exact", head: true }).eq("status", "actif"),
+        supabase.from("users").select("country_code", { count: "exact", head: true }).eq("status", "actif"),
+        supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "professeur"),
+        supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "directeur"),
+      ]),
     ]);
 
     const settings: Record<string, unknown> = {};
@@ -59,12 +65,40 @@ Deno.serve(async (req: Request) => {
       if (row.category) categoryCounts[row.category] = (categoryCounts[row.category] ?? 0) + 1;
     }
 
+    // Stats depuis la base — null si 0 (ne pas afficher)
+    const [formationsRes, apprenantsRes, paysRes, formateursRes, etablissementsRes] = statsResult;
+    const formationsCount = formationsRes.count ?? 0;
+    const apprenantsCount = apprenantsRes.count ?? 0;
+    const formateursCount = formateursRes.count ?? 0;
+    const etablissementsCount = etablissementsRes.count ?? 0;
+
+    // Compter les pays distincts
+    const { data: usersWithCountry } = await supabase
+      .from("users")
+      .select("country_code")
+      .eq("status", "actif")
+      .not("country_code", "is", null);
+    const distinctPays = new Set((usersWithCountry ?? []).map((u: { country_code: string }) => u.country_code)).size;
+
+    // Vérifier si des stats custom existent dans site_settings
+    const customStats = settings["landing_stats"] as Record<string, string> | null;
+
+    // Construire les stats — utiliser les custom si définies, sinon les vraies valeurs de la base
+    // Ne retourner que les stats non nulles/zéro
+    const stats: Record<string, string | null> = {
+      formations: customStats?.formations || (formationsCount > 0 ? `${formationsCount}+` : null),
+      apprenants: customStats?.apprenants || (apprenantsCount > 0 ? `${apprenantsCount.toLocaleString('fr-FR')}+` : null),
+      pays: customStats?.pays || (distinctPays > 0 ? `${distinctPays}+` : null),
+      formateurs: customStats?.formateurs || (formateursCount > 0 ? `${formateursCount}+` : null),
+      etablissements: customStats?.etablissements || (etablissementsCount > 0 ? `${etablissementsCount}+` : null),
+    };
+
     const payload = {
       hero: {
         title_fr:    settings["landing_hero_title_fr"]    ?? "Formez-vous, certifiez-vous, transformez votre avenir",
-        subtitle_fr: settings["landing_hero_subtitle_fr"] ?? "Des formations certifiées CPD, accessibles partout en Afrique de l'Ouest.",
+        subtitle_fr: settings["landing_hero_subtitle_fr"] ?? "Des formations certifiées CPD, accessibles partout en Afrique de l'Ouest, payables par Mobile Money.",
       },
-      stats:           settings["landing_stats"]                       ?? { formations: "500+", apprenants: "10 000+", pays: "15+", formateurs: "200+" },
+      stats,
       piliers:         settings["landing_piliers"]                     ?? [],
       featured_courses: coursesResult.data ?? [],
       devenir_formateur: {
