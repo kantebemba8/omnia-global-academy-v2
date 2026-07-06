@@ -14,7 +14,8 @@ const LANDING_KEYS = [
   "social_networks",
   "app_downloads",
   "collaborations_logos",
-  "follow_us_label_fr",
+ "follow_us_label_fr",
+  "stat_formations","stat_apprenants","stat_pays","stat_formateurs","stat_etablissements",
 ];
 
 function parseSetting(value: string): unknown {
@@ -80,19 +81,23 @@ Deno.serve(async (req: Request) => {
       .not("country_code", "is", null);
     const distinctPays = new Set((usersWithCountry ?? []).map((u: { country_code: string }) => u.country_code)).size;
 
-    // Vérifier si des stats custom existent dans site_settings
-    const customStats = settings["landing_stats"] as Record<string, string> | null;
+   // Lire les stats custom depuis site_settings (clés individuelles)
+    const [statForm, statApp, statPays, statForm2, statEtab] = await Promise.all([
+      supabase.from("site_settings").select("value").eq("key", "stat_formations").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_apprenants").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_pays").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_formateurs").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "stat_etablissements").maybeSingle(),
+    ]);
 
-    // Construire les stats — utiliser les custom si définies, sinon les vraies valeurs de la base
-    // Ne retourner que les stats non nulles/zéro
+    // Stats : valeur CMS si définie et non vide, sinon valeur réelle de la base, sinon null
     const stats: Record<string, string | null> = {
-      formations: customStats?.formations || (formationsCount > 0 ? `${formationsCount}+` : null),
-      apprenants: customStats?.apprenants || (apprenantsCount > 0 ? `${apprenantsCount.toLocaleString('fr-FR')}+` : null),
-      pays: customStats?.pays || (distinctPays > 0 ? `${distinctPays}+` : null),
-      formateurs: customStats?.formateurs || (formateursCount > 0 ? `${formateursCount}+` : null),
-      etablissements: customStats?.etablissements || (etablissementsCount > 0 ? `${etablissementsCount}+` : null),
+      formations:     (statForm.data?.value || null) ?? (formationsCount > 0 ? `${formationsCount}+` : null),
+      apprenants:     (statApp.data?.value || null) ?? (apprenantsCount > 0 ? `${apprenantsCount.toLocaleString('fr-FR')}+` : null),
+      pays:           (statPays.data?.value || null) ?? (distinctPays > 0 ? `${distinctPays}+` : null),
+      formateurs:     (statForm2.data?.value || null) ?? (formateursCount > 0 ? `${formateursCount}+` : null),
+      etablissements: (statEtab.data?.value || null) ?? (etablissementsCount > 0 ? `${etablissementsCount}+` : null),
     };
-
     const payload = {
       hero: {
         title_fr:    settings["landing_hero_title_fr"]    ?? "Formez-vous, certifiez-vous, transformez votre avenir",
