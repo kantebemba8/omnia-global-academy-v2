@@ -31,8 +31,18 @@ const ALLOWED_CMS_KEYS = new Set([
   "quiz_lesson_threshold","quiz_module_threshold","quiz_final_threshold",
   // AI tokens (CPD-related)
   "ai_tokens_inscription","ai_tokens_per_purchase",
-  // Text / legal
+ // Text / legal
   "site_slogan","cgu_content_fr","mentions_legales_fr",
+  // Favicon & identité visuelle
+  "favicon_url",
+  // CV Builder jetons
+  "cv_tokens_inscription","cv_tokens_per_purchase","cv_tokens_per_referral","cv_token_packs",
+  // Newsletter & emails
+  "email_admission","email_contact",
+  // Divers
+  "waitlist_count","waitlist_enabled",
+  "cv_allow_photo","cv_photo_warning_fr",
+  "ai_tokens_on_register","ai_tokens_per_referral",
 ]);
 
 async function sendBrevoLaunchEmail(sb: ReturnType<typeof createClient>) {
