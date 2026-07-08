@@ -25,7 +25,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
   { path: '/dashboard/certificats', label: 'Certificats', icon: Award },
-  { path: '/dashboard/cv-builder', label: 'CV Builder IA', icon: FileText, badge: 'IA' },
+ { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText, badge: 'Nouveau' },
   { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
   { path: '/forum', label: 'Forum communauté', icon: MessageSquare },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
