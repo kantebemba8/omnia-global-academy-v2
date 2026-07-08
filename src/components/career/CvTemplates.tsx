@@ -759,6 +759,7 @@ function GoldMainSection({ title, sidebarBg, gold, fs, children }: { title: stri
 
 // ─── MAP TEMPLATE KEY → COMPOSANT ────────────────────────
 import { CV_TEMPLATE_MAP_6_10 } from './CvTemplates_6_10';
+import { CV_TEMPLATE_MAP_11_15 } from './CvTemplates_11_15';
 
 export const CV_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: DocData; design: DesignOptions }>> = {
   classic_pro: ClassicPro,
@@ -767,8 +768,8 @@ export const CV_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: DocData
   minimal_luxe: MinimalLuxe,
   africa_gold: AfricaGold,
   ...CV_TEMPLATE_MAP_6_10,
+  ...CV_TEMPLATE_MAP_11_15,
 };
-
 export function CvPreview({ templateKey, data, design }: { templateKey: string; data: DocData; design: DesignOptions }) {
   const Component = CV_TEMPLATE_MAP[templateKey] || ClassicPro;
   return <Component data={data} design={design} />;
