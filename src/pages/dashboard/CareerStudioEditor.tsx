@@ -7,6 +7,7 @@ import {
   Settings, Palette, Type, Maximize2, Award, Copy,
   RotateCcw, Languages, Target, BarChart3, Lock
 } from 'lucide-react';
+import { CvPreview } from '../../components/career/CvTemplates';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -1109,7 +1110,7 @@ export default function CareerStudioEditor() {
           </div>
           <div className="flex-1 overflow-auto p-4" style={{ background: '#ECEDEE' }}>
             <div style={{ transform: 'scale(0.55)', transformOrigin: 'top left', width: '794px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', borderRadius: '4px', overflow: 'hidden', marginBottom: '-500px' }}>
-              <A4Preview data={docData} design={design} templateKey={templateKey} />
+             <CvPreview templateKey={templateKey} data={docData} design={design} />
             </div>
           </div>
         </div>
