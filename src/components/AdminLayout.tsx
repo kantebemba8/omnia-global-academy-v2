@@ -1,8 +1,9 @@
 import { ReactNode } from 'react';
 import { DashboardLayout } from './DashboardLayout';
 import {
- LayoutDashboard, Settings, CreditCard, Wallet, Tag, 
-  BookOpen, Users, Monitor, Award, Eye, MessageSquare
+  LayoutDashboard, Settings, CreditCard, Wallet, Tag,
+  BookOpen, Users, Monitor, Award, Eye, MessageSquare,
+  Briefcase, Building2
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -19,6 +20,8 @@ const ADMIN_NAV = [
   { path: '/admin/certificate-preview', label: 'Aperçu Certificats', icon: Eye },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
  { path: '/admin/forum', label: 'Forum & Modération', icon: MessageSquare },
+ { path: '/admin/career-studio', label: 'Omnia Career Studio', icon: Briefcase },
+  { path: '/admin/career-studio', label: 'Organisations partenaires', icon: Building2 },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
