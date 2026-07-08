@@ -25,6 +25,7 @@ import { DashboardApprenant } from './pages/dashboard/DashboardApprenant';
 import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
 import DashboardCvBuilder from './pages/dashboard/DashboardCvBuilder';
+import OmniaCareerStudio from './pages/OmniaCareerStudio';
 import { DashboardParrainage } from './pages/dashboard/DashboardParrainage';
 import { DashboardProfil } from './pages/dashboard/DashboardProfil';
 import { DashboardProfesseur } from './pages/professeur/DashboardProfesseur';
