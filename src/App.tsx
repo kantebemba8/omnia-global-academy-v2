@@ -53,6 +53,7 @@ import ModerateurKyc from './pages/moderateur/ModerateurKyc';
 import ModerateurUtilisateurs from './pages/moderateur/ModerateurUtilisateurs';
 import ModerateurForum from './pages/moderateur/ModerateurForum';
 import AdminForum from './pages/admin/AdminForum';
+import AdminCareerStudio from './pages/admin/AdminCareerStudio';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
 import ModerateurAnalytique from './pages/moderateur/ModerateurAnalytique';
@@ -169,6 +170,7 @@ export default function App() {
         <Route path="/moderateur/utilisateurs" element={<ModerateurUtilisateurs />} />
         <Route path="/moderator/forum" element={<ModerateurForum />} />
           <Route path="/admin/forum" element={<AdminForum />} />
+          <Route path="/admin/career-studio" element={<AdminCareerStudio />} />
         <Route path="/moderateur/forum" element={<ModerateurForum />} />
         <Route path="/moderator/jobs" element={<ModerateurOffresEmploi />} />
         <Route path="/moderateur/emploi" element={<ModerateurOffresEmploi />} />
