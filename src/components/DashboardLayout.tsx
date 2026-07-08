@@ -43,9 +43,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
 ];
 
-const DIRECTEUR_NAV = [
-  { path: '/school/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
-  const PARTNER_NAV = [
+const PARTNER_NAV = [
   { path: '/partner/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
   { path: '/partner/dashboard', label: 'Codes & PIN', icon: Key },
@@ -55,6 +53,9 @@ const DIRECTEUR_NAV = [
   { path: '/school/payouts', label: 'Retraits', icon: Wallet },
   { path: '/school/certificats', label: 'Certificats', icon: Award },
 ];
+
+const DIRECTEUR_NAV = [
+  { path: '/school/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/school/teachers', label: 'Gestion enseignants', icon: Users },
   { path: '/school/courses', label: 'Catalogue interne', icon: BookOpen },
   { path: '/school/licenses', label: 'Licences B2B', icon: Key },
