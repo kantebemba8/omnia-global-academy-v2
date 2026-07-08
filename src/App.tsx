@@ -25,6 +25,7 @@ import { DashboardApprenant } from './pages/dashboard/DashboardApprenant';
 import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
 import DashboardCvBuilder from './pages/dashboard/DashboardCvBuilder';
+import DashboardCareerStudio from './pages/dashboard/DashboardCareerStudio';
 import OmniaCareerStudio from './pages/OmniaCareerStudio';
 import { DashboardParrainage } from './pages/dashboard/DashboardParrainage';
 import { DashboardProfil } from './pages/dashboard/DashboardProfil';
@@ -179,6 +180,7 @@ export default function App() {
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
         <Route path="/dashboard/cv-builder" element={<DashboardCvBuilder />} />
+          <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
         <Route path="/dashboard/parrainage" element={<DashboardParrainage />} />
         <Route path="/dashboard/profil" element={<DashboardProfil />} />
 
