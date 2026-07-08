@@ -590,7 +590,7 @@ export default function AdminCareerStudio() {
                   L'historique détaillé des exports PDF, Word et des transactions de jetons sera affiché ici.
                 </p>
                 <p className="text-xs mt-3 px-4 py-2 rounded-lg inline-block" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                  Fonctionnalité à compléter — données disponibles dans Supabase > career_token_transactions
+                 Fonctionnalité à compléter — données disponibles dans Supabase &gt; career_token_transactions
                 </p>
               </div>
             </div>
