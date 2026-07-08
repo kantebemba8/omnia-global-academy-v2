@@ -1111,7 +1111,10 @@ export default function CareerStudioEditor() {
           </div>
           <div className="flex-1 overflow-auto p-4" style={{ background: '#ECEDEE' }}>
             <div style={{ transform: 'scale(0.55)', transformOrigin: 'top left', width: '794px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', borderRadius: '4px', overflow: 'hidden', marginBottom: '-500px' }}>
-             <CvPreview templateKey={templateKey} data={docData} design={design} />
+             {docType === 'lm'
+                ? <LmPreview templateKey={templateKey} data={docData as any} design={design} />
+                : <CvPreview templateKey={templateKey} data={docData} design={design} />
+              }
             </div>
           </div>
         </div>
