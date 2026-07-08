@@ -38,6 +38,7 @@ import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
 import { ProfesseurProfil } from './pages/professeur/ProfesseurProfil';
 import ProfesseurCertificats from './pages/professeur/ProfesseurCertificats';
 import { DirecteurDashboard } from './pages/directeur/DirecteurDashboard';
+import PartnerDashboard from './pages/partner/PartnerDashboard';
 import { DirecteurEnseignants } from './pages/directeur/DirecteurEnseignants';
 import { DirecteurCatalogueInterne } from './pages/directeur/DirecteurCatalogueInterne';
 import { DirecteurLicences } from './pages/directeur/DirecteurLicences';
@@ -199,6 +200,7 @@ export default function App() {
 
         {/* Module 8 — Dashboard directeur — always accessible */}
         <Route path="/school/dashboard" element={<DirecteurDashboard />} />
+          <Route path="/partner/dashboard" element={<PartnerDashboard />} />
           <Route path="/school/certificats" element={<DirecteurCertificats />} />
         <Route path="/school/teachers" element={<DirecteurEnseignants />} />
         <Route path="/school/courses" element={<DirecteurCatalogueInterne />} />
