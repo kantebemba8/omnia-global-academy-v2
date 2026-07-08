@@ -45,6 +45,16 @@ const PROFESSEUR_NAV = [
 
 const DIRECTEUR_NAV = [
   { path: '/school/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  const PARTNER_NAV = [
+  { path: '/partner/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
+  { path: '/partner/dashboard', label: 'Codes & PIN', icon: Key },
+  { path: '/partner/dashboard', label: 'Membres', icon: Users },
+  { path: '/school/teachers', label: 'Enseignants', icon: Users },
+  { path: '/school/courses', label: 'Catalogue interne', icon: BookOpen },
+  { path: '/school/payouts', label: 'Retraits', icon: Wallet },
+  { path: '/school/certificats', label: 'Certificats', icon: Award },
+];
   { path: '/school/teachers', label: 'Gestion enseignants', icon: Users },
   { path: '/school/courses', label: 'Catalogue interne', icon: BookOpen },
   { path: '/school/licenses', label: 'Licences B2B', icon: Key },
@@ -120,7 +130,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
 
   const NAV_ITEMS = navItems ?? (
     role === 'professeur' ? PROFESSEUR_NAV
-    : role === 'directeur' ? DIRECTEUR_NAV
+   : role === 'directeur' ? PARTNER_NAV
     : role === 'enseignant' ? ENSEIGNANT_NAV
     : role === 'super_admin' ? ADMIN_NAV
     : APPRENANT_NAV
