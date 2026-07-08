@@ -120,6 +120,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={<RootGate />} />
         <Route path="/accueil" element={<LandingPage />} />
+          <Route path="/career-studio" element={<OmniaCareerStudio />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
