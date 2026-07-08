@@ -8,6 +8,7 @@ import {
   RotateCcw, Languages, Target, BarChart3, Lock
 } from 'lucide-react';
 import { CvPreview } from '../../components/career/CvTemplates';
+import { LmPreview } from '../../components/career/LmTemplates';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
