@@ -1,10 +1,9 @@
 import { ReactNode } from 'react';
 import { DashboardLayout } from './DashboardLayout';
-import { ..., PlusCircle, BookOpen } from 'lucide-react';
 import {
-  LayoutDashboard, Settings, CreditCard, Wallet, Tag,
+ LayoutDashboard, Settings, CreditCard, Wallet, Tag,
   BookOpen, Users, Monitor, Award, Eye, MessageSquare,
-  Briefcase, Building2
+  Briefcase, Building2, PlusCircle
 } from 'lucide-react';
 
 const ADMIN_NAV = [
