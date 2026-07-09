@@ -6,7 +6,7 @@ import { useSiteMode } from '../../context/SiteModeContext';
 import {
   TrendingUp, DollarSign, Lock, Users, AlertTriangle, BookOpen,
   Wallet, Shield, Briefcase, ArrowRight, Clock, Eye,
-  GraduationCap, School, UserCheck,
+ GraduationCap, Building2, UserCheck,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -137,7 +137,7 @@ export default function AdminDashboard() {
             {[
               { label: 'Espace Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
               { label: 'Espace Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
-              { label: 'Espace École', icon: School, path: '/school/dashboard?preview=true' },
+             { label: 'Espace Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
               { label: 'Espace Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
             ].map((item) => (
               <button
