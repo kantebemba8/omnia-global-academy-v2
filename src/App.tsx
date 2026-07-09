@@ -90,6 +90,11 @@ import DemoDashboard from './pages/demo/DemoDashboard';
 import { Sentry } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import StructureDashboard from './pages/structure/StructureDashboard';
+import StructureProfil from './pages/structure/StructureProfil';
+import StructureCodes from './pages/structure/StructureCodes';
+import StructureMembres from './pages/structure/StructureMembres';
+import StructureAvantages from './pages/structure/StructureAvantages';
+import StructureEquipe from './pages/structure/StructureEquipe';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -218,6 +223,12 @@ export default function App() {
 
         {/* Module 8 — Dashboard directeur — always accessible */}
           <Route path="/structure/dashboard" element={<StructureDashboard />} />
+          <Route path="/structure/profil" element={<StructureProfil />} />
+<Route path="/structure/codes" element={<StructureCodes />} />
+<Route path="/structure/membres" element={<StructureMembres />} />
+<Route path="/structure/rattachements" element={<StructureMembres />} />
+<Route path="/structure/avantages" element={<StructureAvantages />} />
+<Route path="/structure/equipe" element={<StructureEquipe />} />
 
         {/* Module 8 — Dashboard enseignant — always accessible */}
         <Route path="/staff/dashboard" element={<EnseignantDashboard />} />
