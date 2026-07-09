@@ -55,6 +55,7 @@ import ModerateurUtilisateurs from './pages/moderateur/ModerateurUtilisateurs';
 import ModerateurForum from './pages/moderateur/ModerateurForum';
 import AdminForum from './pages/admin/AdminForum';
 import AdminCareerStudio from './pages/admin/AdminCareerStudio';
+import AdminStudioValidation from './pages/admin/AdminStudioValidation';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
 import ModerateurAnalytique from './pages/moderateur/ModerateurAnalytique';
@@ -131,6 +132,7 @@ export default function App() {
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
+          <Route path="/admin/studio-validation" element={<AdminStudioValidation />} />
 
         {/* Auth — always accessible even in coming-soon mode */}
         <Route path="/connexion" element={<Login />} />
