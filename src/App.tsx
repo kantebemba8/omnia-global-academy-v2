@@ -89,6 +89,7 @@ import FormulaireRecruteur from './pages/FormulaireRecruteur';
 import DemoDashboard from './pages/demo/DemoDashboard';
 import { Sentry } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import StructureDashboard from './pages/structure/StructureDashboard';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -223,6 +224,7 @@ export default function App() {
         <Route path="/school/courses" element={<DirecteurCatalogueInterne />} />
         <Route path="/school/licenses" element={<DirecteurLicences />} />
         <Route path="/school/payouts" element={<DirecteurPortefeuille />} />
+          <Route path="/structure/dashboard" element={<StructureDashboard />} />
 
         {/* Module 8 — Dashboard enseignant — always accessible */}
         <Route path="/staff/dashboard" element={<EnseignantDashboard />} />
