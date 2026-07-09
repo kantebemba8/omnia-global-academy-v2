@@ -22,6 +22,7 @@ const ADMIN_NAV = [
  { path: '/admin/forum', label: 'Forum & Modération', icon: MessageSquare },
  { path: '/admin/career-studio', label: 'Omnia Career Studio', icon: Briefcase },
   { path: '/admin/career-studio', label: 'Organisations partenaires', icon: Building2 },
+  { path: '/admin/studio-validation', label: 'Validation formations', icon: BookOpen },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
