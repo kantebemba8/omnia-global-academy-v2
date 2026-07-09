@@ -31,7 +31,7 @@ interface Course {
 const ROLE_OPTIONS = [
   { key: 'apprenant', label: 'Apprenant' },
   { key: 'professeur', label: 'Professeur' },
-  { key: 'etablissement_directeur', label: 'Directeur d\'établissement' },
+ { key: 'responsable_structure', label: 'Responsable de structure' },
   { key: 'moderateur', label: 'Modérateur' },
 ];
 
