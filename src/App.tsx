@@ -73,6 +73,9 @@ import AdminCertificates from './pages/admin/AdminCertificates';
 import AdminCertificateSettings from './pages/admin/AdminCertificateSettings';
 import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
 import AdminMesFormations from './pages/admin/AdminMesFormations';
+import AdminStructures from './pages/admin/AdminStructures';
+import AdminStructureCodes from './pages/admin/AdminStructureCodes';
+import AdminStructureAvantages from './pages/admin/AdminStructureAvantages';
 import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
 import Checkout from './pages/Checkout';
 import PaymentConfirmation from './pages/PaymentConfirmation';
@@ -173,6 +176,9 @@ export default function App() {
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
+          <Route path="/admin/structures" element={<AdminStructures />} />
+<Route path="/admin/structure-codes" element={<AdminStructureCodes />} />
+<Route path="/admin/structure-avantages" element={<AdminStructureAvantages />} />
           
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
