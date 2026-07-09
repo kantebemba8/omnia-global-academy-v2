@@ -70,6 +70,7 @@ import AdminCpdCredits from './pages/admin/AdminCpdCredits';
 import AdminCertificates from './pages/admin/AdminCertificates';
 import AdminCertificateSettings from './pages/admin/AdminCertificateSettings';
 import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
+import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
 import Checkout from './pages/Checkout';
 import PaymentConfirmation from './pages/PaymentConfirmation';
 import PaymentFailed from './pages/PaymentFailed';
@@ -160,6 +161,14 @@ export default function App() {
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
+          
+          {/* Studio — accessible aux 3 rôles */}
+<Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
 
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
