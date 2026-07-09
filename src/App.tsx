@@ -217,13 +217,6 @@ export default function App() {
           <Route path="/professeur/certificats" element={<ProfesseurCertificats />} />
 
         {/* Module 8 — Dashboard directeur — always accessible */}
-        <Route path="/school/dashboard" element={<DirecteurDashboard />} />
-          <Route path="/partner/dashboard" element={<PartnerDashboard />} />
-          <Route path="/school/certificats" element={<DirecteurCertificats />} />
-        <Route path="/school/teachers" element={<DirecteurEnseignants />} />
-        <Route path="/school/courses" element={<DirecteurCatalogueInterne />} />
-        <Route path="/school/licenses" element={<DirecteurLicences />} />
-        <Route path="/school/payouts" element={<DirecteurPortefeuille />} />
           <Route path="/structure/dashboard" element={<StructureDashboard />} />
 
         {/* Module 8 — Dashboard enseignant — always accessible */}
