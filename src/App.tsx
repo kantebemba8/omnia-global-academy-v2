@@ -15,6 +15,7 @@ import { RegisterApprenant } from './pages/auth/RegisterApprenant';
 import { RegisterProfesseur } from './pages/auth/RegisterProfesseur';
 import { RegisterEtablissement } from './pages/auth/RegisterEtablissement';
 import RegisterOrganisation from './pages/auth/RegisterOrganisation';
+import { RegisterStructure } from './pages/auth/RegisterStructure';
 import { VerifyOTP } from './pages/auth/VerifyOTP';
 import { Login } from './pages/auth/Login';
 import { LoginOTP } from './pages/auth/LoginOTP';
