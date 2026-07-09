@@ -70,6 +70,15 @@ export default function EspaceCarriere() {
   const [category, setCategory] = useState(params.get('category') || '');
   const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || 'ML');
   const [showFilters, setShowFilters] = useState(false);
+  const canPostJob = (() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('omnia_user') || '{}');
+      const roles: string[] = user.roles || [];
+      return roles.includes('super_admin') ||
+             roles.includes('moderateur') ||
+             roles.includes('responsable_structure');
+    } catch { return false; }
+  })();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,11 +128,13 @@ export default function EspaceCarriere() {
                   {JOB_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </select>
               </div>
-              <Link to="/recruteur"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                style={{ backgroundColor: '#BF8813' }}>
-                <Briefcase className="w-4 h-4" /> Déposer une offre
-              </Link>
+             {canPostJob && (
+                <Link to="/recruteur"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                  style={{ backgroundColor: '#BF8813' }}>
+                  <Briefcase className="w-4 h-4" /> Déposer une offre
+                </Link>
+              )}
             </div>
           </div>
 
