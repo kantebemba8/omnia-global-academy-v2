@@ -4,7 +4,8 @@ export const API_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL}/functions/v1`
   : '/api';
 
-export const ENDPOINTS = {
+export const ENDPOINTS = 
+structureManage: `${API_BASE_URL}/structure-manage`,
   siteSettings: `${API_BASE_URL}/site-settings-public`,
   landingData: `${API_BASE_URL}/landing-data`,
   catalogueList: `${API_BASE_URL}/catalogue-list`,
