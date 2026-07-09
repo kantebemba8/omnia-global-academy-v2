@@ -72,7 +72,7 @@ export function ProfesseurMesFormations() {
             <h1 className="text-2xl font-bold text-gray-900">Mes formations</h1>
             <p className="text-gray-500 text-sm mt-1">{formations.length} formation{formations.length !== 1 ? 's' : ''}</p>
           </div>
-          <Link to="/professeur/courses/new"
+        <Link to="/professeur/studio/new"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
             style={{ backgroundColor: '#002050' }}>
             <PlusCircle className="w-4 h-4" /> Nouvelle formation
@@ -98,7 +98,7 @@ export function ProfesseurMesFormations() {
           <div className="bg-white rounded-xl p-12 border border-gray-100 text-center">
             <BookOpen className="w-12 h-12 mx-auto mb-4 text-gray-200" />
             <p className="text-gray-500">Aucune formation</p>
-            <Link to="/professeur/courses/new"
+          <Link to="/professeur/studio/new"
               className="mt-4 inline-flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white"
               style={{ backgroundColor: '#002050' }}>
               <PlusCircle className="w-4 h-4" /> Créer une formation
@@ -132,7 +132,7 @@ export function ProfesseurMesFormations() {
                     </div>
                     <div className="flex gap-2">
                       {['brouillon', 'rejetee', 'modification_demandee'].includes(f.status) && (
-                        <Link to={`/professeur/courses/${f.id}/edit`}
+                        <Link to={`/professeur/studio/${f.id}`}
                           className="flex-1 py-2 text-xs font-semibold text-center rounded-lg border flex items-center justify-center gap-1"
                           style={{ borderColor: '#002050', color: '#002050' }}>
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
