@@ -165,7 +165,11 @@ export default function StudioConceptionFormation() {
           });
           if (data.success) {
             setCourse(data.course);
-            navigate(`/professeur/studio/${data.course.id}`, { replace: true });
+            const basePath = window.location.pathname.includes('/admin/') ? '/admin/studio'
+              : window.location.pathname.includes('/partner/') ? '/partner/studio'
+              : window.location.pathname.includes('/structure/') ? '/structure/studio'
+              : '/professeur/studio';
+            navigate(`${basePath}/${data.course.id}`, { replace: true });
           }
         } else if (courseId) {
           const data = await api('get_course', { course_id: courseId });
@@ -183,7 +187,9 @@ export default function StudioConceptionFormation() {
               }
             }
           } else {
-            navigate('/professeur/courses');
+           const fallback = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
+              : '/professeur/courses';
+            navigate(fallback);
           }
         }
       } catch { showToast('Erreur de chargement', 'error'); }
@@ -462,7 +468,13 @@ export default function StudioConceptionFormation() {
 
       {/* ── BARRE SUPÉRIEURE ─────────────────────────────── */}
       <div className="bg-white border-b flex items-center px-4 h-14 flex-shrink-0" style={{ borderColor: '#E4E7EC' }}>
-        <button onClick={() => navigate('/professeur/courses')} className="flex items-center gap-1.5 mr-4 text-sm" style={{ color: '#6B7280' }}>
+        <button onClick={() => {
+          const back = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
+            : window.location.pathname.includes('/partner/') ? '/partner/dashboard'
+            : window.location.pathname.includes('/structure/') ? '/structure/formations'
+            : '/professeur/courses';
+          navigate(back);
+        }} className="flex items-center gap-1.5 mr-4 text-sm" style={{ color: '#6B7280' }}>
           <ChevronLeft size={16} /> Retour
         </button>
         <div className="flex items-center gap-2 mr-4">
