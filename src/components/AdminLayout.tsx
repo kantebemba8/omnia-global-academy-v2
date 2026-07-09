@@ -23,6 +23,8 @@ const ADMIN_NAV = [
  { path: '/admin/career-studio', label: 'Omnia Career Studio', icon: Briefcase },
   { path: '/admin/career-studio', label: 'Organisations partenaires', icon: Building2 },
   { path: '/admin/studio-validation', label: 'Validation formations', icon: BookOpen },
+  { path: '/admin/studio/new',        label: 'Créer une formation',   icon: PlusCircle },
+{ path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: BookOpen },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
