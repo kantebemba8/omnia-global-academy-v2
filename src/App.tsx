@@ -87,6 +87,7 @@ import FormulaireRecruteur from './pages/FormulaireRecruteur';
 import DemoDashboard from './pages/demo/DemoDashboard';
 import { Sentry } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { LessonBlocksRenderer } from '../../components/BlockRenderer';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
