@@ -1065,8 +1065,6 @@ function BlockPreview({ block, def, locked, onChange }: {
   const c = block.content_json;
   const inputCls = 'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050] transition-colors';
   const style = { borderColor: '#E4E7EC' };
-  const [uploading, setUploading] = useState(false);
-const [uploadProgress, setUploadProgress] = useState(0);
 
   switch (block.block_type) {
     case 'heading': return (
