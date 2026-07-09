@@ -244,7 +244,7 @@ export function CoursLecteur() {
     lesson: LessonContent;
     progress: { time_spent_seconds: number; quiz_passed: boolean; is_completed: boolean };
     required_seconds: number; cpd_time_reached: boolean;
-    questions: QuizQuestion[]; next_lesson_id: string | null;
+    questions: QuizQuestion[]; next_lesson_id: string | null; blocks?: any[];
   } | null>(null);
   const [progressLoading, setProgressLoading] = useState(true);
   const [lessonLoading, setLessonLoading] = useState(false);
@@ -555,9 +555,18 @@ export function CoursLecteur() {
                   <audio controls className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>
               )}
-              {lesson.content_type === 'text' && lesson.text_content && (
+             {lesson.content_type === 'text' && !lesson.has_blocks && lesson.text_content && (
                 <div className="rounded-2xl p-6 mb-5" style={{ border: '1px solid #E4E7EC' }}>
                   <SimpleMarkdown text={lesson.text_content} />
+                </div>
+              )}
+              {lesson.has_blocks && lessonData?.blocks && (lessonData.blocks as any[]).length > 0 && (
+                <div className="mb-5">
+                  <LessonBlocksRenderer
+                    blocks={lessonData.blocks as any[]}
+                    contentText={lesson.text_content}
+                    onQuizAnswer={(_blockId, _answer, _correct) => {}}
+                  />
                 </div>
               )}
 
