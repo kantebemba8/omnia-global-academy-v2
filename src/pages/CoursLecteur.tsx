@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { QuizLecon, type QuizQuestion } from './QuizLecon';
 import { ENDPOINTS } from '../lib/config';
-
+import { LessonBlocksRenderer } from '../components/BlockRenderer';
 interface AiMessage {
   id: string;
   role: 'user' | 'assistant';
