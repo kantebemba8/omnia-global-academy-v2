@@ -163,6 +163,7 @@ export default function App() {
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
+          <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
