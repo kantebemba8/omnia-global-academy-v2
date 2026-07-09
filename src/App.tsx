@@ -162,14 +162,6 @@ export default function App() {
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
           
-          {/* Studio — accessible aux 3 rôles */}
-<Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
-<Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
-<Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
-<Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
-<Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
-<Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
-
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
         <Route path="/moderateur/dashboard" element={<ModerateurDashboard />} />
@@ -206,6 +198,12 @@ export default function App() {
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
         <Route path="/professeur/courses/new" element={<ProfesseurStudioCreation />} />
         <Route path="/professeur/courses/:id/edit" element={<ProfesseurStudioCreation />} />
+          <Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
         <Route path="/professeur/profile" element={<ProfesseurProfil />} />
