@@ -143,7 +143,6 @@ export default function App() {
         <Route path="/inscription/apprenant" element={<RegisterApprenant />} />
         <Route path="/inscription/professeur" element={<RegisterProfesseur />} />
           <Route path="/inscription/structure" element={<RegisterStructure />} />
-        <Route path="/inscription/etablissement" element={<RegisterEtablissement />} />
           <Route path="/inscription/organisation" element={<RegisterOrganisation />} />
         <Route path="/verifier-otp" element={<VerifyOTP />} />
         <Route path="/mot-de-passe-oublie" element={<ForgotPassword />} />
