@@ -12,16 +12,21 @@ import {
 const ROLE_REDIRECT: Record<string, string> = {
   super_admin: "/admin/dashboard",
   moderateur: "/moderateur/dashboard",
-  etablissement_directeur: "/school/dashboard",
-  etablissement_enseignant: "/school/dashboard",
+  responsable_structure: "/structure/dashboard",
+  gestionnaire_partenaire: "/structure/dashboard",
+  directeur: "/structure/dashboard",
+  etablissement_directeur: "/structure/dashboard",
+  etablissement_enseignant: "/structure/dashboard",
   professeur: "/professeur/dashboard",
   apprenant: "/dashboard",
 };
 
 function getRedirectUrl(roles: string[]): string {
-  const priority = [
-    "super_admin", "moderateur", "etablissement_directeur",
-    "etablissement_enseignant", "professeur", "apprenant",
+ const priority = [
+    "super_admin", "moderateur", "responsable_structure",
+    "gestionnaire_partenaire", "directeur",
+    "etablissement_directeur", "etablissement_enseignant",
+    "professeur", "apprenant",
   ];
   for (const r of priority) {
     if (roles.includes(r)) return ROLE_REDIRECT[r];
