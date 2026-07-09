@@ -1192,6 +1192,70 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
   const c = block.content_json;
   const inputCls = 'w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]';
   const style = { borderColor: '#E4E7EC' };
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // ── Upload fichier vers Supabase Storage ──────────────────
+  async function handleFileUpload(file: File, blockType: string) {
+    if (!file) return;
+    setUploading(true);
+    setUploadProgress(10);
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+      const bucketMap: Record<string, string> = {
+        image: 'course-images', video: 'course-videos', audio: 'course-audios',
+        pdf: 'course-documents', word: 'course-documents', excel: 'course-excel',
+        scorm: 'course-scorm', download: 'course-resources',
+      };
+      const bucket = bucketMap[blockType] || 'course-resources';
+      const path = `${courseId}/${moduleId}/${lessonId}/${block.id}.${ext}`;
+
+      setUploadProgress(30);
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'Authorization': `Bearer ${ANON_KEY}`,
+        },
+        body: file,
+      });
+
+      setUploadProgress(80);
+      if (!res.ok) throw new Error('Erreur upload');
+
+      // Enregistrer le fichier via studio-unified
+      const saveRes = await api('upload_block_file', {
+        block_id: block.id,
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+        file_name: file.name,
+        file_size: file.size,
+        file_mime: file.type,
+        storage_path: path,
+        bucket_name: bucket,
+      });
+
+      setUploadProgress(100);
+      if (saveRes.success) {
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+        onUpdate({
+          file_url: publicUrl,
+          file_name: file.name,
+          file_size: file.size,
+          file_mime: file.type,
+          content_json: { ...c, url: publicUrl, title: c.title || file.name },
+        });
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+    } finally {
+      setTimeout(() => { setUploading(false); setUploadProgress(0); }, 800);
+    }
+  }
+
 
   return (
     <div className="space-y-4">
@@ -1272,6 +1336,157 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
           </label>
         </div>
       )}
+       {/* Upload fichiers — PDF, Word, Excel, Audio, SCORM, Download */}
+      {['pdf', 'word', 'excel', 'audio', 'scorm', 'download'].includes(block.block_type) && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>
+              Fichier {block.block_type.toUpperCase()}
+            </label>
+            {block.file_name ? (
+              <div className="p-3 rounded-xl border flex items-center gap-2" style={{ background: '#F0FDF4', borderColor: '#A7F3D0' }}>
+                <CheckCircle size={14} style={{ color: '#1E7A52' }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: '#065F46' }}>{block.file_name}</p>
+                  {block.file_size && <p className="text-xs" style={{ color: '#9CA3AF' }}>{Math.round(block.file_size / 1024)} Ko</p>}
+                </div>
+                {!locked && (
+                  <button onClick={() => onUpdate({ file_url: undefined, file_name: undefined, file_size: undefined, content_json: { ...c, url: '' } })}
+                    className="text-xs px-2 py-1 rounded-lg" style={{ color: '#DC2626', background: '#FEE2E2' }}>
+                    Retirer
+                  </button>
+                )}
+              </div>
+            ) : (
+              <label className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+                style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
+                <input type="file" className="hidden" disabled={locked}
+                  accept={
+                    block.block_type === 'pdf' ? '.pdf' :
+                    block.block_type === 'word' ? '.doc,.docx' :
+                    block.block_type === 'excel' ? '.xls,.xlsx,.csv' :
+                    block.block_type === 'audio' ? '.mp3,.wav,.ogg,.m4a' :
+                    block.block_type === 'scorm' ? '.zip' :
+                    '*'
+                  }
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, block.block_type); }} />
+                {uploading ? (
+                  <div className="text-center">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2" style={{ width: '120px' }}>
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${uploadProgress}%`, background: '#002050' }} />
+                    </div>
+                    <p className="text-xs" style={{ color: '#6B7280' }}>Envoi en cours... {uploadProgress}%</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <Download size={20} className="mx-auto mb-2" style={{ color: '#9CA3AF' }} />
+                    <p className="text-xs font-semibold" style={{ color: '#374151' }}>
+                      {block.block_type === 'scorm' ? 'Glissez votre ZIP SCORM ici' :
+                       block.block_type === 'pdf' ? 'Glissez votre PDF ici' :
+                       block.block_type === 'word' ? 'Glissez votre document Word ici' :
+                       block.block_type === 'excel' ? 'Glissez votre fichier Excel ici' :
+                       block.block_type === 'audio' ? 'Glissez votre fichier audio ici' :
+                       'Glissez votre fichier ici'}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>ou cliquez pour sélectionner</p>
+                    {block.block_type === 'scorm' && (
+                      <p className="text-xs mt-2 px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                        ⚠️ Format ZIP — SCORM 1.2 ou 2004
+                      </p>
+                    )}
+                  </div>
+                )}
+              </label>
+            )}
+          </div>
+
+          {/* URL manuelle si pas d'upload */}
+          {!block.file_name && (
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: '#6B7280' }}>
+                Ou URL directe
+              </label>
+              <input className={inputCls} style={style}
+                value={c.url || ''} onChange={e => onUpdate({ content_json: { ...c, url: e.target.value } })}
+                placeholder="https://..." disabled={locked} />
+            </div>
+          )}
+
+          {/* Description du fichier */}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Description</label>
+            <textarea className={inputCls} style={{ ...style, resize: 'none' }} rows={2}
+              value={c.description || ''} onChange={e => onUpdate({ content_json: { ...c, description: e.target.value } })}
+              placeholder="Description du fichier..." disabled={locked} />
+          </div>
+
+          {/* Options SCORM spécifiques */}
+          {block.block_type === 'scorm' && (
+            <div className="p-3 rounded-xl" style={{ background: '#FEF3C7', border: '1px solid #FDE68A' }}>
+              <p className="text-xs font-bold mb-2" style={{ color: '#92400E' }}>Options SCORM</p>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Type de package</label>
+                  <select className={inputCls} style={style} value={c.package_type || 'scorm_12'}
+                    onChange={e => onUpdate({ content_json: { ...c, package_type: e.target.value } })} disabled={locked}>
+                    <option value="scorm_12">SCORM 1.2</option>
+                    <option value="scorm_2004">SCORM 2004</option>
+                    <option value="xapi">xAPI (Tin Can)</option>
+                    <option value="aicc">AICC</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Durée estimée (minutes)</label>
+                  <input type="number" className={inputCls} style={style} value={c.duration_min || 0}
+                    onChange={e => onUpdate({ content_json: { ...c, duration_min: parseInt(e.target.value) } })} disabled={locked} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Option téléchargeable */}
+          {['pdf', 'word', 'excel', 'download'].includes(block.block_type) && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={c.downloadable !== false}
+                onChange={e => onUpdate({ content_json: { ...c, downloadable: e.target.checked } })}
+                style={{ accentColor: '#002050' }} disabled={locked} />
+              <span className="text-sm" style={{ color: '#374151' }}>Autoriser le téléchargement</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {/* Upload image */}
+      {block.block_type === 'image' && (
+        <div className="space-y-3">
+          {!block.file_name ? (
+            <label className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+              style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
+              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.gif,.webp" disabled={locked}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'image'); }} />
+              {uploading ? (
+                <p className="text-xs" style={{ color: '#6B7280' }}>Envoi... {uploadProgress}%</p>
+              ) : (
+                <>
+                  <Image size={20} className="mb-2" style={{ color: '#9CA3AF' }} />
+                  <p className="text-xs font-semibold" style={{ color: '#374151' }}>Téléverser une image</p>
+                  <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>JPG, PNG, GIF, WebP</p>
+                </>
+              )}
+            </label>
+          ) : (
+            <div className="p-3 rounded-xl border flex items-center gap-2" style={{ background: '#F0FDF4', borderColor: '#A7F3D0' }}>
+              <CheckCircle size={14} style={{ color: '#1E7A52' }} />
+              <p className="text-xs font-semibold truncate flex-1" style={{ color: '#065F46' }}>{block.file_name}</p>
+              {!locked && (
+                <button onClick={() => onUpdate({ file_url: undefined, file_name: undefined, content_json: { ...c, url: '' } })}
+                  className="text-xs px-2 py-1 rounded" style={{ color: '#DC2626' }}>Retirer</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* IA Assistant */}
       <div className="p-3 rounded-xl border" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
