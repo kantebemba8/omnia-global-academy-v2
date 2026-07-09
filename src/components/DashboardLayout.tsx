@@ -48,20 +48,20 @@ const PARTNER_NAV = [
   { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
   { path: '/partner/dashboard', label: 'Codes & PIN', icon: Key },
   { path: '/partner/dashboard', label: 'Membres', icon: Users },
-  { path: '/school/teachers', label: 'Enseignants', icon: Users },
-  { path: '/school/courses', label: 'Catalogue interne', icon: BookOpen },
-  { path: '/school/payouts', label: 'Retraits', icon: Wallet },
-  { path: '/school/certificats', label: 'Certificats', icon: Award },
+  { path: '/structure/teachers', label: 'Enseignants', icon: Users },
+  { path: '/structure/courses', label: 'Catalogue interne', icon: BookOpen },
+  { path: '/structure/payouts', label: 'Retraits', icon: Wallet },
+  { path: '/structure/certificats', label: 'Certificats', icon: Award },
 ];
 
 const DIRECTEUR_NAV = [
-  { path: '/school/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
-  { path: '/school/teachers', label: 'Gestion enseignants', icon: Users },
-  { path: '/school/courses', label: 'Catalogue interne', icon: BookOpen },
-  { path: '/school/licenses', label: 'Licences B2B', icon: Key },
-  { path: '/school/payouts', label: 'Retraits établissement', icon: Wallet },
+  { path: '/structure/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/structure/teachers', label: 'Gestion enseignants', icon: Users },
+  { path: '/structure/courses', label: 'Catalogue interne', icon: BookOpen },
+  { path: '/structure/licenses', label: 'Licences B2B', icon: Key },
+  { path: '/structure/payouts', label: 'Retraits établissement', icon: Wallet },
   { path: '/forum', label: 'Forum école', icon: MessageSquare },
-  { path: '/school/certificats', label: 'Certificats', icon: Award },
+  { path: '/structure/certificats', label: 'Certificats', icon: Award },
 ];
 
 const ENSEIGNANT_NAV = [
