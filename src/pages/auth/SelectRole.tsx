@@ -18,11 +18,11 @@ const roles = [
     path: '/inscription/professeur',
   },
   {
-    key: 'etablissement',
+    key: 'structure',
     icon: Building2,
-    title: 'Établissement',
-    description: 'Je gère une école et ses enseignants',
-    path: '/inscription/etablissement',
+    title: 'Structure',
+    description: 'Mon organisation souhaite rejoindre Omnia Global Academy',
+    path: '/inscription/structure',
   },
 ];
 
@@ -48,12 +48,8 @@ export function SelectRole() {
               <Icon size={22} style={{ color: '#002050' }} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm" style={{ color: '#002050' }}>
-                {title}
-              </div>
-              <div className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                {description}
-              </div>
+              <div className="font-semibold text-sm" style={{ color: '#002050' }}>{title}</div>
+              <div className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{description}</div>
             </div>
             <ChevronRight size={18} style={{ color: '#BF8813' }} />
           </button>
