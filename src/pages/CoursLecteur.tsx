@@ -6,6 +6,7 @@ import { useCpdTimer } from '../hooks/useCpdTimer';
 import { QuizLecon, type QuizQuestion } from './QuizLecon';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
+import { ScormPlayer } from '../components/ScormPlayer';
 interface AiMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -569,6 +570,18 @@ export function CoursLecteur() {
                   />
                 </div>
               )}
+              
+              {block.block_type === 'scorm' && block.file_url && (
+  <ScormPlayer
+    scormUrl={block.file_url}
+    packageType={block.content_json?.package_type || 'scorm_12'}
+    title={block.content_json?.title || block.file_name}
+    onComplete={(score) => {
+      // Marquer la leçon comme complétée
+    }}
+    onProgress={(pct) => console.log('SCORM progress:', pct)}
+  />
+)}
 
               {/* Auto exercises for language courses */}
               {(lesson.exercices_auto?.length ?? 0) > 0 && lesson.course_category?.toLowerCase().includes('langue') && (
