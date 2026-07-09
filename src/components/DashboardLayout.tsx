@@ -30,6 +30,7 @@ const APPRENANT_NAV = [
   { path: '/forum', label: 'Forum communauté', icon: MessageSquare },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
   { path: '/dashboard/profil', label: 'Mon profil', icon: User },
+  { path: '/dashboard/structure', label: 'Ma Structure', icon: Building2 },
 ];
 
 const PROFESSEUR_NAV = [
