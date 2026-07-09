@@ -67,9 +67,29 @@ export default function StructureDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+ const token = () => localStorage.getItem('omnia_session_token') || '';
 
-  async function load() {
+  // Mode prévisualisation super admin
+  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true' &&
+    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+
+ async function load() {
+    if (isPreview) {
+      // Mode prévisualisation — afficher une structure fictive
+      setStructure({
+        id: 'preview',
+        name: 'École de démonstration OGA',
+        structure_type: 'ecole',
+        status: 'validated',
+        display_name: 'Espace École',
+        status_label: 'Validée',
+        logo_url: undefined,
+        admin_comment: undefined,
+      });
+      setStats({ members: 24, active_codes: 3, active_benefits: 1 });
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
