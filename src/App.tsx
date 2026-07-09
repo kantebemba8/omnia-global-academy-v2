@@ -98,6 +98,7 @@ import StructureCodes from './pages/structure/StructureCodes';
 import StructureMembres from './pages/structure/StructureMembres';
 import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
+import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -210,6 +211,7 @@ export default function App() {
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />
         <Route path="/dashboard/parrainage" element={<DashboardParrainage />} />
         <Route path="/dashboard/profil" element={<DashboardProfil />} />
+          <Route path="/dashboard/structure" element={<DashboardStructure />} />
 
         {/* Module 7 — Dashboard professeur — always accessible */}
         <Route path="/professeur/dashboard" element={<DashboardProfesseur />} />
