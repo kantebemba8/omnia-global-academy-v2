@@ -13,17 +13,19 @@ interface DemoCourse {
 }
 
 const DEMO_ROLE_OPTIONS = [
-  { key: 'apprenant', label: 'Apprenant', description: 'Accès aux cours inscrits, forum, certificats', color: '#002050' },
-  { key: 'professeur', label: 'Professeur', description: 'Création de cours, studio, statistiques', color: '#1E7A52' },
-  { key: 'etablissement_directeur', label: 'Directeur', description: 'Tableau de bord école, gestion enseignants', color: '#7C3AED' },
-  { key: 'moderateur', label: 'Modérateur', description: 'File de modération, signalements, KYC', color: '#D97706' },
+  { key: 'apprenant',             label: 'Apprenant',              description: 'Accès aux cours inscrits, forum, certificats',                color: '#002050' },
+  { key: 'professeur',            label: 'Professeur',             description: 'Création de cours, studio, statistiques',                    color: '#1E7A52' },
+  { key: 'responsable_structure', label: 'Responsable de structure', description: 'Espace Structure, membres, codes, avantages',              color: '#7C3AED' },
+  { key: 'moderateur',            label: 'Modérateur',             description: 'File de modération, signalements, KYC',                      color: '#D97706' },
 ];
 
 const ROLE_REDIRECTS: Record<string, string> = {
-  professeur: '/professeur/dashboard',
-  etablissement_directeur: '/school/dashboard',
-  moderateur: '/moderateur/dashboard',
-  apprenant: '/dashboard',
+  professeur:             '/professeur/dashboard',
+  responsable_structure:  '/structure/dashboard',
+  moderateur:             '/moderateur/dashboard',
+  apprenant:              '/dashboard',
+  // Rétrocompatibilité anciens tokens demo
+  etablissement_directeur: '/structure/dashboard',
 };
 
 function formatTime(seconds: number) {
@@ -55,7 +57,6 @@ export default function DemoDashboard() {
   async function sendHeartbeat() {
     const heartbeatToken = localStorage.getItem('heartbeat_token');
     if (!heartbeatToken) { handleDemoExpired(); return; }
-
     try {
       const res = await fetch(ENDPOINTS.demoHeartbeat, {
         headers: { 'X-Demo-Heartbeat-Token': heartbeatToken },
@@ -67,24 +68,29 @@ export default function DemoDashboard() {
         setTimeRemaining(data.time_remaining_seconds ?? 0);
       }
     } catch {
-      // network error — keep countdown ticking, don't expire
+      // network error — keep countdown ticking
     }
   }
 
   useEffect(() => {
     const token = localStorage.getItem('omnia_session_token');
     const isDemo = localStorage.getItem('is_demo');
-    if (!token || isDemo !== 'true') {
-      navigate('/login');
-      return;
-    }
+    if (!token || isDemo !== 'true') { navigate('/login'); return; }
 
-    // Load demo state from localStorage
     const storedRoles = localStorage.getItem('demo_roles');
     const storedExpiry = localStorage.getItem('demo_expires_at');
+
     if (storedRoles) {
-      try { setDemoRoles(JSON.parse(storedRoles)); } catch { setDemoRoles(['apprenant']); }
+      try {
+        // Mapper les anciens rôles vers les nouveaux
+        const roles: string[] = JSON.parse(storedRoles);
+        const mappedRoles = roles.map(r =>
+          r === 'etablissement_directeur' ? 'responsable_structure' : r
+        );
+        setDemoRoles(mappedRoles);
+      } catch { setDemoRoles(['apprenant']); }
     }
+
     if (storedExpiry) {
       const secs = Math.max(0, Math.floor((new Date(storedExpiry).getTime() - Date.now()) / 1000));
       setTimeRemaining(secs);
@@ -108,11 +114,8 @@ export default function DemoDashboard() {
       } catch { /* ignore */ }
     }
 
-    // Initial heartbeat + polling every 30s
     sendHeartbeat();
     heartbeatRef.current = setInterval(sendHeartbeat, 30_000);
-
-    // Countdown tick every second
     countdownRef.current = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) { handleDemoExpired(); return 0; }
@@ -155,12 +158,9 @@ export default function DemoDashboard() {
               Accès démo — Session temporaire. Cette session ne permet pas d'achats réels.
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs transition-colors"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Quitter
+          <button onClick={handleLogout}
+            className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs transition-colors">
+            <LogOut className="w-3.5 h-3.5" /> Quitter
           </button>
         </div>
       </div>
@@ -199,16 +199,10 @@ export default function DemoDashboard() {
             {DEMO_ROLE_OPTIONS.map((opt) => {
               const available = demoRoles.includes(opt.key);
               return (
-                <button
-                  key={opt.key}
-                  onClick={() => handleRoleSwitch(opt.key)}
-                  disabled={!available}
-                  className="bg-white rounded-xl border border-gray-100 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
-                >
-                  <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-                    style={{ backgroundColor: available ? opt.color : '#9CA3AF' }}
-                  >
+                <button key={opt.key} onClick={() => handleRoleSwitch(opt.key)} disabled={!available}
+                  className="bg-white rounded-xl border border-gray-100 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                    style={{ backgroundColor: available ? opt.color : '#9CA3AF' }}>
                     <User className="w-4 h-4 text-white" />
                   </div>
                   <p className="text-sm font-semibold" style={{ color: available ? opt.color : '#9CA3AF' }}>
@@ -235,26 +229,21 @@ export default function DemoDashboard() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {courses.map((course) => (
-                <button
-                  key={course.id}
-                  onClick={() => navigate(`/cours/${course.id}`)}
-                  className="bg-white rounded-xl border border-gray-100 overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition-all"
-                >
-                  <div
-                    className="h-28 flex items-center justify-center"
+                <button key={course.id} onClick={() => navigate(`/cours/${course.id}`)}
+                  className="bg-white rounded-xl border border-gray-100 overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
+                  <div className="h-28 flex items-center justify-center"
                     style={{
                       backgroundImage: course.cover_image_url ? `url(${course.cover_image_url})` : undefined,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
+                      backgroundSize: 'cover', backgroundPosition: 'center',
                       backgroundColor: course.cover_image_url ? undefined : '#002050',
-                    }}
-                  >
+                    }}>
                     {!course.cover_image_url && <GraduationCap className="w-8 h-8 text-white/40" />}
                   </div>
                   <div className="p-4">
                     <p className="text-sm font-semibold line-clamp-2" style={{ color: '#002050' }}>{course.title}</p>
                     {course.category && (
-                      <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F0F4FF', color: '#002050' }}>
+                      <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: '#F0F4FF', color: '#002050' }}>
                         {course.category}
                       </span>
                     )}
@@ -277,7 +266,7 @@ export default function DemoDashboard() {
           <ul className="space-y-1">
             {[
               'Cette session est strictement à des fins de démonstration.',
-              'Aucun achat réel ni retrait de fonds n\'est possible.',
+              "Aucun achat réel ni retrait de fonds n'est possible.",
               'Une seule session active à la fois — toute nouvelle connexion invalide celle-ci.',
               'Les données créées durant la démo peuvent être réinitialisées.',
             ].map((note, i) => (
