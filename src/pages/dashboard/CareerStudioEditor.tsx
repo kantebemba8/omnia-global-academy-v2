@@ -38,13 +38,15 @@ import {
   getTemplateMeta,
   calculateBasicScore,
 } from '../../lib/careerStudioData';
-import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, saveCareerDocument } from '../../lib/careerStudioApi';
+import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type AiSuggestionMode = 'cv_summary' | 'cv_experience' | 'cv_skills' | 'lm_full' | 'lm_section' | 'analysis';
+type AiSuggestion = { title: string; text: string; mode: AiSuggestionMode; targetId?: string; tokensConsumed?: number; tokensRemaining?: number; remote?: boolean };
 
 type CvSectionKey = 'profile' | 'summary' | 'skills' | 'experiences' | 'education' | 'certifications' | 'languages' | 'projects' | 'interests';
 type LmSectionKey = 'sender' | 'recipient' | 'letter' | 'variables';
@@ -125,6 +127,9 @@ export default function CareerStudioEditor() {
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+  const [offerText, setOfferText] = useState('');
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
 
@@ -242,6 +247,96 @@ export default function CareerStudioEditor() {
   async function manualSave() {
     await saveNow();
     showToast('Document sauvegardé');
+  }
+
+
+  function getActiveExperienceText() {
+    if (!document || document.doc_type !== 'cv') return '';
+    const data = getCvData(document);
+    const first = data.experiences?.[0];
+    return first ? `${first.position} - ${first.company}\n${first.description}` : data.summary;
+  }
+
+  async function requestAi(mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) {
+    if (!document || aiLoading) return;
+    setAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const isCvDoc = document.doc_type === 'cv';
+      const cv = isCvDoc ? getCvData(document) : null;
+      const lm = !isCvDoc ? getLmData(document) : null;
+      const textByMode =
+        mode === 'cv_summary' ? (cv?.summary || '') :
+        mode === 'cv_experience' ? getActiveExperienceText() :
+        mode === 'cv_skills' ? `${cv?.title || ''}\n${cv?.summary || ''}\n${(cv?.experiences || []).map(e => e.description).join('\n')}` :
+        mode === 'lm_full' ? `${lm?.subject || ''}\n${lm?.intro || ''}\n${lm?.motivation || ''}\n${lm?.skills_paragraph || ''}` :
+        mode === 'lm_section' ? `${lm?.intro || ''}\n${lm?.motivation || ''}\n${lm?.skills_paragraph || ''}\n${lm?.company_link || ''}` :
+        document.doc_type === 'cv' ? JSON.stringify(cv) : JSON.stringify(lm);
+
+      const result = await runCareerAiAction({
+        action,
+        doc_type: document.doc_type,
+        text: textByMode,
+        doc_data: document.doc_data,
+        offer_text: offerText,
+        target_job: isCvDoc ? (cv?.title || document.target_job || '') : (lm?.subject || document.target_job || ''),
+        application_type: document.application_type || document.doc_type,
+        language: 'fr',
+      });
+
+      if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
+      setAiSuggestion({
+        title: getAiTitle(mode, action),
+        text: result.result,
+        mode,
+        tokensConsumed: result.tokens_consumed,
+        tokensRemaining: result.tokens_remaining,
+        remote: result.remote,
+      });
+      showToast(result.remote ? 'Suggestion IA générée' : 'Suggestion locale générée');
+    } catch (err) {
+      showToast((err as Error).message || 'Impossible de générer la suggestion IA.');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyAiSuggestion() {
+    if (!aiSuggestion || !document) return;
+
+    if (document.doc_type === 'cv') {
+      if (aiSuggestion.mode === 'cv_summary') {
+        updateCv(d => ({ ...d, summary: cleanAiText(aiSuggestion.text) }));
+      } else if (aiSuggestion.mode === 'cv_experience') {
+        updateCv(d => ({
+          ...d,
+          experiences: d.experiences.map((exp, index) => index === 0 ? { ...exp, description: cleanAiText(aiSuggestion.text) } : exp),
+        }));
+      } else if (aiSuggestion.mode === 'cv_skills') {
+        const skills = parseAiLines(aiSuggestion.text).slice(0, 12);
+        updateCv(d => ({
+          ...d,
+          skills: skills.map((name, index) => ({ id: uid('skai'), name, level: Math.max(60, 92 - index * 3) })),
+        }));
+      }
+    } else {
+      if (aiSuggestion.mode === 'lm_full') {
+        updateLm(d => mergeLetterText(d, aiSuggestion.text));
+      } else if (aiSuggestion.mode === 'lm_section') {
+        const paragraphs = splitParagraphs(aiSuggestion.text);
+        updateLm(d => ({
+          ...d,
+          intro: paragraphs[0] || d.intro,
+          motivation: paragraphs[1] || d.motivation,
+          skills_paragraph: paragraphs[2] || d.skills_paragraph,
+          company_link: paragraphs[3] || d.company_link,
+          availability: paragraphs[4] || d.availability,
+        }));
+      }
+    }
+
+    setAiSuggestion(null);
+    showToast('Suggestion appliquée au document');
   }
 
   async function handlePdfDownload() {
@@ -417,6 +512,17 @@ export default function CareerStudioEditor() {
             score={score}
           />
 
+          <AiAssistantPanel
+            isCv={isCv}
+            loading={aiLoading}
+            suggestion={aiSuggestion}
+            offerText={offerText}
+            onOfferTextChange={setOfferText}
+            onRequest={requestAi}
+            onApply={applyAiSuggestion}
+            onDismiss={() => setAiSuggestion(null)}
+          />
+
           <TemplatePanel templates={templates} selectedTemplate={selectedTemplate} selectedKey={document.template_key} onSelect={changeTemplate} />
 
           <ColorPanel colors={(document.design_options as DesignOptions | LmDesign).colors} onChange={updateDesignColors} />
@@ -436,6 +542,151 @@ export default function CareerStudioEditor() {
         </aside>
       </div>
     </div>
+  );
+}
+
+
+function getAiTitle(mode: AiSuggestionMode, action: string) {
+  if (mode === 'cv_summary') return 'Résumé professionnel amélioré';
+  if (mode === 'cv_experience') return 'Expérience reformulée';
+  if (mode === 'cv_skills') return 'Compétences suggérées';
+  if (mode === 'lm_full') return 'Lettre de motivation générée';
+  if (mode === 'lm_section') return 'Lettre améliorée';
+  if (action === 'ats_score') return 'Analyse ATS détaillée';
+  return 'Suggestion IA';
+}
+
+function cleanAiText(text: string) {
+  return (text || '')
+    .replace(/^```(?:json|text)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+}
+
+function splitParagraphs(text: string) {
+  return cleanAiText(text)
+    .split(/\n{2,}/)
+    .map(p => p.replace(/^[-•]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function parseAiLines(text: string) {
+  return cleanAiText(text)
+    .split(/\n|,|;/)
+    .map(line => line.replace(/^[-•\d.)\s]+/, '').trim())
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.findIndex(x => x.toLowerCase() === item.toLowerCase()) === index);
+}
+
+function mergeLetterText(data: LmData, text: string): LmData {
+  const paragraphs = splitParagraphs(text).filter(p => !/^madame|^monsieur|^objet\s*:/i.test(p));
+  return {
+    ...data,
+    intro: paragraphs[0] || data.intro,
+    motivation: paragraphs[1] || data.motivation,
+    skills_paragraph: paragraphs[2] || data.skills_paragraph,
+    company_link: paragraphs[3] || data.company_link,
+    availability: paragraphs[4] || data.availability,
+    closing: paragraphs[5] || data.closing,
+  };
+}
+
+function AiAssistantPanel({
+  isCv,
+  loading,
+  suggestion,
+  offerText,
+  onOfferTextChange,
+  onRequest,
+  onApply,
+  onDismiss,
+}: {
+  isCv: boolean;
+  loading: boolean;
+  suggestion: AiSuggestion | null;
+  offerText: string;
+  onOfferTextChange: (value: string) => void;
+  onRequest: (mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) => void;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className={cardClass('p-4')}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#bf8813]/10 px-3 py-1 text-xs font-bold text-[#bf8813]">
+            <Sparkles className="h-3.5 w-3.5" /> IA Omnia Career
+          </div>
+          <h3 className="mt-3 text-lg font-semibold text-[#002050]">Assistant IA</h3>
+          <p className="mt-1 text-sm leading-5 text-slate-600">Les suggestions sont proposées sans remplacer votre contenu. Vous décidez quand les appliquer.</p>
+        </div>
+      </div>
+
+      {isCv ? (
+        <div className="grid grid-cols-1 gap-2">
+          <AiButton loading={loading} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
+          <AiButton loading={loading} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
+          <AiButton loading={loading} label="Suggérer des compétences" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
+          <AiButton loading={loading} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <label className="block">
+            <span className={labelClass()}>Offre d’emploi ou contexte ciblé</span>
+            <textarea
+              className={inputClass('min-h-[92px] resize-y')}
+              placeholder="Collez ici une offre, le nom de l’entreprise, les missions ou les mots-clés à intégrer..."
+              value={offerText}
+              onChange={(e) => onOfferTextChange(e.target.value)}
+            />
+          </label>
+          <div className="grid grid-cols-1 gap-2">
+            <AiButton loading={loading} label="Générer une lettre complète" onClick={() => onRequest('lm_full', 'generate_lm')} />
+            <AiButton loading={loading} label="Adapter à l’offre" onClick={() => onRequest('lm_full', 'adapt_to_offer')} />
+            <AiButton loading={loading} label="Rendre plus professionnel" onClick={() => onRequest('lm_section', 'make_professional')} subtle />
+            <AiButton loading={loading} label="Corriger la langue" onClick={() => onRequest('lm_section', 'fix_grammar')} subtle />
+          </div>
+        </div>
+      )}
+
+      {suggestion && (
+        <div className="mt-4 rounded-2xl border border-[#bf8813]/30 bg-[#bf8813]/10 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-[#002050]">{suggestion.title}</h4>
+            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600">
+              {suggestion.remote ? 'IA' : 'Local'} · {suggestion.tokensConsumed || 0} jeton
+            </span>
+          </div>
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs leading-5 text-slate-700">{suggestion.text}</pre>
+          <div className="mt-3 flex items-center gap-2">
+            {suggestion.mode !== 'analysis' && (
+              <button type="button" onClick={onApply} className="rounded-xl bg-[#002050] px-3 py-2 text-sm font-semibold text-white hover:opacity-90">
+                Appliquer
+              </button>
+            )}
+            <button type="button" onClick={onDismiss} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiButton({ label, loading, onClick, subtle = false }: { label: string; loading: boolean; onClick: () => void; subtle?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className={subtle
+        ? 'inline-flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
+        : 'inline-flex items-center justify-between rounded-xl bg-[#002050] px-3 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60'}
+    >
+      <span>{label}</span>
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+    </button>
   );
 }
 
