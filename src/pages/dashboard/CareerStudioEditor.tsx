@@ -38,7 +38,8 @@ import {
   getTemplateMeta,
   calculateBasicScore,
 } from '../../lib/careerStudioData';
-import { getCareerDocument, listCareerDocuments, saveCareerDocument } from '../../lib/careerStudioApi';
+import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, saveCareerDocument } from '../../lib/careerStudioApi';
+import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -123,7 +124,9 @@ export default function CareerStudioEditor() {
   const [activeCvSection, setActiveCvSection] = useState<CvSectionKey>('profile');
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
   const saveTimer = useRef<number | null>(null);
+  const printRef = useRef<HTMLDivElement | null>(null);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -241,8 +244,45 @@ export default function CareerStudioEditor() {
     showToast('Document sauvegardé');
   }
 
-  function fakeDownload() {
-    showToast('Le téléchargement PDF avec jetons sera activé à l’étape PDF. Les données sont déjà sauvegardées.');
+  async function handlePdfDownload() {
+    if (!document) return;
+    if (exportingPdf) return;
+
+    if (document.doc_type === 'cv' && remoteMode && tokens <= 0) {
+      showToast('Jeton insuffisant : le téléchargement PDF du CV nécessite 1 jeton.');
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      await saveNow();
+      const result = await prepareCareerPdfExport(document);
+      if (typeof result.tokens_remaining === 'number') {
+        setTokens(result.tokens_remaining);
+      }
+
+      printCareerElementAsPdf(printRef.current, {
+        title: document.title || (document.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
+        docType: document.doc_type,
+        tokensConsumed: result.tokens_consumed,
+      });
+
+      const message = document.doc_type === 'cv'
+        ? result.remote
+          ? `PDF prêt. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
+          : 'PDF prêt en mode test local : aucun jeton consommé.'
+        : 'PDF de la lettre prêt. Les lettres ne consomment pas de jeton pour cette étape.';
+      showToast(message);
+    } catch (err) {
+      const e = err as Error & { code?: string; status?: number };
+      if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402) {
+        showToast(e.message || 'Jetons insuffisants pour télécharger ce CV.');
+      } else {
+        showToast(e.message || 'Impossible de préparer le PDF.');
+      }
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   if (loading || !document) {
@@ -293,8 +333,8 @@ export default function CareerStudioEditor() {
             <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Save className="h-4 w-4" /> Enregistrer
             </button>
-            <button onClick={fakeDownload} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-              <Download className="h-4 w-4" /> Télécharger PDF
+            <button onClick={handlePdfDownload} disabled={exportingPdf} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
+              <Download className="h-4 w-4" /> {exportingPdf ? 'Préparation...' : 'Télécharger PDF'}
             </button>
           </div>
         </div>
@@ -354,11 +394,13 @@ export default function CareerStudioEditor() {
 
           <div className={cardClass('p-4')}>
             <PreviewFrame>
-              {isCv ? (
-                <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
-              ) : (
-                <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
-              )}
+              <div ref={printRef} data-career-print-source="true">
+                {isCv ? (
+                  <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
+                ) : (
+                  <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                )}
+              </div>
             </PreviewFrame>
           </div>
         </main>
@@ -388,7 +430,7 @@ export default function CareerStudioEditor() {
               <div className="h-2 rounded-full bg-green-600" style={{ width: `${Math.max(8, score)}%` }} />
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Score local basé sur les sections complétées. L’analyse ATS avancée et l’IA seront activées à l’étape suivante.
+              Score local basé sur les sections complétées. Le téléchargement PDF est maintenant activé avec consommation de jeton pour les CV.
             </p>
           </div>
         </aside>
