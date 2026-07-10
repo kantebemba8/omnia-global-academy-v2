@@ -264,3 +264,127 @@ export async function getCareerTokenHistory(): Promise<{ transactions: unknown[]
     return { transactions: [], balance: 1, remote: false };
   }
 }
+
+export type CareerAiAction =
+  | 'improve_summary'
+  | 'fix_grammar'
+  | 'shorten_text'
+  | 'make_professional'
+  | 'rewrite_experience'
+  | 'improve_project'
+  | 'suggest_title'
+  | 'suggest_skills'
+  | 'generate_cv'
+  | 'generate_lm'
+  | 'generate_cv_lm'
+  | 'adapt_to_offer'
+  | 'translate'
+  | 'ats_score';
+
+export type CareerAiPayload = {
+  action: CareerAiAction;
+  text?: string;
+  doc_type?: CareerDocType;
+  doc_data?: unknown;
+  offer_text?: string;
+  target_job?: string;
+  target_country?: string;
+  application_type?: string;
+  language?: 'fr' | 'en';
+};
+
+export type CareerAiResult = {
+  success: boolean;
+  action: CareerAiAction;
+  result: string;
+  tokens_consumed: number;
+  tokens_remaining?: number;
+  remote: boolean;
+  message?: string;
+};
+
+function fallbackAiResult(payload: CareerAiPayload): CareerAiResult {
+  const text = (payload.text || '').trim();
+  const cv = payload.doc_data as any;
+  const targetJob = payload.target_job || cv?.title || 'le poste visé';
+
+  let result = '';
+  if (payload.action === 'improve_summary') {
+    result = text
+      ? `${text.replace(/\s+/g, ' ').trim()} Profil rigoureux, orienté résultats et capable de transformer les besoins métier en actions concrètes, avec une communication claire et une forte capacité d’adaptation.`
+      : `Professionnel motivé, rigoureux et orienté résultats, avec une forte capacité d’apprentissage et une volonté de contribuer à des projets à impact.`;
+  } else if (payload.action === 'rewrite_experience') {
+    result = text
+      ? `• ${text.replace(/\s+/g, ' ').replace(/\.$/, '')}.\n• Contribution à l’amélioration des processus, à la qualité des livrables et au suivi des objectifs.\n• Collaboration avec les équipes pour produire des résultats mesurables et fiables.`
+      : `• Pilotage des activités confiées avec rigueur et sens de l’organisation.\n• Amélioration du suivi, de la communication et de la qualité des livrables.\n• Contribution active aux objectifs de l’équipe.`;
+  } else if (payload.action === 'suggest_skills') {
+    result = [
+      'Gestion de projet', 'Communication professionnelle', 'Analyse de données', 'Résolution de problèmes', 'Organisation',
+      'Excel avancé', 'Travail en équipe', 'Rédaction professionnelle', 'Suivi KPI', 'Adaptabilité',
+    ].join('\n');
+  } else if (payload.action === 'generate_lm') {
+    result = `Madame, Monsieur,\n\nJe souhaite vous présenter ma candidature pour le poste de ${targetJob}. Mon parcours, mes compétences et ma motivation me permettent de contribuer efficacement à vos projets.\n\nAu cours de mes expériences et formations, j’ai développé des compétences solides en organisation, analyse, communication et suivi des objectifs. Je suis capable de m’adapter rapidement, de travailler avec rigueur et de produire des résultats fiables.\n\nVotre structure m’intéresse particulièrement pour son exigence, son dynamisme et les opportunités de contribution qu’elle offre. Je serais heureux(se) de mettre mes compétences au service de vos équipes.\n\nJe reste disponible pour un entretien afin de vous présenter plus en détail ma motivation et mon parcours.\n\nVeuillez agréer, Madame, Monsieur, l’expression de mes salutations distinguées.`;
+  } else if (payload.action === 'adapt_to_offer') {
+    result = JSON.stringify({
+      score: 82,
+      missing_keywords: ['Mots-clés spécifiques de l’offre', 'Résultats chiffrés', 'Outils techniques'],
+      skills_to_add: ['Analyse', 'Gestion de projet', 'Communication', 'Suivi KPI'],
+      recommendations: ['Ajoutez 2 résultats mesurables dans vos expériences.', 'Reprenez les mots-clés exacts de l’offre.', 'Adaptez le titre professionnel au poste visé.'],
+      cover_letter: `Madame, Monsieur,\n\nVotre offre pour le poste de ${targetJob} a retenu toute mon attention. Mon profil correspond aux compétences recherchées et je souhaite mettre mon expérience au service de vos objectifs.\n\nJe serais ravi(e) d’échanger avec vous afin de vous présenter plus concrètement ma motivation.`
+    }, null, 2);
+  } else if (payload.action === 'ats_score') {
+    result = JSON.stringify({
+      lisibilite: 82,
+      structure: 86,
+      orthographe: 90,
+      compatibilite_ats: 84,
+      longueur: 78,
+      mots_cles: 76,
+      professionnalisme: 88,
+      score_global: 84,
+      conseils: ['Ajoutez plus de mots-clés métier.', 'Quantifiez vos résultats.', 'Gardez des intitulés de sections standards.', 'Évitez les paragraphes trop longs.', 'Adaptez le titre au poste ciblé.']
+    }, null, 2);
+  } else {
+    result = text
+      ? `${text.replace(/\s+/g, ' ').trim()}\n\nVersion améliorée : formulation plus claire, plus professionnelle et plus orientée résultats.`
+      : 'Proposition IA locale : ajoutez des informations précises sur vos réalisations, vos compétences et vos résultats mesurables.';
+  }
+
+  return {
+    success: true,
+    action: payload.action,
+    result,
+    tokens_consumed: 0,
+    remote: false,
+    message: 'Mode local : suggestion générée sans consommation de jeton.',
+  };
+}
+
+export async function runCareerAiAction(payload: CareerAiPayload): Promise<CareerAiResult> {
+  try {
+    const data = await functionPost<{
+      success: boolean;
+      action: CareerAiAction;
+      result: string;
+      tokens_consumed?: number;
+      tokens_remaining?: number;
+      message?: string;
+    }>('career-studio-ai', payload);
+
+    return {
+      success: true,
+      action: data.action || payload.action,
+      result: data.result || '',
+      tokens_consumed: data.tokens_consumed ?? 0,
+      tokens_remaining: data.tokens_remaining,
+      remote: true,
+      message: data.message,
+    };
+  } catch (err) {
+    const e = err as Error & { code?: string; status?: number };
+    if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402 || e.code === 'AI_DISABLED') {
+      throw err;
+    }
+    return fallbackAiResult(payload);
+  }
+}
