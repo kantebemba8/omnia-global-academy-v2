@@ -82,7 +82,10 @@ async function functionPost<T>(slug: string, body: unknown): Promise<T> {
   });
   const data = await safeJson<T & { error?: string; message?: string }>(res);
   if (!res.ok || (data as { error?: string }).error) {
-    throw new Error((data as { message?: string; error?: string }).message || (data as { error?: string }).error || 'SERVER_ERROR');
+    const err = new Error((data as { message?: string; error?: string }).message || (data as { error?: string }).error || 'SERVER_ERROR');
+    (err as Error & { status?: number; code?: string }).status = res.status;
+    (err as Error & { status?: number; code?: string }).code = (data as { error?: string }).error || 'SERVER_ERROR';
+    throw err;
   }
   return data as T;
 }
@@ -201,4 +204,63 @@ export async function deleteCareerDocument(docType: CareerDocType, documentId: s
     // fallback local delete
   }
   writeLocal(docType, readLocal(docType).filter(d => d.id !== documentId));
+}
+
+
+export type CareerPdfExportResult = {
+  success: boolean;
+  export_id?: string;
+  tokens_consumed: number;
+  tokens_remaining?: number;
+  remote: boolean;
+  message?: string;
+};
+
+export async function prepareCareerPdfExport(document: CareerDocumentFull): Promise<CareerPdfExportResult> {
+  const localResult: CareerPdfExportResult = {
+    success: true,
+    tokens_consumed: 0,
+    remote: false,
+    message: 'Mode local : aucun jeton consommé pendant le test.',
+  };
+
+  try {
+    const data = await functionPost<{
+      success: boolean;
+      export_id?: string;
+      tokens_consumed?: number;
+      tokens_remaining?: number;
+      message?: string;
+    }>('career-studio-export', {
+      action: 'prepare_pdf',
+      document_id: document.id?.startsWith('local_') ? null : document.id,
+      doc_type: document.doc_type,
+      title: document.title,
+      template_key: document.template_key,
+    });
+
+    return {
+      success: true,
+      export_id: data.export_id,
+      tokens_consumed: data.tokens_consumed ?? 0,
+      tokens_remaining: data.tokens_remaining,
+      remote: true,
+      message: data.message,
+    };
+  } catch (err) {
+    const e = err as Error & { code?: string; status?: number };
+    if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402) {
+      throw err;
+    }
+    return localResult;
+  }
+}
+
+export async function getCareerTokenHistory(): Promise<{ transactions: unknown[]; balance: number; remote: boolean }> {
+  try {
+    const data = await functionPost<{ transactions?: unknown[]; balance?: number }>('career-token-manage', { action: 'get_history' });
+    return { transactions: data.transactions || [], balance: data.balance ?? 0, remote: true };
+  } catch {
+    return { transactions: [], balance: 1, remote: false };
+  }
 }
