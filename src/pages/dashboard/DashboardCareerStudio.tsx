@@ -191,11 +191,8 @@ export default function DashboardCareerStudio() {
     navigate(`/dashboard/career-studio/editor/new?type=${newDocType}&template=${templateKey}`);
   }
 
-  const filteredTemplates = templates.filter(t =>
-    newDocType === 'cv'
-      ? !['classic_lm', 'quick_lm'].includes(t.category)
-      : ['classic_lm', 'quick_lm'].includes(t.category)
-  );
+ // La Edge Function filtre déjà par doc_type — on utilise tous les templates reçus
+  const filteredTemplates = templates;
 
   const freeTemplates = filteredTemplates.filter(t => t.is_free);
   const premiumTemplates = filteredTemplates.filter(t => !t.is_free);
