@@ -91,23 +91,23 @@ export function OmniaCareerShell({
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <div className="flex min-h-screen">
-        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col bg-[#031B32] text-white shadow-2xl">
+        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col bg-[#002050] text-white shadow-2xl">
           <div className="px-6 pb-6 pt-7">
             <div className="flex items-center gap-3">
               <img
                 src="/IMG_0349.png"
                 alt="Omnia Global Academy"
-                className="h-14 w-14 rounded-2xl border border-[#D6A11E]/35 bg-white object-cover p-1 shadow-sm"
+                className="h-14 w-14 rounded-2xl border border-[#bf8813]/35 bg-white object-cover p-1 shadow-sm"
               />
               <div className="leading-tight">
-                <div className="font-serif text-[30px] tracking-wide text-white">OMNIA</div>
-                <div className="text-[11px] font-semibold tracking-[0.16em] text-white/80">GLOBAL ACADEMY</div>
+                <div className="font-serif text-2xl tracking-wide text-white">OMNIA</div>
+                <div className="text-xs font-semibold tracking-[0.16em] text-white/80">GLOBAL ACADEMY</div>
               </div>
             </div>
 
             <div className="mt-8">
-              <h2 className="text-[22px] font-semibold text-[#F6C64A]">Omnia Career</h2>
-              <div className="mt-3 h-[2px] w-10 rounded-full bg-[#D6A11E]" />
+              <h2 className="text-xl font-semibold text-[#bf8813]">Omnia Career</h2>
+              <div className="mt-3 h-[2px] w-10 rounded-full bg-[#bf8813]" />
             </div>
           </div>
 
@@ -120,12 +120,12 @@ export function OmniaCareerShell({
                   key={item.key}
                   type="button"
                   onClick={() => navigate(SECTION_TO_URL[item.key])}
-                  className={`group relative flex h-12 w-full items-center gap-3 rounded-xl px-4 text-left text-[15px] font-medium transition-all duration-200 ${
-                    active ? 'bg-[#0B2A5B] text-white shadow-lg' : 'text-white/86 hover:bg-white/10 hover:text-white'
+                  className={`group relative flex h-12 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition-all duration-200 ${
+                    active ? 'bg-[#002050] text-white shadow-lg' : 'text-white/86 hover:bg-white/10 hover:text-white'
                   }`}
                 >
-                  {active && <span className="absolute left-0 top-2 h-8 w-1 rounded-r-full bg-[#D6A11E]" />}
-                  <Icon className={`h-5 w-5 ${active ? 'text-[#F6C64A]' : 'text-white/82 group-hover:text-[#F6C64A]'}`} />
+                  {active && <span className="absolute left-0 top-2 h-8 w-1 rounded-r-full bg-[#bf8813]" />}
+                  <Icon className={`h-5 w-5 ${active ? 'text-[#bf8813]' : 'text-white/82 group-hover:text-[#bf8813]'}`} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -133,15 +133,15 @@ export function OmniaCareerShell({
           </nav>
 
           <div className="px-5 pb-7">
-            <div className="rounded-2xl border border-[#D6A11E]/35 bg-white/5 p-5 shadow-lg backdrop-blur">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#D6A11E] text-[#061B3A]">
+            <div className="rounded-2xl border border-[#bf8813]/35 bg-white/5 p-5 shadow-lg backdrop-blur">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#bf8813] text-[#002050]">
                 <Crown className="h-5 w-5" />
               </div>
-              <h3 className="text-lg font-bold text-[#F6C64A]">Passez à Premium</h3>
+              <h3 className="text-lg font-bold text-[#bf8813]">Passez à Premium</h3>
               <p className="mt-2 text-sm leading-6 text-white/78">Accédez à des modèles exclusifs, des analyses avancées et plus.</p>
               <button
                 type="button"
-                className="mt-5 h-11 w-full rounded-xl bg-[#F6C64A] text-sm font-bold text-[#061B3A] shadow-md transition hover:bg-[#D6A11E]"
+                className="mt-5 h-11 w-full rounded-xl bg-[#bf8813] text-sm font-bold text-[#002050] shadow-md transition hover:bg-[#bf8813]"
               >
                 Découvrir Premium
               </button>
@@ -159,12 +159,12 @@ export function OmniaCareerShell({
         <div className="ml-[280px] flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-slate-200 bg-white/95 px-8 backdrop-blur">
             <div className="flex w-full max-w-[620px] items-center">
-              <div className="flex h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-sm transition focus-within:border-[#D6A11E] focus-within:ring-4 focus-within:ring-[#D6A11E]/10">
+              <div className="flex h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-sm transition focus-within:border-[#bf8813] focus-within:ring-4 focus-within:ring-[#bf8813]/10">
                 <Search className="mr-3 h-5 w-5 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Rechercher un CV, une offre, un conseil..."
-                  className="h-full flex-1 border-0 bg-transparent text-[15px] text-slate-700 outline-none placeholder:text-slate-400"
+                  className="h-full flex-1 border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                 />
                 <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">⌘ K</span>
               </div>
@@ -177,11 +177,11 @@ export function OmniaCareerShell({
                 className="relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100"
               >
                 <Bell className="h-5 w-5" />
-                <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#D6A11E] text-[11px] font-bold text-white">3</span>
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#bf8813] text-xs font-bold text-white">3</span>
               </button>
               <div className="h-9 w-px bg-slate-200" />
               <button type="button" className="flex items-center gap-3 rounded-2xl px-2 py-1.5 transition hover:bg-slate-100">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#061B3A] text-sm font-bold text-white">{monogram}</div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#002050] text-sm font-bold text-white">{monogram}</div>
                 <div className="hidden text-left md:block">
                   <div className="text-sm font-bold text-slate-900">{displayName}</div>
                   <div className="text-xs font-medium text-slate-500">Apprenant</div>
