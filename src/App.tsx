@@ -99,6 +99,18 @@ import StructureMembres from './pages/structure/StructureMembres';
 import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
+import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
+import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
+import OmniaCareerLayout from './layouts/OmniaCareerLayout';
+import OmniaCareerEntry from './pages/omnia-career/OmniaCareerEntry';
+import OmniaCareerCVBuilder from './pages/omnia-career/OmniaCareerCVBuilder';
+import OmniaCareerLetters from './pages/omnia-career/OmniaCareerLetters';
+import OmniaCareerInterview from './pages/omnia-career/OmniaCareerInterview';
+import OmniaCareerApplications from './pages/omnia-career/OmniaCareerApplications';
+import OmniaCareerProfile from './pages/omnia-career/OmniaCareerProfile';
+import OmniaCareerCoaching from './pages/omnia-career/OmniaCareerCoaching';
+import OmniaCareerSettings from './pages/omnia-career/OmniaCareerSettings';
+import AdminOmniaCareerStudio from './pages/admin/AdminOmniaCareerStudio';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -261,6 +273,24 @@ export default function App() {
         <Route path="/forum/cours/:courseId" element={<ForumCours />} />
         <Route path="/emploi" element={<EspaceCarriere />} />
         <Route path="/emploi/:jobId" element={<JobDetail />} />
+
+          <Route path="/omnia-career" element={<OmniaCareerEntry />} />
+
+<Route element={<RequireOmniaCareerLearner />}>
+  <Route element={<OmniaCareerLayout />}>
+    <Route path="/omnia-career/cv-builder" element={<OmniaCareerCVBuilder />} />
+    <Route path="/omnia-career/lettres" element={<OmniaCareerLetters />} />
+    <Route path="/omnia-career/entretien" element={<OmniaCareerInterview />} />
+    <Route path="/omnia-career/candidatures" element={<OmniaCareerApplications />} />
+    <Route path="/omnia-career/profil" element={<OmniaCareerProfile />} />
+    <Route path="/omnia-career/coaching" element={<OmniaCareerCoaching />} />
+    <Route path="/omnia-career/parametres" element={<OmniaCareerSettings />} />
+  </Route>
+</Route>
+
+<Route element={<RequireOmniaCareerAdmin />}>
+  <Route path="/admin/omnia-career" element={<AdminOmniaCareerStudio />} />
+</Route>
 
         {/* Public routes guarded by coming-soon mode */}
         <Route element={<GuardedRoutes />}>
