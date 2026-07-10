@@ -1,37 +1,93 @@
 import { AdminLayout } from '../../components/AdminLayout';
-import { BarChart3, Briefcase, Crown, FileText, Mail, MessageSquare, Settings, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import {
+  BarChart3, Briefcase, Crown, FileText,
+  Mail, MessageSquare, Settings, ShieldCheck, Sparkles, Users
+} from 'lucide-react';
 
 const cards = [
-  { title: 'Modèles de CV', description: 'Créer, modifier, activer ou désactiver les modèles de CV.', icon: FileText, stat: '12 modèles' },
-  { title: 'Modèles de lettres', description: 'Gérer les modèles de lettres de motivation disponibles.', icon: Mail, stat: '9 modèles' },
-  { title: 'Questions d’entretien', description: 'Gérer les questions RH, techniques et sectorielles.', icon: MessageSquare, stat: '245 questions' },
-  { title: 'Coaching IA', description: 'Configurer les conseils, recommandations et limites IA.', icon: Sparkles, stat: 'Actif' },
-  { title: 'Premium & jetons CV', description: 'Gérer les accès premium, bonus CV et règles de consommation.', icon: Crown, stat: 'Configurable' },
-  { title: 'Statistiques', description: 'Suivre l’utilisation globale de Omnia Career.', icon: BarChart3, stat: 'Vue globale' },
-  { title: 'Utilisateurs', description: 'Consulter les apprenants utilisant Omnia Career.', icon: Users, stat: 'Apprenants' },
-  { title: 'Candidatures', description: 'Analyser les usages liés au suivi des candidatures.', icon: Briefcase, stat: 'Suivi' },
-  { title: 'Paramètres', description: 'Configurer les règles générales de Omnia Career.', icon: Settings, stat: 'Global' },
+  { title: 'Modèles de CV',           description: 'Créer, modifier, activer ou désactiver les modèles de CV.',       icon: FileText,     stat: '12 modèles' },
+  { title: 'Modèles de lettres',      description: 'Gérer les modèles de lettres de motivation disponibles.',         icon: Mail,         stat: '9 modèles' },
+  { title: 'Questions d\'entretien',  description: 'Gérer les questions RH, techniques et sectorielles.',             icon: MessageSquare, stat: '245 questions' },
+  { title: 'Coaching IA',             description: 'Configurer les conseils, recommandations et limites IA.',         icon: Sparkles,     stat: 'Actif' },
+  { title: 'Premium & jetons CV',     description: 'Gérer les accès premium, bonus CV et règles de consommation.',   icon: Crown,        stat: 'Configurable' },
+  { title: 'Statistiques',            description: 'Suivre l\'utilisation globale de Omnia Career.',                  icon: BarChart3,    stat: 'Vue globale' },
+  { title: 'Utilisateurs',            description: 'Consulter les apprenants utilisant Omnia Career.',               icon: Users,        stat: 'Apprenants' },
+  { title: 'Candidatures',            description: 'Analyser les usages liés au suivi des candidatures.',            icon: Briefcase,    stat: 'Suivi' },
+  { title: 'Paramètres',              description: 'Configurer les règles générales de Omnia Career.',               icon: Settings,     stat: 'Global' },
 ];
 
 export default function AdminCareerStudio() {
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#F8FAFC] px-8 py-8">
-        <div className="mb-8 flex items-start justify-between">
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#D6A11E]/30 bg-[#D6A11E]/10 px-4 py-2 text-sm font-bold text-[#8A650C]"><ShieldCheck className="h-4 w-4" />Accès Super Admin</div>
-            <h1 className="text-3xl font-black tracking-tight text-[#061B3A]">Omnia Career Studio</h1>
-            <p className="mt-2 max-w-3xl text-slate-600">Espace de gestion Super Admin pour configurer Omnia Career, contrôler les modèles, les contenus, les règles d’accès, les jetons CV, les options premium et les statistiques globales.</p>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full"
+                style={{ background: 'rgba(0,32,80,0.08)', color: '#002050' }}>
+                <ShieldCheck size={13} /> Accès Super Admin
+              </span>
+            </div>
+            <h1 className="text-2xl font-semibold" style={{ color: '#002050' }}>
+              Omnia Career Studio
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: '#64748B' }}>
+              Espace de gestion Super Admin pour configurer Omnia Career, contrôler les modèles,
+              les contenus, les jetons CV, les accès premium et les statistiques globales.
+            </p>
           </div>
-          <button className="rounded-2xl bg-[#061B3A] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#0B2A5B]">Nouveau contenu</button>
+          <button
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+            style={{ background: '#002050' }}>
+            Nouveau contenu
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map((card) => {
-            const Icon = card.icon;
-            return <div key={card.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="mb-5 flex items-start justify-between"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#061B3A]/8 text-[#061B3A]"><Icon className="h-6 w-6" /></div><span className="rounded-full bg-[#D6A11E]/10 px-3 py-1 text-xs font-bold text-[#8A650C]">{card.stat}</span></div><h2 className="text-lg font-black text-[#061B3A]">{card.title}</h2><p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-600">{card.description}</p><button className="mt-5 inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">Gérer</button></div>;
-          })}
+        {/* Grille cartes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {cards.map(({ title, description, icon: Icon, stat }) => (
+            <div key={title}
+              className="bg-white rounded-2xl border p-5 hover:shadow-md transition-shadow"
+              style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(0,32,80,0.08)' }}>
+                  <Icon size={18} style={{ color: '#002050' }} />
+                </div>
+                <span className="text-xs font-semibold px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(191,136,19,0.1)', color: '#bf8813' }}>
+                  {stat}
+                </span>
+              </div>
+              <h3 className="text-base font-semibold mb-1" style={{ color: '#002050' }}>{title}</h3>
+              <p className="text-sm leading-relaxed mb-4" style={{ color: '#64748B' }}>{description}</p>
+              <button
+                className="text-sm font-semibold px-4 py-2 rounded-xl border transition-all hover:opacity-90"
+                style={{ borderColor: '#002050', color: '#002050' }}>
+                Gérer
+              </button>
+            </div>
+          ))}
         </div>
+
+        {/* Stats rapides */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'CV créés',          value: '0',  color: '#002050', bg: '#EEF2FF' },
+            { label: 'LM créées',         value: '0',  color: '#002050', bg: '#EEF2FF' },
+            { label: 'PDF exportés',      value: '0',  color: '#002050', bg: '#EEF2FF' },
+            { label: 'Modèles CV actifs', value: '62', color: '#bf8813', bg: '#FEF3C7' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-2xl border p-4"
+              style={{ borderColor: '#E5E7EB', background: s.bg }}>
+              <p className="text-2xl font-semibold" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-xs mt-1" style={{ color: '#64748B' }}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+
       </div>
     </AdminLayout>
   );
