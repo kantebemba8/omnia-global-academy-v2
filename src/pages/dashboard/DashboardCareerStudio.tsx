@@ -177,10 +177,10 @@ export default function DashboardCareerStudio() {
           <div className={cardClass('p-5')}>
             <h2 className="text-lg font-semibold text-[#002050]">Prochaine étape</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              L’éditeur sauvegarde maintenant les documents et utilise les 20 modèles CV + 32 modèles LM. La prochaine étape peut activer PDF réel, jetons et IA.
+              Le téléchargement PDF est maintenant activé : le CV consomme 1 jeton, la lettre est gratuite dans cette étape. La prochaine étape peut activer l’IA réelle.
             </p>
             <div className="mt-4 rounded-2xl bg-[#bf8813]/10 p-4 text-sm font-semibold text-[#8a620d]">
-              Les données sont sauvegardées dans Supabase si les tables et edge functions sont déployées, sinon en local pour test.
+              Les documents restent sauvegardés dans Supabase si les tables et edge functions sont déployées, sinon en local pour test.
             </div>
           </div>
         </aside>
