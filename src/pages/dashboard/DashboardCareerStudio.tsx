@@ -107,7 +107,7 @@ export default function DashboardCareerStudio() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/career-studio-list`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc_type: activeTab }),
+       body: JSON.stringify({ doc_type: activeTab, load_all_templates: true }),
       });
       const data = await res.json();
       if (data.error) { navigate('/connexion'); return; }
@@ -191,8 +191,9 @@ export default function DashboardCareerStudio() {
     navigate(`/dashboard/career-studio/editor/new?type=${newDocType}&template=${templateKey}`);
   }
 
- // La Edge Function filtre déjà par doc_type — on utilise tous les templates reçus
-  const filteredTemplates = templates;
+const filteredTemplates = templates.filter(t =>
+    (t as any).template_type === newDocType || !((t as any).template_type)
+  );
 
   const freeTemplates = filteredTemplates.filter(t => t.is_free);
   const premiumTemplates = filteredTemplates.filter(t => !t.is_free);
