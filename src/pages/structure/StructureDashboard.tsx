@@ -232,11 +232,20 @@ export default function StructureDashboard() {
               </div>
             </div>
           </div>
-          <button onClick={load}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm border"
-            style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-            <RefreshCw size={13} /> Actualiser
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {isValidated && (
+              <button onClick={() => navigate('/structure/offres-emploi')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                style={{ background: '#002050' }}>
+                <PlusCircle size={15} /> Déposer une offre d’emploi
+              </button>
+            )}
+            <button onClick={load}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm border"
+              style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+              <RefreshCw size={13} /> Actualiser
+            </button>
+          </div>
         </div>
 
         {/* Bannière statut spécial */}
