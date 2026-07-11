@@ -98,6 +98,8 @@ export const ENDPOINTS ={
   forumPostPin: `${API_BASE_URL}/forum-post-pin`,
   jobsList: `${API_BASE_URL}/jobs-list`,
   jobApply: `${API_BASE_URL}/job-apply`,
+  careerApplicationTrack: `${API_BASE_URL}/career-application-track`,
+  jobPlatformManage: `${API_BASE_URL}/job-platform-manage`,
   jobCreateExternal: `${API_BASE_URL}/job-create-external`,
   forumCourseList: `${API_BASE_URL}/forum-course-list`,
   // Module 15 — IA / RAG
