@@ -278,17 +278,17 @@ export default function App() {
         <Route path="/emploi" element={<EspaceCarriere />} />
         <Route path="/emploi/:jobId" element={<JobDetail />} />
 
-          <Route path="/omnia-career" element={<OmniaCareerEntry />} />
+          <Route path="/omnia-career" element={<Navigate to="/dashboard/career-studio" replace />} />
 
 <Route element={<RequireOmniaCareerLearner />}>
   <Route element={<OmniaCareerLayout />}>
-    <Route path="/omnia-career/cv-builder" element={<OmniaCareerCVBuilder />} />
-    <Route path="/omnia-career/lettres" element={<OmniaCareerLetters />} />
-    <Route path="/omnia-career/entretien" element={<OmniaCareerInterview />} />
-    <Route path="/omnia-career/candidatures" element={<OmniaCareerApplications />} />
-    <Route path="/omnia-career/profil" element={<OmniaCareerProfile />} />
-    <Route path="/omnia-career/coaching" element={<OmniaCareerCoaching />} />
-    <Route path="/omnia-career/parametres" element={<OmniaCareerSettings />} />
+    <Route path="/omnia-career/cv-builder" element={<Navigate to="/dashboard/career-studio?section=cv" replace />} />
+    <Route path="/omnia-career/lettres" element={<Navigate to="/dashboard/career-studio?section=lm" replace />} />
+    <Route path="/omnia-career/entretien" element={<Navigate to="/dashboard/career-studio?section=interview" replace />} />
+    <Route path="/omnia-career/candidatures" element={<Navigate to="/dashboard/career-studio?section=applications" replace />} />
+    <Route path="/omnia-career/profil" element={<Navigate to="/dashboard/career-studio?section=profile" replace />} />
+    <Route path="/omnia-career/coaching" element={<Navigate to="/dashboard/career-studio?section=coaching" replace />} />
+    <Route path="/omnia-career/parametres" element={<Navigate to="/dashboard/career-studio?section=settings" replace />} />
   </Route>
 </Route>
 
