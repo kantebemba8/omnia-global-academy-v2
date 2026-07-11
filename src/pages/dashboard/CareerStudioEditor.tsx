@@ -44,6 +44,7 @@ import {
 } from '../../lib/careerStudioData';
 import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
+import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -114,6 +115,61 @@ function PreviewFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+function plain(value: unknown) {
+  return String(value || '').replace(/[<>]/g, '');
+}
+
+function textBlock(content: string, x: number, y: number, width: number, height: number, style: Partial<ManualBlock['style']> = {}, zIndex = 2): ManualBlock {
+  return {
+    id: uid('block'), type: 'text', x, y, width, height, rotation: 0, zIndex,
+    content: plain(content),
+    style: {
+      fontFamily: 'Arial', fontSize: 12, fontWeight: 400, fontStyle: 'normal', textDecoration: 'none',
+      textAlign: 'left', color: '#1f2937', backgroundColor: 'transparent', borderColor: 'transparent',
+      borderWidth: 0, borderRadius: 0, lineHeight: 1.4, opacity: 1, padding: 2, ...style,
+    },
+  };
+}
+
+function createManualLayout(document: CareerDocumentFull): ManualLayout {
+  const colors = (document.design_options as DesignOptions).colors || DEFAULT_COLORS;
+  const blocks: ManualBlock[] = [
+    { id: uid('shape'), type: 'shape', x: 0, y: 0, width: 794, height: 118, rotation: 0, zIndex: 1, style: { backgroundColor: colors.primary || BLUE, opacity: 1, borderWidth: 0, borderRadius: 0 } },
+  ];
+  if (document.doc_type === 'cv') {
+    const d = getCvData(document);
+    blocks.push(textBlock(d.name || 'Votre nom', 46, 30, 540, 38, { fontSize: 28, fontWeight: 700, color: '#ffffff' }, 3));
+    blocks.push(textBlock(d.title || 'Titre professionnel', 48, 72, 520, 28, { fontSize: 14, fontWeight: 600, color: colors.accent || GOLD }, 3));
+    blocks.push(textBlock([d.contact?.email, d.contact?.phone, d.contact?.location].filter(Boolean).join('  •  '), 46, 130, 700, 30, { fontSize: 10, color: '#475569' }));
+    let y = 180;
+    const addSection = (title: string, body: string, height = 96) => {
+      if (!body.trim()) return;
+      blocks.push(textBlock(title, 46, y, 700, 28, { fontSize: 15, fontWeight: 700, color: colors.primary || BLUE }));
+      blocks.push({ id: uid('line'), type: 'line', x: 46, y: y + 26, width: 700, height: 4, rotation: 0, zIndex: 1, style: { borderColor: colors.accent || GOLD, borderWidth: 2, opacity: 1 } });
+      blocks.push(textBlock(body, 46, y + 38, 700, height, { fontSize: 10, lineHeight: 1.45, color: '#334155' }));
+      y += height + 76;
+    };
+    addSection('PROFIL', d.summary || '', 82);
+    addSection('EXPÉRIENCES', (d.experiences || []).map(e => `${e.position}${e.company ? ` — ${e.company}` : ''}\n${e.description || ''}`).join('\n\n'), 190);
+    addSection('FORMATION', (d.education || []).map(e => `${e.degree}${e.school ? ` — ${e.school}` : ''}${e.year ? ` (${e.year})` : ''}`).join('\n'), 100);
+    addSection('COMPÉTENCES', (d.skills || []).map(s => s.name).join('  •  '), 72);
+  } else {
+    const d = getLmData(document);
+    blocks.push(textBlock(d.sender?.name || 'Votre nom', 46, 32, 540, 34, { fontSize: 24, fontWeight: 700, color: '#ffffff' }, 3));
+    blocks.push(textBlock([d.sender?.email, d.sender?.phone].filter(Boolean).join('  •  '), 48, 76, 520, 24, { fontSize: 10, color: '#ffffff' }, 3));
+    blocks.push(textBlock(`${d.recipient?.name || ''}\n${d.recipient?.company || ''}\n${d.recipient?.address || ''}`, 48, 150, 360, 78, { fontSize: 11, lineHeight: 1.5 }));
+    blocks.push(textBlock(`${d.sender?.city || ''}${d.sender?.date ? `, le ${d.sender.date}` : ''}`, 480, 150, 265, 30, { fontSize: 10, textAlign: 'right' }));
+    blocks.push(textBlock(d.subject ? `Objet : ${d.subject}` : 'Objet :', 48, 246, 700, 36, { fontSize: 12, fontWeight: 700, color: colors.primary || BLUE }));
+    blocks.push(textBlock(d.salutation || 'Madame, Monsieur,', 48, 310, 700, 34, { fontSize: 11 }));
+    const body = [d.intro, d.motivation, d.skills_paragraph, d.company_link, d.availability].filter(Boolean).join('\n\n');
+    blocks.push(textBlock(body, 48, 360, 700, 470, { fontSize: 11, lineHeight: 1.65, textAlign: 'justify' }));
+    blocks.push(textBlock(d.closing || '', 48, 850, 700, 100, { fontSize: 11, lineHeight: 1.6 }));
+    blocks.push(textBlock(d.signature || d.sender?.name || '', 500, 990, 240, 50, { fontSize: 15, fontWeight: 700, fontStyle: 'italic', textAlign: 'right', color: colors.primary || BLUE }));
+  }
+  return { version: 1, page: { width: 794, height: 1123, background: '#ffffff' }, blocks };
+}
+
 export default function CareerStudioEditor() {
   const navigate = useNavigate();
   const { docId } = useParams<{ docId: string }>();
@@ -136,6 +192,7 @@ export default function CareerStudioEditor() {
   const [offerText, setOfferText] = useState('');
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
+  const [manualEditorOpen, setManualEditorOpen] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -146,6 +203,13 @@ export default function CareerStudioEditor() {
     if (!document) return getTemplateMeta(docType, requestedTemplate);
     return getTemplateMeta(document.doc_type, document.template_key);
   }, [document, docType, requestedTemplate]);
+
+  const manualLayout = useMemo(() => {
+    if (!document) return null;
+    return ((document.doc_data as any).manual_layout as ManualLayout | undefined) || createManualLayout(document);
+  }, [document]);
+
+  const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
 
   const showToast = (message: string) => {
     setToast(message);
@@ -247,6 +311,18 @@ export default function CareerStudioEditor() {
       template_key: getDefaultTemplateKey(doc.doc_type),
       title: getDefaultDocTitle(doc.doc_type),
     }));
+  }
+
+  function updateManualLayout(layout: ManualLayout) {
+    updateDocument(doc => ({
+      ...doc,
+      doc_data: { ...(doc.doc_data as any), manual_layout: layout },
+      design_options: { ...(doc.design_options as any), editor_mode: 'manual' },
+    }));
+  }
+
+  function switchToTemplateMode() {
+    updateDocument(doc => ({ ...doc, design_options: { ...(doc.design_options as any), editor_mode: 'template' } }));
   }
 
   async function manualSave() {
@@ -430,6 +506,9 @@ export default function CareerStudioEditor() {
               {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#bf8813]">{tokens} jeton(s)</div>
+            <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#7a570c] hover:bg-[#bf8813]/15">
+              <Edit3 className="h-4 w-4" /> Éditeur libre
+            </button>
             <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Save className="h-4 w-4" /> Enregistrer
             </button>
@@ -439,6 +518,13 @@ export default function CareerStudioEditor() {
           </div>
         </div>
       </div>
+
+      {isManualMode && (
+        <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-[#bf8813]/30 bg-[#bf8813]/10 px-4 py-3 text-sm">
+          <span className="font-semibold text-[#002050]">Mode édition libre actif : le PDF utilisera votre mise en page manuelle.</span>
+          <div className="flex gap-2"><button onClick={() => setManualEditorOpen(true)} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Continuer l’édition</button><button onClick={switchToTemplateMode} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold">Revenir au modèle</button></div>
+        </div>
+      )}
 
       <div className="grid min-h-[calc(100vh-76px)] grid-cols-[300px_minmax(520px,1fr)_340px] gap-5 p-5">
         <aside className={cardClass('h-[calc(100vh-116px)] overflow-hidden p-4')}>
@@ -495,7 +581,9 @@ export default function CareerStudioEditor() {
           <div className={cardClass('p-4')}>
             <PreviewFrame>
               <div ref={printRef} data-career-print-source="true">
-                {isCv ? (
+                {isManualMode && manualLayout ? (
+                  <ManualDocumentCanvas layout={manualLayout} />
+                ) : isCv ? (
                   <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
                 ) : (
                   <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
@@ -554,6 +642,18 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
+
+      {manualLayout && (
+        <ManualDocumentEditor
+          open={manualEditorOpen}
+          title={document.title}
+          initialLayout={manualLayout}
+          onChange={updateManualLayout}
+          onClose={() => setManualEditorOpen(false)}
+          onSave={async () => { await saveNow(); showToast('Mise en page manuelle enregistrée'); }}
+          printRef={printRef}
+        />
+      )}
     </div>
   );
 }
