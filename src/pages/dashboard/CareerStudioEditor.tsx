@@ -540,7 +540,7 @@ export default function CareerStudioEditor() {
             onDismiss={() => setAiSuggestion(null)}
           />
 
-          <TemplatePanel templates={templates} selectedTemplate={selectedTemplate} selectedKey={document.template_key} onSelect={changeTemplate} />
+          <TemplatePanel docType={document.doc_type} document={document} templates={templates} selectedTemplate={selectedTemplate} selectedKey={document.template_key} onSelect={changeTemplate} />
 
           <DesignPanel design={document.design_options as DesignOptions | LmDesign} onColorChange={updateDesignColors} onDesignChange={updateDesignOptions} isCv={isCv} />
 
@@ -962,63 +962,182 @@ function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onR
   );
 }
 
-function TemplatePanel({ templates, selectedTemplate, selectedKey, onSelect }: { templates: CareerTemplateMeta[]; selectedTemplate: CareerTemplateMeta; selectedKey: string; onSelect: (key: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const visible = templates.length ? templates : [selectedTemplate];
-  const choose = (key: string) => { onSelect(key); setOpen(false); };
+
+function createCvTemplatePreviewData(data: DocData): DocData {
+  const hasRealContent = Boolean(
+    data?.name?.trim() ||
+    data?.title?.trim() ||
+    data?.summary?.trim() ||
+    data?.contact?.email?.trim() ||
+    (Array.isArray(data?.experiences) && data.experiences.length > 0) ||
+    (Array.isArray(data?.skills) && data.skills.length > 0)
+  );
+  if (hasRealContent) return data;
+  return {
+    name: 'Votre Nom',
+    title: 'Titre professionnel',
+    objective: 'Objectif professionnel clair et ciblé.',
+    summary: 'Résumé professionnel concis mettant en avant votre profil, vos compétences et votre valeur ajoutée.',
+    contact: { email: 'email@exemple.com', phone: '+000 00 00 00', location: 'Ville, Pays', linkedin: 'linkedin.com/in/votre-profil', portfolio: '' },
+    experiences: [
+      { id: 'preview_exp_1', position: 'Poste occupé', company: 'Entreprise', location: 'Ville', start_date: '2024-01', end_date: '', current: true, description: 'Décrivez vos missions, résultats et responsabilités principales avec des éléments mesurables.' },
+      { id: 'preview_exp_2', position: 'Expérience précédente', company: 'Organisation', location: 'Ville', start_date: '2022-01', end_date: '2023-12', current: false, description: 'Ajoutez une expérience pertinente pour renforcer votre candidature.' },
+    ],
+    education: [{ id: 'preview_edu_1', degree: 'Diplôme ou formation', school: 'Établissement', location: 'Ville', year: '2021 - 2024' }],
+    omnia_formations: [],
+    skills: [
+      { id: 'preview_skill_1', name: 'Compétence 1', level: 90 },
+      { id: 'preview_skill_2', name: 'Compétence 2', level: 80 },
+      { id: 'preview_skill_3', name: 'Compétence 3', level: 70 },
+      { id: 'preview_skill_4', name: 'Outil professionnel', level: 75 },
+    ],
+    languages: [
+      { id: 'preview_lang_1', name: 'Français', level: 'Courant' },
+      { id: 'preview_lang_2', name: 'Anglais', level: 'Intermédiaire' },
+    ],
+    certifications_external: [{ id: 'preview_cert_1', name: 'Certification professionnelle', issuer: 'Organisme', year: '2025' }],
+    projects: [{ id: 'preview_proj_1', name: 'Projet clé', description: 'Projet ou réalisation pertinente.', technologies: 'Outils utilisés' }],
+    interests: ['Intérêt 1', 'Intérêt 2'],
+    references: '',
+  };
+}
+
+function createLmTemplatePreviewData(data: LmData): LmData {
+  const hasRealContent = Boolean(data?.sender?.name?.trim() || data?.sender?.email?.trim() || data?.recipient?.company?.trim() || data?.subject?.trim() || data?.intro?.trim() || data?.motivation?.trim());
+  if (hasRealContent) return data;
+  return {
+    sender: { name: 'Votre Nom', address: 'Ville, Pays', phone: '+000 00 00 00', email: 'email@exemple.com', city: 'Ville', date: new Date().toISOString().slice(0, 10) },
+    recipient: { name: 'Responsable du recrutement', company: 'Entreprise cible', address: 'Adresse de l’entreprise' },
+    subject: 'Candidature au poste ciblé',
+    salutation: 'Madame, Monsieur,',
+    intro: 'Présentez votre candidature et expliquez votre intérêt pour le poste.',
+    motivation: 'Mettez en avant votre parcours, vos expériences et les raisons de votre motivation.',
+    skills_paragraph: 'Valorisez vos compétences principales en lien avec les besoins de l’entreprise.',
+    company_link: 'Montrez que vous comprenez l’entreprise, son secteur et ses enjeux.',
+    availability: 'Indiquez votre disponibilité pour un entretien.',
+    closing: 'Formule de politesse professionnelle.',
+    signature: 'Votre Nom',
+  };
+}
+
+function TemplateMiniPreview({ docType, templateKey, document, scale = 0.22 }: { docType: CareerDocType; templateKey: string; document: CareerDocumentFull; scale?: number }) {
+  const isCv = docType === 'cv';
+  const previewData = isCv ? createCvTemplatePreviewData(getCvData(document)) : createLmTemplatePreviewData(getLmData(document));
+  const previewDesign = isCv ? getCvDesign(document) : getLmDesign(document);
+
   return (
-    <div className={cardClass('p-4')}>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-[#002050]">Modèles</h3>
-        <button type="button" onClick={() => setOpen(true)} className="text-xs font-semibold text-[#002050]">Afficher en grand</button>
+    <div className="relative flex h-[270px] items-start justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-2">
+      <div className="pointer-events-none origin-top" style={{ transform: `scale(${scale})`, width: 794, minHeight: 1123 }}>
+        {isCv ? <CvPreview templateKey={templateKey} data={previewData as DocData} design={previewDesign as DesignOptions} /> : <LmPreview templateKey={templateKey} data={previewData as LmData} design={previewDesign as LmDesign} />}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {visible.slice(0, 4).map(template => <TemplateThumb key={template.template_key} template={template} active={template.template_key === selectedKey} onClick={() => choose(template.template_key)} compact />)}
-      </div>
-      <button type="button" onClick={() => setOpen(true)} className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-        Voir tous les modèles ({visible.length})
-      </button>
-      {open && (
-        <div className="fixed inset-0 z-[95] overflow-y-auto bg-black/45 p-6">
-          <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-semibold text-[#002050]">Choisir un modèle</h2>
-                <p className="mt-1 text-sm text-slate-500">Aperçu grand format de tous les modèles disponibles. Les modèles premium restent identifiés.</p>
-              </div>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 hover:bg-slate-100">✕</button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {visible.map(template => <TemplateThumb key={template.template_key} template={template} active={template.template_key === selectedKey} onClick={() => choose(template.template_key)} />)}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function TemplateThumb({ template, active, onClick, compact = false }: { template: CareerTemplateMeta; active: boolean; onClick: () => void; compact?: boolean }) {
+function TemplatePanel({ docType, document, templates, selectedTemplate, selectedKey, onSelect }: { docType: CareerDocType; document: CareerDocumentFull; templates: CareerTemplateMeta[]; selectedTemplate: CareerTemplateMeta; selectedKey: string; onSelect: (key: string) => void }) {
+  const visible = templates.length ? templates : [selectedTemplate];
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState('all');
+  const [pricing, setPricing] = useState<'all' | 'free' | 'premium'>('all');
+  const categories = useMemo(() => Array.from(new Set(visible.map(t => t.category).filter(Boolean))), [visible]);
+  const filtered = visible.filter(template => {
+    const categoryOk = category === 'all' || template.category === category;
+    const pricingOk = pricing === 'all' || (pricing === 'free' ? template.is_free : !template.is_free);
+    return categoryOk && pricingOk;
+  });
+  const selected = visible.find(t => t.template_key === selectedKey) || selectedTemplate;
+
   return (
-    <button key={template.template_key} onClick={onClick} className={`rounded-xl border bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 hover:bg-slate-50'}`}>
-      <div className={`mb-3 flex items-center justify-center rounded-lg bg-slate-100 ${compact ? 'h-20' : 'h-44'}`}>
-        <div className={`${compact ? 'h-16 w-11' : 'h-36 w-24'} rounded-lg border bg-white p-2 shadow-sm`}>
-          <div className="h-5 rounded" style={{ background: template.default_colors?.primary || '#002050' }} />
-          <div className="mt-2 h-1.5 rounded bg-slate-200" />
-          <div className="mt-2 h-1.5 rounded bg-slate-200" />
-          <div className="mt-3 h-1 rounded" style={{ background: template.default_colors?.accent || '#bf8813' }} />
-          <div className="mt-2 h-1.5 rounded bg-slate-200" />
-          <div className="mt-2 h-1.5 rounded bg-slate-200" />
-          {!compact && <><div className="mt-2 h-1.5 rounded bg-slate-200" /><div className="mt-2 h-1.5 rounded bg-slate-200" /></>}
+    <>
+      <div className={cardClass('p-4')}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-[#002050]">Modèles disponibles</h3>
+            <p className="mt-1 text-xs text-slate-500">{docType === 'cv' ? '20 modèles CV professionnels' : `${visible.length} modèles de lettres`} — rendu réel du modèle.</p>
+          </div>
+          <button type="button" onClick={() => setOpen(true)} className="rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#002050]/90">Voir en grand</button>
+        </div>
+
+        <button type="button" onClick={() => setOpen(true)} className="mb-4 block w-full rounded-2xl border border-[#002050] bg-[#002050]/5 p-2 text-left transition hover:bg-[#002050]/10">
+          <TemplateMiniPreview docType={docType} templateKey={selected.template_key} document={document} scale={0.19} />
+          <div className="mt-3 flex items-center justify-between gap-2 px-1">
+            <div>
+              <div className="text-sm font-semibold text-[#002050]">{selected.name_fr}</div>
+              <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{selected.description_fr}</div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {selected.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
+              {!selected.is_free && <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
+            </div>
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-2">
+          {visible.slice(0, 4).map(template => {
+            const active = template.template_key === selectedKey;
+            return (
+              <button key={template.template_key} type="button" onClick={() => onSelect(template.template_key)} className={`rounded-xl border p-2 text-left transition ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 hover:bg-slate-50'}`}>
+                <TemplateMiniPreview docType={docType} templateKey={template.template_key} document={document} scale={0.105} />
+                <div className="mt-2 truncate text-xs font-semibold text-[#002050]">{template.name_fr}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
-      <div className="text-xs font-semibold text-[#002050]">{template.name_fr}</div>
-      {!compact && <div className="mt-1 min-h-[34px] text-[11px] leading-4 text-slate-500">{template.description_fr}</div>}
-      <div className="mt-2 flex flex-wrap gap-1">
-        {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
-        {template.is_free ? <span className="rounded-full bg-[#002050]/10 px-2 py-0.5 text-[10px] font-bold text-[#002050]">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-      </div>
-    </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-2xl font-semibold text-[#002050]">{docType === 'cv' ? 'Choisir un modèle de CV' : 'Choisir un modèle de lettre de motivation'}</h2>
+                <p className="mt-1 text-sm text-slate-500">Aperçu réel des modèles créés : pas d’icônes, pas de placeholders.</p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Fermer</button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-6 py-4">
+              <button onClick={() => setCategory('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${category === 'all' ? 'bg-[#002050] text-white' : 'bg-slate-100 text-slate-700'}`}>Tous</button>
+              {categories.map(cat => <button key={cat} onClick={() => setCategory(cat)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${category === cat ? 'bg-[#002050] text-white' : 'bg-slate-100 text-slate-700'}`}>{cat.replaceAll('_', ' ')}</button>)}
+              <span className="mx-2 h-5 w-px bg-slate-200" />
+              <button onClick={() => setPricing('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'all' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Tous</button>
+              <button onClick={() => setPricing('free')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'free' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Gratuits</button>
+              <button onClick={() => setPricing('premium')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'premium' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Premium</button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-6">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {filtered.map(template => {
+                  const active = template.template_key === selectedKey;
+                  return (
+                    <button key={template.template_key} type="button" onClick={() => onSelect(template.template_key)} className={`group rounded-2xl border bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${active ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200'}`}>
+                      <TemplateMiniPreview docType={docType} templateKey={template.template_key} document={document} scale={0.22} />
+                      <div className="mt-3 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-[#002050]">{template.display_order}. {template.name_fr}</div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{template.description_fr}</div>
+                        </div>
+                        {active && <span className="rounded-full bg-[#002050] px-2 py-1 text-[10px] font-bold text-white">Actif</span>}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
+                        {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
+                        <span className="rounded-full bg-[#002050]/5 px-2 py-0.5 text-[10px] font-bold text-[#002050]">{template.category.replaceAll('_', ' ')}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
+              <div className="text-sm text-slate-500">{filtered.length} modèle(s) affiché(s). Sélection actuelle : <span className="font-semibold text-[#002050]">{selected.name_fr}</span></div>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-xl bg-[#002050] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#002050]/90">Utiliser ce modèle</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
