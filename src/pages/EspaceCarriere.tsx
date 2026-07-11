@@ -74,9 +74,12 @@ export default function EspaceCarriere() {
     try {
       const user = JSON.parse(localStorage.getItem('omnia_user') || '{}');
       const roles: string[] = user.roles || [];
+      const permissions: string[] = user.permissions || user.structure_permissions || [];
       return roles.includes('super_admin') ||
-             roles.includes('moderateur') ||
-             roles.includes('responsable_structure');
+             roles.includes('responsable_structure') ||
+             roles.includes('structure_admin') ||
+             permissions.includes('can_create_job_offers') ||
+             permissions.includes('can_manage_jobs');
     } catch { return false; }
   })();
 
