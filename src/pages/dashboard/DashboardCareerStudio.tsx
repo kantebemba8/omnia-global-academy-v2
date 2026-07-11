@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   Award,
   BarChart3,
   Bell,
@@ -17,12 +16,15 @@ import {
   Download,
   Edit2,
   Eye,
+  ExternalLink,
   FileText,
   Mail,
   MessageSquare,
   Plus,
   Search,
+  Send,
   Settings,
+  ShieldCheck,
   Sparkles,
   Star,
   Target,
@@ -30,8 +32,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-
-import { ENDPOINTS } from '../../lib/config';
+import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -90,22 +91,6 @@ interface TokenPack {
   price_xof: number;
   is_popular?: boolean;
   bonus_tokens?: number;
-}
-
-interface CareerJob {
-  id: string;
-  title: string;
-  description?: string;
-  location?: string;
-  contract_type?: string;
-  category?: string;
-  salary_range?: string | null;
-  required_level?: string | null;
-  skills_required?: string[] | null;
-  recruiter_company?: string;
-  recruiter_name?: string;
-  deadline?: string | null;
-  created_at?: string;
 }
 
 interface CurrentUser {
@@ -260,25 +245,21 @@ export default function DashboardCareerStudio() {
     loadData();
     const purchased = searchParams.get('tokens_purchased');
     if (purchased) showToast(`${purchased} jeton(s) crédité(s) sur votre compte.`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     const section = searchParams.get('section');
-    const map: Record<string, ActiveView> = {
+    const sectionMap: Record<string, ActiveView> = {
       dashboard: 'dashboard',
       cv: 'cv',
-      lm: 'lm',
       letters: 'lm',
+      lm: 'lm',
       interview: 'interview',
       applications: 'applications',
       profile: 'profile',
       coaching: 'coaching',
       settings: 'settings',
     };
-    if (section && map[section]) setActiveView(map[section]);
-    if (searchParams.get('job_id')) setActiveView('applications');
-  }, [searchParams]);
+    if (section && sectionMap[section]) setActiveView(sectionMap[section]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function createDoc(docType: DocType, templateKey?: string) {
     const templates = docType === 'cv' ? cvTemplates : lmTemplates;
@@ -311,43 +292,33 @@ export default function DashboardCareerStudio() {
     { label: 'Nouvelle lettre', icon: Mail, action: () => createDoc('lm') },
     { label: 'Préparer entretien', icon: MessageSquare, action: () => setActiveView('interview') },
     { label: 'Évaluer mon profil', icon: Star, action: () => setActiveView('profile') },
-    { label: 'Voir les offres', icon: Briefcase, action: () => navigate('/emploi') },
   ];
 
   return (
     <div className="min-h-screen" style={{ background: PAGE_BG, color: '#111827' }}>
       {toast && (
-        <div className="fixed right-5 top-5 z-50 rounded-lg border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>
+        <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>
           {toast}
         </div>
       )}
 
       <div className="flex min-h-screen">
         {/* Sidebar Omnia Career */}
-        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[260px] flex-col text-white shadow-xl" style={{ background: OMNIA_BLUE }}>
-          <div className="border-b border-white/10 px-6 py-5">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ backgroundColor: OMNIA_GOLD }}>OA</div>
-              <span className="text-base font-bold leading-tight text-white">Omnia Global<br />Academy</span>
-            </Link>
-            <div className="mt-4 text-xs font-semibold uppercase tracking-wide" style={{ color: OMNIA_GOLD }}>Omnia Career</div>
-          </div>
-
-          <div className="mx-3 mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-4">
+        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col text-white shadow-xl" style={{ background: OMNIA_BLUE }}>
+          <div className="px-5 pb-4 pt-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold" style={{ backgroundColor: OMNIA_GOLD, color: OMNIA_BLUE }}>{initials}</div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">{displayName}</p>
-                <p className="truncate text-xs text-white/50">Apprenant</p>
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white">
+                <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-full w-full object-cover" />
+              </div>
+              <div className="leading-tight">
+                <div className="text-base font-bold text-white">Omnia Global</div>
+                <div className="text-base font-bold text-white">Academy</div>
               </div>
             </div>
-          </div>
-
-          <div className="px-3 pt-3">
-            <button type="button" onClick={() => navigate('/dashboard')} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white">
-              <ArrowLeft size={18} />
-              Retour au dashboard
-            </button>
+            <div className="mt-8">
+              <h2 className="text-xl font-semibold" style={{ color: OMNIA_GOLD }}>Omnia Career</h2>
+              <div className="mt-3 h-0.5 w-10 rounded-full" style={{ background: OMNIA_GOLD }} />
+            </div>
           </div>
 
           <nav className="flex-1 space-y-1 px-3">
@@ -359,25 +330,28 @@ export default function DashboardCareerStudio() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveView(item.id)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all duration-150"
-                  style={{ backgroundColor: isActive ? 'rgba(191,136,19,0.15)' : 'transparent', color: isActive ? OMNIA_GOLD : 'rgba(255,255,255,0.65)' }}
+                  className="group relative flex h-11 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition"
+                  style={{
+                    background: isActive ? 'rgba(255,255,255,0.10)' : 'transparent',
+                    color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+                  }}
                 >
-                  <Icon size={18} />
-                  <span className="flex-1">{item.label}</span>
-                  {isActive && <ChevronRight size={14} className="opacity-60" />}
+                  {isActive && <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full" style={{ background: OMNIA_GOLD }} />}
+                  <Icon size={19} style={{ color: isActive ? OMNIA_GOLD : 'rgba(255,255,255,0.82)' }} />
+                  <span>{item.label}</span>
                 </button>
               );
             })}
           </nav>
 
           <div className="px-5 pb-6">
-            <div className="rounded-lg border p-4" style={{ borderColor: 'rgba(191,136,19,0.45)', background: 'rgba(255,255,255,0.05)' }}>
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: OMNIA_GOLD }}>
+            <div className="rounded-2xl border p-4" style={{ borderColor: 'rgba(191,136,19,0.45)', background: 'rgba(255,255,255,0.05)' }}>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: OMNIA_GOLD }}>
                 <Crown size={18} color="white" />
               </div>
               <h3 className="text-base font-semibold" style={{ color: OMNIA_GOLD }}>Passez à Premium</h3>
               <p className="mt-2 text-sm leading-6 text-white/75">Accédez à des modèles exclusifs, des analyses avancées et plus.</p>
-              <button className="mt-4 h-10 w-full rounded-lg text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Découvrir Premium</button>
+              <button className="mt-4 h-10 w-full rounded-xl text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Découvrir Premium</button>
             </div>
             <button className="ml-auto mt-4 flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10" aria-label="Réduire le menu">
               <ChevronsLeft size={18} />
@@ -386,7 +360,7 @@ export default function DashboardCareerStudio() {
         </aside>
 
         {/* Main */}
-        <div className="ml-[260px] flex min-h-screen flex-1 flex-col">
+        <div className="ml-[280px] flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b bg-white px-8" style={{ borderColor: BORDER }}>
             <div className="flex h-11 w-full max-w-[560px] items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
               <Search size={18} color="#9CA3AF" />
@@ -399,7 +373,7 @@ export default function DashboardCareerStudio() {
                 <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: OMNIA_GOLD }}>3</span>
               </button>
               <div className="h-8 w-px bg-gray-200" />
-              <button className="flex items-center gap-3 rounded-lg px-2 py-1 hover:bg-gray-100">
+              <button className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-gray-100">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: OMNIA_BLUE }}>{initials}</div>
                 <div className="hidden text-left md:block">
                   <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</div>
@@ -414,8 +388,8 @@ export default function DashboardCareerStudio() {
             {activeView === 'dashboard' && <DashboardView loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} latestCv={latestCv} latestLm={latestLm} templates={cvTemplates} tokens={tokens} quickActions={quickActions} setActiveView={setActiveView} createDoc={createDoc} openDoc={openDoc} />}
             {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
             {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
-            {activeView === 'interview' && <InterviewView jobId={searchParams.get('job_id')} />}
-            {activeView === 'applications' && <ApplicationsView jobId={searchParams.get('job_id')} createDoc={createDoc} openDoc={openDoc} latestCv={latestCv} latestLm={latestLm} />}
+            {activeView === 'interview' && <InterviewView jobId={searchParams.get('job_id') || undefined} />}
+            {activeView === 'applications' && <ApplicationsView jobId={searchParams.get('job_id') || undefined} navigate={navigate} />}
             {activeView === 'profile' && <ProfileView displayName={displayName} />}
             {activeView === 'coaching' && <CoachingView />}
             {activeView === 'settings' && <SettingsView packs={packs} tokens={tokens} />}
@@ -480,7 +454,7 @@ function DashboardView({
           return (
             <Card key={stat.label} className="p-5">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: colors[0] }}>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: colors[0] }}>
                   <Icon size={22} color={colors[1]} />
                 </div>
                 <div>
@@ -523,8 +497,8 @@ function DashboardView({
                 <MetricLine label="Lisibilité" value="Excellente" />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
-                <button onClick={() => openDoc(latestCv?.id, 'cv')} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Edit2 size={15} /> Modifier</button>
-                <button className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><Download size={15} /> Télécharger</button>
+                <button onClick={() => openDoc(latestCv?.id, 'cv')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Edit2 size={15} /> Modifier</button>
+                <button className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><Download size={15} /> Télécharger</button>
               </div>
             </div>
           </div>
@@ -551,8 +525,8 @@ function DashboardView({
             {quickActions.map((action) => {
               const Icon = action.icon;
               return (
-                <button key={action.label} onClick={action.action} className="rounded-lg border p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: BORDER }}>
-                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={20} color={OMNIA_BLUE} /></div>
+                <button key={action.label} onClick={action.action} className="rounded-2xl border p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: BORDER }}>
+                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={20} color={OMNIA_BLUE} /></div>
                   <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{action.label}</div>
                   <div className="mt-1 text-xs" style={{ color: MUTED }}>Commencer</div>
                 </button>
@@ -576,7 +550,7 @@ function DashboardView({
               <div className="text-4xl" style={{ color: OMNIA_GOLD }}>“</div>
               <h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Conseil du jour</h2>
               <p className="mt-4 text-sm leading-7" style={{ color: '#374151' }}>Un CV ciblé augmente vos chances d’entretien. Adaptez-le à chaque offre et ajoutez des résultats mesurables.</p>
-              <button className="mt-5 rounded-lg border px-4 py-2 text-sm font-semibold" style={{ borderColor: 'rgba(191,136,19,0.35)', color: OMNIA_GOLD }}>Voir tous les conseils</button>
+              <button className="mt-5 rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: 'rgba(191,136,19,0.35)', color: OMNIA_GOLD }}>Voir tous les conseils</button>
             </div>
             <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(191,136,19,0.10)' }}><Sparkles size={28} color={OMNIA_GOLD} /></div>
           </div>
@@ -589,7 +563,7 @@ function DashboardView({
 function ActionRow({ icon: Icon, title, subtitle, badge, onClick }: { icon: typeof FileText; title: string; subtitle: string; badge: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}>
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={18} color={OMNIA_BLUE} /></div>
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={18} color={OMNIA_BLUE} /></div>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{title}</div>
         <div className="truncate text-xs" style={{ color: MUTED }}>{subtitle}</div>
@@ -606,7 +580,7 @@ function MetricLine({ label, value }: { label: string; value: string }) {
 
 function MiniCvPreview() {
   return (
-    <div className="h-44 w-32 flex-shrink-0 overflow-hidden rounded-lg border bg-white shadow-sm" style={{ borderColor: BORDER }}>
+    <div className="h-44 w-32 flex-shrink-0 overflow-hidden rounded-xl border bg-white shadow-sm" style={{ borderColor: BORDER }}>
       <div className="h-10 px-3 py-2" style={{ background: OMNIA_BLUE }}><div className="h-2 w-16 rounded bg-white/80" /><div className="mt-1 h-1.5 w-10 rounded" style={{ background: OMNIA_GOLD }} /></div>
       <div className="space-y-2 p-3">
         {[70, 90, 58, 82, 74, 64].map((width, i) => <div key={i} className="h-1.5 rounded bg-gray-200" style={{ width: `${width}%` }} />)}
@@ -618,7 +592,7 @@ function MiniCvPreview() {
 
 function TemplateMini({ selected = false }: { selected?: boolean }) {
   return (
-    <div className="relative h-36 overflow-hidden rounded-lg border bg-white p-2" style={{ borderColor: selected ? OMNIA_GOLD : BORDER }}>
+    <div className="relative h-36 overflow-hidden rounded-xl border bg-white p-2" style={{ borderColor: selected ? OMNIA_GOLD : BORDER }}>
       {selected && <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-white" style={{ background: OMNIA_BLUE }}><CheckCircle2 size={12} /></div>}
       <div className="h-7 rounded-t" style={{ background: OMNIA_BLUE }} />
       <div className="space-y-1.5 p-2">
@@ -630,7 +604,7 @@ function TemplateMini({ selected = false }: { selected?: boolean }) {
 }
 
 function ActivityItem({ icon: Icon, title, date }: { icon: typeof FileText; title: string; date: string }) {
-  return <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={16} color={OMNIA_BLUE} /></div><div className="flex-1"><div className="font-medium" style={{ color: OMNIA_BLUE }}>{title}</div><div className="text-xs" style={{ color: MUTED }}>{date}</div></div></div>;
+  return <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={16} color={OMNIA_BLUE} /></div><div className="flex-1"><div className="font-medium" style={{ color: OMNIA_BLUE }}>{title}</div><div className="text-xs" style={{ color: MUTED }}>{date}</div></div></div>;
 }
 
 function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc }: { documents: CareerDocument[]; templates: Template[]; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; deleteDoc: (id: string) => void }) {
@@ -643,9 +617,9 @@ function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc }: 
           <h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Sections du CV</h2>
           <p className="mt-1 text-sm" style={{ color: MUTED }}>Cliquez sur une section pour la modifier.</p>
           <div className="mt-4 space-y-3">
-            {sections.map((section, index) => <div key={section} className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: BORDER }}><span className="text-sm font-medium" style={{ color: OMNIA_BLUE }}>{section}</span>{index < 6 ? <CheckCircle2 size={16} color="#16A34A" /> : <span className="h-4 w-4 rounded-full border" style={{ borderColor: BORDER }} />}</div>)}
+            {sections.map((section, index) => <div key={section} className="flex items-center justify-between rounded-xl border p-3" style={{ borderColor: BORDER }}><span className="text-sm font-medium" style={{ color: OMNIA_BLUE }}>{section}</span>{index < 6 ? <CheckCircle2 size={16} color="#16A34A" /> : <span className="h-4 w-4 rounded-full border" style={{ borderColor: BORDER }} />}</div>)}
           </div>
-          <button onClick={() => openDoc(documents[0]?.id, 'cv')} className="mt-4 w-full rounded-lg border px-4 py-2 text-sm font-semibold" style={{ borderColor: OMNIA_GOLD, color: OMNIA_GOLD }}>+ Ajouter une section</button>
+          <button onClick={() => openDoc(documents[0]?.id, 'cv')} className="mt-4 w-full rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: OMNIA_GOLD, color: OMNIA_GOLD }}>+ Ajouter une section</button>
         </Card>
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Aperçu en direct</h2><SmallBadge tone="green">Enregistré automatiquement</SmallBadge></div>
@@ -656,7 +630,7 @@ function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc }: 
           <div className="grid grid-cols-3 gap-3">{(templates.length ? templates : fallbackCvTemplates).slice(0, 3).map((t, i) => <button key={t.template_key} onClick={() => createDoc('cv', t.template_key)}><TemplateMini selected={i === 0} /><div className="mt-2 text-xs font-semibold" style={{ color: OMNIA_BLUE }}>{t.name_fr}</div></button>)}</div>
           <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Couleurs</h3><div className="mt-3 flex gap-3">{[OMNIA_BLUE, '#0F766E', '#111827', '#7E22CE', '#9F1239'].map((color) => <span key={color} className="h-8 w-8 rounded-full border-2" style={{ background: color, borderColor: color === OMNIA_BLUE ? OMNIA_GOLD : 'transparent' }} />)}</div></div>
           <OptimizationPanel />
-          <div className="mt-5 space-y-2"><button onClick={() => openDoc(documents[0]?.id, 'cv')} className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Modifier</button><button className="w-full rounded-lg border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Prévisualiser</button><button className="w-full rounded-lg border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Télécharger PDF</button></div>
+          <div className="mt-5 space-y-2"><button onClick={() => openDoc(documents[0]?.id, 'cv')} className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Modifier</button><button className="w-full rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Prévisualiser</button><button className="w-full rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Télécharger PDF</button></div>
         </Card>
       </div>
       <DocumentsList title="Mes CV" documents={documents} empty="Aucun CV enregistré pour le moment." createLabel="Créer un CV" onCreate={() => createDoc('cv')} onOpen={(id) => openDoc(id, 'cv')} onDelete={deleteDoc} />
@@ -669,153 +643,139 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Créez des lettres personnalisées qui captent l’attention des recruteurs." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[270px_1fr_330px]">
-        <Card className="p-5"><SectionTitle title="Mes lettres" /><div className="space-y-3">{(documents.length ? documents : [{ id: 'demo-lm', title: 'Développeur Full Stack', doc_type: 'lm' as DocType, updated_at: new Date().toISOString() }]).slice(0, 4).map((doc) => <button key={doc.id} onClick={() => doc.id === 'demo-lm' ? createDoc('lm') : openDoc(doc.id, 'lm')} className="w-full rounded-lg border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div></Card>
+        <Card className="p-5"><SectionTitle title="Mes lettres" /><div className="space-y-3">{(documents.length ? documents : [{ id: 'demo-lm', title: 'Développeur Full Stack', doc_type: 'lm' as DocType, updated_at: new Date().toISOString() }]).slice(0, 4).map((doc) => <button key={doc.id} onClick={() => doc.id === 'demo-lm' ? createDoc('lm') : openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div></Card>
         <Card className="p-5"><LetterPreview /></Card>
-        <Card className="p-5"><SectionTitle title="Suggestions IA" /><Suggestion title="Mettre en avant votre expérience" text="Soulignez vos projets complets et résultats mesurables." /><Suggestion title="Valoriser votre impact" text="Ajoutez des chiffres concrets pour renforcer votre candidature." /><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-lg border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
+        <Card className="p-5"><SectionTitle title="Suggestions IA" /><Suggestion title="Mettre en avant votre expérience" text="Soulignez vos projets complets et résultats mesurables." /><Suggestion title="Valoriser votre impact" text="Ajoutez des chiffres concrets pour renforcer votre candidature." /><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
       </div>
       <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} />
     </div>
   );
 }
 
-function JobLinkedBanner({ job, compact = false }: { job: CareerJob | null; compact?: boolean }) {
-  if (!job) return null;
-  return (
-    <Card className="p-4" style={{ backgroundColor: 'rgba(191,136,19,0.08)', borderColor: 'rgba(191,136,19,0.25)' } as React.CSSProperties}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: OMNIA_GOLD }}>Offre synchronisée</div>
-          <h3 className="mt-1 text-base font-semibold" style={{ color: OMNIA_BLUE }}>{job.title}</h3>
-          <p className="mt-1 text-sm" style={{ color: MUTED }}>{job.recruiter_company || 'Entreprise'} · {job.contract_type || 'Contrat'} · {job.location || 'Localisation non précisée'}</p>
-        </div>
-        {!compact && <Link to={`/emploi/${job.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold shadow-sm" style={{ color: OMNIA_BLUE }}>Voir l’offre</Link>}
-      </div>
-    </Card>
-  );
-}
+function InterviewView({ jobId }: { jobId?: string }) {
+  const [targetJob, setTargetJob] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
 
-function useCareerJob(jobId: string | null) {
-  const [job, setJob] = useState<CareerJob | null>(null);
-  const [loadingJob, setLoadingJob] = useState(false);
   useEffect(() => {
-    if (!jobId) return;
-    setLoadingJob(true);
-    fetch(`${ENDPOINTS.jobsList}?job_id=${jobId}`)
-      .then(r => r.json())
-      .then(d => setJob(d.job || d || null))
-      .catch(() => setJob(null))
-      .finally(() => setLoadingJob(false));
+    if (!jobId || !SUPABASE_URL) return;
+    setLoading(true);
+    fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get', job_id: jobId }),
+    })
+      .then((r) => r.json())
+      .then((d) => setTargetJob(d.job || null))
+      .catch(() => setTargetJob(null))
+      .finally(() => setLoading(false));
   }, [jobId]);
-  return { job, loadingJob };
-}
 
-function InterviewView({ jobId }: { jobId: string | null }) {
-  const navigate = useNavigate();
-  const { job } = useCareerJob(jobId);
-  const skills = job?.skills_required?.length ? job.skills_required : ['communication', 'organisation', 'analyse', 'adaptation'];
-  const jobQuestions = job ? [
-    `Présentez votre parcours et expliquez pourquoi le poste de ${job.title} vous intéresse.`,
-    `Quelles compétences de votre profil correspondent le mieux à ${job.recruiter_company || 'cette entreprise'} ?`,
-    `Comment utiliseriez-vous ${skills[0]} dans ce poste ?`,
-    `Donnez un exemple concret avec la méthode STAR lié à ${skills[1] || 'une compétence clé'}.`,
-    `Quelles questions poseriez-vous au recruteur sur cette mission ?`,
-  ] : [
-    'Parlez-moi de vous.',
-    'Pourquoi voulez-vous rejoindre cette entreprise ?',
-    'Quels sont vos points forts ?',
-    'Décrivez un défi technique ou professionnel.',
-  ];
+  const questions = targetJob ? [
+    `Pourquoi êtes-vous intéressé(e) par le poste ${targetJob.title} ?`,
+    `Quelles compétences de votre CV correspondent le mieux à cette offre ?`,
+    `Décrivez une situation où vous avez démontré une compétence clé demandée par ${targetJob.recruiter_company || 'l’entreprise'}.`,
+    'Préparez une réponse STAR sur un projet ou une expérience pertinente.',
+  ] : ['Parlez-moi de vous.', 'Pourquoi voulez-vous rejoindre cette entreprise ?', 'Quels sont vos points forts ?', 'Décrivez un défi technique.'];
 
   return (
     <div className="space-y-5">
-      <PageHeader title={job ? `Préparation entretien — ${job.title}` : 'Préparation entretien'} subtitle="Banque de questions officielle + préparation IA adaptée aux offres et à votre profil." />
-      <JobLinkedBanner job={job} />
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_330px]">
-        <Card className="p-5">
-          <SectionTitle title="Questions recommandées" action={job ? 'Basées sur l’offre' : 'Mode général'} />
-          <div className="space-y-3">
-            {jobQuestions.map((q, i) => <div key={q} className="rounded-lg border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span className="mr-2 font-semibold" style={{ color: OMNIA_GOLD }}>{i + 1}.</span>{q}</div>)}
-          </div>
-        </Card>
-        <Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}>
-          <h2 className="text-base font-semibold">Simulation entretien</h2>
-          <p className="mt-2 text-sm text-white/75">Entraînez-vous dans des conditions réalistes avec feedback personnalisé.</p>
-          <div className="mt-5 space-y-3">
-            <select className="h-10 w-full rounded-lg border border-white/20 bg-white/10 px-3 text-sm">
-              <option>{job?.title || 'Entretien général'}</option>
-            </select>
-            <select className="h-10 w-full rounded-lg border border-white/20 bg-white/10 px-3 text-sm">
-              <option>{job ? 'Entretien lié à une offre' : 'Questions RH + métier'}</option>
-            </select>
-            <button className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Commencer une simulation</button>
-          </div>
-          {job && <button onClick={() => navigate(`/dashboard/career-studio?section=applications&job_id=${job.id}`)} className="mt-3 w-full rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white/90">Préparer les documents</button>}
-        </Card>
-        <Card className="p-5">
-          <SectionTitle title="Méthode STAR" />
-          {['Situation', 'Tâche', 'Action', 'Résultat'].map((item) => <div key={item} className="mb-3 flex items-center justify-between rounded-lg border p-3" style={{ borderColor: BORDER }}><span className="text-sm font-medium" style={{ color: OMNIA_BLUE }}>{item}</span><span className="h-4 w-4 rounded border" style={{ borderColor: BORDER }} /></div>)}
-        </Card>
+      <PageHeader title="Préparation entretien" subtitle={targetJob ? `Préparation personnalisée pour l’offre ${targetJob.title}.` : 'Entraînez-vous, maîtrisez les questions clés et gagnez en confiance.'} />
+      {targetJob && <Card className="p-5" style={{ borderColor: 'rgba(191,136,19,0.35)', background: 'rgba(191,136,19,0.06)' } as any}><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Offre ciblée</h2><p className="mt-1 text-sm" style={{ color: MUTED }}>{targetJob.title} — {targetJob.recruiter_company || 'Entreprise'}</p><div className="mt-3 flex flex-wrap gap-2">{(targetJob.skills_required || []).slice(0, 6).map((skill: string) => <SmallBadge key={skill} tone="gold">{skill}</SmallBadge>)}</div></div><SmallBadge tone="gold">IA adaptée à l’offre</SmallBadge></div></Card>}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_360px]">
+        <Card className="p-5"><SectionTitle title="Questions probables" action={loading ? 'Chargement…' : undefined} /><div className="space-y-3">{questions.map((q) => <div key={q} className="rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>{q}</div>)}</div></Card>
+        <Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-base font-semibold">Simulation entretien</h2><p className="mt-2 text-sm text-white/75">Entraînez-vous dans des conditions réalistes avec feedback personnalisé.</p><div className="mt-5 space-y-3"><select className="h-10 w-full rounded-xl border border-white/20 bg-white/10 px-3 text-sm"><option>{targetJob?.title || 'Entretien général'}</option></select><button className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Commencer une simulation</button></div></Card>
+        <Card className="p-5"><SectionTitle title="Checklist STAR" />{['Situation', 'Tâche', 'Action', 'Résultat'].map((item) => <div key={item} className="mb-3 flex items-center justify-between rounded-xl border p-3" style={{ borderColor: BORDER }}><span className="text-sm font-medium" style={{ color: OMNIA_BLUE }}>{item}</span><span className="h-4 w-4 rounded border" style={{ borderColor: BORDER }} /></div>)}</Card>
       </div>
-      <Card className="p-5">
-        <SectionTitle title="Réponses à préparer" action="Sauvegarder mes réponses" />
-        <div className="grid gap-3 md:grid-cols-2">
-          {jobQuestions.slice(0, 4).map(q => <textarea key={q} rows={4} className="rounded-lg border p-3 text-sm outline-none focus:border-[#002050]" style={{ borderColor: BORDER }} placeholder={`Votre réponse : ${q}`} />)}
-        </div>
-      </Card>
+      <Card className="p-5"><SectionTitle title="À préparer avant l’entretien" /><div className="grid gap-3 md:grid-cols-3">{['Relire l’offre et relever les mots-clés', 'Préparer 3 exemples STAR', 'Préparer 3 questions à poser'].map(q => <div key={q} className="rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>{q}</div>)}</div></Card>
     </div>
   );
 }
 
-function ApplicationsView({ jobId, createDoc, openDoc, latestCv, latestLm }: { jobId: string | null; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; latestCv?: CareerDocument; latestLm?: CareerDocument }) {
-  const { job } = useCareerJob(jobId);
-  const navigate = useNavigate();
-  const [manualCards, setManualCards] = useState([
-    { company: 'Luxair', title: 'Internship Quality Management', status: 'Entretien', date: '15 mai 2025', source: 'Manuel' },
-    { company: 'BNP Paribas', title: 'Analyste Crédit Corporate', status: 'Envoyées', date: '5 mai 2025', source: 'Offre Omnia' },
-  ]);
-  const syncedCard = job ? { company: job.recruiter_company || 'Entreprise', title: job.title, status: 'À envoyer', date: job.deadline ? formatDate(job.deadline) : 'À préparer', source: 'Offre Omnia', jobId: job.id } : null;
-  const all = syncedCard ? [syncedCard, ...manualCards] : manualCards;
-  const columns = ['À envoyer', 'Envoyées', 'Entretien', 'Offres', 'Refus'];
+type TrackedApplication = {
+  id: string;
+  status?: string;
+  tracking_status?: string;
+  application_mode?: JobApplicationMode | string | null;
+  submitted_at?: string;
+  job_offers?: { id?: string; title?: string; recruiter_company?: string; location?: string; contract_type?: string; application_mode?: string; external_apply_url?: string; external_apply_email?: string } | null;
+  source?: 'platform' | 'manual';
+  company_name?: string;
+  job_title?: string;
+  job_url?: string;
+};
 
-  function addManual() {
-    const company = prompt('Entreprise ?');
-    if (!company) return;
-    const title = prompt('Poste ?') || 'Candidature';
-    setManualCards(prev => [{ company, title, status: 'À envoyer', date: 'Aujourd’hui', source: 'Manuel' }, ...prev]);
+function toneClass(tone: string) {
+  if (tone === 'green') return 'bg-emerald-50 text-emerald-700';
+  if (tone === 'purple') return 'bg-purple-50 text-purple-700';
+  if (tone === 'red') return 'bg-red-50 text-red-700';
+  if (tone === 'gold') return 'bg-amber-50 text-amber-700';
+  if (tone === 'gray') return 'bg-gray-100 text-gray-600';
+  return 'bg-blue-50 text-blue-700';
+}
+
+function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path: string) => void }) {
+  const [apps, setApps] = useState<TrackedApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [targetJob, setTargetJob] = useState<any | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  const [manual, setManual] = useState({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' });
+
+  async function callTrack(body: unknown) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return res.json();
   }
+
+  async function loadApplications() {
+    setLoading(true);
+    try {
+      const d = await callTrack({ action: 'list' });
+      const platform = (d.platform_applications || []).map((a: TrackedApplication) => ({ ...a, source: 'platform' as const }));
+      const manualApps = (d.manual_applications || []).map((a: any) => ({ ...a, id: `manual-${a.id}`, source: 'manual' as const, job_offers: { title: a.job_title, recruiter_company: a.company_name, location: a.location, contract_type: a.contract_type, application_mode: a.application_mode } }));
+      setApps([...platform, ...manualApps]);
+    } catch {
+      setApps([]);
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { loadApplications(); }, []);
+
+  useEffect(() => {
+    if (!jobId) return;
+    callTrack({ action: 'get', job_id: jobId }).then((d) => setTargetJob(d.job || null)).catch(() => setTargetJob(null));
+  }, [jobId]);
+
+  async function prepareJob() {
+    if (!jobId) return;
+    const d = await callTrack({ action: 'prepare_job', job_id: jobId });
+    if (d.success) loadApplications();
+  }
+
+  async function addManual() {
+    if (!manual.company_name || !manual.job_title) return;
+    const d = await callTrack({ action: 'create_manual', ...manual, application_mode: 'external_link', status: 'draft' });
+    if (d.success) { setShowManual(false); setManual({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' }); loadApplications(); }
+  }
+
+  const fallback: TrackedApplication[] = [
+    { id: 'demo-1', source: 'manual', tracking_status: 'draft', application_mode: 'external_link', job_offers: { title: 'Assistant QSE', recruiter_company: 'Entreprise externe', contract_type: 'Stage', application_mode: 'external_link' } },
+    { id: 'demo-2', source: 'platform', tracking_status: 'submitted', application_mode: 'omnia_managed', job_offers: { title: 'Comptable SYSCOHADA', recruiter_company: 'Structure Omnia', contract_type: 'CDI', application_mode: 'omnia_managed' } },
+  ];
+  const shown = apps.length ? apps : fallback;
+  const columns = [
+    { title: 'À préparer', statuses: ['draft', 'prepared'], countTone: 'gray' },
+    { title: 'Envoyées', statuses: ['redirected', 'email_prepared', 'declared_sent', 'submitted', 'received', 'waiting_response'], countTone: 'blue' },
+    { title: 'En analyse', statuses: ['viewed', 'under_review', 'shortlisted', 'response_received', 'follow_up_recommended', 'followed_up'], countTone: 'gold' },
+    { title: 'Entretien', statuses: ['interview'], countTone: 'purple' },
+    { title: 'Finalisées', statuses: ['accepted', 'rejected', 'archived'], countTone: 'green' },
+  ];
 
   return (
     <div className="space-y-5">
-      <PageHeader title={job ? `Préparer ma candidature — ${job.title}` : 'Suivi candidatures'} subtitle="Candidatures Omnia synchronisées avec les offres + candidatures manuelles hors plateforme." actionLabel="Ajouter une candidature" onAction={addManual} />
-      <JobLinkedBanner job={job} />
-      {job && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-4">
-          <Card className="p-5">
-            <SectionTitle title="1. CV" />
-            <p className="text-sm" style={{ color: MUTED }}>{latestCv ? latestCv.title : 'Aucun CV sélectionné'}</p>
-            <button onClick={() => latestCv ? openDoc(latestCv.id, 'cv') : createDoc('cv')} className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>{latestCv ? 'Adapter le CV' : 'Créer un CV'}</button>
-          </Card>
-          <Card className="p-5">
-            <SectionTitle title="2. Lettre" />
-            <p className="text-sm" style={{ color: MUTED }}>{latestLm ? latestLm.title : 'Générez une lettre pour cette offre'}</p>
-            <button onClick={() => latestLm ? openDoc(latestLm.id, 'lm') : navigate(`/dashboard/career-studio/editor/new?type=lm&job_id=${job.id}`)} className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>{latestLm ? 'Adapter la lettre' : 'Créer la lettre'}</button>
-          </Card>
-          <Card className="p-5">
-            <SectionTitle title="3. Entretien" />
-            <p className="text-sm" style={{ color: MUTED }}>Questions générées selon l’offre et les compétences.</p>
-            <button onClick={() => navigate(`/dashboard/career-studio?section=interview&job_id=${job.id}`)} className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Préparer l’entretien</button>
-          </Card>
-          <Card className="p-5">
-            <SectionTitle title="4. Postuler" />
-            <p className="text-sm" style={{ color: MUTED }}>Finalisez vos documents puis retournez sur la page emploi.</p>
-            <Link to={`/emploi/${job.id}`} className="mt-4 inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Retour page emploi</Link>
-          </Card>
-        </div>
-      )}
-      <div className="flex flex-wrap gap-3"><input className="h-10 w-72 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} placeholder="Rechercher une candidature..." />{['Statut', 'Type de contrat', 'Source', 'Plus de filtres'].map(f => <button key={f} className="rounded-lg border bg-white px-4 py-2 text-sm" style={{ borderColor: BORDER }}>{f}</button>)}</div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        {columns.map((col, i) => <Card key={col} className={`p-4 ${i === 3 ? 'bg-green-50' : i === 4 ? 'bg-red-50' : ''}`}><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{col}</h2><SmallBadge tone={i === 4 ? 'red' : i === 3 ? 'green' : 'blue'}>{all.filter(c => c.status === col).length || [1,1,1,0,0][i]}</SmallBadge></div>{all.filter(c => c.status === col).concat(col === 'À envoyer' && !job ? [{ company: 'TotalEnergies', title: 'Ingénieur Data Analyst', status: col, date: '12 mai 2025', source: 'Exemple' }] : []).map((card) => <div key={`${col}-${card.company}-${card.title}`} className="mb-3 rounded-lg border bg-white p-3" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{card.company}</div><div className="text-xs" style={{ color: MUTED }}>{card.title}</div><div className="mt-1 text-xs" style={{ color: OMNIA_GOLD }}>{card.source} · {card.date}</div><button onClick={() => card.jobId ? navigate(`/dashboard/career-studio?section=applications&job_id=${card.jobId}`) : undefined} className="mt-3 text-xs font-semibold" style={{ color: OMNIA_BLUE }}>{col === 'Entretien' ? 'Préparer l’entretien' : col === 'Offres' ? 'Voir les détails' : col === 'Refus' ? 'Voir le retour' : 'Préparer ma candidature'} →</button></div>)}<button className="mt-2 w-full rounded-lg border py-2 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>+ Ajouter une candidature</button></Card>)}
-      </div>
+      <PageHeader title="Suivi candidatures" subtitle="Suivez les candidatures Omnia, les candidatures externes et vos candidatures manuelles." actionLabel="Ajouter une candidature" onAction={() => setShowManual(true)} />
+      {targetJob && <Card className="p-5" style={{ borderColor: 'rgba(191,136,19,0.35)', background: 'rgba(191,136,19,0.06)' } as any}><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Préparation candidature liée à une offre</h2><p className="mt-1 text-sm" style={{ color: MUTED }}>{targetJob.title} — {targetJob.recruiter_company || 'Entreprise'}</p><p className="mt-2 text-xs" style={{ color: MUTED }}>Omnia Career peut vous aider à adapter le CV, générer la lettre et préparer l’entretien.</p></div><div className="flex flex-wrap gap-2"><button onClick={prepareJob} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Préparer dans mon suivi</button><button onClick={() => navigate(`/dashboard/career-studio/editor/new?type=cv&job_id=${jobId}`)} className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Adapter mon CV</button><button onClick={() => navigate(`/dashboard/career-studio?section=interview&job_id=${jobId}`)} className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Préparer entretien</button></div></div></Card>}
+      <div className="flex flex-wrap gap-3"><input className="h-10 w-72 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} placeholder="Rechercher une candidature..." />{['Statut', 'Type de contrat', 'Source', 'Mode'].map(f => <button key={f} className="rounded-xl border bg-white px-4 py-2 text-sm" style={{ borderColor: BORDER }}>{f}</button>)}</div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">{columns.map((col) => { const items = shown.filter((app) => col.statuses.includes((app.tracking_status || app.status || 'draft'))); return <Card key={col.title} className="p-4"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{col.title}</h2><SmallBadge tone={col.countTone as any}>{items.length}</SmallBadge></div><div className="space-y-3">{items.map((app) => { const status = app.tracking_status || app.status || 'draft'; const mode = normalizeApplicationMode(app.application_mode || app.job_offers?.application_mode); const tone = STATUS_TONE[status] || 'blue'; return <div key={app.id} className="rounded-xl border bg-white p-3" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{app.job_offers?.title || app.job_title}</div><div className="text-xs" style={{ color: MUTED }}>{app.job_offers?.recruiter_company || app.company_name || 'Entreprise'} · {app.job_offers?.contract_type || 'Contrat'}</div><div className="mt-3 flex flex-wrap gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${toneClass(tone)}`}>{labelApplicationStatus(status)}</span><span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ background: mode === 'omnia_managed' ? 'rgba(0,32,80,0.08)' : 'rgba(191,136,19,0.12)', color: mode === 'omnia_managed' ? OMNIA_BLUE : OMNIA_GOLD }}>{mode === 'external_link' ? <ExternalLink className="mr-1 inline h-3 w-3" /> : mode === 'external_email' ? <Mail className="mr-1 inline h-3 w-3" /> : <ShieldCheck className="mr-1 inline h-3 w-3" />}{APPLICATION_MODE_SHORT_LABELS[mode]}</span></div><button onClick={() => mode === 'omnia_managed' ? navigate(`/emploi/${app.job_offers?.id || ''}`) : undefined} className="mt-3 text-xs font-semibold" style={{ color: OMNIA_BLUE }}>{status === 'interview' ? 'Préparer l’entretien' : mode === 'omnia_managed' ? 'Voir l’offre' : 'Mettre à jour'} →</button></div>; })}</div></Card>; })}</div>
+      {showManual && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"><h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Ajouter une candidature manuelle</h2><div className="mt-4 grid gap-3"><input value={manual.company_name} onChange={(e) => setManual({ ...manual, company_name: e.target.value })} placeholder="Entreprise" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.job_title} onChange={(e) => setManual({ ...manual, job_title: e.target.value })} placeholder="Poste" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.job_url} onChange={(e) => setManual({ ...manual, job_url: e.target.value })} placeholder="Lien de l’offre" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.location} onChange={(e) => setManual({ ...manual, location: e.target.value })} placeholder="Lieu" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /></div><div className="mt-5 flex justify-end gap-3"><button onClick={() => setShowManual(false)} className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: BORDER }}>Annuler</button><button onClick={addManual} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ajouter</button></div></div></div>}
     </div>
   );
 }
@@ -825,15 +785,15 @@ function ProfileView({ displayName }: { displayName: string }) {
 }
 
 function CoachingView() {
-  return <div className="space-y-5"><PageHeader title="Coaching carrière" subtitle="Avancez avec un accompagnement personnalisé pour atteindre vos objectifs professionnels." /><div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">{['Progression globale 72%','Sessions complétées 8','Objectifs atteints 3','Prochaine session 14 mai','Plan en cours 30 jours'].map((s) => <Card key={s} className="p-5"><div className="text-sm" style={{ color: MUTED }}>{s.split(' ').slice(0,-1).join(' ')}</div><div className="mt-2 text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{s.split(' ').at(-1)}</div></Card>)}</div><div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_1fr]"><Card className="p-5"><SectionTitle title="Objectif professionnel" action="Modifier" /><div className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Devenir Développeur Full Stack</div><p className="mt-2 text-sm" style={{ color: MUTED }}>Évoluer vers un poste tech innovant d’ici 6 mois.</p></Card><Card className="p-5"><SectionTitle title="Plan 30 jours" /><p className="text-sm" style={{ color: MUTED }}>Renforcer mes compétences techniques.</p><button className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Voir mon plan</button></Card><Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-base font-semibold">Coaching IA</h2><p className="mt-2 text-sm text-white/75">Votre coach IA disponible 24/7.</p><button className="mt-5 w-full rounded-lg py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Poser une question</button></Card></div></div>;
+  return <div className="space-y-5"><PageHeader title="Coaching carrière" subtitle="Avancez avec un accompagnement personnalisé pour atteindre vos objectifs professionnels." /><div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">{['Progression globale 72%','Sessions complétées 8','Objectifs atteints 3','Prochaine session 14 mai','Plan en cours 30 jours'].map((s) => <Card key={s} className="p-5"><div className="text-sm" style={{ color: MUTED }}>{s.split(' ').slice(0,-1).join(' ')}</div><div className="mt-2 text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{s.split(' ').at(-1)}</div></Card>)}</div><div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_1fr]"><Card className="p-5"><SectionTitle title="Objectif professionnel" action="Modifier" /><div className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Devenir Développeur Full Stack</div><p className="mt-2 text-sm" style={{ color: MUTED }}>Évoluer vers un poste tech innovant d’ici 6 mois.</p></Card><Card className="p-5"><SectionTitle title="Plan 30 jours" /><p className="text-sm" style={{ color: MUTED }}>Renforcer mes compétences techniques.</p><button className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Voir mon plan</button></Card><Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-base font-semibold">Coaching IA</h2><p className="mt-2 text-sm text-white/75">Votre coach IA disponible 24/7.</p><button className="mt-5 w-full rounded-xl py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Poser une question</button></Card></div></div>;
 }
 
 function SettingsView({ packs, tokens }: { packs: TokenPack[]; tokens: number }) {
-  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos préférences, votre compte et vos documents Omnia Career." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value="Lina Amani" /><Field label="Adresse e-mail" value="lina.amani@email.com" /></Card><Card className="p-5"><SectionTitle title="Notifications" />{['Nouvelles opportunités d’emploi','Mises à jour candidatures','Rappels entretien','Conseils carrière'].map(t => <div key={t} className="mb-3 flex items-center justify-between text-sm" style={{ color: OMNIA_BLUE }}><span>{t}</span><span className="h-5 w-9 rounded-full" style={{ background: OMNIA_BLUE }} /></div>)}</Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{(packs || []).slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
+  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos préférences, votre compte et vos documents Omnia Career." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value="Lina Amani" /><Field label="Adresse e-mail" value="lina.amani@email.com" /></Card><Card className="p-5"><SectionTitle title="Notifications" />{['Nouvelles opportunités d’emploi','Mises à jour candidatures','Rappels entretien','Conseils carrière'].map(t => <div key={t} className="mb-3 flex items-center justify-between text-sm" style={{ color: OMNIA_BLUE }}><span>{t}</span><span className="h-5 w-9 rounded-full" style={{ background: OMNIA_BLUE }} /></div>)}</Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{(packs || []).slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
 }
 
 function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
-  return <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h1><p className="mt-1 text-sm" style={{ color: MUTED }}>{subtitle}</p></div>{actionLabel && <button onClick={onAction} className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Plus size={16} />{actionLabel}</button>}</div>;
+  return <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h1><p className="mt-1 text-sm" style={{ color: MUTED }}>{subtitle}</p></div>{actionLabel && <button onClick={onAction} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Plus size={16} />{actionLabel}</button>}</div>;
 }
 
 function CvLargePreview() {
@@ -845,7 +805,7 @@ function CvSection({ title, text, chips }: { title: string; text?: string; chips
 }
 
 function OptimizationPanel() {
-  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><div className="mt-4 flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full border-8 text-lg font-semibold" style={{ borderColor: '#16A34A', color: OMNIA_BLUE }}>82</div><div><div className="text-sm font-semibold text-green-700">Très bon</div><p className="text-sm" style={{ color: MUTED }}>Votre CV est bien optimisé.</p></div></div><div className="mt-4 rounded-lg border p-3 text-sm" style={{ borderColor: BORDER }}><Sparkles size={15} color={OMNIA_GOLD} className="mr-2 inline" />Quantifiez vos réalisations</div></div>;
+  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><div className="mt-4 flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full border-8 text-lg font-semibold" style={{ borderColor: '#16A34A', color: OMNIA_BLUE }}>82</div><div><div className="text-sm font-semibold text-green-700">Très bon</div><p className="text-sm" style={{ color: MUTED }}>Votre CV est bien optimisé.</p></div></div><div className="mt-4 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><Sparkles size={15} color={OMNIA_GOLD} className="mr-2 inline" />Quantifiez vos réalisations</div></div>;
 }
 
 function LetterPreview() {
@@ -853,11 +813,11 @@ function LetterPreview() {
 }
 
 function Suggestion({ title, text }: { title: string; text: string }) {
-  return <div className="mb-3 rounded-lg border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{title}</div><p className="mt-1 text-sm" style={{ color: MUTED }}>{text}</p><button className="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Appliquer</button></div>;
+  return <div className="mb-3 rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{title}</div><p className="mt-1 text-sm" style={{ color: MUTED }}>{text}</p><button className="mt-3 rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Appliquer</button></div>;
 }
 
 function DocumentsList({ title, documents, empty, createLabel, onCreate, onOpen, onDelete }: { title: string; documents: CareerDocument[]; empty: string; createLabel: string; onCreate: () => void; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
-  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-lg border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Mis à jour le {formatDate(doc.updated_at)}</div><div className="mt-4 flex gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onDelete(doc.id)} className="rounded-lg border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} /></button></div></div>)}</div>}</Card>;
+  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Mis à jour le {formatDate(doc.updated_at)}</div><div className="mt-4 flex gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-xl px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onDelete(doc.id)} className="rounded-xl border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} /></button></div></div>)}</div>}</Card>;
 }
 
 function Badge({ label }: { label: string }) {
@@ -865,5 +825,5 @@ function Badge({ label }: { label: string }) {
 }
 
 function Field({ label, value }: { label: string; value: string }) {
-  return <label className="mb-3 block text-sm font-medium" style={{ color: OMNIA_BLUE }}>{label}<input className="mt-1 h-10 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} value={value} readOnly /></label>;
+  return <label className="mb-3 block text-sm font-medium" style={{ color: OMNIA_BLUE }}>{label}<input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} value={value} readOnly /></label>;
 }
