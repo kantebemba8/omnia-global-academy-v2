@@ -24,6 +24,7 @@ const ADMIN_NAV = [
   { path: '/admin/demo-access',            label: 'Accès Démo',             icon: Monitor },
   { path: '/admin/forum',                  label: 'Forum & Modération',     icon: MessageSquare },
   { path: '/admin/career-studio',          label: 'Omnia Career Studio',    icon: Briefcase },
+  { path: '/admin/offres-emploi',          label: 'Offres d’emploi',        icon: Briefcase },
   { path: '/admin/structures',             label: 'Structures',             icon: Building2 },
   { path: '/admin/structure-codes',        label: 'Codes structure',        icon: QrCode },
   { path: '/admin/structure-avantages',    label: 'Avantages structure',    icon: Gift },
