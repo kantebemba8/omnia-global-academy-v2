@@ -181,7 +181,7 @@ export default function DashboardCareerStudio() {
   const [toast, setToast] = useState('');
 
   const user = readUser();
-  const displayName = user?.full_name || user?.name || 'Lina Amani';
+  const displayName = user?.full_name || user?.name || user?.email || 'Apprenant';
   const initials = getInitials(displayName, user?.email);
 
   const cvDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'cv'), [documents]);
@@ -517,14 +517,14 @@ function DashboardView({
             <MiniCvPreview />
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{latestCv?.title || 'Développeur Full Stack'}</h3>
+                <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{latestCv?.title || 'Aucun CV créé'}</h3>
                 <SmallBadge>Principal</SmallBadge>
               </div>
               <p className="mt-1 text-sm" style={{ color: MUTED }}>Mis à jour le {formatDate(latestCv?.updated_at)}</p>
               <div className="mt-4 space-y-2 text-sm">
-                <MetricLine label="Score d’optimisation" value={`${latestCv?.ats_score || 82}/100`} />
-                <MetricLine label="Mots-clés pertinents" value="18" />
-                <MetricLine label="Lisibilité" value="Excellente" />
+                <MetricLine label="Score d’optimisation" value={latestCv ? `${latestCv.ats_score ?? 0}/100` : '—'} />
+                <MetricLine label="Mots-clés pertinents" value={latestCv ? "À analyser" : "—"} />
+                <MetricLine label="Lisibilité" value={latestCv ? "À analyser" : "—"} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <button onClick={() => openDoc(latestCv?.id, 'cv')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Edit2 size={15} /> Modifier</button>
@@ -568,9 +568,11 @@ function DashboardView({
         <Card className="p-5">
           <SectionTitle title="Activité récente" action="Voir toute l’activité" />
           <div className="space-y-3 text-sm">
-            <ActivityItem icon={FileText} title="CV principal mis à jour" date="10 mai 2025 à 16:42" />
-            <ActivityItem icon={Mail} title="Lettre de motivation modifiée" date="9 mai 2025 à 11:15" />
-            <ActivityItem icon={Calendar} title="Entretien planifié" date="8 mai 2025 à 09:30" />
+            {documents.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-5 text-center" style={{ borderColor: BORDER, color: MUTED }}>Aucune activité réelle pour le moment.</div>
+            ) : documents.slice(0, 3).map((doc) => (
+              <ActivityItem key={doc.id} icon={doc.doc_type === 'cv' ? FileText : Mail} title={`${doc.doc_type === 'cv' ? 'CV' : 'Lettre'} : ${doc.title}`} date={formatDate(doc.updated_at)} />
+            ))}
           </div>
         </Card>
 
@@ -673,7 +675,7 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Créez des lettres personnalisées qui captent l’attention des recruteurs." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[270px_1fr_330px]">
-        <Card className="p-5"><SectionTitle title="Mes lettres" /><div className="space-y-3">{(documents.length ? documents : [{ id: 'demo-lm', title: 'Développeur Full Stack', doc_type: 'lm' as DocType, updated_at: new Date().toISOString() }]).slice(0, 4).map((doc) => <button key={doc.id} onClick={() => doc.id === 'demo-lm' ? createDoc('lm') : openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div></Card>
+        <Card className="p-5"><SectionTitle title="Mes lettres" /><div className="space-y-3">{documents.filter((doc) => doc.doc_type === 'lm').slice(0, 4).map((doc) => <button key={doc.id} onClick={() => openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div></Card>
         <Card className="p-5"><LetterPreview /></Card>
         <Card className="p-5"><SectionTitle title="Suggestions IA" /><Suggestion title="Mettre en avant votre expérience" text="Soulignez vos projets complets et résultats mesurables." /><Suggestion title="Valoriser votre impact" text="Ajoutez des chiffres concrets pour renforcer votre candidature." /><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
       </div>
@@ -813,15 +815,16 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
 }
 
 function ProfileView({ displayName }: { displayName: string }) {
-  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Gérez votre profil professionnel et augmentez votre visibilité auprès des recruteurs." actionLabel="Modifier mon profil" /><div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_1fr]"><Card className="p-5"><div className="flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: OMNIA_BLUE }}>{getInitials(displayName)}</div><div><h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</h2><p className="text-sm" style={{ color: MUTED }}>Développeur Full Stack</p><p className="text-sm" style={{ color: MUTED }}>Paris, France</p></div></div></Card><Card className="p-5"><SectionTitle title="Complétude du profil" /><div className="flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full border-8 text-lg font-semibold" style={{ borderColor: '#16A34A', color: OMNIA_BLUE }}>82%</div><div><div className="text-sm font-semibold text-green-700">Excellent !</div><p className="text-sm" style={{ color: MUTED }}>Votre profil est bien renseigné.</p></div></div></Card><Card className="p-5"><SectionTitle title="Badges Omnia Global Academy" /><div className="flex gap-3"><Badge label="Full Stack" /><Badge label="Career" /><Badge label="Interview" /></div></Card></div><div className="grid grid-cols-1 gap-5 xl:grid-cols-2"><Card className="p-5"><SectionTitle title="Compétences" action="Modifier" /><div className="flex flex-wrap gap-2">{['JavaScript','TypeScript','React','Node.js','PostgreSQL','Docker','AWS'].map(s => <SmallBadge key={s}>{s}</SmallBadge>)}</div></Card><Card className="p-5"><SectionTitle title="Portfolio & Documents" action="Modifier" />{['CV Lina Amani.pdf','Lettre de motivation.pdf','Recommandation.pdf'].map(d => <div key={d} className="flex items-center justify-between border-b py-2 text-sm" style={{ borderColor: BORDER }}><span style={{ color: OMNIA_BLUE }}>{d}</span><Download size={15} color={MUTED} /></div>)}</Card></div></div>;
+  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Vos informations réelles apparaîtront ici après enregistrement de votre profil." /><Card className="p-8 text-center"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: OMNIA_BLUE }}>{getInitials(displayName)}</div><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Aucune donnée professionnelle enregistrée. Complétez votre profil pour afficher vos compétences, objectifs, mobilité et documents.</p></Card></div>;
 }
 
 function CoachingView() {
-  return <div className="space-y-5"><PageHeader title="Coaching carrière" subtitle="Avancez avec un accompagnement personnalisé pour atteindre vos objectifs professionnels." /><div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">{['Progression globale 72%','Sessions complétées 8','Objectifs atteints 3','Prochaine session 14 mai','Plan en cours 30 jours'].map((s) => <Card key={s} className="p-5"><div className="text-sm" style={{ color: MUTED }}>{s.split(' ').slice(0,-1).join(' ')}</div><div className="mt-2 text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{s.split(' ').at(-1)}</div></Card>)}</div><div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_1fr]"><Card className="p-5"><SectionTitle title="Objectif professionnel" action="Modifier" /><div className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Devenir Développeur Full Stack</div><p className="mt-2 text-sm" style={{ color: MUTED }}>Évoluer vers un poste tech innovant d’ici 6 mois.</p></Card><Card className="p-5"><SectionTitle title="Plan 30 jours" /><p className="text-sm" style={{ color: MUTED }}>Renforcer mes compétences techniques.</p><button className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Voir mon plan</button></Card><Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-base font-semibold">Coaching IA</h2><p className="mt-2 text-sm text-white/75">Votre coach IA disponible 24/7.</p><button className="mt-5 w-full rounded-xl py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Poser une question</button></Card></div></div>;
+  return <div className="space-y-5"><PageHeader title="Coaching carrière avec IA" subtitle="Le coaching démarre uniquement à partir de vos objectifs et de vos données réelles." /><Card className="p-8 text-center"><Sparkles className="mx-auto" size={34} color={OMNIA_GOLD} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Aucune session de coaching</h2><p className="mx-auto mt-2 max-w-xl text-sm" style={{ color: MUTED }}>Définissez votre objectif professionnel puis démarrez une session avec le coach IA. Aucun score, plan ou rendez-vous fictif n’est affiché.</p><button className="mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Démarrer mon coaching IA</button></Card></div>;
 }
 
 function SettingsView({ packs, tokens }: { packs: TokenPack[]; tokens: number }) {
-  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos préférences, votre compte et vos documents Omnia Career." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value="Lina Amani" /><Field label="Adresse e-mail" value="lina.amani@email.com" /></Card><Card className="p-5"><SectionTitle title="Notifications" />{['Nouvelles opportunités d’emploi','Mises à jour candidatures','Rappels entretien','Conseils carrière'].map(t => <div key={t} className="mb-3 flex items-center justify-between text-sm" style={{ color: OMNIA_BLUE }}><span>{t}</span><span className="h-5 w-9 rounded-full" style={{ background: OMNIA_BLUE }} /></div>)}</Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{(packs || []).slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
+  const user = readUser();
+  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos préférences et les données réelles de votre compte." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value={user?.full_name || user?.name || ''} /><Field label="Adresse e-mail" value={user?.email || ''} /></Card><Card className="p-5"><SectionTitle title="Notifications" /><p className="text-sm" style={{ color: MUTED }}>Aucune préférence fictive. Les réglages seront enregistrés à partir de vos choix.</p></Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{packs.length === 0 ? <p className="mt-3 text-sm" style={{ color: MUTED }}>Aucun pack disponible.</p> : packs.slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
 }
 
 function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
@@ -829,7 +832,7 @@ function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string;
 }
 
 function CvLargePreview() {
-  return <div className="mx-auto max-w-[620px] rounded-2xl border bg-white p-6 shadow-sm" style={{ borderColor: BORDER }}><div className="-mx-6 -mt-6 mb-5 rounded-t-2xl px-8 py-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-2xl font-semibold tracking-wide">LINA AMANI</h2><p className="text-sm font-semibold" style={{ color: OMNIA_GOLD }}>DÉVELOPPEUSE FULL STACK</p></div><div className="mb-5 flex flex-wrap gap-4 text-xs" style={{ color: MUTED }}><span>lina.amani@email.com</span><span>+33 6 12 34 56 78</span><span>Paris, France</span><span>linkedin.com/in/linaamani</span></div><CvSection title="PROFIL" text="Développeuse Full Stack passionnée avec 4 ans d’expérience dans la conception et le développement d’applications web performantes." /><CvSection title="COMPÉTENCES" chips={['JavaScript','React','Next.js','Node.js','TypeScript','PostgreSQL','MongoDB','Docker']} /><CvSection title="EXPÉRIENCES PROFESSIONNELLES" text="Développeuse Full Stack — TechNova Solutions. Conception, optimisation et collaboration avec les équipes design et produit." /><CvSection title="FORMATION" text="Master en Informatique — Université Paris-Saclay." /></div>;
+  return <div className="mx-auto max-w-[620px] rounded-2xl border bg-white p-10 text-center shadow-sm" style={{ borderColor: BORDER }}><FileText className="mx-auto" size={38} color={MUTED} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Aucun contenu CV</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Choisissez un modèle puis saisissez vos propres informations ou utilisez l’éditeur libre.</p></div>;
 }
 
 function CvSection({ title, text, chips }: { title: string; text?: string; chips?: string[] }) {
@@ -837,11 +840,11 @@ function CvSection({ title, text, chips }: { title: string; text?: string; chips
 }
 
 function OptimizationPanel() {
-  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><div className="mt-4 flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full border-8 text-lg font-semibold" style={{ borderColor: '#16A34A', color: OMNIA_BLUE }}>82</div><div><div className="text-sm font-semibold text-green-700">Très bon</div><p className="text-sm" style={{ color: MUTED }}>Votre CV est bien optimisé.</p></div></div><div className="mt-4 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><Sparkles size={15} color={OMNIA_GOLD} className="mr-2 inline" />Quantifiez vos réalisations</div></div>;
+  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><p className="mt-2 text-sm" style={{ color: MUTED }}>Le score sera calculé à partir du contenu réellement saisi. Aucun score fictif n’est affiché.</p></div>;
 }
 
 function LetterPreview() {
-  return <div><div className="mb-4 flex gap-3 border-b pb-3" style={{ borderColor: BORDER }}>{['Paragraphe','B','I','U','•','🔗'].map(t => <span key={t} className="text-sm" style={{ color: OMNIA_BLUE }}>{t}</span>)}</div><div className="min-h-[520px] rounded-2xl border bg-white p-8 text-sm leading-7" style={{ borderColor: BORDER }}><p><b>Lina Amani</b><br />lina.amani@email.com<br />Paris, France</p><p className="mt-5 text-right">10 mai 2025</p><p className="mt-5"><b>Objet : Candidature au poste de Développeur Full Stack</b></p><p className="mt-5">Monsieur,</p><p className="mt-4">Passionnée par le développement web et les technologies innovantes, je souhaite vous proposer ma candidature au poste de Développeur Full Stack.</p><p className="mt-4">Rigoureuse, autonome et orientée résultats, je suis convaincue que mes compétences techniques seraient un atout pour vos projets ambitieux.</p><p className="mt-4">Dans l’attente de votre retour, je vous prie d’agréer, Monsieur, l’expression de mes salutations distinguées.</p><p className="mt-5">Lina Amani</p></div></div>;
+  return <div className="min-h-[520px] rounded-2xl border bg-white p-8 text-center" style={{ borderColor: BORDER }}><Mail className="mx-auto" size={38} color={MUTED} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Lettre vide</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Rédigez votre lettre manuellement ou utilisez l’assistance IA à partir d’une offre réelle.</p></div>;
 }
 
 function Suggestion({ title, text }: { title: string; text: string }) {
