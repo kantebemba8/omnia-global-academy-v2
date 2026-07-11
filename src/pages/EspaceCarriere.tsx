@@ -3,7 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { Briefcase, Search, MapPin, Clock, ChevronDown, Filter, Eye, Globe, Building2 } from 'lucide-react';
+import { Briefcase, Search, MapPin, Clock, ChevronDown, Filter, Eye, Globe, Building2, ExternalLink, Mail, ShieldCheck } from 'lucide-react';
+import { APPLICATION_MODE_SHORT_LABELS, normalizeApplicationMode } from '../lib/jobApplicationModes';
 
 const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance'];
 const CATEGORIES = ['Tech & Digital', 'Finance', 'Marketing', 'Management', 'Santé', 'Education', 'Juridique', 'Autre'];
@@ -34,7 +35,7 @@ interface Job {
   category: string; salary_range: string | null; required_level: string | null;
   recruiter_company: string; recruiter_name: string; views_count: number;
   applications_count: number; deadline: string | null; created_at: string;
-  is_external_recruiter: boolean; status: string;
+  is_external_recruiter: boolean; status: string; application_mode?: string; external_apply_url?: string | null; external_apply_email?: string | null;
 }
 
 function timeAgo(iso: string): string {
@@ -78,8 +79,9 @@ export default function EspaceCarriere() {
       return roles.includes('super_admin') ||
              roles.includes('responsable_structure') ||
              roles.includes('structure_admin') ||
+             roles.includes('etablissement_directeur') ||
              permissions.includes('can_create_job_offers') ||
-             permissions.includes('can_manage_jobs');
+             permissions.includes('can_manage_job_offers');
     } catch { return false; }
   })();
 
@@ -132,7 +134,7 @@ export default function EspaceCarriere() {
                 </select>
               </div>
              {canPostJob && (
-                <Link to="/recruteur"
+                <Link to={(() => { try { const u = JSON.parse(localStorage.getItem('omnia_user') || '{}'); return (u.roles || []).includes('super_admin') ? '/admin/offres-emploi' : '/structure/offres-emploi'; } catch { return '/structure/offres-emploi'; } })()}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white"
                   style={{ backgroundColor: '#BF8813' }}>
                   <Briefcase className="w-4 h-4" /> Déposer une offre
@@ -234,6 +236,10 @@ export default function EspaceCarriere() {
                           )}
                           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(job.created_at)}</span>
                           <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{job.views_count} vue{job.views_count !== 1 ? 's' : ''}</span>
+                          <span className="flex items-center gap-1" style={{ color: normalizeApplicationMode(job.application_mode) === 'omnia_managed' ? '#002050' : '#bf8813' }}>
+                            {normalizeApplicationMode(job.application_mode) === 'external_link' ? <ExternalLink className="w-3 h-3" /> : normalizeApplicationMode(job.application_mode) === 'external_email' ? <Mail className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3" />}
+                            {APPLICATION_MODE_SHORT_LABELS[normalizeApplicationMode(job.application_mode)]}
+                          </span>
                         </div>
                       </div>
                     </div>
