@@ -10,6 +10,7 @@ import {
   EyeOff,
   FileText,
   Mail,
+  MessageSquare,
   Plus,
   RefreshCw,
   Save,
@@ -21,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 
-type SubTab = 'dashboard' | 'rules' | 'packs' | 'cv_templates' | 'lm_templates' | 'ai' | 'exports' | 'stats';
+type SubTab = 'dashboard' | 'rules' | 'packs' | 'cv_templates' | 'lm_templates' | 'ai' | 'question_bank' | 'exports' | 'stats';
 
 type RuleValueType = 'boolean' | 'integer' | 'decimal' | 'text' | 'select';
 
@@ -92,6 +93,18 @@ type Template = {
   export_count?: number;
 };
 
+type InterviewQuestion = {
+  id: string;
+  category: 'rh' | 'technique' | 'metier' | 'sectorielle' | 'star' | 'offre';
+  sector?: string;
+  level?: string;
+  question: string;
+  expected_answer?: string;
+  keywords?: string;
+  is_active: boolean;
+  source: 'super_admin' | 'ai';
+};
+
 type AdminStats = {
   total_cv: number;
   total_lm: number;
@@ -137,6 +150,7 @@ const SUB_MENUS = [
   { key: 'cv_templates', label: 'Modèles CV', icon: FileText },
   { key: 'lm_templates', label: 'Modèles LM', icon: Mail },
   { key: 'ai', label: 'IA', icon: Sparkles },
+  { key: 'question_bank', label: 'Banque questions', icon: MessageSquare },
   { key: 'exports', label: 'Exports', icon: Download },
   { key: 'stats', label: 'Statistiques', icon: BarChart2 },
 ] as { key: SubTab; label: string; icon: typeof BarChart2 }[];
@@ -217,6 +231,17 @@ export default function AdminCareerStudio() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [questionBank, setQuestionBank] = useState<InterviewQuestion[]>([]);
+  const [questionForm, setQuestionForm] = useState<Omit<InterviewQuestion, 'id'>>({
+    category: 'rh',
+    sector: '',
+    level: 'Débutant',
+    question: '',
+    expected_answer: '',
+    keywords: '',
+    is_active: true,
+    source: 'super_admin',
+  });
 
   function showToast(text: string, type: 'success' | 'error' = 'success') {
     setToast({ text, type });
@@ -249,6 +274,15 @@ export default function AdminCareerStudio() {
   }
 
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('omnia_career_question_bank');
+      setQuestionBank(stored ? JSON.parse(stored) : []);
+    } catch {
+      setQuestionBank([]);
+    }
+  }, []);
 
   const groupedRules = useMemo(() => {
     return rules
@@ -324,6 +358,35 @@ export default function AdminCareerStudio() {
     } finally {
       setSaving(false);
     }
+  }
+
+
+  function persistQuestionBank(next: InterviewQuestion[]) {
+    setQuestionBank(next);
+    localStorage.setItem('omnia_career_question_bank', JSON.stringify(next));
+  }
+
+  function addInterviewQuestion() {
+    if (!questionForm.question.trim()) {
+      showToast('Veuillez saisir une question.', 'error');
+      return;
+    }
+    const next: InterviewQuestion = {
+      id: `q_${Date.now()}`,
+      ...questionForm,
+      question: questionForm.question.trim(),
+    };
+    persistQuestionBank([next, ...questionBank]);
+    setQuestionForm({ category: 'rh', sector: '', level: 'Débutant', question: '', expected_answer: '', keywords: '', is_active: true, source: 'super_admin' });
+    showToast('✅ Question ajoutée à la banque officielle.');
+  }
+
+  function toggleInterviewQuestion(id: string) {
+    persistQuestionBank(questionBank.map(q => q.id === id ? { ...q, is_active: !q.is_active } : q));
+  }
+
+  function deleteInterviewQuestion(id: string) {
+    persistQuestionBank(questionBank.filter(q => q.id !== id));
   }
 
   function renderRuleInput(rule: CareerRule) {
@@ -637,6 +700,104 @@ export default function AdminCareerStudio() {
                     );
                   })}
                 </div>
+              </div>
+            </div>
+          )}
+
+
+          {!loading && subTab === 'question_bank' && (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Banque officielle de questions</h2>
+                  <p className="mt-1 text-sm" style={{ color: MUTED }}>
+                    Créez les questions RH, techniques, métier et STAR utilisées dans la préparation entretien. L’IA peut ensuite personnaliser ces bases selon une offre et le CV de l’apprenant.
+                  </p>
+                </div>
+                <span className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: `${OMNIA_BLUE}10`, color: OMNIA_BLUE }}>
+                  {questionBank.filter(q => q.is_active).length} question(s) active(s)
+                </span>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+                <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Ajouter une question</h3>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Catégorie</span>
+                    <select value={questionForm.category} onChange={(e) => setQuestionForm({ ...questionForm, category: e.target.value as InterviewQuestion['category'] })} className="h-11 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }}>
+                      <option value="rh">RH</option>
+                      <option value="technique">Technique</option>
+                      <option value="metier">Métier</option>
+                      <option value="sectorielle">Sectorielle</option>
+                      <option value="star">Méthode STAR</option>
+                      <option value="offre">Liée à une offre</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Secteur</span>
+                    <input value={questionForm.sector || ''} onChange={(e) => setQuestionForm({ ...questionForm, sector: e.target.value })} placeholder="QSE, Data, Finance..." className="h-11 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Niveau</span>
+                    <select value={questionForm.level || 'Débutant'} onChange={(e) => setQuestionForm({ ...questionForm, level: e.target.value })} className="h-11 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }}>
+                      <option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Tous niveaux</option>
+                    </select>
+                  </label>
+                  <label className="flex items-end gap-2 rounded-xl border p-3" style={{ borderColor: BORDER }}>
+                    <input type="checkbox" checked={questionForm.is_active} onChange={(e) => setQuestionForm({ ...questionForm, is_active: e.target.checked })} />
+                    <span className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>Active</span>
+                  </label>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Question</span>
+                    <textarea rows={4} value={questionForm.question} onChange={(e) => setQuestionForm({ ...questionForm, question: e.target.value })} placeholder="Exemple : Expliquez une situation où vous avez appliqué la méthode PDCA." className="w-full rounded-xl border px-3 py-2 text-sm" style={{ borderColor: BORDER }} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Réponse attendue / critères</span>
+                    <textarea rows={4} value={questionForm.expected_answer || ''} onChange={(e) => setQuestionForm({ ...questionForm, expected_answer: e.target.value })} placeholder="Éléments attendus, mots-clés, structure STAR..." className="w-full rounded-xl border px-3 py-2 text-sm" style={{ borderColor: BORDER }} />
+                  </label>
+                </div>
+                <label className="mt-4 block">
+                  <span className="mb-1.5 block text-xs font-semibold" style={{ color: MUTED }}>Mots-clés</span>
+                  <input value={questionForm.keywords || ''} onChange={(e) => setQuestionForm({ ...questionForm, keywords: e.target.value })} placeholder="ISO 9001, audit, Excel, conformité..." className="h-11 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} />
+                </label>
+                <div className="mt-5 flex justify-end">
+                  <button onClick={addInterviewQuestion} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>
+                    <Plus size={15} /> Ajouter à la banque
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+                <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Questions enregistrées</h3>
+                {questionBank.length === 0 ? (
+                  <div className="mt-4 rounded-2xl border border-dashed p-8 text-center text-sm" style={{ borderColor: BORDER, color: MUTED }}>
+                    Aucune question officielle pour le moment. Ajoutez vos premières questions depuis ce formulaire.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {questionBank.map((q) => (
+                      <div key={q.id} className="rounded-xl border p-4" style={{ borderColor: BORDER, background: q.is_active ? '#FFFFFF' : '#F8FAFC' }}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: `${OMNIA_BLUE}10`, color: OMNIA_BLUE }}>{q.category}</span>
+                              {q.sector && <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{q.sector}</span>}
+                              {q.level && <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{q.level}</span>}
+                            </div>
+                            <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{q.question}</p>
+                            {q.expected_answer && <p className="mt-2 text-xs leading-5" style={{ color: MUTED }}>{q.expected_answer}</p>}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => toggleInterviewQuestion(q.id)} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: BORDER, color: q.is_active ? '#16A34A' : MUTED }}>{q.is_active ? 'Active' : 'Inactive'}</button>
+                            <button onClick={() => deleteInterviewQuestion(q.id)} className="rounded-lg border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}>Supprimer</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
