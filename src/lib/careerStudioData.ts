@@ -73,117 +73,51 @@ export const DEFAULT_LM_DESIGN: LmDesign = {
 };
 
 export const DEFAULT_CV_DATA: DocData = {
-  name: 'Lina Amani',
-  title: 'Développeuse Full Stack',
-  objective: 'Rejoindre une équipe tech innovante et contribuer à des projets à fort impact.',
-  summary:
-    'Développeuse Full Stack passionnée avec plus de 4 ans d’expérience dans la conception et le développement d’applications web performantes. Spécialisée en JavaScript, React, Node.js et bases de données SQL/NoSQL.',
+  name: '',
+  title: '',
+  objective: '',
+  summary: '',
   contact: {
-    email: 'lina.amani@email.com',
-    phone: '+33 6 12 34 56 78',
-    location: 'Paris, France',
-    linkedin: 'linkedin.com/in/lina-amani',
-    portfolio: 'linaamani.dev',
+    email: '',
+    phone: '',
+    location: '',
+    linkedin: '',
+    portfolio: '',
   },
-  experiences: [
-    {
-      id: 'exp_1',
-      position: 'Développeuse Full Stack',
-      company: 'TechNova Solutions',
-      location: 'Paris, France',
-      start_date: '2022-01',
-      end_date: '',
-      current: true,
-      description:
-        'Conception et développement de nouvelles fonctionnalités pour une plateforme SaaS. Optimisation des performances, refactorisation du code existant et collaboration avec les équipes design et produit.',
-    },
-    {
-      id: 'exp_2',
-      position: 'Développeuse Web Junior',
-      company: 'WebCraft Agency',
-      location: 'Paris, France',
-      start_date: '2020-06',
-      end_date: '2021-12',
-      current: false,
-      description:
-        'Développement d’applications web responsives avec React et Node.js, intégration d’API tierces et amélioration continue des fonctionnalités.',
-    },
-  ],
-  education: [
-    {
-      id: 'edu_1',
-      degree: 'Master en Informatique',
-      school: 'Université Paris-Saclay',
-      location: 'Orsay, France',
-      year: '2018 - 2020',
-    },
-    {
-      id: 'edu_2',
-      degree: 'Licence en Informatique',
-      school: 'Université de Nantes',
-      location: 'Nantes, France',
-      year: '2015 - 2018',
-    },
-  ],
+  experiences: [],
+  education: [],
   omnia_formations: [],
-  skills: [
-    { id: 'sk_1', name: 'JavaScript', level: 90 },
-    { id: 'sk_2', name: 'TypeScript', level: 85 },
-    { id: 'sk_3', name: 'React', level: 90 },
-    { id: 'sk_4', name: 'Node.js', level: 80 },
-    { id: 'sk_5', name: 'PostgreSQL', level: 75 },
-    { id: 'sk_6', name: 'Docker', level: 70 },
-  ],
-  languages: [
-    { id: 'lang_1', name: 'Français', level: 'Langue maternelle' },
-    { id: 'lang_2', name: 'Anglais', level: 'Courant' },
-    { id: 'lang_3', name: 'Espagnol', level: 'Intermédiaire' },
-  ],
-  certifications_external: [
-    { id: 'cert_1', name: 'JavaScript Avancé', issuer: 'Omnia Global Academy', year: '2025' },
-    { id: 'cert_2', name: 'AWS Cloud Practitioner', issuer: 'AWS', year: '2025' },
-  ],
-  projects: [
-    {
-      id: 'proj_1',
-      name: 'Plateforme SaaS de gestion de cours',
-      description: 'Développement d’un module React connecté à une API Node.js.',
-      technologies: 'React, TypeScript, Node.js, PostgreSQL',
-    },
-  ],
-  interests: ['Veille technologique', 'Design produit', 'Course à pied'],
+  skills: [],
+  languages: [],
+  certifications_external: [],
+  projects: [],
+  interests: [],
   references: '',
 };
 
 export const DEFAULT_LM_DATA: LmData = {
   sender: {
-    name: 'Lina Amani',
-    address: 'Paris, France',
-    phone: '+33 6 12 34 56 78',
-    email: 'lina.amani@email.com',
-    city: 'Paris',
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    city: '',
     date: new Date().toISOString().slice(0, 10),
   },
   recipient: {
-    name: 'Monsieur Martin Lefèvre',
-    company: 'NovaTech Solutions',
-    address: '15 rue de la Paix, 75002 Paris, France',
+    name: '',
+    company: '',
+    address: '',
   },
-  subject: 'Candidature au poste de Développeur Full Stack',
-  salutation: 'Monsieur,',
-  intro:
-    'Passionnée par le développement web et les technologies innovantes, je souhaite vous proposer ma candidature au poste de Développeur Full Stack au sein de NovaTech Solutions.',
-  motivation:
-    'Diplômée en informatique et forte de 3 années d’expérience dans la conception et le développement d’applications web performantes, j’ai eu l’opportunité de travailler sur des projets variés.',
-  skills_paragraph:
-    'Mes compétences en JavaScript, React, Node.js et bases de données me permettent de concevoir des solutions fiables, évolutives et centrées utilisateur.',
-  company_link:
-    'Je suis particulièrement attirée par NovaTech Solutions pour votre culture d’innovation, votre exigence technique et vos projets à fort impact.',
-  availability:
-    'Je serais ravie d’échanger avec vous lors d’un entretien afin de vous présenter plus en détail ma motivation et mon parcours.',
-  closing:
-    "Dans l’attente de votre retour, je vous prie d’agréer, Monsieur, l’expression de mes salutations distinguées.",
-  signature: 'Lina Amani',
+  subject: '',
+  salutation: 'Madame, Monsieur,',
+  intro: '',
+  motivation: '',
+  skills_paragraph: '',
+  company_link: '',
+  availability: '',
+  closing: '',
+  signature: '',
 };
 
 export const CV_TEMPLATES_META: CareerTemplateMeta[] = [
@@ -264,7 +198,7 @@ export function getTemplateMeta(docType: CareerDocType, templateKey?: string) {
 }
 
 export function getDefaultDocTitle(docType: CareerDocType) {
-  return docType === 'cv' ? 'CV Développeur Full Stack' : 'Lettre - Développeur Full Stack';
+  return docType === 'cv' ? 'Mon CV' : 'Ma lettre de motivation';
 }
 
 export function getDefaultTemplateKey(docType: CareerDocType) {
