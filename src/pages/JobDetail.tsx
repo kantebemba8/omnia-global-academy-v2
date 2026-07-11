@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { MapPin, Clock, Calendar, Building2, Briefcase, ChevronLeft, ExternalLink, CheckCircle, AlertCircle, X, FileText, Upload } from 'lucide-react';
+import { MapPin, Calendar, Building2, Briefcase, CheckCircle, AlertCircle, X, FileText, Sparkles, MessageSquare } from 'lucide-react';
 
 const COUNTRIES = [
   { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
@@ -223,6 +223,11 @@ export default function JobDetail() {
                 </>
               ) : (
                 <>
+                  <Link to={`/dashboard/career-studio?section=applications&job_id=${job.id}`}
+                    className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: '#BF8813' }}>
+                    <Sparkles className="w-4 h-4" /> Préparer avec Omnia Career
+                  </Link>
                   <button onClick={() => setShowApply(true)}
                     className="w-full py-3 rounded-xl text-sm font-bold text-white mb-3 transition-opacity hover:opacity-90"
                     style={{ backgroundColor: '#002050' }}>
@@ -260,15 +265,15 @@ export default function JobDetail() {
               </div>
             </div>
 
-            {/* CV Builder promo */}
+            {/* Omnia Career promo */}
             <div className="rounded-2xl p-5 border border-amber-200" style={{ backgroundColor: '#FEF9EE' }}>
               <FileText className="w-6 h-6 mb-2" style={{ color: '#BF8813' }} />
-              <p className="text-sm font-semibold mb-1" style={{ color: '#92660A' }}>Votre CV pas encore prêt ?</p>
-              <p className="text-xs text-amber-700 mb-3">Créez un CV professionnel avec notre générateur intégré.</p>
-              <Link to="/dashboard/cv-builder"
+              <p className="text-sm font-semibold mb-1" style={{ color: '#92660A' }}>Préparez une candidature complète</p>
+              <p className="text-xs text-amber-700 mb-3">CV, lettre et entretien peuvent être adaptés à cette offre avec Omnia Career.</p>
+              <Link to={`/dashboard/career-studio?section=applications&job_id=${job.id}`}
                 className="block text-center py-2 rounded-lg text-xs font-semibold"
                 style={{ backgroundColor: '#BF8813', color: 'white' }}>
-                Créer mon CV →
+                Préparer avec Omnia Career →
               </Link>
             </div>
           </div>
@@ -307,8 +312,16 @@ export default function JobDetail() {
                   placeholder="https://... (lien PDF, Google Drive, etc.)"
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400" />
                 <p className="text-xs text-gray-400 mt-1">
-                  Utilisez notre <Link to="/dashboard/cv-builder" className="underline">CV Builder</Link> pour générer un lien PDF.
+                  Utilisez Omnia Career pour créer un CV et une lettre adaptés à cette offre.
                 </p>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Link to={`/dashboard/career-studio?section=applications&job_id=${job.id}`} className="flex items-center justify-center gap-2 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold" style={{ color: '#92660A', backgroundColor: '#FEF9EE' }}>
+                    <Sparkles className="w-3.5 h-3.5" /> Préparer documents
+                  </Link>
+                  <Link to={`/dashboard/career-studio?section=interview&job_id=${job.id}`} className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold" style={{ color: '#002050' }}>
+                    <MessageSquare className="w-3.5 h-3.5" /> Préparer entretien
+                  </Link>
+                </div>
               </div>
               {applyError && (
                 <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2.5 rounded-lg">
