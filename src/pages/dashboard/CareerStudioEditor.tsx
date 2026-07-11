@@ -22,6 +22,8 @@ import {
   Star,
   Trash2,
   User,
+  X,
+  Search,
 } from 'lucide-react';
 import { CvPreview, type DesignOptions, type DocData } from '../../components/career/CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from '../../components/career/LmTemplates';
@@ -35,7 +37,9 @@ import {
   createDefaultDesign,
   getDefaultDocTitle,
   getDefaultTemplateKey,
+  getCareerTemplates,
   getTemplateMeta,
+  normalizeTemplateKey,
   calculateBasicScore,
 } from '../../lib/careerStudioData';
 import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
@@ -102,10 +106,10 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children, zoom = 0.62 }: { children: React.ReactNode; zoom?: number }) {
+function PreviewFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex h-[760px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-      <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>{children}</div>
+    <div className="mx-auto flex h-[760px] w-full justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
+      <div style={{ transform: 'scale(0.62)', transformOrigin: 'top center' }}>{children}</div>
     </div>
   );
 }
@@ -115,7 +119,7 @@ export default function CareerStudioEditor() {
   const { docId } = useParams<{ docId: string }>();
   const [searchParams] = useSearchParams();
   const docType = (searchParams.get('type') === 'lm' ? 'lm' : 'cv') as CareerDocType;
-  const requestedTemplate = searchParams.get('template') || getDefaultTemplateKey(docType);
+  const requestedTemplate = normalizeTemplateKey(docType, searchParams.get('template') || getDefaultTemplateKey(docType));
 
   const [document, setDocument] = useState<CareerDocumentFull | null>(null);
   const [templates, setTemplates] = useState<CareerTemplateMeta[]>([]);
@@ -127,8 +131,6 @@ export default function CareerStudioEditor() {
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [previewFullscreen, setPreviewFullscreen] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(0.62);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
   const [offerText, setOfferText] = useState('');
@@ -224,21 +226,12 @@ export default function CareerStudioEditor() {
     }));
   }
 
-  function updateDesignOptions(patch: Partial<DesignOptions & LmDesign>) {
-    updateDocument(doc => ({
-      ...doc,
-      design_options: {
-        ...doc.design_options,
-        ...patch,
-      } as DesignOptions | LmDesign,
-    }));
-  }
-
   function changeTemplate(templateKey: string) {
-    const meta = getTemplateMeta(docType, templateKey);
+    const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
+    const meta = getTemplateMeta(docType, normalizedTemplateKey);
     updateDocument(doc => ({
       ...doc,
-      template_key: templateKey,
+      template_key: normalizedTemplateKey,
       design_options: {
         ...doc.design_options,
         colors: meta.default_colors || DEFAULT_COLORS,
@@ -416,7 +409,7 @@ export default function CareerStudioEditor() {
         <div className="flex h-[76px] items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/dashboard/career-studio')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              <ArrowLeft className="h-4 w-4" /> Retour Omnia Career
+              <ArrowLeft className="h-4 w-4" /> Mes documents
             </button>
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -454,7 +447,7 @@ export default function CareerStudioEditor() {
               <h2 className="text-lg font-semibold text-[#002050]">{isCv ? 'Sections du CV' : 'Structure de la lettre'}</h2>
               <p className="mt-1 text-xs text-slate-500">Cliquez sur une section pour modifier.</p>
             </div>
-            <button onClick={resetDemoData} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Vider</button>
+            <button onClick={resetDemoData} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Réinitialiser</button>
           </div>
 
           <div className="space-y-2">
@@ -494,18 +487,13 @@ export default function CareerStudioEditor() {
               <h1 className="text-2xl font-semibold text-[#002050]">{isCv ? 'CV Builder' : 'Éditeur de lettre'}</h1>
               <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setPreviewZoom(0.5)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">75%</button>
-              <button type="button" onClick={() => setPreviewZoom(0.62)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">100%</button>
-              <button type="button" onClick={() => setPreviewZoom(0.78)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">125%</button>
-              <button type="button" onClick={() => setPreviewFullscreen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white hover:opacity-90">
-                <Eye className="h-4 w-4" /> Aperçu plein écran
-              </button>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu live
             </div>
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame zoom={previewZoom}>
+            <PreviewFrame>
               <div ref={printRef} data-career-print-source="true">
                 {isCv ? (
                   <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
@@ -540,9 +528,17 @@ export default function CareerStudioEditor() {
             onDismiss={() => setAiSuggestion(null)}
           />
 
-          <TemplatePanel docType={document.doc_type} document={document} templates={templates} selectedTemplate={selectedTemplate} selectedKey={document.template_key} onSelect={changeTemplate} />
+          <TemplatePanel
+            docType={document.doc_type}
+            templates={templates.length ? templates : getCareerTemplates(document.doc_type)}
+            selectedTemplate={selectedTemplate}
+            selectedKey={document.template_key}
+            data={document.doc_data}
+            design={document.design_options}
+            onSelect={changeTemplate}
+          />
 
-          <DesignPanel design={document.design_options as DesignOptions | LmDesign} onColorChange={updateDesignColors} onDesignChange={updateDesignOptions} isCv={isCv} />
+          <ColorPanel colors={(document.design_options as DesignOptions | LmDesign).colors} onChange={updateDesignColors} />
 
           <div className={cardClass('p-4')}>
             <div className="mb-3 flex items-center justify-between">
@@ -558,31 +554,6 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
-
-      {previewFullscreen && (
-        <div className="fixed inset-0 z-[90] bg-slate-950/80 p-6">
-          <div className="mx-auto flex h-full max-w-6xl flex-col rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h2 className="text-lg font-semibold text-[#002050]">Aperçu plein écran</h2>
-                <p className="text-sm text-slate-500">Vue A4 fidèle à votre PDF. Utilisez les réglages à droite pour modifier police, taille et couleurs.</p>
-              </div>
-              <button onClick={() => setPreviewFullscreen(false)} className="rounded-full p-2 hover:bg-slate-100">✕</button>
-            </div>
-            <div className="flex-1 overflow-auto bg-slate-100 p-8">
-              <div className="mx-auto flex w-full justify-center" style={{ transform: 'scale(1)', transformOrigin: 'top center' }}>
-                <div ref={printRef} data-career-print-source="true">
-                  {isCv ? (
-                    <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
-                  ) : (
-                    <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -962,247 +933,247 @@ function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onR
   );
 }
 
+function TemplatePanel({
+  docType,
+  templates,
+  selectedTemplate,
+  selectedKey,
+  data,
+  design,
+  onSelect,
+}: {
+  docType: CareerDocType;
+  templates: CareerTemplateMeta[];
+  selectedTemplate: CareerTemplateMeta;
+  selectedKey: string;
+  data: DocData | LmData;
+  design: DesignOptions | LmDesign;
+  onSelect: (key: string) => void;
+}) {
+  const canonicalTemplates = templates.length ? templates : getCareerTemplates(docType);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'free' | 'premium' | 'ats'>('all');
 
-function createCvTemplatePreviewData(data: DocData): DocData {
-  const hasRealContent = Boolean(
-    data?.name?.trim() ||
-    data?.title?.trim() ||
-    data?.summary?.trim() ||
-    data?.contact?.email?.trim() ||
-    (Array.isArray(data?.experiences) && data.experiences.length > 0) ||
-    (Array.isArray(data?.skills) && data.skills.length > 0)
-  );
-  if (hasRealContent) return data;
-  return {
-    name: 'Votre Nom',
-    title: 'Titre professionnel',
-    objective: 'Objectif professionnel clair et ciblé.',
-    summary: 'Résumé professionnel concis mettant en avant votre profil, vos compétences et votre valeur ajoutée.',
-    contact: { email: 'email@exemple.com', phone: '+000 00 00 00', location: 'Ville, Pays', linkedin: 'linkedin.com/in/votre-profil', portfolio: '' },
-    experiences: [
-      { id: 'preview_exp_1', position: 'Poste occupé', company: 'Entreprise', location: 'Ville', start_date: '2024-01', end_date: '', current: true, description: 'Décrivez vos missions, résultats et responsabilités principales avec des éléments mesurables.' },
-      { id: 'preview_exp_2', position: 'Expérience précédente', company: 'Organisation', location: 'Ville', start_date: '2022-01', end_date: '2023-12', current: false, description: 'Ajoutez une expérience pertinente pour renforcer votre candidature.' },
-    ],
-    education: [{ id: 'preview_edu_1', degree: 'Diplôme ou formation', school: 'Établissement', location: 'Ville', year: '2021 - 2024' }],
-    omnia_formations: [],
-    skills: [
-      { id: 'preview_skill_1', name: 'Compétence 1', level: 90 },
-      { id: 'preview_skill_2', name: 'Compétence 2', level: 80 },
-      { id: 'preview_skill_3', name: 'Compétence 3', level: 70 },
-      { id: 'preview_skill_4', name: 'Outil professionnel', level: 75 },
-    ],
-    languages: [
-      { id: 'preview_lang_1', name: 'Français', level: 'Courant' },
-      { id: 'preview_lang_2', name: 'Anglais', level: 'Intermédiaire' },
-    ],
-    certifications_external: [{ id: 'preview_cert_1', name: 'Certification professionnelle', issuer: 'Organisme', year: '2025' }],
-    projects: [{ id: 'preview_proj_1', name: 'Projet clé', description: 'Projet ou réalisation pertinente.', technologies: 'Outils utilisés' }],
-    interests: ['Intérêt 1', 'Intérêt 2'],
-    references: '',
-  };
-}
-
-function createLmTemplatePreviewData(data: LmData): LmData {
-  const hasRealContent = Boolean(data?.sender?.name?.trim() || data?.sender?.email?.trim() || data?.recipient?.company?.trim() || data?.subject?.trim() || data?.intro?.trim() || data?.motivation?.trim());
-  if (hasRealContent) return data;
-  return {
-    sender: { name: 'Votre Nom', address: 'Ville, Pays', phone: '+000 00 00 00', email: 'email@exemple.com', city: 'Ville', date: new Date().toISOString().slice(0, 10) },
-    recipient: { name: 'Responsable du recrutement', company: 'Entreprise cible', address: 'Adresse de l’entreprise' },
-    subject: 'Candidature au poste ciblé',
-    salutation: 'Madame, Monsieur,',
-    intro: 'Présentez votre candidature et expliquez votre intérêt pour le poste.',
-    motivation: 'Mettez en avant votre parcours, vos expériences et les raisons de votre motivation.',
-    skills_paragraph: 'Valorisez vos compétences principales en lien avec les besoins de l’entreprise.',
-    company_link: 'Montrez que vous comprenez l’entreprise, son secteur et ses enjeux.',
-    availability: 'Indiquez votre disponibilité pour un entretien.',
-    closing: 'Formule de politesse professionnelle.',
-    signature: 'Votre Nom',
-  };
-}
-
-function TemplateMiniPreview({ docType, templateKey, document, scale = 0.22 }: { docType: CareerDocType; templateKey: string; document: CareerDocumentFull; scale?: number }) {
-  const isCv = docType === 'cv';
-  const previewData = isCv ? createCvTemplatePreviewData(getCvData(document)) : createLmTemplatePreviewData(getLmData(document));
-  const previewDesign = isCv ? getCvDesign(document) : getLmDesign(document);
+  const filteredTemplates = canonicalTemplates
+    .filter(t => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return `${t.name_fr} ${t.description_fr} ${t.category}`.toLowerCase().includes(q);
+    })
+    .filter(t => {
+      if (filter === 'free') return t.is_free;
+      if (filter === 'premium') return !t.is_free;
+      if (filter === 'ats') return t.is_ats_compatible;
+      return true;
+    });
 
   return (
-    <div className="relative flex h-[270px] items-start justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-2">
-      <div className="pointer-events-none origin-top" style={{ transform: `scale(${scale})`, width: 794, minHeight: 1123 }}>
-        {isCv ? <CvPreview templateKey={templateKey} data={previewData as DocData} design={previewDesign as DesignOptions} /> : <LmPreview templateKey={templateKey} data={previewData as LmData} design={previewDesign as LmDesign} />}
+    <div className={cardClass('p-4')}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-[#002050]">Modèles</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {selectedTemplate?.name_fr || 'Modèle sélectionné'} est appliqué à l’aperçu live et au PDF.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setGalleryOpen(true)}
+          className="rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+        >
+          Voir en grand
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        {canonicalTemplates.slice(0, 3).map(template => (
+          <TemplatePreviewCard
+            key={template.template_key}
+            template={template}
+            docType={docType}
+            data={data}
+            design={design}
+            selected={template.template_key === selectedKey}
+            onSelect={() => onSelect(template.template_key)}
+            compact
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setGalleryOpen(true)}
+        className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"
+      >
+        Ouvrir la galerie complète ({canonicalTemplates.length})
+      </button>
+
+      {galleryOpen && (
+        <div className="fixed inset-0 z-[80] bg-slate-950/70 p-4 backdrop-blur-sm md:p-8">
+          <div className="mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-[#002050]">
+                  {docType === 'cv' ? 'Choisir un modèle de CV' : 'Choisir un modèle de lettre'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Sélectionnez un modèle : il sera appliqué immédiatement dans l’éditeur, l’aperçu plein écran et le PDF.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGalleryOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200"
+                aria-label="Fermer la galerie"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex h-11 w-full max-w-md items-center rounded-2xl border border-slate-200 bg-white px-3">
+                <Search className="mr-2 h-4 w-4 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Rechercher un modèle..."
+                  className="h-full flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['all', 'Tous'],
+                  ['free', 'Gratuits'],
+                  ['premium', 'Premium'],
+                  ['ats', 'ATS'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFilter(key as typeof filter)}
+                    className={`rounded-full px-4 py-2 text-xs font-bold transition ${filter === key ? 'bg-[#002050] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                {filteredTemplates.map(template => (
+                  <TemplatePreviewCard
+                    key={template.template_key}
+                    template={template}
+                    docType={docType}
+                    data={data}
+                    design={design}
+                    selected={template.template_key === selectedKey}
+                    onSelect={() => {
+                      onSelect(template.template_key);
+                      setGalleryOpen(false);
+                    }}
+                  />
+                ))}
+              </div>
+              {!filteredTemplates.length && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+                  Aucun modèle trouvé pour cette recherche.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TemplatePreviewCard({
+  template,
+  docType,
+  data,
+  design,
+  selected,
+  onSelect,
+  compact = false,
+}: {
+  template: CareerTemplateMeta;
+  docType: CareerDocType;
+  data: DocData | LmData;
+  design: DesignOptions | LmDesign;
+  selected: boolean;
+  onSelect: () => void;
+  compact?: boolean;
+}) {
+  const previewScale = compact ? 0.18 : 0.34;
+  const previewHeight = compact ? 170 : 430;
+  const previewWidth = compact ? 150 : 290;
+
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
+    >
+      <div className="flex gap-4 p-4">
+        <div
+          className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner"
+          style={{ height: previewHeight, width: previewWidth }}
+        >
+          <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left', width: 794, minHeight: 1123 }}>
+            {docType === 'cv' ? (
+              <CvPreview templateKey={template.template_key} data={data as DocData} design={design as DesignOptions} />
+            ) : (
+              <LmPreview templateKey={template.template_key} data={data as LmData} design={design as LmDesign} />
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-[#002050]">{template.name_fr}</h4>
+              <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{template.description_fr}</p>
+            </div>
+            {selected && <span className="rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Actif</span>}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">ATS</span>}
+            {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-1 text-[10px] font-bold text-[#bf8813]">Premium</span>}
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{template.category}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onSelect}
+            className={`mt-4 w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${selected ? 'border border-[#002050] bg-white text-[#002050]' : 'bg-[#002050] text-white hover:opacity-90'}`}
+          >
+            {selected ? 'Modèle sélectionné' : 'Utiliser ce modèle'}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function TemplatePanel({ docType, document, templates, selectedTemplate, selectedKey, onSelect }: { docType: CareerDocType; document: CareerDocumentFull; templates: CareerTemplateMeta[]; selectedTemplate: CareerTemplateMeta; selectedKey: string; onSelect: (key: string) => void }) {
-  const visible = templates.length ? templates : [selectedTemplate];
-  const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState('all');
-  const [pricing, setPricing] = useState<'all' | 'free' | 'premium'>('all');
-  const categories = useMemo(() => Array.from(new Set(visible.map(t => t.category).filter(Boolean))), [visible]);
-  const filtered = visible.filter(template => {
-    const categoryOk = category === 'all' || template.category === category;
-    const pricingOk = pricing === 'all' || (pricing === 'free' ? template.is_free : !template.is_free);
-    return categoryOk && pricingOk;
-  });
-  const selected = visible.find(t => t.template_key === selectedKey) || selectedTemplate;
 
-  return (
-    <>
-      <div className={cardClass('p-4')}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-[#002050]">Modèles disponibles</h3>
-            <p className="mt-1 text-xs text-slate-500">{docType === 'cv' ? '20 modèles CV professionnels' : `${visible.length} modèles de lettres`} — rendu réel du modèle.</p>
-          </div>
-          <button type="button" onClick={() => setOpen(true)} className="rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#002050]/90">Voir en grand</button>
-        </div>
-
-        <button type="button" onClick={() => setOpen(true)} className="mb-4 block w-full rounded-2xl border border-[#002050] bg-[#002050]/5 p-2 text-left transition hover:bg-[#002050]/10">
-          <TemplateMiniPreview docType={docType} templateKey={selected.template_key} document={document} scale={0.19} />
-          <div className="mt-3 flex items-center justify-between gap-2 px-1">
-            <div>
-              <div className="text-sm font-semibold text-[#002050]">{selected.name_fr}</div>
-              <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{selected.description_fr}</div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {selected.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
-              {!selected.is_free && <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-            </div>
-          </div>
-        </button>
-
-        <div className="grid grid-cols-2 gap-2">
-          {visible.slice(0, 4).map(template => {
-            const active = template.template_key === selectedKey;
-            return (
-              <button key={template.template_key} type="button" onClick={() => onSelect(template.template_key)} className={`rounded-xl border p-2 text-left transition ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 hover:bg-slate-50'}`}>
-                <TemplateMiniPreview docType={docType} templateKey={template.template_key} document={document} scale={0.105} />
-                <div className="mt-2 truncate text-xs font-semibold text-[#002050]">{template.name_fr}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {open && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-2xl font-semibold text-[#002050]">{docType === 'cv' ? 'Choisir un modèle de CV' : 'Choisir un modèle de lettre de motivation'}</h2>
-                <p className="mt-1 text-sm text-slate-500">Aperçu réel des modèles créés : pas d’icônes, pas de placeholders.</p>
-              </div>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Fermer</button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-6 py-4">
-              <button onClick={() => setCategory('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${category === 'all' ? 'bg-[#002050] text-white' : 'bg-slate-100 text-slate-700'}`}>Tous</button>
-              {categories.map(cat => <button key={cat} onClick={() => setCategory(cat)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${category === cat ? 'bg-[#002050] text-white' : 'bg-slate-100 text-slate-700'}`}>{cat.replaceAll('_', ' ')}</button>)}
-              <span className="mx-2 h-5 w-px bg-slate-200" />
-              <button onClick={() => setPricing('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'all' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Tous</button>
-              <button onClick={() => setPricing('free')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'free' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Gratuits</button>
-              <button onClick={() => setPricing('premium')} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${pricing === 'premium' ? 'bg-[#bf8813] text-white' : 'bg-[#bf8813]/10 text-[#bf8813]'}`}>Premium</button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-6">
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-                {filtered.map(template => {
-                  const active = template.template_key === selectedKey;
-                  return (
-                    <button key={template.template_key} type="button" onClick={() => onSelect(template.template_key)} className={`group rounded-2xl border bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${active ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200'}`}>
-                      <TemplateMiniPreview docType={docType} templateKey={template.template_key} document={document} scale={0.22} />
-                      <div className="mt-3 flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-[#002050]">{template.display_order}. {template.name_fr}</div>
-                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{template.description_fr}</div>
-                        </div>
-                        {active && <span className="rounded-full bg-[#002050] px-2 py-1 text-[10px] font-bold text-white">Actif</span>}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
-                        {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-                        <span className="rounded-full bg-[#002050]/5 px-2 py-0.5 text-[10px] font-bold text-[#002050]">{template.category.replaceAll('_', ' ')}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
-              <div className="text-sm text-slate-500">{filtered.length} modèle(s) affiché(s). Sélection actuelle : <span className="font-semibold text-[#002050]">{selected.name_fr}</span></div>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-xl bg-[#002050] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#002050]/90">Utiliser ce modèle</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function DesignPanel({ design, onColorChange, onDesignChange, isCv }: { design: DesignOptions | LmDesign; onColorChange: (colors: typeof DEFAULT_COLORS) => void; onDesignChange: (patch: Partial<DesignOptions & LmDesign>) => void; isCv: boolean }) {
-  const colors = design.colors as typeof DEFAULT_COLORS;
-  const customPalette = { ...colors };
+function ColorPanel({ colors, onChange }: { colors: typeof DEFAULT_COLORS; onChange: (colors: typeof DEFAULT_COLORS) => void }) {
   return (
     <div className={cardClass('p-4')}>
       <div className="mb-3 flex items-center gap-2">
         <Palette className="h-5 w-5 text-[#002050]" />
-        <h3 className="text-lg font-semibold text-[#002050]">Design du document</h3>
+        <h3 className="text-lg font-semibold text-[#002050]">Couleurs</h3>
       </div>
-
-      <div className="mb-4">
-        <div className="mb-2 text-xs font-semibold text-slate-600">Couleurs</div>
-        <div className="flex flex-wrap gap-2">
-          {CAREER_PALETTES.map(palette => {
-            const active = colors.primary === palette.colors.primary && colors.accent === palette.colors.accent;
-            return (
-              <button key={palette.key} onClick={() => onColorChange(palette.colors)} className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${active ? 'border-[#002050]' : 'border-slate-200'}`} title={palette.name}>
-                <span className="h-7 w-7 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.colors.primary} 50%, ${palette.colors.accent} 50%)` }} />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block">
-          <span className={labelClass()}>Couleur principale</span>
-          <input type="color" value={colors.primary || '#002050'} onChange={(e) => onColorChange({ ...customPalette, primary: e.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white p-1" />
-        </label>
-        <label className="block">
-          <span className={labelClass()}>Couleur secondaire</span>
-          <input type="color" value={colors.accent || '#bf8813'} onChange={(e) => onColorChange({ ...customPalette, accent: e.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white p-1" />
-        </label>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <label className="block">
-          <span className={labelClass()}>Police</span>
-          <select className={inputClass()} value={design.font || 'inter'} onChange={(e) => onDesignChange({ font: e.target.value as any })}>
-            <option value="inter">Inter / Sans-serif</option>
-            <option value="arial">Arial</option>
-            <option value="georgia">Georgia</option>
-            <option value="times">Times New Roman</option>
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className={labelClass()}>Taille texte</span>
-            <input type="number" min={7} max={14} className={inputClass()} value={design.font_size_body || 10} onChange={(e) => onDesignChange({ font_size_body: Number(e.target.value) })} />
-          </label>
-          {isCv && (
-            <label className="block">
-              <span className={labelClass()}>Taille titre</span>
-              <input type="number" min={9} max={20} className={inputClass()} value={(design as DesignOptions).font_size_title || 11} onChange={(e) => onDesignChange({ font_size_title: Number(e.target.value) })} />
-            </label>
-          )}
-        </div>
-        <label className="block">
-          <span className={labelClass()}>Interligne</span>
-          <input type="range" min={1.1} max={2} step={0.05} className="w-full" value={design.line_spacing || 1.5} onChange={(e) => onDesignChange({ line_spacing: Number(e.target.value) })} />
-          <span className="text-xs text-slate-500">{design.line_spacing || 1.5}</span>
-        </label>
+      <div className="flex flex-wrap gap-2">
+        {CAREER_PALETTES.map(palette => {
+          const active = colors.primary === palette.colors.primary && colors.accent === palette.colors.accent;
+          return (
+            <button key={palette.key} onClick={() => onChange(palette.colors)} className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${active ? 'border-[#002050]' : 'border-slate-200'}`} title={palette.name}>
+              <span className="h-7 w-7 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.colors.primary} 50%, ${palette.colors.accent} 50%)` }} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
