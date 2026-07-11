@@ -7,6 +7,7 @@ import {
   getDefaultDocTitle,
   getDefaultTemplateKey,
   getCareerTemplates,
+  normalizeTemplateKey,
   calculateBasicScore,
 } from './careerStudioData';
 
@@ -22,47 +23,14 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function readStoredUser(): { full_name?: string; name?: string; email?: string } | null {
-  try {
-    const raw = localStorage.getItem('omnia_user');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function seedDocumentData(docType: CareerDocType, data: ReturnType<typeof createDefaultData>) {
-  const user = readStoredUser();
-  const displayName = user?.full_name || user?.name || '';
-  const email = user?.email || '';
-  if (docType === 'cv') {
-    const cv = data as any;
-    cv.name = displayName;
-    cv.contact = { ...(cv.contact || {}), email };
-    return cv;
-  }
-  const lm = data as any;
-  lm.sender = { ...(lm.sender || {}), name: displayName, email, date: new Date().toISOString().slice(0, 10) };
-  lm.signature = displayName;
-  return lm;
-}
-
 function localKey(docType: CareerDocType) {
   const token = sessionToken() || 'public-dev';
   return `omnia_career_${docType}_${token.slice(0, 18)}`;
 }
 
-function isKnownDemoDocument(doc: CareerDocumentFull) {
-  const raw = JSON.stringify(doc).toLowerCase();
-  return raw.includes('lina amani') || raw.includes('technova') || raw.includes('novatech') || raw.includes('développeur full stack');
-}
-
 function readLocal(docType: CareerDocType): CareerDocumentFull[] {
   try {
-    const docs = JSON.parse(localStorage.getItem(localKey(docType)) || '[]') as CareerDocumentFull[];
-    const cleaned = docs.filter(doc => !isKnownDemoDocument(doc));
-    if (cleaned.length !== docs.length) writeLocal(docType, cleaned);
-    return cleaned;
+    return JSON.parse(localStorage.getItem(localKey(docType)) || '[]') as CareerDocumentFull[];
   } catch {
     return [];
   }
@@ -74,16 +42,16 @@ function writeLocal(docType: CareerDocType, docs: CareerDocumentFull[]) {
 
 function createLocalDocument(docType: CareerDocType, templateKey?: string): CareerDocumentFull {
   const id = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const data = seedDocumentData(docType, createDefaultData(docType));
+  const data = createDefaultData(docType);
   return {
     id,
     title: getDefaultDocTitle(docType),
     doc_type: docType,
-    template_key: templateKey || getDefaultTemplateKey(docType),
+    template_key: normalizeTemplateKey(docType, templateKey || getDefaultTemplateKey(docType)),
     language: 'fr',
     status: 'draft',
     ats_score: calculateBasicScore(docType, data),
-    target_job: '',
+    target_job: null,
     application_type: docType === 'cv' ? 'cv' : 'lm',
     is_primary: true,
     created_at: nowIso(),
@@ -138,16 +106,21 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
 
     return {
       documents: data.documents || [],
-      templates: data.templates?.length ? data.templates : getCareerTemplates(docType),
+      templates: getCareerTemplates(docType),
       tokens: data.user?.cv_tokens ?? 0,
       remote: true,
     };
   } catch {
-    const docs = readLocal(docType);
+    let docs = readLocal(docType);
+    if (!docs.length) {
+      const created = createLocalDocument(docType);
+      docs = [created];
+      writeLocal(docType, docs);
+    }
     return {
       documents: docs.map(({ doc_data, design_options, ...summary }) => summary),
       templates: getCareerTemplates(docType),
-      tokens: 0,
+      tokens: 1,
       remote: false,
     };
   }
@@ -163,7 +136,7 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
         action: 'get',
         document_id: documentId,
       });
-      return { document: data.document, remote: true };
+      return { document: { ...data.document, template_key: normalizeTemplateKey(data.document.doc_type, data.document.template_key) }, remote: true };
     } catch {
       // fallback below
     }
@@ -171,7 +144,7 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
 
   let docs = readLocal(docType);
   const existing = documentId && documentId !== 'new' ? docs.find(d => d.id === documentId) : docs.find(d => d.is_primary);
-  if (existing) return { document: existing, remote: false };
+  if (existing) return { document: { ...existing, template_key: normalizeTemplateKey(existing.doc_type, existing.template_key) }, remote: false };
 
   const created = createLocalDocument(docType, templateKey || undefined);
   docs = [created, ...docs.map(d => ({ ...d, is_primary: false }))];
@@ -186,7 +159,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
     document_id: document.id.startsWith('local_') ? undefined : document.id,
     doc_type: document.doc_type,
     title: document.title || getDefaultDocTitle(document.doc_type),
-    template_key: document.template_key || getDefaultTemplateKey(document.doc_type),
+    template_key: normalizeTemplateKey(document.doc_type, document.template_key || getDefaultTemplateKey(document.doc_type)),
     language: document.language || 'fr',
     doc_data: document.doc_data,
     design_options: document.design_options,
@@ -201,6 +174,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
     const saved: CareerDocumentFull = {
       ...document,
       id: data.document.id,
+      template_key: normalizeTemplateKey(document.doc_type, document.template_key),
       ats_score: score,
       updated_at: nowIso(),
     };
@@ -212,6 +186,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
     const saved: CareerDocumentFull = {
       ...document,
       id,
+      template_key: normalizeTemplateKey(document.doc_type, document.template_key),
       ats_score: score,
       updated_at: nowIso(),
       created_at: document.created_at || nowIso(),
