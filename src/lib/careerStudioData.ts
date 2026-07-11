@@ -77,6 +77,7 @@ export const DEFAULT_CV_DATA: DocData = {
   title: '',
   objective: '',
   summary: '',
+  photo_url: '',
   contact: {
     email: '',
     phone: '',
@@ -110,7 +111,7 @@ export const DEFAULT_LM_DATA: LmData = {
     address: '',
   },
   subject: '',
-  salutation: 'Madame, Monsieur,',
+  salutation: '',
   intro: '',
   motivation: '',
   skills_paragraph: '',
@@ -192,9 +193,39 @@ export function getCareerTemplates(docType: CareerDocType) {
   return (docType === 'cv' ? CV_TEMPLATES_META : LM_TEMPLATES_META).sort((a, b) => a.display_order - b.display_order);
 }
 
-export function getTemplateMeta(docType: CareerDocType, templateKey?: string) {
+export function normalizeTemplateKey(docType: CareerDocType, templateKey?: string | null) {
+  const key = String(templateKey || '').trim();
+  const cvAliases: Record<string, string> = {
+    modern: 'classic_pro',
+    professional: 'corporate_blue',
+    creative: 'creative_digital',
+    classic: 'classic_pro',
+    simple: 'no_photo_ats',
+    student: 'modern_student',
+    qhse: 'qhse_professional',
+    hospitality_premium: 'hospitality',
+    cyber_security_cv: 'cyber_security',
+    data_analyst_cv: 'data_analyst',
+  };
+  const lmAliases: Record<string, string> = {
+    classic_lm: 'lm_classic_pro',
+    dynamic_lm: 'lm_modern_student',
+    academic_lm: 'lm_academic',
+    modern_lm: 'lm_modern_student',
+    professional_lm: 'lm_corporate_blue',
+    creative_lm: 'lm_creative_digital',
+    simple_lm: 'lm_no_photo_ats',
+  };
+
+  const mapped = docType === 'cv' ? (cvAliases[key] || key) : (lmAliases[key] || key);
+  const exists = getCareerTemplates(docType).some(t => t.template_key === mapped);
+  return exists ? mapped : getDefaultTemplateKey(docType);
+}
+
+export function getTemplateMeta(docType: CareerDocType, templateKey?: string | null) {
   const list = getCareerTemplates(docType);
-  return list.find(t => t.template_key === templateKey) || list[0];
+  const normalizedKey = normalizeTemplateKey(docType, templateKey);
+  return list.find(t => t.template_key === normalizedKey) || list[0];
 }
 
 export function getDefaultDocTitle(docType: CareerDocType) {
