@@ -56,6 +56,7 @@ import ModerateurUtilisateurs from './pages/moderateur/ModerateurUtilisateurs';
 import ModerateurForum from './pages/moderateur/ModerateurForum';
 import AdminForum from './pages/admin/AdminForum';
 import AdminCareerStudio from './pages/admin/AdminCareerStudio';
+import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminStudioValidation from './pages/admin/AdminStudioValidation';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
@@ -98,6 +99,7 @@ import StructureCodes from './pages/structure/StructureCodes';
 import StructureMembres from './pages/structure/StructureMembres';
 import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
+import StructureJobs from './pages/structure/StructureJobs';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
 import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
@@ -205,6 +207,7 @@ export default function App() {
         <Route path="/moderator/forum" element={<ModerateurForum />} />
           <Route path="/admin/forum" element={<AdminForum />} />
           <Route path="/admin/career-studio" element={<AdminCareerStudio />} />
+          <Route path="/admin/offres-emploi" element={<AdminJobOffers />} />
         <Route path="/moderateur/forum" element={<ModerateurForum />} />
         <Route path="/moderator/jobs" element={<ModerateurOffresEmploi />} />
         <Route path="/moderateur/emploi" element={<ModerateurOffresEmploi />} />
@@ -249,6 +252,7 @@ export default function App() {
 <Route path="/structure/rattachements" element={<StructureMembres />} />
 <Route path="/structure/avantages" element={<StructureAvantages />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
+<Route path="/structure/offres-emploi" element={<StructureJobs />} />
 
         {/* Module 8 — Dashboard enseignant — always accessible */}
         <Route path="/staff/dashboard" element={<EnseignantDashboard />} />
