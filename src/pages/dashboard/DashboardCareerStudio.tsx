@@ -245,21 +245,47 @@ export default function DashboardCareerStudio() {
     loadData();
     const purchased = searchParams.get('tokens_purchased');
     if (purchased) showToast(`${purchased} jeton(s) crédité(s) sur votre compte.`);
-    const section = searchParams.get('section');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const section = searchParams.get('section') || 'dashboard';
     const sectionMap: Record<string, ActiveView> = {
       dashboard: 'dashboard',
       cv: 'cv',
+      builder: 'cv',
       letters: 'lm',
+      lettre: 'lm',
       lm: 'lm',
       interview: 'interview',
+      entretien: 'interview',
       applications: 'applications',
+      candidatures: 'applications',
       profile: 'profile',
+      profil: 'profile',
       coaching: 'coaching',
       settings: 'settings',
+      parametres: 'settings',
     };
-    if (section && sectionMap[section]) setActiveView(sectionMap[section]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setActiveView(sectionMap[section] || 'dashboard');
+  }, [searchParams]);
+
+  function goToView(view: ActiveView) {
+    const sectionQuery: Record<ActiveView, string> = {
+      dashboard: '',
+      cv: 'section=cv',
+      lm: 'section=lm',
+      interview: 'section=interview',
+      applications: 'section=applications',
+      profile: 'section=profile',
+      coaching: 'section=coaching',
+      settings: 'section=settings',
+    };
+    const currentJob = searchParams.get('job_id');
+    const base = sectionQuery[view];
+    const query = [base, currentJob && (view === 'interview' || view === 'applications') ? `job_id=${encodeURIComponent(currentJob)}` : ''].filter(Boolean).join('&');
+    navigate(`/dashboard/career-studio${query ? `?${query}` : ''}`);
+  }
 
   function createDoc(docType: DocType, templateKey?: string) {
     const templates = docType === 'cv' ? cvTemplates : lmTemplates;
@@ -290,8 +316,8 @@ export default function DashboardCareerStudio() {
   const quickActions = [
     { label: 'Créer un CV', icon: FileText, action: () => createDoc('cv') },
     { label: 'Nouvelle lettre', icon: Mail, action: () => createDoc('lm') },
-    { label: 'Préparer entretien', icon: MessageSquare, action: () => setActiveView('interview') },
-    { label: 'Évaluer mon profil', icon: Star, action: () => setActiveView('profile') },
+    { label: 'Préparer entretien', icon: MessageSquare, action: () => goToView('interview') },
+    { label: 'Évaluer mon profil', icon: Star, action: () => goToView('profile') },
   ];
 
   return (
@@ -321,6 +347,18 @@ export default function DashboardCareerStudio() {
             </div>
           </div>
 
+          <div className="px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="flex h-10 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition hover:bg-white/10"
+              style={{ color: 'rgba(255,255,255,0.88)' }}
+            >
+              <ChevronRight size={18} className="rotate-180" />
+              <span>Retour au dashboard</span>
+            </button>
+          </div>
+
           <nav className="flex-1 space-y-1 px-3">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -329,7 +367,7 @@ export default function DashboardCareerStudio() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setActiveView(item.id)}
+                  onClick={() => goToView(item.id)}
                   className="group relative flex h-11 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition"
                   style={{
                     background: isActive ? 'rgba(255,255,255,0.10)' : 'transparent',
@@ -721,7 +759,9 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
   const [manual, setManual] = useState({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' });
 
   async function callTrack(body: unknown) {
+    if (!SUPABASE_URL) return { success: false, platform_applications: [], manual_applications: [] };
     const res = await fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error('career-application-track failed');
     return res.json();
   }
 
@@ -730,7 +770,7 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
     try {
       const d = await callTrack({ action: 'list' });
       const platform = (d.platform_applications || []).map((a: TrackedApplication) => ({ ...a, source: 'platform' as const }));
-      const manualApps = (d.manual_applications || []).map((a: any) => ({ ...a, id: `manual-${a.id}`, source: 'manual' as const, job_offers: { title: a.job_title, recruiter_company: a.company_name, location: a.location, contract_type: a.contract_type, application_mode: a.application_mode } }));
+      const manualApps = (d.manual_applications || []).map((a: any) => ({ ...a, id: `manual-${a.id}`, source: 'manual' as const, job_offers: { id: a.job_id, title: a.job_title, recruiter_company: a.company_name, location: a.location, contract_type: a.contract_type, application_mode: a.application_mode, external_apply_url: a.job_url } }));
       setApps([...platform, ...manualApps]);
     } catch {
       setApps([]);
