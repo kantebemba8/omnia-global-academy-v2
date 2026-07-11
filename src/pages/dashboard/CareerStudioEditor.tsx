@@ -102,10 +102,10 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children }: { children: React.ReactNode }) {
+function PreviewFrame({ children, zoom = 0.62 }: { children: React.ReactNode; zoom?: number }) {
   return (
-    <div className="mx-auto flex h-[760px] w-full justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-      <div style={{ transform: 'scale(0.62)', transformOrigin: 'top center' }}>{children}</div>
+    <div className="mx-auto flex h-[760px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
+      <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>{children}</div>
     </div>
   );
 }
@@ -127,6 +127,8 @@ export default function CareerStudioEditor() {
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(0.62);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
   const [offerText, setOfferText] = useState('');
@@ -218,6 +220,16 @@ export default function CareerStudioEditor() {
       design_options: {
         ...doc.design_options,
         colors,
+      } as DesignOptions | LmDesign,
+    }));
+  }
+
+  function updateDesignOptions(patch: Partial<DesignOptions & LmDesign>) {
+    updateDocument(doc => ({
+      ...doc,
+      design_options: {
+        ...doc.design_options,
+        ...patch,
       } as DesignOptions | LmDesign,
     }));
   }
@@ -404,7 +416,7 @@ export default function CareerStudioEditor() {
         <div className="flex h-[76px] items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/dashboard/career-studio')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              <ArrowLeft className="h-4 w-4" /> Mes documents
+              <ArrowLeft className="h-4 w-4" /> Retour Omnia Career
             </button>
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -442,7 +454,7 @@ export default function CareerStudioEditor() {
               <h2 className="text-lg font-semibold text-[#002050]">{isCv ? 'Sections du CV' : 'Structure de la lettre'}</h2>
               <p className="mt-1 text-xs text-slate-500">Cliquez sur une section pour modifier.</p>
             </div>
-            <button onClick={resetDemoData} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Réinitialiser</button>
+            <button onClick={resetDemoData} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Vider</button>
           </div>
 
           <div className="space-y-2">
@@ -482,13 +494,18 @@ export default function CareerStudioEditor() {
               <h1 className="text-2xl font-semibold text-[#002050]">{isCv ? 'CV Builder' : 'Éditeur de lettre'}</h1>
               <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu live
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setPreviewZoom(0.5)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">75%</button>
+              <button type="button" onClick={() => setPreviewZoom(0.62)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">100%</button>
+              <button type="button" onClick={() => setPreviewZoom(0.78)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">125%</button>
+              <button type="button" onClick={() => setPreviewFullscreen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white hover:opacity-90">
+                <Eye className="h-4 w-4" /> Aperçu plein écran
+              </button>
             </div>
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame>
+            <PreviewFrame zoom={previewZoom}>
               <div ref={printRef} data-career-print-source="true">
                 {isCv ? (
                   <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
@@ -525,7 +542,7 @@ export default function CareerStudioEditor() {
 
           <TemplatePanel templates={templates} selectedTemplate={selectedTemplate} selectedKey={document.template_key} onSelect={changeTemplate} />
 
-          <ColorPanel colors={(document.design_options as DesignOptions | LmDesign).colors} onChange={updateDesignColors} />
+          <DesignPanel design={document.design_options as DesignOptions | LmDesign} onColorChange={updateDesignColors} onDesignChange={updateDesignOptions} isCv={isCv} />
 
           <div className={cardClass('p-4')}>
             <div className="mb-3 flex items-center justify-between">
@@ -541,6 +558,31 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
+
+      {previewFullscreen && (
+        <div className="fixed inset-0 z-[90] bg-slate-950/80 p-6">
+          <div className="mx-auto flex h-full max-w-6xl flex-col rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[#002050]">Aperçu plein écran</h2>
+                <p className="text-sm text-slate-500">Vue A4 fidèle à votre PDF. Utilisez les réglages à droite pour modifier police, taille et couleurs.</p>
+              </div>
+              <button onClick={() => setPreviewFullscreen(false)} className="rounded-full p-2 hover:bg-slate-100">✕</button>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 p-8">
+              <div className="mx-auto flex w-full justify-center" style={{ transform: 'scale(1)', transformOrigin: 'top center' }}>
+                <div ref={printRef} data-career-print-source="true">
+                  {isCv ? (
+                    <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
+                  ) : (
+                    <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -921,51 +963,127 @@ function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onR
 }
 
 function TemplatePanel({ templates, selectedTemplate, selectedKey, onSelect }: { templates: CareerTemplateMeta[]; selectedTemplate: CareerTemplateMeta; selectedKey: string; onSelect: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
   const visible = templates.length ? templates : [selectedTemplate];
+  const choose = (key: string) => { onSelect(key); setOpen(false); };
   return (
     <div className={cardClass('p-4')}>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-[#002050]">Modèles</h3>
-        <span className="text-xs font-semibold text-slate-500">{visible.length} disponibles</span>
+        <button type="button" onClick={() => setOpen(true)} className="text-xs font-semibold text-[#002050]">Afficher en grand</button>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        {visible.slice(0, 8).map(template => {
-          const active = template.template_key === selectedKey;
-          return (
-            <button key={template.template_key} onClick={() => onSelect(template.template_key)} className={`rounded-xl border p-3 text-left transition ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <div className="mb-2 flex h-16 items-center justify-center rounded-lg bg-slate-100">
-                <FileText className="h-6 w-6 text-[#002050]" />
-              </div>
-              <div className="text-xs font-semibold text-[#002050]">{template.name_fr}</div>
-              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">{template.description_fr}</div>
-              <div className="mt-2 flex items-center gap-1">
-                {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
-                {!template.is_free && <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-              </div>
-            </button>
-          );
-        })}
+        {visible.slice(0, 4).map(template => <TemplateThumb key={template.template_key} template={template} active={template.template_key === selectedKey} onClick={() => choose(template.template_key)} compact />)}
       </div>
+      <button type="button" onClick={() => setOpen(true)} className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
+        Voir tous les modèles ({visible.length})
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[95] overflow-y-auto bg-black/45 p-6">
+          <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-[#002050]">Choisir un modèle</h2>
+                <p className="mt-1 text-sm text-slate-500">Aperçu grand format de tous les modèles disponibles. Les modèles premium restent identifiés.</p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 hover:bg-slate-100">✕</button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {visible.map(template => <TemplateThumb key={template.template_key} template={template} active={template.template_key === selectedKey} onClick={() => choose(template.template_key)} />)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ColorPanel({ colors, onChange }: { colors: typeof DEFAULT_COLORS; onChange: (colors: typeof DEFAULT_COLORS) => void }) {
+function TemplateThumb({ template, active, onClick, compact = false }: { template: CareerTemplateMeta; active: boolean; onClick: () => void; compact?: boolean }) {
+  return (
+    <button key={template.template_key} onClick={onClick} className={`rounded-xl border bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 hover:bg-slate-50'}`}>
+      <div className={`mb-3 flex items-center justify-center rounded-lg bg-slate-100 ${compact ? 'h-20' : 'h-44'}`}>
+        <div className={`${compact ? 'h-16 w-11' : 'h-36 w-24'} rounded-lg border bg-white p-2 shadow-sm`}>
+          <div className="h-5 rounded" style={{ background: template.default_colors?.primary || '#002050' }} />
+          <div className="mt-2 h-1.5 rounded bg-slate-200" />
+          <div className="mt-2 h-1.5 rounded bg-slate-200" />
+          <div className="mt-3 h-1 rounded" style={{ background: template.default_colors?.accent || '#bf8813' }} />
+          <div className="mt-2 h-1.5 rounded bg-slate-200" />
+          <div className="mt-2 h-1.5 rounded bg-slate-200" />
+          {!compact && <><div className="mt-2 h-1.5 rounded bg-slate-200" /><div className="mt-2 h-1.5 rounded bg-slate-200" /></>}
+        </div>
+      </div>
+      <div className="text-xs font-semibold text-[#002050]">{template.name_fr}</div>
+      {!compact && <div className="mt-1 min-h-[34px] text-[11px] leading-4 text-slate-500">{template.description_fr}</div>}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">ATS</span>}
+        {template.is_free ? <span className="rounded-full bg-[#002050]/10 px-2 py-0.5 text-[10px] font-bold text-[#002050]">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-0.5 text-[10px] font-bold text-[#bf8813]">Premium</span>}
+      </div>
+    </button>
+  );
+}
+
+function DesignPanel({ design, onColorChange, onDesignChange, isCv }: { design: DesignOptions | LmDesign; onColorChange: (colors: typeof DEFAULT_COLORS) => void; onDesignChange: (patch: Partial<DesignOptions & LmDesign>) => void; isCv: boolean }) {
+  const colors = design.colors as typeof DEFAULT_COLORS;
+  const customPalette = { ...colors };
   return (
     <div className={cardClass('p-4')}>
       <div className="mb-3 flex items-center gap-2">
         <Palette className="h-5 w-5 text-[#002050]" />
-        <h3 className="text-lg font-semibold text-[#002050]">Couleurs</h3>
+        <h3 className="text-lg font-semibold text-[#002050]">Design du document</h3>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {CAREER_PALETTES.map(palette => {
-          const active = colors.primary === palette.colors.primary && colors.accent === palette.colors.accent;
-          return (
-            <button key={palette.key} onClick={() => onChange(palette.colors)} className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${active ? 'border-[#002050]' : 'border-slate-200'}`} title={palette.name}>
-              <span className="h-7 w-7 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.colors.primary} 50%, ${palette.colors.accent} 50%)` }} />
-            </button>
-          );
-        })}
+
+      <div className="mb-4">
+        <div className="mb-2 text-xs font-semibold text-slate-600">Couleurs</div>
+        <div className="flex flex-wrap gap-2">
+          {CAREER_PALETTES.map(palette => {
+            const active = colors.primary === palette.colors.primary && colors.accent === palette.colors.accent;
+            return (
+              <button key={palette.key} onClick={() => onColorChange(palette.colors)} className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${active ? 'border-[#002050]' : 'border-slate-200'}`} title={palette.name}>
+                <span className="h-7 w-7 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.colors.primary} 50%, ${palette.colors.accent} 50%)` }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className={labelClass()}>Couleur principale</span>
+          <input type="color" value={colors.primary || '#002050'} onChange={(e) => onColorChange({ ...customPalette, primary: e.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white p-1" />
+        </label>
+        <label className="block">
+          <span className={labelClass()}>Couleur secondaire</span>
+          <input type="color" value={colors.accent || '#bf8813'} onChange={(e) => onColorChange({ ...customPalette, accent: e.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white p-1" />
+        </label>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <label className="block">
+          <span className={labelClass()}>Police</span>
+          <select className={inputClass()} value={design.font || 'inter'} onChange={(e) => onDesignChange({ font: e.target.value as any })}>
+            <option value="inter">Inter / Sans-serif</option>
+            <option value="arial">Arial</option>
+            <option value="georgia">Georgia</option>
+            <option value="times">Times New Roman</option>
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className={labelClass()}>Taille texte</span>
+            <input type="number" min={7} max={14} className={inputClass()} value={design.font_size_body || 10} onChange={(e) => onDesignChange({ font_size_body: Number(e.target.value) })} />
+          </label>
+          {isCv && (
+            <label className="block">
+              <span className={labelClass()}>Taille titre</span>
+              <input type="number" min={9} max={20} className={inputClass()} value={(design as DesignOptions).font_size_title || 11} onChange={(e) => onDesignChange({ font_size_title: Number(e.target.value) })} />
+            </label>
+          )}
+        </div>
+        <label className="block">
+          <span className={labelClass()}>Interligne</span>
+          <input type="range" min={1.1} max={2} step={0.05} className="w-full" value={design.line_spacing || 1.5} onChange={(e) => onDesignChange({ line_spacing: Number(e.target.value) })} />
+          <span className="text-xs text-slate-500">{design.line_spacing || 1.5}</span>
+        </label>
       </div>
     </div>
   );
