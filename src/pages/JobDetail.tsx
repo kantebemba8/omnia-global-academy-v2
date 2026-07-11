@@ -101,7 +101,8 @@ export default function JobDetail() {
     fetch(`${ENDPOINTS.jobsList}?job_id=${jobId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.job) setJob(d.job);
+        const loadedJob = d.job || (d.id ? d : null);
+        if (loadedJob) setJob(loadedJob);
         else setNotFound(true);
       })
       .catch(() => setNotFound(true))
@@ -117,7 +118,7 @@ export default function JobDetail() {
   function prepareWithCareer() {
     if (!jobId) return;
     if (!isLoggedIn) {
-      navigate(`/connexion?redirect=${encodeURIComponent(`/dashboard/career-studio?section=applications&job_id=${jobId}`)}`);
+      navigate(`/connexion?redirect=${encodeURIComponent(`/dashboard/career-studio?section=applications&job_id=${jobId}&mode=prepare`)}`);
       return;
     }
     if (!isLearner()) {
