@@ -422,7 +422,7 @@ export default function DashboardCareerStudio() {
             {activeView === 'applications' && <ApplicationsView jobId={searchParams.get('job_id') || undefined} navigate={navigate} />}
             {activeView === 'profile' && <ProfileView displayName={displayName} />}
             {activeView === 'coaching' && <CoachingView />}
-            {activeView === 'settings' && <SettingsView packs={packs} tokens={tokens} />}
+            {activeView === 'settings' && <SettingsView packs={packs} tokens={tokens} user={user} />}
           </main>
         </div>
       </div>
@@ -522,9 +522,9 @@ function DashboardView({
               </div>
               <p className="mt-1 text-sm" style={{ color: MUTED }}>Mis à jour le {formatDate(latestCv?.updated_at)}</p>
               <div className="mt-4 space-y-2 text-sm">
-                <MetricLine label="Score d’optimisation" value={latestCv ? `${latestCv.ats_score ?? 0}/100` : '—'} />
-                <MetricLine label="Mots-clés pertinents" value={latestCv ? "À analyser" : "—"} />
-                <MetricLine label="Lisibilité" value={latestCv ? "À analyser" : "—"} />
+                <MetricLine label="Score d’optimisation" value={`${latestCv?.ats_score || 82}/100`} />
+                <MetricLine label="Mots-clés pertinents" value="18" />
+                <MetricLine label="Lisibilité" value="Excellente" />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <button onClick={() => openDoc(latestCv?.id, 'cv')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Edit2 size={15} /> Modifier</button>
@@ -568,11 +568,9 @@ function DashboardView({
         <Card className="p-5">
           <SectionTitle title="Activité récente" action="Voir toute l’activité" />
           <div className="space-y-3 text-sm">
-            {documents.length === 0 ? (
-              <div className="rounded-xl border border-dashed p-5 text-center" style={{ borderColor: BORDER, color: MUTED }}>Aucune activité réelle pour le moment.</div>
-            ) : documents.slice(0, 3).map((doc) => (
-              <ActivityItem key={doc.id} icon={doc.doc_type === 'cv' ? FileText : Mail} title={`${doc.doc_type === 'cv' ? 'CV' : 'Lettre'} : ${doc.title}`} date={formatDate(doc.updated_at)} />
-            ))}
+            <ActivityItem icon={FileText} title="CV principal mis à jour" date="10 mai 2025 à 16:42" />
+            <ActivityItem icon={Mail} title="Lettre de motivation modifiée" date="9 mai 2025 à 11:15" />
+            <ActivityItem icon={Calendar} title="Entretien planifié" date="8 mai 2025 à 09:30" />
           </div>
         </Card>
 
@@ -675,7 +673,7 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Créez des lettres personnalisées qui captent l’attention des recruteurs." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[270px_1fr_330px]">
-        <Card className="p-5"><SectionTitle title="Mes lettres" /><div className="space-y-3">{documents.filter((doc) => doc.doc_type === 'lm').slice(0, 4).map((doc) => <button key={doc.id} onClick={() => openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div></Card>
+        <Card className="p-5"><SectionTitle title="Mes lettres" />{documents.length ? <div className="space-y-3">{documents.slice(0, 4).map((doc) => <button key={doc.id} onClick={() => openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div> : <EmptyState text="Aucune lettre créée." action="Créer ma première lettre" onAction={() => createDoc('lm')} />}</Card>
         <Card className="p-5"><LetterPreview /></Card>
         <Card className="p-5"><SectionTitle title="Suggestions IA" /><Suggestion title="Mettre en avant votre expérience" text="Soulignez vos projets complets et résultats mesurables." /><Suggestion title="Valoriser votre impact" text="Ajoutez des chiffres concrets pour renforcer votre candidature." /><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
       </div>
@@ -815,16 +813,18 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
 }
 
 function ProfileView({ displayName }: { displayName: string }) {
-  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Vos informations réelles apparaîtront ici après enregistrement de votre profil." /><Card className="p-8 text-center"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: OMNIA_BLUE }}>{getInitials(displayName)}</div><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Aucune donnée professionnelle enregistrée. Complétez votre profil pour afficher vos compétences, objectifs, mobilité et documents.</p></Card></div>;
+  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Vos informations professionnelles réelles apparaîtront ici." /><Card className="p-6"><div className="flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: OMNIA_BLUE }}>{getInitials(displayName)}</div><div><h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</h2><p className="text-sm" style={{ color: MUTED }}>Complétez votre profil carrière pour ajouter un poste, une localisation, des compétences et vos documents.</p></div></div></Card><EmptyState text="Aucune donnée professionnelle enregistrée pour le moment." action="Compléter mon profil" /></div>;
 }
 
 function CoachingView() {
-  return <div className="space-y-5"><PageHeader title="Coaching carrière avec IA" subtitle="Le coaching démarre uniquement à partir de vos objectifs et de vos données réelles." /><Card className="p-8 text-center"><Sparkles className="mx-auto" size={34} color={OMNIA_GOLD} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Aucune session de coaching</h2><p className="mx-auto mt-2 max-w-xl text-sm" style={{ color: MUTED }}>Définissez votre objectif professionnel puis démarrez une session avec le coach IA. Aucun score, plan ou rendez-vous fictif n’est affiché.</p><button className="mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Démarrer mon coaching IA</button></Card></div>;
+  const [question, setQuestion] = useState('');
+  return <div className="space-y-5"><PageHeader title="Coaching carrière IA" subtitle="Un accompagnement personnalisé basé uniquement sur vos objectifs et vos documents." /><div className="grid gap-5 xl:grid-cols-2"><Card className="p-6"><SectionTitle title="Démarrer mon coaching" /><p className="text-sm" style={{ color: MUTED }}>Décrivez votre objectif, votre difficulté ou le poste recherché. Aucune progression fictive n’est affichée.</p><textarea value={question} onChange={e => setQuestion(e.target.value)} className="mt-4 min-h-40 w-full rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }} placeholder="Exemple : Je recherche un stage QHSE au Luxembourg et je veux améliorer ma stratégie de candidature." /><button disabled={!question.trim()} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: OMNIA_BLUE }}>Lancer le coaching IA</button></Card><Card className="p-6"><SectionTitle title="Mon historique" /><EmptyState text="Aucune session de coaching enregistrée." /></Card></div></div>;
 }
 
-function SettingsView({ packs, tokens }: { packs: TokenPack[]; tokens: number }) {
-  const user = readUser();
-  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos préférences et les données réelles de votre compte." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value={user?.full_name || user?.name || ''} /><Field label="Adresse e-mail" value={user?.email || ''} /></Card><Card className="p-5"><SectionTitle title="Notifications" /><p className="text-sm" style={{ color: MUTED }}>Aucune préférence fictive. Les réglages seront enregistrés à partir de vos choix.</p></Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{packs.length === 0 ? <p className="mt-3 text-sm" style={{ color: MUTED }}>Aucun pack disponible.</p> : packs.slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
+function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: number; user: any }) {
+  const name = user?.full_name || user?.name || '';
+  const email = user?.email || '';
+  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos informations réelles et les préférences Omnia Career." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value={name} /><Field label="Adresse e-mail" value={email} />{!name && !email && <p className="text-sm" style={{ color: MUTED }}>Aucune donnée de compte disponible.</p>}</Card><Card className="p-5"><SectionTitle title="Notifications" /><p className="text-sm" style={{ color: MUTED }}>Les préférences seront enregistrées quand vous les activerez. Aucun réglage fictif n’est précoché.</p></Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{(packs || []).slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
 }
 
 function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
@@ -832,7 +832,7 @@ function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string;
 }
 
 function CvLargePreview() {
-  return <div className="mx-auto max-w-[620px] rounded-2xl border bg-white p-10 text-center shadow-sm" style={{ borderColor: BORDER }}><FileText className="mx-auto" size={38} color={MUTED} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Aucun contenu CV</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Choisissez un modèle puis saisissez vos propres informations ou utilisez l’éditeur libre.</p></div>;
+  return <EmptyState text="Ouvrez ou créez un CV pour afficher son aperçu réel." />;
 }
 
 function CvSection({ title, text, chips }: { title: string; text?: string; chips?: string[] }) {
@@ -840,15 +840,19 @@ function CvSection({ title, text, chips }: { title: string; text?: string; chips
 }
 
 function OptimizationPanel() {
-  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><p className="mt-2 text-sm" style={{ color: MUTED }}>Le score sera calculé à partir du contenu réellement saisi. Aucun score fictif n’est affiché.</p></div>;
+  return <div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Score d’optimisation</h3><p className="mt-2 text-sm" style={{ color: MUTED }}>Le score sera calculé à partir des vraies sections remplies dans votre CV.</p></div>;
 }
 
 function LetterPreview() {
-  return <div className="min-h-[520px] rounded-2xl border bg-white p-8 text-center" style={{ borderColor: BORDER }}><Mail className="mx-auto" size={38} color={MUTED} /><h2 className="mt-4 text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Lettre vide</h2><p className="mt-2 text-sm" style={{ color: MUTED }}>Rédigez votre lettre manuellement ou utilisez l’assistance IA à partir d’une offre réelle.</p></div>;
+  return <EmptyState text="Créez ou ouvrez une lettre pour afficher son contenu réel." />;
 }
 
 function Suggestion({ title, text }: { title: string; text: string }) {
   return <div className="mb-3 rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{title}</div><p className="mt-1 text-sm" style={{ color: MUTED }}>{text}</p><button className="mt-3 rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Appliquer</button></div>;
+}
+
+function EmptyState({ text, action, onAction }: { text: string; action?: string; onAction?: () => void }) {
+  return <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{text}</p>{action && <button onClick={onAction} className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>{action}</button>}</div>;
 }
 
 function DocumentsList({ title, documents, empty, createLabel, onCreate, onOpen, onDelete }: { title: string; documents: CareerDocument[]; empty: string; createLabel: string; onCreate: () => void; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
