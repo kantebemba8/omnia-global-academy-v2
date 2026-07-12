@@ -1190,6 +1190,17 @@ function TemplatePanel({
   );
 }
 
+
+/**
+ * Chaque modèle dispose de sa propre maquette découpée depuis les planches
+ * validées par l'administrateur. La clé du fichier est exactement la même
+ * que template_key, ce qui empêche tout décalage entre la galerie, le
+ * renderer HTML/CSS, l'aperçu plein écran et l'export PDF.
+ */
+function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType) {
+  return `/career-template-mockups/individual/${template.template_key}.webp`;
+}
+
 function TemplatePreviewCard({
   template,
   docType,
@@ -1220,13 +1231,12 @@ function TemplatePreviewCard({
           className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner"
           style={{ height: previewHeight, width: previewWidth }}
         >
-          <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left', width: 794, minHeight: 1123 }}>
-            {docType === 'cv' ? (
-              <CvPreview templateKey={template.template_key} data={data as DocData} design={design as DesignOptions} />
-            ) : (
-              <LmPreview templateKey={template.template_key} data={data as LmData} design={design as LmDesign} />
-            )}
-          </div>
+          <img
+            src={getTemplateMockup(template, docType)}
+            alt={`Maquette ${template.name_fr}`}
+            className="h-full w-full object-contain bg-white"
+            loading="lazy"
+          />
         </div>
 
         <div className="min-w-0 flex-1">
