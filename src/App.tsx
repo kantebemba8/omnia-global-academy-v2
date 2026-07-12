@@ -293,7 +293,7 @@ export default function App() {
 </Route>
 
 <Route element={<RequireOmniaCareerAdmin />}>
-  <Route path="/admin/omnia-career" element={<AdminOmniaCareerStudio />} />
+  <Route path="/admin/omnia-career" element={<Navigate to="/admin/career-studio" replace />} />
 </Route>
 
         {/* Public routes guarded by coming-soon mode */}
