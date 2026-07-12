@@ -213,6 +213,7 @@ export default function CareerStudioEditor() {
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -266,6 +267,7 @@ export default function CareerStudioEditor() {
       };
     });
     setSaveState('idle');
+    setDirty(true);
   }, []);
 
   const saveNow = useCallback(async () => {
@@ -276,13 +278,14 @@ export default function CareerStudioEditor() {
       setDocument(saved.document);
       setRemoteMode(saved.remote);
       setSaveState('saved');
+      setDirty(false);
     } catch {
       setSaveState('error');
     }
   }, [document]);
 
   useEffect(() => {
-    if (!document || loading) return;
+    if (!document || loading || !dirty) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       saveNow();
@@ -290,7 +293,7 @@ export default function CareerStudioEditor() {
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-  }, [document?.doc_data, document?.design_options, document?.template_key, document?.title]);
+  }, [document?.doc_data, document?.design_options, document?.template_key, document?.title, dirty]);
 
   function updateCv(mutator: (data: DocData) => DocData) {
     updateDocument(doc => ({ ...doc, doc_data: mutator(getCvData(doc)) }));
@@ -310,15 +313,43 @@ export default function CareerStudioEditor() {
     }));
   }
 
+  function templatePreset(key: string) {
+    const presets: Record<string, Partial<DesignOptions>> = {
+      classic_pro: { colors: { primary: '#17365D', accent: '#BF8813', sidebar: '#EEF2F6', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
+      modern_student: { colors: { primary: '#E9A8B8', accent: '#7B61A8', sidebar: '#FFF4F7', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
+      corporate_blue: { colors: { primary: '#002B5C', accent: '#2F6B9A', sidebar: '#EAF1F7', text: '#273444', background: '#FFFFFF' }, photo_enabled: true },
+      minimal_luxe: { colors: { primary: '#111827', accent: '#C9A86A', sidebar: '#F8F5EF', text: '#2F2F2F', background: '#FFFFFF' }, photo_enabled: false },
+      africa_gold: { colors: { primary: '#06182E', accent: '#BF8813', sidebar: '#06182E', text: '#E5E7EB', background: '#06182E' }, photo_enabled: true },
+      tech_future: { colors: { primary: '#071622', accent: '#00D9E9', sidebar: '#071622', text: '#D7F9FF', background: '#071622' }, photo_enabled: true },
+      cyber_security: { colors: { primary: '#050A07', accent: '#71FF4D', sidebar: '#050A07', text: '#D8FFD0', background: '#050A07' }, photo_enabled: true },
+      data_analyst: { colors: { primary: '#1E4F7A', accent: '#4AA3DF', sidebar: '#EAF5FB', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
+      creative_digital: { colors: { primary: '#1F2937', accent: '#FF7A59', sidebar: '#FFF3EE', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
+      no_photo_ats: { colors: { primary: '#111827', accent: '#4B5563', sidebar: '#FFFFFF', text: '#111827', background: '#FFFFFF' }, photo_enabled: false },
+      photo_elegant: { colors: { primary: '#102A43', accent: '#BF8813', sidebar: '#102A43', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
+      young_graduate: { colors: { primary: '#577263', accent: '#A9C2B3', sidebar: '#EEF5F0', text: '#34443B', background: '#FFFFFF' }, photo_enabled: true },
+      internship_ready: { colors: { primary: '#4B6B63', accent: '#A8C8BE', sidebar: '#EDF5F2', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
+      international_cv: { colors: { primary: '#1F4C7A', accent: '#64A4D8', sidebar: '#EEF6FC', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
+      qhse_professional: { colors: { primary: '#1F5A39', accent: '#6B9C79', sidebar: '#EAF4ED', text: '#2F4738', background: '#FFFFFF' }, photo_enabled: true },
+      business_manager: { colors: { primary: '#071A33', accent: '#BF8813', sidebar: '#071A33', text: '#E5E7EB', background: '#071A33' }, photo_enabled: true },
+      hospitality: { colors: { primary: '#7A4A2E', accent: '#C7A17A', sidebar: '#F7EFE7', text: '#4A3326', background: '#FFFDFC' }, photo_enabled: true },
+      academic_cv: { colors: { primary: '#123B6D', accent: '#3E6FA3', sidebar: '#EAF1F8', text: '#2F3B49', background: '#FFFFFF' }, photo_enabled: true },
+      freelancer: { colors: { primary: '#463D78', accent: '#7B6EC8', sidebar: '#F1EFFF', text: '#36304B', background: '#FFFFFF' }, photo_enabled: true },
+      executive_one_page: { colors: { primary: '#050505', accent: '#BF8813', sidebar: '#050505', text: '#F3F4F6', background: '#050505' }, photo_enabled: true },
+    };
+    return presets[key] || {};
+  }
+
   function changeTemplate(templateKey: string) {
     const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
     const meta = getTemplateMeta(docType, normalizedTemplateKey);
+    const preset = docType === 'cv' ? templatePreset(normalizedTemplateKey) : {};
     updateDocument(doc => ({
       ...doc,
       template_key: normalizedTemplateKey,
       design_options: {
         ...doc.design_options,
-        colors: meta.default_colors || DEFAULT_COLORS,
+        ...preset,
+        colors: (preset as any).colors || meta.default_colors || DEFAULT_COLORS,
       } as DesignOptions | LmDesign,
     }));
   }
@@ -655,7 +686,7 @@ export default function CareerStudioEditor() {
               <span className="text-2xl font-bold text-green-600">{score}/100</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: `${Math.max(8, score)}%` }} />
+              <div className="h-2 rounded-full bg-green-600" style={{ width: `${score}%` }} />
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Score local basé sur les sections complétées. Le téléchargement PDF est maintenant activé avec consommation de jeton pour les CV.
@@ -1107,7 +1138,7 @@ function TemplatePanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {canonicalTemplates.slice(0, 3).map(template => (
           <TemplatePreviewCard
             key={template.template_key}
@@ -1182,7 +1213,7 @@ function TemplatePanel({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
-              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
                 {filteredTemplates.map(template => (
                   <TemplatePreviewCard
                     key={template.template_key}
@@ -1239,50 +1270,23 @@ function TemplatePreviewCard({
   onSelect: () => void;
   compact?: boolean;
 }) {
-  const previewHeight = compact ? 220 : 520;
-  const previewWidth = compact ? 180 : 380;
-
   return (
-    <div
-      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
     >
-      <div className="flex gap-4 p-4">
-        <div
-          className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner"
-          style={{ height: previewHeight, width: previewWidth }}
-        >
-          <img
-            src={getTemplateMockup(template, docType)}
-            alt={`Maquette ${template.name_fr}`}
-            className="h-full w-full object-cover object-top bg-white"
-            loading="lazy"
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold text-[#002050]">{template.name_fr}</h4>
-              <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{template.description_fr}</p>
-            </div>
-            {selected && <span className="rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Actif</span>}
+      <div className={`relative overflow-hidden bg-slate-100 ${compact ? 'aspect-[9/11]' : 'aspect-[9/11]'}`}>
+        <img src={getTemplateMockup(template, docType)} alt={`Maquette ${template.name_fr}`} className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.015]" loading="lazy" />
+        {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-transparent px-3 pb-3 pt-12">
+          <div className="text-sm font-semibold text-white">{template.name_fr}</div>
+          <div className="mt-1 flex gap-1.5">
+            {template.is_ats_compatible && <span className="rounded-full bg-green-500/90 px-2 py-0.5 text-[10px] font-bold text-white">ATS</span>}
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${template.is_free ? 'bg-white/90 text-slate-700' : 'bg-[#bf8813] text-white'}`}>{template.is_free ? 'Gratuit' : 'Premium'}</span>
           </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">ATS</span>}
-            {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-1 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{template.category}</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={onSelect}
-            className={`mt-4 w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${selected ? 'border border-[#002050] bg-white text-[#002050]' : 'bg-[#002050] text-white hover:opacity-90'}`}
-          >
-            {selected ? 'Modèle sélectionné' : 'Utiliser ce modèle'}
-          </button>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
