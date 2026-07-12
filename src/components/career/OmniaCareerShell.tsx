@@ -127,17 +127,6 @@ export function OmniaCareerShell({
           )}
         </div>
 
-        <div className="px-3 pt-3">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white"
-          >
-            <ChevronRight className="h-[18px] w-[18px] rotate-180" />
-            Retour au dashboard
-          </button>
-        </div>
-
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -157,14 +146,10 @@ export function OmniaCareerShell({
             );
           })}
         </nav>
-
-        <div className="px-3 pb-5">
-          <div className="mb-3 rounded-xl border border-white/10 bg-white/5 p-4">
-            <Crown className="mb-2 h-5 w-5" style={{ color: GOLD }} />
-            <p className="text-sm font-semibold text-white">Passez à Premium</p>
-            <p className="mt-1 text-xs leading-5 text-white/50">Modèles exclusifs, analyses avancées et coaching.</p>
-            <button className="mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: GOLD }}>Découvrir Premium</button>
-          </div>
+        <div className="border-t border-white/10 px-3 py-3">
+          <button type="button" onClick={() => navigate('/dashboard/career-studio?section=settings')} className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5" style={{ color: GOLD }}>
+            <Crown className="h-[18px] w-[18px]" /> Passer à Premium
+          </button>
           <button onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition hover:bg-white/5 hover:text-white">
             <LogOut style={{ width: 18, height: 18 }} />
             Déconnexion

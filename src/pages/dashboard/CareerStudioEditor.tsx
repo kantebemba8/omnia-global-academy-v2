@@ -107,10 +107,10 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children, zoom = 62 }: { children: React.ReactNode; zoom?: number }) {
+function PreviewFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex h-[760px] w-full justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-      <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>{children}</div>
+      <div style={{ transform: 'scale(0.62)', transformOrigin: 'top center' }}>{children}</div>
     </div>
   );
 }
@@ -170,6 +170,26 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
   return { version: 1, page: { width: 794, height: 1123, background: '#ffffff' }, blocks };
 }
 
+
+function hasText(value: unknown) { return typeof value === 'string' && value.trim().length > 0; }
+function isCvSectionComplete(key: CvSectionKey, data: DocData) {
+  if (key === 'profile') return hasText(data.name) && hasText(data.title) && (hasText(data.contact?.email) || hasText(data.contact?.phone));
+  if (key === 'summary') return hasText(data.summary);
+  if (key === 'skills') return Array.isArray(data.skills) && data.skills.some((x: any) => hasText(x?.name));
+  if (key === 'experiences') return Array.isArray(data.experiences) && data.experiences.some((x: any) => hasText(x?.position) && hasText(x?.company));
+  if (key === 'education') return Array.isArray(data.education) && data.education.some((x: any) => hasText(x?.degree) && hasText(x?.school));
+  if (key === 'certifications') return Array.isArray(data.certifications_external) && data.certifications_external.some((x: any) => hasText(x?.name));
+  if (key === 'languages') return Array.isArray(data.languages) && data.languages.some((x: any) => hasText(x?.name) && hasText(x?.level));
+  return false;
+}
+function isLmSectionComplete(key: LmSectionKey, data: LmData) {
+  const map: Record<string, boolean> = {
+    sender: hasText(data.sender?.name) && hasText(data.sender?.email), recipient: hasText(data.recipient?.company), subject: hasText(data.subject),
+    intro: hasText(data.intro), motivation: hasText(data.motivation), skills: hasText(data.skills_paragraph), company: hasText(data.company_link),
+    closing: hasText(data.closing), signature: hasText(data.signature),
+  };
+  return Boolean(map[key]);
+}
 export default function CareerStudioEditor() {
   const navigate = useNavigate();
   const { docId } = useParams<{ docId: string }>();
@@ -193,8 +213,6 @@ export default function CareerStudioEditor() {
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(62);
-  const [previewFullscreen, setPreviewFullscreen] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -212,26 +230,6 @@ export default function CareerStudioEditor() {
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
-
-  const sectionComplete = useCallback((key: CvSectionKey | LmSectionKey) => {
-    if (!document) return false;
-    if (document.doc_type === 'cv') {
-      const d=getCvData(document);
-      const hasText=(v:unknown,min=1)=>String(v||'').trim().length>=min;
-      const map:any={
-        profile:hasText(d.name)&&hasText(d.contact?.email),
-        summary:hasText(d.summary,40),
-        skills:(d.skills||[]).filter(x=>hasText(typeof x==='string'?x:(x as any)?.name)).length>=3,
-        experiences:(d.experiences||[]).some(x=>hasText(x?.title)&&hasText(x?.company)&&hasText(x?.description,20)),
-        education:(d.education||[]).some(x=>hasText(x?.degree)&&hasText(x?.school)),
-        certifications:(d.certifications_external||[]).some(x=>hasText(x?.name))||(d.omnia_formations||[]).some((x:any)=>hasText(x?.name||x?.title)),
-        languages:(d.languages||[]).some(x=>hasText(x?.name)&&hasText(x?.level)),
-        projects:(d.projects||[]).some(x=>hasText(x?.name)&&hasText(x?.description,15)),
-        interests:(d.interests||[]).some(x=>hasText(typeof x==='string'?x:(x as any)?.name))
-      }; return Boolean(map[key]);
-    }
-    const d=getLmData(document); const hasText=(v:unknown,min=1)=>String(v||'').trim().length>=min; const map:any={sender:hasText(d.sender?.name)&&hasText(d.sender?.email),recipient:hasText(d.recipient?.company),letter:hasText(d.intro,30)&&hasText(d.motivation,50)&&hasText(d.closing,20),variables:hasText(d.subject)}; return Boolean(map[key]);
-  },[document]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -531,7 +529,9 @@ export default function CareerStudioEditor() {
             <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#7a570c] hover:bg-[#bf8813]/15">
               <Edit3 className="h-4 w-4" /> Éditeur libre
             </button>
-            <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50"><Save className="h-4 w-4" /> Enregistrer brouillon</button><button onClick={()=>{updateDocument(cur=>({...cur,status:'completed'}));window.setTimeout(manualSave,0)}} disabled={score < (document?.doc_type==='cv'?55:60)} className="inline-flex items-center gap-2 rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><CheckCircle2 className="h-4 w-4"/>Terminer</button>
+            <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
+              <Save className="h-4 w-4" /> Enregistrer
+            </button>
             <button onClick={handlePdfDownload} disabled={exportingPdf} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
               <Download className="h-4 w-4" /> {exportingPdf ? 'Préparation...' : 'Télécharger PDF'}
             </button>
@@ -573,7 +573,9 @@ export default function CareerStudioEditor() {
                     <div className="text-sm font-semibold text-[#002050]">{section.label}</div>
                     <div className="truncate text-xs text-slate-500">{section.subtitle}</div>
                   </div>
-                  {sectionComplete(section.key as any) ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}
+                  {(isCv ? isCvSectionComplete(section.key as CvSectionKey, cvData as DocData) : isLmSectionComplete(section.key as LmSectionKey, lmData as LmData))
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    : <span className="h-4 w-4 rounded-full border border-slate-300" />}
                 </button>
               );
             })}
@@ -593,11 +595,13 @@ export default function CareerStudioEditor() {
               <h1 className="text-2xl font-semibold text-[#002050]">{isCv ? 'CV Builder' : 'Éditeur de lettre'}</h1>
               <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
             </div>
-            <div className="flex items-center gap-2"><button onClick={()=>setPreviewZoom(z=>Math.max(40,z-10))} className="rounded-lg border px-2 py-1 text-xs">−</button><span className="text-xs font-semibold">{previewZoom}%</span><button onClick={()=>setPreviewZoom(z=>Math.min(120,z+10))} className="rounded-lg border px-2 py-1 text-xs">+</button><button onClick={()=>setPreviewFullscreen(true)} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"><Eye className="h-4 w-4 text-[#002050]" /> Plein écran</button></div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu live
+            </div>
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame zoom={previewZoom}>
+            <PreviewFrame>
               <div ref={printRef} data-career-print-source="true">
                 {isManualMode && manualLayout ? (
                   <ManualDocumentCanvas layout={manualLayout} />
@@ -644,7 +648,6 @@ export default function CareerStudioEditor() {
             onSelect={changeTemplate}
           />
 
-          <ColorPanel colors={(document.design_options as DesignOptions | LmDesign).colors} onChange={updateDesignColors} />
 
           <div className={cardClass('p-4')}>
             <div className="mb-3 flex items-center justify-between">
@@ -652,7 +655,7 @@ export default function CareerStudioEditor() {
               <span className="text-2xl font-bold text-green-600">{score}/100</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: `${score}%` }} />
+              <div className="h-2 rounded-full bg-green-600" style={{ width: `${Math.max(8, score)}%` }} />
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Score local basé sur les sections complétées. Le téléchargement PDF est maintenant activé avec consommation de jeton pour les CV.
@@ -660,8 +663,6 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
-
-      {previewFullscreen && document && <div className="fixed inset-0 z-[80] overflow-auto bg-slate-900/90 p-6"><div className="mx-auto max-w-5xl"><div className="mb-4 flex justify-end"><button onClick={()=>setPreviewFullscreen(false)} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold"><X className="mr-2 inline h-4 w-4"/>Fermer</button></div><div className="flex justify-center"><div ref={printRef}>{isManualMode&&manualLayout?<ManualDocumentCanvas layout={manualLayout}/>:isCv?<CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)}/>:<LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)}/>}</div></div></div></div>}
 
       {manualLayout && (
         <ManualDocumentEditor
@@ -1106,7 +1107,7 @@ function TemplatePanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-3">
         {canonicalTemplates.slice(0, 3).map(template => (
           <TemplatePreviewCard
             key={template.template_key}
@@ -1181,7 +1182,7 @@ function TemplatePanel({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                 {filteredTemplates.map(template => (
                   <TemplatePreviewCard
                     key={template.template_key}
@@ -1224,8 +1225,8 @@ function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType
 function TemplatePreviewCard({
   template,
   docType,
-  data: _data,
-  design: _design,
+  data,
+  design,
   selected,
   onSelect,
   compact = false,
@@ -1238,54 +1239,49 @@ function TemplatePreviewCard({
   onSelect: () => void;
   compact?: boolean;
 }) {
+  const previewHeight = compact ? 220 : 520;
+  const previewWidth = compact ? 180 : 380;
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`group relative w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
+    <div
+      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
     >
-      <div className={`relative w-full overflow-hidden bg-slate-100 ${compact ? 'aspect-[0.71]' : 'aspect-[0.71]'}`}>
-        <img
-          src={getTemplateMockup(template, docType)}
-          alt={`Maquette ${template.name_fr}`}
-          className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-[1.02]"
-          loading="lazy"
-        />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent p-4 pt-16 text-white">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h4 className={`${compact ? 'text-sm' : 'text-base'} font-semibold`}>{template.name_fr}</h4>
-              {!compact && <p className="mt-1 line-clamp-2 text-xs text-white/80">{template.description_fr}</p>}
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              {template.is_ats_compatible && <span className="rounded-full bg-green-500/90 px-2 py-1 text-[10px] font-bold">ATS</span>}
-              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${template.is_free ? 'bg-white/90 text-slate-700' : 'bg-[#bf8813] text-white'}`}>{template.is_free ? 'Gratuit' : 'Premium'}</span>
-            </div>
-          </div>
+      <div className="flex gap-4 p-4">
+        <div
+          className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner"
+          style={{ height: previewHeight, width: previewWidth }}
+        >
+          <img
+            src={getTemplateMockup(template, docType)}
+            alt={`Maquette ${template.name_fr}`}
+            className="h-full w-full object-cover object-top bg-white"
+            loading="lazy"
+          />
         </div>
-        {selected && <div className="absolute right-3 top-3 rounded-full bg-[#002050] px-3 py-1.5 text-[10px] font-bold text-white shadow">Modèle sélectionné</div>}
-      </div>
-    </button>
-  );
-}
 
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-[#002050]">{template.name_fr}</h4>
+              <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{template.description_fr}</p>
+            </div>
+            {selected && <span className="rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Actif</span>}
+          </div>
 
-function ColorPanel({ colors, onChange }: { colors: typeof DEFAULT_COLORS; onChange: (colors: typeof DEFAULT_COLORS) => void }) {
-  return (
-    <div className={cardClass('p-4')}>
-      <div className="mb-3 flex items-center gap-2">
-        <Palette className="h-5 w-5 text-[#002050]" />
-        <h3 className="text-lg font-semibold text-[#002050]">Couleurs</h3>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {CAREER_PALETTES.map(palette => {
-          const active = colors.primary === palette.colors.primary && colors.accent === palette.colors.accent;
-          return (
-            <button key={palette.key} onClick={() => onChange(palette.colors)} className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${active ? 'border-[#002050]' : 'border-slate-200'}`} title={palette.name}>
-              <span className="h-7 w-7 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.colors.primary} 50%, ${palette.colors.accent} 50%)` }} />
-            </button>
-          );
-        })}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">ATS</span>}
+            {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-1 text-[10px] font-bold text-[#bf8813]">Premium</span>}
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{template.category}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onSelect}
+            className={`mt-4 w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${selected ? 'border border-[#002050] bg-white text-[#002050]' : 'bg-[#002050] text-white hover:opacity-90'}`}
+          >
+            {selected ? 'Modèle sélectionné' : 'Utiliser ce modèle'}
+          </button>
+        </div>
       </div>
     </div>
   );
