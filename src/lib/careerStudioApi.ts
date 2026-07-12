@@ -111,16 +111,11 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       remote: true,
     };
   } catch {
-    let docs = readLocal(docType);
-    if (!docs.length) {
-      const created = createLocalDocument(docType);
-      docs = [created];
-      writeLocal(docType, docs);
-    }
+    const docs = readLocal(docType);
     return {
       documents: docs.map(({ doc_data, design_options, ...summary }) => summary),
       templates: getCareerTemplates(docType),
-      tokens: 1,
+      tokens: Number(localStorage.getItem('omnia_career_tokens') || 0),
       remote: false,
     };
   }
@@ -143,12 +138,11 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
   }
 
   let docs = readLocal(docType);
-  const existing = documentId && documentId !== 'new' ? docs.find(d => d.id === documentId) : docs.find(d => d.is_primary);
+  const existing = documentId && documentId !== 'new' ? docs.find(d => d.id === documentId) : undefined;
   if (existing) return { document: { ...existing, template_key: normalizeTemplateKey(existing.doc_type, existing.template_key) }, remote: false };
 
+  // A new document exists only in memory until the learner explicitly saves it.
   const created = createLocalDocument(docType, templateKey || undefined);
-  docs = [created, ...docs.map(d => ({ ...d, is_primary: false }))];
-  writeLocal(docType, docs);
   return { document: created, remote: false };
 }
 
@@ -166,6 +160,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
     target_job: document.target_job,
     application_type: document.application_type,
     ats_score: score,
+    status: document.status || 'draft',
     is_primary: document.is_primary ?? true,
   };
 
@@ -264,7 +259,7 @@ export async function getCareerTokenHistory(): Promise<{ transactions: unknown[]
     const data = await functionPost<{ transactions?: unknown[]; balance?: number }>('career-token-manage', { action: 'get_history' });
     return { transactions: data.transactions || [], balance: data.balance ?? 0, remote: true };
   } catch {
-    return { transactions: [], balance: 1, remote: false };
+    return { transactions: [], balance: Number(localStorage.getItem('omnia_career_tokens') || 0), remote: false };
   }
 }
 

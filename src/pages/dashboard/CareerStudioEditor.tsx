@@ -107,10 +107,10 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children }: { children: React.ReactNode }) {
+function PreviewFrame({ children, zoom = 62 }: { children: React.ReactNode; zoom?: number }) {
   return (
     <div className="mx-auto flex h-[760px] w-full justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-      <div style={{ transform: 'scale(0.62)', transformOrigin: 'top center' }}>{children}</div>
+      <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>{children}</div>
     </div>
   );
 }
@@ -193,6 +193,8 @@ export default function CareerStudioEditor() {
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(62);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -210,6 +212,12 @@ export default function CareerStudioEditor() {
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
+
+  const sectionComplete = useCallback((key: CvSectionKey | LmSectionKey) => {
+    if (!document) return false;
+    if (document.doc_type === 'cv') { const d=getCvData(document); const map:any={profile:Boolean(d.name&&d.contact?.email),summary:Boolean(d.summary?.trim()),skills:Boolean(d.skills?.length),experiences:Boolean(d.experiences?.length),education:Boolean(d.education?.length),certifications:Boolean(d.certifications_external?.length||d.omnia_formations?.length),languages:Boolean(d.languages?.length),projects:Boolean(d.projects?.length),interests:Boolean(d.interests?.length)}; return Boolean(map[key]); }
+    const d=getLmData(document); const map:any={sender:Boolean(d.sender?.name&&d.sender?.email),recipient:Boolean(d.recipient?.company),letter:Boolean(d.intro&&d.motivation&&d.closing),variables:Boolean(d.subject)}; return Boolean(map[key]);
+  },[document]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -509,9 +517,7 @@ export default function CareerStudioEditor() {
             <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#7a570c] hover:bg-[#bf8813]/15">
               <Edit3 className="h-4 w-4" /> Éditeur libre
             </button>
-            <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <Save className="h-4 w-4" /> Enregistrer
-            </button>
+            <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50"><Save className="h-4 w-4" /> Enregistrer brouillon</button><button onClick={()=>{updateDocument(cur=>({...cur,status:'completed'}));window.setTimeout(manualSave,0)}} disabled={score < (document?.doc_type==='cv'?55:60)} className="inline-flex items-center gap-2 rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><CheckCircle2 className="h-4 w-4"/>Terminer</button>
             <button onClick={handlePdfDownload} disabled={exportingPdf} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
               <Download className="h-4 w-4" /> {exportingPdf ? 'Préparation...' : 'Télécharger PDF'}
             </button>
@@ -553,7 +559,7 @@ export default function CareerStudioEditor() {
                     <div className="text-sm font-semibold text-[#002050]">{section.label}</div>
                     <div className="truncate text-xs text-slate-500">{section.subtitle}</div>
                   </div>
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  {sectionComplete(section.key as any) ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}
                 </button>
               );
             })}
@@ -573,13 +579,11 @@ export default function CareerStudioEditor() {
               <h1 className="text-2xl font-semibold text-[#002050]">{isCv ? 'CV Builder' : 'Éditeur de lettre'}</h1>
               <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu live
-            </div>
+            <div className="flex items-center gap-2"><button onClick={()=>setPreviewZoom(z=>Math.max(40,z-10))} className="rounded-lg border px-2 py-1 text-xs">−</button><span className="text-xs font-semibold">{previewZoom}%</span><button onClick={()=>setPreviewZoom(z=>Math.min(120,z+10))} className="rounded-lg border px-2 py-1 text-xs">+</button><button onClick={()=>setPreviewFullscreen(true)} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"><Eye className="h-4 w-4 text-[#002050]" /> Plein écran</button></div>
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame>
+            <PreviewFrame zoom={previewZoom}>
               <div ref={printRef} data-career-print-source="true">
                 {isManualMode && manualLayout ? (
                   <ManualDocumentCanvas layout={manualLayout} />
@@ -634,7 +638,7 @@ export default function CareerStudioEditor() {
               <span className="text-2xl font-bold text-green-600">{score}/100</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: `${Math.max(8, score)}%` }} />
+              <div className="h-2 rounded-full bg-green-600" style={{ width: `${score}%` }} />
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Score local basé sur les sections complétées. Le téléchargement PDF est maintenant activé avec consommation de jeton pour les CV.
@@ -642,6 +646,8 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
+
+      {previewFullscreen && document && <div className="fixed inset-0 z-[80] overflow-auto bg-slate-900/90 p-6"><div className="mx-auto max-w-5xl"><div className="mb-4 flex justify-end"><button onClick={()=>setPreviewFullscreen(false)} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold"><X className="mr-2 inline h-4 w-4"/>Fermer</button></div><div className="flex justify-center"><div ref={printRef}>{isManualMode&&manualLayout?<ManualDocumentCanvas layout={manualLayout}/>:isCv?<CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)}/>:<LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)}/>}</div></div></div></div>}
 
       {manualLayout && (
         <ManualDocumentEditor

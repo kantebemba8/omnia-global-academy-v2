@@ -140,6 +140,18 @@ function formatDate(date?: string) {
   }
 }
 
+function templateMockup(templateKey: string) {
+  return `/career-template-mockups/individual/${templateKey}.webp`;
+}
+
+function normalizedStatus(status?: string) {
+  return status === 'completed' || status === 'finished' || status === 'published' ? 'completed' : 'draft';
+}
+
+function isRealDocument(doc: CareerDocument) {
+  return Boolean(doc.id && (doc.updated_at || doc.created_at));
+}
+
 function Card({ children, className = '', style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <div className={`rounded-2xl border bg-white shadow-sm ${className}`} style={{ borderColor: BORDER, ...style }}>
@@ -179,13 +191,26 @@ export default function DashboardCareerStudio() {
   const [tokens, setTokens] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showPremium, setShowPremium] = useState(false);
 
   const user = readUser();
   const displayName = user?.full_name || user?.name || user?.email || 'Apprenant';
   const initials = getInitials(displayName, user?.email);
 
-  const cvDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'cv'), [documents]);
-  const lmDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'lm'), [documents]);
+  const cvDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'cv' && isRealDocument(doc)), [documents]);
+  const lmDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'lm' && isRealDocument(doc)), [documents]);
+  const searchResults = useMemo(() => {
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return [] as Array<{label:string; type:string; action:()=>void}>;
+    const results: Array<{label:string; type:string; action:()=>void}> = [];
+    documents.filter(isRealDocument).filter(d => `${d.title} ${d.doc_type}`.toLowerCase().includes(q)).forEach(d => results.push({ label:d.title, type:d.doc_type === 'cv' ? 'CV' : 'Lettre', action:()=>openDoc(d.id,d.doc_type) }));
+    [...cvTemplates,...lmTemplates].filter(t => `${t.name_fr} ${t.description_fr || ''}`.toLowerCase().includes(q)).slice(0,12).forEach(t => results.push({ label:t.name_fr, type:t.template_key.startsWith('lm_') ? 'Modèle LM' : 'Modèle CV', action:()=>createDoc(t.template_key.startsWith('lm_') ? 'lm':'cv',t.template_key) }));
+    navItems.filter(n => n.label.toLowerCase().includes(q)).forEach(n => results.push({label:n.label,type:'Page',action:()=>goToView(n.id)}));
+    return results.slice(0,20);
+  }, [globalSearch, documents, cvTemplates, lmTemplates]);
   const latestCv = cvDocs[0];
   const latestLm = lmDocs[0];
 
@@ -381,7 +406,7 @@ export default function DashboardCareerStudio() {
               </div>
               <h3 className="text-base font-semibold" style={{ color: OMNIA_GOLD }}>Passez à Premium</h3>
               <p className="mt-2 text-sm leading-6 text-white/75">Accédez à des modèles exclusifs, des analyses avancées et plus.</p>
-              <button className="mt-4 h-10 w-full rounded-xl text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Découvrir Premium</button>
+              <button onClick={() => setShowPremium(true)} className="mt-4 h-10 w-full rounded-xl text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Découvrir Premium</button>
             </div>
             <button className="ml-auto mt-4 flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10" aria-label="Réduire le menu">
               <ChevronsLeft size={18} />
@@ -392,16 +417,18 @@ export default function DashboardCareerStudio() {
         {/* Main */}
         <div className="ml-[280px] flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b bg-white px-8" style={{ borderColor: BORDER }}>
-            <div className="flex h-11 w-full max-w-[560px] items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
-              <Search size={18} color="#9CA3AF" />
-              <input className="ml-3 h-full flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher un CV, une offre, un conseil..." />
-              <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-semibold" style={{ color: MUTED }}>⌘ K</span>
+            <div className="relative w-full max-w-[560px]">
+              <div className="flex h-11 items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
+                <Search size={18} color="#9CA3AF" />
+                <input value={globalSearch} onChange={(e)=>{setGlobalSearch(e.target.value);setShowSearchResults(true)}} onFocus={()=>setShowSearchResults(true)} className="ml-3 h-full flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher dans Omnia Career..." />
+                {globalSearch && <button onClick={()=>setGlobalSearch('')} aria-label="Effacer"><X size={16} color={MUTED}/></button>}
+              </div>
+              {showSearchResults && globalSearch.trim() && <div className="absolute left-0 right-0 top-13 z-50 max-h-80 overflow-auto rounded-2xl border bg-white p-2 shadow-xl" style={{borderColor:BORDER}}>
+                {searchResults.length ? searchResults.map((r,i)=><button key={`${r.type}-${r.label}-${i}`} onClick={()=>{r.action();setShowSearchResults(false);setGlobalSearch('')}} className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"><span className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{r.label}</span><span className="text-xs" style={{color:MUTED}}>{r.type}</span></button>) : <div className="p-4 text-sm" style={{color:MUTED}}>Aucun résultat.</div>}
+              </div>}
             </div>
             <div className="ml-6 flex items-center gap-4">
-              <button className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Notifications">
-                <Bell size={18} color={OMNIA_BLUE} />
-                <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: OMNIA_GOLD }}>3</span>
-              </button>
+              <div className="relative"><button onClick={()=>setShowNotifications(v=>!v)} className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Notifications"><Bell size={18} color={OMNIA_BLUE} /></button>{showNotifications && <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border bg-white p-4 shadow-xl" style={{borderColor:BORDER}}><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Notifications</h3><p className="mt-3 text-sm" style={{color:MUTED}}>Aucune notification non lue.</p></div>}</div>
               <div className="h-8 w-px bg-gray-200" />
               <button className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-gray-100">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: OMNIA_BLUE }}>{initials}</div>
@@ -426,168 +453,39 @@ export default function DashboardCareerStudio() {
           </main>
         </div>
       </div>
+      {showPremium && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-xl font-semibold" style={{color:OMNIA_BLUE}}>Omnia Career Premium</h2><p className="mt-2 text-sm" style={{color:MUTED}}>Modèles premium, coaching humain sur demande et analyses avancées. Les tarifs sont définis par le Super Admin.</p></div><button onClick={()=>setShowPremium(false)}><X size={20}/></button></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border p-4" style={{borderColor:BORDER}}><b>Modèles premium</b><p className="mt-1 text-sm" style={{color:MUTED}}>Accès aux modèles CV et LM premium.</p></div><div className="rounded-2xl border p-4" style={{borderColor:BORDER}}><b>Coaching humain</b><p className="mt-1 text-sm" style={{color:MUTED}}>Demande de rendez-vous auprès de la plateforme.</p></div></div><button onClick={()=>{setShowPremium(false);goToView('settings')}} className="mt-6 w-full rounded-xl py-3 font-semibold text-white" style={{background:OMNIA_GOLD}}>Voir les options disponibles</button></div></div>}
     </div>
   );
 }
 
 function DashboardView({
-  loading,
-  cvDocs,
-  lmDocs,
-  latestCv,
-  latestLm,
-  templates,
-  tokens,
-  quickActions,
-  setActiveView,
-  createDoc,
-  openDoc,
+  loading, cvDocs, lmDocs, templates, tokens, quickActions, setActiveView, createDoc, openDoc,
 }: {
-  loading: boolean;
-  cvDocs: CareerDocument[];
-  lmDocs: CareerDocument[];
-  latestCv?: CareerDocument;
-  latestLm?: CareerDocument;
-  templates: Template[];
-  tokens: number;
-  quickActions: { label: string; icon: typeof FileText; action: () => void }[];
-  setActiveView: (view: ActiveView) => void;
-  createDoc: (type: DocType, templateKey?: string) => void;
-  openDoc: (id?: string, type?: DocType) => void;
+  loading: boolean; cvDocs: CareerDocument[]; lmDocs: CareerDocument[]; latestCv?: CareerDocument; latestLm?: CareerDocument;
+  templates: Template[]; tokens: number; quickActions: { label: string; icon: typeof FileText; action: () => void }[];
+  setActiveView: (view: ActiveView) => void; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void;
 }) {
-  const stats = [
-    { label: 'CV créés', value: cvDocs.length, sub: `${Math.max(0, cvDocs.length ? 1 : 0)} à améliorer`, icon: FileText, action: 'Voir mes CV', view: 'cv' as ActiveView, tone: 'blue' },
-    { label: 'Lettres créées', value: lmDocs.length, sub: 'lettres enregistrées', icon: Mail, action: 'Voir mes lettres', view: 'lm' as ActiveView, tone: 'green' },
-    { label: 'Jetons CV', value: tokens, sub: 'disponibles', icon: Coins, action: 'Voir mes jetons', view: 'settings' as ActiveView, tone: 'gold' },
-    { label: 'Modèles CV', value: templates.length || 20, sub: 'templates disponibles', icon: Target, action: 'Choisir un modèle', view: 'cv' as ActiveView, tone: 'purple' },
+  const cvDrafts=cvDocs.filter(d=>normalizedStatus(d.status)==='draft');
+  const cvDone=cvDocs.filter(d=>normalizedStatus(d.status)==='completed');
+  const lmDrafts=lmDocs.filter(d=>normalizedStatus(d.status)==='draft');
+  const lmDone=lmDocs.filter(d=>normalizedStatus(d.status)==='completed');
+  const recent=[...cvDocs,...lmDocs].sort((a,b)=>new Date(b.updated_at||0).getTime()-new Date(a.updated_at||0).getTime()).slice(0,5);
+  const stats=[
+    {label:'CV brouillons',value:cvDrafts.length,view:'cv' as ActiveView,icon:FileText},
+    {label:'CV terminés',value:cvDone.length,view:'cv' as ActiveView,icon:CheckCircle2},
+    {label:'LM brouillons',value:lmDrafts.length,view:'lm' as ActiveView,icon:Mail},
+    {label:'LM terminées',value:lmDone.length,view:'lm' as ActiveView,icon:ShieldCheck},
+    {label:'Jetons disponibles',value:tokens,view:'settings' as ActiveView,icon:Coins},
   ];
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: 'rgba(191,136,19,0.35)', background: 'rgba(191,136,19,0.08)', color: OMNIA_GOLD }}>
-          <Sparkles size={14} /> Omnia Career
-        </div>
-        <h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>Bienvenue dans Omnia Career</h1>
-        <p className="mt-1 text-sm" style={{ color: MUTED }}>Votre espace pour créer vos CV, lettres de motivation et préparer vos candidatures.</p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          const colors = {
-            blue: ['rgba(0,32,80,0.08)', OMNIA_BLUE],
-            green: ['#DCFCE7', '#16A34A'],
-            gold: ['rgba(191,136,19,0.12)', OMNIA_GOLD],
-            purple: ['#F3E8FF', '#7E22CE'],
-          }[stat.tone as 'blue' | 'green' | 'gold' | 'purple'];
-          return (
-            <Card key={stat.label} className="p-5">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: colors[0] }}>
-                  <Icon size={22} color={colors[1]} />
-                </div>
-                <div>
-                  <div className="text-sm font-medium" style={{ color: MUTED }}>{stat.label}</div>
-                  <div className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{loading ? '...' : stat.value}</div>
-                  <div className="text-xs" style={{ color: MUTED }}>{stat.sub}</div>
-                </div>
-              </div>
-              <button onClick={() => setActiveView(stat.view)} className="mt-4 flex w-full items-center justify-between border-t pt-3 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
-                {stat.action} <ChevronRight size={16} />
-              </button>
-            </Card>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1.15fr_1fr]">
-        <Card className="p-5">
-          <SectionTitle title="Prochaines actions" action="Voir tout" />
-          <div className="space-y-3">
-            <ActionRow icon={FileText} title="Améliorer mon CV" subtitle="Optimisez votre CV principal avant export PDF." badge="Prioritaire" onClick={() => openDoc(latestCv?.id, 'cv')} />
-            <ActionRow icon={Mail} title="Personnaliser une lettre" subtitle="Adaptez votre lettre à une offre précise." badge="Aujourd’hui" onClick={() => openDoc(latestLm?.id, 'lm')} />
-            <ActionRow icon={MessageSquare} title="Préparer un entretien" subtitle="Répondez aux questions fréquentes." badge="Demain" onClick={() => setActiveView('interview')} />
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <SectionTitle title="Mon CV le plus récent" action="Voir tous mes CV" />
-          <div className="flex gap-5">
-            <MiniCvPreview />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{latestCv?.title || 'Aucun CV créé'}</h3>
-                <SmallBadge>Principal</SmallBadge>
-              </div>
-              <p className="mt-1 text-sm" style={{ color: MUTED }}>Mis à jour le {formatDate(latestCv?.updated_at)}</p>
-              <div className="mt-4 space-y-2 text-sm">
-                <MetricLine label="Score d’optimisation" value={`${latestCv?.ats_score || 82}/100`} />
-                <MetricLine label="Mots-clés pertinents" value="18" />
-                <MetricLine label="Lisibilité" value="Excellente" />
-              </div>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button onClick={() => openDoc(latestCv?.id, 'cv')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}><Edit2 size={15} /> Modifier</button>
-                <button className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><Download size={15} /> Télécharger</button>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <SectionTitle title="Modèles recommandés" action="Voir tous les modèles" />
-          <div className="grid grid-cols-3 gap-3">
-            {(templates.length ? templates : fallbackCvTemplates).slice(0, 3).map((template, index) => (
-              <button key={template.template_key} onClick={() => createDoc('cv', template.template_key)} className="text-left">
-                <TemplateMini selected={index === 0} />
-                <div className="mt-2 text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{template.name_fr}</div>
-                <div className="text-xs" style={{ color: MUTED }}>{template.description_fr || 'Modèle CV'}</div>
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_1fr]">
-        <Card className="p-5">
-          <SectionTitle title="Démarrage rapide" />
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-2">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button key={action.label} onClick={action.action} className="rounded-2xl border p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: BORDER }}>
-                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={20} color={OMNIA_BLUE} /></div>
-                  <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{action.label}</div>
-                  <div className="mt-1 text-xs" style={{ color: MUTED }}>Commencer</div>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <SectionTitle title="Activité récente" action="Voir toute l’activité" />
-          <div className="space-y-3 text-sm">
-            <ActivityItem icon={FileText} title="CV principal mis à jour" date="10 mai 2025 à 16:42" />
-            <ActivityItem icon={Mail} title="Lettre de motivation modifiée" date="9 mai 2025 à 11:15" />
-            <ActivityItem icon={Calendar} title="Entretien planifié" date="8 mai 2025 à 09:30" />
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-4xl" style={{ color: OMNIA_GOLD }}>“</div>
-              <h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Conseil du jour</h2>
-              <p className="mt-4 text-sm leading-7" style={{ color: '#374151' }}>Un CV ciblé augmente vos chances d’entretien. Adaptez-le à chaque offre et ajoutez des résultats mesurables.</p>
-              <button className="mt-5 rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: 'rgba(191,136,19,0.35)', color: OMNIA_GOLD }}>Voir tous les conseils</button>
-            </div>
-            <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(191,136,19,0.10)' }}><Sparkles size={28} color={OMNIA_GOLD} /></div>
-          </div>
-        </Card>
-      </div>
+  return <div className="space-y-6">
+    <div><h1 className="text-2xl font-semibold" style={{color:OMNIA_BLUE}}>Tableau de bord Omnia Career</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Un aperçu simple de vos documents et candidatures réelles.</p></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{stats.map(st=>{const Icon=st.icon;return <button key={st.label} onClick={()=>setActiveView(st.view)} className="rounded-2xl border bg-white p-5 text-left shadow-sm" style={{borderColor:BORDER}}><Icon size={20} color={OMNIA_BLUE}/><div className="mt-3 text-2xl font-semibold" style={{color:OMNIA_BLUE}}>{loading?'…':st.value}</div><div className="text-sm" style={{color:MUTED}}>{st.label}</div></button>})}</div>
+    <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <Card className="p-5"><SectionTitle title="Actions principales"/><div className="grid gap-3 sm:grid-cols-2">{quickActions.map(a=>{const Icon=a.icon;return <button key={a.label} onClick={a.action} className="flex items-center gap-3 rounded-2xl border p-4 text-left hover:bg-slate-50" style={{borderColor:BORDER}}><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}><Icon size={18} color={OMNIA_BLUE}/></div><span className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{a.label}</span></button>})}</div></Card>
+      <Card className="p-5"><SectionTitle title="Activité récente"/>{recent.length?<div className="space-y-3">{recent.map(d=><button key={d.id} onClick={()=>openDoc(d.id,d.doc_type)} className="flex w-full items-center justify-between rounded-xl border p-3 text-left" style={{borderColor:BORDER}}><div><div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{d.title}</div><div className="text-xs" style={{color:MUTED}}>{d.doc_type==='cv'?'CV':'Lettre'} · {normalizedStatus(d.status)==='completed'?'Terminé':'Brouillon'} · {formatDate(d.updated_at)}</div></div><ChevronRight size={16}/></button>)}</div>:<EmptyState text="Aucune activité enregistrée."/>}</Card>
     </div>
-  );
+    <Card className="p-5"><div className="flex items-center justify-between"><SectionTitle title="Modèles CV officiels"/><button onClick={()=>setActiveView('cv')} className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>Voir les 20 modèles</button></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">{(templates.length?templates:fallbackCvTemplates).slice(0,5).map(t=><button key={t.template_key} onClick={()=>createDoc('cv',t.template_key)} className="overflow-hidden rounded-2xl border bg-white text-left" style={{borderColor:BORDER}}><img src={templateMockup(t.template_key)} alt={t.name_fr} className="aspect-[0.71] w-full object-cover object-top"/><div className="p-3 text-sm font-semibold" style={{color:OMNIA_BLUE}}>{t.name_fr}</div></button>)}</div></Card>
+  </div>;
 }
 
 function ActionRow({ icon: Icon, title, subtitle, badge, onClick }: { icon: typeof FileText; title: string; subtitle: string; badge: string; onClick: () => void }) {
@@ -675,7 +573,7 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[270px_1fr_330px]">
         <Card className="p-5"><SectionTitle title="Mes lettres" />{documents.length ? <div className="space-y-3">{documents.slice(0, 4).map((doc) => <button key={doc.id} onClick={() => openDoc(doc.id, 'lm')} className="w-full rounded-xl border p-3 text-left hover:bg-gray-50" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color: MUTED }}>Modifiée le {formatDate(doc.updated_at)}</div></button>)}</div> : <EmptyState text="Aucune lettre créée." action="Créer ma première lettre" onAction={() => createDoc('lm')} />}</Card>
         <Card className="p-5"><LetterPreview /></Card>
-        <Card className="p-5"><SectionTitle title="Suggestions IA" /><Suggestion title="Mettre en avant votre expérience" text="Soulignez vos projets complets et résultats mesurables." /><Suggestion title="Valoriser votre impact" text="Ajoutez des chiffres concrets pour renforcer votre candidature." /><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
+        <Card className="p-5"><SectionTitle title="Suggestions IA" /><p className="text-sm" style={{color:MUTED}}>Les suggestions apparaîtront uniquement après analyse réelle de votre lettre.</p><div className="mt-5 border-t pt-5" style={{ borderColor: BORDER }}><SectionTitle title="Modèles LM" />{(templates.length ? templates : fallbackLmTemplates).slice(0, 3).map(t => <button key={t.template_key} onClick={() => createDoc('lm', t.template_key)} className="mb-2 flex w-full items-center justify-between rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><span>{t.name_fr}</span><ChevronRight size={16} /></button>)}</div></Card>
       </div>
       <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} />
     </div>
@@ -683,42 +581,27 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
 }
 
 function InterviewView({ jobId }: { jobId?: string }) {
-  const [targetJob, setTargetJob] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!jobId || !SUPABASE_URL) return;
-    setLoading(true);
-    fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get', job_id: jobId }),
-    })
-      .then((r) => r.json())
-      .then((d) => setTargetJob(d.job || null))
-      .catch(() => setTargetJob(null))
-      .finally(() => setLoading(false));
-  }, [jobId]);
-
-  const questions = targetJob ? [
-    `Pourquoi êtes-vous intéressé(e) par le poste ${targetJob.title} ?`,
-    `Quelles compétences de votre CV correspondent le mieux à cette offre ?`,
-    `Décrivez une situation où vous avez démontré une compétence clé demandée par ${targetJob.recruiter_company || 'l’entreprise'}.`,
-    'Préparez une réponse STAR sur un projet ou une expérience pertinente.',
-  ] : ['Parlez-moi de vous.', 'Pourquoi voulez-vous rejoindre cette entreprise ?', 'Quels sont vos points forts ?', 'Décrivez un défi technique.'];
-
-  return (
-    <div className="space-y-5">
-      <PageHeader title="Préparation entretien" subtitle={targetJob ? `Préparation personnalisée pour l’offre ${targetJob.title}.` : 'Entraînez-vous, maîtrisez les questions clés et gagnez en confiance.'} />
-      {targetJob && <Card className="p-5" style={{ borderColor: 'rgba(191,136,19,0.35)', background: 'rgba(191,136,19,0.06)' } as any}><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Offre ciblée</h2><p className="mt-1 text-sm" style={{ color: MUTED }}>{targetJob.title} — {targetJob.recruiter_company || 'Entreprise'}</p><div className="mt-3 flex flex-wrap gap-2">{(targetJob.skills_required || []).slice(0, 6).map((skill: string) => <SmallBadge key={skill} tone="gold">{skill}</SmallBadge>)}</div></div><SmallBadge tone="gold">IA adaptée à l’offre</SmallBadge></div></Card>}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr_360px]">
-        <Card className="p-5"><SectionTitle title="Questions probables" action={loading ? 'Chargement…' : undefined} /><div className="space-y-3">{questions.map((q) => <div key={q} className="rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>{q}</div>)}</div></Card>
-        <Card className="p-5 text-white" style={{ background: OMNIA_BLUE }}><h2 className="text-base font-semibold">Simulation entretien</h2><p className="mt-2 text-sm text-white/75">Entraînez-vous dans des conditions réalistes avec feedback personnalisé.</p><div className="mt-5 space-y-3"><select className="h-10 w-full rounded-xl border border-white/20 bg-white/10 px-3 text-sm"><option>{targetJob?.title || 'Entretien général'}</option></select><button className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>Commencer une simulation</button></div></Card>
-        <Card className="p-5"><SectionTitle title="Checklist STAR" />{['Situation', 'Tâche', 'Action', 'Résultat'].map((item) => <div key={item} className="mb-3 flex items-center justify-between rounded-xl border p-3" style={{ borderColor: BORDER }}><span className="text-sm font-medium" style={{ color: OMNIA_BLUE }}>{item}</span><span className="h-4 w-4 rounded border" style={{ borderColor: BORDER }} /></div>)}</Card>
-      </div>
-      <Card className="p-5"><SectionTitle title="À préparer avant l’entretien" /><div className="grid gap-3 md:grid-cols-3">{['Relire l’offre et relever les mots-clés', 'Préparer 3 exemples STAR', 'Préparer 3 questions à poser'].map(q => <div key={q} className="rounded-xl border p-3 text-sm" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>{q}</div>)}</div></Card>
+  const [category,setCategory]=useState('general');
+  const [selected,setSelected]=useState<number|null>(null);
+  const [answers,setAnswers]=useState<Record<string,string>>(()=>{try{return JSON.parse(localStorage.getItem('omnia_interview_answers')||'{}')}catch{return {}}});
+  const [star,setStar]=useState({Situation:false,Tâche:false,Action:false,Résultat:false});
+  const banks:Record<string,string[]>={
+    general:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?'],
+    rh:['Quelles sont vos principales forces ?','Quel est votre axe d’amélioration actuel ?','Pourquoi souhaitez-vous quitter votre poste actuel ?'],
+    behavioral:['Décrivez une situation où vous avez résolu un problème difficile.','Parlez d’un conflit professionnel et de sa résolution.','Donnez un exemple de résultat mesurable obtenu.'],
+    technical:['Quelles compétences techniques maîtrisez-vous le mieux ?','Expliquez un projet technique complexe auquel vous avez participé.','Comment contrôlez-vous la qualité de votre travail ?'],
+    sector:['Quels sont les enjeux actuels de votre secteur ?','Quelles normes ou réglementations connaissez-vous ?','Comment restez-vous à jour dans votre domaine ?'],
+  };
+  const questions=banks[category]||banks.general;
+  const saveAnswer=(q:string,v:string)=>{const n={...answers,[q]:v};setAnswers(n);localStorage.setItem('omnia_interview_answers',JSON.stringify(n))};
+  return <div className="space-y-5"><PageHeader title="Préparation entretien" subtitle="Questions officielles, réponses personnelles et méthode STAR."/>
+    <div className="flex flex-wrap gap-2">{[['general','Général'],['rh','RH'],['behavioral','Comportemental'],['technical','Technique'],['sector','Sectoriel']].map(([k,l])=><button key={k} onClick={()=>{setCategory(k);setSelected(null)}} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{background:category===k?OMNIA_BLUE:'white',color:category===k?'white':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{l}</button>)}</div>
+    <div className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
+      <Card className="p-5"><SectionTitle title="Banque de questions"/><div className="space-y-3">{questions.map((q,i)=><div key={q} className="rounded-2xl border" style={{borderColor:BORDER}}><button onClick={()=>setSelected(selected===i?null:i)} className="flex w-full items-center justify-between p-4 text-left"><span className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}</span><ChevronDown className={selected===i?'rotate-180':''} size={16}/></button>{selected===i&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>Le recruteur cherche une réponse concrète, structurée et illustrée par un résultat. Utilisez STAR lorsque la question porte sur une expérience.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-32 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/></div>}</div>)}</div></Card>
+      <Card className="p-5"><SectionTitle title="Checklist STAR"/><p className="mb-4 text-sm" style={{color:MUTED}}>STAR vérifie que votre exemple contient le contexte, votre responsabilité, vos actions et le résultat obtenu.</p>{Object.keys(star).map(k=><label key={k} className="mb-3 flex cursor-pointer items-center justify-between rounded-xl border p-3" style={{borderColor:BORDER}}><div><div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{k}</div><div className="text-xs" style={{color:MUTED}}>{k==='Situation'?'Contexte précis':k==='Tâche'?'Objectif ou responsabilité':k==='Action'?'Ce que vous avez personnellement fait':'Impact chiffré ou observable'}</div></div><input type="checkbox" checked={(star as any)[k]} onChange={e=>setStar({...star,[k]:e.target.checked})}/></label>)}<div className="mt-4 text-sm font-semibold" style={{color:OMNIA_BLUE}}>Progression : {Object.values(star).filter(Boolean).length}/4</div></Card>
     </div>
-  );
+    <Card className="p-5"><SectionTitle title="Simulation IA"/><p className="text-sm" style={{color:MUTED}}>La simulation personnalisée nécessite le service IA configuré par la plateforme. Aucune fausse réponse n’est générée localement.</p><button disabled className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white opacity-50" style={{background:OMNIA_BLUE}}>Démarrer une simulation IA</button></Card>
+  </div>;
 }
 
 type TrackedApplication = {
@@ -813,18 +696,20 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
 }
 
 function ProfileView({ displayName }: { displayName: string }) {
-  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Vos informations professionnelles réelles apparaîtront ici." /><Card className="p-6"><div className="flex items-center gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: OMNIA_BLUE }}>{getInitials(displayName)}</div><div><h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</h2><p className="text-sm" style={{ color: MUTED }}>Complétez votre profil carrière pour ajouter un poste, une localisation, des compétences et vos documents.</p></div></div></Card><EmptyState text="Aucune donnée professionnelle enregistrée pour le moment." action="Compléter mon profil" /></div>;
+  const navigate=useNavigate(); const user=readUser() as any; const photo=user?.avatar_url||user?.photo_url||'';
+  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Ce profil utilise les mêmes informations que votre compte principal."/><Card className="p-6"><div className="flex flex-wrap items-center gap-5">{photo?<img src={photo} alt="Photo de profil" className="h-24 w-24 rounded-full object-cover"/>:<div className="flex h-24 w-24 items-center justify-center rounded-full text-xl font-bold text-white" style={{background:OMNIA_BLUE}}>{getInitials(displayName)}</div>}<div className="flex-1"><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>{displayName}</h2><p className="mt-1 text-sm" style={{color:MUTED}}>{user?.professional_title||user?.job_title||'Titre professionnel non renseigné'}</p><p className="mt-1 text-sm" style={{color:MUTED}}>{user?.email||''}</p></div><button onClick={()=>navigate('/dashboard/profil')} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Modifier le profil principal</button></div></Card><Card className="p-5"><SectionTitle title="Synchronisation du profil"/><p className="text-sm" style={{color:MUTED}}>Les changements effectués dans le profil principal sont utilisés dans Omnia Career. Une seule source de données évite les informations différentes entre l’inscription et Career Studio.</p></Card></div>;
 }
 
 function CoachingView() {
-  const [question, setQuestion] = useState('');
-  return <div className="space-y-5"><PageHeader title="Coaching carrière IA" subtitle="Un accompagnement personnalisé basé uniquement sur vos objectifs et vos documents." /><div className="grid gap-5 xl:grid-cols-2"><Card className="p-6"><SectionTitle title="Démarrer mon coaching" /><p className="text-sm" style={{ color: MUTED }}>Décrivez votre objectif, votre difficulté ou le poste recherché. Aucune progression fictive n’est affichée.</p><textarea value={question} onChange={e => setQuestion(e.target.value)} className="mt-4 min-h-40 w-full rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }} placeholder="Exemple : Je recherche un stage QHSE au Luxembourg et je veux améliorer ma stratégie de candidature." /><button disabled={!question.trim()} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: OMNIA_BLUE }}>Lancer le coaching IA</button></Card><Card className="p-6"><SectionTitle title="Mon historique" /><EmptyState text="Aucune session de coaching enregistrée." /></Card></div></div>;
+  const [goal,setGoal]=useState(''); const [request,setRequest]=useState(''); const [saved,setSaved]=useState(false);
+  const submit=()=>{if(!request.trim())return; localStorage.setItem('omnia_human_coaching_request',JSON.stringify({message:request,status:'requested',created_at:new Date().toISOString()}));setSaved(true)};
+  return <div className="space-y-5"><PageHeader title="Coaching carrière" subtitle="Coaching IA lorsque le service est disponible, ou accompagnement humain sur demande."/><div className="grid gap-5 xl:grid-cols-2"><Card className="p-6"><SectionTitle title="Coaching IA"/><textarea value={goal} onChange={e=>setGoal(e.target.value)} className="min-h-40 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Décrivez votre objectif professionnel..."/><button disabled className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white opacity-50" style={{background:OMNIA_BLUE}}>Service IA à configurer</button><p className="mt-3 text-xs" style={{color:MUTED}}>Aucune réponse IA fictive n’est affichée.</p></Card><Card className="p-6"><div className="flex items-center justify-between"><SectionTitle title="Coaching humain sur demande"/><SmallBadge tone="gold">Premium</SmallBadge></div><textarea value={request} onChange={e=>setRequest(e.target.value)} className="min-h-40 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Expliquez le type d’accompagnement souhaité..."/><button onClick={submit} disabled={!request.trim()} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_GOLD}}>Envoyer ma demande</button>{saved&&<p className="mt-3 text-sm text-green-700">Demande enregistrée. La plateforme pourra vous recontacter.</p>}</Card></div></div>;
 }
 
 function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: number; user: any }) {
-  const name = user?.full_name || user?.name || '';
-  const email = user?.email || '';
-  return <div className="space-y-5"><PageHeader title="Paramètres" subtitle="Gérez vos informations réelles et les préférences Omnia Career." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Compte" /><Field label="Nom complet" value={name} /><Field label="Adresse e-mail" value={email} />{!name && !email && <p className="text-sm" style={{ color: MUTED }}>Aucune donnée de compte disponible.</p>}</Card><Card className="p-5"><SectionTitle title="Notifications" /><p className="text-sm" style={{ color: MUTED }}>Les préférences seront enregistrées quand vous les activerez. Aucun réglage fictif n’est précoché.</p></Card><Card className="p-5"><SectionTitle title="Jetons CV" /><div className="text-3xl font-semibold" style={{ color: OMNIA_BLUE }}>{tokens}</div><p className="text-sm" style={{ color: MUTED }}>jeton(s) disponible(s)</p>{(packs || []).slice(0,2).map(p => <div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{ borderColor: BORDER }}><b>{p.name_fr}</b> — {p.tokens + (p.bonus_tokens || 0)} jetons</div>)}</Card></div></div>;
+  const [prefs,setPrefs]=useState(()=>{try{return JSON.parse(localStorage.getItem('omnia_career_preferences')||'{"notifications":false,"profileVisible":false,"aiConsent":false,"language":"fr"}')}catch{return {notifications:false,profileVisible:false,aiConsent:false,language:'fr'}}});
+  const save=(next:any)=>{setPrefs(next);localStorage.setItem('omnia_career_preferences',JSON.stringify(next))};
+  return <div className="space-y-5"><PageHeader title="Paramètres Omnia Career" subtitle="Réglages réels propres à votre espace carrière."/><div className="grid gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Préférences"/><label className="mb-4 block text-sm">Langue<select value={prefs.language} onChange={e=>save({...prefs,language:e.target.value})} className="mt-1 h-11 w-full rounded-xl border px-3" style={{borderColor:BORDER}}><option value="fr">Français</option><option value="en">English</option></select></label>{[['notifications','Notifications Career'],['profileVisible','Profil visible aux recruteurs'],['aiConsent','Autoriser l’utilisation IA de mes documents']].map(([k,l])=><label key={k} className="mb-3 flex items-center justify-between rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><span>{l}</span><input type="checkbox" checked={Boolean(prefs[k])} onChange={e=>save({...prefs,[k]:e.target.checked})}/></label>)}</Card><Card className="p-5"><SectionTitle title="Jetons Omnia Career"/><div className="text-3xl font-semibold" style={{color:OMNIA_BLUE}}>{tokens}</div><p className="mt-1 text-sm" style={{color:MUTED}}>Solde unique utilisé uniquement dans Omnia Career.</p>{packs.slice(0,3).map(p=><div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><b>{p.name_fr}</b><div>{p.tokens+(p.bonus_tokens||0)} jetons</div></div>)}</Card><Card className="p-5"><SectionTitle title="Données et sécurité"/><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm" style={{borderColor:BORDER}}>Exporter mes documents</button><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm text-red-600" style={{borderColor:BORDER}}>Supprimer un document</button><p className="text-xs" style={{color:MUTED}}>Les modifications de compte et mot de passe se font depuis le profil principal.</p></Card></div></div>;
 }
 
 function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
@@ -856,7 +741,7 @@ function EmptyState({ text, action, onAction }: { text: string; action?: string;
 }
 
 function DocumentsList({ title, documents, empty, createLabel, onCreate, onOpen, onDelete }: { title: string; documents: CareerDocument[]; empty: string; createLabel: string; onCreate: () => void; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
-  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Mis à jour le {formatDate(doc.updated_at)}</div><div className="mt-4 flex gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-xl px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onDelete(doc.id)} className="rounded-xl border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} /></button></div></div>)}</div>}</Card>;
+  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 flex items-center gap-2 text-xs" style={{ color: MUTED }}><span>{normalizedStatus(doc.status)==='completed'?'Terminé':'Brouillon'}</span><span>·</span><span>{formatDate(doc.updated_at)}</span></div><div className="mt-4 flex gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-xl px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onDelete(doc.id)} className="rounded-xl border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} /></button></div></div>)}</div>}</Card>;
 }
 
 function Badge({ label }: { label: string }) {
