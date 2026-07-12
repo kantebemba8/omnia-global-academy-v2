@@ -249,23 +249,31 @@ export function createDefaultDesign(docType: CareerDocType): DesignOptions | LmD
 }
 
 export function calculateBasicScore(docType: CareerDocType, data: DocData | LmData): number {
+  const text = (value: unknown) => String(value || '').trim();
   if (docType === 'lm') {
     const lm = data as LmData;
-    const fields = [lm.sender?.name, lm.sender?.email, lm.recipient?.company, lm.subject, lm.intro, lm.motivation, lm.skills_paragraph, lm.closing];
-    return Math.min(98, Math.round((fields.filter(Boolean).length / fields.length) * 100));
+    let score = 0;
+    if (text(lm.sender?.name) && text(lm.sender?.email)) score += 12;
+    if (text(lm.recipient?.company)) score += 10;
+    if (text(lm.subject)) score += 8;
+    if (text(lm.intro).length >= 30) score += 15;
+    if (text(lm.motivation).length >= 80) score += 25;
+    if (text(lm.skills_paragraph).length >= 50) score += 15;
+    if (text(lm.company_link).length >= 30) score += 5;
+    if (text(lm.closing).length >= 20) score += 10;
+    return Math.min(100, score);
   }
-
   const cv = data as DocData;
   let score = 0;
-  if (cv.name) score += 10;
-  if (cv.title) score += 10;
-  if (cv.summary?.length > 80) score += 15;
-  if (cv.contact?.email) score += 8;
-  if (cv.contact?.phone) score += 7;
-  if (cv.experiences?.length) score += 18;
-  if (cv.education?.length) score += 10;
-  if (cv.skills?.length >= 4) score += 12;
-  if (cv.languages?.length) score += 5;
-  if (cv.certifications_external?.length || cv.omnia_formations?.length) score += 5;
-  return Math.min(98, score);
+  if (text(cv.name) && text(cv.contact?.email)) score += 12;
+  if (text(cv.title)) score += 8;
+  if (text(cv.summary).length >= 60) score += 12;
+  if (text(cv.contact?.phone)) score += 4;
+  if ((cv.skills || []).filter(x => text(typeof x === 'string' ? x : (x as any)?.name)).length >= 4) score += 12;
+  if ((cv.experiences || []).some(x => text(x?.title) && text(x?.company) && text(x?.description).length >= 30)) score += 22;
+  if ((cv.education || []).some(x => text(x?.degree) && text(x?.school))) score += 12;
+  if ((cv.languages || []).some(x => text(x?.name) && text(x?.level))) score += 6;
+  if ((cv.certifications_external || []).some(x => text(x?.name)) || (cv.omnia_formations || []).some((x:any) => text(x?.name || x?.title))) score += 6;
+  if ((cv.projects || []).some(x => text(x?.name) && text(x?.description).length >= 20)) score += 6;
+  return Math.min(100, score);
 }

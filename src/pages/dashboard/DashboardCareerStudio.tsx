@@ -195,6 +195,7 @@ export default function DashboardCareerStudio() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const user = readUser();
   const displayName = user?.full_name || user?.name || user?.email || 'Apprenant';
@@ -347,7 +348,7 @@ export default function DashboardCareerStudio() {
 
       <div className="flex min-h-screen">
         {/* Sidebar Omnia Career */}
-        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col text-white shadow-xl" style={{ background: OMNIA_BLUE }}>
+        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col overflow-hidden text-white shadow-xl" style={{ background: OMNIA_BLUE }}>
           <div className="px-5 pb-4 pt-5">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white">
@@ -364,19 +365,7 @@ export default function DashboardCareerStudio() {
             </div>
           </div>
 
-          <div className="px-3 pb-2">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="flex h-10 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition hover:bg-white/10"
-              style={{ color: 'rgba(255,255,255,0.88)' }}
-            >
-              <ChevronRight size={18} className="rotate-180" />
-              <span>Retour au dashboard</span>
-            </button>
-          </div>
-
-          <nav className="flex-1 space-y-1 px-3">
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeView === item.id;
@@ -399,7 +388,7 @@ export default function DashboardCareerStudio() {
             })}
           </nav>
 
-          <div className="px-5 pb-6">
+          <div className="shrink-0 border-t border-white/10 bg-[#002050] px-5 pb-5 pt-4">
             <div className="rounded-2xl border p-4" style={{ borderColor: 'rgba(191,136,19,0.45)', background: 'rgba(255,255,255,0.05)' }}>
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: OMNIA_GOLD }}>
                 <Crown size={18} color="white" />
@@ -430,14 +419,21 @@ export default function DashboardCareerStudio() {
             <div className="ml-6 flex items-center gap-4">
               <div className="relative"><button onClick={()=>setShowNotifications(v=>!v)} className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Notifications"><Bell size={18} color={OMNIA_BLUE} /></button>{showNotifications && <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border bg-white p-4 shadow-xl" style={{borderColor:BORDER}}><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Notifications</h3><p className="mt-3 text-sm" style={{color:MUTED}}>Aucune notification non lue.</p></div>}</div>
               <div className="h-8 w-px bg-gray-200" />
-              <button className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-gray-100">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: OMNIA_BLUE }}>{initials}</div>
-                <div className="hidden text-left md:block">
-                  <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</div>
-                  <div className="text-xs" style={{ color: MUTED }}>Apprenant</div>
-                </div>
-                <ChevronDown size={16} color={MUTED} />
-              </button>
+              <div className="relative">
+                <button onClick={() => setShowProfileMenu(v => !v)} className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-gray-100">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: OMNIA_BLUE }}>{initials}</div>
+                  <div className="hidden text-left md:block">
+                    <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</div>
+                    <div className="text-xs" style={{ color: MUTED }}>Apprenant</div>
+                  </div>
+                  <ChevronDown size={16} color={MUTED} className={showProfileMenu ? 'rotate-180' : ''} />
+                </button>
+                {showProfileMenu && <div className="absolute right-0 top-12 z-50 w-64 rounded-2xl border bg-white p-2 shadow-xl" style={{borderColor:BORDER}}>
+                  <button onClick={() => navigate('/dashboard')} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50" style={{color:OMNIA_BLUE}}><ChevronRight size={16} className="rotate-180"/>Retour au Dashboard</button>
+                  <button onClick={() => goToView('profile')} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50" style={{color:OMNIA_BLUE}}><UserRound size={16}/>Mon profil carrière</button>
+                  <button onClick={() => goToView('settings')} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50" style={{color:OMNIA_BLUE}}><Settings size={16}/>Paramètres</button>
+                </div>}
+              </div>
             </div>
           </header>
 
@@ -581,26 +577,65 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
 }
 
 function InterviewView({ jobId }: { jobId?: string }) {
+  const categories = [
+    ['general','Général'],['rh','RH'],['behavioral','Comportemental'],['technical','Technique'],['sector','Sectoriel'],['job','Lié à une offre']
+  ] as const;
+  const banks:Record<string,string[]>={
+    general:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?','Quel projet vous rend le plus fier ?','Comment organisez-vous vos priorités ?','Où vous voyez-vous dans trois ans ?'],
+    rh:['Quelles sont vos principales forces ?','Quel est votre axe d’amélioration actuel ?','Pourquoi souhaitez-vous quitter votre poste actuel ?','Quel environnement de travail vous convient le mieux ?','Comment recevez-vous un feedback difficile ?','Qu’attendez-vous de votre futur manager ?'],
+    behavioral:['Décrivez une situation où vous avez résolu un problème difficile.','Parlez d’un conflit professionnel et de sa résolution.','Donnez un exemple de résultat mesurable obtenu.','Racontez une situation où vous avez dû vous adapter rapidement.','Décrivez une erreur et ce que vous en avez appris.','Parlez d’une décision prise sous pression.'],
+    technical:['Quelles compétences techniques maîtrisez-vous le mieux ?','Expliquez un projet technique complexe auquel vous avez participé.','Comment contrôlez-vous la qualité de votre travail ?','Comment documentez-vous votre travail ?','Comment apprenez-vous un nouvel outil ?','Décrivez votre méthode de résolution d’un incident.'],
+    sector:['Quels sont les enjeux actuels de votre secteur ?','Quelles normes ou réglementations connaissez-vous ?','Comment restez-vous à jour dans votre domaine ?','Quel changement majeur anticipez-vous dans votre secteur ?','Quels indicateurs suivez-vous dans votre métier ?','Comment gérez-vous les risques propres à votre secteur ?'],
+    job: jobId ? ['Pourquoi cette offre vous intéresse-t-elle précisément ?','Quelles compétences de votre CV répondent le mieux à cette offre ?','Quel résultat concret pouvez-vous apporter dès les premiers mois ?','Quelles questions poseriez-vous au recruteur à propos de ce poste ?'] : ['Sélectionnez une offre depuis la page Emploi pour obtenir des questions ciblées.'],
+  };
   const [category,setCategory]=useState('general');
+  const [cycle,setCycle]=useState(0);
   const [selected,setSelected]=useState<number|null>(null);
   const [answers,setAnswers]=useState<Record<string,string>>(()=>{try{return JSON.parse(localStorage.getItem('omnia_interview_answers')||'{}')}catch{return {}}});
+  const [feedback,setFeedback]=useState<Record<string,string>>({});
+  const [submitting,setSubmitting]=useState<string>('');
   const [star,setStar]=useState({Situation:false,Tâche:false,Action:false,Résultat:false});
-  const banks:Record<string,string[]>={
-    general:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?'],
-    rh:['Quelles sont vos principales forces ?','Quel est votre axe d’amélioration actuel ?','Pourquoi souhaitez-vous quitter votre poste actuel ?'],
-    behavioral:['Décrivez une situation où vous avez résolu un problème difficile.','Parlez d’un conflit professionnel et de sa résolution.','Donnez un exemple de résultat mesurable obtenu.'],
-    technical:['Quelles compétences techniques maîtrisez-vous le mieux ?','Expliquez un projet technique complexe auquel vous avez participé.','Comment contrôlez-vous la qualité de votre travail ?'],
-    sector:['Quels sont les enjeux actuels de votre secteur ?','Quelles normes ou réglementations connaissez-vous ?','Comment restez-vous à jour dans votre domaine ?'],
-  };
-  const questions=banks[category]||banks.general;
+  const steps = [
+    {key:'Situation', role:'Décrivez le contexte précis : où, quand et dans quelle situation ?'},
+    {key:'Tâche', role:'Expliquez votre objectif, votre responsabilité ou le problème à résoudre.'},
+    {key:'Action', role:'Détaillez ce que vous avez personnellement fait, étape par étape.'},
+    {key:'Résultat', role:'Terminez par un impact concret, observable ou chiffré.'},
+  ] as const;
+  const questions=useMemo(()=>{
+    const source=banks[category]||banks.general;
+    if(source.length<=3)return source;
+    const offset=(cycle*3)%source.length;
+    return [...source.slice(offset),...source.slice(0,offset)].slice(0,3);
+  },[category,cycle,jobId]);
+  useEffect(()=>{setCycle(v=>v+1)},[]);
   const saveAnswer=(q:string,v:string)=>{const n={...answers,[q]:v};setAnswers(n);localStorage.setItem('omnia_interview_answers',JSON.stringify(n))};
-  return <div className="space-y-5"><PageHeader title="Préparation entretien" subtitle="Questions officielles, réponses personnelles et méthode STAR."/>
-    <div className="flex flex-wrap gap-2">{[['general','Général'],['rh','RH'],['behavioral','Comportemental'],['technical','Technique'],['sector','Sectoriel']].map(([k,l])=><button key={k} onClick={()=>{setCategory(k);setSelected(null)}} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{background:category===k?OMNIA_BLUE:'white',color:category===k?'white':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{l}</button>)}</div>
+  async function submitForAi(q:string){
+    const answer=(answers[q]||'').trim();
+    if(!answer)return;
+    setSubmitting(q); setFeedback(f=>({...f,[q]:''}));
+    try{
+      if(!SUPABASE_URL) throw new Error('IA indisponible');
+      const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-ai`,{method:'POST',headers:{Authorization:`Bearer ${localStorage.getItem('omnia_session_token')||''}`,'Content-Type':'application/json'},body:JSON.stringify({action:'make_professional',text:`Question: ${q}\nRéponse: ${answer}`,doc_type:'cv',language:'fr'})});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.result)throw new Error(data.error||'Service IA indisponible');
+      setFeedback(f=>({...f,[q]:data.result}));
+    }catch(e:any){setFeedback(f=>({...f,[q]:e?.message||'Le service IA n’est pas disponible pour le moment.'}))}
+    finally{setSubmitting('')}
+  }
+  const checked=Object.values(star).filter(Boolean).length;
+  function toggleStar(key:keyof typeof star){
+    const index=steps.findIndex(s=>s.key===key);
+    const previousComplete=steps.slice(0,index).every(s=>star[s.key]);
+    if(!star[key]&&!previousComplete){alert(`Terminez d’abord l’étape ${steps[index-1].key}.`);return}
+    if(!star[key]&&!confirm(`Avez-vous bien effectué l’étape ${key} ?\n\n${steps[index].role}`))return;
+    setStar(v=>({...v,[key]:!v[key]}));
+  }
+  return <div className="space-y-5"><PageHeader title="Préparation entretien" subtitle="Questions renouvelées, réponses personnelles, correction IA et méthode STAR."/>
+    <div className="flex flex-wrap items-center gap-2">{categories.map(([k,l])=><button key={k} onClick={()=>{setCategory(k);setSelected(null);setCycle(v=>v+1)}} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{background:category===k?OMNIA_BLUE:'white',color:category===k?'white':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{l}</button>)}<button onClick={()=>{setCycle(v=>v+1);setSelected(null)}} className="ml-auto rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}>Changer les questions</button></div>
     <div className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
-      <Card className="p-5"><SectionTitle title="Banque de questions"/><div className="space-y-3">{questions.map((q,i)=><div key={q} className="rounded-2xl border" style={{borderColor:BORDER}}><button onClick={()=>setSelected(selected===i?null:i)} className="flex w-full items-center justify-between p-4 text-left"><span className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}</span><ChevronDown className={selected===i?'rotate-180':''} size={16}/></button>{selected===i&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>Le recruteur cherche une réponse concrète, structurée et illustrée par un résultat. Utilisez STAR lorsque la question porte sur une expérience.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-32 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/></div>}</div>)}</div></Card>
-      <Card className="p-5"><SectionTitle title="Checklist STAR"/><p className="mb-4 text-sm" style={{color:MUTED}}>STAR vérifie que votre exemple contient le contexte, votre responsabilité, vos actions et le résultat obtenu.</p>{Object.keys(star).map(k=><label key={k} className="mb-3 flex cursor-pointer items-center justify-between rounded-xl border p-3" style={{borderColor:BORDER}}><div><div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{k}</div><div className="text-xs" style={{color:MUTED}}>{k==='Situation'?'Contexte précis':k==='Tâche'?'Objectif ou responsabilité':k==='Action'?'Ce que vous avez personnellement fait':'Impact chiffré ou observable'}</div></div><input type="checkbox" checked={(star as any)[k]} onChange={e=>setStar({...star,[k]:e.target.checked})}/></label>)}<div className="mt-4 text-sm font-semibold" style={{color:OMNIA_BLUE}}>Progression : {Object.values(star).filter(Boolean).length}/4</div></Card>
+      <Card className="p-5"><SectionTitle title="Banque de questions"/><p className="mb-4 text-xs" style={{color:MUTED}}>Les questions changent lors d’un changement de catégorie, d’un rafraîchissement ou avec « Changer les questions ».</p><div className="space-y-3">{questions.map((q,i)=><div key={`${category}-${cycle}-${q}`} className="rounded-2xl border" style={{borderColor:BORDER}}><button onClick={()=>setSelected(selected===i?null:i)} className="flex w-full items-center justify-between p-4 text-left"><span className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}</span><ChevronDown className={selected===i?'rotate-180':''} size={16}/></button>{selected===i&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>Répondez avec un exemple concret. Pour une situation vécue, utilisez STAR afin de structurer votre réponse.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-32 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/><button onClick={()=>submitForAi(q)} disabled={!answers[q]?.trim()||submitting===q} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_BLUE}}>{submitting===q?'Analyse en cours...':'Soumettre à l’IA'}</button>{feedback[q]&&<div className="mt-3 rounded-xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap" style={{borderColor:BORDER,color:OMNIA_BLUE}}><div className="mb-2 font-semibold">Correction et conseils IA</div>{feedback[q]}</div>}</div>}</div>)}</div></Card>
+      <Card className="p-5"><SectionTitle title="Checklist STAR"/><p className="mb-4 text-sm" style={{color:MUTED}}>STAR vous aide à répondre clairement aux questions comportementales. Cochez une étape seulement lorsque votre réponse contient réellement l’élément demandé.</p>{steps.map((step,index)=><div key={step.key} className={`mb-3 rounded-xl border p-3 ${star[step.key]?'bg-green-50':'bg-white'}`} style={{borderColor:star[step.key]?'#86efac':BORDER}}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{index+1}. {step.key}</div><div className="mt-1 text-xs leading-5" style={{color:MUTED}}>{step.role}</div></div><input type="checkbox" checked={star[step.key]} onChange={()=>toggleStar(step.key)} /></div>{star[step.key]&&<div className="mt-3 rounded-lg bg-white p-2 text-xs font-medium text-green-700">Étape confirmée. Vous pouvez passer à {steps[index+1]?.key||'la finalisation de votre réponse'}.</div>}</div>)}<div className="mt-4 text-sm font-semibold" style={{color:OMNIA_BLUE}}>Progression : {checked}/4</div>{checked===4&&<div className="mt-3 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-700">Votre réponse contient les quatre éléments STAR.</div>}</Card>
     </div>
-    <Card className="p-5"><SectionTitle title="Simulation IA"/><p className="text-sm" style={{color:MUTED}}>La simulation personnalisée nécessite le service IA configuré par la plateforme. Aucune fausse réponse n’est générée localement.</p><button disabled className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white opacity-50" style={{background:OMNIA_BLUE}}>Démarrer une simulation IA</button></Card>
   </div>;
 }
 
@@ -629,70 +664,57 @@ function toneClass(tone: string) {
 function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path: string) => void }) {
   const [apps, setApps] = useState<TrackedApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [targetJob, setTargetJob] = useState<any | null>(null);
   const [showManual, setShowManual] = useState(false);
   const [manual, setManual] = useState({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' });
-
-  async function callTrack(body: unknown) {
-    if (!SUPABASE_URL) return { success: false, platform_applications: [], manual_applications: [] };
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error('career-application-track failed');
-    return res.json();
+  const localKey='omnia_manual_applications';
+  const readLocal=()=>{try{return JSON.parse(localStorage.getItem(localKey)||'[]') as TrackedApplication[]}catch{return []}};
+  function normalizeApp(a:any, source:'platform'|'manual'):TrackedApplication{
+    const rawOffer=Array.isArray(a?.job_offers)?a.job_offers[0]:a?.job_offers;
+    return {...a,id:String(a?.id||`${source}-${Date.now()}-${Math.random()}`),source,tracking_status:a?.tracking_status||a?.status||'draft',job_offers:rawOffer||{id:a?.job_id,title:a?.job_title,recruiter_company:a?.company_name,location:a?.location,contract_type:a?.contract_type,application_mode:a?.application_mode,external_apply_url:a?.job_url}};
   }
-
+  async function callTrack(body: unknown) {
+    if (!SUPABASE_URL) throw new Error('Le service de suivi n’est pas configuré.');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/career-application-track`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data=await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data?.error || 'Impossible de charger les candidatures.');
+    return data;
+  }
   async function loadApplications() {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
       const d = await callTrack({ action: 'list' });
-      const platform = (d.platform_applications || []).map((a: TrackedApplication) => ({ ...a, source: 'platform' as const }));
-      const manualApps = (d.manual_applications || []).map((a: any) => ({ ...a, id: `manual-${a.id}`, source: 'manual' as const, job_offers: { id: a.job_id, title: a.job_title, recruiter_company: a.company_name, location: a.location, contract_type: a.contract_type, application_mode: a.application_mode, external_apply_url: a.job_url } }));
-      setApps([...platform, ...manualApps]);
-    } catch {
-      setApps([]);
+      const platform = Array.isArray(d.platform_applications)?d.platform_applications.map((a:any)=>normalizeApp(a,'platform')):[];
+      const manualRemote = Array.isArray(d.manual_applications)?d.manual_applications.map((a:any)=>normalizeApp(a,'manual')):[];
+      setApps([...platform,...manualRemote]);
+    } catch(e:any) {
+      const local=readLocal().map(a=>normalizeApp(a,'manual'));
+      setApps(local); setError(e?.message||'Le suivi distant est indisponible. Vos candidatures manuelles locales restent accessibles.');
     } finally { setLoading(false); }
   }
-
   useEffect(() => { loadApplications(); }, []);
-
-  useEffect(() => {
-    if (!jobId) return;
-    callTrack({ action: 'get', job_id: jobId }).then((d) => setTargetJob(d.job || null)).catch(() => setTargetJob(null));
-  }, [jobId]);
-
-  async function prepareJob() {
-    if (!jobId) return;
-    const d = await callTrack({ action: 'prepare_job', job_id: jobId });
-    if (d.success) loadApplications();
-  }
-
+  useEffect(() => { if (!jobId) return; callTrack({ action: 'get', job_id: jobId }).then((d) => setTargetJob(d.job || null)).catch(() => setTargetJob(null)); }, [jobId]);
+  async function prepareJob() { if (!jobId) return; try{const d = await callTrack({ action: 'prepare_job', job_id: jobId }); if (d.success) loadApplications();}catch(e:any){setError(e?.message||'Préparation impossible.')}}
   async function addManual() {
-    if (!manual.company_name || !manual.job_title) return;
-    const d = await callTrack({ action: 'create_manual', ...manual, application_mode: 'external_link', status: 'draft' });
-    if (d.success) { setShowManual(false); setManual({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' }); loadApplications(); }
+    if (!manual.company_name.trim() || !manual.job_title.trim()) return;
+    try { const d = await callTrack({ action: 'create_manual', ...manual, application_mode: 'external_link', status: 'draft' }); if (d.success) { setShowManual(false); setManual({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' }); loadApplications(); return; } } catch {}
+    const item=normalizeApp({...manual,id:`local-${Date.now()}`,tracking_status:'draft',application_mode:'external_link'},'manual');
+    const next=[item,...readLocal()]; localStorage.setItem(localKey,JSON.stringify(next)); setApps(next); setShowManual(false); setManual({ company_name: '', job_title: '', job_url: '', location: '', contract_type: 'CDI' }); setError('Candidature enregistrée localement. La synchronisation reprendra lorsque le service sera disponible.');
   }
-
-  const fallback: TrackedApplication[] = [
-    { id: 'demo-1', source: 'manual', tracking_status: 'draft', application_mode: 'external_link', job_offers: { title: 'Assistant QSE', recruiter_company: 'Entreprise externe', contract_type: 'Stage', application_mode: 'external_link' } },
-    { id: 'demo-2', source: 'platform', tracking_status: 'submitted', application_mode: 'omnia_managed', job_offers: { title: 'Comptable SYSCOHADA', recruiter_company: 'Structure Omnia', contract_type: 'CDI', application_mode: 'omnia_managed' } },
-  ];
-  const shown = apps.length ? apps : fallback;
   const columns = [
-    { title: 'À préparer', statuses: ['draft', 'prepared'], countTone: 'gray' },
-    { title: 'Envoyées', statuses: ['redirected', 'email_prepared', 'declared_sent', 'submitted', 'received', 'waiting_response'], countTone: 'blue' },
-    { title: 'En analyse', statuses: ['viewed', 'under_review', 'shortlisted', 'response_received', 'follow_up_recommended', 'followed_up'], countTone: 'gold' },
+    { title: 'Brouillon', statuses: ['draft','prepared'], countTone: 'gray' },
+    { title: 'À envoyer', statuses: ['to_apply','redirected','email_prepared'], countTone: 'gold' },
+    { title: 'Envoyées', statuses: ['declared_sent','submitted','received','waiting_response','viewed','under_review','shortlisted'], countTone: 'blue' },
     { title: 'Entretien', statuses: ['interview'], countTone: 'purple' },
-    { title: 'Finalisées', statuses: ['accepted', 'rejected', 'archived'], countTone: 'green' },
+    { title: 'Finalisées', statuses: ['offer','accepted','rejected','withdrawn','archived'], countTone: 'green' },
   ];
-
-  return (
-    <div className="space-y-5">
-      <PageHeader title="Suivi candidatures" subtitle="Suivez les candidatures Omnia, les candidatures externes et vos candidatures manuelles." actionLabel="Ajouter une candidature" onAction={() => setShowManual(true)} />
-      {targetJob && <Card className="p-5" style={{ borderColor: 'rgba(191,136,19,0.35)', background: 'rgba(191,136,19,0.06)' } as any}><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Préparation candidature liée à une offre</h2><p className="mt-1 text-sm" style={{ color: MUTED }}>{targetJob.title} — {targetJob.recruiter_company || 'Entreprise'}</p><p className="mt-2 text-xs" style={{ color: MUTED }}>Omnia Career peut vous aider à adapter le CV, générer la lettre et préparer l’entretien.</p></div><div className="flex flex-wrap gap-2"><button onClick={prepareJob} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Préparer dans mon suivi</button><button onClick={() => navigate(`/dashboard/career-studio/editor/new?type=cv&job_id=${jobId}`)} className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Adapter mon CV</button><button onClick={() => navigate(`/dashboard/career-studio?section=interview&job_id=${jobId}`)} className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>Préparer entretien</button></div></div></Card>}
-      <div className="flex flex-wrap gap-3"><input className="h-10 w-72 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} placeholder="Rechercher une candidature..." />{['Statut', 'Type de contrat', 'Source', 'Mode'].map(f => <button key={f} className="rounded-xl border bg-white px-4 py-2 text-sm" style={{ borderColor: BORDER }}>{f}</button>)}</div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">{columns.map((col) => { const items = shown.filter((app) => col.statuses.includes((app.tracking_status || app.status || 'draft'))); return <Card key={col.title} className="p-4"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{col.title}</h2><SmallBadge tone={col.countTone as any}>{items.length}</SmallBadge></div><div className="space-y-3">{items.map((app) => { const status = app.tracking_status || app.status || 'draft'; const mode = normalizeApplicationMode(app.application_mode || app.job_offers?.application_mode); const tone = STATUS_TONE[status] || 'blue'; return <div key={app.id} className="rounded-xl border bg-white p-3" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{app.job_offers?.title || app.job_title}</div><div className="text-xs" style={{ color: MUTED }}>{app.job_offers?.recruiter_company || app.company_name || 'Entreprise'} · {app.job_offers?.contract_type || 'Contrat'}</div><div className="mt-3 flex flex-wrap gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${toneClass(tone)}`}>{labelApplicationStatus(status)}</span><span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ background: mode === 'omnia_managed' ? 'rgba(0,32,80,0.08)' : 'rgba(191,136,19,0.12)', color: mode === 'omnia_managed' ? OMNIA_BLUE : OMNIA_GOLD }}>{mode === 'external_link' ? <ExternalLink className="mr-1 inline h-3 w-3" /> : mode === 'external_email' ? <Mail className="mr-1 inline h-3 w-3" /> : <ShieldCheck className="mr-1 inline h-3 w-3" />}{APPLICATION_MODE_SHORT_LABELS[mode]}</span></div><button onClick={() => mode === 'omnia_managed' ? navigate(`/emploi/${app.job_offers?.id || ''}`) : undefined} className="mt-3 text-xs font-semibold" style={{ color: OMNIA_BLUE }}>{status === 'interview' ? 'Préparer l’entretien' : mode === 'omnia_managed' ? 'Voir l’offre' : 'Mettre à jour'} →</button></div>; })}</div></Card>; })}</div>
-      {showManual && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"><h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Ajouter une candidature manuelle</h2><div className="mt-4 grid gap-3"><input value={manual.company_name} onChange={(e) => setManual({ ...manual, company_name: e.target.value })} placeholder="Entreprise" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.job_title} onChange={(e) => setManual({ ...manual, job_title: e.target.value })} placeholder="Poste" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.job_url} onChange={(e) => setManual({ ...manual, job_url: e.target.value })} placeholder="Lien de l’offre" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /><input value={manual.location} onChange={(e) => setManual({ ...manual, location: e.target.value })} placeholder="Lieu" className="h-11 rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /></div><div className="mt-5 flex justify-end gap-3"><button onClick={() => setShowManual(false)} className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: BORDER }}>Annuler</button><button onClick={addManual} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ajouter</button></div></div></div>}
-    </div>
-  );
+  return <div className="space-y-5"><PageHeader title="Suivi candidatures" subtitle="Suivez vos candidatures réelles, depuis une offre Omnia ou ajoutées manuellement." actionLabel="Ajouter une candidature" onAction={() => setShowManual(true)} />
+    {error&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}<button onClick={loadApplications} className="ml-3 font-semibold underline">Réessayer</button></div>}
+    {targetJob&&<Card className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>{targetJob.title}</h2><p className="text-sm" style={{color:MUTED}}>{targetJob.recruiter_company||'Entreprise'}</p></div><div className="flex gap-2"><button onClick={prepareJob} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Ajouter au suivi</button><button onClick={()=>navigate(`/dashboard/career-studio?section=interview&job_id=${jobId}`)} className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}>Préparer entretien</button></div></div></Card>}
+    {loading?<Card className="p-8 text-center"><span className="text-sm" style={{color:MUTED}}>Chargement des candidatures…</span></Card>:apps.length===0?<EmptyState text="Aucune candidature suivie pour le moment." action="Ajouter une candidature" onAction={()=>setShowManual(true)}/>:<div className="grid grid-cols-1 gap-4 xl:grid-cols-5">{columns.map(col=>{const items=apps.filter(app=>col.statuses.includes(app.tracking_status||app.status||'draft'));return <Card key={col.title} className="p-4"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{col.title}</h2><SmallBadge tone={col.countTone as any}>{items.length}</SmallBadge></div><div className="space-y-3">{items.map(app=>{const offer=app.job_offers||{};const status=app.tracking_status||app.status||'draft';const mode=normalizeApplicationMode(app.application_mode||offer.application_mode);return <div key={app.id} className="rounded-xl border p-3" style={{borderColor:BORDER}}><div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>{offer.title||app.job_title||'Poste sans titre'}</div><div className="mt-1 text-xs" style={{color:MUTED}}>{offer.recruiter_company||app.company_name||'Entreprise non renseignée'}</div><div className="mt-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold" style={{color:OMNIA_BLUE}}>{labelApplicationStatus(status)}</span></div><button onClick={()=>mode==='omnia_managed'&&offer.id?navigate(`/emploi/${offer.id}`):undefined} className="mt-3 text-xs font-semibold" style={{color:OMNIA_BLUE}}>{mode==='omnia_managed'?'Voir l’offre':'Mettre à jour'} →</button></div>})}</div></Card>})}</div>}
+    {showManual&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5"><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Ajouter une candidature</h2><div className="mt-4 grid gap-3"><input value={manual.company_name} onChange={e=>setManual({...manual,company_name:e.target.value})} placeholder="Entreprise *" className="h-11 rounded-xl border px-3"/><input value={manual.job_title} onChange={e=>setManual({...manual,job_title:e.target.value})} placeholder="Poste *" className="h-11 rounded-xl border px-3"/><input value={manual.job_url} onChange={e=>setManual({...manual,job_url:e.target.value})} placeholder="Lien de l’offre" className="h-11 rounded-xl border px-3"/><input value={manual.location} onChange={e=>setManual({...manual,location:e.target.value})} placeholder="Lieu" className="h-11 rounded-xl border px-3"/></div><div className="mt-5 flex justify-end gap-2"><button onClick={()=>setShowManual(false)} className="rounded-xl border px-4 py-2">Annuler</button><button onClick={addManual} className="rounded-xl px-4 py-2 font-semibold text-white" style={{background:OMNIA_BLUE}}>Enregistrer</button></div></div></div>}
+  </div>;
 }
 
 function ProfileView({ displayName }: { displayName: string }) {
@@ -709,7 +731,7 @@ function CoachingView() {
 function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: number; user: any }) {
   const [prefs,setPrefs]=useState(()=>{try{return JSON.parse(localStorage.getItem('omnia_career_preferences')||'{"notifications":false,"profileVisible":false,"aiConsent":false,"language":"fr"}')}catch{return {notifications:false,profileVisible:false,aiConsent:false,language:'fr'}}});
   const save=(next:any)=>{setPrefs(next);localStorage.setItem('omnia_career_preferences',JSON.stringify(next))};
-  return <div className="space-y-5"><PageHeader title="Paramètres Omnia Career" subtitle="Réglages réels propres à votre espace carrière."/><div className="grid gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Préférences"/><label className="mb-4 block text-sm">Langue<select value={prefs.language} onChange={e=>save({...prefs,language:e.target.value})} className="mt-1 h-11 w-full rounded-xl border px-3" style={{borderColor:BORDER}}><option value="fr">Français</option><option value="en">English</option></select></label>{[['notifications','Notifications Career'],['profileVisible','Profil visible aux recruteurs'],['aiConsent','Autoriser l’utilisation IA de mes documents']].map(([k,l])=><label key={k} className="mb-3 flex items-center justify-between rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><span>{l}</span><input type="checkbox" checked={Boolean(prefs[k])} onChange={e=>save({...prefs,[k]:e.target.checked})}/></label>)}</Card><Card className="p-5"><SectionTitle title="Jetons Omnia Career"/><div className="text-3xl font-semibold" style={{color:OMNIA_BLUE}}>{tokens}</div><p className="mt-1 text-sm" style={{color:MUTED}}>Solde unique utilisé uniquement dans Omnia Career.</p>{packs.slice(0,3).map(p=><div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><b>{p.name_fr}</b><div>{p.tokens+(p.bonus_tokens||0)} jetons</div></div>)}</Card><Card className="p-5"><SectionTitle title="Données et sécurité"/><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm" style={{borderColor:BORDER}}>Exporter mes documents</button><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm text-red-600" style={{borderColor:BORDER}}>Supprimer un document</button><p className="text-xs" style={{color:MUTED}}>Les modifications de compte et mot de passe se font depuis le profil principal.</p></Card></div></div>;
+  return <div className="space-y-5"><PageHeader title="Paramètres Omnia Career" subtitle="Réglages réels propres à votre espace carrière."/><div className="grid gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Préférences"/><label className="mb-4 block text-sm">Langue<select value={prefs.language} onChange={e=>{const language=e.target.value;save({...prefs,language});document.documentElement.lang=language;window.dispatchEvent(new CustomEvent('omnia-career-language-change',{detail:language}));window.location.reload()}} className="mt-1 h-11 w-full rounded-xl border px-3" style={{borderColor:BORDER}}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="de">Deutsch</option></select></label>{[['notifications','Notifications Career'],['profileVisible','Profil visible aux recruteurs'],['aiConsent','Autoriser l’utilisation IA de mes documents']].map(([k,l])=><label key={k} className="mb-3 flex items-center justify-between rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><span>{l}</span><input type="checkbox" checked={Boolean(prefs[k])} onChange={e=>save({...prefs,[k]:e.target.checked})}/></label>)}</Card><Card className="p-5"><SectionTitle title="Jetons Omnia Career"/><div className="text-3xl font-semibold" style={{color:OMNIA_BLUE}}>{tokens}</div><p className="mt-1 text-sm" style={{color:MUTED}}>Solde unique utilisé uniquement dans Omnia Career.</p>{packs.slice(0,3).map(p=><div key={p.pack_key} className="mt-3 rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}><b>{p.name_fr}</b><div>{p.tokens+(p.bonus_tokens||0)} jetons</div></div>)}</Card><Card className="p-5"><SectionTitle title="Données et sécurité"/><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm" style={{borderColor:BORDER}}>Exporter mes documents</button><button className="mb-3 w-full rounded-xl border px-4 py-2.5 text-left text-sm text-red-600" style={{borderColor:BORDER}}>Supprimer un document</button><p className="text-xs" style={{color:MUTED}}>Les modifications de compte et mot de passe se font depuis le profil principal.</p></Card></div></div>;
 }
 
 function PageHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {

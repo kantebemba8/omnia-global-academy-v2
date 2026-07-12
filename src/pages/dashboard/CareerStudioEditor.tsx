@@ -215,8 +215,22 @@ export default function CareerStudioEditor() {
 
   const sectionComplete = useCallback((key: CvSectionKey | LmSectionKey) => {
     if (!document) return false;
-    if (document.doc_type === 'cv') { const d=getCvData(document); const map:any={profile:Boolean(d.name&&d.contact?.email),summary:Boolean(d.summary?.trim()),skills:Boolean(d.skills?.length),experiences:Boolean(d.experiences?.length),education:Boolean(d.education?.length),certifications:Boolean(d.certifications_external?.length||d.omnia_formations?.length),languages:Boolean(d.languages?.length),projects:Boolean(d.projects?.length),interests:Boolean(d.interests?.length)}; return Boolean(map[key]); }
-    const d=getLmData(document); const map:any={sender:Boolean(d.sender?.name&&d.sender?.email),recipient:Boolean(d.recipient?.company),letter:Boolean(d.intro&&d.motivation&&d.closing),variables:Boolean(d.subject)}; return Boolean(map[key]);
+    if (document.doc_type === 'cv') {
+      const d=getCvData(document);
+      const hasText=(v:unknown,min=1)=>String(v||'').trim().length>=min;
+      const map:any={
+        profile:hasText(d.name)&&hasText(d.contact?.email),
+        summary:hasText(d.summary,40),
+        skills:(d.skills||[]).filter(x=>hasText(typeof x==='string'?x:(x as any)?.name)).length>=3,
+        experiences:(d.experiences||[]).some(x=>hasText(x?.title)&&hasText(x?.company)&&hasText(x?.description,20)),
+        education:(d.education||[]).some(x=>hasText(x?.degree)&&hasText(x?.school)),
+        certifications:(d.certifications_external||[]).some(x=>hasText(x?.name))||(d.omnia_formations||[]).some((x:any)=>hasText(x?.name||x?.title)),
+        languages:(d.languages||[]).some(x=>hasText(x?.name)&&hasText(x?.level)),
+        projects:(d.projects||[]).some(x=>hasText(x?.name)&&hasText(x?.description,15)),
+        interests:(d.interests||[]).some(x=>hasText(typeof x==='string'?x:(x as any)?.name))
+      }; return Boolean(map[key]);
+    }
+    const d=getLmData(document); const hasText=(v:unknown,min=1)=>String(v||'').trim().length>=min; const map:any={sender:hasText(d.sender?.name)&&hasText(d.sender?.email),recipient:hasText(d.recipient?.company),letter:hasText(d.intro,30)&&hasText(d.motivation,50)&&hasText(d.closing,20),variables:hasText(d.subject)}; return Boolean(map[key]);
   },[document]);
 
   const showToast = (message: string) => {
@@ -1092,7 +1106,7 @@ function TemplatePanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-1 gap-4">
         {canonicalTemplates.slice(0, 3).map(template => (
           <TemplatePreviewCard
             key={template.template_key}
@@ -1167,7 +1181,7 @@ function TemplatePanel({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
-              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredTemplates.map(template => (
                   <TemplatePreviewCard
                     key={template.template_key}
@@ -1210,8 +1224,8 @@ function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType
 function TemplatePreviewCard({
   template,
   docType,
-  data,
-  design,
+  data: _data,
+  design: _design,
   selected,
   onSelect,
   compact = false,
@@ -1224,52 +1238,34 @@ function TemplatePreviewCard({
   onSelect: () => void;
   compact?: boolean;
 }) {
-  const previewScale = compact ? 0.18 : 0.34;
-  const previewHeight = compact ? 170 : 430;
-  const previewWidth = compact ? 150 : 290;
-
   return (
-    <div
-      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group relative w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
     >
-      <div className="flex gap-4 p-4">
-        <div
-          className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner"
-          style={{ height: previewHeight, width: previewWidth }}
-        >
-          <img
-            src={getTemplateMockup(template, docType)}
-            alt={`Maquette ${template.name_fr}`}
-            className="h-full w-full object-contain bg-white"
-            loading="lazy"
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
+      <div className={`relative w-full overflow-hidden bg-slate-100 ${compact ? 'aspect-[0.71]' : 'aspect-[0.71]'}`}>
+        <img
+          src={getTemplateMockup(template, docType)}
+          alt={`Maquette ${template.name_fr}`}
+          className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-[1.02]"
+          loading="lazy"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent p-4 pt-16 text-white">
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-[#002050]">{template.name_fr}</h4>
-              <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{template.description_fr}</p>
+              <h4 className={`${compact ? 'text-sm' : 'text-base'} font-semibold`}>{template.name_fr}</h4>
+              {!compact && <p className="mt-1 line-clamp-2 text-xs text-white/80">{template.description_fr}</p>}
             </div>
-            {selected && <span className="rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Actif</span>}
+            <div className="flex shrink-0 gap-1.5">
+              {template.is_ats_compatible && <span className="rounded-full bg-green-500/90 px-2 py-1 text-[10px] font-bold">ATS</span>}
+              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${template.is_free ? 'bg-white/90 text-slate-700' : 'bg-[#bf8813] text-white'}`}>{template.is_free ? 'Gratuit' : 'Premium'}</span>
+            </div>
           </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {template.is_ats_compatible && <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">ATS</span>}
-            {template.is_free ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">Gratuit</span> : <span className="rounded-full bg-[#bf8813]/10 px-2 py-1 text-[10px] font-bold text-[#bf8813]">Premium</span>}
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{template.category}</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={onSelect}
-            className={`mt-4 w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${selected ? 'border border-[#002050] bg-white text-[#002050]' : 'bg-[#002050] text-white hover:opacity-90'}`}
-          >
-            {selected ? 'Modèle sélectionné' : 'Utiliser ce modèle'}
-          </button>
         </div>
+        {selected && <div className="absolute right-3 top-3 rounded-full bg-[#002050] px-3 py-1.5 text-[10px] font-bold text-white shadow">Modèle sélectionné</div>}
       </div>
-    </div>
+    </button>
   );
 }
 
