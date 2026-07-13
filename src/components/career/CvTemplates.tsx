@@ -7,6 +7,9 @@ export interface DocData {
   objective?: string;
   summary: string;
   photo_url?: string;
+  photo_zoom?: number;
+  photo_position_x?: number;
+  photo_position_y?: number;
   contact: { email: string; phone: string; location: string; linkedin?: string; portfolio?: string; };
   experiences: Array<{ id: string; position: string; company: string; location?: string; start_date: string; end_date?: string; current: boolean; description: string; }>;
   education: Array<{ id: string; degree: string; school: string; location?: string; year: string; }>;
@@ -36,11 +39,13 @@ function fmtDate(s: string) {
   catch { return s; }
 }
 
-function Avatar({ name, photoUrl, size, shape, borderColor }: { name: string; photoUrl?: string; size: number; shape: 'round' | 'square' | 'rectangle'; borderColor?: string; }) {
+function Avatar({ name, photoUrl, size, shape, borderColor, zoom = 1, positionX = 50, positionY = 50 }: { name: string; photoUrl?: string; size: number; shape: 'round' | 'square' | 'rectangle'; borderColor?: string; zoom?: number; positionX?: number; positionY?: number; }) {
   const radius = shape === 'round' ? '50%' : shape === 'square' ? '8px' : '4px';
   const initials = (name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   return photoUrl ? (
-    <img src={photoUrl} style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', border: borderColor ? `3px solid ${borderColor}` : 'none', display: 'block' }} alt="" />
+    <div style={{ width: size, height: size, borderRadius: radius, overflow: 'hidden', border: borderColor ? `3px solid ${borderColor}` : 'none', background: '#e2e8f0' }}>
+      <img src={photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${positionX}% ${positionY}%`, transform: `scale(${Math.max(1, zoom)})`, transformOrigin: `${positionX}% ${positionY}%`, display: 'block' }} alt="" />
+    </div>
   ) : (
     <div style={{ width: size, height: size, borderRadius: radius, background: borderColor || '#002050', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.3, fontWeight: 900, color: 'white' }}>
       {initials}
@@ -63,7 +68,7 @@ export function ClassicPro({ data, design }: { data: DocData; design: DesignOpti
       <div style={{ width: 210, minWidth: 210, background: c.sidebar || '#F0F4F8', padding: '32px 16px' }}>
         {design.photo_enabled && (
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
-            <Avatar name={data.name} photoUrl={data.photo_url} size={80} shape={design.photo_shape} borderColor={c.accent} />
+            <Avatar name={data.name} photoUrl={data.photo_url} zoom={data.photo_zoom} positionX={data.photo_position_x} positionY={data.photo_position_y} size={80} shape={design.photo_shape} borderColor={c.accent} />
           </div>
         )}
         {/* Contact */}
@@ -196,7 +201,7 @@ export function ModernStudent({ data, design }: { data: DocData; design: DesignO
       <div style={{ background: `linear-gradient(135deg, ${c.primary} 0%, ${c.accent} 100%)`, padding: '28px 32px', display: 'flex', alignItems: 'center', gap: 20 }}>
         {design.photo_enabled && (
           <div style={{ flexShrink: 0 }}>
-            <Avatar name={data.name} photoUrl={data.photo_url} size={80} shape="round" borderColor="rgba(255,255,255,0.4)" />
+            <Avatar name={data.name} photoUrl={data.photo_url} zoom={data.photo_zoom} positionX={data.photo_position_x} positionY={data.photo_position_y} size={80} shape="round" borderColor="rgba(255,255,255,0.4)" />
           </div>
         )}
         <div style={{ flex: 1 }}>
@@ -322,7 +327,7 @@ export function CorporateBlue({ data, design }: { data: DocData; design: DesignO
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           {design.photo_enabled && (
             <div style={{ background: `${c.accent}30`, width: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              <Avatar name={data.name} photoUrl={data.photo_url} size={90} shape={design.photo_shape} borderColor="rgba(255,255,255,0.3)" />
+              <Avatar name={data.name} photoUrl={data.photo_url} zoom={data.photo_zoom} positionX={data.photo_position_x} positionY={data.photo_position_y} size={90} shape={design.photo_shape} borderColor="rgba(255,255,255,0.3)" />
             </div>
           )}
           <div style={{ flex: 1, padding: '24px 28px' }}>
@@ -451,7 +456,7 @@ export function MinimalLuxe({ data, design }: { data: DocData; design: DesignOpt
       <div style={{ marginBottom: 32, textAlign: 'left' }}>
         {design.photo_enabled && (
           <div style={{ float: 'right', marginLeft: 20 }}>
-            <Avatar name={data.name} photoUrl={data.photo_url} size={80} shape="square" borderColor="#E4E7EC" />
+            <Avatar name={data.name} photoUrl={data.photo_url} zoom={data.photo_zoom} positionX={data.photo_position_x} positionY={data.photo_position_y} size={80} shape="square" borderColor="#E4E7EC" />
           </div>
         )}
         <div style={{ fontSize: 32, fontWeight: 900, color: '#212121', letterSpacing: '-0.02em', lineHeight: 1 }}>{(data.name || 'Votre Nom').toUpperCase()}</div>
@@ -582,7 +587,7 @@ export function AfricaGold({ data, design }: { data: DocData; design: DesignOpti
         {/* Photo */}
         {design.photo_enabled && (
           <div style={{ textAlign: 'center', marginBottom: 16, position: 'relative', zIndex: 1 }}>
-            <Avatar name={data.name} photoUrl={data.photo_url} size={85} shape="round" borderColor={gold} />
+            <Avatar name={data.name} photoUrl={data.photo_url} zoom={data.photo_zoom} positionX={data.photo_position_x} positionY={data.photo_position_y} size={85} shape="round" borderColor={gold} />
           </div>
         )}
 

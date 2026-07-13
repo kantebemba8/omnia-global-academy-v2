@@ -80,14 +80,18 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
   const [future, setFuture] = useState<ManualLayout[]>([]);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const gesture = useRef<{ mode: 'drag' | 'resize'; id: string; startX: number; startY: number; original: ManualBlock } | null>(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
-    if (open) {
+    // Initialiser uniquement à l'ouverture. Les mises à jour de l'autosave ne doivent
+    // jamais réinitialiser la sélection ni interrompre l'édition en cours.
+    if (open && !wasOpen.current) {
       setLayout(normalize(initialLayout));
       setHistory([]);
       setFuture([]);
       setSelectedId(null);
     }
+    wasOpen.current = open;
   }, [open, initialLayout]);
 
   useEffect(() => {
@@ -326,7 +330,10 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
                     {block.type === 'image' && <img src={block.src} alt="" draggable={false} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
                     {block.type === 'shape' && <div style={{ width:'100%', height:'100%', background:block.style.backgroundColor, borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
                     {block.type === 'line' && <div style={{ width:'100%', marginTop:block.height/2, borderTop:`${block.style.borderWidth||3}px solid ${block.style.borderColor||'#002050'}` }} />}
-                    {isSelected && !block.locked && <button onPointerDown={e => beginGesture(e, block, 'resize')} className="absolute -bottom-2 -right-2 h-4 w-4 rounded-full border-2 border-white bg-[#bf8813] shadow" title="Redimensionner" />}
+                    {isSelected && !block.locked && <>
+                      <button onPointerDown={e => beginGesture(e, block, 'drag')} className="absolute -left-3 -top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#002050] text-white shadow-lg" title="Déplacer l’élément"><Move className="h-3.5 w-3.5" /></button>
+                      <button onPointerDown={e => beginGesture(e, block, 'resize')} className="absolute -bottom-2 -right-2 h-4 w-4 rounded-full border-2 border-white bg-[#bf8813] shadow" title="Redimensionner" />
+                    </>}
                   </div>
                 );
               })}
