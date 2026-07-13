@@ -46,6 +46,7 @@ import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCare
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
+import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -233,8 +234,6 @@ export default function CareerStudioEditor() {
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(0.62);
-  const [nameDialogOpen, setNameDialogOpen] = useState(false);
-  const [nameDraft, setNameDraft] = useState('');
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -291,12 +290,19 @@ export default function CareerStudioEditor() {
     setDirty(true);
   }, []);
 
-  const saveNow = useCallback(async (overrideDocument?: CareerDocumentFull) => {
-    const target = overrideDocument || document;
-    if (!target) return;
+  const saveNow = useCallback(async () => {
+    if (!document) return;
+    const currentTitle = String(document.title || '').trim();
+    const defaultTitle = getDefaultDocTitle(document.doc_type);
+    if (!currentTitle || currentTitle === defaultTitle) {
+      const requested = window.prompt(document.doc_type === 'cv' ? 'Nommer votre CV' : 'Nommer votre lettre de motivation', '');
+      if (!requested?.trim()) { setSaveState('idle'); return; }
+      document.title = requested.trim();
+      setDocument({ ...document, title: requested.trim() });
+    }
     setSaveState('saving');
     try {
-      const saved = await saveCareerDocument(target);
+      const saved = await saveCareerDocument(document);
       setDocument(saved.document);
       setRemoteMode(saved.remote);
       setSaveState('saved');
@@ -308,8 +314,6 @@ export default function CareerStudioEditor() {
 
   useEffect(() => {
     if (!document || loading || !dirty) return;
-    const isNewUnnamed = document.id.startsWith('local_') && document.title.trim() === getDefaultDocTitle(document.doc_type);
-    if (isNewUnnamed) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       saveNow();
@@ -403,29 +407,8 @@ export default function CareerStudioEditor() {
   }
 
   async function manualSave() {
-    if (!document) return;
-    const needsName = document.id.startsWith('local_') && document.title.trim() === getDefaultDocTitle(document.doc_type);
-    if (needsName) {
-      setNameDraft('');
-      setNameDialogOpen(true);
-      return;
-    }
     await saveNow();
     showToast('Document sauvegardé');
-  }
-
-  async function confirmDocumentName() {
-    if (!document) return;
-    const cleanTitle = nameDraft.trim();
-    if (!cleanTitle) {
-      showToast('Veuillez saisir un nom pour le document.');
-      return;
-    }
-    const namedDocument = { ...document, title: cleanTitle, updated_at: new Date().toISOString() };
-    setDocument(namedDocument);
-    setNameDialogOpen(false);
-    await saveNow(namedDocument);
-    showToast(`${document.doc_type === 'cv' ? 'CV' : 'Lettre'} enregistré(e) sous « ${cleanTitle} »`);
   }
 
 
@@ -524,14 +507,6 @@ export default function CareerStudioEditor() {
 
     if (document.doc_type === 'cv' && remoteMode && tokens <= 0) {
       showToast('Jeton insuffisant : le téléchargement PDF du CV nécessite 1 jeton.');
-      return;
-    }
-
-    const needsName = document.id.startsWith('local_') && document.title.trim() === getDefaultDocTitle(document.doc_type);
-    if (needsName) {
-      setNameDraft('');
-      setNameDialogOpen(true);
-      showToast('Nommez le document avant de le télécharger.');
       return;
     }
 
@@ -749,27 +724,6 @@ export default function CareerStudioEditor() {
           </div>
         </aside>
       </div>
-
-      {nameDialogOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <h2 className="text-xl font-semibold text-[#002050]">Nommer votre {document.doc_type === 'cv' ? 'CV' : 'lettre de motivation'}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Choisissez un nom facile à retrouver, par exemple « CV Assistant QSE Luxembourg ».</p>
-            <input
-              autoFocus
-              value={nameDraft}
-              onChange={(e)=>setNameDraft(e.target.value)}
-              onKeyDown={(e)=>{ if(e.key==='Enter') confirmDocumentName(); }}
-              placeholder={document.doc_type === 'cv' ? 'CV Assistant QSE Luxembourg' : 'LM Stage QHSE'}
-              className="mt-5 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#002050] focus:ring-4 focus:ring-[#002050]/10"
-            />
-            <div className="mt-5 flex justify-end gap-3">
-              <button type="button" onClick={()=>setNameDialogOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Annuler</button>
-              <button type="button" onClick={confirmDocumentName} className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white">Enregistrer</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {manualLayout && (
         <ManualDocumentEditor
@@ -1329,18 +1283,11 @@ function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType
   return template.thumbnail_url || (template.is_custom ? '/career-templates/generated/custom.svg' : `/career-templates/generated/${template.template_key}.svg`);
 }
 
-function handleTemplatePreviewError(event: React.SyntheticEvent<HTMLImageElement>, templateKey: string) {
-  const img = event.currentTarget;
-  const fallback = `/career-templates/generated/${templateKey}.svg`;
-  if (!img.src.endsWith(fallback)) img.src = fallback;
-}
-
-
 function TemplatePreviewCard({
   template,
   docType,
-  data,
-  design,
+  data: _data,
+  design: _design,
   selected,
   onSelect,
   compact = false,
@@ -1353,23 +1300,5 @@ function TemplatePreviewCard({
   onSelect: () => void;
   compact?: boolean;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected ? 'border-[#002050] ring-4 ring-[#002050]/10' : 'border-slate-200 hover:border-[#bf8813]/60'}`}
-    >
-      <div className={`relative overflow-hidden bg-slate-100 ${compact ? 'aspect-[9/11]' : 'aspect-[9/11]'}`}>
-        <img src={getTemplateMockup(template, docType)} alt={`Maquette ${template.name_fr}`} onError={(e)=>handleTemplatePreviewError(e,template.template_key)} className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.015]" loading="lazy" />
-        {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-transparent px-3 pb-3 pt-12">
-          <div className="text-sm font-semibold text-white">{template.name_fr}</div>
-          <div className="mt-1 flex gap-1.5">
-            {template.is_ats_compatible && <span className="rounded-full bg-green-500/90 px-2 py-0.5 text-[10px] font-bold text-white">ATS</span>}
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${template.is_free ? 'bg-white/90 text-slate-700' : 'bg-[#bf8813] text-white'}`}>{template.is_free ? 'Gratuit' : 'Premium'}</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
+  return <TemplateLiveCard template={template} docType={docType} selected={selected} onClick={onSelect} compact={compact} />;
 }

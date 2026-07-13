@@ -38,6 +38,8 @@ import {
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { ENDPOINTS } from '../../lib/config';
+import TemplateLiveCard from '../../components/career/TemplateLiveCard';
+import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -510,7 +512,7 @@ function DashboardView({
         <Card className="p-5"><SectionTitle title="Actions principales"/><div className="grid grid-cols-2 gap-3">{quickActions.map(action => { const Icon=action.icon; return <button key={action.label} onClick={action.action} className="rounded-2xl border p-4 text-left hover:bg-slate-50" style={{ borderColor:BORDER }}><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background:'rgba(0,32,80,.08)' }}><Icon size={18} color={OMNIA_BLUE}/></div><div className="mt-3 text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{action.label}</div></button>})}</div></Card>
         <Card className="p-5"><SectionTitle title="Activité récente"/>{recent.length ? <div className="space-y-3">{recent.map(doc => <button key={doc.id} onClick={() => openDoc(doc.id,doc.doc_type)} className="flex w-full items-center gap-3 rounded-xl border p-3 text-left hover:bg-slate-50" style={{ borderColor:BORDER }}><div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background:'rgba(0,32,80,.08)' }}>{doc.doc_type==='cv'?<FileText size={16} color={OMNIA_BLUE}/>:<Mail size={16} color={OMNIA_BLUE}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color:MUTED }}>{doc.status==='completed'?'Terminé':'Brouillon'} · {formatDate(doc.updated_at)}</div></div><ChevronRight size={15} color={MUTED}/></button>)}</div> : <EmptyState text="Aucune activité enregistrée."/>}</Card>
       </div>
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><SectionTitle title="Modèles CV officiels"/><button onClick={() => setActiveView('cv')} className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>Voir les 12 modèles</button></div><div className="grid grid-cols-2 gap-4 md:grid-cols-4">{(templates.length?templates:fallbackCvTemplates).slice(0,4).map(t => <button key={t.template_key} onClick={() => createDoc('cv',t.template_key)} className="overflow-hidden rounded-2xl border bg-white text-left shadow-sm hover:shadow-md" style={{ borderColor:BORDER }}><div className="aspect-[9/11] overflow-hidden"><img src={templateMockupPath(t.template_key)} alt={t.name_fr} onError={(e)=>handleTemplateImageError(e,t.template_key)} className="h-full w-full object-cover object-top"/></div><div className="p-3 text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{t.name_fr}</div></button>)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><SectionTitle title="Modèles CV officiels"/><button onClick={() => setActiveView('cv')} className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>Voir les 12 modèles</button></div><div className="grid grid-cols-2 gap-4 md:grid-cols-4">{(templates.length?templates:fallbackCvTemplates).slice(0,4).map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} compact />)}</div></Card>
     </div>
   );
 }
@@ -545,26 +547,12 @@ function MiniCvPreview() {
   );
 }
 
-function templateMockupPath(template: Template | string) {
-  if (typeof template === 'string') return `/career-templates/generated/${template}.svg`;
+function templateMockupPath(template: Template) {
   return template.thumbnail_url || (template.is_custom ? '/career-templates/generated/custom.svg' : `/career-templates/generated/${template.template_key}.svg`);
 }
 
-function handleTemplateImageError(event: React.SyntheticEvent<HTMLImageElement>, templateKey: string) {
-  const img = event.currentTarget;
-  const fallback = `/career-templates/generated/${templateKey}.svg`;
-  if (!img.src.endsWith(fallback)) img.src = fallback;
-}
-
-
 function TemplateMini({ template, selected = false }: { template: Template; selected?: boolean }) {
-  return (
-    <div className="group relative aspect-[9/11] w-full overflow-hidden rounded-xl border bg-white shadow-sm" style={{ borderColor: selected ? OMNIA_GOLD : BORDER }}>
-      <img src={templateMockupPath(template)} alt={template.name_fr} className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.02]" />
-      {selected && <div className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-white shadow" style={{ background: OMNIA_BLUE }}><CheckCircle2 size={14} /></div>}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-xs font-semibold text-white">{template.name_fr}</div>
-    </div>
-  );
+  return <TemplateLiveCard template={template as CareerTemplateMeta} docType={(template.template_key || '').startsWith('lm_') ? 'lm' : 'cv'} selected={selected} compact />;
 }
 
 function ActivityItem({ icon: Icon, title, date }: { icon: typeof FileText; title: string; date: string }) {
@@ -576,7 +564,7 @@ function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc }: 
   return (
     <div className="space-y-5">
       <PageHeader title="CV Builder" subtitle="Choisissez un vrai modèle puis remplissez-le dans l’éditeur." actionLabel="Nouveau CV" onAction={() => createDoc('cv')} />
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles CV officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>La maquette choisie sera utilisée dans le Builder, l’aperçu et le PDF.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <button key={t.template_key} onClick={() => createDoc('cv',t.template_key)} className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor:BORDER }}><div className="aspect-[9/11] overflow-hidden bg-slate-100"><img src={templateMockupPath(t.template_key)} alt={t.name_fr} onError={(e)=>handleTemplateImageError(e,t.template_key)} className="h-full w-full object-cover object-top transition group-hover:scale-[1.02]"/></div><div className="flex items-center justify-between gap-2 p-3"><div className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{t.name_fr}</div>{t.is_free?<SmallBadge tone="green">Gratuit</SmallBadge>:<SmallBadge tone="gold">Premium</SmallBadge>}</div></button>)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles CV officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>La maquette choisie sera utilisée dans le Builder, l’aperçu et le PDF.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} />)}</div></Card>
       <DocumentsList title="Mes CV" documents={documents} empty="Aucun CV enregistré pour le moment." createLabel="Créer un CV" onCreate={() => createDoc('cv')} onOpen={(id) => openDoc(id, 'cv')} onDelete={deleteDoc} />
     </div>
   );
@@ -587,7 +575,7 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { 
   return (
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Choisissez un modèle assorti à votre CV ou un modèle spécialisé." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles LM officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>Les 6 modèles officiels sont visibles et sélectionnables.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <button key={t.template_key} onClick={() => createDoc('lm',t.template_key)} className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor:BORDER }}><div className="aspect-[9/11] overflow-hidden bg-slate-100"><img src={templateMockupPath(t.template_key)} alt={t.name_fr} onError={(e)=>handleTemplateImageError(e,t.template_key)} className="h-full w-full object-cover object-top transition group-hover:scale-[1.02]"/></div><div className="flex items-center justify-between gap-2 p-3"><div className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{t.name_fr}</div>{t.is_free?<SmallBadge tone="green">Gratuit</SmallBadge>:<SmallBadge tone="gold">Premium</SmallBadge>}</div></button>)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles LM officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>Les 6 modèles officiels sont visibles et sélectionnables.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="lm" onClick={() => createDoc('lm',t.template_key)} />)}</div></Card>
       <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} />
     </div>
   );
