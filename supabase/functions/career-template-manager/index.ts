@@ -24,7 +24,7 @@ Deno.serve(async (req: Request) => {
     const action = body.action || "list";
 
     if (action === "list") {
-      const { data, error } = await sb.from("career_templates").select("*").order("template_type").order("display_order");
+      const { data, error } = await sb.from("career_templates").select("*").eq("is_active", true).order("template_type").order("display_order");
       if (error) throw error;
       return json({ templates: data || [] });
     }
