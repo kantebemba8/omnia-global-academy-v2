@@ -1,4 +1,5 @@
 import React from 'react';
+import { UnifiedCareerTemplatePreview } from './UnifiedCareerTemplate';
 
 // ─── TYPES ───────────────────────────────────────────────
 export interface DocData {
@@ -780,6 +781,5 @@ export const CV_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: DocData
   ...Object.fromEntries(Object.keys(BUILTIN_CV_LAYOUTS).map(key => [key, (props: { data: DocData; design: DesignOptions }) => <ConfigurableCvTemplate {...props} templateKey={key} />])),
 };
 export function CvPreview({ templateKey, data, design }: { templateKey: string; data: DocData; design: DesignOptions }) {
-  const Component = CV_TEMPLATE_MAP[templateKey];
-  return Component ? <Component data={data} design={design} /> : <ConfigurableCvTemplate data={data} design={design} templateKey={templateKey} />;
+  return <UnifiedCareerTemplatePreview docType="cv" templateKey={templateKey} data={data} design={design} />;
 }

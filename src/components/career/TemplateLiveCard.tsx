@@ -1,5 +1,6 @@
-import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
-import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
+import type { DocData, DesignOptions } from './CvTemplates';
+import type { LmData, LmDesign } from './LmTemplates';
+import { UnifiedCareerTemplatePreview } from './UnifiedCareerTemplate';
 import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
 
 const SAMPLE_CV: DocData = {
@@ -50,9 +51,12 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
       <div className={`relative w-full overflow-hidden bg-slate-100 ${compact?'aspect-[9/11]':'aspect-[9/12]'}`}>
         <div className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
           <div style={{ transform:`scale(${compact?0.205:0.285})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
-            {docType==='cv'
-              ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} />
-              : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} />}
+            <UnifiedCareerTemplatePreview
+              docType={docType}
+              templateKey={template.template_key}
+              data={docType === 'cv' ? SAMPLE_CV : SAMPLE_LM}
+              design={docType === 'cv' ? design : lmDesign}
+            />
           </div>
         </div>
         {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}

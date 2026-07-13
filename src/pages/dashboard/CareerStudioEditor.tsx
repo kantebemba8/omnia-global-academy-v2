@@ -47,6 +47,7 @@ import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
+import { buildCareerTemplateLayout } from '../../components/career/UnifiedCareerTemplate';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -373,7 +374,10 @@ export default function CareerStudioEditor() {
 
   const manualLayout = useMemo(() => {
     if (!document) return null;
-    return ((document.doc_data as any).manual_layout as ManualLayout | undefined) || createManualLayout(document);
+    const saved = (document.doc_data as any).manual_layout as ManualLayout | undefined;
+    return saved && saved.templateKey === document.template_key
+      ? saved
+      : buildCareerTemplateLayout(document);
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
