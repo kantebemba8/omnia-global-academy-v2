@@ -41,8 +41,6 @@ export interface ManualBlock {
 
 export interface ManualLayout {
   version: 1;
-  /** Clé du modèle à l'origine de la mise en page. Empêche le réemploi d'un ancien layout avec un autre modèle. */
-  templateKey?: string;
   page: { width: 794; height: 1123; background: string };
   blocks: ManualBlock[];
 }
@@ -69,7 +67,6 @@ const id = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 function normalize(layout: ManualLayout): ManualLayout {
   return {
     version: 1,
-    templateKey: layout?.templateKey,
     page: { width: 794, height: 1123, background: layout?.page?.background || '#ffffff' },
     blocks: Array.isArray(layout?.blocks) ? layout.blocks : [],
   };
@@ -255,6 +252,17 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
   }
 
   function endGesture() { gesture.current = null; }
+  function findSidebarBlock(): ManualBlock | null {
+    const candidates = layout.blocks.filter(block => block.type === 'shape' && block.height >= 500 && block.width >= 140 && block.width <= 330);
+    return candidates.sort((a, b) => (b.width * b.height) - (a.width * a.height))[0] || null;
+  }
+
+  function updateSidebarColor(color: string) {
+    const sidebar = findSidebarBlock();
+    if (!sidebar) return;
+    patchBlock(sidebar.id, { style: { ...sidebar.style, backgroundColor: color } });
+  }
+
 
   if (!open) return null;
 
@@ -345,6 +353,13 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
         </main>
 
         <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+          {findSidebarBlock() && <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#002050]">Couleurs du modèle</div>
+            <label className="block text-xs font-semibold text-slate-600">Couleur de la sidebar
+              <input type="color" value={findSidebarBlock()?.style.backgroundColor || '#eef3f8'} onChange={e => updateSidebarColor(e.target.value)} className="mt-1 h-10 w-full rounded border" />
+            </label>
+            <p className="mt-2 text-[11px] leading-4 text-slate-500">La couleur choisie s’applique uniquement à la barre latérale du modèle actif.</p>
+          </div>}
           {!selected ? <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">Sélectionnez un élément pour le modifier.</div> : (
             <div className="space-y-4">
               <div className="flex items-center justify-between"><h3 className="font-semibold text-[#002050]">Propriétés</h3><button onClick={() => patchBlock(selected.id,{locked:!selected.locked})} className="rounded-lg border p-2">{selected.locked?<Unlock className="h-4 w-4"/>:<Lock className="h-4 w-4"/>}</button></div>

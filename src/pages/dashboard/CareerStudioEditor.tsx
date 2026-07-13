@@ -47,7 +47,6 @@ import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
-import { buildCareerTemplateLayout } from '../../components/career/UnifiedCareerTemplate';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -142,13 +141,25 @@ function textBlock(content: string, x: number, y: number, width: number, height:
   };
 }
 
+function defaultPhotoPlaceholder(name = 'Photo'): string {
+  const initials = String(name || 'Photo').trim().split(/\s+/).map(x => x[0] || '').join('').slice(0, 2).toUpperCase() || 'PH';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" fill="#e8edf3"/><circle cx="120" cy="88" r="43" fill="#a8b4c2"/><path d="M42 218c10-52 42-78 78-78s68 26 78 78" fill="#a8b4c2"/><text x="120" y="228" text-anchor="middle" font-family="Arial" font-size="18" fill="#52606d">${initials}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 function createManualLayout(document: CareerDocumentFull): ManualLayout {
   const design = document.design_options as DesignOptions;
   const builtin = document.doc_type === 'cv' ? BUILTIN_CV_LAYOUTS[document.template_key] : BUILTIN_LM_LAYOUTS[document.template_key];
   let custom: any = null;
   try { custom = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]').find((x:any)=>x.template_key===document.template_key)?.layout_config; } catch {}
   const cfg:any = builtin || custom || { variant:'split', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'solid' };
-  const colors = { ...(design.colors || DEFAULT_COLORS), primary: design.colors?.primary || cfg.primary, accent: design.colors?.accent || cfg.accent, sidebar: design.colors?.sidebar || cfg.sidebar };
+  const customColors = Boolean((design as any)?.template_color_customized);
+  const colors = {
+    ...(design.colors || DEFAULT_COLORS),
+    primary: customColors ? (design.colors?.primary || cfg.primary) : cfg.primary,
+    accent: customColors ? (design.colors?.accent || cfg.accent) : cfg.accent,
+    sidebar: customColors ? (design.colors?.sidebar || cfg.sidebar) : cfg.sidebar,
+  };
   const blocks: ManualBlock[] = [];
   const shape = (x:number,y:number,width:number,height:number,bg:string,radius=0,zIndex=1):ManualBlock => ({id:uid('shape'),type:'shape',x,y,width,height,rotation:0,zIndex,style:{backgroundColor:bg,opacity:1,borderWidth:0,borderRadius:radius}});
   const lineBlock = (x:number,y:number,width:number,color=colors.accent,height=3):ManualBlock => ({id:uid('line'),type:'line',x,y,width,height,rotation:0,zIndex:2,style:{borderColor:color,borderWidth:height,opacity:1}});
@@ -161,7 +172,8 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
     const langs=(d.languages||[]).map(x=>`${x.name} — ${x.level}`).filter(Boolean).join('\n');
     const exp=(d.experiences||[]).map(e=>`${e.position}${e.company?` — ${e.company}`:''}\n${e.description||''}`).join('\n\n');
     const edu=(d.education||[]).map(e=>`${e.degree}${e.school?` — ${e.school}`:''}${e.year?` (${e.year})`:''}`).join('\n');
-    const photoSrc=d.photo_url || '';
+    const photoEnabled = cfg.photo !== false && (design as any)?.photo_enabled !== false;
+    const photoSrc = photoEnabled ? (d.photo_url || defaultPhotoPlaceholder(d.name)) : '';
     const photoRound=cfg.variant==='creative'?20:54;
 
     if (cfg.variant === 'split') {
@@ -374,10 +386,7 @@ export default function CareerStudioEditor() {
 
   const manualLayout = useMemo(() => {
     if (!document) return null;
-    const saved = (document.doc_data as any).manual_layout as ManualLayout | undefined;
-    return saved && saved.templateKey === document.template_key
-      ? saved
-      : buildCareerTemplateLayout(document);
+    return ((document.doc_data as any).manual_layout as ManualLayout | undefined) || createManualLayout(document);
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
@@ -496,6 +505,7 @@ export default function CareerStudioEditor() {
       design_options: {
         ...doc.design_options,
         colors,
+        template_color_customized: true,
       } as DesignOptions | LmDesign,
     }));
   }
@@ -529,15 +539,16 @@ export default function CareerStudioEditor() {
   function changeTemplate(templateKey: string) {
     const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
     const meta = getTemplateMeta(docType, normalizedTemplateKey);
-    const preset = docType === 'cv' ? templatePreset(normalizedTemplateKey) : {};
+    const cfg = docType === 'cv' ? BUILTIN_CV_LAYOUTS[normalizedTemplateKey] : BUILTIN_LM_LAYOUTS[normalizedTemplateKey];
     updateDocument(doc => ({
       ...doc,
       template_key: normalizedTemplateKey,
       doc_data: { ...(doc.doc_data as any), manual_layout: undefined },
       design_options: {
         ...doc.design_options,
-        ...preset,
-        colors: (preset as any).colors || meta.default_colors || DEFAULT_COLORS,
+        colors: meta.default_colors || DEFAULT_COLORS,
+        photo_enabled: docType === 'cv' ? cfg?.photo !== false : undefined,
+        template_color_customized: false,
         editor_mode: 'template',
       } as DesignOptions | LmDesign,
     }));

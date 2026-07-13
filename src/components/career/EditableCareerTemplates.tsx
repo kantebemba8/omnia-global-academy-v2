@@ -14,14 +14,14 @@ export type TemplateLayoutConfig = {
 };
 
 export const BUILTIN_CV_LAYOUTS: Record<string, TemplateLayoutConfig> = {
-  cv_horizon: { variant:'split', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'split', photo:true },
+  cv_horizon: { variant:'split', primary:'#16324F', accent:'#E0A458', sidebar:'#EAF0F5', header:'split', photo:true },
   cv_sahara: { variant:'band', primary:'#7a3e16', accent:'#d7a64a', sidebar:'#fbf4e8', header:'solid', photo:true },
   cv_atlas: { variant:'minimal', primary:'#16213e', accent:'#4b79a1', sidebar:'#f5f7fa', header:'line', photo:false },
-  cv_kora: { variant:'timeline', primary:'#3b235f', accent:'#d2a8ff', sidebar:'#f6f0ff', header:'solid', photo:true },
-  cv_nile: { variant:'cards', primary:'#064e3b', accent:'#22c55e', sidebar:'#ecfdf5', header:'split', photo:true },
+  cv_kora: { variant:'timeline', primary:'#5B2A86', accent:'#F59ECA', sidebar:'#FFF0F7', header:'solid', photo:true },
+  cv_nile: { variant:'cards', primary:'#0B5563', accent:'#F2B134', sidebar:'#E8F5F7', header:'split', photo:true },
   cv_executive: { variant:'executive', primary:'#111827', accent:'#b88746', sidebar:'#f3f4f6', header:'minimal', photo:false },
   cv_baobab: { variant:'creative', primary:'#7c2d12', accent:'#f59e0b', sidebar:'#fff7ed', header:'solid', photo:true },
-  cv_digital: { variant:'tech', primary:'#071a2f', accent:'#00b8d9', sidebar:'#0d2944', header:'solid', photo:true },
+  cv_digital: { variant:'tech', primary:'#0A1024', accent:'#7CFFCB', sidebar:'#111A35', header:'solid', photo:true },
   cv_academia: { variant:'academic', primary:'#334155', accent:'#64748b', sidebar:'#f8fafc', header:'line', photo:false },
   cv_hospitality: { variant:'hospitality', primary:'#123b55', accent:'#c6a15b', sidebar:'#edf4f7', header:'split', photo:true },
   cv_qhse: { variant:'qhse', primary:'#0f4c3a', accent:'#84cc16', sidebar:'#f1f8f4', header:'solid', photo:false },
@@ -29,8 +29,8 @@ export const BUILTIN_CV_LAYOUTS: Record<string, TemplateLayoutConfig> = {
 };
 
 export const BUILTIN_LM_LAYOUTS: Record<string, TemplateLayoutConfig> = {
-  lm_horizon: { variant:'split', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'split' },
-  lm_sahara: { variant:'band', primary:'#7a3e16', accent:'#d7a64a', sidebar:'#fbf4e8', header:'solid' },
+  lm_horizon: { variant:'split', primary:'#16324F', accent:'#E0A458', sidebar:'#EAF0F5', header:'split' },
+  lm_sahara: { variant:'band', primary:'#8A4B2A', accent:'#E6B85C', sidebar:'#FFF3DD', header:'solid' },
   lm_atlas: { variant:'minimal', primary:'#16213e', accent:'#4b79a1', sidebar:'#f5f7fa', header:'line' },
   lm_kora: { variant:'creative', primary:'#3b235f', accent:'#d2a8ff', sidebar:'#f6f0ff', header:'solid' },
   lm_digital: { variant:'tech', primary:'#071a2f', accent:'#00b8d9', sidebar:'#0d2944', header:'solid' },
@@ -64,13 +64,18 @@ function cvParts(data:DocData, primary:string, accent:string){
 
 export function ConfigurableCvTemplate({data, design, templateKey}:{data:DocData;design:DesignOptions;templateKey:string}){
   const cfg = BUILTIN_CV_LAYOUTS[templateKey] || cachedConfig(templateKey) || BUILTIN_CV_LAYOUTS.cv_horizon;
-  const primary = design?.colors?.primary || cfg.primary;
-  const accent = design?.colors?.accent || cfg.accent;
-  const sidebarColor = design?.colors?.sidebar || cfg.sidebar || '#f4f6f8';
+  // Les couleurs propres au modèle sont appliquées par défaut. Les couleurs de la
+  // plateforme ne doivent jamais écraser l'identité visuelle du template.
+  // Elles ne sont remplacées que si l'apprenant a explicitement personnalisé le modèle.
+  const customColors = Boolean((design as any)?.template_color_customized);
+  const primary = customColors ? (design?.colors?.primary || cfg.primary) : cfg.primary;
+  const accent = customColors ? (design?.colors?.accent || cfg.accent) : cfg.accent;
+  const sidebarColor = customColors ? (design?.colors?.sidebar || cfg.sidebar || '#f4f6f8') : (cfg.sidebar || '#f4f6f8');
   const font = design?.font || cfg.font || (cfg.variant === 'academic' ? 'Georgia,serif' : 'Inter,Arial,sans-serif');
   const contactText = contacts(data) || 'Vos coordonnées';
   const {exp,edu,skills,langs}=cvParts(data,primary,accent);
-  const photo = cfg.photo && design.photo_enabled ? <Photo data={data} accent={accent} shape={cfg.variant==='creative'?'20px':'50%'} /> : null;
+  const photoEnabled = cfg.photo !== false && (design as any)?.photo_enabled !== false;
+  const photo = photoEnabled ? <Photo data={data} accent={accent} shape={cfg.variant==='creative'?'20px':'50%'} /> : null;
 
   if (cfg.variant === 'split') return <div style={{width:794,minHeight:1123,display:'grid',gridTemplateColumns:'230px 1fr',fontFamily:font,background:'#fff',color:'#1f2937'}}><aside style={{background:sidebarColor,padding:'34px 24px'}}><div style={{display:'flex',justifyContent:'center',marginBottom:20}}>{photo}</div><Section title="Contact" accent={accent}><div style={{fontSize:9,lineHeight:1.7}}>{contactText}</div></Section><Section title="Compétences" accent={accent}>{skills}</Section><Section title="Langues" accent={accent}>{langs}</Section></aside><main><header style={{background:primary,color:'#fff',padding:'45px 46px 34px'}}><div style={{fontSize:32,fontWeight:900}}>{data.name||'Votre nom'}</div><div style={{fontSize:14,color:accent,marginTop:6,fontWeight:700}}>{data.title||'Titre professionnel'}</div></header><div style={{padding:'34px 42px'}}>{data.summary&&<Section title="Profil" accent={accent}><p style={{fontSize:10,lineHeight:1.6}}>{data.summary}</p></Section>}<Section title="Expériences" accent={accent}>{exp}</Section><Section title="Formation" accent={accent}>{edu}</Section></div></main></div>;
 
