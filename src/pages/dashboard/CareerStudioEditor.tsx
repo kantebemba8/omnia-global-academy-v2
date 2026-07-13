@@ -234,6 +234,9 @@ export default function CareerStudioEditor() {
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(0.62);
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [pendingDocumentName, setPendingDocumentName] = useState('');
+  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | null>(null);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -290,33 +293,62 @@ export default function CareerStudioEditor() {
     setDirty(true);
   }, []);
 
-  const saveNow = useCallback(async () => {
-    if (!document) return;
-    const currentTitle = String(document.title || '').trim();
-    const defaultTitle = getDefaultDocTitle(document.doc_type);
-    if (!currentTitle || currentTitle === defaultTitle) {
-      const requested = window.prompt(document.doc_type === 'cv' ? 'Nommer votre CV' : 'Nommer votre lettre de motivation', '');
-      if (!requested?.trim()) { setSaveState('idle'); return; }
-      document.title = requested.trim();
-      setDocument({ ...document, title: requested.trim() });
-    }
+  const isDocumentNamed = useCallback((doc: CareerDocumentFull) => {
+    const currentTitle = String(doc.title || '').trim();
+    const defaultTitle = getDefaultDocTitle(doc.doc_type);
+    return Boolean(currentTitle && currentTitle !== defaultTitle);
+  }, []);
+
+  const persistDocument = useCallback(async (docToSave: CareerDocumentFull) => {
     setSaveState('saving');
     try {
-      const saved = await saveCareerDocument(document);
+      const saved = await saveCareerDocument(docToSave);
       setDocument(saved.document);
       setRemoteMode(saved.remote);
       setSaveState('saved');
       setDirty(false);
+      return saved.document;
     } catch {
       setSaveState('error');
+      throw new Error('SAVE_FAILED');
     }
-  }, [document]);
+  }, []);
+
+  const saveNow = useCallback(async (interactive = true, action: 'save' | 'pdf' | 'manual' = 'save') => {
+    if (!document) return null;
+    if (!isDocumentNamed(document)) {
+      if (!interactive) return null;
+      setPendingDocumentName('');
+      setPendingSaveAction(action);
+      setNameDialogOpen(true);
+      setSaveState('idle');
+      return null;
+    }
+    return persistDocument(document);
+  }, [document, isDocumentNamed, persistDocument]);
+
+  const confirmDocumentName = useCallback(async () => {
+    if (!document || !pendingDocumentName.trim()) return;
+    const named = { ...document, title: pendingDocumentName.trim() };
+    setDocument(named);
+    setNameDialogOpen(false);
+    const action = pendingSaveAction;
+    setPendingSaveAction(null);
+    try {
+      await persistDocument(named);
+      if (action === 'manual') showToast('Mise en page manuelle enregistrée');
+      else if (action === 'save') showToast('Document sauvegardé');
+      else if (action === 'pdf') window.setTimeout(() => handlePdfDownload(true), 0);
+    } catch {
+      showToast('Impossible de sauvegarder le document.');
+    }
+  }, [document, pendingDocumentName, pendingSaveAction, persistDocument]);
 
   useEffect(() => {
     if (!document || loading || !dirty) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      saveNow();
+      saveNow(false);
     }, 900);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -407,8 +439,8 @@ export default function CareerStudioEditor() {
   }
 
   async function manualSave() {
-    await saveNow();
-    showToast('Document sauvegardé');
+    const saved = await saveNow(true, 'save');
+    if (saved) showToast('Document sauvegardé');
   }
 
 
@@ -501,7 +533,7 @@ export default function CareerStudioEditor() {
     showToast('Suggestion appliquée au document');
   }
 
-  async function handlePdfDownload() {
+  async function handlePdfDownload(alreadyNamed = false) {
     if (!document) return;
     if (exportingPdf) return;
 
@@ -512,19 +544,23 @@ export default function CareerStudioEditor() {
 
     setExportingPdf(true);
     try {
-      await saveNow();
-      const result = await prepareCareerPdfExport(document);
+      if (!alreadyNamed) {
+        const saved = await saveNow(true, 'pdf');
+        if (!saved) { setExportingPdf(false); return; }
+      }
+      const currentDocument = document;
+      const result = await prepareCareerPdfExport(currentDocument);
       if (typeof result.tokens_remaining === 'number') {
         setTokens(result.tokens_remaining);
       }
 
       printCareerElementAsPdf(printRef.current, {
-        title: document.title || (document.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
-        docType: document.doc_type,
+        title: currentDocument.title || (currentDocument.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
+        docType: currentDocument.doc_type,
         tokensConsumed: result.tokens_consumed,
       });
 
-      const message = document.doc_type === 'cv'
+      const message = currentDocument.doc_type === 'cv'
         ? result.remote
           ? `PDF prêt. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
           : 'PDF prêt en mode test local : aucun jeton consommé.'
@@ -732,9 +768,37 @@ export default function CareerStudioEditor() {
           initialLayout={manualLayout}
           onChange={updateManualLayout}
           onClose={() => setManualEditorOpen(false)}
-          onSave={async () => { await saveNow(); showToast('Mise en page manuelle enregistrée'); }}
+          onSave={async () => {
+            const saved = await saveNow(true, 'manual');
+            if (saved) showToast('Mise en page manuelle enregistrée');
+          }}
           printRef={printRef}
         />
+      )}
+
+      {nameDialogOpen && document && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-[#002050]">
+              {document.doc_type === 'cv' ? 'Nommer votre CV' : 'Nommer votre lettre de motivation'}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Donnez un nom clair pour retrouver facilement ce document dans Omnia Career.
+            </p>
+            <input
+              autoFocus
+              value={pendingDocumentName}
+              onChange={(e) => setPendingDocumentName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pendingDocumentName.trim()) confirmDocumentName(); }}
+              placeholder={document.doc_type === 'cv' ? 'Ex. CV Assistant QSE Luxembourg' : 'Ex. LM Stage QHSE'}
+              className="mt-5 h-12 w-full rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-[#bf8813] focus:ring-4 focus:ring-[#bf8813]/10"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => { setNameDialogOpen(false); setPendingSaveAction(null); setSaveState('idle'); }} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Annuler</button>
+              <button type="button" disabled={!pendingDocumentName.trim()} onClick={confirmDocumentName} className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Enregistrer</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -935,6 +999,36 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
   if (active === 'profile') {
     return (
       <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-4">
+            <div className="h-20 w-20 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              {data.photo_url ? <img src={data.photo_url} alt="Photo du CV" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">Photo</div>}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-[#002050]">Photo du CV</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">Ajoutez, remplacez ou supprimez votre photo. Les modèles sans photo l’ignorent automatiquement.</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className="cursor-pointer rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white">
+                  {data.photo_url ? 'Remplacer' : 'Ajouter une photo'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => update(d => ({ ...d, photo_url: String(reader.result || '') }));
+                      reader.readAsDataURL(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {data.photo_url && <button type="button" onClick={() => update(d => ({ ...d, photo_url: '' }))} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600">Supprimer</button>}
+              </div>
+            </div>
+          </div>
+        </div>
         <Field label="Nom complet" value={data.name} onChange={v => update(d => ({ ...d, name: v }))} />
         <Field label="Titre professionnel" value={data.title} onChange={v => update(d => ({ ...d, title: v }))} />
         <Field label="Email" value={data.contact.email} onChange={v => update(d => ({ ...d, contact: { ...d.contact, email: v } }))} />

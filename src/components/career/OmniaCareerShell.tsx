@@ -1,4 +1,5 @@
 import { ReactNode, useMemo } from 'react';
+import { useCareerAutoTranslate } from '../../lib/careerAutoTranslate';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -89,6 +90,7 @@ export function OmniaCareerShell({
   activeSection: CareerSection;
   children: ReactNode;
 }) {
+  useCareerAutoTranslate();
   const navigate = useNavigate();
   const user = useMemo(() => readStoredUser(), []);
   const displayName = user?.full_name || 'Apprenant';

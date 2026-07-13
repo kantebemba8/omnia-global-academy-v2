@@ -2,7 +2,8 @@ import React, { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, BringToFront, Copy, Image as ImageIcon,
   Italic, Layers, Lock, Minus, Move, Plus, Redo2, RotateCcw, SendToBack, Square,
-  Trash2, Type, Underline, Undo2, Unlock, X, ZoomIn, ZoomOut
+  Trash2, Type, Underline, Undo2, Unlock, X, ZoomIn, ZoomOut, Circle, List,
+  UserCircle2, Briefcase, GraduationCap, Award, Languages, MapPin, Phone, Mail
 } from 'lucide-react';
 
 export type ManualBlockType = 'text' | 'image' | 'shape' | 'line';
@@ -153,6 +154,27 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
     setSelectedId(block.id);
   }
 
+
+  function addPreset(kind: 'title'|'subtitle'|'contact'|'experience'|'education'|'skills'|'languages'|'badge'|'circle'|'divider') {
+    const maxZ = Math.max(0, ...layout.blocks.map(b => b.zIndex));
+    const base = { id: id(), x: 90, y: 100 + layout.blocks.length * 10, rotation: 0, zIndex: maxZ + 1 };
+    const presets: Record<string, ManualBlock> = {
+      title: { ...base, type:'text', width:430, height:64, content:'VOTRE NOM', style:{fontFamily:'Arial',fontSize:30,fontWeight:700,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#002050',backgroundColor:'transparent',borderColor:'transparent',borderWidth:0,borderRadius:0,lineHeight:1.1,opacity:1,padding:4}},
+      subtitle: { ...base, type:'text', width:360, height:42, content:'Titre professionnel', style:{fontFamily:'Arial',fontSize:16,fontWeight:600,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#bf8813',backgroundColor:'transparent',borderColor:'transparent',borderWidth:0,borderRadius:0,lineHeight:1.2,opacity:1,padding:4}},
+      contact: { ...base, type:'text', width:420, height:72, content:'email@exemple.com  •  +352 00 00 00 00  •  Ville, Pays', style:{fontFamily:'Arial',fontSize:11,fontWeight:400,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#475569',backgroundColor:'transparent',borderColor:'transparent',borderWidth:0,borderRadius:0,lineHeight:1.5,opacity:1,padding:4}},
+      experience: { ...base, type:'text', width:500, height:130, content:'EXPÉRIENCE PROFESSIONNELLE\nPoste — Entreprise\n2024 — Aujourd’hui\nDécrivez vos missions, résultats et responsabilités.', style:{fontFamily:'Arial',fontSize:12,fontWeight:400,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#1f2937',backgroundColor:'#ffffff',borderColor:'#e2e8f0',borderWidth:1,borderRadius:10,lineHeight:1.45,opacity:1,padding:14}},
+      education: { ...base, type:'text', width:500, height:110, content:'FORMATION\nDiplôme — Établissement\nAnnée • Ville', style:{fontFamily:'Arial',fontSize:12,fontWeight:400,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#1f2937',backgroundColor:'#ffffff',borderColor:'#e2e8f0',borderWidth:1,borderRadius:10,lineHeight:1.45,opacity:1,padding:14}},
+      skills: { ...base, type:'text', width:300, height:120, content:'COMPÉTENCES\n• Compétence 1\n• Compétence 2\n• Compétence 3', style:{fontFamily:'Arial',fontSize:12,fontWeight:400,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#1f2937',backgroundColor:'#f8fafc',borderColor:'#cbd5e1',borderWidth:1,borderRadius:12,lineHeight:1.55,opacity:1,padding:14}},
+      languages: { ...base, type:'text', width:280, height:100, content:'LANGUES\nFrançais — Courant\nAnglais — Intermédiaire', style:{fontFamily:'Arial',fontSize:12,fontWeight:400,fontStyle:'normal',textDecoration:'none',textAlign:'left',color:'#1f2937',backgroundColor:'#f8fafc',borderColor:'#cbd5e1',borderWidth:1,borderRadius:12,lineHeight:1.5,opacity:1,padding:14}},
+      badge: { ...base, type:'text', width:160, height:38, content:'COMPÉTENCE', style:{fontFamily:'Arial',fontSize:11,fontWeight:700,fontStyle:'normal',textDecoration:'none',textAlign:'center',color:'#ffffff',backgroundColor:'#002050',borderColor:'#002050',borderWidth:0,borderRadius:19,lineHeight:1.2,opacity:1,padding:10}},
+      circle: { ...base, type:'shape', width:120, height:120, style:{backgroundColor:'#bf8813',borderColor:'#ffffff',borderWidth:4,borderRadius:60,opacity:1,padding:0}},
+      divider: { ...base, type:'line', width:420, height:4, style:{borderColor:'#bf8813',borderWidth:3,opacity:1,backgroundColor:'transparent'}},
+    };
+    const block = presets[kind];
+    commit({ ...layout, blocks:[...layout.blocks, block] });
+    setSelectedId(block.id);
+  }
+
   function addImage(file: File) {
     if (!file.type.startsWith('image/')) return;
     const reader = new FileReader();
@@ -248,10 +270,18 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
         <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
           <h3 className="mb-3 text-sm font-semibold text-[#002050]">Ajouter</h3>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => addBlock('text')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Type className="h-5 w-5" /> Texte</button>
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><ImageIcon className="h-5 w-5" /> Image<input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && addImage(e.target.files[0])} /></label>
-            <button onClick={() => addBlock('shape')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Square className="h-5 w-5" /> Forme</button>
-            <button onClick={() => addBlock('line')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Minus className="h-5 w-5" /> Ligne</button>
+            <button onClick={() => addPreset('title')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Type className="h-5 w-5" /> Titre</button>
+            <button onClick={() => addPreset('subtitle')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Type className="h-5 w-5" /> Sous-titre</button>
+            <button onClick={() => addPreset('contact')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Mail className="h-5 w-5" /> Coordonnées</button>
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><ImageIcon className="h-5 w-5" /> Photo / image<input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && addImage(e.target.files[0])} /></label>
+            <button onClick={() => addPreset('experience')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Briefcase className="h-5 w-5" /> Expérience</button>
+            <button onClick={() => addPreset('education')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><GraduationCap className="h-5 w-5" /> Formation</button>
+            <button onClick={() => addPreset('skills')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Award className="h-5 w-5" /> Compétences</button>
+            <button onClick={() => addPreset('languages')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Languages className="h-5 w-5" /> Langues</button>
+            <button onClick={() => addPreset('badge')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Square className="h-5 w-5" /> Badge</button>
+            <button onClick={() => addPreset('circle')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Circle className="h-5 w-5" /> Cercle photo</button>
+            <button onClick={() => addPreset('divider')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Minus className="h-5 w-5" /> Séparateur</button>
+            <button onClick={() => addBlock('text')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Plus className="h-5 w-5" /> Bloc libre</button>
           </div>
 
           <div className="mt-6 flex items-center justify-between"><h3 className="text-sm font-semibold text-[#002050]">Calques</h3><Layers className="h-4 w-4 text-slate-400" /></div>
