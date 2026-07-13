@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
+import { ENDPOINTS } from '../../lib/config';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -80,6 +81,8 @@ interface Template {
   is_free?: boolean;
   is_ats_compatible?: boolean;
   display_order?: number;
+  thumbnail_url?: string;
+  is_custom?: boolean;
   default_colors?: {
     primary?: string;
     accent?: string;
@@ -542,14 +545,14 @@ function MiniCvPreview() {
   );
 }
 
-function templateMockupPath(templateKey: string) {
-  return `/career-template-mockups/individual/${templateKey}.webp`;
+function templateMockupPath(template: Template) {
+  return template.thumbnail_url || (template.is_custom ? '/career-templates/generated/custom.svg' : `/career-templates/generated/${template.template_key}.svg`);
 }
 
 function TemplateMini({ template, selected = false }: { template: Template; selected?: boolean }) {
   return (
     <div className="group relative aspect-[9/11] w-full overflow-hidden rounded-xl border bg-white shadow-sm" style={{ borderColor: selected ? OMNIA_GOLD : BORDER }}>
-      <img src={templateMockupPath(template.template_key)} alt={template.name_fr} className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.02]" />
+      <img src={templateMockupPath(template)} alt={template.name_fr} className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.02]" />
       {selected && <div className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-white shadow" style={{ background: OMNIA_BLUE }}><CheckCircle2 size={14} /></div>}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-xs font-semibold text-white">{template.name_fr}</div>
     </div>
@@ -650,9 +653,29 @@ function ApplicationsView({ jobId, navigate }: { jobId?: string; navigate: (path
 }
 
 function ProfileView({ displayName }: { displayName: string }) {
-  const raw=readUser()||{}; const [profile,setProfile]=useState({full_name:raw.full_name||raw.name||displayName,email:raw.email||'',phone:(raw as any).phone||'',location:(raw as any).location||'',title:(raw as any).professional_title||'',bio:(raw as any).bio||''});
-  function save(){ const merged={...raw,...profile,full_name:profile.full_name,professional_title:profile.title}; localStorage.setItem('omnia_user',JSON.stringify(merged)); }
-  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Les informations enregistrées ici utilisent le même profil local que votre compte."/><div className="grid gap-5 xl:grid-cols-[320px_1fr]"><Card className="p-6"><div className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold text-white" style={{background:OMNIA_BLUE}}>{getInitials(profile.full_name,profile.email)}</div><h2 className="mt-4 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{profile.full_name||'Votre nom'}</h2><p className="text-sm" style={{color:MUTED}}>{profile.title||'Titre professionnel non renseigné'}</p></Card><Card className="p-6"><div className="grid gap-4 md:grid-cols-2"><EditableField label="Nom complet" value={profile.full_name} onChange={v=>setProfile({...profile,full_name:v})}/><EditableField label="E-mail" value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><EditableField label="Téléphone" value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/><EditableField label="Ville / Pays" value={profile.location} onChange={v=>setProfile({...profile,location:v})}/><EditableField label="Titre professionnel" value={profile.title} onChange={v=>setProfile({...profile,title:v})}/></div><label className="mt-4 block text-sm font-medium" style={{color:OMNIA_BLUE}}>Biographie<textarea value={profile.bio} onChange={e=>setProfile({...profile,bio:e.target.value})} className="mt-1 min-h-28 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}/></label><button onClick={save} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Enregistrer le profil</button></Card></div></div>;
+  const raw=readUser()||{};
+  const [profile,setProfile]=useState({full_name:raw.full_name||raw.name||displayName,email:raw.email||'',phone:(raw as any).phone_number||(raw as any).phone||'',location:(raw as any).location||'',title:(raw as any).professional_title||'',bio:(raw as any).bio||''});
+  const [saving,setSaving]=useState(false); const [message,setMessage]=useState('');
+  async function save(){
+    setSaving(true); setMessage('');
+    const token=localStorage.getItem('omnia_session_token')||'';
+    const payload={full_name:profile.full_name,email:profile.email,phone_number:profile.phone,professional_title:profile.title,location:profile.location,bio:profile.bio};
+    try {
+      if(token){
+        const res=await fetch(ENDPOINTS.authUpdateProfile,{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(data.message||data.error||'Mise à jour impossible');
+        const merged={...raw,...payload,...(data.user||{}),phone:payload.phone_number};
+        localStorage.setItem('omnia_user',JSON.stringify(merged));
+      } else {
+        localStorage.setItem('omnia_user',JSON.stringify({...raw,...payload,phone:payload.phone_number}));
+      }
+      window.dispatchEvent(new CustomEvent('omnia-profile-updated',{detail:payload}));
+      setMessage('Profil synchronisé avec le Dashboard principal.');
+    } catch(e:any){ setMessage(e?.message||'Erreur de synchronisation.'); }
+    finally{setSaving(false);}
+  }
+  return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Ce profil utilise les mêmes données que votre profil apprenant principal."/><div className="grid gap-5 xl:grid-cols-[320px_1fr]"><Card className="p-6"><div className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold text-white" style={{background:OMNIA_BLUE}}>{getInitials(profile.full_name,profile.email)}</div><h2 className="mt-4 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{profile.full_name||'Votre nom'}</h2><p className="text-sm" style={{color:MUTED}}>{profile.title||'Titre professionnel non renseigné'}</p></Card><Card className="p-6"><div className="grid gap-4 md:grid-cols-2"><EditableField label="Nom complet" value={profile.full_name} onChange={v=>setProfile({...profile,full_name:v})}/><EditableField label="E-mail" value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><EditableField label="Téléphone" value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/><EditableField label="Ville / Pays" value={profile.location} onChange={v=>setProfile({...profile,location:v})}/><EditableField label="Titre professionnel" value={profile.title} onChange={v=>setProfile({...profile,title:v})}/></div><label className="mt-4 block text-sm font-medium" style={{color:OMNIA_BLUE}}>Biographie<textarea value={profile.bio} onChange={e=>setProfile({...profile,bio:e.target.value})} className="mt-1 min-h-28 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}/></label>{message&&<p className="mt-3 text-sm" style={{color:message.includes('synchronisé')?'#15803d':'#b91c1c'}}>{message}</p>}<button onClick={save} disabled={saving} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:OMNIA_BLUE}}>{saving?'Synchronisation…':'Enregistrer et synchroniser'}</button></Card></div></div>;
 }
 
 function CoachingView() {
@@ -664,7 +687,7 @@ function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: num
   const [language,setLanguage]=useState(localStorage.getItem('omnia_career_language')||'fr');
   const [notifications,setNotifications]=useState(localStorage.getItem('omnia_career_notifications')!=='false');
   function save(){ localStorage.setItem('omnia_career_language',language); localStorage.setItem('omnia_career_notifications',String(notifications)); }
-  return <div className="space-y-5"><PageHeader title="Paramètres Omnia Career" subtitle="Réglages propres à votre espace carrière."/><div className="grid gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Langue"/><select value={language} onChange={e=>setLanguage(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="de">Deutsch</option></select><p className="mt-3 text-xs" style={{color:MUTED}}>La préférence est enregistrée. La traduction complète dépend des textes traduits disponibles dans l’application.</p></Card><Card className="p-5"><SectionTitle title="Notifications"/><label className="flex items-center justify-between gap-3 text-sm" style={{color:OMNIA_BLUE}}><span>Notifications Career</span><input type="checkbox" checked={notifications} onChange={e=>setNotifications(e.target.checked)}/></label></Card><Card className="p-5"><SectionTitle title="Jetons"/><div className="text-3xl font-semibold" style={{color:OMNIA_BLUE}}>{tokens}</div><p className="text-sm" style={{color:MUTED}}>jeton(s) disponible(s)</p></Card></div><button onClick={save} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Enregistrer les paramètres</button></div>;
+  return <div className="space-y-5"><PageHeader title="Paramètres Omnia Career" subtitle="Réglages propres à votre espace carrière."/><div className="grid gap-5 xl:grid-cols-3"><Card className="p-5"><SectionTitle title="Langue"/><select value={language} onChange={e=>setLanguage(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="fr">Français</option><option value="en">English</option></select><p className="mt-3 text-xs" style={{color:MUTED}}>La préférence est enregistrée. La traduction complète dépend des textes traduits disponibles dans l’application.</p></Card><Card className="p-5"><SectionTitle title="Notifications"/><label className="flex items-center justify-between gap-3 text-sm" style={{color:OMNIA_BLUE}}><span>Notifications Career</span><input type="checkbox" checked={notifications} onChange={e=>setNotifications(e.target.checked)}/></label></Card><Card className="p-5"><SectionTitle title="Jetons"/><div className="text-3xl font-semibold" style={{color:OMNIA_BLUE}}>{tokens}</div><p className="text-sm" style={{color:MUTED}}>jeton(s) disponible(s)</p></Card></div><button onClick={save} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Enregistrer les paramètres</button></div>;
 }
 
 function EditableField({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){return <label className="block text-sm font-medium" style={{color:OMNIA_BLUE}}>{label}<input value={value} onChange={e=>onChange(e.target.value)} className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}/></label>}

@@ -20,6 +20,9 @@ export type CareerTemplateMeta = {
     background: string;
   };
   available_fonts?: string[];
+  thumbnail_url?: string;
+  layout_config?: Record<string, unknown>;
+  is_custom?: boolean;
 };
 
 export type CareerDocumentSummary = {
@@ -122,61 +125,27 @@ export const DEFAULT_LM_DATA: LmData = {
 };
 
 export const CV_TEMPLATES_META: CareerTemplateMeta[] = [
-  { template_key: 'classic_pro', template_type: 'cv', name_fr: 'Classique Pro', description_fr: 'Sobre, lisible et adapté aux candidatures professionnelles.', category: 'professional', is_free: true, is_ats_compatible: true, display_order: 1, default_colors: DEFAULT_COLORS },
-  { template_key: 'modern_student', template_type: 'cv', name_fr: 'Étudiant Moderne', description_fr: 'Idéal stage, alternance et premier emploi.', category: 'student', is_free: true, is_ats_compatible: true, display_order: 2, default_colors: DEFAULT_COLORS },
-  { template_key: 'corporate_blue', template_type: 'cv', name_fr: 'Corporate Bleu', description_fr: 'Très professionnel, parfait pour banque, gestion et administration.', category: 'professional', is_free: true, is_ats_compatible: true, display_order: 3, default_colors: DEFAULT_COLORS },
-  { template_key: 'minimal_luxe', template_type: 'cv', name_fr: 'Minimal Luxe', description_fr: 'Design premium, élégant et très lisible.', category: 'africa_premium', is_free: false, is_ats_compatible: true, display_order: 4, default_colors: DEFAULT_COLORS },
-  { template_key: 'africa_gold', template_type: 'cv', name_fr: 'Africa Gold', description_fr: 'Identité premium bleu et or, inspirée d’Omnia.', category: 'africa_premium', is_free: false, is_ats_compatible: true, display_order: 5, default_colors: DEFAULT_COLORS },
-  { template_key: 'tech_future', template_type: 'cv', name_fr: 'Tech Future', description_fr: 'Pensé pour développeurs, data, cloud et métiers numériques.', category: 'tech', is_free: false, is_ats_compatible: true, display_order: 6, default_colors: DEFAULT_COLORS },
-  { template_key: 'cyber_security', template_type: 'cv', name_fr: 'Cyber Security', description_fr: 'Design adapté cybersécurité, audit et systèmes.', category: 'tech', is_free: false, is_ats_compatible: true, display_order: 7, default_colors: DEFAULT_COLORS },
-  { template_key: 'data_analyst', template_type: 'cv', name_fr: 'Data Analyst', description_fr: 'CV orienté données, KPI, reporting et analyse.', category: 'tech', is_free: false, is_ats_compatible: true, display_order: 8, default_colors: DEFAULT_COLORS },
-  { template_key: 'creative_digital', template_type: 'cv', name_fr: 'Créatif Digital', description_fr: 'Pour design, marketing digital et communication.', category: 'creative', is_free: false, is_ats_compatible: false, display_order: 9, default_colors: DEFAULT_COLORS },
-  { template_key: 'no_photo_ats', template_type: 'cv', name_fr: 'ATS Sans Photo', description_fr: 'Optimisé ATS, sans photo, très simple à lire.', category: 'professional', is_free: true, is_ats_compatible: true, display_order: 10, default_colors: DEFAULT_COLORS },
-  { template_key: 'photo_elegant', template_type: 'cv', name_fr: 'Photo Élégant', description_fr: 'Modèle avec photo optionnelle et style soigné.', category: 'professional', is_free: false, is_ats_compatible: false, display_order: 11, default_colors: DEFAULT_COLORS },
-  { template_key: 'young_graduate', template_type: 'cv', name_fr: 'Jeune Diplômé', description_fr: 'Pour valoriser stages, projets et formation.', category: 'student', is_free: true, is_ats_compatible: true, display_order: 12, default_colors: DEFAULT_COLORS },
-  { template_key: 'internship_ready', template_type: 'cv', name_fr: 'Stage Ready', description_fr: 'Préparé pour candidatures de stage et alternance.', category: 'student', is_free: true, is_ats_compatible: true, display_order: 13, default_colors: DEFAULT_COLORS },
-  { template_key: 'international_cv', template_type: 'cv', name_fr: 'International', description_fr: 'Pour candidatures internationales et mobilité.', category: 'professional', is_free: false, is_ats_compatible: true, display_order: 14, default_colors: DEFAULT_COLORS },
-  { template_key: 'qhse_professional', template_type: 'cv', name_fr: 'QHSE Professionnel', description_fr: 'Adapté QSE, HSE, RSE, ISO et conformité.', category: 'specialized', is_free: false, is_ats_compatible: true, display_order: 15, default_colors: DEFAULT_COLORS },
-  { template_key: 'business_manager', template_type: 'cv', name_fr: 'Business Manager', description_fr: 'Pour management, business development et gestion.', category: 'professional', is_free: false, is_ats_compatible: true, display_order: 16, default_colors: DEFAULT_COLORS },
-  { template_key: 'hospitality', template_type: 'cv', name_fr: 'Hospitality Premium', description_fr: 'Pour hôtellerie, restauration et service client.', category: 'specialized', is_free: false, is_ats_compatible: true, display_order: 17, default_colors: DEFAULT_COLORS },
-  { template_key: 'academic_cv', template_type: 'cv', name_fr: 'Académique', description_fr: 'Pour recherche, enseignement et parcours académique.', category: 'specialized', is_free: false, is_ats_compatible: true, display_order: 18, default_colors: DEFAULT_COLORS },
-  { template_key: 'freelancer', template_type: 'cv', name_fr: 'Freelancer Portfolio', description_fr: 'Pour freelances, consultants et portfolio projet.', category: 'creative', is_free: false, is_ats_compatible: false, display_order: 19, default_colors: DEFAULT_COLORS },
-  { template_key: 'executive_one_page', template_type: 'cv', name_fr: 'Executive One Page', description_fr: 'CV premium compact pour profils expérimentés.', category: 'professional', is_free: false, is_ats_compatible: true, display_order: 20, default_colors: DEFAULT_COLORS },
+  { template_key:'cv_horizon', template_type:'cv', name_fr:'Horizon Pro', description_fr:'Deux colonnes élégantes, lisibles et professionnelles.', category:'professional', is_free:true, is_ats_compatible:true, display_order:1, default_colors:{...DEFAULT_COLORS,primary:'#002050',accent:'#bf8813',sidebar:'#eef3f8'} },
+  { template_key:'cv_sahara', template_type:'cv', name_fr:'Sahara Élégant', description_fr:'Style chaleureux et premium aux accents dorés.', category:'africa_premium', is_free:false, is_ats_compatible:true, display_order:2, default_colors:{...DEFAULT_COLORS,primary:'#7a3e16',accent:'#d7a64a',sidebar:'#fbf4e8'} },
+  { template_key:'cv_atlas', template_type:'cv', name_fr:'Atlas ATS', description_fr:'Modèle sans photo, optimisé pour les recruteurs et ATS.', category:'professional', is_free:true, is_ats_compatible:true, display_order:3, default_colors:{...DEFAULT_COLORS,primary:'#16213e',accent:'#4b79a1'} },
+  { template_key:'cv_kora', template_type:'cv', name_fr:'Kora Créatif', description_fr:'Présentation moderne avec chronologie et identité forte.', category:'creative', is_free:false, is_ats_compatible:false, display_order:4, default_colors:{...DEFAULT_COLORS,primary:'#3b235f',accent:'#d2a8ff',sidebar:'#f6f0ff'} },
+  { template_key:'cv_nile', template_type:'cv', name_fr:'Nile Impact', description_fr:'Blocs dynamiques pour profils polyvalents et projets.', category:'professional', is_free:true, is_ats_compatible:true, display_order:5, default_colors:{...DEFAULT_COLORS,primary:'#064e3b',accent:'#22c55e',sidebar:'#ecfdf5'} },
+  { template_key:'cv_executive', template_type:'cv', name_fr:'Executive Noir & Or', description_fr:'Une page premium pour cadres et fonctions de direction.', category:'professional', is_free:false, is_ats_compatible:true, display_order:6, default_colors:{...DEFAULT_COLORS,primary:'#111827',accent:'#b88746'} },
+  { template_key:'cv_baobab', template_type:'cv', name_fr:'Baobab Créatif', description_fr:'Design visuel pour communication, marketing et création.', category:'creative', is_free:false, is_ats_compatible:false, display_order:7, default_colors:{...DEFAULT_COLORS,primary:'#7c2d12',accent:'#f59e0b',sidebar:'#fff7ed'} },
+  { template_key:'cv_digital', template_type:'cv', name_fr:'Digital Tech', description_fr:'Interface sombre et moderne pour tech, data et cybersécurité.', category:'tech', is_free:false, is_ats_compatible:true, display_order:8, default_colors:{...DEFAULT_COLORS,primary:'#071a2f',accent:'#00b8d9',sidebar:'#0d2944'} },
+  { template_key:'cv_academia', template_type:'cv', name_fr:'Academia', description_fr:'Structure détaillée pour enseignement, recherche et publications.', category:'specialized', is_free:true, is_ats_compatible:true, display_order:9, default_colors:{...DEFAULT_COLORS,primary:'#334155',accent:'#64748b'} },
+  { template_key:'cv_hospitality', template_type:'cv', name_fr:'Hospitality Signature', description_fr:'Élégant et orienté service, hôtellerie et restauration.', category:'specialized', is_free:false, is_ats_compatible:true, display_order:10, default_colors:{...DEFAULT_COLORS,primary:'#123b55',accent:'#c6a15b',sidebar:'#edf4f7'} },
+  { template_key:'cv_qhse', template_type:'cv', name_fr:'QHSE Green', description_fr:'Conçu pour QSE, HSE, RSE, conformité et audit.', category:'specialized', is_free:false, is_ats_compatible:true, display_order:11, default_colors:{...DEFAULT_COLORS,primary:'#0f4c3a',accent:'#84cc16',sidebar:'#f1f8f4'} },
+  { template_key:'cv_impact', template_type:'cv', name_fr:'Impact One Page', description_fr:'Compact et percutant pour candidature rapide.', category:'professional', is_free:true, is_ats_compatible:true, display_order:12, default_colors:{...DEFAULT_COLORS,primary:'#1e3a8a',accent:'#f59e0b'} },
 ];
 
 export const LM_TEMPLATES_META: CareerTemplateMeta[] = [
-  { template_key: 'lm_classic_pro', template_type: 'lm', name_fr: 'Classique Pro', description_fr: 'Lettre professionnelle, sobre et complète.', category: 'classic_lm', is_free: true, is_ats_compatible: true, display_order: 1, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_modern_student', template_type: 'lm', name_fr: 'Étudiant Moderne', description_fr: 'Lettre dynamique pour stage et alternance.', category: 'classic_lm', is_free: true, is_ats_compatible: true, display_order: 2, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_corporate_blue', template_type: 'lm', name_fr: 'Corporate Bleu', description_fr: 'Lettre corporate pour banques, cabinets et grandes entreprises.', category: 'classic_lm', is_free: true, is_ats_compatible: true, display_order: 3, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_minimal_luxe', template_type: 'lm', name_fr: 'Minimal Luxe', description_fr: 'Lettre élégante et premium.', category: 'classic_lm', is_free: false, is_ats_compatible: true, display_order: 4, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_africa_gold', template_type: 'lm', name_fr: 'Africa Gold', description_fr: 'Lettre assortie au style bleu et or Omnia.', category: 'classic_lm', is_free: false, is_ats_compatible: true, display_order: 5, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_tech_future', template_type: 'lm', name_fr: 'Tech Future', description_fr: 'Pour développeurs, data et métiers tech.', category: 'classic_lm', is_free: false, is_ats_compatible: true, display_order: 6, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_cyber_security', template_type: 'lm', name_fr: 'Cyber Security', description_fr: 'Pour cybersécurité, audit, conformité et risk.', category: 'classic_lm', is_free: false, is_ats_compatible: true, display_order: 7, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_data_analyst', template_type: 'lm', name_fr: 'Data Analyst', description_fr: 'Pour data, BI, reporting et analyse.', category: 'classic_lm', is_free: false, is_ats_compatible: true, display_order: 8, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_creative_digital', template_type: 'lm', name_fr: 'Créatif Digital', description_fr: 'Pour marketing, communication et design.', category: 'classic_lm', is_free: false, is_ats_compatible: false, display_order: 9, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_no_photo_ats', template_type: 'lm', name_fr: 'ATS Simple', description_fr: 'Lettre simple et compatible ATS.', category: 'classic_lm', is_free: true, is_ats_compatible: true, display_order: 10, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_photo_elegant', template_type: 'lm', name_fr: 'Photo Élégant', description_fr: 'Lettre assortie au modèle photo élégant.', category: 'matched_lm', is_free: false, is_ats_compatible: false, display_order: 11, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_young_graduate', template_type: 'lm', name_fr: 'Jeune Diplômé', description_fr: 'Lettre pour premier poste et jeune profil.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 12, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_internship_ready', template_type: 'lm', name_fr: 'Stage Ready', description_fr: 'Lettre dédiée aux stages et alternances.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 13, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_international', template_type: 'lm', name_fr: 'International', description_fr: 'Lettre pour candidatures internationales.', category: 'matched_lm', is_free: false, is_ats_compatible: true, display_order: 14, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_qhse', template_type: 'lm', name_fr: 'QHSE', description_fr: 'Lettre QSE, HSE, RSE et conformité.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 15, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_business_manager', template_type: 'lm', name_fr: 'Business Manager', description_fr: 'Lettre business, management et projets.', category: 'matched_lm', is_free: false, is_ats_compatible: true, display_order: 16, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_hospitality', template_type: 'lm', name_fr: 'Hospitality', description_fr: 'Lettre hôtellerie, restauration et service.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 17, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_academic', template_type: 'lm', name_fr: 'Académique', description_fr: 'Lettre enseignement, recherche et académique.', category: 'matched_lm', is_free: false, is_ats_compatible: true, display_order: 18, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_freelancer', template_type: 'lm', name_fr: 'Freelancer', description_fr: 'Lettre missions, freelance et consulting.', category: 'matched_lm', is_free: false, is_ats_compatible: false, display_order: 19, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_executive', template_type: 'lm', name_fr: 'Executive', description_fr: 'Lettre premium pour profils confirmés.', category: 'matched_lm', is_free: false, is_ats_compatible: true, display_order: 20, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_stage_simple', template_type: 'lm', name_fr: 'Stage Simple', description_fr: 'Lettre simple pour stages.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 21, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_premier_emploi', template_type: 'lm', name_fr: 'Premier Emploi', description_fr: 'Lettre pour début de carrière.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 22, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_alternance', template_type: 'lm', name_fr: 'Alternance', description_fr: 'Lettre pour alternance et apprentissage.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 23, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_spontanee', template_type: 'lm', name_fr: 'Candidature spontanée', description_fr: 'Lettre sans offre précise.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 24, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_qhse_rse', template_type: 'lm', name_fr: 'QHSE & RSE', description_fr: 'Lettre spécialisée QHSE/RSE.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 25, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_tech_data', template_type: 'lm', name_fr: 'Tech & Data', description_fr: 'Lettre tech, data, IA et développement.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 26, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_hotellerie', template_type: 'lm', name_fr: 'Hôtellerie', description_fr: 'Lettre hospitality, Marriott et service.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 27, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_administration', template_type: 'lm', name_fr: 'Administration', description_fr: 'Lettre administrative et coordination.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 28, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_finance_banque', template_type: 'lm', name_fr: 'Finance & Banque', description_fr: 'Lettre banque, finance et risk.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 29, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_internationale', template_type: 'lm', name_fr: 'Internationale Plus', description_fr: 'Lettre mobilité et organisations internationales.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 30, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_courte_premium', template_type: 'lm', name_fr: 'Courte Premium', description_fr: 'Lettre courte, directe et premium.', category: 'quick_lm', is_free: false, is_ats_compatible: true, display_order: 31, default_colors: DEFAULT_COLORS },
-  { template_key: 'lm_pro_classique', template_type: 'lm', name_fr: 'Professionnelle Classique', description_fr: 'Lettre classique tous secteurs.', category: 'quick_lm', is_free: true, is_ats_compatible: true, display_order: 32, default_colors: DEFAULT_COLORS },
+  { template_key:'lm_horizon', template_type:'lm', name_fr:'Horizon Pro', description_fr:'Lettre assortie au CV Horizon Pro.', category:'classic_lm', is_free:true, is_ats_compatible:true, display_order:1, default_colors:{...DEFAULT_COLORS,primary:'#002050',accent:'#bf8813'} },
+  { template_key:'lm_sahara', template_type:'lm', name_fr:'Sahara Élégant', description_fr:'Lettre premium aux accents chauds et dorés.', category:'classic_lm', is_free:false, is_ats_compatible:true, display_order:2, default_colors:{...DEFAULT_COLORS,primary:'#7a3e16',accent:'#d7a64a'} },
+  { template_key:'lm_atlas', template_type:'lm', name_fr:'Atlas ATS', description_fr:'Lettre simple, claire et très lisible.', category:'classic_lm', is_free:true, is_ats_compatible:true, display_order:3, default_colors:{...DEFAULT_COLORS,primary:'#16213e',accent:'#4b79a1'} },
+  { template_key:'lm_kora', template_type:'lm', name_fr:'Kora Créative', description_fr:'Lettre moderne pour communication et métiers créatifs.', category:'classic_lm', is_free:false, is_ats_compatible:false, display_order:4, default_colors:{...DEFAULT_COLORS,primary:'#3b235f',accent:'#d2a8ff'} },
+  { template_key:'lm_digital', template_type:'lm', name_fr:'Digital Tech', description_fr:'Lettre pour tech, data, produit et cybersécurité.', category:'classic_lm', is_free:false, is_ats_compatible:true, display_order:5, default_colors:{...DEFAULT_COLORS,primary:'#071a2f',accent:'#00b8d9'} },
+  { template_key:'lm_executive', template_type:'lm', name_fr:'Executive Noir & Or', description_fr:'Lettre premium pour profils expérimentés.', category:'classic_lm', is_free:false, is_ats_compatible:true, display_order:6, default_colors:{...DEFAULT_COLORS,primary:'#111827',accent:'#b88746'} },
 ];
 
 export const CAREER_TEMPLATES_META = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META];
@@ -189,32 +158,48 @@ export const CAREER_PALETTES = [
   { key: 'red', name: 'Bordeaux', colors: { ...DEFAULT_COLORS, primary: '#7F1D1D', accent: '#B91C1C', sidebar: '#FEF2F2' } },
 ];
 
+function getCachedCustomTemplates(docType: CareerDocType): CareerTemplateMeta[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]');
+    return Array.isArray(parsed) ? parsed.filter((t: CareerTemplateMeta) => t.template_type === docType) : [];
+  } catch { return []; }
+}
+
+export function cacheCareerTemplates(templates: CareerTemplateMeta[]) {
+  if (typeof window === 'undefined') return;
+  const custom = templates.filter(t => t.is_custom || t.layout_config);
+  localStorage.setItem('omnia_career_custom_templates', JSON.stringify(custom));
+}
+
 export function getCareerTemplates(docType: CareerDocType) {
-  return (docType === 'cv' ? CV_TEMPLATES_META : LM_TEMPLATES_META).sort((a, b) => a.display_order - b.display_order);
+  const builtins = docType === 'cv' ? CV_TEMPLATES_META : LM_TEMPLATES_META;
+  const merged = [...builtins, ...getCachedCustomTemplates(docType).filter(c => !builtins.some(b => b.template_key === c.template_key))];
+  return merged.sort((a, b) => a.display_order - b.display_order);
 }
 
 export function normalizeTemplateKey(docType: CareerDocType, templateKey?: string | null) {
   const key = String(templateKey || '').trim();
   const cvAliases: Record<string, string> = {
-    modern: 'classic_pro',
-    professional: 'corporate_blue',
-    creative: 'creative_digital',
-    classic: 'classic_pro',
-    simple: 'no_photo_ats',
-    student: 'modern_student',
-    qhse: 'qhse_professional',
-    hospitality_premium: 'hospitality',
-    cyber_security_cv: 'cyber_security',
-    data_analyst_cv: 'data_analyst',
+    modern: 'cv_horizon',
+    professional: 'cv_atlas',
+    creative: 'cv_baobab',
+    classic: 'cv_horizon',
+    simple: 'cv_atlas',
+    student: 'cv_nile',
+    qhse: 'cv_qhse',
+    hospitality_premium: 'cv_hospitality',
+    cyber_security_cv: 'cv_digital',
+    data_analyst_cv: 'cv_digital',
   };
   const lmAliases: Record<string, string> = {
-    classic_lm: 'lm_classic_pro',
-    dynamic_lm: 'lm_modern_student',
-    academic_lm: 'lm_academic',
-    modern_lm: 'lm_modern_student',
-    professional_lm: 'lm_corporate_blue',
-    creative_lm: 'lm_creative_digital',
-    simple_lm: 'lm_no_photo_ats',
+    classic_lm: 'lm_horizon',
+    dynamic_lm: 'lm_kora',
+    academic_lm: 'lm_atlas',
+    modern_lm: 'lm_horizon',
+    professional_lm: 'lm_horizon',
+    creative_lm: 'lm_kora',
+    simple_lm: 'lm_atlas',
   };
 
   const mapped = docType === 'cv' ? (cvAliases[key] || key) : (lmAliases[key] || key);
@@ -233,7 +218,7 @@ export function getDefaultDocTitle(docType: CareerDocType) {
 }
 
 export function getDefaultTemplateKey(docType: CareerDocType) {
-  return docType === 'cv' ? 'classic_pro' : 'lm_classic_pro';
+  return docType === 'cv' ? 'cv_horizon' : 'lm_horizon';
 }
 
 export function createDefaultData(docType: CareerDocType): DocData | LmData {

@@ -761,6 +761,7 @@ function GoldMainSection({ title, sidebarBg, gold, fs, children }: { title: stri
 import { CV_TEMPLATE_MAP_6_10 } from './CvTemplates_6_10';
 import { CV_TEMPLATE_MAP_11_15 } from './CvTemplates_11_15';
 import { CV_TEMPLATE_MAP_16_20 } from './CvTemplates_16_20';
+import { ConfigurableCvTemplate, BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
 
 export const CV_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: DocData; design: DesignOptions }>> = {
   classic_pro: ClassicPro,
@@ -771,8 +772,9 @@ export const CV_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: DocData
   ...CV_TEMPLATE_MAP_6_10,
   ...CV_TEMPLATE_MAP_11_15,
   ...CV_TEMPLATE_MAP_16_20,
+  ...Object.fromEntries(Object.keys(BUILTIN_CV_LAYOUTS).map(key => [key, (props: { data: DocData; design: DesignOptions }) => <ConfigurableCvTemplate {...props} templateKey={key} />])),
 };
 export function CvPreview({ templateKey, data, design }: { templateKey: string; data: DocData; design: DesignOptions }) {
-  const Component = CV_TEMPLATE_MAP[templateKey] || ClassicPro;
-  return <Component data={data} design={design} />;
+  const Component = CV_TEMPLATE_MAP[templateKey];
+  return Component ? <Component data={data} design={design} /> : <ConfigurableCvTemplate data={data} design={design} templateKey={templateKey} />;
 }

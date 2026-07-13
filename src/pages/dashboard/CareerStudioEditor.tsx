@@ -45,6 +45,7 @@ import {
 import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
+import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -107,14 +108,21 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children }: { children: React.ReactNode }) {
+function PreviewFrame({ children, zoom, onZoomChange }: { children: React.ReactNode; zoom: number; onZoomChange: (zoom:number)=>void }) {
   return (
-    <div className="mx-auto flex h-[760px] w-full justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-      <div style={{ transform: 'scale(0.62)', transformOrigin: 'top center' }}>{children}</div>
+    <div>
+      <div className="mb-3 flex items-center justify-center gap-2">
+        <button type="button" onClick={()=>onZoomChange(Math.max(.35, zoom-.1))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">−</button>
+        <span className="w-16 text-center text-xs font-semibold text-slate-600">{Math.round(zoom*100)}%</span>
+        <button type="button" onClick={()=>onZoomChange(Math.min(1.05, zoom+.1))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">+</button>
+        <button type="button" onClick={()=>onZoomChange(.62)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">Ajuster</button>
+      </div>
+      <div className="mx-auto flex h-[760px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
+        <div style={{ width: 794*zoom, height:1123*zoom }}><div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width:794 }}>{children}</div></div>
+      </div>
     </div>
   );
 }
-
 
 function plain(value: unknown) {
   return String(value || '').replace(/[<>]/g, '');
@@ -133,43 +141,53 @@ function textBlock(content: string, x: number, y: number, width: number, height:
 }
 
 function createManualLayout(document: CareerDocumentFull): ManualLayout {
-  const colors = (document.design_options as DesignOptions).colors || DEFAULT_COLORS;
-  const blocks: ManualBlock[] = [
-    { id: uid('shape'), type: 'shape', x: 0, y: 0, width: 794, height: 118, rotation: 0, zIndex: 1, style: { backgroundColor: colors.primary || BLUE, opacity: 1, borderWidth: 0, borderRadius: 0 } },
-  ];
-  if (document.doc_type === 'cv') {
-    const d = getCvData(document);
-    blocks.push(textBlock(d.name || 'Votre nom', 46, 30, 540, 38, { fontSize: 28, fontWeight: 700, color: '#ffffff' }, 3));
-    blocks.push(textBlock(d.title || 'Titre professionnel', 48, 72, 520, 28, { fontSize: 14, fontWeight: 600, color: colors.accent || GOLD }, 3));
-    blocks.push(textBlock([d.contact?.email, d.contact?.phone, d.contact?.location].filter(Boolean).join('  •  '), 46, 130, 700, 30, { fontSize: 10, color: '#475569' }));
-    let y = 180;
-    const addSection = (title: string, body: string, height = 96) => {
-      if (!body.trim()) return;
-      blocks.push(textBlock(title, 46, y, 700, 28, { fontSize: 15, fontWeight: 700, color: colors.primary || BLUE }));
-      blocks.push({ id: uid('line'), type: 'line', x: 46, y: y + 26, width: 700, height: 4, rotation: 0, zIndex: 1, style: { borderColor: colors.accent || GOLD, borderWidth: 2, opacity: 1 } });
-      blocks.push(textBlock(body, 46, y + 38, 700, height, { fontSize: 10, lineHeight: 1.45, color: '#334155' }));
-      y += height + 76;
-    };
-    addSection('PROFIL', d.summary || '', 82);
-    addSection('EXPÉRIENCES', (d.experiences || []).map(e => `${e.position}${e.company ? ` — ${e.company}` : ''}\n${e.description || ''}`).join('\n\n'), 190);
-    addSection('FORMATION', (d.education || []).map(e => `${e.degree}${e.school ? ` — ${e.school}` : ''}${e.year ? ` (${e.year})` : ''}`).join('\n'), 100);
-    addSection('COMPÉTENCES', (d.skills || []).map(s => s.name).join('  •  '), 72);
-  } else {
-    const d = getLmData(document);
-    blocks.push(textBlock(d.sender?.name || 'Votre nom', 46, 32, 540, 34, { fontSize: 24, fontWeight: 700, color: '#ffffff' }, 3));
-    blocks.push(textBlock([d.sender?.email, d.sender?.phone].filter(Boolean).join('  •  '), 48, 76, 520, 24, { fontSize: 10, color: '#ffffff' }, 3));
-    blocks.push(textBlock(`${d.recipient?.name || ''}\n${d.recipient?.company || ''}\n${d.recipient?.address || ''}`, 48, 150, 360, 78, { fontSize: 11, lineHeight: 1.5 }));
-    blocks.push(textBlock(`${d.sender?.city || ''}${d.sender?.date ? `, le ${d.sender.date}` : ''}`, 480, 150, 265, 30, { fontSize: 10, textAlign: 'right' }));
-    blocks.push(textBlock(d.subject ? `Objet : ${d.subject}` : 'Objet :', 48, 246, 700, 36, { fontSize: 12, fontWeight: 700, color: colors.primary || BLUE }));
-    blocks.push(textBlock(d.salutation || 'Madame, Monsieur,', 48, 310, 700, 34, { fontSize: 11 }));
-    const body = [d.intro, d.motivation, d.skills_paragraph, d.company_link, d.availability].filter(Boolean).join('\n\n');
-    blocks.push(textBlock(body, 48, 360, 700, 470, { fontSize: 11, lineHeight: 1.65, textAlign: 'justify' }));
-    blocks.push(textBlock(d.closing || '', 48, 850, 700, 100, { fontSize: 11, lineHeight: 1.6 }));
-    blocks.push(textBlock(d.signature || d.sender?.name || '', 500, 990, 240, 50, { fontSize: 15, fontWeight: 700, fontStyle: 'italic', textAlign: 'right', color: colors.primary || BLUE }));
-  }
-  return { version: 1, page: { width: 794, height: 1123, background: '#ffffff' }, blocks };
-}
+  const design = document.design_options as DesignOptions;
+  const builtin = document.doc_type === 'cv' ? BUILTIN_CV_LAYOUTS[document.template_key] : BUILTIN_LM_LAYOUTS[document.template_key];
+  let custom: any = null;
+  try { custom = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]').find((x:any)=>x.template_key===document.template_key)?.layout_config; } catch {}
+  const cfg:any = builtin || custom || { variant:'band', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'solid' };
+  const colors = { ...(design.colors || DEFAULT_COLORS), primary: design.colors?.primary || cfg.primary, accent: design.colors?.accent || cfg.accent, sidebar: design.colors?.sidebar || cfg.sidebar };
+  const blocks: ManualBlock[] = [];
+  const side = document.doc_type === 'cv' && ['split','timeline','cards','creative','tech','hospitality'].includes(cfg.variant);
+  const mainX = side ? 238 : 46;
+  const mainW = side ? 510 : 700;
+  if (side) blocks.push({ id:uid('shape'), type:'shape', x:0,y:0,width:215,height:1123,rotation:0,zIndex:1,style:{backgroundColor:cfg.variant==='tech'?colors.primary:colors.sidebar,opacity:1,borderWidth:0,borderRadius:0} });
+  blocks.push({ id:uid('shape'), type:'shape', x:side?215:0,y:0,width:side?579:794,height:122,rotation:0,zIndex:1,style:{backgroundColor:colors.primary,opacity:1,borderWidth:0,borderRadius:0} });
 
+  if (document.doc_type === 'cv') {
+    const d=getCvData(document);
+    blocks.push(textBlock(d.name||'Votre nom', mainX,30,mainW,38,{fontSize:28,fontWeight:700,color:'#fff'},3));
+    blocks.push(textBlock(d.title||'Titre professionnel',mainX,74,mainW,26,{fontSize:14,fontWeight:700,color:colors.accent},3));
+    if(side){
+      blocks.push(textBlock('CONTACT',26,145,160,24,{fontSize:12,fontWeight:700,color:cfg.variant==='tech'?'#fff':colors.primary}));
+      blocks.push(textBlock([d.contact?.email,d.contact?.phone,d.contact?.location].filter(Boolean).join('\n'),26,178,160,90,{fontSize:9,lineHeight:1.6,color:cfg.variant==='tech'?'#e2e8f0':'#334155'}));
+      blocks.push(textBlock('COMPÉTENCES',26,300,160,24,{fontSize:12,fontWeight:700,color:cfg.variant==='tech'?'#fff':colors.primary}));
+      blocks.push(textBlock((d.skills||[]).map(x=>x.name).join('\n'),26,334,160,180,{fontSize:9,lineHeight:1.7,color:cfg.variant==='tech'?'#e2e8f0':'#334155'}));
+      blocks.push(textBlock('LANGUES',26,545,160,24,{fontSize:12,fontWeight:700,color:cfg.variant==='tech'?'#fff':colors.primary}));
+      blocks.push(textBlock((d.languages||[]).map(x=>`${x.name} — ${x.level}`).join('\n'),26,578,160,120,{fontSize:9,lineHeight:1.7,color:cfg.variant==='tech'?'#e2e8f0':'#334155'}));
+    } else {
+      blocks.push(textBlock([d.contact?.email,d.contact?.phone,d.contact?.location].filter(Boolean).join(' • '),46,138,700,28,{fontSize:10,color:'#475569'}));
+    }
+    let y=side?150:190;
+    const add=(title:string, body:string, h:number)=>{ if(!body.trim()) return; blocks.push(textBlock(title,mainX,y,mainW,25,{fontSize:14,fontWeight:700,color:colors.primary})); blocks.push({id:uid('line'),type:'line',x:mainX,y:y+26,width:80,height:3,rotation:0,zIndex:1,style:{borderColor:colors.accent,borderWidth:3,opacity:1}}); blocks.push(textBlock(body,mainX,y+42,mainW,h,{fontSize:10,lineHeight:1.5,color:'#334155'})); y+=h+82; };
+    add('PROFIL',d.summary||'',78);
+    add('EXPÉRIENCES',(d.experiences||[]).map(e=>`${e.position}${e.company?` — ${e.company}`:''}\n${e.description||''}`).join('\n\n'),205);
+    add('FORMATION',(d.education||[]).map(e=>`${e.degree}${e.school?` — ${e.school}`:''}${e.year?` (${e.year})`:''}`).join('\n'),110);
+    if(!side) add('COMPÉTENCES',(d.skills||[]).map(x=>x.name).join(' • '),74);
+  } else {
+    const d=getLmData(document);
+    blocks.push(textBlock(d.sender?.name||'Votre nom',46,32,540,34,{fontSize:25,fontWeight:700,color:'#fff'},3));
+    blocks.push(textBlock([d.sender?.email,d.sender?.phone].filter(Boolean).join(' • '),48,78,520,22,{fontSize:10,color:'#fff'},3));
+    blocks.push(textBlock(`${d.recipient?.name||''}\n${d.recipient?.company||''}\n${d.recipient?.address||''}`,48,160,340,76,{fontSize:11,lineHeight:1.5}));
+    blocks.push(textBlock(`${d.sender?.city||''}${d.sender?.date?`, le ${d.sender.date}`:''}`,480,160,265,28,{fontSize:10,textAlign:'right'}));
+    blocks.push(textBlock(d.subject?`Objet : ${d.subject}`:'Objet :',48,260,700,35,{fontSize:12,fontWeight:700,color:colors.primary}));
+    blocks.push(textBlock(d.salutation||'Madame, Monsieur,',48,325,700,32,{fontSize:11}));
+    blocks.push(textBlock([d.intro,d.motivation,d.skills_paragraph,d.company_link,d.availability].filter(Boolean).join('\n\n'),48,372,700,465,{fontSize:11,lineHeight:1.65,textAlign:'justify'}));
+    blocks.push(textBlock(d.closing||'',48,860,700,95,{fontSize:11,lineHeight:1.6}));
+    blocks.push(textBlock(d.signature||d.sender?.name||'',500,995,240,45,{fontSize:15,fontWeight:700,fontStyle:'italic',textAlign:'right',color:colors.primary}));
+  }
+  return {version:1,page:{width:794,height:1123,background:'#fff'},blocks};
+}
 
 function hasText(value: unknown) { return typeof value === 'string' && value.trim().length > 0; }
 function isCvSectionComplete(key: CvSectionKey, data: DocData) {
@@ -214,6 +232,7 @@ export default function CareerStudioEditor() {
   const printRef = useRef<HTMLDivElement | null>(null);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(0.62);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -346,10 +365,12 @@ export default function CareerStudioEditor() {
     updateDocument(doc => ({
       ...doc,
       template_key: normalizedTemplateKey,
+      doc_data: { ...(doc.doc_data as any), manual_layout: undefined },
       design_options: {
         ...doc.design_options,
         ...preset,
         colors: (preset as any).colors || meta.default_colors || DEFAULT_COLORS,
+        editor_mode: 'template',
       } as DesignOptions | LmDesign,
     }));
   }
@@ -632,7 +653,7 @@ export default function CareerStudioEditor() {
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame>
+            <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom}>
               <div ref={printRef} data-career-print-source="true">
                 {isManualMode && manualLayout ? (
                   <ManualDocumentCanvas layout={manualLayout} />
@@ -1250,7 +1271,7 @@ function TemplatePanel({
  * renderer HTML/CSS, l'aperçu plein écran et l'export PDF.
  */
 function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType) {
-  return `/career-template-mockups/individual/${template.template_key}.webp`;
+  return template.thumbnail_url || (template.is_custom ? '/career-templates/generated/custom.svg' : `/career-templates/generated/${template.template_key}.svg`);
 }
 
 function TemplatePreviewCard({

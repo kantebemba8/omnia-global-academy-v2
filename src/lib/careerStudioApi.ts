@@ -9,6 +9,7 @@ import {
   getCareerTemplates,
   normalizeTemplateKey,
   calculateBasicScore,
+  cacheCareerTemplates,
 } from './careerStudioData';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -104,6 +105,7 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       user?: { cv_tokens?: number };
     }>('career-studio-list', { doc_type: docType });
 
+    if (data.templates?.length) cacheCareerTemplates(data.templates as any);
     return {
       documents: data.documents || [],
       templates: getCareerTemplates(docType),

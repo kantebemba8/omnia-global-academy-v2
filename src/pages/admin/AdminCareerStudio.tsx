@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
+import { CV_TEMPLATES_META, LM_TEMPLATES_META } from '../../lib/careerStudioData';
 import {
   AlertCircle,
   BarChart2,
@@ -91,6 +92,9 @@ type Template = {
   display_order: number;
   usage_count?: number;
   export_count?: number;
+  thumbnail_url?: string | null;
+  layout_config?: Record<string, unknown>;
+  is_custom?: boolean;
 };
 
 type InterviewQuestion = {
@@ -219,6 +223,23 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+
+async function postTemplateManager<T>(body: unknown): Promise<T> {
+  if (!SUPABASE_URL) throw new Error('VITE_SUPABASE_URL manquant');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/career-template-manager`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token()}`,
+      apikey: ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || data.error || 'Erreur template');
+  return data as T;
+}
+
 export default function AdminCareerStudio() {
   const [subTab, setSubTab] = useState<SubTab>('dashboard');
   const [rules, setRules] = useState<CareerRule[]>([]);
@@ -227,6 +248,8 @@ export default function AdminCareerStudio() {
   const [aiConfig, setAiConfig] = useState<AiConfig[]>([]);
   const [cvTemplates, setCvTemplates] = useState<Template[]>([]);
   const [lmTemplates, setLmTemplates] = useState<Template[]>([]);
+  const [showTemplateCreator, setShowTemplateCreator] = useState(false);
+  const [customTemplate, setCustomTemplate] = useState({ template_key: '', name_fr: '', description_fr: '', thumbnail_url: '', variant: 'split', primary: '#002050', accent: '#bf8813', sidebar: '#eef3f8', is_free: true, is_ats_compatible: true });
   const [stats, setStats] = useState<AdminStats>({ total_cv: 0, total_lm: 0, total_exports: 0, tokens_consumed: 0, active_templates: 0, active_packs: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -263,8 +286,15 @@ export default function AdminCareerStudio() {
       setTokenConfig(data.token_config || []);
       setTokenPacks(data.token_packs || []);
       setAiConfig(data.ai_config || []);
-      setCvTemplates((data.templates || []).filter((t) => t.template_type === 'cv'));
-      setLmTemplates((data.templates || []).filter((t) => t.template_type === 'lm'));
+      let customTemplates: Template[] = [];
+      try {
+        const custom = await postTemplateManager<{ templates: Template[] }>({ action: 'list' });
+        customTemplates = (custom.templates || []).filter(t => t.is_custom);
+      } catch { customTemplates = []; }
+      const builtins = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META].map(t => ({ ...t, is_active: true } as Template));
+      const merged = [...builtins, ...customTemplates.filter(c => !builtins.some(b => b.template_key === c.template_key))];
+      setCvTemplates(merged.filter(t => t.template_type === 'cv').sort((a,b)=>a.display_order-b.display_order));
+      setLmTemplates(merged.filter(t => t.template_type === 'lm').sort((a,b)=>a.display_order-b.display_order));
       setStats(data.stats || stats);
     } catch (err) {
       showToast((err as Error).message || 'Erreur de chargement', 'error');
@@ -358,6 +388,45 @@ export default function AdminCareerStudio() {
     } finally {
       setSaving(false);
     }
+  }
+
+
+  async function createCompatibleTemplate(type: 'cv' | 'lm') {
+    if (!customTemplate.template_key.trim() || !customTemplate.name_fr.trim()) {
+      showToast('Clé et nom du template obligatoires.', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        template_key: customTemplate.template_key,
+        template_type: type,
+        name_fr: customTemplate.name_fr,
+        description_fr: customTemplate.description_fr,
+        category: 'custom',
+        is_free: customTemplate.is_free,
+        is_active: true,
+        is_ats_compatible: customTemplate.is_ats_compatible,
+        display_order: (type === 'cv' ? cvTemplates : lmTemplates).length + 1,
+        thumbnail_url: customTemplate.thumbnail_url || null,
+        layout_config: {
+          variant: customTemplate.variant,
+          primary: customTemplate.primary,
+          accent: customTemplate.accent,
+          sidebar: customTemplate.sidebar,
+          header: customTemplate.variant === 'minimal' ? 'line' : 'solid',
+          photo: type === 'cv',
+        },
+      };
+      const data = await postTemplateManager<{ template: Template }>({ action: 'upsert', template: payload });
+      const setter = type === 'cv' ? setCvTemplates : setLmTemplates;
+      setter(prev => [...prev.filter(t => t.template_key !== data.template.template_key), data.template].sort((a,b) => a.display_order-b.display_order));
+      setShowTemplateCreator(false);
+      setCustomTemplate({ template_key: '', name_fr: '', description_fr: '', thumbnail_url: '', variant: 'split', primary: '#002050', accent: '#bf8813', sidebar: '#eef3f8', is_free: true, is_ats_compatible: true });
+      showToast('✅ Template compatible ajouté. Il sera visible par les apprenants après actualisation.');
+    } catch (err) {
+      showToast((err as Error).message || 'Erreur template', 'error');
+    } finally { setSaving(false); }
   }
 
 
@@ -664,6 +733,43 @@ export default function AdminCareerStudio() {
               <div>
                 <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>{subTab === 'cv_templates' ? 'Modèles de CV' : 'Modèles de lettres de motivation'}</h2>
                 <p className="mt-1 text-sm" style={{ color: MUTED }}>Activez, désactivez, rendez gratuit/premium et ajustez l’ordre d’affichage.</p>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>Ajouter un template compatible</h3>
+                    <p className="mt-1 text-xs" style={{ color: MUTED }}>Le template utilise le moteur éditable Omnia : contenu, couleurs, polices, aperçu et PDF restent modifiables.</p>
+                  </div>
+                  <button type="button" onClick={() => setShowTemplateCreator(v => !v)} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}><Plus size={15}/>{showTemplateCreator ? 'Fermer' : 'Nouveau template'}</button>
+                </div>
+                {showTemplateCreator && (
+                  <div className="mt-5 grid grid-cols-1 gap-4 border-t pt-5 md:grid-cols-2" style={{ borderColor: BORDER }}>
+                    <label className="text-xs font-semibold" style={{ color: MUTED }}>Clé technique
+                      <input value={customTemplate.template_key} onChange={e=>setCustomTemplate(v=>({...v,template_key:e.target.value}))} placeholder={subTab==='cv_templates'?'cv_mon_modele':'lm_mon_modele'} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+                    </label>
+                    <label className="text-xs font-semibold" style={{ color: MUTED }}>Nom affiché
+                      <input value={customTemplate.name_fr} onChange={e=>setCustomTemplate(v=>({...v,name_fr:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+                    </label>
+                    <label className="text-xs font-semibold md:col-span-2" style={{ color: MUTED }}>Description
+                      <input value={customTemplate.description_fr} onChange={e=>setCustomTemplate(v=>({...v,description_fr:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+                    </label>
+                    <label className="text-xs font-semibold" style={{ color: MUTED }}>Mise en page
+                      <select value={customTemplate.variant} onChange={e=>setCustomTemplate(v=>({...v,variant:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}>
+                        <option value="split">Deux colonnes</option><option value="band">Bandeau supérieur</option><option value="minimal">Minimal ATS</option><option value="timeline">Chronologie</option><option value="cards">Blocs</option><option value="executive">Executive</option><option value="creative">Créatif</option><option value="tech">Tech sombre</option><option value="academic">Académique</option><option value="hospitality">Hospitality</option><option value="qhse">QHSE</option><option value="compact">Compact</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold" style={{ color: MUTED }}>URL miniature (optionnelle)
+                      <input value={customTemplate.thumbnail_url} onChange={e=>setCustomTemplate(v=>({...v,thumbnail_url:e.target.value}))} placeholder="https://.../apercu.webp" className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+                    </label>
+                    <div className="flex flex-wrap gap-4 md:col-span-2">
+                      {[['primary','Couleur principale'],['accent','Accent'],['sidebar','Colonne']].map(([key,label])=><label key={key} className="text-xs font-semibold" style={{color:MUTED}}>{label}<input type="color" value={(customTemplate as any)[key]} onChange={e=>setCustomTemplate(v=>({...v,[key]:e.target.value}))} className="ml-2 h-9 w-12 rounded border align-middle" style={{borderColor:BORDER}}/></label>)}
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={customTemplate.is_free} onChange={e=>setCustomTemplate(v=>({...v,is_free:e.target.checked}))}/> Gratuit</label>
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={customTemplate.is_ats_compatible} onChange={e=>setCustomTemplate(v=>({...v,is_ats_compatible:e.target.checked}))}/> Compatible ATS</label>
+                    </div>
+                    <div className="md:col-span-2 flex justify-end"><button type="button" disabled={saving} onClick={()=>createCompatibleTemplate(subTab==='cv_templates'?'cv':'lm')} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:OMNIA_BLUE}}>Créer et publier</button></div>
+                  </div>
+                )}
               </div>
               {renderTemplateTable(subTab === 'cv_templates' ? cvTemplates : lmTemplates, subTab === 'cv_templates' ? 'cv' : 'lm')}
             </div>
