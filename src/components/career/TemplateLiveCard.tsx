@@ -1,6 +1,5 @@
-import type { DocData, DesignOptions } from './CvTemplates';
-import type { LmData, LmDesign } from './LmTemplates';
-import { UnifiedCareerTemplatePreview } from './UnifiedCareerTemplate';
+import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
+import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
 import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
 
 const SAMPLE_CV: DocData = {
@@ -36,7 +35,7 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
   return {
     colors: template.default_colors,
     font:'inter', font_size_body:9, font_size_title:11, line_spacing:1.5,
-    photo_enabled: template.template_key !== 'cv_atlas' && template.template_key !== 'cv_impact',
+    photo_enabled: template.template_type === 'cv',
     photo_shape:'round', pages:1,
   };
 }
@@ -51,12 +50,9 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
       <div className={`relative w-full overflow-hidden bg-slate-100 ${compact?'aspect-[9/11]':'aspect-[9/12]'}`}>
         <div className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
           <div style={{ transform:`scale(${compact?0.205:0.285})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
-            <UnifiedCareerTemplatePreview
-              docType={docType}
-              templateKey={template.template_key}
-              data={docType === 'cv' ? SAMPLE_CV : SAMPLE_LM}
-              design={docType === 'cv' ? design : lmDesign}
-            />
+            {docType==='cv'
+              ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} />
+              : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} />}
           </div>
         </div>
         {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}

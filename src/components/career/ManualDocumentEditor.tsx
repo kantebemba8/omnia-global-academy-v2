@@ -41,6 +41,7 @@ export interface ManualBlock {
 
 export interface ManualLayout {
   version: 1;
+  templateKey?: string;
   page: { width: 794; height: 1123; background: string };
   blocks: ManualBlock[];
 }
@@ -67,6 +68,7 @@ const id = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 function normalize(layout: ManualLayout): ManualLayout {
   return {
     version: 1,
+    templateKey: layout?.templateKey,
     page: { width: 794, height: 1123, background: layout?.page?.background || '#ffffff' },
     blocks: Array.isArray(layout?.blocks) ? layout.blocks : [],
   };
