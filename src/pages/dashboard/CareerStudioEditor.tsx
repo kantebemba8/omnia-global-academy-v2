@@ -102,36 +102,11 @@ function getLmData(document: CareerDocumentFull): LmData {
 }
 
 function getCvDesign(document: CareerDocumentFull): DesignOptions {
-  const raw = document.design_options as DesignOptions & { template_color_customized?: boolean };
-  const cfg = BUILTIN_CV_LAYOUTS[document.template_key];
-  if (!cfg || raw?.template_color_customized) return raw;
-  return {
-    ...raw,
-    colors: {
-      primary: cfg.primary,
-      accent: cfg.accent,
-      sidebar: cfg.sidebar || '#f4f6f8',
-      text: raw?.colors?.text || '#1f2937',
-      background: raw?.colors?.background || '#ffffff',
-    },
-    photo_enabled: true,
-  };
+  return document.design_options as DesignOptions;
 }
 
 function getLmDesign(document: CareerDocumentFull): LmDesign {
-  const raw = document.design_options as LmDesign & { template_color_customized?: boolean };
-  const cfg = BUILTIN_LM_LAYOUTS[document.template_key];
-  if (!cfg || raw?.template_color_customized) return raw;
-  return {
-    ...raw,
-    colors: {
-      primary: cfg.primary,
-      accent: cfg.accent,
-      sidebar: cfg.sidebar || '#f4f6f8',
-      text: raw?.colors?.text || '#1f2937',
-      background: raw?.colors?.background || '#ffffff',
-    },
-  };
+  return document.design_options as LmDesign;
 }
 
 function PreviewFrame({ children, zoom, onZoomChange }: { children: React.ReactNode; zoom: number; onZoomChange: (zoom:number)=>void }) {
@@ -166,25 +141,16 @@ function textBlock(content: string, x: number, y: number, width: number, height:
   };
 }
 
-function defaultPhotoPlaceholder(name = 'Photo'): string {
-  const initials = String(name || 'Photo').trim().split(/\s+/).map(x => x[0] || '').join('').slice(0, 2).toUpperCase() || 'PH';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" fill="#e8edf3"/><circle cx="120" cy="88" r="43" fill="#a8b4c2"/><path d="M42 218c10-52 42-78 78-78s68 26 78 78" fill="#a8b4c2"/><text x="120" y="228" text-anchor="middle" font-family="Arial" font-size="18" fill="#52606d">${initials}</text></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 function createManualLayout(document: CareerDocumentFull): ManualLayout {
   const design = document.design_options as DesignOptions;
   const builtin = document.doc_type === 'cv' ? BUILTIN_CV_LAYOUTS[document.template_key] : BUILTIN_LM_LAYOUTS[document.template_key];
   let custom: any = null;
   try { custom = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]').find((x:any)=>x.template_key===document.template_key)?.layout_config; } catch {}
   const cfg:any = builtin || custom || { variant:'split', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'solid' };
-  const customColors = Boolean((design as any)?.template_color_customized);
-  const colors = {
-    ...(design.colors || DEFAULT_COLORS),
-    primary: customColors ? (design.colors?.primary || cfg.primary) : cfg.primary,
-    accent: customColors ? (design.colors?.accent || cfg.accent) : cfg.accent,
-    sidebar: customColors ? (design.colors?.sidebar || cfg.sidebar) : cfg.sidebar,
-  };
+  const isBuiltinTemplate = Boolean(builtin);
+  const colors = isBuiltinTemplate
+    ? { ...DEFAULT_COLORS, primary: cfg.primary, accent: cfg.accent, sidebar: cfg.sidebar || '#f4f6f8' }
+    : { ...(design.colors || DEFAULT_COLORS), primary: design.colors?.primary || cfg.primary, accent: design.colors?.accent || cfg.accent, sidebar: design.colors?.sidebar || cfg.sidebar };
   const blocks: ManualBlock[] = [];
   const shape = (x:number,y:number,width:number,height:number,bg:string,radius=0,zIndex=1):ManualBlock => ({id:uid('shape'),type:'shape',x,y,width,height,rotation:0,zIndex,style:{backgroundColor:bg,opacity:1,borderWidth:0,borderRadius:radius}});
   const lineBlock = (x:number,y:number,width:number,color=colors.accent,height=3):ManualBlock => ({id:uid('line'),type:'line',x,y,width,height,rotation:0,zIndex:2,style:{borderColor:color,borderWidth:height,opacity:1}});
@@ -197,14 +163,23 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
     const langs=(d.languages||[]).map(x=>`${x.name} — ${x.level}`).filter(Boolean).join('\n');
     const exp=(d.experiences||[]).map(e=>`${e.position}${e.company?` — ${e.company}`:''}\n${e.description||''}`).join('\n\n');
     const edu=(d.education||[]).map(e=>`${e.degree}${e.school?` — ${e.school}`:''}${e.year?` (${e.year})`:''}`).join('\n');
-    const photoEnabled = cfg.photo !== false && (design as any)?.photo_enabled !== false;
-    const photoSrc = photoEnabled ? (d.photo_url || defaultPhotoPlaceholder(d.name)) : '';
+    const photoSrc=d.photo_url || '';
     const photoRound=cfg.variant==='creative'?20:54;
+    const photoEnabled = Boolean(cfg.photo) && design.photo_enabled !== false;
+    const addPhoto = (x:number,y:number,width:number,height:number,radius:number) => {
+      if (!photoEnabled) return;
+      if (photoSrc) {
+        blocks.push(imageBlock(photoSrc,x,y,width,height,radius));
+        return;
+      }
+      blocks.push(shape(x,y,width,height,'#e2e8f0',radius,3));
+      blocks.push(textBlock('PHOTO',x,y + Math.max(12,(height-20)/2),width,20,{fontSize:10,fontWeight:700,textAlign:'center',color:'#64748b'},4));
+    };
 
     if (cfg.variant === 'split') {
       blocks.push(shape(0,0,230,1123,colors.sidebar));
       blocks.push(shape(230,0,564,132,colors.primary));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,62,34,106,106,54));
+      addPhoto(62,34,106,106,54);
       blocks.push(textBlock('CONTACT',28,175,170,24,{fontSize:12,fontWeight:700,color:colors.primary}));
       blocks.push(textBlock(contact,28,207,170,88,{fontSize:9,lineHeight:1.6,color:'#334155'}));
       blocks.push(textBlock('COMPÉTENCES',28,325,170,24,{fontSize:12,fontWeight:700,color:colors.primary}));
@@ -219,7 +194,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
     } else if (cfg.variant === 'band') {
       blocks.push(shape(0,0,794,160,colors.primary));
       blocks.push(shape(0,160,794,12,colors.accent));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,48,28,104,104,52));
+      addPhoto(48,28,104,104,52);
       blocks.push(textBlock(d.name||'Votre nom',180,38,560,40,{fontSize:30,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',180,84,560,28,{fontSize:14,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(contact,180,120,560,22,{fontSize:9,color:'#fff'},4));
@@ -235,7 +210,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('EXPÉRIENCES',48,390,410,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(lineBlock(48,419,76));
       blocks.push(textBlock(exp,48,438,410,430,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'timeline') {
-      if(photoSrc) blocks.push(imageBlock(photoSrc,46,38,98,98,49));
+      addPhoto(46,38,98,98,49);
       blocks.push(textBlock(d.name||'Votre nom',175,42,560,38,{fontSize:29,fontWeight:700,color:colors.primary},4));
       blocks.push(textBlock(d.title||'Titre professionnel',175,84,560,28,{fontSize:14,fontWeight:700,color:colors.accent},4));
       blocks.push(textBlock(contact,175,120,560,22,{fontSize:9,color:'#64748b'}));
@@ -254,7 +229,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock(exp,90,405,390,430,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'cards') {
       blocks.push(shape(34,30,726,140,colors.primary,22));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,58,48,104,104,52));
+      addPhoto(58,48,104,104,52);
       blocks.push(textBlock(d.name||'Votre nom',190,55,520,38,{fontSize:29,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',190,98,520,26,{fontSize:14,fontWeight:700,color:colors.accent},4));
       blocks.push(textBlock(contact,190,132,520,20,{fontSize:9,color:'#fff'},4));
@@ -266,7 +241,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('LANGUES',438,890,295,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(langs,438,925,295,100,{fontSize:10,lineHeight:1.55,color:'#334155'}));
     } else if (cfg.variant === 'creative') {
       blocks.push(shape(-120,-95,390,390,colors.primary,195));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,56,40,108,108,20));
+      addPhoto(56,40,108,108,20);
       blocks.push(textBlock(d.name||'Votre nom',195,55,520,38,{fontSize:31,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',195,100,520,26,{fontSize:14,fontWeight:700,color:'#fff'},4));
       blocks.push(shape(40,210,235,800,colors.sidebar,24));
@@ -278,7 +253,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('FORMATION',315,850,420,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(lineBlock(315,879,76)); blocks.push(textBlock(edu,315,898,420,140,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'tech') {
       blocks.push(shape(0,0,230,1123,colors.sidebar)); blocks.push(shape(230,0,564,1123,'#061421'));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,62,42,106,106,53));
+      addPhoto(62,42,106,106,53);
       blocks.push(textBlock('CONTACT',30,180,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(contact,30,215,170,95,{fontSize:9,lineHeight:1.6,color:'#e2e8f0'}));
       blocks.push(textBlock('STACK',30,345,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(skills,30,380,170,230,{fontSize:9,lineHeight:1.65,color:'#e2e8f0'}));
       blocks.push(textBlock('LANGUES',30,650,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(langs,30,685,170,120,{fontSize:9,lineHeight:1.6,color:'#e2e8f0'}));
@@ -288,7 +263,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('FORMATION',280,850,440,24,{fontSize:13,fontWeight:700,color:colors.accent})); blocks.push(textBlock(edu,280,885,440,150,{fontSize:10,lineHeight:1.5,color:'#cbd5e1'}));
     } else if (cfg.variant === 'hospitality') {
       blocks.push(shape(564,0,230,1123,colors.sidebar));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,626,42,106,106,53));
+      addPhoto(626,42,106,106,53);
       blocks.push(textBlock('CONTACT',594,180,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(contact,594,215,170,95,{fontSize:9,lineHeight:1.6,color:'#4a3326'}));
       blocks.push(textBlock('COMPÉTENCES',594,345,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(skills,594,380,170,230,{fontSize:9,lineHeight:1.65,color:'#4a3326'}));
       blocks.push(textBlock('LANGUES',594,650,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(langs,594,685,170,120,{fontSize:9,lineHeight:1.6,color:'#4a3326'}));
@@ -296,96 +271,9 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('PROFIL',46,180,470,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(d.summary||'',46,215,470,100,{fontSize:10,lineHeight:1.55,color:'#4a3326'}));
       blocks.push(textBlock('EXPÉRIENCE',46,360,470,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(exp,46,395,470,390,{fontSize:10,lineHeight:1.5,color:'#4a3326'}));
       blocks.push(textBlock('FORMATION',46,825,470,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(edu,46,860,470,150,{fontSize:10,lineHeight:1.5,color:'#4a3326'}));
-    } else if (cfg.variant === 'minimal') {
-      // Atlas ATS: une colonne structurée, repères latéraux et photo carrée discrète.
-      blocks.push(shape(0,0,794,1123,'#ffffff'));
-      blocks.push(shape(0,0,18,1123,colors.primary));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,650,34,92,92,10));
-      blocks.push(textBlock(d.name||'Votre nom',54,40,560,40,{fontSize:31,fontWeight:700,color:colors.primary},4));
-      blocks.push(textBlock(d.title||'Titre professionnel',54,86,560,26,{fontSize:14,fontWeight:700,color:colors.accent},4));
-      blocks.push(textBlock(contact,54,124,560,22,{fontSize:9,color:'#52606d'},4));
-      blocks.push(lineBlock(54,162,688,colors.primary,2));
-      blocks.push(textBlock('PROFIL',54,195,150,24,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(d.summary||'',210,195,532,92,{fontSize:10,lineHeight:1.55,color:'#334155'}));
-      blocks.push(textBlock('EXPÉRIENCE',54,330,150,24,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(exp,210,330,532,360,{fontSize:10,lineHeight:1.55,color:'#334155'}));
-      blocks.push(textBlock('FORMATION',54,730,150,24,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(edu,210,730,532,130,{fontSize:10,lineHeight:1.55,color:'#334155'}));
-      blocks.push(shape(54,900,688,150,colors.sidebar,14));
-      blocks.push(textBlock('COMPÉTENCES',74,922,190,22,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(skills,74,952,190,82,{fontSize:9,lineHeight:1.5,color:'#334155'}));
-      blocks.push(textBlock('LANGUES',310,922,150,22,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(langs,310,952,150,82,{fontSize:9,lineHeight:1.5,color:'#334155'}));
-    } else if (cfg.variant === 'academic') {
-      // Academia: composition éditoriale, colonne de références et bandeau bordeaux.
-      blocks.push(shape(0,0,794,128,colors.primary));
-      blocks.push(shape(0,128,794,8,colors.accent));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,54,28,96,96,48));
-      blocks.push(textBlock(d.name||'Votre nom',180,35,520,38,{fontFamily:'Georgia',fontSize:30,fontWeight:700,color:'#fff'},4));
-      blocks.push(textBlock(d.title||'Enseignement • Recherche • Publications',180,79,520,26,{fontFamily:'Georgia',fontSize:13,fontWeight:700,color:'#f8e7c4'},4));
-      blocks.push(textBlock(contact,180,108,520,18,{fontFamily:'Georgia',fontSize:8,color:'#fff'},4));
-      blocks.push(shape(0,136,220,987,colors.sidebar));
-      blocks.push(textBlock('DOMAINES',28,180,160,24,{fontFamily:'Georgia',fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(skills,28,214,160,220,{fontFamily:'Georgia',fontSize:9,lineHeight:1.6,color:'#4b3b33'}));
-      blocks.push(textBlock('LANGUES',28,470,160,24,{fontFamily:'Georgia',fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(langs,28,504,160,120,{fontFamily:'Georgia',fontSize:9,lineHeight:1.6,color:'#4b3b33'}));
-      blocks.push(textBlock('FORMATION',28,660,160,24,{fontFamily:'Georgia',fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(edu,28,694,160,250,{fontFamily:'Georgia',fontSize:9,lineHeight:1.55,color:'#4b3b33'}));
-      blocks.push(textBlock('PROFIL ACADÉMIQUE',260,180,470,24,{fontFamily:'Georgia',fontSize:13,fontWeight:700,color:colors.primary}));
-      blocks.push(lineBlock(260,210,88,colors.accent,3));
-      blocks.push(textBlock(d.summary||'',260,228,470,100,{fontFamily:'Georgia',fontSize:10,lineHeight:1.65,color:'#3f3f46'}));
-      blocks.push(textBlock('EXPÉRIENCE & ENSEIGNEMENT',260,370,470,24,{fontFamily:'Georgia',fontSize:13,fontWeight:700,color:colors.primary}));
-      blocks.push(lineBlock(260,400,88,colors.accent,3));
-      blocks.push(textBlock(exp,260,420,470,420,{fontFamily:'Georgia',fontSize:10,lineHeight:1.6,color:'#3f3f46'}));
-    } else if (cfg.variant === 'qhse') {
-      // QHSE Green: matrice d'indicateurs, bandeau vert et photo hexagonale visuelle.
-      blocks.push(shape(0,0,794,170,colors.primary));
-      blocks.push(shape(0,170,794,14,colors.accent));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,620,34,116,116,18));
-      blocks.push(textBlock(d.name||'Votre nom',48,42,520,40,{fontSize:31,fontWeight:700,color:'#fff'},4));
-      blocks.push(textBlock(d.title||'Qualité • Hygiène • Sécurité • Environnement',48,88,520,28,{fontSize:13,fontWeight:700,color:'#dff4b7'},4));
-      blocks.push(textBlock(contact,48,132,520,22,{fontSize:9,color:'#fff'},4));
-      blocks.push(shape(36,220,722,126,colors.sidebar,18));
-      blocks.push(textBlock('SYNTHÈSE PROFESSIONNELLE',60,242,240,22,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(d.summary||'',60,274,650,56,{fontSize:10,lineHeight:1.5,color:'#2f4738'}));
-      blocks.push(textBlock('EXPÉRIENCES',48,390,430,24,{fontSize:13,fontWeight:700,color:colors.primary}));
-      blocks.push(lineBlock(48,420,86,colors.accent,5));
-      blocks.push(textBlock(exp,48,442,430,430,{fontSize:10,lineHeight:1.55,color:'#2f4738'}));
-      blocks.push(shape(510,390,236,500,colors.sidebar,18));
-      blocks.push(textBlock('COMPÉTENCES QHSE',534,416,188,24,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(skills,534,452,188,220,{fontSize:9,lineHeight:1.65,color:'#2f4738'}));
-      blocks.push(textBlock('FORMATION',534,700,188,24,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(edu,534,736,188,130,{fontSize:9,lineHeight:1.55,color:'#2f4738'}));
-      blocks.push(textBlock('LANGUES',48,920,160,24,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(langs,48,954,260,90,{fontSize:9,lineHeight:1.55,color:'#2f4738'}));
-    } else if (cfg.variant === 'compact') {
-      // Impact One Page: grille compacte, photo en coin et blocs synthétiques.
-      blocks.push(shape(26,24,742,1075,'#ffffff',20));
-      blocks.push(shape(26,24,742,142,colors.primary,20));
-      blocks.push(shape(26,144,742,22,colors.accent));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,636,44,104,104,52));
-      blocks.push(textBlock(d.name||'Votre nom',54,48,540,38,{fontSize:30,fontWeight:700,color:'#fff'},4));
-      blocks.push(textBlock(d.title||'Titre professionnel',54,91,540,26,{fontSize:14,fontWeight:700,color:'#ffd9cf'},4));
-      blocks.push(textBlock(contact,54,126,540,18,{fontSize:8,color:'#fff'},4));
-      blocks.push(shape(46,205,330,180,colors.sidebar,16));
-      blocks.push(textBlock('PROFIL',66,225,290,22,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(d.summary||'',66,258,290,108,{fontSize:9,lineHeight:1.48,color:'#334155'}));
-      blocks.push(shape(408,205,330,180,'#fff7f3',16));
-      blocks.push(textBlock('COMPÉTENCES',428,225,290,22,{fontSize:12,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(skills,428,258,290,108,{fontSize:9,lineHeight:1.48,color:'#334155'}));
-      blocks.push(textBlock('EXPÉRIENCES',46,430,692,24,{fontSize:13,fontWeight:700,color:colors.primary}));
-      blocks.push(lineBlock(46,460,100,colors.accent,4));
-      blocks.push(textBlock(exp,46,482,692,330,{fontSize:9,lineHeight:1.48,color:'#334155'}));
-      blocks.push(shape(46,850,330,175,colors.sidebar,16));
-      blocks.push(textBlock('FORMATION',66,872,290,22,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(edu,66,904,290,100,{fontSize:9,lineHeight:1.5,color:'#334155'}));
-      blocks.push(shape(408,850,330,175,'#fff7f3',16));
-      blocks.push(textBlock('LANGUES',428,872,290,22,{fontSize:11,fontWeight:700,color:colors.primary}));
-      blocks.push(textBlock(langs,428,904,290,100,{fontSize:9,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'executive') {
-      blocks.push(shape(0,0,794,160,'#161616')); blocks.push(lineBlock(0,158,794,colors.accent,4));
-      if(photoSrc) blocks.push(imageBlock(photoSrc,52,28,104,104,52));
-      blocks.push(textBlock(d.name||'Votre nom',190,42,540,40,{fontSize:32,fontWeight:700,color:'#fff'},4)); blocks.push(textBlock(d.title||'Direction • Leadership • Stratégie',190,88,540,28,{fontSize:14,fontWeight:700,color:colors.accent},4)); blocks.push(textBlock(contact,190,126,540,20,{fontSize:9,color:'#cbd5e1'},4));
+      blocks.push(shape(0,0,794,160,'#111827')); blocks.push(lineBlock(0,158,794,colors.accent,4));
+      blocks.push(textBlock(d.name||'Votre nom',50,42,690,40,{fontSize:32,fontWeight:700,color:'#fff'},4)); blocks.push(textBlock(d.title||'Direction • Leadership • Stratégie',50,88,690,28,{fontSize:14,fontWeight:700,color:colors.accent},4)); blocks.push(textBlock(contact,50,126,690,20,{fontSize:9,color:'#cbd5e1'},4));
       blocks.push(textBlock('PROFIL EXÉCUTIF',50,205,430,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(d.summary||'',50,240,430,100,{fontSize:10,lineHeight:1.55,color:'#334155'}));
       blocks.push(textBlock('EXPÉRIENCE',50,380,430,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(exp,50,415,430,470,{fontSize:10,lineHeight:1.5,color:'#334155'}));
       blocks.push(lineBlock(515,210,3,'#e5e7eb',2));
@@ -498,9 +386,8 @@ export default function CareerStudioEditor() {
 
   const manualLayout = useMemo(() => {
     if (!document) return null;
-    const stored = (document.doc_data as any).manual_layout as ManualLayout | undefined;
-    if (stored?.templateKey === document.template_key) return stored;
-    return createManualLayout(document);
+    const saved = (document.doc_data as any).manual_layout as ManualLayout | undefined;
+    return saved?.templateKey === document.template_key ? saved : createManualLayout(document);
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
@@ -619,7 +506,6 @@ export default function CareerStudioEditor() {
       design_options: {
         ...doc.design_options,
         colors,
-        template_color_customized: true,
       } as DesignOptions | LmDesign,
     }));
   }
@@ -653,22 +539,15 @@ export default function CareerStudioEditor() {
   function changeTemplate(templateKey: string) {
     const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
     const meta = getTemplateMeta(docType, normalizedTemplateKey);
-    const cfg = docType === 'cv' ? BUILTIN_CV_LAYOUTS[normalizedTemplateKey] : BUILTIN_LM_LAYOUTS[normalizedTemplateKey];
+    const preset = docType === 'cv' ? templatePreset(normalizedTemplateKey) : {};
     updateDocument(doc => ({
       ...doc,
       template_key: normalizedTemplateKey,
       doc_data: { ...(doc.doc_data as any), manual_layout: undefined },
       design_options: {
         ...doc.design_options,
-        colors: cfg ? {
-          primary: cfg.primary,
-          accent: cfg.accent,
-          sidebar: cfg.sidebar || '#f4f6f8',
-          text: '#1f2937',
-          background: '#ffffff',
-        } : (meta.default_colors || DEFAULT_COLORS),
-        photo_enabled: docType === 'cv' ? true : undefined,
-        template_color_customized: false,
+        ...preset,
+        colors: (preset as any).colors || meta.default_colors || DEFAULT_COLORS,
         editor_mode: 'template',
       } as DesignOptions | LmDesign,
     }));

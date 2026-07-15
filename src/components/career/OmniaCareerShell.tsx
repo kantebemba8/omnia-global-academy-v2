@@ -110,7 +110,6 @@ export function OmniaCareerShell({
             <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ backgroundColor: GOLD }}>OA</div>
             <span className="text-base font-bold leading-tight text-white">Omnia Global<br />Academy</span>
           </Link>
-          <div className="mt-4 text-xs font-semibold uppercase tracking-wide" style={{ color: GOLD }}>Omnia Career</div>
         </div>
 
         <div className="mx-3 mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-4">
@@ -129,7 +128,7 @@ export function OmniaCareerShell({
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = activeSection === item.key;
@@ -148,8 +147,8 @@ export function OmniaCareerShell({
             );
           })}
         </nav>
-        <div className="border-t border-white/10 px-3 py-3">
-          <button type="button" onClick={() => navigate('/dashboard/career-studio?section=settings')} className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5" style={{ color: GOLD }}>
+        <div className="px-3 pb-5">
+          <button type="button" onClick={() => navigate('/dashboard/career-studio?section=settings')} className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: GOLD, color: BLUE }}>
             <Crown className="h-[18px] w-[18px]" /> Passer à Premium
           </button>
           <button onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition hover:bg-white/5 hover:text-white">

@@ -64,13 +64,15 @@ function cvParts(data:DocData, primary:string, accent:string){
 
 export function ConfigurableCvTemplate({data, design, templateKey}:{data:DocData;design:DesignOptions;templateKey:string}){
   const cfg = BUILTIN_CV_LAYOUTS[templateKey] || cachedConfig(templateKey) || BUILTIN_CV_LAYOUTS.cv_horizon;
-  const primary = design?.colors?.primary || cfg.primary;
-  const accent = design?.colors?.accent || cfg.accent;
-  const sidebarColor = design?.colors?.sidebar || cfg.sidebar || '#f4f6f8';
+  const isBuiltin = Boolean(BUILTIN_CV_LAYOUTS[templateKey]);
+  const primary = isBuiltin ? cfg.primary : (design?.colors?.primary || cfg.primary);
+  const accent = isBuiltin ? cfg.accent : (design?.colors?.accent || cfg.accent);
+  const sidebarColor = isBuiltin ? (cfg.sidebar || '#f4f6f8') : (design?.colors?.sidebar || cfg.sidebar || '#f4f6f8');
   const font = design?.font || cfg.font || (cfg.variant === 'academic' ? 'Georgia,serif' : 'Inter,Arial,sans-serif');
   const contactText = contacts(data) || 'Vos coordonnées';
   const {exp,edu,skills,langs}=cvParts(data,primary,accent);
-  const photo = cfg.photo && design.photo_enabled ? <Photo data={data} accent={accent} shape={cfg.variant==='creative'?'20px':'50%'} /> : null;
+  const photoEnabled = Boolean(cfg.photo) && design.photo_enabled !== false;
+  const photo = photoEnabled ? <Photo data={data} accent={accent} shape={cfg.variant==='creative'?'20px':'50%'} /> : null;
 
   if (cfg.variant === 'split') return <div style={{width:794,minHeight:1123,display:'grid',gridTemplateColumns:'230px 1fr',fontFamily:font,background:'#fff',color:'#1f2937'}}><aside style={{background:sidebarColor,padding:'34px 24px'}}><div style={{display:'flex',justifyContent:'center',marginBottom:20}}>{photo}</div><Section title="Contact" accent={accent}><div style={{fontSize:9,lineHeight:1.7}}>{contactText}</div></Section><Section title="Compétences" accent={accent}>{skills}</Section><Section title="Langues" accent={accent}>{langs}</Section></aside><main><header style={{background:primary,color:'#fff',padding:'45px 46px 34px'}}><div style={{fontSize:32,fontWeight:900}}>{data.name||'Votre nom'}</div><div style={{fontSize:14,color:accent,marginTop:6,fontWeight:700}}>{data.title||'Titre professionnel'}</div></header><div style={{padding:'34px 42px'}}>{data.summary&&<Section title="Profil" accent={accent}><p style={{fontSize:10,lineHeight:1.6}}>{data.summary}</p></Section>}<Section title="Expériences" accent={accent}>{exp}</Section><Section title="Formation" accent={accent}>{edu}</Section></div></main></div>;
 
@@ -104,7 +106,9 @@ function letterBody(data:LmData, primary:string){
 
 export function ConfigurableLmTemplate({data,design,templateKey}:{data:LmData;design:LmDesign;templateKey:string}){
   const cfg=BUILTIN_LM_LAYOUTS[templateKey]||cachedConfig(templateKey)||BUILTIN_LM_LAYOUTS.lm_horizon;
-  const primary=design?.colors?.primary||cfg.primary, accent=design?.colors?.accent||cfg.accent;
+  const isBuiltin = Boolean(BUILTIN_LM_LAYOUTS[templateKey]);
+  const primary=isBuiltin?cfg.primary:(design?.colors?.primary||cfg.primary);
+  const accent=isBuiltin?cfg.accent:(design?.colors?.accent||cfg.accent);
   const sender=[data.sender?.email,data.sender?.phone,data.sender?.address].filter(Boolean).join(' • ');
   const body=letterBody(data,primary);
 
