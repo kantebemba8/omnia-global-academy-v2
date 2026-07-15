@@ -25,8 +25,8 @@ export function verifyCareerTemplateCatalog(): TemplateIntegrityReport {
 
   return {
     valid:
-      cvKeys.length === 12 &&
-      lmKeys.length === 6 &&
+      cvKeys.length === 20 &&
+      lmKeys.length === 32 &&
       missingCvRenderers.length === 0 &&
       missingLmRenderers.length === 0 &&
       duplicateKeys.length === 0,

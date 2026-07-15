@@ -35,7 +35,7 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
   return {
     colors: template.default_colors,
     font:'inter', font_size_body:9, font_size_title:11, line_spacing:1.5,
-    photo_enabled: template.template_type === 'cv',
+    photo_enabled: template.template_key !== 'cv_atlas' && template.template_key !== 'cv_impact',
     photo_shape:'round', pages:1,
   };
 }

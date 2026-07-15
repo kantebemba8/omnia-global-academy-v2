@@ -1,5 +1,4 @@
 import React from 'react';
-import { UnifiedCareerTemplatePreview } from './UnifiedCareerTemplate';
 import { LM_TEMPLATE_MAP_1_10, LmData, LmDesign } from './LmTemplates_1_10';
 import { LM_TEMPLATE_MAP_11_32 } from './LmTemplates_11_32';
 import { ConfigurableLmTemplate, BUILTIN_LM_LAYOUTS } from './EditableCareerTemplates';
@@ -13,5 +12,6 @@ export const LM_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: LmData;
 };
 
 export function LmPreview({ templateKey, data, design }: { templateKey: string; data: LmData; design: LmDesign }) {
-  return <UnifiedCareerTemplatePreview docType="lm" templateKey={templateKey} data={data} design={design} />;
+  const Component = LM_TEMPLATE_MAP[templateKey];
+  return Component ? <Component data={data} design={design} /> : <ConfigurableLmTemplate data={data} design={design} templateKey={templateKey} />;
 }

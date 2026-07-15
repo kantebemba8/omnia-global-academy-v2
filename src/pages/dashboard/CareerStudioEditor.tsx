@@ -147,10 +147,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
   let custom: any = null;
   try { custom = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]').find((x:any)=>x.template_key===document.template_key)?.layout_config; } catch {}
   const cfg:any = builtin || custom || { variant:'split', primary:'#002050', accent:'#bf8813', sidebar:'#eef3f8', header:'solid' };
-  const isBuiltinTemplate = Boolean(builtin);
-  const colors = isBuiltinTemplate
-    ? { ...DEFAULT_COLORS, primary: cfg.primary, accent: cfg.accent, sidebar: cfg.sidebar || '#f4f6f8' }
-    : { ...(design.colors || DEFAULT_COLORS), primary: design.colors?.primary || cfg.primary, accent: design.colors?.accent || cfg.accent, sidebar: design.colors?.sidebar || cfg.sidebar };
+  const colors = { ...(design.colors || DEFAULT_COLORS), primary: design.colors?.primary || cfg.primary, accent: design.colors?.accent || cfg.accent, sidebar: design.colors?.sidebar || cfg.sidebar };
   const blocks: ManualBlock[] = [];
   const shape = (x:number,y:number,width:number,height:number,bg:string,radius=0,zIndex=1):ManualBlock => ({id:uid('shape'),type:'shape',x,y,width,height,rotation:0,zIndex,style:{backgroundColor:bg,opacity:1,borderWidth:0,borderRadius:radius}});
   const lineBlock = (x:number,y:number,width:number,color=colors.accent,height=3):ManualBlock => ({id:uid('line'),type:'line',x,y,width,height,rotation:0,zIndex:2,style:{borderColor:color,borderWidth:height,opacity:1}});
@@ -165,21 +162,11 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
     const edu=(d.education||[]).map(e=>`${e.degree}${e.school?` — ${e.school}`:''}${e.year?` (${e.year})`:''}`).join('\n');
     const photoSrc=d.photo_url || '';
     const photoRound=cfg.variant==='creative'?20:54;
-    const photoEnabled = Boolean(cfg.photo) && design.photo_enabled !== false;
-    const addPhoto = (x:number,y:number,width:number,height:number,radius:number) => {
-      if (!photoEnabled) return;
-      if (photoSrc) {
-        blocks.push(imageBlock(photoSrc,x,y,width,height,radius));
-        return;
-      }
-      blocks.push(shape(x,y,width,height,'#e2e8f0',radius,3));
-      blocks.push(textBlock('PHOTO',x,y + Math.max(12,(height-20)/2),width,20,{fontSize:10,fontWeight:700,textAlign:'center',color:'#64748b'},4));
-    };
 
     if (cfg.variant === 'split') {
       blocks.push(shape(0,0,230,1123,colors.sidebar));
       blocks.push(shape(230,0,564,132,colors.primary));
-      addPhoto(62,34,106,106,54);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,62,34,106,106,54));
       blocks.push(textBlock('CONTACT',28,175,170,24,{fontSize:12,fontWeight:700,color:colors.primary}));
       blocks.push(textBlock(contact,28,207,170,88,{fontSize:9,lineHeight:1.6,color:'#334155'}));
       blocks.push(textBlock('COMPÉTENCES',28,325,170,24,{fontSize:12,fontWeight:700,color:colors.primary}));
@@ -194,7 +181,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
     } else if (cfg.variant === 'band') {
       blocks.push(shape(0,0,794,160,colors.primary));
       blocks.push(shape(0,160,794,12,colors.accent));
-      addPhoto(48,28,104,104,52);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,48,28,104,104,52));
       blocks.push(textBlock(d.name||'Votre nom',180,38,560,40,{fontSize:30,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',180,84,560,28,{fontSize:14,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(contact,180,120,560,22,{fontSize:9,color:'#fff'},4));
@@ -210,7 +197,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('EXPÉRIENCES',48,390,410,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(lineBlock(48,419,76));
       blocks.push(textBlock(exp,48,438,410,430,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'timeline') {
-      addPhoto(46,38,98,98,49);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,46,38,98,98,49));
       blocks.push(textBlock(d.name||'Votre nom',175,42,560,38,{fontSize:29,fontWeight:700,color:colors.primary},4));
       blocks.push(textBlock(d.title||'Titre professionnel',175,84,560,28,{fontSize:14,fontWeight:700,color:colors.accent},4));
       blocks.push(textBlock(contact,175,120,560,22,{fontSize:9,color:'#64748b'}));
@@ -229,7 +216,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock(exp,90,405,390,430,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'cards') {
       blocks.push(shape(34,30,726,140,colors.primary,22));
-      addPhoto(58,48,104,104,52);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,58,48,104,104,52));
       blocks.push(textBlock(d.name||'Votre nom',190,55,520,38,{fontSize:29,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',190,98,520,26,{fontSize:14,fontWeight:700,color:colors.accent},4));
       blocks.push(textBlock(contact,190,132,520,20,{fontSize:9,color:'#fff'},4));
@@ -241,7 +228,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('LANGUES',438,890,295,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(textBlock(langs,438,925,295,100,{fontSize:10,lineHeight:1.55,color:'#334155'}));
     } else if (cfg.variant === 'creative') {
       blocks.push(shape(-120,-95,390,390,colors.primary,195));
-      addPhoto(56,40,108,108,20);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,56,40,108,108,20));
       blocks.push(textBlock(d.name||'Votre nom',195,55,520,38,{fontSize:31,fontWeight:700,color:'#fff'},4));
       blocks.push(textBlock(d.title||'Titre professionnel',195,100,520,26,{fontSize:14,fontWeight:700,color:'#fff'},4));
       blocks.push(shape(40,210,235,800,colors.sidebar,24));
@@ -253,7 +240,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('FORMATION',315,850,420,24,{fontSize:13,fontWeight:700,color:colors.primary})); blocks.push(lineBlock(315,879,76)); blocks.push(textBlock(edu,315,898,420,140,{fontSize:10,lineHeight:1.5,color:'#334155'}));
     } else if (cfg.variant === 'tech') {
       blocks.push(shape(0,0,230,1123,colors.sidebar)); blocks.push(shape(230,0,564,1123,'#061421'));
-      addPhoto(62,42,106,106,53);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,62,42,106,106,53));
       blocks.push(textBlock('CONTACT',30,180,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(contact,30,215,170,95,{fontSize:9,lineHeight:1.6,color:'#e2e8f0'}));
       blocks.push(textBlock('STACK',30,345,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(skills,30,380,170,230,{fontSize:9,lineHeight:1.65,color:'#e2e8f0'}));
       blocks.push(textBlock('LANGUES',30,650,170,24,{fontSize:12,fontWeight:700,color:colors.accent})); blocks.push(textBlock(langs,30,685,170,120,{fontSize:9,lineHeight:1.6,color:'#e2e8f0'}));
@@ -263,7 +250,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock('FORMATION',280,850,440,24,{fontSize:13,fontWeight:700,color:colors.accent})); blocks.push(textBlock(edu,280,885,440,150,{fontSize:10,lineHeight:1.5,color:'#cbd5e1'}));
     } else if (cfg.variant === 'hospitality') {
       blocks.push(shape(564,0,230,1123,colors.sidebar));
-      addPhoto(626,42,106,106,53);
+      if(photoSrc) blocks.push(imageBlock(photoSrc,626,42,106,106,53));
       blocks.push(textBlock('CONTACT',594,180,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(contact,594,215,170,95,{fontSize:9,lineHeight:1.6,color:'#4a3326'}));
       blocks.push(textBlock('COMPÉTENCES',594,345,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(skills,594,380,170,230,{fontSize:9,lineHeight:1.65,color:'#4a3326'}));
       blocks.push(textBlock('LANGUES',594,650,170,24,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(langs,594,685,170,120,{fontSize:9,lineHeight:1.6,color:'#4a3326'}));
@@ -323,7 +310,7 @@ function createManualLayout(document: CareerDocumentFull): ManualLayout {
       blocks.push(textBlock(recipient,60,200,260,85,{fontSize:10,lineHeight:1.5})); blocks.push(textBlock(`${d.sender?.city||''}${d.sender?.date?`, le ${d.sender.date}`:''}`,480,200,250,30,{fontSize:10,textAlign:'right'})); blocks.push(textBlock(`Objet : ${d.subject||''}`,60,325,670,35,{fontSize:12,fontWeight:700,color:colors.primary})); blocks.push(textBlock(d.salutation||'Madame, Monsieur,',60,385,670,32,{fontSize:11})); blocks.push(textBlock(body,60,435,670,500,{fontSize:11,lineHeight:1.65,textAlign:'justify'})); blocks.push(textBlock(d.closing||'',60,955,670,80,{fontSize:11,lineHeight:1.6})); blocks.push(textBlock(signature,500,1040,230,40,{fontSize:15,fontWeight:700,fontStyle:'italic',textAlign:'right',color:colors.primary}));
     }
   }
-  return {version:1,templateKey:document.template_key,page:{width:794,height:1123,background:'#fff'},blocks};
+  return {version:1,page:{width:794,height:1123,background:'#fff'},blocks};
 }
 
 function hasText(value: unknown) { return typeof value === 'string' && value.trim().length > 0; }
@@ -373,6 +360,10 @@ export default function CareerStudioEditor() {
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingDocumentName, setPendingDocumentName] = useState('');
   const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | null>(null);
+  const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
+  const [personalizeOpen, setPersonalizeOpen] = useState(false);
+  const [personalizeText, setPersonalizeText] = useState('');
+  const [personalizeLoading, setPersonalizeLoading] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -386,8 +377,7 @@ export default function CareerStudioEditor() {
 
   const manualLayout = useMemo(() => {
     if (!document) return null;
-    const saved = (document.doc_data as any).manual_layout as ManualLayout | undefined;
-    return saved?.templateKey === document.template_key ? saved : createManualLayout(document);
+    return ((document.doc_data as any).manual_layout as ManualLayout | undefined) || createManualLayout(document);
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
@@ -632,6 +622,40 @@ export default function CareerStudioEditor() {
     }
   }
 
+  async function personalizeWithAi() {
+    if (!document || !personalizeText.trim() || personalizeLoading) return;
+    setPersonalizeLoading(true);
+    try {
+      const result = await runCareerAiAction({
+        action: document.doc_type === 'cv' ? 'generate_cv' : 'generate_lm',
+        doc_type: document.doc_type,
+        text: personalizeText,
+        doc_data: document.doc_data,
+        target_job: document.target_job || '',
+        application_type: document.application_type || document.doc_type,
+        language: 'fr',
+      });
+      if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
+      if (document.doc_type === 'lm') {
+        updateLm(d => mergeLetterText(d, result.result));
+      } else {
+        const paragraphs = splitParagraphs(result.result);
+        updateCv(d => ({
+          ...d,
+          summary: paragraphs[0] || d.summary,
+          experiences: d.experiences?.length ? d.experiences.map((e, i) => i === 0 ? { ...e, description: paragraphs[1] || e.description } : e) : d.experiences,
+        }));
+      }
+      setPersonalizeOpen(false);
+      setPersonalizeText('');
+      showToast('Document personnalisé avec IA. Vérifiez et ajustez le contenu avant de l’enregistrer.');
+    } catch (e) {
+      showToast((e as Error).message || 'Le service IA n’est pas disponible.');
+    } finally {
+      setPersonalizeLoading(false);
+    }
+  }
+
   function applyAiSuggestion() {
     if (!aiSuggestion || !document) return;
 
@@ -760,6 +784,12 @@ export default function CareerStudioEditor() {
               {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#bf8813]">{tokens} jeton(s)</div>
+            <button onClick={() => setFullPreviewOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
+              <Eye className="h-4 w-4" /> Prévisualiser
+            </button>
+            <button onClick={() => setPersonalizeOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+              <Sparkles className="h-4 w-4" /> Personnaliser avec IA
+            </button>
             <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#7a570c] hover:bg-[#bf8813]/15">
               <Edit3 className="h-4 w-4" /> Éditeur libre
             </button>
@@ -830,7 +860,7 @@ export default function CareerStudioEditor() {
               <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu live
+              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu en direct
             </div>
           </div>
 
@@ -911,6 +941,30 @@ export default function CareerStudioEditor() {
           }}
           printRef={printRef}
         />
+      )}
+
+      {fullPreviewOpen && document && (
+        <div className="fixed inset-0 z-[130] flex flex-col bg-slate-950/90 p-4 backdrop-blur-sm">
+          <div className="mb-3 flex items-center justify-between text-white">
+            <div><div className="text-lg font-semibold">Prévisualisation A4</div><div className="text-xs text-white/70">{document.title}</div></div>
+            <button onClick={() => setFullPreviewOpen(false)} className="rounded-xl border border-white/20 p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
+          </div>
+          <div className="flex flex-1 items-start justify-center overflow-auto rounded-2xl bg-slate-200 p-6">
+            <div style={{ width: 794, minHeight: 1123 }}>
+              {isManualMode && manualLayout ? <ManualDocumentCanvas layout={manualLayout} /> : isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {personalizeOpen && document && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold text-[#002050]">Personnaliser avec IA</h2><p className="mt-2 text-sm leading-6 text-slate-500">Saisissez uniquement vos informations réelles. L’IA proposera un contenu que vous devrez vérifier avant sauvegarde.</p></div><button onClick={() => setPersonalizeOpen(false)} className="rounded-xl p-2 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+            <textarea value={personalizeText} onChange={e => setPersonalizeText(e.target.value)} className="mt-5 min-h-64 w-full rounded-2xl border border-slate-300 p-4 text-sm outline-none focus:border-[#bf8813] focus:ring-4 focus:ring-[#bf8813]/10" placeholder={document.doc_type === 'cv' ? 'Métier visé, expériences, études, compétences, réalisations et pays ciblé…' : 'Poste visé, entreprise, expériences, compétences, motivation et informations utiles…'} />
+            <div className="mt-5 flex justify-end gap-2"><button onClick={() => setPersonalizeOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Annuler</button><button onClick={personalizeWithAi} disabled={!personalizeText.trim() || personalizeLoading} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{personalizeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Générer</button></div>
+          </div>
+        </div>
       )}
 
       {nameDialogOpen && document && (

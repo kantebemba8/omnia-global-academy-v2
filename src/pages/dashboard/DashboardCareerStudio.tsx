@@ -40,6 +40,7 @@ import { getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudio
 import { ENDPOINTS } from '../../lib/config';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
+import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedCoaching, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -448,14 +449,14 @@ export default function DashboardCareerStudio() {
           </header>
 
           <main className="flex-1 px-8 py-7">
-            {activeView === 'dashboard' && <DashboardView loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} latestCv={latestCv} latestLm={latestLm} templates={cvTemplates} tokens={tokens} quickActions={quickActions} setActiveView={setActiveView} createDoc={createDoc} openDoc={openDoc} />}
+            {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
             {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
             {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
-            {activeView === 'interview' && <InterviewView jobId={searchParams.get('job_id') || undefined} />}
-            {activeView === 'applications' && <ApplicationsView jobId={searchParams.get('job_id') || undefined} navigate={navigate} />}
-            {activeView === 'profile' && <ProfileView displayName={displayName} />}
-            {activeView === 'coaching' && <CoachingView />}
-            {activeView === 'settings' && <SettingsView packs={packs} tokens={tokens} user={user} />}
+            {activeView === 'interview' && <EnhancedInterview />}
+            {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
+            {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
+            {activeView === 'coaching' && <EnhancedCoaching />}
+            {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}
           </main>
         </div>
       </div>
