@@ -364,6 +364,8 @@ export default function CareerStudioEditor() {
   const [personalizeOpen, setPersonalizeOpen] = useState(false);
   const [personalizeText, setPersonalizeText] = useState('');
   const [personalizeLoading, setPersonalizeLoading] = useState(false);
+  const [omniaAdvice, setOmniaAdvice] = useState('');
+  const [omniaAdviceLoading, setOmniaAdviceLoading] = useState(false);
 
   const score = useMemo(() => {
     if (!document) return 0;
@@ -405,6 +407,32 @@ export default function CareerStudioEditor() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!document) return;
+    let cancelled = false;
+    setOmniaAdvice('');
+    setOmniaAdviceLoading(true);
+    const dataText = document.doc_type === 'cv'
+      ? JSON.stringify(getCvData(document))
+      : JSON.stringify(getLmData(document));
+    runCareerAiAction({
+      action: 'make_professional',
+      doc_type: document.doc_type,
+      text: `Génère un seul conseil Omnia bref, concret et directement lié au document en cours. Analyse uniquement les informations réelles suivantes et n'invente rien : ${dataText}. Maximum 45 mots.`,
+      doc_data: document.doc_data,
+      target_job: document.target_job || '',
+      application_type: document.application_type || document.doc_type,
+      language: 'fr',
+    }).then(result => {
+      if (!cancelled) setOmniaAdvice(result.result || '');
+    }).catch(() => {
+      if (!cancelled) setOmniaAdvice('Le conseil IA n’est pas disponible pour le moment.');
+    }).finally(() => {
+      if (!cancelled) setOmniaAdviceLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [document?.id]);
 
   const updateDocument = useCallback((updater: (current: CareerDocumentFull) => CareerDocumentFull) => {
     setDocument(prev => {
@@ -787,10 +815,10 @@ export default function CareerStudioEditor() {
             <button onClick={() => setFullPreviewOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Eye className="h-4 w-4" /> Prévisualiser
             </button>
-            <button onClick={() => setPersonalizeOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            <button onClick={() => setPersonalizeOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Sparkles className="h-4 w-4" /> Personnaliser avec IA
             </button>
-            <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#7a570c] hover:bg-[#bf8813]/15">
+            <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Edit3 className="h-4 w-4" /> Éditeur libre
             </button>
             <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
@@ -846,9 +874,9 @@ export default function CareerStudioEditor() {
           </div>
 
           <div className="mt-5 rounded-2xl border border-[#bf8813]/30 bg-[#bf8813]/10 p-4">
-            <div className="text-sm font-semibold text-[#002050]">Conseil Omnia</div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#002050]"><Sparkles className="h-4 w-4 text-[#bf8813]" />Conseil Omnia</div>
             <p className="mt-2 text-xs leading-5 text-slate-600">
-              Sauvegarde automatique active. Les modèles CV et LM déjà définis sont disponibles dans le panneau droit.
+              {omniaAdviceLoading ? 'Génération du conseil IA…' : (omniaAdvice || 'Conseil IA indisponible pour le moment.')}
             </p>
           </div>
         </aside>
