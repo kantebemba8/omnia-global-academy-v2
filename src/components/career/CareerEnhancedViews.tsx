@@ -71,11 +71,63 @@ const questionBank:Record<string,string[]>={
 };
 
 function StarChecklist(){
-  const steps=[{letter:'S',name:'Situation',role:'Décrire précisément le contexte, le lieu et le moment.'},{letter:'T',name:'Tâche',role:'Présenter votre objectif ou votre responsabilité personnelle.'},{letter:'A',name:'Action',role:'Expliquer les actions que vous avez personnellement réalisées.'},{letter:'R',name:'Résultat',role:'Donner un résultat observable, concret ou chiffré.'}];
+  const steps=[
+    {letter:'S',name:'Situation',role:'Décrire précisément le contexte, le lieu et le moment.'},
+    {letter:'T',name:'Tâche',role:'Présenter votre objectif ou votre responsabilité personnelle.'},
+    {letter:'A',name:'Action',role:'Expliquer les actions que vous avez personnellement réalisées.'},
+    {letter:'R',name:'Résultat',role:'Donner un résultat observable, concret ou chiffré.'}
+  ];
   const [completed,setCompleted]=useState<number[]>(()=>readJson('omnia_star_completed',[]));
-  const current=Math.min(completed.length,3);
-  function confirmStep(i:number){if(i>completed.length)return; if(!window.confirm(`Êtes-vous sûr que votre réponse contient bien l'étape ${steps[i].letter} — ${steps[i].name} ?`))return; const next=Array.from(new Set([...completed,i])).sort();setCompleted(next);saveJson('omnia_star_completed',next)}
-  return <Card className="p-5"><h3 className="font-semibold" style={{color:BLUE}}>Checklist STAR</h3><p className="mt-2 text-sm" style={{color:MUTED}}>STAR vous aide à structurer une réponse comportementale complète. Validez chaque étape après l’avoir réellement intégrée à votre réponse.</p><div className="mt-4 space-y-3">{steps.map((s,i)=>{const done=completed.includes(i);const enabled=i<=completed.length;return <div key={s.letter} className="rounded-xl border p-3" style={{borderColor:done?'#22c55e':BORDER,background:done?'#f0fdf4':'#fff'}}><div className="flex items-start gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold" style={{background:done?'#16a34a':'rgba(0,32,80,.08)',color:done?'#fff':BLUE}}>{s.letter}</div><div className="flex-1"><div className="font-semibold" style={{color:BLUE}}>{s.name}</div><div className="mt-1 text-xs leading-5" style={{color:MUTED}}>{s.role}</div>{enabled&&!done&&<button onClick={()=>confirmStep(i)} className="mt-3 rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{borderColor:GOLD,color:BLUE}}>Confirmer et passer à l’étape suivante</button>}</div></div></div>})}</div><div className="mt-4 text-sm font-semibold" style={{color:BLUE}}>Progression : {completed.length}/4</div></Card>;
+  const [pendingStep,setPendingStep]=useState<number|null>(null);
+
+  function requestConfirmation(i:number){
+    if(i>completed.length||completed.includes(i))return;
+    setPendingStep(i);
+  }
+
+  function confirmInsideOmnia(){
+    if(pendingStep===null)return;
+    const next=Array.from(new Set([...completed,pendingStep])).sort((a,b)=>a-b);
+    setCompleted(next);
+    saveJson('omnia_star_completed',next);
+    setPendingStep(null);
+  }
+
+  return <>
+    <Card className="p-5">
+      <h3 className="font-semibold" style={{color:BLUE}}>Checklist STAR</h3>
+      <p className="mt-2 text-sm" style={{color:MUTED}}>STAR vous aide à structurer une réponse comportementale complète. Validez chaque étape après l’avoir réellement intégrée à votre réponse.</p>
+      <div className="mt-4 space-y-3">
+        {steps.map((step,i)=>{
+          const done=completed.includes(i);
+          const enabled=i<=completed.length;
+          return <div key={step.letter} className="rounded-xl border p-3" style={{borderColor:done?'#22c55e':BORDER,background:done?'#f0fdf4':'#fff'}}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold" style={{background:done?'#16a34a':'rgba(0,32,80,.08)',color:done?'#fff':BLUE}}>{done?'✓':step.letter}</div>
+              <div className="flex-1">
+                <div className="font-semibold" style={{color:BLUE}}>{step.name}</div>
+                <div className="mt-1 text-xs leading-5" style={{color:MUTED}}>{step.role}</div>
+                {enabled&&!done&&<button onClick={()=>requestConfirmation(i)} className="mt-3 rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{borderColor:GOLD,color:BLUE}}>Confirmer et passer à l’étape suivante</button>}
+              </div>
+            </div>
+          </div>
+        })}
+      </div>
+      <div className="mt-4 text-sm font-semibold" style={{color:BLUE}}>Progression : {completed.length}/4</div>
+    </Card>
+
+    {pendingStep!==null&&<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="star-confirm-title">
+      <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-2xl" style={{borderColor:BORDER}}>
+        <h3 id="star-confirm-title" className="text-lg font-semibold" style={{color:BLUE}}>Confirmer dans Omnia Career</h3>
+        <p className="mt-3 text-sm leading-6" style={{color:MUTED}}>Êtes-vous sûr que votre réponse contient bien l’étape {steps[pendingStep].letter} — {steps[pendingStep].name} ?</p>
+        <p className="mt-2 rounded-xl bg-slate-50 p-3 text-sm" style={{color:BLUE}}>{steps[pendingStep].role}</p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={()=>setPendingStep(null)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Annuler</button>
+          <button onClick={confirmInsideOmnia} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>Confirmer et continuer</button>
+        </div>
+      </div>
+    </div>}
+  </>;
 }
 
 function FrequentQuestions(){
