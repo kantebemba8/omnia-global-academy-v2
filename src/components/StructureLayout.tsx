@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, User, LogOut,
-  ChevronRight, Menu, X, Building2, UserCheck, Shield, Briefcase,
+  ChevronRight, Menu, X, Building2, UserCheck, Shield, Briefcase, Search,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -18,6 +18,7 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/codes',               label: 'Codes structure',           icon: QrCode },
   { path: '/structure/avantages',           label: 'Avantages structure',       icon: Gift },
   { path: '/structure/offres-emploi',       label: 'Offres d’emploi',           icon: Briefcase },
+  { path: '/talent',                         label: 'Talent Omnia',              icon: Search },
   { path: '/structure/equipe',              label: 'Équipe de la structure',    icon: Shield },
   { path: '/structure/statistiques',        label: 'Statistiques',              icon: BarChart2 },
   { path: '/structure/notifications',       label: 'Notifications',             icon: Bell },

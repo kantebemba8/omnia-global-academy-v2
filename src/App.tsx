@@ -114,6 +114,11 @@ import OmniaCareerCoaching from './pages/omnia-career/OmniaCareerCoaching';
 import OmniaCareerSettings from './pages/omnia-career/OmniaCareerSettings';
 import AdminOmniaCareerStudio from './pages/admin/AdminOmniaCareerStudio';
 import TalentDirectory from './pages/TalentDirectory';
+import TalentHome from './pages/talent/TalentHome';
+import TalentExplore from './pages/talent/TalentExplore';
+import TalentRecruiters from './pages/talent/TalentRecruiters';
+import TalentAbout from './pages/talent/TalentAbout';
+import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -156,6 +161,11 @@ export default function App() {
         <Route path="/accueil" element={<LandingPage />} />
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
           <Route path="/talents" element={<TalentDirectory />} />
+          <Route path="/talent" element={<TalentHome />} />
+          <Route path="/talent/explorer" element={<TalentExplore />} />
+          <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
+          <Route path="/talent/a-propos" element={<TalentAbout />} />
+          <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
