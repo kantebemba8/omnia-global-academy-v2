@@ -231,6 +231,9 @@ export function CoursDetail() {
                   {isFree ? 'Gratuit' : `${(course.price_xof as number).toLocaleString()} XOF`}
                 </p>
                 {renderCTA()}
+                  <button onClick={() => navigate(`/cours/${id}/apercu`)} className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold" style={{ border: '1.5px solid #002050', color: '#002050', backgroundColor: '#FFFFFF' }}>
+                    Lire l’introduction gratuitement
+                  </button>
                 <ul className="mt-4 space-y-1.5">
                   {[
                     'Accès illimité à vie',

@@ -24,8 +24,28 @@ Deno.serve(async(req)=>{
  if(req.method==="OPTIONS")return new Response(null,{headers:cors});
  try{
   const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const userId=await sessionUser(sb,req); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
   const b=await req.json(); const action=b.action;
+
+  // Action publique : aperçu gratuit de l’introduction avant achat.
+  if(action==="public_course_preview"){
+   const courseId=String(b.course_id||""); if(!courseId)return json({success:false,error:"COURSE_ID_REQUIRED"},400);
+   const {data:course,error:courseError}=await sb.from("courses").select("id,title,short_description,long_description,cover_image_url,category,level,language,target_audience,objectives,learning_outcomes,course_intro_title,course_intro_summary,sale_mode,desired_price_amount,sale_currency,free_preview_mode,studio_status,is_published,creator_id,current_version").eq("id",courseId).maybeSingle();
+   if(courseError)throw courseError;if(!course)return json({success:false,error:"NOT_FOUND"},404);
+   const token=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
+   const viewerId=token?await sessionUser(sb,req):null; const viewerRoles=viewerId?await roles(sb,viewerId):[];
+   const privileged=!!viewerId&&(viewerId===course.creator_id||viewerRoles.includes("super_admin"));
+   if(!course.is_published&&!privileged)return json({success:false,error:"NOT_FOUND"},404);
+   const {data:modules,error:moduleError}=await sb.from("course_modules").select("id,title,objective,position,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");if(moduleError)throw moduleError;
+   const moduleIds=(modules||[]).map((m:any)=>m.id);
+   const {data:lessons,error:lessonError}=moduleIds.length?await sb.from("course_lessons").select("id,module_id,title,position,is_intro,is_module_intro,is_conclusion,is_final_exam").in("module_id",moduleIds).order("position"):{data:[],error:null};if(lessonError)throw lessonError;
+   const introLesson=(lessons||[]).find((l:any)=>l.is_intro);
+   let blocks:any[]=[];
+   if(course.free_preview_mode!=="none"&&introLesson){const {data,error}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime").eq("lesson_id",introLesson.id).order("position");if(error)throw error;blocks=data||[]}
+   const program=(modules||[]).filter((m:any)=>!m.is_intro).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id&&!l.is_module_intro).map((l:any)=>({id:l.id,title:l.title,position:l.position,locked:true}))}));
+   return json({success:true,course,preview_enabled:course.free_preview_mode!=="none",introduction:introLesson?{...introLesson,blocks}:null,program,privileged});
+  }
+
+  const userId=await sessionUser(sb,req); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
   const userRoles=await roles(sb,userId); const isAdmin=userRoles.includes("super_admin");
   if(action==="get_my_courses"){
    let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
@@ -52,7 +72,8 @@ Deno.serve(async(req)=>{
     prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",
     learning_outcomes:b.learning_outcomes||[],cover_image_url:b.cover_image_url||null,
     cover_image_prompt:b.cover_image_prompt||"",course_intro_title:b.course_intro_title||"Bienvenue dans cette formation",
-    course_intro_summary:b.course_intro_summary||""
+    course_intro_summary:b.course_intro_summary||"",free_preview_mode:b.free_preview_mode||"introduction",
+    quality_status:"incomplete",ready_to_submit:false,current_version:"1.0"
    };
    const {data,error}=await sb.from("courses").insert(insert).select("*").single(); if(error)throw error;
    let modules:any[]=[];
@@ -138,7 +159,7 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","free_preview_mode"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
@@ -270,14 +291,65 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("course_certifications").update(patch).eq("id",b.id).select("*").single();if(error)throw error;return json({success:true,item:data});
   }
   if(action==="validate_checklist"){
-   const errors:string[]=[],warnings:string[]=[];const {data:c}=await sb.from("courses").select("*").eq("id",courseId).single();const {data:m}=await sb.from("course_modules").select("id,title,objective").eq("course_id",courseId);const {data:l}=await sb.from("course_lessons").select("id,title").eq("course_id",courseId);const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
-   if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");if(!c.long_description?.trim())warnings.push("Ajoutez une présentation détaillée pour la fiche de vente.");if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
-   const normalModules=(m||[]).filter((x:any)=>!x.is_intro);const introModules=(m||[]).filter((x:any)=>x.is_intro);if(!introModules.length)errors.push("Ajoutez l’introduction de la formation.");if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");if(!(l||[]).length)errors.push("Ajoutez au moins une leçon.");for(const lesson of l||[]){const lb=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);if(!(lesson as any).is_module_intro&&!lb.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);if(!(lesson as any).is_intro&&!(lesson as any).is_module_intro&&!lb.some((x:any)=>["qcm","true_false","open_question","exercise","assignment_upload"].includes(x.block_type)))warnings.push(`Ajoutez une activité d’évaluation dans « ${lesson.title} ».`)}
-   return json({success:true,valid:errors.length===0,errors,warnings});
+   const errors:string[]=[],warnings:string[]=[];
+   const {data:c,error:courseError}=await sb.from("courses").select("*").eq("id",courseId).single();if(courseError)throw courseError;
+   const {data:m}=await sb.from("course_modules").select("id,title,objective,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
+   const {data:l}=await sb.from("course_lessons").select("id,module_id,title,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
+   const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
+   const {data:assessments}=await sb.from("course_assessments").select("id,scope_type,lesson_id,module_id,is_required,passing_score").eq("course_id",courseId);
+   if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");
+   if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");
+   if(!c.long_description?.trim())errors.push("Ajoutez la présentation détaillée de la formation.");
+   if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");
+   if(!c.category)errors.push("Sélectionnez une catégorie.");
+   if(!c.level)errors.push("Sélectionnez un niveau.");
+   if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
+   if(!(c.objectives||[]).filter((x:any)=>String(x||"").trim()).length)errors.push("Ajoutez au moins un objectif pédagogique.");
+   if(!c.course_intro_title?.trim()||!c.course_intro_summary?.trim())errors.push("Complétez l’introduction de la formation.");
+   if(!["none","introduction"].includes(c.free_preview_mode||""))errors.push("Configurez l’aperçu gratuit.");
+   const intro=(m||[]).find((x:any)=>x.is_intro);const conclusion=(m||[]).find((x:any)=>x.is_conclusion);const finalExam=(m||[]).find((x:any)=>x.is_final_exam);
+   const normalModules=(m||[]).filter((x:any)=>!x.is_intro&&!x.is_conclusion&&!x.is_final_exam);
+   if(!intro)errors.push("Ajoutez l’introduction de la formation.");
+   if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");
+   if(!conclusion)errors.push("Ajoutez la conclusion de la formation.");
+   if(!finalExam)errors.push("Ajoutez l’examen final.");
+   for(const mod of normalModules){
+    const moduleLessons=(l||[]).filter((x:any)=>x.module_id===mod.id&&!x.is_module_intro);
+    if(!moduleLessons.length)errors.push(`Le module « ${mod.title} » doit contenir au moins une leçon.`);
+    const moduleAssessment=(assessments||[]).find((a:any)=>a.scope_type==="module"&&a.module_id===mod.id&&a.is_required!==false);
+    if(!moduleAssessment)errors.push(`Le module « ${mod.title} » doit avoir une évaluation obligatoire.`);
+    else if(Number(moduleAssessment.passing_score)!==80)warnings.push(`Le seuil du module « ${mod.title} » doit être de 80 %.`);
+    for(const lesson of moduleLessons){
+      const lessonBlocks=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);
+      if(!lessonBlocks.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);
+      const lessonAssessment=(assessments||[]).find((a:any)=>a.scope_type==="lesson"&&a.lesson_id===lesson.id&&a.is_required!==false);
+      if(!lessonAssessment)errors.push(`La leçon « ${lesson.title} » doit avoir une évaluation obligatoire.`);
+      else if(Number(lessonAssessment.passing_score)!==80)warnings.push(`Le seuil de la leçon « ${lesson.title} » doit être de 80 %.`);
+    }
+   }
+   const finalAssessment=(assessments||[]).find((a:any)=>a.scope_type==="final"&&a.is_required!==false);
+   if(!finalAssessment)errors.push("L’examen final obligatoire est absent.");
+   else if(Number(finalAssessment.passing_score)!==70)warnings.push("Le seuil de l’examen final doit être de 70 %.");
+   if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)errors.push("Indiquez le prix de vente souhaité.");
+   if(!c.sale_mode)errors.push("Choisissez si la formation est gratuite ou payante.");
+   if(Number(c.calculated_duration_minutes||c.estimated_read_min||0)<=0)warnings.push("La durée pédagogique n’a pas encore été calculée.");
+   const report={valid:errors.length===0,errors,warnings,checked_at:new Date().toISOString()};
+   await sb.from("courses").update({quality_status:report.valid?"ready":"incomplete",quality_report:report,quality_checked_at:report.checked_at,ready_to_submit:report.valid,updated_at:new Date().toISOString()}).eq("id",courseId);
+   await log(sb,courseId,userId,"quality_check",{valid:report.valid,error_count:errors.length,warning_count:warnings.length});
+   return json({success:true,...report});
   }
   if(action==="submit_course"){
-   const {data:commercial}=await sb.from("courses").select("sale_mode,desired_price_amount,certification_requested").eq("id",courseId).single();if(commercial.sale_mode==="paid"&&Number(commercial.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
-   const {data:l}=await sb.from("course_lessons").select("id").eq("course_id",courseId);const {count}=await sb.from("lesson_blocks").select("id",{count:"exact",head:true}).eq("course_id",courseId);if(!(l||[]).length||!(count||0))return json({success:false,errors:["La formation doit contenir au moins une leçon et un bloc."],warnings:[]},400);await sb.from("courses").update({studio_status:"pending_validation",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"course_submitted");return json({success:true});
+   const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version").eq("id",courseId).single();if(error)throw error;
+   if(!c.ready_to_submit)return json({success:false,errors:c.quality_report?.errors||["Exécutez le contrôle qualité et corrigez les éléments manquants."],warnings:c.quality_report?.warnings||[]},400);
+   if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
+   const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
+   const {data:lessons}=await sb.from("course_lessons").select("*").eq("course_id",courseId).order("position");
+   const {data:blocks}=await sb.from("lesson_blocks").select("*").eq("course_id",courseId).order("position");
+   const {data:assessments}=await sb.from("course_assessments").select("*").eq("course_id",courseId);
+   const snapshot={course_id:courseId,modules:mods||[],lessons:lessons||[],blocks:blocks||[],assessments:assessments||[],captured_at:new Date().toISOString()};
+   await sb.from("course_versions").upsert({course_id:courseId,version_label:c.current_version||"1.0",snapshot,status:"submitted",created_by:userId},{onConflict:"course_id,version_label"});
+   await sb.from("courses").update({studio_status:"pending_validation",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);
+   await log(sb,courseId,userId,"course_submitted",{version:c.current_version||"1.0"});return json({success:true,version:c.current_version||"1.0"});
   }
   if(action==="get_change_logs"){const {data,error}=await sb.from("course_studio_logs").select("*,users(full_name)").eq("course_id",courseId).order("created_at",{ascending:false}).limit(100);if(error)throw error;return json({success:true,logs:data||[]})}
   if(action==="prepare_upload"){

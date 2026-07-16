@@ -8,7 +8,7 @@ import {
   AlertCircle, CheckCircle, Clock, FileText, Image, Video, Music,
   File, Table, HelpCircle, BookOpen, Lightbulb, Star, Minus,
   AlignLeft, Heading1, Heading2, Download, Layers, ToggleLeft,
-  ChevronDown, ChevronUp, Zap, AlertTriangle, Info, BarChart2,
+  ChevronDown, ChevronUp, Zap, AlertTriangle, Info, BarChart2, ShieldCheck, Monitor, Users, UserCheck,
   Layout, RefreshCw, MoreVertical, Move, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck
 } from 'lucide-react';
 
@@ -43,6 +43,7 @@ interface Course {
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
+  free_preview_mode?: 'none'|'introduction'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
 }
 
 const EMPTY_COURSE: Course = {
@@ -72,6 +73,10 @@ const EMPTY_COURSE: Course = {
   structure_fixed_amount: '',
   is_assisted: false,
   certification_requested: false,
+  free_preview_mode: 'introduction',
+  quality_status: 'incomplete',
+  ready_to_submit: false,
+  current_version: '1.0',
 };
 
 // ─── Config blocs ─────────────────────────────────────────────
@@ -168,6 +173,7 @@ export default function StudioConceptionFormation() {
   const [showPreview, setShowPreview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  const [showRolePreview, setShowRolePreview] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -481,6 +487,7 @@ export default function StudioConceptionFormation() {
         template_used: course.template_used || 'simple_textual',
         studio_mode: course.studio_mode || 'simple',
         create_introduction: true,
+        free_preview_mode: course.free_preview_mode || 'introduction',
       });
       if (!data.success) throw new Error(data.message || data.error || 'Création impossible');
       setCourse(data.course);
@@ -521,7 +528,7 @@ export default function StudioConceptionFormation() {
         cover_image_prompt: course.cover_image_prompt,
         course_intro_title: course.course_intro_title,
         course_intro_summary: course.course_intro_summary,
-        word_count: wordCount,
+        word_count: wordCount, free_preview_mode: course.free_preview_mode || 'introduction',
       });
       if (data.success) {
         setCourse(data.course);
@@ -687,7 +694,7 @@ export default function StudioConceptionFormation() {
           <button onClick={loadHistory} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>
-          <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } window.open(`/cours/${course.id}/apprendre?preview=1`, '_blank', 'noopener,noreferrer'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+          <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } setShowRolePreview(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <Eye size={13} /> Prévisualiser
           </button>
           <button onClick={save} disabled={saving || locked}
@@ -957,6 +964,22 @@ export default function StudioConceptionFormation() {
                   <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Comme sur Coursera ou Udemy, cette introduction accueille l’apprenant avant le Module 1. Après le premier enregistrement, vous pourrez la construire avec les mêmes blocs que les leçons.</p>
                   <input className="w-full px-3 py-2.5 border rounded-lg text-sm mb-2" style={{ borderColor: '#E4E7EC' }} value={course.course_intro_title || ''} onChange={e => updateCourse('course_intro_title', e.target.value)} placeholder="Titre de l’introduction" disabled={locked} />
                   <textarea className="w-full px-3 py-2.5 border rounded-lg text-sm resize-none" style={{ borderColor: '#E4E7EC' }} rows={3} value={course.course_intro_summary || ''} onChange={e => updateCourse('course_intro_summary', e.target.value)} placeholder="Message de bienvenue, fonctionnement de la formation, conseils pour réussir..." disabled={locked} />
+                </div>
+
+
+                {/* Aperçu gratuit avant achat */}
+                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#FFFBEB' }}><Eye size={17} style={{ color: '#BF8813' }} /></div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-semibold mb-1" style={{ color: '#002050' }}>Aperçu gratuit avant achat</label>
+                      <p className="text-xs mb-3" style={{ color: '#6B7280' }}>L’introduction peut être lue gratuitement depuis la fiche publique. Les modules, leçons, évaluations, conclusion et examen final restent verrouillés.</p>
+                      <select className="w-full px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }} value={course.free_preview_mode || 'introduction'} onChange={e => updateCourse('free_preview_mode', e.target.value as any)} disabled={locked}>
+                        <option value="introduction">Introduction uniquement — recommandé</option>
+                        <option value="none">Aucun aperçu gratuit</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Objectifs */}
@@ -1248,14 +1271,14 @@ export default function StudioConceptionFormation() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: '#E4E7EC' }}>
-              <h3 className="font-bold" style={{ color: '#002050' }}>Checklist de préparation</h3>
+              <h3 className="font-bold" style={{ color: '#002050' }}>Contrôle qualité Omnia</h3>
               <button onClick={() => setShowChecklist(false)}><X size={18} style={{ color: '#6B7280' }} /></button>
             </div>
             <div className="p-6 space-y-3">
               {checklist.errors.length === 0 && (
                 <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#D1FAE5' }}>
                   <CheckCircle size={16} style={{ color: '#065F46' }} />
-                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Formation prête à soumettre !</p>
+                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Conforme aux standards Omnia — prête à soumettre</p>
                 </div>
               )}
               {checklist.errors.map((err, i) => (
@@ -1277,6 +1300,24 @@ export default function StudioConceptionFormation() {
                   Soumettre pour validation
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── MODAL PRÉVISUALISATION MULTI-RÔLES ───────── */}
+      {showRolePreview && course.id && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: '#E4E7EC' }}>
+              <div><h3 className="font-bold" style={{ color: '#002050' }}>Prévisualiser la formation</h3><p className="text-xs mt-1" style={{ color: '#6B7280' }}>Le contenu reste inchangé. Seuls les droits d’accès simulés diffèrent.</p></div>
+              <button onClick={() => setShowRolePreview(false)}><X size={18} style={{ color: '#6B7280' }} /></button>
+            </div>
+            <div className="p-6 grid gap-3">
+              <button onClick={() => window.open(`/cours/${course.id}/apercu`, '_blank', 'noopener,noreferrer')} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Monitor size={18} style={{ color: '#BF8813' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Visiteur avant achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Fiche publique et introduction gratuite uniquement.</p></div></button>
+              <button onClick={() => window.open(`/cours/${course.id}/apprendre?preview=learner`, '_blank', 'noopener,noreferrer')} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Users size={18} style={{ color: '#002050' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Apprenant après achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Lecteur complet avec modules, leçons et évaluations.</p></div></button>
+              <button onClick={() => window.open(`/cours/${course.id}/apprendre?preview=admin`, '_blank', 'noopener,noreferrer')} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><UserCheck size={18} style={{ color: '#1E7A52' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Contrôle créateur / Super Admin</p><p className="text-xs" style={{ color: '#6B7280' }}>Rendu complet destiné au contrôle qualité avant soumission.</p></div></button>
             </div>
           </div>
         </div>
