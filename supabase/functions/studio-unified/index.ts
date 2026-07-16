@@ -8,7 +8,10 @@ async function sessionUser(sb:any, req:Request){
  const token=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
  if(!token) return null;
  const {data}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
- return data?.user_id||null;
+ if(data?.user_id) return data.user_id;
+ // Compatibilité avec les jetons Supabase Auth utilisés par certaines pages.
+ const {data:authData}=await sb.auth.getUser(token);
+ return authData?.user?.id||null;
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string){const {data}=await sb.from("courses").select("creator_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);return data.creator_id===userId||rs.includes("super_admin")}
@@ -34,8 +37,29 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,submitted_at,updated_at,admin_comment,word_count").eq("studio_status","pending_validation").order("submitted_at",{ascending:true});if(error)throw error;return json({success:true,courses:data||[]});
   }
   if(action==="create_course"){
-   const {data,error}=await sb.from("courses").insert({title:b.title||"Nouvelle formation",creator_id:userId,template_used:b.template_used||"simple_textual",studio_mode:b.studio_mode||"simple",studio_status:"draft"}).select("*").single(); if(error)throw error;
-   await log(sb,data.id,userId,"course_created",{template:data.template_used}); return json({success:true,course:data});
+   const insert:any={
+    title:b.title||"Nouvelle formation",creator_id:userId,template_used:b.template_used||"simple_textual",
+    studio_mode:b.studio_mode||"simple",studio_status:"draft",short_description:b.short_description||"",
+    long_description:b.long_description||"",category:b.category||null,level:b.level||null,language:b.language||"fr",
+    prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",
+    learning_outcomes:b.learning_outcomes||[],cover_image_url:b.cover_image_url||null,
+    cover_image_prompt:b.cover_image_prompt||"",course_intro_title:b.course_intro_title||"Bienvenue dans cette formation",
+    course_intro_summary:b.course_intro_summary||""
+   };
+   const {data,error}=await sb.from("courses").insert(insert).select("*").single(); if(error)throw error;
+   let modules:any[]=[];
+   if(b.create_introduction!==false){
+    const {data:introModule,error:moduleError}=await sb.from("course_modules").insert({course_id:data.id,title:"Introduction",objective:"Présenter la formation et préparer l’apprenant",position:-1,is_intro:true}).select("*").single();if(moduleError)throw moduleError;
+    const {data:introLesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:data.id,module_id:introModule.id,title:b.course_intro_title||"Bienvenue dans cette formation",position:0,is_intro:true}).select("*").single();if(lessonError)throw lessonError;
+    const introBlocks=[
+      {block_type:"heading",content_json:{text:b.course_intro_title||"Bienvenue dans cette formation",level:1,alignment:"left"}},
+      {block_type:"text",content_json:{html:`<p>${String(b.course_intro_summary||"Présentez ici le fonctionnement de la formation et les conseils pour réussir.").replace(/[<>]/g,"")}</p>`}},
+      {block_type:"objective",content_json:{text:"Découvrez les objectifs, le déroulement et les ressources de cette formation."}}
+    ];
+    for(const [i,blk] of introBlocks.entries()) await sb.from("lesson_blocks").insert({course_id:data.id,module_id:introModule.id,lesson_id:introLesson.id,block_type:blk.block_type,position:i,content_json:blk.content_json,settings_json:{},created_by:userId});
+    modules=[{...introModule,lessons:[{...introLesson,has_blocks:true,block_count:introBlocks.length}]}];
+   }
+   await log(sb,data.id,userId,"course_created",{template:data.template_used}); return json({success:true,course:data,modules});
   }
   const courseId=b.course_id;
   if(["admin_validate","admin_publish","admin_request_changes","admin_reject","admin_archive"].includes(action)){
@@ -78,12 +102,12 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","cover_image_url","studio_mode","template_used","word_count"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
    const {data:t}=await sb.from("course_studio_templates").select("*").eq("key",b.template_key).eq("is_active",true).maybeSingle();if(!t)return json({success:false,error:"TEMPLATE_NOT_FOUND"},404);
-   if(b.replace_existing){await sb.from("course_modules").delete().eq("course_id",courseId)}
+   if(b.replace_existing){await sb.from("course_modules").delete().eq("course_id",courseId).eq("is_intro",false)}
    for(const [mi,m] of (t.blueprint.modules||[]).entries()){
     const {data:mod}=await sb.from("course_modules").insert({course_id:courseId,title:m.title,objective:m.objective||"",position:mi}).select("*").single();
     for(const [li,l] of (m.lessons||[]).entries()){
@@ -95,7 +119,8 @@ Deno.serve(async(req)=>{
   }
   if(action==="validate_checklist"){
    const errors:string[]=[],warnings:string[]=[];const {data:c}=await sb.from("courses").select("*").eq("id",courseId).single();const {data:m}=await sb.from("course_modules").select("id,title,objective").eq("course_id",courseId);const {data:l}=await sb.from("course_lessons").select("id,title").eq("course_id",courseId);const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
-   if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())warnings.push("Ajoutez une description courte.");if(!(m||[]).length)errors.push("Ajoutez au moins un module.");if(!(l||[]).length)errors.push("Ajoutez au moins une leçon.");for(const lesson of l||[]){const lb=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);if(!lb.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);if(!lb.some((x:any)=>["qcm","true_false","open_question","exercise","assignment_upload"].includes(x.block_type)))warnings.push(`Ajoutez une activité d’évaluation dans « ${lesson.title} ».`)}
+   if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");if(!c.long_description?.trim())warnings.push("Ajoutez une présentation détaillée pour la fiche de vente.");if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
+   const normalModules=(m||[]).filter((x:any)=>!x.is_intro);const introModules=(m||[]).filter((x:any)=>x.is_intro);if(!introModules.length)errors.push("Ajoutez l’introduction de la formation.");if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");if(!(l||[]).length)errors.push("Ajoutez au moins une leçon.");for(const lesson of l||[]){const lb=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);if(!lb.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);if(!(lesson as any).is_intro&&!lb.some((x:any)=>["qcm","true_false","open_question","exercise","assignment_upload"].includes(x.block_type)))warnings.push(`Ajoutez une activité d’évaluation dans « ${lesson.title} ».`)}
    return json({success:true,valid:errors.length===0,errors,warnings});
   }
   if(action==="submit_course"){
@@ -107,6 +132,19 @@ Deno.serve(async(req)=>{
   }
   if(action==="upload_block_file"){
    const {data:blk}=await sb.from("lesson_blocks").select("course_id").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id)))return json({success:false,error:"FORBIDDEN"},403);const publicUrl=`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${b.bucket_name}/${b.storage_path}`;const {data,error}=await sb.from("lesson_blocks").update({file_url:publicUrl,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:b.storage_path,bucket_name:b.bucket_name,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;return json({success:true,block:data,public_url:publicUrl});
+  }
+  if(action==="ai_generate_cover_images"){
+   const prompt=String(b.prompt||"").trim();if(!prompt)return json({success:false,error:"PROMPT_REQUIRED"},400);
+   const openaiKey=Deno.env.get("OPENAI_API_KEY");if(!openaiKey)return json({success:false,error:"OPENAI_API_KEY_MISSING",message:"Ajoutez OPENAI_API_KEY dans les secrets Supabase."},503);
+   const count=Math.min(4,Math.max(1,Number(b.count)||3));const images:string[]=[];
+   const safePrompt=`Image de couverture professionnelle pour une formation en ligne. ${prompt}. Format horizontal 16:9, composition claire, lisible en miniature, sans texte, sans logo, sans filigrane, sans personne sauf demande explicite. Style éducatif premium adapté à l'Afrique et au monde.`;
+   for(let i=0;i<count;i++){
+    const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Authorization":`Bearer ${openaiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:Deno.env.get("OPENAI_IMAGE_MODEL")||"gpt-image-1",prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium",n:1})});
+    const out=await r.json();if(!r.ok)throw new Error(out?.error?.message||"IMAGE_GENERATION_FAILED");const b64=out?.data?.[0]?.b64_json;if(!b64)throw new Error("IMAGE_DATA_MISSING");
+    const bytes=Uint8Array.from(atob(b64),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
+    images.push(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/course-images/${path}`);
+   }
+   await sb.from("courses").update({cover_image_prompt:prompt,cover_image_candidates:images,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"cover_images_generated",{count:images.length});return json({success:true,images});
   }
   if(String(action).startsWith("ai_")){
    const input=String(b.text||b.content||b.topic||"").trim();if(!input)return json({success:false,error:"TEXT_REQUIRED"},400);

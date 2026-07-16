@@ -252,6 +252,26 @@ export function CoursDetail() {
       {/* ── MAIN CONTENT ──────────────────────────────────────────────── */}
       <div className="max-w-4xl mx-auto px-6 py-12 space-y-12">
 
+        {/* Présentation visible avant achat */}
+        {course.long_description && (
+          <section>
+            <h2 className="font-bold mb-4" style={{ color: '#002050', fontSize: '22px' }}>À propos de cette formation</h2>
+            <div className="p-5 rounded-xl text-sm whitespace-pre-line" style={{ border: '1px solid #E4E7EC', color: '#374151', lineHeight: 1.75 }}>
+              {String(course.long_description)}
+            </div>
+          </section>
+        )}
+
+        {course.target_audience && (
+          <section>
+            <h2 className="font-bold mb-4" style={{ color: '#002050', fontSize: '22px' }}>À qui s’adresse cette formation ?</h2>
+            <div className="flex items-start gap-3 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC', background: '#FFFBEB' }}>
+              <Check size={17} style={{ color: '#BF8813', flexShrink: 0, marginTop: 2 }} />
+              <p className="text-sm whitespace-pre-line" style={{ color: '#374151', lineHeight: 1.7 }}>{String(course.target_audience)}</p>
+            </div>
+          </section>
+        )}
+
         {/* Objectives */}
         {Array.isArray(course.objectives) && (course.objectives as unknown[]).length > 0 && (
           <section>

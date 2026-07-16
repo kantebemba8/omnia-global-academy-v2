@@ -34,10 +34,33 @@ interface Module { id: string; title: string; objective: string; position: numbe
 interface Course {
   id: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; prerequisites?: string;
-  objectives?: string[]; cover_image_url?: string; studio_status: string;
+  objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
+  target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
+  course_intro_summary?: string; studio_status: string;
   studio_mode?: string; word_count?: number; estimated_read_min?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
 }
+
+const EMPTY_COURSE: Course = {
+  id: '',
+  title: '',
+  short_description: '',
+  long_description: '',
+  category: '',
+  level: '',
+  language: 'fr',
+  prerequisites: '',
+  objectives: [],
+  cover_image_url: '',
+  cover_image_prompt: '',
+  target_audience: '',
+  learning_outcomes: [],
+  course_intro_title: 'Bienvenue dans cette formation',
+  course_intro_summary: '',
+  studio_status: 'draft',
+  studio_mode: 'simple',
+  template_used: 'simple_textual',
+};
 
 // ─── Config blocs ─────────────────────────────────────────────
 const BLOCK_DEFS = [
@@ -117,7 +140,7 @@ export default function StudioConceptionFormation() {
   const isNew = courseId === 'new';
 
   // État principal
-  const [course, setCourse] = useState<Course | null>(null);
+  const [course, setCourse] = useState<Course>(EMPTY_COURSE);
   const [modules, setModules] = useState<Module[]>([]);
   const [currentModule, setCurrentModule] = useState<Module | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
@@ -152,10 +175,14 @@ export default function StudioConceptionFormation() {
   const [aiInput, setAiInput] = useState('');
   const [aiResult, setAiResult] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [coverPrompt, setCoverPrompt] = useState('');
+  const [coverCandidates, setCoverCandidates] = useState<string[]>([]);
+  const [coverGenerating, setCoverGenerating] = useState(false);
+  const [creatingDraft, setCreatingDraft] = useState(false);
 
   // Autosave ref
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const courseRef = useRef<Course | null>(null);
+  const courseRef = useRef<Course>(EMPTY_COURSE);
   courseRef.current = course;
 
   function showToast(msg: string, type: 'success' | 'error' | 'info' = 'success') {
@@ -170,19 +197,9 @@ export default function StudioConceptionFormation() {
       try {
         if (isNew) {
           const templateKey = searchParams.get('template') || 'simple_textual';
-          const data = await api('create_course', {
-            title: 'Nouvelle formation',
-            template_used: templateKey,
-            studio_mode: 'simple',
-          });
-          if (data.success) {
-            setCourse(data.course);
-            const basePath = window.location.pathname.includes('/admin/') ? '/admin/studio'
-              : window.location.pathname.includes('/partner/') ? '/partner/studio'
-              : window.location.pathname.includes('/structure/') ? '/structure/studio'
-              : '/professeur/studio';
-            navigate(`${basePath}/${data.course.id}`, { replace: true });
-          }
+          // Le brouillon local reste toujours éditable. La création Supabase se fait
+          // lors du premier enregistrement afin qu'une indisponibilité réseau ne bloque jamais la saisie.
+          setCourse({ ...EMPTY_COURSE, template_used: templateKey });
         } else if (courseId) {
           const data = await api('get_course', { course_id: courseId });
           if (data.success) {
@@ -199,9 +216,8 @@ export default function StudioConceptionFormation() {
               }
             }
           } else {
-           const fallback = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
-              : '/professeur/courses';
-            navigate(fallback);
+            setCourse({ ...EMPTY_COURSE });
+            showToast(data.error === 'AUTH_REQUIRED' ? 'Session expirée : reconnectez-vous puis enregistrez à nouveau.' : 'Formation introuvable ou inaccessible.', 'error');
           }
         }
       } catch { showToast('Erreur de chargement', 'error'); }
@@ -235,7 +251,7 @@ export default function StudioConceptionFormation() {
   }, [wordCount]);
 
   function updateCourse(field: keyof Course, value: any) {
-    setCourse(c => c ? { ...c, [field]: value } : c);
+    setCourse(c => ({ ...c, [field]: value }));
     scheduleAutosave();
   }
 
@@ -398,26 +414,111 @@ export default function StudioConceptionFormation() {
     }
   }
 
-  // ─── Sauvegarder ──────────────────────────────────────────
+  // ─── Créer / sauvegarder le brouillon ─────────────────────
+  async function ensureCourseCreated(): Promise<Course | null> {
+    if (course.id) return course;
+    if (!course.title.trim()) { showToast('Saisissez le titre de la formation.', 'error'); return null; }
+    if (!course.short_description?.trim()) { showToast('Ajoutez la description courte visible avant achat.', 'error'); return null; }
+    setCreatingDraft(true);
+    try {
+      const data = await api('create_course', {
+        title: course.title,
+        short_description: course.short_description,
+        long_description: course.long_description,
+        category: course.category,
+        level: course.level,
+        language: course.language,
+        prerequisites: course.prerequisites,
+        objectives: course.objectives,
+        target_audience: course.target_audience,
+        learning_outcomes: course.learning_outcomes,
+        cover_image_url: course.cover_image_url,
+        cover_image_prompt: course.cover_image_prompt,
+        course_intro_title: course.course_intro_title,
+        course_intro_summary: course.course_intro_summary,
+        template_used: course.template_used || 'simple_textual',
+        studio_mode: course.studio_mode || 'simple',
+        create_introduction: true,
+      });
+      if (!data.success) throw new Error(data.message || data.error || 'Création impossible');
+      setCourse(data.course);
+      setModules(data.modules || []);
+      const intro = (data.modules || []).find((m: any) => m.is_intro) || (data.modules || [])[0];
+      if (intro) {
+        setCurrentModule(intro);
+        const introLesson = intro.lessons?.[0];
+        if (introLesson) { setCurrentLesson(introLesson); await loadBlocks(introLesson.id); }
+      }
+      const basePath = window.location.pathname.includes('/admin/') ? '/admin/studio'
+        : window.location.pathname.includes('/partner/') ? '/partner/studio'
+        : window.location.pathname.includes('/structure/') ? '/structure/studio'
+        : '/professeur/studio';
+      navigate(`${basePath}/${data.course.id}`, { replace: true });
+      return data.course;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de créer le brouillon', 'error');
+      return null;
+    } finally { setCreatingDraft(false); }
+  }
+
   async function save() {
-    if (!course?.id) return;
     setSaving(true);
     try {
+      const savedCourse = course.id ? course : await ensureCourseCreated();
+      if (!savedCourse?.id) return;
       const data = await api('update_course', {
-        course_id: course.id, title: course.title,
+        course_id: savedCourse.id, title: course.title,
         short_description: course.short_description,
+        long_description: course.long_description,
         category: course.category, level: course.level,
-        language: course.language, objectives: course.objectives,
+        language: course.language, prerequisites: course.prerequisites,
+        objectives: course.objectives, target_audience: course.target_audience,
+        learning_outcomes: course.learning_outcomes,
         cover_image_url: course.cover_image_url,
+        cover_image_prompt: course.cover_image_prompt,
+        course_intro_title: course.course_intro_title,
+        course_intro_summary: course.course_intro_summary,
         word_count: wordCount,
       });
       if (data.success) {
         setCourse(data.course);
         setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-        showToast('✅ Sauvegardé');
-      }
+        showToast('✅ Informations enregistrées. Vous pouvez construire l’introduction, les modules et les leçons.');
+      } else showToast(data.message || data.error || 'Erreur de sauvegarde', 'error');
     } catch { showToast('Erreur de sauvegarde', 'error'); }
     finally { setSaving(false); }
+  }
+
+  async function uploadCoverImage(file: File) {
+    if (!file.type.startsWith('image/')) { showToast('Choisissez un fichier image.', 'error'); return; }
+    let c = course;
+    if (!c.id) { const created = await ensureCourseCreated(); if (!created) return; c = created; }
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `${c.id}/cover-${Date.now()}.${ext}`;
+      const signed = await api('prepare_upload', { course_id: c.id, bucket_name: 'course-images', storage_path: path });
+      if (!signed.success || !signed.signedUrl) throw new Error('Téléversement impossible');
+      const upload = await fetch(signed.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!upload.ok) throw new Error('Échec du téléversement');
+      const url = `${SB}/storage/v1/object/public/course-images/${path}`;
+      updateCourse('cover_image_url', url);
+      await api('update_course', { course_id: c.id, cover_image_url: url });
+      showToast('Image de couverture ajoutée');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Erreur image', 'error'); }
+  }
+
+  async function generateCoverImages() {
+    if (!coverPrompt.trim()) { showToast('Décrivez la formation en quelques lignes.', 'error'); return; }
+    let c = course;
+    if (!c.id) { const created = await ensureCourseCreated(); if (!created) return; c = created; }
+    setCoverGenerating(true); setCoverCandidates([]);
+    try {
+      const data = await api('ai_generate_cover_images', { course_id: c.id, prompt: coverPrompt, count: 3 });
+      if (!data.success) throw new Error(data.message || data.error || 'Génération indisponible');
+      setCoverCandidates(data.images || []);
+      updateCourse('cover_image_prompt', coverPrompt);
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Erreur de génération', 'error'); }
+    finally { setCoverGenerating(false); }
   }
 
   // ─── Soumettre ────────────────────────────────────────────
@@ -463,8 +564,8 @@ export default function StudioConceptionFormation() {
     finally { setAiLoading(false); }
   }
 
-  const locked = ['pending_validation', 'validated', 'published'].includes(course?.studio_status || '');
-  const statusCfg = STATUS_CFG[course?.studio_status || 'draft'] || STATUS_CFG.draft;
+  const locked = ['pending_validation', 'validated', 'published'].includes(course.studio_status || '');
+  const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const visibleBlocks = advancedMode ? BLOCK_DEFS : BLOCK_DEFS.filter(b => b.mode === 'simple');
 
   if (loading) {
@@ -689,7 +790,7 @@ export default function StudioConceptionFormation() {
             <div className="flex items-center gap-2 overflow-x-auto">
               {modules.map(mod => (
                 <div key={mod.id} className="flex-shrink-0">
-                  <div className="text-xs font-semibold mb-1" style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}>{mod.title}</div>
+                  <div className="text-xs font-semibold mb-1" style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}>{(mod as any).is_intro ? 'Introduction' : mod.title}</div>
                   <div className="flex gap-1">
                     {(mod.lessons || []).map(lesson => (
                       <button key={lesson.id}
@@ -709,7 +810,7 @@ export default function StudioConceptionFormation() {
                   </div>
                 </div>
               ))}
-              <button onClick={addModule} disabled={locked}
+              <button onClick={async () => { if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; } await addModule(); }} disabled={locked}
                 className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40"
                 style={{ borderColor: '#002050', color: '#002050' }}>
                 <Plus size={11} /> Module
@@ -734,12 +835,13 @@ export default function StudioConceptionFormation() {
 
                 {[
                   { field: 'title', label: 'Titre de la formation *', placeholder: 'Ex: Comptabilité générale pour débutants', type: 'text' },
-                  { field: 'short_description', label: 'Description courte *', placeholder: 'Décrivez votre formation en 2-3 phrases...', type: 'textarea' },
+                  { field: 'short_description', label: 'Description courte *', placeholder: 'Résumé affiché sur la carte et avant l’achat...', type: 'textarea' },
+                  { field: 'long_description', label: 'Présentation détaillée *', placeholder: 'Présentez le contenu, l’approche pédagogique, les bénéfices et ce que l’apprenant saura faire...', type: 'textarea' },
+                  { field: 'target_audience', label: 'À qui s’adresse cette formation ?', placeholder: 'Ex : débutants, entrepreneurs, responsables administratifs...', type: 'textarea' },
                   { field: 'category', label: 'Catégorie *', placeholder: '', type: 'select', options: ['Comptabilité & Finance', 'Marketing digital', 'Management & Leadership', 'Informatique de gestion', 'Langues & Linguistique', 'Entrepreneuriat', 'Ressources humaines', 'Commerce international', 'Autre'] },
                   { field: 'level', label: 'Niveau *', placeholder: '', type: 'select', options: ['debutant', 'intermediaire', 'avance'] },
                   { field: 'language', label: 'Langue *', placeholder: '', type: 'select', options: ['fr', 'en', 'ar', 'bm'] },
                   { field: 'prerequisites', label: 'Prérequis', placeholder: 'Aucun prérequis particulier...', type: 'textarea' },
-                  { field: 'cover_image_url', label: 'URL image de couverture', placeholder: 'https://...', type: 'text' },
                 ].map(({ field, label, placeholder, type, options }) => (
                   <div key={field} className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
                     <label className="block text-xs font-semibold mb-2" style={{ color: '#002050' }}>{label}</label>
@@ -768,6 +870,41 @@ export default function StudioConceptionFormation() {
                   </div>
                 ))}
 
+                {/* Image de couverture visible avant achat */}
+                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <label className="block text-xs font-semibold" style={{ color: '#002050' }}>Image de couverture *</label>
+                      <p className="text-xs mt-1" style={{ color: '#6B7280' }}>Elle sera affichée sur la vitrine, la fiche de formation et avant l’achat.</p>
+                    </div>
+                    {course.cover_image_url && <button type="button" onClick={() => updateCourse('cover_image_url', '')} className="text-xs" style={{ color: '#DC2626' }}>Supprimer</button>}
+                  </div>
+                  <div className="rounded-xl border overflow-hidden mb-3 flex items-center justify-center" style={{ borderColor: '#E4E7EC', background: '#F8FAFC', aspectRatio: '16 / 9' }}>
+                    {course.cover_image_url ? <img src={course.cover_image_url} alt="Couverture de la formation" className="w-full h-full object-cover" /> : <div className="text-center p-6"><Image size={28} className="mx-auto mb-2" style={{ color: '#BF8813' }} /><p className="text-sm" style={{ color: '#6B7280' }}>Aucune image sélectionnée</p></div>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <label className="cursor-pointer px-3 py-2 rounded-lg border text-xs font-semibold" style={{ borderColor: '#002050', color: '#002050' }}>
+                      Importer une image
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) uploadCoverImage(f); e.currentTarget.value=''; }} />
+                    </label>
+                    <input className="flex-1 min-w-[220px] px-3 py-2 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }} value={course.cover_image_url || ''} onChange={e => updateCourse('cover_image_url', e.target.value)} placeholder="Ou collez l’URL d’une image" />
+                  </div>
+                  <div className="rounded-xl p-3" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                    <div className="flex items-center gap-2 mb-2"><Sparkles size={15} style={{ color: '#BF8813' }} /><p className="text-xs font-semibold" style={{ color: '#92400E' }}>Générer des propositions avec l’IA</p></div>
+                    <textarea rows={3} className="w-full px-3 py-2 border rounded-lg text-sm resize-none" style={{ borderColor: '#FDE68A' }} value={coverPrompt} onChange={e => setCoverPrompt(e.target.value)} placeholder="Décrivez le thème, le public et l’ambiance souhaitée. Ex : formation pratique en comptabilité SYSCOHADA pour entrepreneurs africains, style professionnel, sans personnage..." />
+                    <button type="button" onClick={generateCoverImages} disabled={coverGenerating || locked} className="mt-2 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{coverGenerating ? 'Génération en cours…' : 'Générer 3 images'}</button>
+                    {coverCandidates.length > 0 && <div className="grid grid-cols-3 gap-2 mt-3">{coverCandidates.map((url, i) => <button type="button" key={url} onClick={async () => { updateCourse('cover_image_url', url); if(course.id) await api('update_course',{course_id:course.id,cover_image_url:url,cover_image_prompt:coverPrompt}); showToast(`Image ${i+1} sélectionnée`); }} className="rounded-lg overflow-hidden border hover:ring-2" style={{ borderColor: course.cover_image_url===url ? '#BF8813' : '#E4E7EC' }}><img src={url} alt={`Proposition ${i+1}`} className="w-full aspect-video object-cover" /></button>)}</div>}
+                  </div>
+                </div>
+
+                {/* Introduction obligatoire avant les modules */}
+                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
+                  <div className="flex items-center gap-2 mb-1"><BookOpen size={16} style={{ color: '#BF8813' }} /><label className="text-xs font-semibold" style={{ color: '#002050' }}>Introduction de la formation *</label></div>
+                  <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Comme sur Coursera ou Udemy, cette introduction accueille l’apprenant avant le Module 1. Après le premier enregistrement, vous pourrez la construire avec les mêmes blocs que les leçons.</p>
+                  <input className="w-full px-3 py-2.5 border rounded-lg text-sm mb-2" style={{ borderColor: '#E4E7EC' }} value={course.course_intro_title || ''} onChange={e => updateCourse('course_intro_title', e.target.value)} placeholder="Titre de l’introduction" disabled={locked} />
+                  <textarea className="w-full px-3 py-2.5 border rounded-lg text-sm resize-none" style={{ borderColor: '#E4E7EC' }} rows={3} value={course.course_intro_summary || ''} onChange={e => updateCourse('course_intro_summary', e.target.value)} placeholder="Message de bienvenue, fonctionnement de la formation, conseils pour réussir..." disabled={locked} />
+                </div>
+
                 {/* Objectifs */}
                 <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
                   <label className="block text-xs font-semibold mb-2" style={{ color: '#002050' }}>Objectifs pédagogiques *</label>
@@ -788,6 +925,14 @@ export default function StudioConceptionFormation() {
                     className="flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40" style={{ color: '#002050' }}>
                     <Plus size={12} /> Ajouter un objectif
                   </button>
+                </div>
+
+                <div className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" style={{ background: course.id ? '#ECFDF5' : '#EFF6FF', borderColor: course.id ? '#A7F3D0' : '#BFDBFE' }}>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: '#002050' }}>{course.id ? 'Brouillon créé et synchronisé' : 'Enregistrez les informations pour commencer la construction'}</p>
+                    <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{course.id ? 'Ouvrez Introduction, puis ajoutez vos modules et leurs leçons avec les blocs.' : 'Les champs restent modifiables. L’introduction sera automatiquement créée avant le premier module.'}</p>
+                  </div>
+                  <button type="button" onClick={save} disabled={saving || creatingDraft || locked} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{saving || creatingDraft ? 'Enregistrement…' : course.id ? 'Enregistrer les modifications' : 'Enregistrer et commencer'}</button>
                 </div>
               </div>
             )}
