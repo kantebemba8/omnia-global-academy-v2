@@ -29,8 +29,8 @@ interface Block {
   ai_generated?: boolean;
 }
 
-interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_intro?: boolean; is_module_intro?: boolean; }
-interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; }
+interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
+interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
 interface Course {
   id: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; prerequisites?: string;
@@ -322,10 +322,10 @@ export default function StudioConceptionFormation() {
       case 'text': return { html: '<p>Saisissez votre texte ici...</p>' };
       case 'separator': return { style: 'line' };
       case 'callout': return { type: 'info', content: 'Information importante...' };
-      case 'remember': return { title: 'À retenir', points: ['Point clé 1', 'Point clé 2'] };
-      case 'objective': return { text: 'À la fin de cette leçon, vous serez capable de...' };
-      case 'example': return { title: 'Exemple', situation: '', explication: '', conclusion: '' };
-      case 'summary': return { intro: 'Dans cette leçon, vous avez appris...', points: [] };
+      case 'remember': return { title: 'À retenir', points: [''] };
+      case 'objective': return { title: 'Objectif pédagogique', html: '<p>À la fin de cette leçon, vous serez capable de...</p>' };
+      case 'example': return { title: 'Exemple', html: '<p>Décrivez ici un exemple concret...</p>' };
+      case 'summary': return { title: 'Résumé', html: '<p>Dans cette leçon, vous avez appris...</p>' };
       case 'image': return { url: '', alt: '', caption: '', source: 'upload' };
       case 'video': return { url: '', thumbnail: '', eco_data: true };
       case 'audio': return { url: '', description: '', transcription: '' };
@@ -336,19 +336,19 @@ export default function StudioConceptionFormation() {
       case 'download': return { url: '', title: '', description: '' };
       case 'qcm': return { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '' };
       case 'true_false': return { statement: '', answer: true, explanation: '' };
-      case 'open_question': return { question: '', guidance: '', expected_answer: '' };
-      case 'exercise': return { title: '', instructions: '', data: '', task: '' };
+      case 'open_question': return { question: '', guidance: '', expected_answer: '', points: 10, required: true };
+      case 'exercise': return { title: 'Exercice', instructions: '', task: '', resources: [], accepted_types: ['pdf','doc','docx','xls','xlsx'], learner_upload_required: true, points: 20 };
       case 'accordion': return { items: [{ id: uid(), title: 'Section 1', content: '' }] };
       case 'flashcards': return { cards: [{ id: uid(), front: 'Recto', back: 'Verso' }] };
       case 'interactive_table': return { headers: ['Colonne 1', 'Colonne 2', 'Colonne 3'], rows: [['', '', '']], style: 'table' };
       case 'timeline': return { steps: [{ id: uid(), title: 'Étape 1', description: '' }] };
       case 'columns': return { columns: [{ id: uid(), content: '' }, { id: uid(), content: '' }] };
-      case 'important': return { type: 'warning', content: '' };
-      case 'case_study': return { context: '', data: '', task: '', questions: [] };
+      case 'important': return { title: 'Important', html: '<p>Saisissez l’information importante...</p>' };
+      case 'case_study': return { title: 'Étude de cas', context: '', data: '', task: '', questions: [''] };
       case 'definition': return { term: '', definition: '', example: '' };
-      case 'correction': return { content: '', key_points: [] };
-      case 'bullet_list': return { items: ['Élément 1', 'Élément 2'] };
-      case 'numbered_list': return { items: ['Étape 1', 'Étape 2'] };
+      case 'correction': return { title: 'Correction', html: '<p>Saisissez ici la correction détaillée...</p>', key_points: [] };
+      case 'bullet_list': return { items: [''] };
+      case 'numbered_list': return { items: [''] };
       case 'quote': return { text: 'Citation ou témoignage', author: '' };
       case 'code': return { language: 'text', code: '' };
       case 'checklist': return { items: [{ id: uid(), text: 'Action à réaliser', checked: false }] };
@@ -451,6 +451,7 @@ export default function StudioConceptionFormation() {
     setCreatingDraft(true);
     try {
       const data = await api('create_course', {
+        client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
         title: course.title,
         short_description: course.short_description,
         long_description: course.long_description,
@@ -496,7 +497,8 @@ export default function StudioConceptionFormation() {
       const savedCourse = course.id ? course : await ensureCourseCreated();
       if (!savedCourse?.id) return;
       const data = await api('update_course', {
-        course_id: savedCourse.id, title: course.title,
+        course_id: savedCourse.id, client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
+        title: course.title,
         short_description: course.short_description,
         long_description: course.long_description,
         category: course.category, level: course.level,
@@ -672,8 +674,8 @@ export default function StudioConceptionFormation() {
           <button onClick={loadHistory} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>
-          <button onClick={() => setShowPreview(v => !v)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-            {showPreview ? <EyeOff size={13} /> : <Eye size={13} />} Aperçu
+          <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } window.open(`/cours/${course.id}/apprendre?preview=1`, '_blank', 'noopener,noreferrer'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+            <Eye size={13} /> Prévisualiser
           </button>
           <button onClick={save} disabled={saving || locked}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50"
@@ -819,7 +821,7 @@ export default function StudioConceptionFormation() {
             <div className="flex items-center gap-2 overflow-x-auto">
               {modules.map(mod => (
                 <div key={mod.id} className="flex-shrink-0">
-                  <div className="text-xs font-semibold mb-1" style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}>{(mod as any).is_intro ? 'Introduction' : mod.title}</div>
+                  <div className="text-xs font-semibold mb-1" style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}>{(mod as any).is_intro ? 'Introduction' : (mod as any).is_conclusion ? 'Conclusion' : (mod as any).is_final_exam ? 'Examen final' : mod.title}</div>
                   <div className="flex gap-1">
                     {(mod.lessons || []).map(lesson => (
                       <button key={lesson.id}
@@ -847,6 +849,7 @@ export default function StudioConceptionFormation() {
                 style={{ borderColor: '#002050', color: '#002050' }}>
                 <Plus size={11} /> Module
               </button>
+              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await loadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
             </div>
           </div>
 
@@ -1057,7 +1060,9 @@ export default function StudioConceptionFormation() {
                       <p className="text-sm" style={{ color: '#9CA3AF' }}>+ Glissez un bloc ici ou cliquez dans la bibliothèque</p>
                     </div>
                   )}
-                  <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3">
+                  <div className="flex flex-col sm:flex-row justify-between gap-2 pt-3">
+                    <button type="button" onClick={async () => { if (!currentModule || !currentLesson) return; const mi=modules.findIndex(m=>m.id===currentModule.id); const li=(currentModule.lessons||[]).findIndex(l=>l.id===currentLesson.id); const prev=(currentModule.lessons||[])[li-1]; if(prev){await selectLesson(currentModule,prev);return;} const pm=modules[mi-1]; if(pm?.lessons?.length) await selectLesson(pm,pm.lessons[pm.lessons.length-1]); }} className="px-4 py-2.5 rounded-lg text-sm font-semibold border" style={{borderColor:'#E4E7EC',color:'#374151',background:'white'}}><ChevronLeft size={14} className="inline mr-1"/> Page précédente</button>
+                    <div className="flex flex-col sm:flex-row gap-2">
                     <button type="button" onClick={() => saveCurrentPage(false)} disabled={saving || locked}
                       className="px-4 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-50" style={{ borderColor: '#002050', color: '#002050', background: 'white' }}>
                       Enregistrer
@@ -1066,6 +1071,7 @@ export default function StudioConceptionFormation() {
                       className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>
                       Enregistrer et page suivante <ChevronRight size={14} className="inline ml-1" />
                     </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1333,6 +1339,31 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel }: 
   );
 }
 
+
+function EditableItems({ items, ordered, locked, onChange, placeholder }: { items: string[]; ordered?: boolean; locked: boolean; onChange: (items: string[]) => void; placeholder: string }) {
+  const list = items?.length ? items : [''];
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  function update(index: number, value: string) { const next=[...list]; next[index]=value; onChange(next); }
+  function addAfter(index: number) { const next=[...list]; next.splice(index+1,0,''); onChange(next); setTimeout(()=>refs.current[index+1]?.focus(),0); }
+  function remove(index: number) { if(list.length===1){onChange(['']);return;} const next=list.filter((_,i)=>i!==index); onChange(next); setTimeout(()=>refs.current[Math.max(0,index-1)]?.focus(),0); }
+  return <div className="space-y-2">{list.map((item,index)=><div key={index} className="flex items-start gap-2">
+    <span className="mt-2 text-sm font-semibold min-w-[20px]" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
+    <input ref={el=>{refs.current[index]=el}} className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050]" style={{borderColor:'#E4E7EC'}} value={item} placeholder={placeholder} disabled={locked} spellCheck lang="fr"
+      onChange={e=>update(index,e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addAfter(index)} if(e.key==='Backspace'&&!item){e.preventDefault();remove(index)}}}/>
+    {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-1 p-1.5 rounded hover:bg-red-50" title="Supprimer la ligne"><X size={13} style={{color:'#DC2626'}}/></button>}
+  </div>)}
+  {!locked&&<button type="button" onClick={()=>addAfter(list.length-1)} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter une ligne</button>}
+  </div>
+}
+
+function PedagogicalEditor({ c, locked, onChange, kind }: { c: Record<string,any>; locked:boolean; onChange:(c:Record<string,any>)=>void; kind:string }) {
+  const labels:Record<string,string>={objective:'Objectif pédagogique',example:'Exemple',summary:'Résumé',important:'Important',correction:'Correction'};
+  return <div className="space-y-2 p-3 rounded-xl border" style={{borderColor:'#E4E7EC',background:'#FBFCFE'}}>
+    <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang="fr"/>
+    <RichTextEditor value={c.html||''} locked={locked} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
+  </div>
+}
+
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
 function BlockPreview({ block, def, locked, onChange }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
@@ -1362,18 +1393,19 @@ function BlockPreview({ block, def, locked, onChange }: {
           value={c.content || ''} onChange={e => onChange({ ...c, content: e.target.value })} placeholder="Contenu de l'encadré..." disabled={locked} />
       </div>
     );
+    case 'bullet_list': return <EditableItems items={c.items || ['']} locked={locked} onChange={items=>onChange({...c,items})} placeholder="Écrivez un élément puis appuyez sur Entrée" />;
+    case 'numbered_list': return <EditableItems ordered items={c.items || ['']} locked={locked} onChange={items=>onChange({...c,items})} placeholder="Écrivez une étape puis appuyez sur Entrée" />;
+    case 'objective': case 'example': case 'summary': case 'important': case 'correction': return <PedagogicalEditor c={c} locked={locked} onChange={onChange} kind={block.block_type} />;
+    case 'definition': return <div className="space-y-2"><input className={inputCls} style={style} value={c.term||''} onChange={e=>onChange({...c,term:e.target.value})} placeholder="Terme à définir" disabled={locked}/><RichTextEditor value={c.definition||''} locked={locked} placeholder="Définition..." onChange={definition=>onChange({...c,definition})}/><RichTextEditor value={c.example||''} locked={locked} placeholder="Exemple facultatif..." onChange={example=>onChange({...c,example})}/></div>;
+    case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={c.questions||['']} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /></div>;
     case 'remember': return (
       <div className="p-3 rounded-lg" style={{ background: 'rgba(191,136,19,0.08)', border: '1px solid #BF881330' }}>
-        <div className="flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: '#BF8813' }} /><span className="text-xs font-bold" style={{ color: '#BF8813' }}>À retenir</span></div>
-        {(c.points || []).map((pt: string, i: number) => (
-          <div key={i} className="flex items-center gap-2 mb-1">
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#BF8813' }} />
-            <input className="flex-1 bg-transparent text-sm border-none outline-none" value={pt}
-              onChange={e => { const pts = [...(c.points || [])]; pts[i] = e.target.value; onChange({ ...c, points: pts }); }} disabled={locked} />
-          </div>
-        ))}
+        <div className="flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: '#BF8813' }} /><input className="text-xs font-bold bg-transparent outline-none flex-1" style={{color:'#BF8813'}} value={c.title||'À retenir'} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked}/></div>
+        <EditableItems items={c.points||['']} locked={locked} onChange={points=>onChange({...c,points})} placeholder="Point clé à retenir" />
       </div>
     );
+    case 'open_question': return <div className="space-y-2"><textarea className={inputCls} style={style} rows={3} value={c.question||''} onChange={e=>onChange({...c,question:e.target.value})} placeholder="Question posée à l’apprenant" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={c.guidance||''} onChange={e=>onChange({...c,guidance:e.target.value})} placeholder="Consignes ou éléments attendus" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.expected_answer||''} onChange={e=>onChange({...c,expected_answer:e.target.value})} placeholder="Réponse de référence pour le correcteur" disabled={locked}/><input type="number" className={inputCls} style={style} value={c.points||10} onChange={e=>onChange({...c,points:Number(e.target.value)})} min={0} placeholder="Points" disabled={locked}/></div>;
+    case 'exercise': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’exercice" disabled={locked}/><textarea className={inputCls} style={style} rows={4} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes détaillées" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail à réaliser" disabled={locked}/><div className="p-3 rounded-lg text-xs" style={{background:'#FFF7ED',color:'#9A3412'}}>Ajoutez les fichiers de travail (PDF, Word, Excel) depuis le panneau de réglages. L’apprenant pourra les télécharger puis déposer sa réponse.</div></div>;
     case 'image': return (
       <div className="space-y-2">
         {c.url ? <img src={c.url} alt={c.alt} className="w-full rounded-lg object-cover max-h-48" /> : (
