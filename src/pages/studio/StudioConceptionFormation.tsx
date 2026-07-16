@@ -174,6 +174,7 @@ export default function StudioConceptionFormation() {
   const [showHistory, setShowHistory] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showRolePreview, setShowRolePreview] = useState(false);
+  const [showFinalization, setShowFinalization] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -715,7 +716,6 @@ export default function StudioConceptionFormation() {
         <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
           <div className="pointer-events-auto max-w-4xl mx-auto">
             <AssessmentRulesCard durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
-            <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
           </div>
         </div>
 
@@ -837,7 +837,7 @@ export default function StudioConceptionFormation() {
           <div className="bg-white border-b flex items-center px-4 py-2 gap-4 flex-shrink-0 overflow-x-auto" style={{ borderColor: '#E4E7EC' }}>
             {/* Infos formation */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => { setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); }}
+              <button onClick={() => { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); }}
                 className="text-xs font-semibold px-2 py-1 rounded" style={{ color: currentModule ? '#6B7280' : '#002050', background: currentModule ? 'transparent' : '#EEF2FF' }}>
                 Infos formation
               </button>
@@ -851,7 +851,7 @@ export default function StudioConceptionFormation() {
                   <div className="flex gap-1">
                     {(mod.lessons || []).map(lesson => (
                       <button key={lesson.id}
-                        onClick={() => selectLesson(mod, lesson)}
+                        onClick={() => { setShowFinalization(false); selectLesson(mod, lesson); }}
                         className="text-xs px-2 py-0.5 rounded-full border transition-all"
                         title={lesson.is_module_intro ? 'Présentation facultative du module' : lesson.title}
                         style={currentLesson?.id === lesson.id
@@ -876,6 +876,7 @@ export default function StudioConceptionFormation() {
                 <Plus size={11} /> Module
               </button>
               <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await loadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
+              <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
             </div>
           </div>
 
@@ -883,7 +884,7 @@ export default function StudioConceptionFormation() {
           <div className="flex-1 overflow-y-auto p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
-            {!currentModule && (
+            {!currentModule && !showFinalization && (
               <div className="max-w-2xl mx-auto space-y-4">
                 <h2 className="text-lg font-bold" style={{ color: '#002050' }}>Informations de la formation</h2>
 
@@ -1010,6 +1011,20 @@ export default function StudioConceptionFormation() {
                     <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{course.id ? 'Ouvrez Introduction, puis ajoutez vos modules et leurs leçons avec les blocs.' : 'Les champs restent modifiables. L’introduction sera automatiquement créée avant le premier module.'}</p>
                   </div>
                   <button type="button" onClick={save} disabled={saving || creatingDraft || locked} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{saving || creatingDraft ? 'Enregistrement…' : course.id ? 'Enregistrer les modifications' : 'Enregistrer et commencer'}</button>
+                </div>
+              </div>
+            )}
+
+            {showFinalization && (
+              <div className="max-w-4xl mx-auto space-y-4">
+                <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
+                  <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation avant soumission</h2>
+                  <p className="mt-1 text-sm text-gray-500">Configurez en dernier la commercialisation, la saisie assistée et les certifications, puis soumettez la formation.</p>
+                </div>
+                <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
+                <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
+                  <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
+                  <button onClick={submit} disabled={submitting||locked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>Soumettre la formation</button>
                 </div>
               </div>
             )}
