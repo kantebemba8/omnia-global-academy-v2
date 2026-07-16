@@ -101,8 +101,6 @@ import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
 import StructureRecruitment from './pages/structure/StructureRecruitment';
-import { StructurePreviewGuard } from './components/StructurePreviewGuard';
-import StructurePreviewPage from './pages/structure/StructurePreviewPage';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
 import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
@@ -273,29 +271,22 @@ export default function App() {
 
         {/* Module 8 — Dashboard directeur — always accessible */}
           <Route path="/structure/dashboard" element={<StructureDashboard />} />
-          <Route path="/structure/profil" element={<StructurePreviewGuard><StructureProfil /></StructurePreviewGuard>} />
-<Route path="/structure/codes" element={<StructurePreviewGuard><StructureCodes /></StructurePreviewGuard>} />
-<Route path="/structure/membres" element={<StructurePreviewGuard><StructureMembres /></StructurePreviewGuard>} />
-<Route path="/structure/rattachements" element={<StructurePreviewGuard><StructureMembres /></StructurePreviewGuard>} />
-<Route path="/structure/avantages" element={<StructurePreviewGuard><StructureAvantages /></StructurePreviewGuard>} />
-<Route path="/structure/equipe" element={<StructurePreviewGuard><StructureEquipe /></StructurePreviewGuard>} />
-<Route path="/structure/offres-emploi" element={<StructurePreviewGuard><StructureJobs /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/dashboard" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/offres" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/talents" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/favoris" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/candidats" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/entretiens" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/messages" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/statistiques" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-<Route path="/structure/recrutement/equipe" element={<StructurePreviewGuard><StructureRecruitment /></StructurePreviewGuard>} />
-
-
-<Route path="/structure/formations" element={<StructurePreviewPage />} />
-<Route path="/structure/formations/nouvelle" element={<StructurePreviewPage />} />
-<Route path="/structure/statistiques" element={<StructurePreviewPage />} />
-<Route path="/structure/notifications" element={<StructurePreviewPage />} />
-<Route path="/structure/parametres" element={<StructurePreviewPage />} />
+          <Route path="/structure/profil" element={<StructureProfil />} />
+<Route path="/structure/codes" element={<StructureCodes />} />
+<Route path="/structure/membres" element={<StructureMembres />} />
+<Route path="/structure/rattachements" element={<StructureMembres />} />
+<Route path="/structure/avantages" element={<StructureAvantages />} />
+<Route path="/structure/equipe" element={<StructureEquipe />} />
+<Route path="/structure/offres-emploi" element={<StructureJobs />} />
+<Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/offres" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/talents" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/favoris" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/candidats" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/entretiens" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/messages" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/statistiques" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/equipe" element={<StructureRecruitment />} />
 
 
         {/* Module 8 — Dashboard enseignant — always accessible */}

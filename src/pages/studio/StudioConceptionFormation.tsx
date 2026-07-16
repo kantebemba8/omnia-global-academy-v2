@@ -7,7 +7,7 @@ import {
   File, Table, HelpCircle, BookOpen, Lightbulb, Star, Minus,
   AlignLeft, Heading1, Heading2, Download, Layers, ToggleLeft,
   ChevronDown, ChevronUp, Zap, AlertTriangle, Info, BarChart2,
-  Layout, RefreshCw, MoreVertical, Move
+  Layout, RefreshCw, MoreVertical, Move, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck
 } from 'lucide-react';
 
 const SB = import.meta.env.VITE_SUPABASE_URL;
@@ -63,6 +63,11 @@ const BLOCK_DEFS = [
   { type: 'true_false', label: 'Vrai / Faux',  icon: ToggleLeft, color: '#1E7A52', group: 'evaluation',  mode: 'simple' },
   { type: 'open_question', label: 'Question ouverte', icon: AlignLeft, color: '#7C3AED', group: 'evaluation', mode: 'simple' },
   { type: 'exercise',   label: 'Exercice',     icon: BookOpen,   color: '#D97706', group: 'evaluation',  mode: 'simple' },
+  { type: 'bullet_list', label: 'Liste à puces', icon: List, color: '#374151', group: 'structure', mode: 'simple' },
+  { type: 'numbered_list', label: 'Liste numérotée', icon: ListOrdered, color: '#374151', group: 'structure', mode: 'simple' },
+  { type: 'quote', label: 'Citation', icon: Quote, color: '#7C3AED', group: 'pedagogique', mode: 'simple' },
+  { type: 'checklist', label: 'Checklist', icon: CheckSquare, color: '#1E7A52', group: 'pedagogique', mode: 'simple' },
+  { type: 'link_button', label: 'Bouton / lien', icon: Link2, color: '#0369A1', group: 'media', mode: 'simple' },
   // Avancés
   { type: 'accordion',  label: 'Accordéon',    icon: ChevronDown,color: '#374151', group: 'avance',      mode: 'advanced' },
   { type: 'flashcards', label: 'Cartes',       icon: Copy,       color: '#7C3AED', group: 'avance',      mode: 'advanced' },
@@ -73,6 +78,13 @@ const BLOCK_DEFS = [
   { type: 'case_study', label: 'Étude de cas', icon: BookOpen,   color: '#002050', group: 'avance',      mode: 'advanced' },
   { type: 'definition', label: 'Définition',   icon: AlignLeft,  color: '#374151', group: 'avance',      mode: 'advanced' },
   { type: 'correction', label: 'Correction',   icon: CheckCircle,color: '#1E7A52', group: 'avance',      mode: 'advanced' },
+  { type: 'code', label: 'Code', icon: Code2, color: '#111827', group: 'avance', mode: 'advanced' },
+  { type: 'embed', label: 'Contenu intégré', icon: Link2, color: '#0369A1', group: 'avance', mode: 'advanced' },
+  { type: 'gallery', label: 'Galerie', icon: GalleryHorizontal, color: '#0891B2', group: 'avance', mode: 'advanced' },
+  { type: 'formula', label: 'Formule', icon: Sigma, color: '#7C3AED', group: 'avance', mode: 'advanced' },
+  { type: 'chart', label: 'Graphique', icon: BarChart3, color: '#0369A1', group: 'avance', mode: 'advanced' },
+  { type: 'assignment_upload', label: 'Travail à remettre', icon: UploadCloud, color: '#D97706', group: 'evaluation', mode: 'advanced' },
+  { type: 'rubric', label: 'Grille d’évaluation', icon: ClipboardCheck, color: '#1E7A52', group: 'evaluation', mode: 'advanced' },
 ];
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -316,6 +328,18 @@ export default function StudioConceptionFormation() {
       case 'case_study': return { context: '', data: '', task: '', questions: [] };
       case 'definition': return { term: '', definition: '', example: '' };
       case 'correction': return { content: '', key_points: [] };
+      case 'bullet_list': return { items: ['Élément 1', 'Élément 2'] };
+      case 'numbered_list': return { items: ['Étape 1', 'Étape 2'] };
+      case 'quote': return { text: 'Citation ou témoignage', author: '' };
+      case 'code': return { language: 'text', code: '' };
+      case 'checklist': return { items: [{ id: uid(), text: 'Action à réaliser', checked: false }] };
+      case 'link_button': return { label: 'Ouvrir le lien', url: '', open_new_tab: true };
+      case 'embed': return { url: '', title: 'Contenu intégré' };
+      case 'gallery': return { images: [] };
+      case 'formula': return { latex: '' };
+      case 'chart': return { chart_type: 'bar', labels: ['A', 'B'], values: [0, 0] };
+      case 'assignment_upload': return { title: 'Travail à remettre', instructions: '', accepted_types: ['pdf', 'docx'], max_size_mb: 10 };
+      case 'rubric': return { criteria: [{ name: 'Critère 1', description: '', points: 10 }] };
       default: return {};
     }
   }
@@ -564,7 +588,8 @@ export default function StudioConceptionFormation() {
                       <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>{groupLabels[group]}</p>
                       <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
-                          <button key={def.type} onClick={() => addBlock(def.type)} disabled={locked}
+                          <button key={def.type} onClick={() => addBlock(def.type)} disabled={locked} draggable={!locked && !!currentLesson}
+                            onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }}
                             className="flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all hover:shadow-sm disabled:opacity-40"
                             style={{ borderColor: '#E4E7EC', background: 'white' }}>
                             <div className="w-6 h-6 flex items-center justify-center">
@@ -618,8 +643,15 @@ export default function StudioConceptionFormation() {
                   { key: 'advanced_interactive', label: 'Interactive avancée', desc: 'Blocs interactifs' },
                   { key: 'scorm_template', label: 'Formation SCORM', desc: 'Package SCORM' },
                 ].map(tmpl => (
-                  <button key={tmpl.key}
-                    className="w-full text-left p-3 rounded-lg border text-xs transition-all hover:shadow-sm"
+                  <button key={tmpl.key} disabled={locked}
+                    onClick={async () => {
+                      if (!course?.id) return;
+                      const replaceExisting = modules.length === 0 || window.confirm('Appliquer ce modèle remplacera les modules et leçons actuels. Continuer ?');
+                      if (!replaceExisting) return;
+                      const data = await api('apply_template', { course_id: course.id, template_key: tmpl.key, replace_existing: modules.length > 0 });
+                      if (data.success) { showToast('Modèle appliqué'); window.location.reload(); } else showToast('Impossible d’appliquer le modèle', 'error');
+                    }}
+                    className="w-full text-left p-3 rounded-lg border text-xs transition-all hover:shadow-sm disabled:opacity-40"
                     style={{ borderColor: course?.template_used === tmpl.key ? '#002050' : '#E4E7EC', background: 'white' }}>
                     <div className="flex items-center gap-1.5">
                       <p style={{ color: '#002050' }} className="font-semibold">{tmpl.label}</p>
@@ -686,7 +718,7 @@ export default function StudioConceptionFormation() {
           </div>
 
           {/* Canevas */}
-          <div className="flex-1 overflow-y-auto p-6" style={{ background: '#F0F2F5' }}>
+          <div className="flex-1 overflow-y-auto p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && (
@@ -1200,7 +1232,6 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
     setUploadProgress(10);
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
       const bucketMap: Record<string, string> = {
         image: 'course-images', video: 'course-videos', audio: 'course-audios',
@@ -1211,17 +1242,11 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       const path = `${courseId}/${moduleId}/${lessonId}/${block.id}.${ext}`;
 
       setUploadProgress(30);
-      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-          'Authorization': `Bearer ${ANON_KEY}`,
-        },
-        body: file,
-      });
-
+      const signed = await api('prepare_upload', { course_id: courseId, bucket_name: bucket, storage_path: path });
+      if (!signed.success || !signed.signedUrl) throw new Error('Impossible de préparer le téléversement');
+      const uploadRes = await fetch(signed.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
       setUploadProgress(80);
-      if (!res.ok) throw new Error('Erreur upload');
+      if (!uploadRes.ok) throw new Error('Erreur upload');
 
       // Enregistrer le fichier via studio-unified
       const saveRes = await api('upload_block_file', {

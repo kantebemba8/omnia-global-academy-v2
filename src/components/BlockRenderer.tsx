@@ -324,6 +324,32 @@ export function BlockRenderer({ block, onQuizAnswer }: BlockRendererProps) {
         </div>
       );
 
+
+    case 'bullet_list':
+      return <ul className="list-disc pl-6 space-y-1 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>;
+    case 'numbered_list':
+      return <ol className="list-decimal pl-6 space-y-1 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}>{x}</li>)}</ol>;
+    case 'quote':
+      return <blockquote className="border-l-4 pl-4 py-2 italic text-gray-700" style={{ borderColor: '#BF8813' }}><p>{c.text || ''}</p>{c.author && <footer className="mt-2 text-xs not-italic text-gray-500">— {c.author}</footer>}</blockquote>;
+    case 'code':
+      return <pre className="overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100"><code>{c.code || ''}</code></pre>;
+    case 'checklist':
+      return <div className="space-y-2">{(c.items || []).map((x: any, i: number) => <label key={x.id || i} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!x.checked} readOnly /> <span>{x.text}</span></label>)}</div>;
+    case 'link_button':
+      return <a href={c.url || '#'} target={c.open_new_tab ? '_blank' : undefined} rel="noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a>;
+    case 'embed':
+      return c.url ? <div className="overflow-hidden rounded-xl border"><iframe src={c.url} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" /></div> : <p className="text-sm text-gray-400">Aucun contenu intégré.</p>;
+    case 'gallery':
+      return <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{(c.images || []).map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-36 w-full rounded-lg object-cover" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div>;
+    case 'formula':
+      return <div className="rounded-xl border bg-white p-4 text-center font-mono text-lg" style={{ borderColor: '#E4E7EC' }}>{c.latex || 'Formule non renseignée'}</div>;
+    case 'chart':
+      return <div className="space-y-2 rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><p className="text-sm font-semibold">Graphique</p>{(c.labels || []).map((label: string, i: number) => <div key={i}><div className="mb-1 flex justify-between text-xs"><span>{label}</span><span>{Number(c.values?.[i] || 0)}</span></div><div className="h-2 rounded bg-gray-100"><div className="h-2 rounded" style={{ width: `${Math.min(100, Math.max(0, Number(c.values?.[i] || 0)))}%`, background: '#002050' }} /></div></div>)}</div>;
+    case 'assignment_upload':
+      return <div className="rounded-xl border border-dashed p-4"><p className="font-semibold" style={{ color: '#002050' }}>{c.title || 'Travail à remettre'}</p><p className="mt-1 text-sm text-gray-600">{c.instructions || ''}</p><p className="mt-2 text-xs text-gray-500">Formats : {(c.accepted_types || []).join(', ')} · maximum {c.max_size_mb || 10} Mo</p></div>;
+    case 'rubric':
+      return <div className="overflow-x-auto"><table className="w-full border-collapse text-sm"><thead><tr><th className="border p-2 text-left">Critère</th><th className="border p-2 text-left">Description</th><th className="border p-2 text-right">Points</th></tr></thead><tbody>{(c.criteria || []).map((x: any, i: number) => <tr key={i}><td className="border p-2">{x.name}</td><td className="border p-2">{x.description}</td><td className="border p-2 text-right">{x.points}</td></tr>)}</tbody></table></div>;
+
     default:
       return null;
   }
