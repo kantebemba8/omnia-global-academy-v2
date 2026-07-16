@@ -109,6 +109,104 @@ async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Reque
   return json({ success: true, profile: data });
 }
 
+
+function analyticsPeriod(value: unknown) {
+  const days = Number(value || 30);
+  return [7, 30, 90, 365].includes(days) ? days : 30;
+}
+function dayKey(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return date.toISOString().slice(0, 10);
+}
+function buildSeries(days: number, activity: any[], applications: any[] = []) {
+  const rows = new Map<string, { date: string; profile_views: number; contacts: number; interviews: number; applications: number }>();
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setUTCDate(now.getUTCDate() - i);
+    const key = dayKey(d); rows.set(key, { date: key, profile_views: 0, contacts: 0, interviews: 0, applications: 0 });
+  }
+  for (const item of activity || []) {
+    const row = rows.get(dayKey(item.created_at)); if (!row) continue;
+    if (item.action === "profile_viewed") row.profile_views++;
+    if (["talent_contacted", "contact_created"].includes(item.action)) row.contacts++;
+    if (["interview_created", "interview_requested"].includes(item.action)) row.interviews++;
+  }
+  for (const item of applications || []) {
+    const row = rows.get(dayKey(item.submitted_at || item.created_at)); if (row) row.applications++;
+  }
+  return Array.from(rows.values());
+}
+async function userIdsForOrganization(sb: ReturnType<typeof createClient>, organizationId: string) {
+  const { data } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("status", "actif");
+  return (data || []).map((row: any) => String(row.user_id));
+}
+async function loadAnalytics(sb: ReturnType<typeof createClient>, session: Session, body: any) {
+  const periodDays = analyticsPeriod(body.period_days);
+  const since = new Date(Date.now() - periodDays * 86400000).toISOString();
+  const requestedScope = String(body.scope || "recruiter");
+  const isAdmin = requestedScope === "admin";
+  if (isAdmin && !hasRole(session, "super_admin")) throw new Error("FORBIDDEN");
+  const organizationId = requestedScope === "structure" ? session.organizationId : null;
+  if (requestedScope === "structure" && !organizationId && !hasRole(session, "super_admin")) throw new Error("NO_STRUCTURE");
+
+  let actorIds: string[] = [session.userId];
+  if (organizationId) actorIds = await userIdsForOrganization(sb, organizationId);
+
+  let activityQuery = sb.from("talent_activity_log").select("id,action,created_at,metadata,actor_user_id,organization_id,talent_user_id").gte("created_at", since).order("created_at", { ascending: false });
+  if (!isAdmin) activityQuery = organizationId ? activityQuery.eq("organization_id", organizationId) : activityQuery.eq("actor_user_id", session.userId).is("organization_id", null);
+  const { data: activity, error: activityError } = await activityQuery.limit(5000);
+  if (activityError) throw activityError;
+
+  let favoritesQuery = sb.from("talent_favorites").select("id", { count: "exact", head: true });
+  let contactsQuery = sb.from("talent_contacts").select("id,status,created_at", { count: "exact" }).gte("created_at", since);
+  let interviewsQuery = sb.from("talent_interviews").select("id,status,scheduled_at,created_at", { count: "exact" }).gte("created_at", since);
+  if (!isAdmin) {
+    favoritesQuery = organizationId ? favoritesQuery.eq("organization_id", organizationId) : favoritesQuery.eq("actor_user_id", session.userId).is("organization_id", null);
+    contactsQuery = organizationId ? contactsQuery.eq("organization_id", organizationId) : contactsQuery.eq("actor_user_id", session.userId).is("organization_id", null);
+    interviewsQuery = organizationId ? interviewsQuery.eq("organization_id", organizationId) : interviewsQuery.eq("requested_by", session.userId).is("organization_id", null);
+  }
+
+  let jobsQuery = sb.from("job_offers").select("id,status,created_at,posted_by_id").gte("created_at", since);
+  if (!isAdmin) jobsQuery = jobsQuery.in("posted_by_id", actorIds.length ? actorIds : [session.userId]);
+  const [favoritesResult, contactsResult, interviewsResult, jobsResult] = await Promise.all([favoritesQuery, contactsQuery, interviewsQuery, jobsQuery]);
+  const jobs = jobsResult.data || [];
+  const jobIds = jobs.map((row: any) => String(row.id));
+  let applications: any[] = [];
+  if (isAdmin) {
+    const result = await sb.from("job_applications").select("id,status,submitted_at,job_id").gte("submitted_at", since);
+    applications = result.data || [];
+  } else if (jobIds.length) {
+    const result = await sb.from("job_applications").select("id,status,submitted_at,job_id").in("job_id", jobIds).gte("submitted_at", since);
+    applications = result.data || [];
+  }
+
+  const contacts = contactsResult.data || [];
+  const interviews = interviewsResult.data || [];
+  const replied = contacts.filter((c: any) => ["read", "replied", "closed"].includes(String(c.status))).length;
+  const hires = applications.filter((a: any) => ["accepted", "offer", "hired"].includes(String(a.status))).length;
+  const metrics: Record<string, number> = {
+    active_jobs: jobs.filter((j: any) => j.status === "approved").length,
+    applications: applications.length,
+    profile_views: (activity || []).filter((a: any) => a.action === "profile_viewed").length,
+    favorites: favoritesResult.count || 0,
+    contacts: contactsResult.count || contacts.length,
+    interviews: interviewsResult.count || interviews.length,
+    hires,
+    response_rate: contacts.length ? Math.round((replied / contacts.length) * 100) : 0,
+  };
+  if (isAdmin) {
+    const [profiles, recruiters, structures] = await Promise.all([
+      sb.from("career_public_profiles").select("user_id", { count: "exact", head: true }).eq("visibility", "public"),
+      sb.from("talent_recruiter_profiles").select("user_id", { count: "exact", head: true }).eq("status", "approved"),
+      sb.from("talent_recruiter_profiles").select("organization_id").eq("status", "approved").not("organization_id", "is", null),
+    ]);
+    metrics.public_profiles = profiles.count || 0;
+    metrics.approved_recruiters = recruiters.count || 0;
+    metrics.recruiting_structures = new Set((structures.data || []).map((r: any) => String(r.organization_id))).size;
+  }
+  return { period_days: periodDays, metrics, series: buildSeries(periodDays, activity || [], applications), recent_activity: (activity || []).slice(0, 30) };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -127,6 +225,23 @@ Deno.serve(async (req: Request) => {
 
     const session = await authenticate(sb, req);
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
+
+
+    if (action === "log_profile_view") {
+      const talentId = String(body.talent_user_id || "");
+      if (!talentId || talentId === session.userId) return json({ success: true });
+      await logActivity(sb, session, session.organizationId, talentId, "profile_viewed", "talent", talentId);
+      return json({ success: true });
+    }
+
+    if (action === "analytics") {
+      try { return json({ success: true, analytics: await loadAnalytics(sb, session, body) }); }
+      catch (error) {
+        const message = error instanceof Error ? error.message : "ANALYTICS_UNAVAILABLE";
+        if (["FORBIDDEN", "NO_STRUCTURE"].includes(message)) return json({ error: message }, 403);
+        throw error;
+      }
+    }
 
     // Actions accessibles à tout utilisateur Omnia connecté avant validation du rôle recruteur.
     if (action === "recruiter_self_status") {

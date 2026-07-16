@@ -197,3 +197,22 @@ export async function adminLoadTalentSupervision(status?: string) {
 export async function adminUpdateRecruiterStatus(userId: string, status: 'approved'|'rejected'|'suspended'|'pending', reason?: string) {
   return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('admin_update_recruiter_status', { user_id: userId, status, reason });
 }
+
+export type TalentAnalytics = {
+  period_days: number;
+  metrics: {
+    active_jobs: number; applications: number; profile_views: number; favorites: number;
+    contacts: number; interviews: number; hires: number; response_rate: number;
+    public_profiles?: number; approved_recruiters?: number; recruiting_structures?: number;
+  };
+  series: Array<{ date: string; profile_views: number; contacts: number; interviews: number; applications: number }>;
+  recent_activity: Array<{ id: string; action: string; created_at: string; metadata?: Record<string, unknown> }>;
+};
+
+export async function loadTalentAnalytics(scope: 'recruiter'|'structure'|'admin' = 'recruiter', periodDays = 30) {
+  return recruitmentRequest<{ success: true; analytics: TalentAnalytics }>('analytics', { period_days: periodDays }, scope === 'admin' ? 'recruiter' : scope);
+}
+
+export async function logTalentProfileView(talentUserId: string) {
+  try { await recruitmentRequest<{ success: true }>('log_profile_view', { talent_user_id: talentUserId }); } catch { /* vue publique anonyme ou session indisponible */ }
+}

@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { contactTalent, createRecruitmentInvite, loadPublicTalents, loadRecruitmentInvites, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, revokeRecruitmentInvite, toggleTalentFavorite } from '../talent/talentApi';
+import { contactTalent, createRecruitmentInvite, loadPublicTalents, loadRecruitmentInvites, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, revokeRecruitmentInvite, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics } from '../talent/talentApi';
+import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -69,10 +70,12 @@ export default function StructureRecruitment(){
   const [contactTarget,setContactTarget] = useState<PublicTalent|null>(null);
   const [contactMessage,setContactMessage] = useState('');
   const [contactBusy,setContactBusy] = useState(false);
+  const [analytics,setAnalytics] = useState<TalentAnalytics|null>(null);
+  const [periodDays,setPeriodDays] = useState(30);
 
   useEffect(()=>{
     let alive = true;
-    Promise.allSettled([loadPublicTalents(),loadRecruitmentData(),loadTalentFavorites('structure'),loadTalentInterviews('structure'),loadTalentConversations('structure')]).then(results=>{
+    Promise.allSettled([loadPublicTalents(),loadRecruitmentData(),loadTalentFavorites('structure'),loadTalentInterviews('structure'),loadTalentConversations('structure'),loadTalentAnalytics('structure',periodDays)]).then(results=>{
       if(!alive) return;
       if(results[0].status==='fulfilled') setTalents(results[0].value); else setError('Les profils publics ne sont pas disponibles pour le moment.');
       if(results[1].status==='fulfilled') { setJobs(results[1].value.jobs); setApplications(results[1].value.applications); }
@@ -80,10 +83,11 @@ export default function StructureRecruitment(){
       if(results[2].status==='fulfilled') setFavorites(results[2].value);
       if(results[3].status==='fulfilled') setInterviews(results[3].value);
       if(results[4].status==='fulfilled') setConversations(results[4].value);
+      if(results[5].status==='fulfilled') setAnalytics(results[5].value.analytics);
       setLoading(false);
     });
     return ()=>{alive=false};
-  },[]);
+  },[periodDays]);
 
   const filteredTalents = useMemo(()=>{
     const q=query.trim().toLowerCase();
@@ -128,7 +132,7 @@ export default function StructureRecruitment(){
       {section==='candidats' && <Candidates applications={applications}/>} 
       {section==='entretiens' && <Interviews interviews={interviews}/>}
       {section==='messages' && <Conversations conversations={conversations}/>}
-      {section==='statistiques' && <Statistics jobs={jobs} applications={applications} favorites={favorites}/>} 
+      {section==='statistiques' && <div className="space-y-5"><div className="flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="structure"/></div>} 
       {section==='equipe' && <Team/>}
     </div>
     {contactTarget && <ContactModal talent={contactTarget} message={contactMessage} setMessage={setContactMessage} busy={contactBusy} close={()=>{setContactTarget(null);setContactMessage('')}} submit={submitContact}/>}

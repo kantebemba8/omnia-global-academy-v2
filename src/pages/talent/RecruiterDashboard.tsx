@@ -8,9 +8,10 @@ import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
 import {
   contactTalent, loadPublicJobs, loadPublicTalents, loadTalentConversations, loadTalentDashboard,
   loadTalentFavorites, loadTalentInterviews, PublicJob, PublicTalent, TalentConversation,
-  TalentInterview, toggleTalentFavorite,
+  TalentInterview, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics,
 } from './talentApi';
 import { getStoredUser } from '../../lib/session';
+import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -45,6 +46,8 @@ export default function RecruiterDashboard() {
   const [contactTarget, setContactTarget] = useState<PublicTalent | null>(null);
   const [contactMessage, setContactMessage] = useState('');
   const [contactBusy, setContactBusy] = useState(false);
+  const [analytics, setAnalytics] = useState<TalentAnalytics|null>(null);
+  const [periodDays, setPeriodDays] = useState(30);
 
   useEffect(() => {
     const roles = user?.roles || [];
@@ -55,7 +58,7 @@ export default function RecruiterDashboard() {
   async function loadAll() {
     setLoading(true); setError('');
     const results = await Promise.allSettled([
-      loadPublicTalents(), loadPublicJobs(), loadTalentFavorites(), loadTalentDashboard(), loadTalentInterviews(), loadTalentConversations(),
+      loadPublicTalents(), loadPublicJobs(), loadTalentFavorites(), loadTalentDashboard(), loadTalentInterviews(), loadTalentConversations(), loadTalentAnalytics('recruiter', periodDays),
     ]);
     if (results[0].status === 'fulfilled') setTalents(results[0].value); else setError('Les profils publics ne sont pas disponibles pour le moment.');
     if (results[1].status === 'fulfilled') setJobs(results[1].value);
@@ -63,9 +66,10 @@ export default function RecruiterDashboard() {
     if (results[3].status === 'fulfilled') setMetrics(results[3].value.metrics);
     if (results[4].status === 'fulfilled') setInterviews(results[4].value);
     if (results[5].status === 'fulfilled') setConversations(results[5].value);
+    if (results[6].status === 'fulfilled') setAnalytics(results[6].value.analytics);
     setLoading(false);
   }
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); }, [periodDays]);
 
   async function toggleFavorite(t: PublicTalent) {
     try {
@@ -100,7 +104,7 @@ export default function RecruiterDashboard() {
   return <RecruiterLayout title={titleMap[section]} subtitle="Espace recruteur indépendant · Talent Omnia">
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       {error && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
-      {section === 'dashboard' && <DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} />}
+      {section === 'dashboard' && <><div className="mb-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div><DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} /><div className="mt-6"><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="recruiter"/></div></>}
       {section === 'talents' && <TalentsSection talents={filteredTalents} loading={loading} query={query} setQuery={setQuery} favorites={favorites} toggleFavorite={toggleFavorite} contact={setContactTarget} />}
       {section === 'favoris' && <FavoritesSection favorites={favorites} contact={setContactTarget} />}
       {section === 'offres' && <EmptyState icon={Briefcase} title="Aucune offre publiée" text="Vos offres de recrutement apparaîtront ici dès leur création." action={<button className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}><Plus size={16}/>Créer une offre</button>} />}
