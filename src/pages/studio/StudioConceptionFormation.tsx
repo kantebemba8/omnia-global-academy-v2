@@ -29,8 +29,8 @@ interface Block {
   ai_generated?: boolean;
 }
 
-interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; }
-interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; }
+interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_intro?: boolean; is_module_intro?: boolean; }
+interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; }
 interface Course {
   id: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; prerequisites?: string;
@@ -267,22 +267,25 @@ export default function StudioConceptionFormation() {
   // ─── Ajouter module ───────────────────────────────────────
   async function addModule() {
     if (!course?.id) return;
-    const title = `Module ${modules.length + 1}`;
-    const data = await api('create_module', { course_id: course.id, title, objective: '' });
+    const normalCount = modules.filter(m => !m.is_intro).length;
+    const title = `Module ${normalCount + 1}`;
+    const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: true });
     if (data.success) {
-      const newMod = { ...data.module, lessons: [] };
+      const introLesson = data.intro_lesson as Lesson | undefined;
+      const newMod: Module = { ...data.module, lessons: introLesson ? [introLesson] : [] };
       setModules(m => [...m, newMod]);
       setCurrentModule(newMod);
-      setCurrentLesson(null);
+      setCurrentLesson(introLesson || null);
       setBlocks([]);
-      showToast('Module ajouté');
+      showToast('Module ajouté. Vous pouvez présenter le module avant les leçons.');
     }
   }
 
   // ─── Ajouter leçon ────────────────────────────────────────
   async function addLesson(mod: Module) {
     if (!course?.id) return;
-    const title = `Leçon ${(mod.lessons?.length || 0) + 1}`;
+    const lessonCount = (mod.lessons || []).filter(l => !l.is_module_intro).length;
+    const title = `Leçon ${lessonCount + 1}`;
     const data = await api('create_lesson', { course_id: course.id, module_id: mod.id, title });
     if (data.success) {
       const newLesson = data.lesson;
@@ -412,6 +415,32 @@ export default function StudioConceptionFormation() {
     if (currentLesson?.id) {
       await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: newBlocks.map(b => b.id) });
     }
+  }
+
+  async function moveBlock(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= blocks.length || !currentLesson?.id) return;
+    const next = [...blocks];
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    setBlocks(next);
+    await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
+    showToast(delta < 0 ? 'Bloc déplacé vers le haut' : 'Bloc déplacé vers le bas');
+  }
+
+  async function saveCurrentPage(goNext = false) {
+    if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; }
+    await api('autosave', { course_id: courseRef.current.id, title: courseRef.current.title, short_description: courseRef.current.short_description, word_count: wordCount });
+    setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+    showToast('Page enregistrée');
+    if (!goNext || !currentModule || !currentLesson) return;
+    const modIndex = modules.findIndex(m => m.id === currentModule.id);
+    const lessonIndex = (currentModule.lessons || []).findIndex(l => l.id === currentLesson.id);
+    const nextLesson = currentModule.lessons?.[lessonIndex + 1];
+    if (nextLesson) { await selectLesson(currentModule, nextLesson); return; }
+    const nextModule = modules[modIndex + 1];
+    if (nextModule?.lessons?.length) { await selectLesson(nextModule, nextModule.lessons[0]); return; }
+    showToast('Dernière page de la formation', 'info');
   }
 
   // ─── Créer / sauvegarder le brouillon ─────────────────────
@@ -796,17 +825,20 @@ export default function StudioConceptionFormation() {
                       <button key={lesson.id}
                         onClick={() => selectLesson(mod, lesson)}
                         className="text-xs px-2 py-0.5 rounded-full border transition-all"
+                        title={lesson.is_module_intro ? 'Présentation facultative du module' : lesson.title}
                         style={currentLesson?.id === lesson.id
                           ? { background: '#002050', color: 'white', borderColor: '#002050' }
-                          : { borderColor: '#E4E7EC', color: '#6B7280' }}>
-                        {lesson.title}
+                          : { borderColor: lesson.is_module_intro ? '#BF8813' : '#E4E7EC', color: lesson.is_module_intro ? '#92400E' : '#6B7280', background: lesson.is_module_intro ? '#FFFBEB' : 'white' }}>
+                        {lesson.is_module_intro ? 'Présentation du module' : lesson.title}
                       </button>
                     ))}
-                    <button onClick={() => addLesson(mod)} disabled={locked}
-                      className="text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
-                      style={{ borderColor: '#BF8813', color: '#BF8813' }}>
-                      + Leçon
-                    </button>
+                    {!mod.is_intro && (
+                      <button onClick={() => addLesson(mod)} disabled={locked}
+                        className="text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
+                        style={{ borderColor: '#BF8813', color: '#BF8813' }}>
+                        + Leçon
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -951,7 +983,10 @@ export default function StudioConceptionFormation() {
                       setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === currentLesson.id ? { ...l, title: newTitle } : l) })));
                       await api('update_lesson', { lesson_id: currentLesson.id, title: newTitle });
                     }}
-                    disabled={locked} />
+                    disabled={locked} spellCheck lang="fr" />
+                  {currentLesson.is_module_intro && (
+                    <p className="text-xs mt-2" style={{ color: '#6B7280' }}>Cette présentation est facultative. Utilisez les blocs pour expliquer le module, ses objectifs, sa méthode ou ses ressources avant la première leçon.</p>
+                  )}
                 </div>
 
                 {/* Blocs */}
@@ -983,6 +1018,12 @@ export default function StudioConceptionFormation() {
                               )}
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button title="Déplacer vers le haut" onClick={e => { e.stopPropagation(); moveBlock(idx, -1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === 0}>
+                                <ChevronUp size={12} style={{ color: '#6B7280' }} />
+                              </button>
+                              <button title="Déplacer vers le bas" onClick={e => { e.stopPropagation(); moveBlock(idx, 1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === blocks.length - 1}>
+                                <ChevronDown size={12} style={{ color: '#6B7280' }} />
+                              </button>
                               <button onClick={e => { e.stopPropagation(); duplicateBlock(block); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
                                 <Copy size={12} style={{ color: '#6B7280' }} />
                               </button>
@@ -1016,6 +1057,16 @@ export default function StudioConceptionFormation() {
                       <p className="text-sm" style={{ color: '#9CA3AF' }}>+ Glissez un bloc ici ou cliquez dans la bibliothèque</p>
                     </div>
                   )}
+                  <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3">
+                    <button type="button" onClick={() => saveCurrentPage(false)} disabled={saving || locked}
+                      className="px-4 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-50" style={{ borderColor: '#002050', color: '#002050', background: 'white' }}>
+                      Enregistrer
+                    </button>
+                    <button type="button" onClick={() => saveCurrentPage(true)} disabled={saving || locked}
+                      className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>
+                      Enregistrer et page suivante <ChevronRight size={14} className="inline ml-1" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1078,7 +1129,7 @@ export default function StudioConceptionFormation() {
                     value={aiAction} onChange={e => setAiAction(e.target.value)}>
                     <option value="ai_improve_text">Améliorer un texte</option>
                     <option value="ai_simplify_text">Simplifier un texte</option>
-                    <option value="ai_fix_grammar">Corriger la grammaire</option>
+                    <option value="ai_correct_grammar">Corriger l’orthographe et la grammaire</option>
                     <option value="ai_summarize">Résumer un texte</option>
                     <option value="ai_generate_qcm">Générer un QCM</option>
                     <option value="ai_generate_true_false">Générer Vrai/Faux</option>
@@ -1234,6 +1285,54 @@ export default function StudioConceptionFormation() {
   );
 }
 
+
+function stripHtml(html: string) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+function RichTextEditor({ value, onChange, locked, placeholder, headingLevel }: {
+  value: string; onChange: (html: string) => void; locked: boolean; placeholder: string; headingLevel?: 1 | 2;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [color, setColor] = useState('#002050');
+  const [fontSize, setFontSize] = useState(headingLevel === 1 ? '5' : headingLevel === 2 ? '4' : '3');
+  useEffect(() => { if (ref.current && ref.current.innerHTML !== value) ref.current.innerHTML = value || ''; }, [value]);
+  function command(cmd: string, arg?: string) {
+    ref.current?.focus();
+    document.execCommand(cmd, false, arg);
+    if (ref.current) onChange(ref.current.innerHTML);
+  }
+  return (
+    <div className="rounded-xl border overflow-hidden bg-white" style={{ borderColor: '#E4E7EC' }}>
+      {!locked && (
+        <div className="flex flex-wrap items-center gap-1 px-2 py-2 border-b" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
+          <select value={fontSize} onChange={e => { setFontSize(e.target.value); command('fontSize', e.target.value); }} className="text-xs border rounded px-1.5 py-1" aria-label="Taille du texte">
+            <option value="2">Petit</option><option value="3">Normal</option><option value="4">Grand</option><option value="5">Très grand</option><option value="6">Titre</option>
+          </select>
+          <select onChange={e => command('fontName', e.target.value)} className="text-xs border rounded px-1.5 py-1" aria-label="Police">
+            <option value="Inter">Inter</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option>
+          </select>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('bold')} className="px-2 py-1 text-xs font-bold rounded hover:bg-white">B</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('italic')} className="px-2 py-1 text-xs italic rounded hover:bg-white">I</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('underline')} className="px-2 py-1 text-xs underline rounded hover:bg-white">U</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('strikeThrough')} className="px-2 py-1 text-xs line-through rounded hover:bg-white">S</button>
+          <input type="color" value={color} onChange={e => { setColor(e.target.value); command('foreColor', e.target.value); }} className="w-7 h-7 rounded border p-0.5" title="Couleur du texte" />
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('removeFormat')} className="px-2 py-1 text-xs rounded hover:bg-white">Effacer le style</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('undo')} className="px-2 py-1 text-xs rounded hover:bg-white">↶</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('redo')} className="px-2 py-1 text-xs rounded hover:bg-white">↷</button>
+        </div>
+      )}
+      <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang="fr" data-placeholder={placeholder}
+        onInput={() => ref.current && onChange(ref.current.innerHTML)}
+        className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor`}
+        style={{ color: headingLevel ? '#002050' : '#374151' }} />
+      {!locked && <div className="px-3 py-1.5 border-t text-[11px]" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>Correction automatique du navigateur activée. Pour une correction approfondie, utilisez « Corriger l’orthographe et la grammaire » dans l’Assistant IA.</div>}
+    </div>
+  );
+}
+
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
 function BlockPreview({ block, def, locked, onChange }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
@@ -1245,17 +1344,16 @@ function BlockPreview({ block, def, locked, onChange }: {
 
   switch (block.block_type) {
     case 'heading': return (
-      <input className="text-xl font-black bg-transparent border-none outline-none w-full" style={{ color: '#002050' }}
-        value={c.text || ''} onChange={e => onChange({ ...c, text: e.target.value })} placeholder="Titre..." disabled={locked} />
+      <RichTextEditor value={c.html || c.text || ''} locked={locked} headingLevel={1}
+        placeholder="Titre..." onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'subheading': return (
-      <input className="text-lg font-bold bg-transparent border-none outline-none w-full" style={{ color: '#374151' }}
-        value={c.text || ''} onChange={e => onChange({ ...c, text: e.target.value })} placeholder="Sous-titre..." disabled={locked} />
+      <RichTextEditor value={c.html || c.text || ''} locked={locked} headingLevel={2}
+        placeholder="Sous-titre..." onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'text': return (
-      <textarea className={inputCls} style={{ ...style, resize: 'vertical', minHeight: '100px' }} rows={4}
-        value={(c.html || '').replace(/<[^>]+>/g, '')} disabled={locked}
-        onChange={e => onChange({ ...c, html: `<p>${e.target.value}</p>` })} placeholder="Saisissez votre texte..." />
+      <RichTextEditor value={c.html || ''} locked={locked} placeholder="Saisissez votre texte..."
+        onChange={html => onChange({ ...c, html })} />
     );
     case 'callout': return (
       <div className="flex gap-2 p-3 rounded-lg" style={{ background: c.type === 'warning' ? '#FEF3C7' : c.type === 'error' ? '#FEE2E2' : '#EFF6FF' }}>
@@ -1483,29 +1581,29 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       {/* Paramètres vidéo */}
       {block.block_type === 'video' && (
         <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Source de la vidéo</label>
+            <div className="flex gap-3 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" name={`video_source_${block.id}`} checked={(c.source || 'upload') === 'upload'} onChange={() => onUpdate({ content_json: { ...c, source: 'upload' } })} disabled={locked} /> Importer un fichier</label>
+              <label className="flex items-center gap-2"><input type="radio" name={`video_source_${block.id}`} checked={c.source === 'url'} onChange={() => onUpdate({ content_json: { ...c, source: 'url' } })} disabled={locked} /> URL</label>
+            </div>
+          </div>
+          {c.source === 'url' && (
+            <input className={inputCls} style={style} value={c.url || ''} onChange={e => onUpdate({ content_json: { ...c, url: e.target.value } })} placeholder="YouTube, Vimeo ou URL directe" disabled={locked} />
+          )}
           <label className="flex items-center justify-between cursor-pointer">
             <div>
-              <p className="text-sm font-semibold" style={{ color: '#002050' }}>Mode simple</p>
-              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Vidéo non chargée automatiquement (éco-data)</p>
+              <p className="text-sm font-semibold" style={{ color: '#002050' }}>Mode éco-data</p>
+              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>La vidéo n’est chargée qu’après une action de l’apprenant.</p>
             </div>
-            <div className={`w-10 h-6 rounded-full relative transition-all cursor-pointer ${c.eco_data ? 'bg-[#002050]' : 'bg-gray-200'}`}
-              onClick={() => onUpdate({ content_json: { ...c, eco_data: !c.eco_data } })}>
+            <div className={`w-10 h-6 rounded-full relative transition-all cursor-pointer ${c.eco_data ? 'bg-[#002050]' : 'bg-gray-200'}`} onClick={() => onUpdate({ content_json: { ...c, eco_data: !c.eco_data } })}>
               <span className="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform" style={{ transform: c.eco_data ? 'translateX(20px)' : 'translateX(4px)' }} />
-            </div>
-          </label>
-          <label className="flex items-center justify-between cursor-pointer">
-            <div>
-              <p className="text-sm font-semibold" style={{ color: '#002050' }}>Mode avancé</p>
-              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Options de personnalisation et accessibilité</p>
-            </div>
-            <div className="w-10 h-6 rounded-full relative bg-gray-200">
-              <span className="absolute top-1 w-4 h-4 bg-white rounded-full shadow" style={{ transform: 'translateX(4px)' }} />
             </div>
           </label>
         </div>
       )}
-       {/* Upload fichiers — PDF, Word, Excel, Audio, SCORM, Download */}
-      {['pdf', 'word', 'excel', 'audio', 'scorm', 'download'].includes(block.block_type) && (
+       {/* Upload fichiers — Vidéo, PDF, Word, Excel, Audio, SCORM, Download */}
+      {['video', 'pdf', 'word', 'excel', 'audio', 'scorm', 'download'].includes(block.block_type) && ((block.block_type !== 'video' || (c.source || 'upload') === 'upload') && (
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>
@@ -1530,6 +1628,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                 style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
                 <input type="file" className="hidden" disabled={locked}
                   accept={
+                    block.block_type === 'video' ? '.mp4,.mov,.avi,.mkv,.webm' :
                     block.block_type === 'pdf' ? '.pdf' :
                     block.block_type === 'word' ? '.doc,.docx' :
                     block.block_type === 'excel' ? '.xls,.xlsx,.csv' :
@@ -1549,7 +1648,8 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                   <div className="text-center">
                     <Download size={20} className="mx-auto mb-2" style={{ color: '#9CA3AF' }} />
                     <p className="text-xs font-semibold" style={{ color: '#374151' }}>
-                      {block.block_type === 'scorm' ? 'Glissez votre ZIP SCORM ici' :
+                      {block.block_type === 'video' ? 'Glissez votre vidéo ici' :
+                       block.block_type === 'scorm' ? 'Glissez votre ZIP SCORM ici' :
                        block.block_type === 'pdf' ? 'Glissez votre PDF ici' :
                        block.block_type === 'word' ? 'Glissez votre document Word ici' :
                        block.block_type === 'excel' ? 'Glissez votre fichier Excel ici' :
@@ -1622,7 +1722,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
             </label>
           )}
         </div>
-      )}
+      ))}
 
       {/* Upload image */}
       {block.block_type === 'image' && (

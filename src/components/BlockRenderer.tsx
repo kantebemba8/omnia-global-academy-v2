@@ -40,17 +40,17 @@ export function BlockRenderer({ block, onQuizAnswer }: BlockRendererProps) {
 
     // ── STRUCTURE ──────────────────────────────────────────────
     case 'heading':
-      return (
-        <h2 className="text-2xl font-black mt-6 mb-3 leading-tight" style={{ color: '#002050' }}>
-          {c.text || ''}
-        </h2>
+      return c.html ? (
+        <div className="text-2xl font-bold mt-6 mb-3 leading-tight" style={{ color: '#002050' }} dangerouslySetInnerHTML={{ __html: c.html }} />
+      ) : (
+        <h2 className="text-2xl font-bold mt-6 mb-3 leading-tight" style={{ color: '#002050' }}>{c.text || ''}</h2>
       );
 
     case 'subheading':
-      return (
-        <h3 className="text-lg font-bold mt-5 mb-2" style={{ color: '#374151' }}>
-          {c.text || ''}
-        </h3>
+      return c.html ? (
+        <div className="text-lg font-semibold mt-5 mb-2" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.html }} />
+      ) : (
+        <h3 className="text-lg font-semibold mt-5 mb-2" style={{ color: '#374151' }}>{c.text || ''}</h3>
       );
 
     case 'text':

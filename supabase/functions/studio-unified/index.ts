@@ -81,10 +81,19 @@ Deno.serve(async(req)=>{
    return json({success:true,course,modules});
   }
   if(action==="create_module"){
-   const {count}=await sb.from("course_modules").select("id",{count:"exact",head:true}).eq("course_id",courseId); const {data,error}=await sb.from("course_modules").insert({course_id:courseId,title:b.title||`Module ${(count||0)+1}`,objective:b.objective||"",position:count||0}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"module_created",{module_id:data.id});return json({success:true,module:data});
+   const {data:normalMods}=await sb.from("course_modules").select("id").eq("course_id",courseId).eq("is_intro",false);
+   const normalCount=(normalMods||[]).length;
+   const {data,error}=await sb.from("course_modules").insert({course_id:courseId,title:b.title||`Module ${normalCount+1}`,objective:b.objective||"",position:normalCount,is_intro:false}).select("*").single();if(error)throw error;
+   let introLesson:any=null;
+   if(b.create_module_introduction!==false){
+    const {data:lesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:"Présentation du module",position:-1,is_intro:false,is_module_intro:true}).select("*").single();if(lessonError)throw lessonError;
+    introLesson={...lesson,has_blocks:false,block_count:0};
+   }
+   await log(sb,courseId,userId,"module_created",{module_id:data.id,with_introduction:!!introLesson});return json({success:true,module:data,intro_lesson:introLesson});
   }
   if(action==="create_lesson"){
-   const {count}=await sb.from("course_lessons").select("id",{count:"exact",head:true}).eq("module_id",b.module_id);const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`Leçon ${(count||0)+1}`,position:count||0}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
+   const {data:normalLessons}=await sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("is_module_intro",false);const count=(normalLessons||[]).length;
+   const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`Leçon ${count+1}`,position:count,is_intro:false,is_module_intro:false}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
   }
   if(action==="get_blocks"){const {data,error}=await sb.from("lesson_blocks").select("*").eq("lesson_id",b.lesson_id).order("position");if(error)throw error;return json({success:true,blocks:data||[]})}
   if(action==="create_block"){
@@ -109,9 +118,10 @@ Deno.serve(async(req)=>{
    const {data:t}=await sb.from("course_studio_templates").select("*").eq("key",b.template_key).eq("is_active",true).maybeSingle();if(!t)return json({success:false,error:"TEMPLATE_NOT_FOUND"},404);
    if(b.replace_existing){await sb.from("course_modules").delete().eq("course_id",courseId).eq("is_intro",false)}
    for(const [mi,m] of (t.blueprint.modules||[]).entries()){
-    const {data:mod}=await sb.from("course_modules").insert({course_id:courseId,title:m.title,objective:m.objective||"",position:mi}).select("*").single();
+    const {data:mod}=await sb.from("course_modules").insert({course_id:courseId,title:m.title,objective:m.objective||"",position:mi,is_intro:false}).select("*").single();
+    await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:"Présentation du module",position:-1,is_intro:false,is_module_intro:true});
     for(const [li,l] of (m.lessons||[]).entries()){
-     const {data:lesson}=await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:l.title,position:li}).select("*").single();
+     const {data:lesson}=await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:l.title,position:li,is_intro:false,is_module_intro:false}).select("*").single();
      for(const [bi,type] of (l.blocks||[]).entries())await sb.from("lesson_blocks").insert({course_id:courseId,module_id:mod.id,lesson_id:lesson.id,block_type:type,position:bi,content_json:defaults[type]||{},settings_json:{},created_by:userId});
     }
    }
@@ -120,7 +130,7 @@ Deno.serve(async(req)=>{
   if(action==="validate_checklist"){
    const errors:string[]=[],warnings:string[]=[];const {data:c}=await sb.from("courses").select("*").eq("id",courseId).single();const {data:m}=await sb.from("course_modules").select("id,title,objective").eq("course_id",courseId);const {data:l}=await sb.from("course_lessons").select("id,title").eq("course_id",courseId);const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
    if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");if(!c.long_description?.trim())warnings.push("Ajoutez une présentation détaillée pour la fiche de vente.");if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
-   const normalModules=(m||[]).filter((x:any)=>!x.is_intro);const introModules=(m||[]).filter((x:any)=>x.is_intro);if(!introModules.length)errors.push("Ajoutez l’introduction de la formation.");if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");if(!(l||[]).length)errors.push("Ajoutez au moins une leçon.");for(const lesson of l||[]){const lb=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);if(!lb.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);if(!(lesson as any).is_intro&&!lb.some((x:any)=>["qcm","true_false","open_question","exercise","assignment_upload"].includes(x.block_type)))warnings.push(`Ajoutez une activité d’évaluation dans « ${lesson.title} ».`)}
+   const normalModules=(m||[]).filter((x:any)=>!x.is_intro);const introModules=(m||[]).filter((x:any)=>x.is_intro);if(!introModules.length)errors.push("Ajoutez l’introduction de la formation.");if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");if(!(l||[]).length)errors.push("Ajoutez au moins une leçon.");for(const lesson of l||[]){const lb=(bl||[]).filter((x:any)=>x.lesson_id===lesson.id);if(!(lesson as any).is_module_intro&&!lb.length)errors.push(`La leçon « ${lesson.title} » ne contient aucun bloc.`);if(!(lesson as any).is_intro&&!(lesson as any).is_module_intro&&!lb.some((x:any)=>["qcm","true_false","open_question","exercise","assignment_upload"].includes(x.block_type)))warnings.push(`Ajoutez une activité d’évaluation dans « ${lesson.title} ».`)}
    return json({success:true,valid:errors.length===0,errors,warnings});
   }
   if(action==="submit_course"){
