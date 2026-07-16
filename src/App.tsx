@@ -100,6 +100,7 @@ import StructureMembres from './pages/structure/StructureMembres';
 import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
+import StructureRecruitment from './pages/structure/StructureRecruitment';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
 import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
@@ -275,6 +276,16 @@ export default function App() {
 <Route path="/structure/avantages" element={<StructureAvantages />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
 <Route path="/structure/offres-emploi" element={<StructureJobs />} />
+<Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/offres" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/talents" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/favoris" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/candidats" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/entretiens" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/messages" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/statistiques" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/equipe" element={<StructureRecruitment />} />
+
 
         {/* Module 8 — Dashboard enseignant — always accessible */}
         <Route path="/staff/dashboard" element={<EnseignantDashboard />} />

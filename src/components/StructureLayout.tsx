@@ -4,6 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, User, LogOut,
   ChevronRight, Menu, X, Building2, UserCheck, Shield, Briefcase, Search,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -18,6 +19,12 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/codes',               label: 'Codes structure',           icon: QrCode },
   { path: '/structure/avantages',           label: 'Avantages structure',       icon: Gift },
   { path: '/structure/offres-emploi',       label: 'Offres d’emploi',           icon: Briefcase },
+  { path: '/structure/recrutement/dashboard',label: 'Recrutement',               icon: UserRoundSearch },
+  { path: '/structure/recrutement/talents',  label: 'Recherche de talents',      icon: Search },
+  { path: '/structure/recrutement/favoris',  label: 'Talents favoris',           icon: Heart },
+  { path: '/structure/recrutement/candidats',label: 'Candidats',                 icon: Users },
+  { path: '/structure/recrutement/entretiens',label:'Entretiens',                icon: CalendarDays },
+  { path: '/structure/recrutement/messages', label: 'Messages recrutement',      icon: MessageSquare },
   { path: '/talent',                         label: 'Talent Omnia',              icon: Search },
   { path: '/structure/equipe',              label: 'Équipe de la structure',    icon: Shield },
   { path: '/structure/statistiques',        label: 'Statistiques',              icon: BarChart2 },
