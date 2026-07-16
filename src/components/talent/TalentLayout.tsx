@@ -1,8 +1,8 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Building2, Compass, Home, Info, LogIn, Menu,
-  MessageSquare, Search, Search, UsersRound, X,
+  ArrowLeft, Briefcase, Compass, Home, Info, LogIn, Menu,
+  MessageSquare, Search,
 } from 'lucide-react';
 
 const BLUE = '#002050';
@@ -31,11 +31,23 @@ function initials(name?: string) {
     : name.slice(0, 2).toUpperCase();
 }
 
+
+function dashboardPath(roles: string[] = []) {
+  if (roles.includes('super_admin')) return '/admin/dashboard';
+  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/dashboard';
+  if (roles.includes('recruteur')) return '/talent/recruteur/dashboard';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/dashboard';
+  if (roles.includes('enseignant')) return '/staff/dashboard';
+  if (roles.includes('moderateur')) return '/moderateur/dashboard';
+  return '/dashboard';
+}
+
 export function TalentLayout({ children }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<StoredUser | null>(null);
+  const returnPath = dashboardPath(user?.roles || []);
 
   useEffect(() => {
     try {
@@ -93,10 +105,10 @@ export function TalentLayout({ children }: Props) {
               <p className="truncate text-sm font-semibold text-white">{user.full_name || 'Compte Omnia'}</p>
               <button
                 type="button"
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate(returnPath)}
                 className="text-xs text-white/50 hover:text-white"
               >
-                Retour à mon espace
+                Retour au Dashboard
               </button>
             </div>
           </div>
@@ -146,6 +158,11 @@ export function TalentLayout({ children }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {user && (
+              <button type="button" onClick={() => navigate(returnPath)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium" style={{ borderColor: '#E4E7EC', color: BLUE }}>
+                <ArrowLeft size={16} /> <span className="hidden sm:inline">Retour au Dashboard</span>
+              </button>
+            )}
             <Link to="/talent/explorer" className="hidden items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium sm:flex" style={{ borderColor: '#E4E7EC', color: BLUE }}>
               <Search size={16} /> Explorer
             </Link>

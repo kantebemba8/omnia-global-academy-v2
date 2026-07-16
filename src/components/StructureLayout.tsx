@@ -1,5 +1,5 @@
 import React, { ReactNode, useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, User, LogOut,
@@ -96,9 +96,10 @@ export function StructureLayout({ children, displayName }: Props) {
           const active = isActive(item);
           const Icon = item.icon;
           return (
-            <button
+            <Link
               key={item.path}
-              onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+              to={item.path}
+              onClick={() => setSidebarOpen(false)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
               style={{
                 background: active ? 'rgba(191,136,19,0.18)' : 'transparent',
@@ -113,7 +114,7 @@ export function StructureLayout({ children, displayName }: Props) {
                   {item.badge}
                 </span>
               )}
-            </button>
+            </Link>
           );
         })}
       </nav>
