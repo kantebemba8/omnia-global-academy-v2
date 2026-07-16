@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
   Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check,
@@ -513,6 +514,7 @@ export default function StudioConceptionFormation() {
       });
       if (data.success) {
         setCourse(data.course);
+        await api('ensure_assessments', { course_id: savedCourse.id });
         setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         showToast('✅ Informations enregistrées. Vous pouvez construire l’introduction, les modules et les leçons.');
       } else showToast(data.message || data.error || 'Erreur de sauvegarde', 'error');
@@ -691,7 +693,12 @@ export default function StudioConceptionFormation() {
       </div>
 
       {/* ── CORPS PRINCIPAL ──────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
+          <div className="pointer-events-auto max-w-4xl mx-auto">
+            <AssessmentRulesCard durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
+          </div>
+        </div>
 
         {/* ── COLONNE GAUCHE : Bibliothèque ────────────── */}
         <div className="bg-white border-r flex flex-col flex-shrink-0" style={{ width: '240px', borderColor: '#E4E7EC' }}>

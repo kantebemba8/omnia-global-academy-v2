@@ -7,6 +7,7 @@ import { QuizLecon, type QuizQuestion } from './QuizLecon';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
 import { ScormPlayer } from '../components/ScormPlayer';
+import { AssessmentEngine } from '../components/AssessmentEngine';
 interface AiMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -615,6 +616,18 @@ export function CoursLecteur() {
                     </div>
                   ))}
                 </div>
+              )}
+
+              {courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
+                <AssessmentEngine
+                  courseId={courseId}
+                  lessonId={currentLessonId}
+                  scope="lesson"
+                  onPassed={async () => {
+                    await loadProgress();
+                    setLessonData(prev => prev ? { ...prev, progress: { ...prev.progress, quiz_passed: true, is_completed: true } } : prev);
+                  }}
+                />
               )}
 
               {/* CPD row — hidden for external lessons */}

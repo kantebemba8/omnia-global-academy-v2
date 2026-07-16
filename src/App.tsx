@@ -1,3 +1,4 @@
+import { StudioEvaluations } from './pages/studio/StudioEvaluations';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { RootGate } from './components/RootGate';
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
@@ -264,6 +265,9 @@ export default function App() {
 <Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
 <Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
 <Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
+        <Route path="/admin/studio/:courseId/evaluations" element={<StudioEvaluations />} />
+        <Route path="/professeur/studio/:courseId/evaluations" element={<StudioEvaluations />} />
+        <Route path="/structure/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
         <Route path="/professeur/profile" element={<ProfesseurProfil />} />

@@ -79,7 +79,7 @@ Deno.serve(async(req)=>{
    if(action==="admin_reject"||action==="admin_request_changes")updates.is_published=false;
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;await log(sb,courseId,userId,action,{comment:b.comment||""});return json({success:true,course:data});
   }
-  if(courseId && !(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+  if(courseId && !["learner_get_assessment","learner_submit_assessment"].includes(action) && !(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
   if(action==="ensure_special_sections"){
    const {data:existing}=await sb.from("course_modules").select("*").eq("course_id",courseId).or("is_conclusion.eq.true,is_final_exam.eq.true");
    const result:any[]=[];
@@ -154,6 +154,73 @@ Deno.serve(async(req)=>{
    }
    await sb.from("courses").update({template_used:b.template_key,studio_mode:t.mode,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"template_applied",{template:b.template_key});return json({success:true});
   }
+
+  if(action==="ensure_assessments"){
+   const {data:course}=await sb.from("courses").select("id,title,creator_id,lesson_passing_score,module_passing_score,final_passing_score").eq("id",courseId).single();
+   const {data:mods}=await sb.from("course_modules").select("id,title,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
+   const {data:lessons}=await sb.from("course_lessons").select("id,module_id,title,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
+   const {data:blocks}=await sb.from("lesson_blocks").select("id,lesson_id,block_type,position,content_json,file_url,file_name").eq("course_id",courseId).order("position");
+   const evalTypes=["qcm","true_false","open_question","exercise","assignment_upload"];
+   const ensureOne=async(scope:string,title:string,moduleId?:string,lessonId?:string,passing=80)=>{
+    let q=sb.from("course_assessments").select("*").eq("course_id",courseId).eq("scope",scope);
+    if(lessonId)q=q.eq("lesson_id",lessonId); else if(moduleId)q=q.eq("module_id",moduleId); else q=q.is("module_id",null).is("lesson_id",null);
+    let {data:a}=await q.maybeSingle();
+    if(!a){const ins:any={course_id:courseId,module_id:moduleId||null,lesson_id:lessonId||null,scope,title,passing_score:passing,max_attempts:3,required:true,correction_mode:"mixed",created_by:userId,estimated_minutes:scope==="final"?45:scope==="module"?20:10};const r=await sb.from("course_assessments").insert(ins).select("*").single();a=r.data;}
+    const {count}=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",a.id);
+    if(!count){
+      const sourceLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((l:any)=>l.module_id===moduleId&&!l.is_module_intro).map((l:any)=>l.id):(lessons||[]).filter((l:any)=>l.is_final_exam).map((l:any)=>l.id);
+      const src=(blocks||[]).filter((x:any)=>sourceLessonIds.includes(x.lesson_id)&&evalTypes.includes(x.block_type));
+      for(const [i,bk] of src.entries()){
+       const c=bk.content_json||{}; let qt=bk.block_type==="assignment_upload"?"exercise":bk.block_type; const payload:any={assessment_id:a.id,question_type:qt,position:i,prompt:c.question||c.statement||c.title||c.instructions||"Question à compléter",points:Number(c.points||10),grading_mode:["qcm","true_false"].includes(qt)?"automatic":(c.grading_mode||"human"),options:c.options||[],correct_answer:qt==="qcm"?c.correctIndex:qt==="true_false"?c.answer:c.expected_answer||null,explanation:c.explanation||"",resource_files:c.resources||((bk.file_url)?[{name:bk.file_name||"Ressource",url:bk.file_url}]:[]),accepted_submission_types:c.accepted_types||["pdf","doc","docx","xls","xlsx","zip","png","jpg"],rubric:c.rubric||[]};
+       await sb.from("assessment_questions").insert(payload);
+      }
+    }
+    return a;
+   };
+   for(const l of lessons||[]){if(!l.is_intro&&!l.is_module_intro&&!l.is_conclusion&&!l.is_final_exam)await ensureOne("lesson",`Évaluation — ${l.title}`,l.module_id,l.id,course.lesson_passing_score||80)}
+   for(const m of mods||[]){if(!m.is_intro&&!m.is_conclusion&&!m.is_final_exam)await ensureOne("module",`Évaluation du module — ${m.title}`,m.id,undefined,course.module_passing_score||80)}
+   await ensureOne("final",`Examen final — ${course.title}`,undefined,undefined,course.final_passing_score||70);
+   const {data:all}=await sb.from("course_assessments").select("*,assessment_questions(count)").eq("course_id",courseId).order("scope");
+   return json({success:true,assessments:all||[]});
+  }
+  if(action==="learner_get_assessment"){
+   let q=sb.from("course_assessments").select("*").eq("course_id",courseId).eq("scope",b.scope||"lesson").eq("is_active",true);
+   if(b.lesson_id)q=q.eq("lesson_id",b.lesson_id);else if(b.module_id)q=q.eq("module_id",b.module_id);else q=q.is("lesson_id",null).is("module_id",null);
+   const {data:a}=await q.maybeSingle();if(!a)return json({success:true,assessment:null});
+   const {data:qs}=await sb.from("assessment_questions").select("id,question_type,position,prompt,options,explanation,points,resource_files,accepted_submission_types").eq("assessment_id",a.id).order("position");
+   const {data:last}=await sb.from("assessment_attempts").select("score,passed,status,attempt_number").eq("assessment_id",a.id).eq("user_id",userId).order("attempt_number",{ascending:false}).limit(1).maybeSingle();
+   return json({success:true,assessment:{...a,questions:qs||[],latest_attempt:last||null}});
+  }
+  if(action==="learner_submit_assessment"){
+   const assessmentId=b.assessment_id;const {data:a}=await sb.from("course_assessments").select("*").eq("id",assessmentId).single();
+   const {data:qs}=await sb.from("assessment_questions").select("*").eq("assessment_id",assessmentId).order("position");
+   const {count}=await sb.from("assessment_attempts").select("id",{count:"exact",head:true}).eq("assessment_id",assessmentId).eq("user_id",userId);const attemptNo=(count||0)+1;
+   if(attemptNo>Number(a.max_attempts||3))return json({success:false,error:"MAX_ATTEMPTS_REACHED"},400);
+   const answers=Array.isArray(b.answers)?b.answers:[];let earned=0,total=0,pending=false;
+   const {data:attempt,error:attErr}=await sb.from("assessment_attempts").insert({assessment_id:assessmentId,course_id:a.course_id,user_id:userId,attempt_number:attemptNo,status:"submitted",submitted_at:new Date().toISOString()}).select("*").single();if(attErr)throw attErr;
+   for(const qn of qs||[]){total+=Number(qn.points||0);const ans=answers.find((x:any)=>x.question_id===qn.id)?.answer;let autoScore:null|number=null;let review="not_required";
+    if(qn.question_type==="qcm")autoScore=Number(ans)===Number(qn.correct_answer)?Number(qn.points):0;
+    else if(qn.question_type==="true_false")autoScore=Boolean(ans)===Boolean(qn.correct_answer)?Number(qn.points):0;
+    else {pending=true;review="pending";}
+    if(autoScore!==null)earned+=autoScore;
+    await sb.from("assessment_answers").insert({attempt_id:attempt.id,question_id:qn.id,answer_json:ans===undefined?null:ans,submission_files:ans?.files||[],auto_score:autoScore,final_score:autoScore,review_status:review});
+   }
+   const score=total?Math.round((earned/total)*10000)/100:0;const passed=!pending&&score>=Number(a.passing_score);
+   await sb.from("assessment_attempts").update({score,passed,status:pending?"pending_review":passed?"passed":"failed"}).eq("id",attempt.id);
+   return json({success:true,attempt_id:attempt.id,score,passed,pending_review:pending,passing_score:a.passing_score});
+  }
+  if(action==="grader_list_attempts"){
+   const {data,error}=await sb.from("assessment_attempts").select("*,course_assessments(title,scope,lesson_id,module_id),users(full_name,email)").eq("course_id",courseId).in("status",["pending_review","submitted"]).order("submitted_at",{ascending:true});if(error)throw error;return json({success:true,attempts:data||[]});
+  }
+  if(action==="grader_grade_attempt"){
+   const {data:att}=await sb.from("assessment_attempts").select("*,course_assessments(passing_score)").eq("id",b.attempt_id).single();
+   for(const item of b.grades||[]){const {data:old}=await sb.from("assessment_answers").select("final_score").eq("id",item.answer_id).single();await sb.from("assessment_answers").update({final_score:item.score,grader_feedback:item.feedback||"",review_status:"reviewed",updated_at:new Date().toISOString()}).eq("id",item.answer_id);await sb.from("assessment_grading_history").insert({attempt_id:b.attempt_id,answer_id:item.answer_id,grader_id:userId,previous_score:old?.final_score,new_score:item.score,comment:item.feedback||""});}
+   const {data:answers}=await sb.from("assessment_answers").select("final_score,assessment_questions(points)").eq("attempt_id",b.attempt_id);let got=0,max=0;for(const x of answers||[]){got+=Number(x.final_score||0);max+=Number((x as any).assessment_questions?.points||0)}const score=max?Math.round(got/max*10000)/100:0;const passed=score>=Number((att as any).course_assessments?.passing_score||80);await sb.from("assessment_attempts").update({score,passed,status:passed?"passed":"failed",graded_at:new Date().toISOString(),graded_by:userId,feedback:b.feedback||""}).eq("id",b.attempt_id);return json({success:true,score,passed});
+  }
+  if(action==="assessment_analytics"){
+   const {data:ass}=await sb.from("course_assessments").select("id,title,scope").eq("course_id",courseId);const ids=(ass||[]).map((x:any)=>x.id);if(!ids.length)return json({success:true,summary:{attempts:0,pass_rate:0,average_score:0},items:[]});const {data:at}=await sb.from("assessment_attempts").select("assessment_id,score,passed,status,time_spent_seconds").in("assessment_id",ids).not("score","is",null);const total=(at||[]).length,passes=(at||[]).filter((x:any)=>x.passed).length,avg=total?(at||[]).reduce((n:number,x:any)=>n+Number(x.score||0),0)/total:0;return json({success:true,summary:{attempts:total,pass_rate:total?Math.round(passes/total*100):0,average_score:Math.round(avg*100)/100},items:ass||[]});
+  }
+
   if(action==="validate_checklist"){
    const errors:string[]=[],warnings:string[]=[];const {data:c}=await sb.from("courses").select("*").eq("id",courseId).single();const {data:m}=await sb.from("course_modules").select("id,title,objective").eq("course_id",courseId);const {data:l}=await sb.from("course_lessons").select("id,title").eq("course_id",courseId);const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
    if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");if(!c.long_description?.trim())warnings.push("Ajoutez une présentation détaillée pour la fiche de vente.");if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
