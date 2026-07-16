@@ -111,4 +111,5 @@ export const ENDPOINTS ={
   demoHeartbeat: `${API_BASE_URL}/demo-heartbeat`,
  waitlistStats: `${API_BASE_URL}/waitlist-stats`,
   structureManage: `${API_BASE_URL}/structure-manage`,
+  talentRecruitment: `${API_BASE_URL}/talent-recruitment`,
 } as const;

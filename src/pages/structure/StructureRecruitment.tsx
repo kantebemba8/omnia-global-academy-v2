@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { loadPublicTalents, PublicTalent } from '../talent/talentApi';
+import { contactTalent, loadPublicTalents, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, toggleTalentFavorite } from '../talent/talentApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -14,7 +14,7 @@ const BORDER = '#E4E7EC';
 const MUTED = '#6B7280';
 
 type Section = 'dashboard'|'offres'|'talents'|'favoris'|'candidats'|'entretiens'|'messages'|'statistiques'|'equipe';
-type Favorite = { id:string; name:string; title?:string; location?:string; photo_url?:string };
+type Favorite = PublicTalent;
 type Job = { id:string; title?:string; status?:string; applications_count?:number; location?:string; contract_type?:string };
 type Application = { id:string; status?:string; tracking_status?:string; users?:{full_name?:string;email?:string}|null; job_offers?:{title?:string}|null };
 
@@ -63,15 +63,23 @@ export default function StructureRecruitment(){
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
   const [query,setQuery] = useState('');
-  const [favorites,setFavorites] = useState<Favorite[]>(()=>{try{return JSON.parse(localStorage.getItem('omnia_structure_talent_favorites')||'[]')}catch{return[]}});
+  const [favorites,setFavorites] = useState<Favorite[]>([]);
+  const [interviews,setInterviews] = useState<TalentInterview[]>([]);
+  const [conversations,setConversations] = useState<TalentConversation[]>([]);
+  const [contactTarget,setContactTarget] = useState<PublicTalent|null>(null);
+  const [contactMessage,setContactMessage] = useState('');
+  const [contactBusy,setContactBusy] = useState(false);
 
   useEffect(()=>{
     let alive = true;
-    Promise.allSettled([loadPublicTalents(),loadRecruitmentData()]).then(results=>{
+    Promise.allSettled([loadPublicTalents(),loadRecruitmentData(),loadTalentFavorites('structure'),loadTalentInterviews('structure'),loadTalentConversations('structure')]).then(results=>{
       if(!alive) return;
       if(results[0].status==='fulfilled') setTalents(results[0].value); else setError('Les profils publics ne sont pas disponibles pour le moment.');
       if(results[1].status==='fulfilled') { setJobs(results[1].value.jobs); setApplications(results[1].value.applications); }
       else setError(prev=>prev || 'Les données de recrutement de la Structure ne sont pas disponibles pour le moment.');
+      if(results[2].status==='fulfilled') setFavorites(results[2].value);
+      if(results[3].status==='fulfilled') setInterviews(results[3].value);
+      if(results[4].status==='fulfilled') setConversations(results[4].value);
       setLoading(false);
     });
     return ()=>{alive=false};
@@ -83,12 +91,22 @@ export default function StructureRecruitment(){
     return talents.filter(t=>[t.full_name,t.professional_title,t.location,t.country,...(t.skills||[]),...(t.sectors||[])].filter(Boolean).join(' ').toLowerCase().includes(q));
   },[talents,query]);
 
-  function toggleFavorite(t:PublicTalent){
-    const next = favorites.some(f=>f.id===t.id)
-      ? favorites.filter(f=>f.id!==t.id)
-      : [...favorites,{id:t.id,name:t.full_name,title:t.professional_title,location:t.location||t.country,photo_url:t.photo_url}];
-    setFavorites(next);
-    localStorage.setItem('omnia_structure_talent_favorites',JSON.stringify(next));
+  async function toggleFavorite(t:PublicTalent){
+    try {
+      const result = await toggleTalentFavorite(t.id,'structure');
+      setFavorites(prev=>result.favorite?[...prev.filter(f=>f.id!==t.id),t]:prev.filter(f=>f.id!==t.id));
+    } catch(e) { setError(e instanceof Error?e.message:'Favori indisponible.'); }
+  }
+
+  async function submitContact(){
+    if(!contactTarget || contactMessage.trim().length<5) return;
+    setContactBusy(true);
+    try {
+      await contactTalent(contactTarget.id,contactMessage.trim(),'Prise de contact Structure','structure');
+      setConversations(await loadTalentConversations('structure'));
+      setContactTarget(null); setContactMessage('');
+    } catch(e) { setError(e instanceof Error?e.message:'Contact indisponible.'); }
+    finally { setContactBusy(false); }
   }
 
   const titles:Record<Section,string> = {
@@ -105,14 +123,15 @@ export default function StructureRecruitment(){
       {error && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
       {section==='dashboard' && <Dashboard jobs={jobs} applications={applications} talents={talents} favorites={favorites} loading={loading}/>} 
       {section==='offres' && <OffersRedirect jobs={jobs}/>} 
-      {section==='talents' && <Talents talents={filteredTalents} query={query} setQuery={setQuery} loading={loading} favorites={favorites} toggleFavorite={toggleFavorite}/>} 
-      {section==='favoris' && <Favorites favorites={favorites}/>} 
+      {section==='talents' && <Talents talents={filteredTalents} query={query} setQuery={setQuery} loading={loading} favorites={favorites} toggleFavorite={toggleFavorite} contact={setContactTarget}/>} 
+      {section==='favoris' && <Favorites favorites={favorites} contact={setContactTarget}/>} 
       {section==='candidats' && <Candidates applications={applications}/>} 
-      {section==='entretiens' && <EmptyState icon={CalendarDays} title="Aucun entretien programmé" text="Les entretiens liés aux candidatures de votre Structure seront centralisés ici lors de la synchronisation backend."/>}
-      {section==='messages' && <EmptyState icon={MessageSquare} title="Aucun message" text="Les échanges avec les talents apparaîtront ici. Aucun message fictif n’est affiché."/>}
+      {section==='entretiens' && <Interviews interviews={interviews}/>}
+      {section==='messages' && <Conversations conversations={conversations}/>}
       {section==='statistiques' && <Statistics jobs={jobs} applications={applications} favorites={favorites}/>} 
       {section==='equipe' && <Team/>}
     </div>
+    {contactTarget && <ContactModal talent={contactTarget} message={contactMessage} setMessage={setContactMessage} busy={contactBusy} close={()=>{setContactTarget(null);setContactMessage('')}} submit={submitContact}/>}
   </StructureLayout>;
 }
 
@@ -138,18 +157,17 @@ function OffersRedirect({jobs}:{jobs:Job[]}){
   return <div className="rounded-2xl border bg-white p-6" style={{borderColor:BORDER}}><div className="flex flex-wrap items-center justify-between gap-4"><div><h2 className="text-base font-semibold" style={{color:BLUE}}>Gestion des offres</h2><p className="mt-1 text-sm" style={{color:MUTED}}>{jobs.length} offre(s) rattachée(s) à votre Structure.</p></div><Link to="/structure/offres-emploi" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>Ouvrir la gestion des offres<ArrowRight size={16}/></Link></div></div>;
 }
 
-function Talents({talents,query,setQuery,loading,favorites,toggleFavorite}:any){
+function Talents({talents,query,setQuery,loading,favorites,toggleFavorite,contact}:any){
   return <>
     <div className="flex flex-col gap-3 sm:flex-row"><label className="relative flex-1"><Search className="absolute left-3 top-3 text-gray-400" size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Métier, compétence, secteur, pays…" className="w-full rounded-xl border bg-white py-2.5 pl-10 pr-3 text-sm outline-none" style={{borderColor:BORDER}}/></label><select className="rounded-xl border bg-white px-3 py-2.5 text-sm" style={{borderColor:BORDER}}><option>Toutes les disponibilités</option><option>Disponible immédiatement</option><option>En poste</option><option>Freelance</option></select></div>
-    {loading?<p className="mt-8 text-sm" style={{color:MUTED}}>Chargement des profils publics…</p>:talents.length===0?<div className="mt-6"><EmptyState icon={UsersRound} title="Aucun talent trouvé" text="Seuls les profils rendus visibles dans Omnia Career apparaissent ici."/></div>:<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{talents.map((t:PublicTalent)=>{const fav=favorites.some((f:Favorite)=>f.id===t.id);return <article key={t.id} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-start gap-3"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{t.photo_url?<img src={t.photo_url} alt="" className="h-full w-full object-cover"/>:t.full_name.slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold" style={{color:BLUE}}>{t.full_name}</h3><p className="truncate text-xs" style={{color:MUTED}}>{t.professional_title||'Profil professionnel'}</p><p className="mt-1 truncate text-xs" style={{color:MUTED}}>{t.location||t.country||'Localisation non renseignée'}</p></div><button onClick={()=>toggleFavorite(t)} className="rounded-lg p-2" aria-label="Favori"><Heart size={18} fill={fav?GOLD:'none'} color={fav?GOLD:'#9CA3AF'}/></button></div><div className="mt-4 flex flex-wrap gap-2">{(t.skills||[]).slice(0,4).map(s=><span key={s} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">{s}</span>)}</div><div className="mt-5 flex gap-2"><Link to={`/talent/profil/${t.id}`} className="flex-1 rounded-xl border px-3 py-2 text-center text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Voir le profil</Link><button className="rounded-xl px-3 py-2 text-white" style={{background:BLUE}}><Mail size={16}/></button></div></article>})}</div>}
+    {loading?<p className="mt-8 text-sm" style={{color:MUTED}}>Chargement des profils publics…</p>:talents.length===0?<div className="mt-6"><EmptyState icon={UsersRound} title="Aucun talent trouvé" text="Seuls les profils rendus visibles dans Omnia Career apparaissent ici."/></div>:<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{talents.map((t:PublicTalent)=>{const fav=favorites.some((f:Favorite)=>f.id===t.id);return <article key={t.id} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-start gap-3"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{t.photo_url?<img src={t.photo_url} alt="" className="h-full w-full object-cover"/>:t.full_name.slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold" style={{color:BLUE}}>{t.full_name}</h3><p className="truncate text-xs" style={{color:MUTED}}>{t.professional_title||'Profil professionnel'}</p><p className="mt-1 truncate text-xs" style={{color:MUTED}}>{t.location||t.country||'Localisation non renseignée'}</p></div><button onClick={()=>toggleFavorite(t)} className="rounded-lg p-2" aria-label="Favori"><Heart size={18} fill={fav?GOLD:'none'} color={fav?GOLD:'#9CA3AF'}/></button></div><div className="mt-4 flex flex-wrap gap-2">{(t.skills||[]).slice(0,4).map(s=><span key={s} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">{s}</span>)}</div><div className="mt-5 flex gap-2"><Link to={`/talent/profil/${t.id}`} className="flex-1 rounded-xl border px-3 py-2 text-center text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Voir le profil</Link><button onClick={()=>contact(t)} className="rounded-xl px-3 py-2 text-white" style={{background:BLUE}}><Mail size={16}/></button></div></article>})}</div>}
   </>;
 }
 
-function Favorites({favorites}:{favorites:Favorite[]}){
+function Favorites({favorites,contact}:{favorites:Favorite[];contact:(t:PublicTalent)=>void}){
   if(!favorites.length) return <EmptyState icon={Heart} title="Aucun talent favori" text="Ajoutez des profils depuis la recherche de talents pour les retrouver ici."/>;
-  return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{favorites.map(f=><Link key={f.id} to={`/talent/profil/${f.id}`} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{f.photo_url?<img src={f.photo_url} alt="" className="h-full w-full object-cover"/>:f.name.slice(0,2).toUpperCase()}</div><div><p className="text-sm font-semibold" style={{color:BLUE}}>{f.name}</p><p className="text-xs" style={{color:MUTED}}>{f.title||'Profil professionnel'}</p></div></div></Link>)}</div>;
+  return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{favorites.map(f=><div key={f.id} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{f.photo_url?<img src={f.photo_url} alt="" className="h-full w-full object-cover"/>:f.full_name.slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{f.full_name}</p><p className="truncate text-xs" style={{color:MUTED}}>{f.professional_title||'Profil professionnel'}</p></div></div><div className="mt-4 flex gap-2"><Link to={`/talent/profil/${f.id}`} className="flex-1 rounded-xl border px-3 py-2 text-center text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Voir</Link><button onClick={()=>contact(f)} className="rounded-xl px-3 py-2 text-white" style={{background:BLUE}}><Mail size={16}/></button></div></div>)}</div>;
 }
-
 function Candidates({applications}:{applications:Application[]}){
   if(!applications.length) return <EmptyState icon={FileText} title="Aucun candidat" text="Les candidatures reçues sur les offres de votre Structure apparaîtront ici."/>;
   return <div className="rounded-2xl border bg-white" style={{borderColor:BORDER}}><div className="divide-y">{applications.map(a=><div key={a.id} className="flex flex-wrap items-center gap-3 p-4"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{(a.users?.full_name||a.users?.email||'CA').slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{a.users?.full_name||a.users?.email||'Candidat'}</p><p className="truncate text-xs" style={{color:MUTED}}>{a.job_offers?.title||'Offre'}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:'rgba(191,136,19,.12)',color:GOLD}}>{a.tracking_status||a.status||'reçue'}</span></div>)}</div></div>;
@@ -160,6 +178,20 @@ function Statistics({jobs,applications,favorites}:{jobs:Job[];applications:Appli
   const interview=applications.filter(a=>(a.tracking_status||a.status)==='interview').length;
   const metrics=[['Offres totales',jobs.length],['Candidatures',applications.length],['Entretiens',interview],['Acceptées',accepted],['Favoris',favorites.length]];
   return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{metrics.map(([label,value])=><div key={String(label)} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>{label}</p><p className="mt-2 text-2xl font-semibold" style={{color:BLUE}}>{value}</p></div>)}</div>;
+}
+
+function Interviews({interviews}:{interviews:TalentInterview[]}){
+  if(!interviews.length) return <EmptyState icon={CalendarDays} title="Aucun entretien programmé" text="Les demandes d’entretien réelles de votre Structure apparaîtront ici."/>;
+  return <div className="space-y-3">{interviews.map(i=><div key={i.id} className="rounded-2xl border bg-white p-4" style={{borderColor:BORDER}}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold" style={{color:BLUE}}>{i.title}</p><p className="mt-1 text-xs" style={{color:MUTED}}>{i.talent?.full_name||'Talent'} · {new Date(i.scheduled_at).toLocaleString('fr-FR')}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:'rgba(191,136,19,.12)',color:GOLD}}>{i.status}</span></div></div>)}</div>;
+}
+
+function Conversations({conversations}:{conversations:TalentConversation[]}){
+  if(!conversations.length) return <EmptyState icon={MessageSquare} title="Aucun message" text="Les conversations réelles de la Structure avec les talents apparaîtront ici."/>;
+  return <div className="divide-y rounded-2xl border bg-white" style={{borderColor:BORDER}}>{conversations.map(c=><div key={c.id} className="flex items-center gap-3 p-4"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{(c.talent?.full_name||'TA').slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{c.talent?.full_name||'Talent'}</p><p className="truncate text-xs" style={{color:MUTED}}>{c.last_message?.body||c.subject||'Conversation'}</p></div><span className="text-xs text-gray-400">{new Date(c.last_message_at).toLocaleDateString('fr-FR')}</span></div>)}</div>;
+}
+
+function ContactModal({talent,message,setMessage,busy,close,submit}:any){
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-6"><div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold" style={{color:BLUE}}>Contacter {talent.full_name}</h2><p className="mt-1 text-sm" style={{color:MUTED}}>La prise de contact sera enregistrée et notifiée.</p></div><button onClick={close} className="text-gray-500">×</button></div><textarea value={message} onChange={e=>setMessage(e.target.value)} rows={6} className="mt-5 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Présentez votre opportunité."/><div className="mt-5 flex justify-end gap-2"><button onClick={close} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Annuler</button><button onClick={submit} disabled={busy||message.trim().length<5} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>{busy?'Envoi…':'Envoyer'}</button></div></div></div>;
 }
 
 function Team(){
