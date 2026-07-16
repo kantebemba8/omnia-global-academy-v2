@@ -117,6 +117,7 @@ import TalentDirectory from './pages/TalentDirectory';
 import TalentHome from './pages/talent/TalentHome';
 import TalentExplore from './pages/talent/TalentExplore';
 import TalentRecruiters from './pages/talent/TalentRecruiters';
+import RecruiterDashboard from './pages/talent/RecruiterDashboard';
 import TalentAbout from './pages/talent/TalentAbout';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 
@@ -164,6 +165,15 @@ export default function App() {
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
+          <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/favoris" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/candidatures" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/entretiens" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/messages" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/profil" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/parametres" element={<RecruiterDashboard />} />
           <Route path="/talent/a-propos" element={<TalentAbout />} />
           <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
