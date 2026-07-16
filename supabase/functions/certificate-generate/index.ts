@@ -291,226 +291,58 @@ body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;po
 </body></html>`;
 }
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-
+  if (req.method === "OPTIONS") return new Response(null,{status:200,headers:corsHeaders});
+  const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const token=req.headers.get("Authorization")?.replace("Bearer ","")||"";
+    let callerId=token?await verifySession(sb,token):null;
+    if(!callerId&&token){const {data}=await sb.auth.getUser(token);callerId=data.user?.id||null;}
+    if(!callerId)return json({error:"UNAUTHORIZED"},401);
+    const body=await req.json(); const userId=body.user_id||callerId, courseId=body.course_id;
+    if(!courseId)return json({error:"MISSING_FIELDS"},400);
+    if(userId!==callerId){const {data:r}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!r)return json({error:"FORBIDDEN"},403);}
 
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (!token) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    const callerId = await verifySession(sb, token);
-    if (!callerId) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const {data:assessments}=await sb.from("course_assessments").select("id,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);
+    const missing:string[]=[];
+    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||(a.scope==="final"?70:80)))missing.push(`${a.scope}:${a.id}`);}
+    const {data:attemptIds}=await sb.from("assessment_attempts").select("id").eq("course_id",courseId).eq("user_id",userId);
+    if(attemptIds?.length){const {count}=await sb.from("assessment_answers").select("id",{count:"exact",head:true}).eq("review_status","pending").in("attempt_id",attemptIds.map((x:any)=>x.id));if((count||0)>0)missing.push("manual_reviews_pending");}
+    const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle();
+    const {data:user}=await sb.from("users").select("full_name,email").eq("id",userId).maybeSingle();
+    if(!course||!user)return json({error:"NOT_FOUND"},404);
+    const {data:progress}=await sb.from("user_lesson_progress").select("is_completed,time_spent_seconds").eq("user_id",userId).eq("course_id",courseId);
+    if((progress||[]).some((x:any)=>!x.is_completed))missing.push("lessons_incomplete");
+    const spent=(progress||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0)+(await sb.from("assessment_attempts").select("time_spent_seconds").eq("course_id",courseId).eq("user_id",userId)).data?.reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0)||0;
+    const requiredSeconds=Number(course.calculated_duration_minutes||0)*60;
+    if(requiredSeconds>0&&spent<requiredSeconds)missing.push("minimum_time_not_reached");
+    if(missing.length){await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,result:"blocked",missing_conditions:missing,source:body.source||"automatic"});return json({error:"CONDITIONS_NOT_MET",missing},422);}
 
-    const body = await req.json();
-    const { user_id, course_id } = body;
-    if (!user_id || !course_id) return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const {data:existing}=await sb.from("certificates").select("id,omnia_certificate_id,pdf_url,cpd_pending,verification_url").eq("user_id",userId).eq("course_id",courseId).maybeSingle();
+    if(existing)return json({certificate_id:existing.omnia_certificate_id,pdf_url:existing.pdf_url,verification_url:existing.verification_url,cpd_pending:existing.cpd_pending,existing:true});
 
-    // Vérification sécurisée des seuils du moteur LMS Étape 2.
-    const { data: assessments } = await sb.from("course_assessments").select("id,scope,passing_score").eq("course_id", course_id).eq("required", true).eq("is_active", true);
-    const missing: string[] = [];
-    for (const assessment of assessments || []) {
-      const { data: best } = await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id", assessment.id).eq("user_id", user_id).eq("passed", true).order("score", { ascending: false }).limit(1).maybeSingle();
-      if (!best || Number(best.score || 0) < Number(assessment.passing_score || (assessment.scope === "final" ? 70 : 80))) missing.push(`${assessment.scope}:${assessment.id}`);
-    }
-    const { count: pendingReviews } = await sb.from("assessment_answers").select("id", { count: "exact", head: true }).eq("review_status", "pending").in("attempt_id", (await sb.from("assessment_attempts").select("id").eq("course_id", course_id).eq("user_id", user_id)).data?.map((x:any)=>x.id) || []);
-    if ((pendingReviews || 0) > 0) missing.push("manual_reviews_pending");
-    if ((assessments || []).length === 0) {
-      const [lessonsRes, modulesRes, finalRes] = await Promise.all([
-        sb.from("user_lesson_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("is_completed", false),
-        sb.from("user_module_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("exam_passed", false),
-        sb.from("user_final_validation").select("status").eq("user_id", user_id).eq("course_id", course_id).maybeSingle(),
-      ]);
-      if ((lessonsRes.count ?? 0) > 0) missing.push("lessons_incomplete");
-      if ((modulesRes.count ?? 0) > 0) missing.push("module_exams");
-      if (!finalRes.data || finalRes.data.status !== "passed") missing.push("final_validation");
-    }
-    if (missing.length > 0) return new Response(JSON.stringify({ error: "CONDITIONS_NOT_MET", missing }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    // Check if cert already exists
-    const { data: existingCert } = await sb.from("certificates").select("omnia_certificate_id, pdf_url, cpd_pending").eq("user_id", user_id).eq("course_id", course_id).maybeSingle();
-    if (existingCert) return new Response(JSON.stringify({ certificate_id: existingCert.omnia_certificate_id, pdf_url: existingCert.pdf_url, cpd_pending: existingCert.cpd_pending }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-   // Load user and course
-    const [{ data: user }, { data: course }] = await Promise.all([
-      sb.from("users").select("full_name, email").eq("id", user_id).maybeSingle(),
-      sb.from("courses").select("title, level, category, cpd_accredited, cpd_hours, establishment_id, creator_id, is_assisted, creator_type").eq("id", course_id).maybeSingle(),
-    ]);
-    if (!user || !course) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    const isTemplateB = !!course.establishment_id;
-    const isTemplateC = course.creator_type === 'plateforme' && !course.establishment_id;
-
-    // Vérifier que l'établissement a bien uploadé logo et signature
-    if (isTemplateB) {
-      const { data: estProfile } = await sb
-        .from("etablissement_profiles")
-        .select("logo_url, signature_url, school_name, director_name")
-        .eq("id", course.establishment_id)
-        .maybeSingle();
-
-      if (!estProfile?.logo_url || !estProfile?.signature_url) {
-        return new Response(JSON.stringify({
-          error: "ESTABLISHMENT_MISSING_ASSETS",
-          message: "L'établissement doit uploader son logo et la signature du directeur dans son espace Certificats avant de générer un certificat.",
-          missing: {
-            logo: !estProfile?.logo_url,
-            signature: !estProfile?.signature_url,
-          }
-        }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
-
-    // Charger les paramètres certificat depuis certificate_settings
-    const { data: certSettingsRows } = await sb
-      .from("certificate_settings")
-      .select("key, value");
-
-    const certSettings: Record<string, string> = {};
-    for (const row of certSettingsRows || []) {
-      certSettings[row.key] = row.value;
-    }
-
-    const certId = await generateUniqueCertId(sb);
-    const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
-    const verifyUrl = `${appUrl}/verify/${certId}`;
-    const logoUrl = certSettings.certificate_logo_url || "/IMG_0349.png";
-    const certificateText = certSettings.certificate_text_fr || "pour avoir complété avec succès la formation";
-
-    // Get template-specific data
-    let creatorName = "";
-    let establishmentName = "", establishmentLogoUrl = "", directorName = "", directorSigUrl = "";
-
-    if (isTemplateB) {
-      const { data: est } = await sb.from("etablissement_profiles").select("school_name, logo_url, director_name, signature_url").eq("id", course.establishment_id).maybeSingle();
-      if (est) { establishmentName = est.school_name; establishmentLogoUrl = est.logo_url; directorName = est.director_name; directorSigUrl = est.signature_url; }
-    } else {
-      const { data: prof } = await sb.from("users").select("full_name").eq("id", course.creator_id).maybeSingle();
-      creatorName = prof?.full_name ?? "";
-    }
-
-    const certData = {
-      omnia_certificate_id: certId,
-      student_full_name: user.full_name,
-      course_title: course.title,
-      course_level: course.level,
-      course_category: course.category,
-      cpd_accredited: course.cpd_accredited,
-      cpd_hours: course.cpd_hours ?? 0,
-      cpd_provider_code: "Omnia-CPD",
-      logo_url: logoUrl,
-certificate_text: certificateText,
-allow_professor_signature: certSettings.allow_professor_signature === 'true',
-      creator_name: creatorName,
-      establishment_name: establishmentName,
-      establishment_logo_url: establishmentLogoUrl,
-      director_name: directorName,
-      external_accreditation_logo: course.external_accreditation_logo || null,
-external_accreditation_number: course.external_accreditation_number || null,
-creator_type: course.creator_type || 'professeur',
-      issued_at: new Date().toISOString(),
-    };
-
-    const htmlContent = isTemplateC 
-  ? buildTemplateC(certData, qrSvgStr)
-  : isTemplateB 
-    ? buildTemplateB(certData, qrSvgStr) 
-    : buildTemplateA(certData, qrSvgStr);
-
-    // Upload HTML to Supabase Storage
-    const filename = `certificates/${user_id}/${certId}.html`;
-    await sb.storage.from("certificates").upload(filename, htmlContent, { contentType: "text/html; charset=utf-8", upsert: true });
-    const { data: urlData } = sb.storage.from("certificates").getPublicUrl(filename);
-    const pdfUrl = urlData.publicUrl;
-
-    // Insert certificate record
-    const { data: cert, error: certErr } = await sb.from("certificates").insert({
-      omnia_certificate_id: certId,
-      user_id, course_id,
-      student_full_name: user.full_name,
-      course_title: course.title,
-      course_level: course.level,
-      course_category: course.category,
-      cpd_hours: certData.cpd_hours,
-      template_type: isTemplateB ? "B" : "A",
-      creator_name: creatorName || null,
-      establishment_name: establishmentName || null,
-      establishment_logo_url: establishmentLogoUrl || null,
-      director_name: directorName || null,
-      director_signature_url: directorSigUrl || null,
-      cpd_accredited: course.cpd_accredited,
-      cpd_provider_code: certData.cpd_provider_code,
-      pdf_url: pdfUrl,
-    }).select("id, omnia_certificate_id, pdf_url").single();
-    if (certErr) throw certErr;
-
-    // Copier les certifications validées de la formation sur le certificat généré.
-    const { data: validatedAccreditations } = await sb.from("course_certifications").select("*").eq("course_id", course_id).eq("status", "validated");
-    if (validatedAccreditations?.length) {
-      await sb.from("certificate_accreditations").insert(validatedAccreditations.map((a:any)=>({
-        certificate_id: cert.id,
-        course_certification_id: a.id,
-        organization_name: a.organization_name,
-        certification_name: a.certification_name,
-        certification_code: a.certification_code,
-        credit_value: a.credit_value,
-        credit_unit: a.credit_unit,
-        badge_url: a.badge_url,
-        logo_url: a.logo_url,
-        signature_url: a.signature_url,
-        stamp_url: a.stamp_url,
-        verification_url: a.verification_url,
-        valid_from: a.valid_from,
-        expires_at: a.expires_at,
-        status: a.expires_at && new Date(a.expires_at) < new Date() ? "expired" : "valid",
-      })));
-    }
-
-    // Synchronisation avec le profil public Talent / Omnia Career lorsqu'il existe.
-    const { data: publicProfile } = await sb.from("career_public_profiles").select("certifications").eq("user_id", user_id).maybeSingle();
-    if (publicProfile) {
-      const current = Array.isArray(publicProfile.certifications) ? publicProfile.certifications : [];
-      const label = course.title;
-      if (!current.includes(label)) await sb.from("career_public_profiles").update({ certifications: [...current, label], updated_at: new Date().toISOString() }).eq("user_id", user_id);
-    }
-
-    // Handle CPD badge if accredited
-    let cpdPending = false;
-    if (course.cpd_accredited && cert) {
-      try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const cpdRes = await fetch(`${supabaseUrl}/functions/v1/cpd-badge-request`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ certificate_id: certId, user_email: user.email, course_title: course.title, cpd_hours: certData.cpd_hours }),
-        });
-        const cpdData = await cpdRes.json();
-        cpdPending = cpdData.pending ?? false;
-      } catch { cpdPending = true; }
-    }
-
-    // Send notification via notify-dispatch (replaces direct Brevo call)
-    const supabaseUrl2 = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    fetch(`${supabaseUrl2}/functions/v1/notify-dispatch`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "certificat_genere",
-        payload: {
-          userId: user_id,
-          formation_titre: course.title,
-          certificate_id: certId,
-          verify_url: verifyUrl,
-          pdf_url: pdfUrl,
-          cpd_hours: certData.cpd_hours,
-          is_cpd: course.cpd_accredited,
-        },
-      }),
-    }).catch(() => {});
-
-    return new Response(JSON.stringify({ certificate_id: certId, pdf_url: pdfUrl, cpd_pending: cpdPending }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-  } catch (err) {
-    return new Response(JSON.stringify({ error: "INTERNAL", message: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
+    const {data:accreditations}=await sb.from("course_certifications").select("*").eq("course_id",courseId).eq("status","validated").order("created_at");
+    const certId=await generateUniqueCertId(sb); const appUrl=Deno.env.get("APP_URL")||"https://omniaglobalacademy.com"; const verifyUrl=`${appUrl}/verify/${certId}`; const qrSvg=await generateQrSvg(verifyUrl);
+    const {data:settingsRows}=await sb.from("certificate_settings").select("key,value"); const settings:Record<string,string>={}; for(const r of settingsRows||[])settings[r.key]=r.value;
+    let creatorName="",establishmentName="",establishmentLogoUrl="",directorName="",directorSigUrl="";
+    if(course.establishment_id){const {data:e}=await sb.from("etablissement_profiles").select("school_name,logo_url,director_name,signature_url").eq("id",course.establishment_id).maybeSingle();if(e){establishmentName=e.school_name||"";establishmentLogoUrl=e.logo_url||"";directorName=e.director_name||"";directorSigUrl=e.signature_url||"";}}
+    if(course.creator_id){const {data:p}=await sb.from("users").select("full_name").eq("id",course.creator_id).maybeSingle();creatorName=p?.full_name||"";}
+    const issuerType=course.establishment_id?"structure":course.creator_type==="plateforme"?"omnia":"professor";
+    const issuerName=establishmentName||creatorName||"Omnia Global Academy";
+    const cpd=(accreditations||[]).find((a:any)=>a.certification_type==="cpd");
+    const certData:any={omnia_certificate_id:certId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_accredited:!!cpd||!!course.cpd_accredited,cpd_hours:Number(cpd?.credit_value||course.cpd_hours||0),cpd_provider_code:cpd?.certification_code||"",logo_url:settings.certificate_logo_url||"/IMG_0349.png",certificate_text:settings.certificate_text_fr||"pour avoir complété avec succès la formation",creator_name:creatorName,establishment_name:establishmentName,establishment_logo_url:establishmentLogoUrl,director_name:directorName,issued_at:new Date().toISOString()};
+    const isB=!!course.establishment_id,isC=course.creator_type==="plateforme"&&!course.establishment_id;
+    let html=isC?buildTemplateC(certData,qrSvg):isB?buildTemplateB(certData,qrSvg):buildTemplateA(certData,qrSvg);
+    const badges=(accreditations||[]).map((a:any)=>`<div style="display:flex;align-items:center;gap:5px">${a.badge_url||a.logo_url?`<img src="${a.badge_url||a.logo_url}" style="height:28px;max-width:80px;object-fit:contain"/>`:''}<span style="font-size:9px;color:#002050;font-weight:600">${a.organization_name}${a.credit_value?` · ${a.credit_value} ${a.credit_unit||''}`:''}</span></div>`).join('');
+    if(badges)html=html.replace('</body>',`<div style="position:absolute;left:180px;right:180px;bottom:18px;display:flex;justify-content:center;gap:18px;align-items:center">${badges}</div></body>`);
+    const filename=`certificates/${userId}/${certId}.html`; const {error:upErr}=await sb.storage.from("certificates").upload(filename,html,{contentType:"text/html; charset=utf-8",upsert:true});if(upErr)throw upErr; const pdfUrl=sb.storage.from("certificates").getPublicUrl(filename).data.publicUrl;
+    const {data:cert,error:certErr}=await sb.from("certificates").insert({omnia_certificate_id:certId,user_id:userId,course_id:courseId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_hours:certData.cpd_hours,template_type:isC?"C":isB?"B":"A",creator_name:creatorName||null,establishment_name:establishmentName||null,establishment_logo_url:establishmentLogoUrl||null,director_name:directorName||null,director_signature_url:directorSigUrl||null,cpd_accredited:certData.cpd_accredited,cpd_provider_code:certData.cpd_provider_code||null,pdf_url:pdfUrl,validity_status:"valid",verification_url:verifyUrl,qr_svg:qrSvg,duration_minutes:Number(course.calculated_duration_minutes||0),course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,metadata:{assessment_thresholds:{lesson:80,module:80,final:70},time_spent_seconds:spent}}).select("*").single();if(certErr)throw certErr;
+    if(accreditations?.length)await sb.from("certificate_accreditations").insert(accreditations.map((a:any)=>({certificate_id:cert.id,course_certification_id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,badge_url:a.badge_url,logo_url:a.logo_url,signature_url:a.signature_url,stamp_url:a.stamp_url,verification_url:a.verification_url,valid_from:a.valid_from,expires_at:a.expires_at,status:a.expires_at&&new Date(a.expires_at)<new Date()?"expired":"valid"})));
+    const creditSummary=(accreditations||[]).map((a:any)=>({organization:a.organization_name,value:a.credit_value,unit:a.credit_unit}));
+    await sb.from("user_profile_certifications").upsert({user_id:userId,certificate_id:cert.id,course_id:courseId,title:course.title,issuer:issuerName,credential_id:certId,verification_url:verifyUrl,issued_at:cert.issued_at,expires_at:null,hours_or_credits:creditSummary,status:"valid",updated_at:new Date().toISOString()},{onConflict:"user_id,certificate_id"});
+    await sb.from("user_enrollments").update({completed_at:new Date().toISOString()}).eq("user_id",userId).eq("course_id",courseId);
+    await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,certificate_id:cert.id,result:"generated",source:body.source||"automatic"});
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`,{method:"POST",headers:{Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({type:"certificat_genere",payload:{userId,formation_titre:course.title,certificate_id:certId,verify_url:verifyUrl,pdf_url:pdfUrl}})}).catch(()=>{});
+    return json({certificate_id:certId,pdf_url:pdfUrl,verification_url:verifyUrl,accreditations:creditSummary});
+  } catch(err){return json({error:"INTERNAL",message:(err as Error).message},500);}
 });
