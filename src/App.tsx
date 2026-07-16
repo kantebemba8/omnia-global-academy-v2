@@ -123,6 +123,7 @@ import RecruiterDashboard from './pages/talent/RecruiterDashboard';
 import TalentAbout from './pages/talent/TalentAbout';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
+import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -202,6 +203,7 @@ export default function App() {
         {/* Admin — always accessible */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
+<Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
         <Route path="/admin/payouts" element={<AdminRetraits />} />

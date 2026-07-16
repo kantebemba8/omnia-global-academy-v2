@@ -305,17 +305,25 @@ Deno.serve(async (req: Request) => {
     const { user_id, course_id } = body;
     if (!user_id || !course_id) return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Verify 3 conditions server-side
-    const [lessonsRes, modulesRes, finalRes] = await Promise.all([
-      sb.from("user_lesson_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("is_completed", false),
-      sb.from("user_module_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("exam_passed", false),
-      sb.from("user_final_validation").select("status").eq("user_id", user_id).eq("course_id", course_id).maybeSingle(),
-    ]);
-
+    // Vérification sécurisée des seuils du moteur LMS Étape 2.
+    const { data: assessments } = await sb.from("course_assessments").select("id,scope,passing_score").eq("course_id", course_id).eq("required", true).eq("is_active", true);
     const missing: string[] = [];
-    if ((lessonsRes.count ?? 0) > 0) missing.push("lessons_incomplete");
-    if ((modulesRes.count ?? 0) > 0) missing.push("module_exams");
-    if (!finalRes.data || finalRes.data.status !== "passed") missing.push("final_validation");
+    for (const assessment of assessments || []) {
+      const { data: best } = await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id", assessment.id).eq("user_id", user_id).eq("passed", true).order("score", { ascending: false }).limit(1).maybeSingle();
+      if (!best || Number(best.score || 0) < Number(assessment.passing_score || (assessment.scope === "final" ? 70 : 80))) missing.push(`${assessment.scope}:${assessment.id}`);
+    }
+    const { count: pendingReviews } = await sb.from("assessment_answers").select("id", { count: "exact", head: true }).eq("review_status", "pending").in("attempt_id", (await sb.from("assessment_attempts").select("id").eq("course_id", course_id).eq("user_id", user_id)).data?.map((x:any)=>x.id) || []);
+    if ((pendingReviews || 0) > 0) missing.push("manual_reviews_pending");
+    if ((assessments || []).length === 0) {
+      const [lessonsRes, modulesRes, finalRes] = await Promise.all([
+        sb.from("user_lesson_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("is_completed", false),
+        sb.from("user_module_progress").select("id", { count: "exact" }).eq("user_id", user_id).eq("course_id", course_id).eq("exam_passed", false),
+        sb.from("user_final_validation").select("status").eq("user_id", user_id).eq("course_id", course_id).maybeSingle(),
+      ]);
+      if ((lessonsRes.count ?? 0) > 0) missing.push("lessons_incomplete");
+      if ((modulesRes.count ?? 0) > 0) missing.push("module_exams");
+      if (!finalRes.data || finalRes.data.status !== "passed") missing.push("final_validation");
+    }
     if (missing.length > 0) return new Response(JSON.stringify({ error: "CONDITIONS_NOT_MET", missing }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     // Check if cert already exists
@@ -410,7 +418,7 @@ creator_type: course.creator_type || 'professeur',
 
     // Upload HTML to Supabase Storage
     const filename = `certificates/${user_id}/${certId}.html`;
-    await sb.storage.from("certificates").upload(filename, html, { contentType: "text/html; charset=utf-8", upsert: true });
+    await sb.storage.from("certificates").upload(filename, htmlContent, { contentType: "text/html; charset=utf-8", upsert: true });
     const { data: urlData } = sb.storage.from("certificates").getPublicUrl(filename);
     const pdfUrl = urlData.publicUrl;
 
@@ -434,6 +442,36 @@ creator_type: course.creator_type || 'professeur',
       pdf_url: pdfUrl,
     }).select("id, omnia_certificate_id, pdf_url").single();
     if (certErr) throw certErr;
+
+    // Copier les certifications validées de la formation sur le certificat généré.
+    const { data: validatedAccreditations } = await sb.from("course_certifications").select("*").eq("course_id", course_id).eq("status", "validated");
+    if (validatedAccreditations?.length) {
+      await sb.from("certificate_accreditations").insert(validatedAccreditations.map((a:any)=>({
+        certificate_id: cert.id,
+        course_certification_id: a.id,
+        organization_name: a.organization_name,
+        certification_name: a.certification_name,
+        certification_code: a.certification_code,
+        credit_value: a.credit_value,
+        credit_unit: a.credit_unit,
+        badge_url: a.badge_url,
+        logo_url: a.logo_url,
+        signature_url: a.signature_url,
+        stamp_url: a.stamp_url,
+        verification_url: a.verification_url,
+        valid_from: a.valid_from,
+        expires_at: a.expires_at,
+        status: a.expires_at && new Date(a.expires_at) < new Date() ? "expired" : "valid",
+      })));
+    }
+
+    // Synchronisation avec le profil public Talent / Omnia Career lorsqu'il existe.
+    const { data: publicProfile } = await sb.from("career_public_profiles").select("certifications").eq("user_id", user_id).maybeSingle();
+    if (publicProfile) {
+      const current = Array.isArray(publicProfile.certifications) ? publicProfile.certifications : [];
+      const label = course.title;
+      if (!current.includes(label)) await sb.from("career_public_profiles").update({ certifications: [...current, label], updated_at: new Date().toISOString() }).eq("user_id", user_id);
+    }
 
     // Handle CPD badge if accredited
     let cpdPending = false;

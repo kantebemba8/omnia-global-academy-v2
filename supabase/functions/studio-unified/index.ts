@@ -138,7 +138,7 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
@@ -221,6 +221,54 @@ Deno.serve(async(req)=>{
    const {data:ass}=await sb.from("course_assessments").select("id,title,scope").eq("course_id",courseId);const ids=(ass||[]).map((x:any)=>x.id);if(!ids.length)return json({success:true,summary:{attempts:0,pass_rate:0,average_score:0},items:[]});const {data:at}=await sb.from("assessment_attempts").select("assessment_id,score,passed,status,time_spent_seconds").in("assessment_id",ids).not("score","is",null);const total=(at||[]).length,passes=(at||[]).filter((x:any)=>x.passed).length,avg=total?(at||[]).reduce((n:number,x:any)=>n+Number(x.score||0),0)/total:0;return json({success:true,summary:{attempts:total,pass_rate:total?Math.round(passes/total*100):0,average_score:Math.round(avg*100)/100},items:ass||[]});
   }
 
+
+  if(action==="get_commercialization"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:course}=await sb.from("courses").select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount,is_assisted,assisted_status,assisted_request_id,certification_requested").eq("id",courseId).single();
+   const {data:settings}=await sb.from("site_settings").select("key,value").in("key",["commission_normal_sans_cpd","commission_normal_avec_cpd","commission_assistee_sans_cpd","commission_assistee_avec_cpd"]);
+   const revenueRules:any={};for(const row of settings||[]){try{revenueRules[row.key]=typeof row.value==="string"?JSON.parse(row.value):row.value}catch{revenueRules[row.key]=row.value}}
+   const {data:certifications}=await sb.from("course_certifications").select("*").eq("course_id",courseId).order("created_at");
+   return json({success:true,course,revenue_rules:revenueRules,certifications:certifications||[]});
+  }
+  if(action==="save_commercialization"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const mode=b.sale_mode||"paid";const amount=mode==="free"?0:Number(b.desired_price_amount||0);
+   if(mode==="paid"&&amount<=0)return json({success:false,error:"PRICE_REQUIRED",message:"Indiquez un prix supérieur à zéro."},400);
+   const updates:any={sale_mode:mode,desired_price_amount:amount,sale_currency:b.sale_currency||"XOF",promotion_price_amount:b.promotion_price_amount||null,structure_payment_mode:b.structure_payment_mode||"free",structure_fixed_amount:b.structure_fixed_amount||null,updated_at:new Date().toISOString()};
+   const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount").single();if(error)throw error;await log(sb,courseId,userId,"commercialization_saved",updates);return json({success:true,course:data});
+  }
+  if(action==="request_assisted_entry"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const rs=await roles(sb,userId);const requesterRole=rs.includes("responsable_structure")||rs.includes("structure_admin")?"structure":"professeur";
+   const {data:existing}=await sb.from("assisted_course_requests").select("id,status").eq("course_id",courseId).in("status",["pending","in_progress"]).maybeSingle();if(existing)return json({success:false,error:"ACTIVE_REQUEST_EXISTS",message:"Une demande est déjà en cours."},409);
+   const {data:reqRow,error}=await sb.from("assisted_course_requests").insert({course_id:courseId,requester_id:userId,requester_role:requesterRole,service_type:b.service_type||"without_certification",instructions:String(b.instructions||""),documents:Array.isArray(b.documents)?b.documents:[],status:"pending"}).select("*").single();if(error)throw error;
+   await sb.from("courses").update({is_assisted:true,assisted_request_id:reqRow.id,assisted_status:"pending",updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"assisted_entry_requested",{request_id:reqRow.id,service_type:reqRow.service_type});return json({success:true,request:reqRow});
+  }
+  if(action==="list_assisted_requests"){
+   const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("assisted_course_requests").select("*,courses(title,creator_id),users!assisted_course_requests_requester_id_fkey(full_name,email)").order("requested_at",{ascending:false});if(error)throw error;return json({success:true,items:data||[]});
+  }
+  if(action==="admin_update_assisted_request"){
+   const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
+   const status=String(b.status||"");if(!["pending","in_progress","completed","rejected","cancelled"].includes(status))return json({success:false,error:"INVALID_STATUS"},400);
+   const patch:any={status,updated_at:new Date().toISOString(),admin_comment:b.admin_comment||null};if(status==="in_progress"){patch.assigned_to=userId;patch.started_at=new Date().toISOString()}if(status==="completed")patch.completed_at=new Date().toISOString();
+   const {data,error}=await sb.from("assisted_course_requests").update(patch).eq("id",b.id).select("*").single();if(error)throw error;await sb.from("courses").update({assisted_status:status}).eq("id",data.course_id);return json({success:true,item:data});
+  }
+  if(action==="save_course_certification_request"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);const c=b.certification||{};
+   if(!String(c.organization_name||"").trim()||!String(c.certification_name||"").trim())return json({success:false,error:"MISSING_CERTIFICATION_FIELDS"},400);
+   const row:any={course_id:courseId,certification_type:c.type||"other",organization_name:c.organization_name,certification_name:c.certification_name,certification_code:c.code||null,credit_value:c.credit_value?Number(c.credit_value):null,credit_unit:c.credit_unit||null,badge_url:c.badge_url||null,logo_url:c.logo_url||null,signature_url:c.signature_url||null,stamp_url:c.stamp_url||null,verification_url:c.verification_url||null,evidence_url:c.evidence_url||null,valid_from:c.valid_from||null,expires_at:c.expires_at||null,status:"pending",requested_by:userId};
+   const {data,error}=await sb.from("course_certifications").insert(row).select("*").single();if(error)throw error;await sb.from("courses").update({certification_requested:true,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"certification_requested",{certification_id:data.id,type:data.certification_type});return json({success:true,certification:data});
+  }
+  if(action==="admin_list_course_certifications"){
+   const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("course_certifications").select("*,courses(title,creator_id)").order("created_at",{ascending:false});if(error)throw error;return json({success:true,items:data||[]});
+  }
+  if(action==="admin_update_course_certification"){
+   const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);const status=String(b.status||"");if(!["pending","validated","rejected","expired","revoked"].includes(status))return json({success:false,error:"INVALID_STATUS"},400);
+   const patch:any={status,admin_comment:b.admin_comment||null,updated_at:new Date().toISOString()};if(status==="validated"){patch.validated_by=userId;patch.validated_at=new Date().toISOString()}
+   const {data,error}=await sb.from("course_certifications").update(patch).eq("id",b.id).select("*").single();if(error)throw error;return json({success:true,item:data});
+  }
   if(action==="validate_checklist"){
    const errors:string[]=[],warnings:string[]=[];const {data:c}=await sb.from("courses").select("*").eq("id",courseId).single();const {data:m}=await sb.from("course_modules").select("id,title,objective").eq("course_id",courseId);const {data:l}=await sb.from("course_lessons").select("id,title").eq("course_id",courseId);const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
    if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");if(!c.long_description?.trim())warnings.push("Ajoutez une présentation détaillée pour la fiche de vente.");if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
@@ -228,6 +276,7 @@ Deno.serve(async(req)=>{
    return json({success:true,valid:errors.length===0,errors,warnings});
   }
   if(action==="submit_course"){
+   const {data:commercial}=await sb.from("courses").select("sale_mode,desired_price_amount,certification_requested").eq("id",courseId).single();if(commercial.sale_mode==="paid"&&Number(commercial.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
    const {data:l}=await sb.from("course_lessons").select("id").eq("course_id",courseId);const {count}=await sb.from("lesson_blocks").select("id",{count:"exact",head:true}).eq("course_id",courseId);if(!(l||[]).length||!(count||0))return json({success:false,errors:["La formation doit contenir au moins une leçon et un bloc."],warnings:[]},400);await sb.from("courses").update({studio_status:"pending_validation",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"course_submitted");return json({success:true});
   }
   if(action==="get_change_logs"){const {data,error}=await sb.from("course_studio_logs").select("*,users(full_name)").eq("course_id",courseId).order("created_at",{ascending:false}).limit(100);if(error)throw error;return json({success:true,logs:data||[]})}

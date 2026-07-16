@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
+import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
   Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check,
@@ -40,6 +41,8 @@ interface Course {
   course_intro_summary?: string; studio_status: string;
   studio_mode?: string; word_count?: number; estimated_read_min?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
+  sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
+  structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
 }
 
 const EMPTY_COURSE: Course = {
@@ -61,6 +64,14 @@ const EMPTY_COURSE: Course = {
   studio_status: 'draft',
   studio_mode: 'simple',
   template_used: 'simple_textual',
+  sale_mode: 'paid',
+  sale_currency: 'XOF',
+  desired_price_amount: '',
+  promotion_price_amount: '',
+  structure_payment_mode: 'free',
+  structure_fixed_amount: '',
+  is_assisted: false,
+  certification_requested: false,
 };
 
 // ─── Config blocs ─────────────────────────────────────────────
@@ -697,6 +708,7 @@ export default function StudioConceptionFormation() {
         <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
           <div className="pointer-events-auto max-w-4xl mx-auto">
             <AssessmentRulesCard durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
+            <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
           </div>
         </div>
 
