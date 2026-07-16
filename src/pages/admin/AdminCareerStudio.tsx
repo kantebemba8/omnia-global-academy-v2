@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AdminLayout } from '../../components/AdminLayout';
+import { Link } from 'react-router-dom';
 import { CV_TEMPLATES_META, LM_TEMPLATES_META } from '../../lib/careerStudioData';
 import {
   AlertCircle,
+  ArrowLeft,
   BarChart2,
   Check,
   Coins,
@@ -21,6 +22,7 @@ import {
   ToggleLeft,
   Trash2,
   X,
+  ExternalLink,
 } from 'lucide-react';
 
 type SubTab = 'dashboard' | 'rules' | 'packs' | 'cv_templates' | 'lm_templates' | 'ai' | 'question_bank' | 'exports' | 'stats';
@@ -553,8 +555,35 @@ export default function AdminCareerStudio() {
   }
 
   return (
-    <AdminLayout>
-      <div className="flex min-h-screen" style={{ background: '#F8FAFC' }}>
+    <div className="min-h-screen" style={{ background: '#F8FAFC' }}>
+      <header className="sticky top-0 z-40 border-b bg-white" style={{ borderColor: BORDER }}>
+        <div className="flex min-h-16 items-center justify-between gap-4 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ background: OMNIA_GOLD }}>OA</div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>Omnia Global Academy</p>
+              <p className="text-xs" style={{ color: MUTED }}>Administration Omnia Career Studio</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link
+              to="/career-studio"
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50"
+              style={{ borderColor: BORDER, color: OMNIA_BLUE }}
+            >
+              <ExternalLink size={15} /> Ouvrir Omnia Career Studio
+            </Link>
+            <Link
+              to="/admin/dashboard"
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
+              style={{ background: OMNIA_BLUE }}
+            >
+              <ArrowLeft size={15} /> Retour au Dashboard
+            </Link>
+          </div>
+        </div>
+      </header>
+      <div className="flex min-h-[calc(100vh-65px)]" style={{ background: '#F8FAFC' }}>
         {toast && (
           <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-5 py-3 text-sm font-semibold shadow-lg" style={{ borderColor: toast.type === 'success' ? '#BBF7D0' : '#FECACA', color: toast.type === 'success' ? '#166534' : '#DC2626' }}>
             {toast.text}
@@ -940,6 +969,6 @@ export default function AdminCareerStudio() {
           )}
         </main>
       </div>
-    </AdminLayout>
+    </div>
   );
 }
