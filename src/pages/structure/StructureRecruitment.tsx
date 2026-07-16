@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { contactTalent, loadPublicTalents, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, toggleTalentFavorite } from '../talent/talentApi';
+import { contactTalent, createRecruitmentInvite, loadPublicTalents, loadRecruitmentInvites, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, revokeRecruitmentInvite, toggleTalentFavorite } from '../talent/talentApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -195,5 +195,16 @@ function ContactModal({talent,message,setMessage,busy,close,submit}:any){
 }
 
 function Team(){
-  return <EmptyState icon={UsersRound} title="Équipe recrutement" text="Les membres autorisés de la Structure seront affichés ici à l’étape Permissions et synchronisation Supabase." action={<Link to="/structure/equipe" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>Gérer l’équipe<ArrowRight size={16}/></Link>}/>;
+  const [invites,setInvites]=useState<any[]>([]);
+  const [email,setEmail]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  async function load(){ try{const r=await loadRecruitmentInvites();setInvites(r.invites||[])}catch(e){setError(e instanceof Error?e.message:'Invitations indisponibles.')} }
+  useEffect(()=>{load()},[]);
+  async function create(){setBusy(true);setError('');try{await createRecruitmentInvite({email:email.trim()||undefined,max_uses:1});setEmail('');await load()}catch(e){setError(e instanceof Error?e.message:'Création impossible.')}finally{setBusy(false)}}
+  async function revoke(id:string){setBusy(true);try{await revokeRecruitmentInvite(id);await load()}catch(e){setError(e instanceof Error?e.message:'Révocation impossible.')}finally{setBusy(false)}}
+  return <div className="space-y-5">
+    <section className="rounded-2xl border bg-white p-6" style={{borderColor:BORDER}}><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-base font-semibold" style={{color:BLUE}}>Inviter un recruteur</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Créez un code à usage limité. Le recruteur rejoindra directement le module Recrutement de votre Structure.</p></div><Link to="/structure/equipe" className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Gérer les membres<ArrowRight size={16}/></Link></div>{error&&<div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}<div className="mt-5 flex flex-col gap-3 sm:flex-row"><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email du recruteur (facultatif)" className="flex-1 rounded-xl border px-3 py-2.5 text-sm" style={{borderColor:BORDER}}/><button onClick={create} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>{busy?'Création…':'Créer un code'}</button></div></section>
+    <section className="rounded-2xl border bg-white" style={{borderColor:BORDER}}><div className="border-b p-4" style={{borderColor:BORDER}}><h2 className="font-semibold" style={{color:BLUE}}>Codes de recrutement</h2></div>{invites.length===0?<p className="p-6 text-sm" style={{color:MUTED}}>Aucun code créé.</p>:<div className="divide-y">{invites.map((i:any)=><div key={i.id} className="flex flex-wrap items-center gap-3 p-4"><div className="min-w-0 flex-1"><p className="font-mono text-sm font-semibold tracking-wider" style={{color:BLUE}}>{i.code}</p><p className="mt-1 text-xs" style={{color:MUTED}}>{i.email||'Tous les emails'} · {i.uses_count}/{i.max_uses} utilisation(s){i.expires_at?` · expire ${new Date(i.expires_at).toLocaleDateString('fr-FR')}`:''}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:i.revoked_at?'#FEE2E2':'#DCFCE7',color:i.revoked_at?'#B91C1C':'#166534'}}>{i.revoked_at?'Révoqué':'Actif'}</span>{!i.revoked_at&&<button onClick={()=>revoke(i.id)} disabled={busy} className="rounded-lg border px-3 py-2 text-xs font-semibold text-red-700">Révoquer</button>}</div>)}</div>}</section>
+  </div>;
 }

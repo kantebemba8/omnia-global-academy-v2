@@ -46,8 +46,23 @@ async function logActivity(sb: ReturnType<typeof createClient>, s: Session, orga
   await sb.from("talent_activity_log").insert({ actor_user_id: s.userId, organization_id: organizationId, talent_user_id: talentUserId, action, entity_type: entityType || null, entity_id: entityId || null, metadata }).catch(() => {});
 }
 
+function notificationCopy(type: string) {
+  const map: Record<string, [string, string, string | null]> = {
+    talent_recruiter_contact: ["Nouveau contact recruteur", "Un recruteur souhaite échanger avec vous.", "/dashboard/career-studio?section=profile"],
+    talent_contact_admin_alert: ["Contact Talent enregistré", "Une prise de contact recruteur ↔ apprenant a été enregistrée.", "/admin/talent"],
+    talent_interview_requested: ["Nouvel entretien proposé", "Une demande d'entretien vous a été envoyée.", "/dashboard/career-studio?section=interview"],
+    talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Talent Omnia.", "/dashboard/career-studio"],
+    recruiter_application_submitted: ["Nouvelle demande recruteur", "Un compte recruteur attend votre validation.", "/admin/talent"],
+    recruiter_status_changed: ["Statut recruteur mis à jour", "Le statut de votre compte recruteur a changé.", "/talent/recruteurs"],
+    recruiter_joined_structure: ["Recruteur rattaché", "Un recruteur a rejoint votre équipe recrutement.", "/structure/recrutement/equipe"],
+  };
+  return map[type] || ["Notification Talent", "Une nouvelle activité Talent vous concerne.", null];
+}
+
 async function queueNotification(sb: ReturnType<typeof createClient>, userId: string, type: string, payload: Record<string, unknown>) {
   await sb.from("notification_queue").insert({ notification_type: type, user_id: userId, payload }).catch(() => {});
+  const [title, message, actionUrl] = notificationCopy(type);
+  await sb.from("talent_notifications").insert({ user_id: userId, notification_type: type, title, message, action_url: actionUrl, payload }).catch(() => {});
 }
 
 async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
@@ -112,10 +127,143 @@ Deno.serve(async (req: Request) => {
 
     const session = await authenticate(sb, req);
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
+
+    // Actions accessibles à tout utilisateur Omnia connecté avant validation du rôle recruteur.
+    if (action === "recruiter_self_status") {
+      const { data, error } = await sb.from("talent_recruiter_profiles").select("*").eq("user_id", session.userId).maybeSingle();
+      if (error) throw error;
+      return json({ success: true, profile: data || null });
+    }
+
+    if (action === "submit_recruiter_application") {
+      const recruiterType = body.recruiter_type === "structure" ? "structure" : "independent";
+      const professionalEmail = String(body.professional_email || "").trim();
+      const companyName = String(body.company_name || "").trim();
+      const jobTitle = String(body.job_title || "").trim();
+      if (!professionalEmail || !companyName || !jobTitle) return json({ error: "REQUIRED_FIELDS" }, 400);
+      const row = {
+        user_id: session.userId,
+        recruiter_type: recruiterType,
+        organization_id: recruiterType === "structure" ? session.organizationId : null,
+        company_name: companyName,
+        job_title: jobTitle,
+        professional_email: professionalEmail,
+        phone: body.phone || null,
+        country: body.country || null,
+        linkedin_url: body.linkedin_url || null,
+        website_url: body.website_url || null,
+        status: "pending",
+        rejection_reason: null,
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await sb.from("talent_recruiter_profiles").upsert(row, { onConflict: "user_id" }).select().single();
+      if (error) throw error;
+      const { data: admins } = await sb.from("user_roles").select("user_id").eq("role", "super_admin");
+      for (const admin of admins || []) await queueNotification(sb, String(admin.user_id), "recruiter_application_submitted", { recruiter_user_id: session.userId });
+      await logActivity(sb, session, null, null, "recruiter_application_submitted", "user", session.userId, { recruiter_type: recruiterType });
+      return json({ success: true, profile: data });
+    }
+
+    if (action === "join_structure_by_code") {
+      const code = String(body.code || "").trim().toUpperCase();
+      if (!code) return json({ error: "CODE_REQUIRED" }, 400);
+      const { data: invite, error: inviteError } = await sb.from("talent_recruitment_invites").select("*").eq("code", code).is("revoked_at", null).maybeSingle();
+      if (inviteError) throw inviteError;
+      if (!invite || (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) || invite.uses_count >= invite.max_uses) return json({ error: "CODE_INVALID" }, 400);
+      const { data: user } = await sb.from("users").select("email").eq("id", session.userId).maybeSingle();
+      if (invite.email && String(invite.email).toLowerCase() !== String(user?.email || "").toLowerCase()) return json({ error: "CODE_EMAIL_MISMATCH" }, 403);
+      await sb.from("partner_managers").upsert({ organization_id: invite.organization_id, user_id: session.userId, role_in_org: invite.role_label || "Recruteur", is_primary: false, status: "actif", permissions: invite.permissions || {} }, { onConflict: "organization_id,user_id" });
+      await sb.from("talent_structure_permissions").upsert({ organization_id: invite.organization_id, user_id: session.userId, ...(invite.permissions || {}), updated_at: new Date().toISOString() }, { onConflict: "organization_id,user_id" });
+      await sb.from("talent_recruitment_invites").update({ uses_count: Number(invite.uses_count || 0) + 1 }).eq("id", invite.id);
+      const { data: profile, error } = await sb.from("talent_recruiter_profiles").upsert({ user_id: session.userId, recruiter_type: "structure", organization_id: invite.organization_id, status: "approved", validated_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "user_id" }).select().single();
+      if (error) throw error;
+      const { data: managers } = await sb.from("partner_managers").select("user_id").eq("organization_id", invite.organization_id).eq("is_primary", true).eq("status", "actif");
+      for (const manager of managers || []) await queueNotification(sb, String(manager.user_id), "recruiter_joined_structure", { recruiter_user_id: session.userId, organization_id: invite.organization_id });
+      return json({ success: true, profile });
+    }
+
+    if (action === "list_notifications") {
+      const { data, error } = await sb.from("talent_notifications").select("*").eq("user_id", session.userId).order("created_at", { ascending: false }).limit(100);
+      if (error) throw error;
+      return json({ success: true, notifications: data || [], unread: (data || []).filter((n: any) => !n.read_at).length });
+    }
+
+    if (action === "mark_notification_read") {
+      const notificationId = body.notification_id ? String(body.notification_id) : null;
+      let q = sb.from("talent_notifications").update({ read_at: new Date().toISOString() }).eq("user_id", session.userId).is("read_at", null);
+      if (notificationId) q = q.eq("id", notificationId);
+      const { error } = await q;
+      if (error) throw error;
+      return json({ success: true });
+    }
+
+    if (action === "update_recruiter_preferences") {
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (["public","private"].includes(String(body.visibility))) patch.visibility = body.visibility;
+      if (typeof body.notifications_enabled === "boolean") patch.notifications_enabled = body.notifications_enabled;
+      const { data, error } = await sb.from("talent_recruiter_profiles").update(patch).eq("user_id", session.userId).select().single();
+      if (error) throw error;
+      return json({ success: true, profile: data });
+    }
+
+    if (action === "admin_talent_supervision" || action === "admin_update_recruiter_status") {
+      if (!hasRole(session, "super_admin")) return json({ error: "FORBIDDEN" }, 403);
+      if (action === "admin_talent_supervision") {
+        let rq = sb.from("talent_recruiter_profiles").select("*,users(full_name,email)");
+        if (body.status) rq = rq.eq("status", String(body.status));
+        const [recruitersResult, contactsResult, activityResult] = await Promise.all([
+          rq.order("created_at", { ascending: false }),
+          sb.from("talent_contacts").select("*").order("created_at", { ascending: false }).limit(100),
+          sb.from("talent_activity_log").select("*").order("created_at", { ascending: false }).limit(150),
+        ]);
+        if (recruitersResult.error) throw recruitersResult.error;
+        const recruiters = recruitersResult.data || [];
+        return json({ success: true, recruiters, contacts: contactsResult.data || [], activity: activityResult.data || [], metrics: {
+          pending: recruiters.filter((r: any) => r.status === "pending").length,
+          approved: recruiters.filter((r: any) => r.status === "approved").length,
+          suspended: recruiters.filter((r: any) => r.status === "suspended").length,
+          contacts: (contactsResult.data || []).length,
+        }});
+      }
+      const targetUserId = String(body.user_id || "");
+      const status = String(body.status || "");
+      if (!targetUserId || !["pending","approved","rejected","suspended"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
+      const patch: Record<string, unknown> = { status, rejection_reason: body.reason || null, updated_at: new Date().toISOString(), validated_by: session.userId };
+      if (status === "approved") patch.validated_at = new Date().toISOString();
+      if (status === "suspended") patch.suspended_at = new Date().toISOString();
+      const { data, error } = await sb.from("talent_recruiter_profiles").update(patch).eq("user_id", targetUserId).select().single();
+      if (error) throw error;
+      if (status === "approved") await sb.from("user_roles").upsert({ user_id: targetUserId, role: "recruteur" }, { onConflict: "user_id,role" });
+      if (["rejected","suspended"].includes(status)) await sb.from("user_roles").delete().eq("user_id", targetUserId).eq("role", "recruteur");
+      await queueNotification(sb, targetUserId, "recruiter_status_changed", { status, reason: body.reason || null });
+      await logActivity(sb, session, null, targetUserId, "recruiter_status_changed", "user", targetUserId, { status, reason: body.reason || null });
+      return json({ success: true, profile: data });
+    }
+
     if (!canUseRecruiter(session)) return json({ error: "FORBIDDEN" }, 403);
     const scope = body.scope === "structure" ? "structure" : "recruiter";
     const organizationId = scopeOrg(session, scope);
     if (scope === "structure" && !organizationId && !hasRole(session, "super_admin")) return json({ error: "NO_STRUCTURE" }, 403);
+
+    if (action === "create_recruitment_invite") {
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const code = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+      const { data, error } = await sb.from("talent_recruitment_invites").insert({ organization_id: organizationId, code, email: body.email || null, max_uses: Math.max(1, Number(body.max_uses || 1)), expires_at: body.expires_at || null, permissions: body.permissions || undefined, created_by: session.userId }).select().single();
+      if (error) throw error;
+      return json({ success: true, invite: data });
+    }
+    if (action === "list_recruitment_invites") {
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const { data, error } = await sb.from("talent_recruitment_invites").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return json({ success: true, invites: data || [] });
+    }
+    if (action === "revoke_recruitment_invite") {
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const { error } = await sb.from("talent_recruitment_invites").update({ revoked_at: new Date().toISOString() }).eq("id", String(body.invite_id || "")).eq("organization_id", organizationId);
+      if (error) throw error;
+      return json({ success: true });
+    }
 
     if (action === "dashboard") {
       const favoriteQuery = organizationId ? sb.from("talent_favorites").select("id", { count: "exact", head: true }).eq("organization_id", organizationId) : sb.from("talent_favorites").select("id", { count: "exact", head: true }).eq("actor_user_id", session.userId).is("organization_id", null);

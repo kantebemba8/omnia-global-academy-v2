@@ -87,6 +87,7 @@ const ADMIN_NAV = [
   { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
   { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
   { path: '/talent', label: 'Talent Omnia', icon: Search },
+  { path: '/admin/talent', label: 'Supervision Talent', icon: Shield },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 
