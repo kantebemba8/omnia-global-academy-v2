@@ -75,18 +75,19 @@ export default function StructureDashboard() {
 
  async function load() {
     if (isPreview) {
-      // Mode prévisualisation — afficher une structure fictive
+      // Mode aperçu : aucune donnée fictive. Les valeurs restent à zéro.
       setStructure({
         id: 'preview',
-        name: 'École de démonstration OGA',
-        structure_type: 'ecole',
+        name: 'Espace Structure',
+        structure_type: 'autre',
         status: 'validated',
-        display_name: 'Espace École',
-        status_label: 'Validée',
+        display_name: 'Espace Structure',
+        status_label: 'Lecture seule',
         logo_url: undefined,
         admin_comment: undefined,
       });
-      setStats({ members: 24, active_codes: 3, active_benefits: 1 });
+      setStats({ members: 0, active_codes: 0, active_benefits: 0 });
+      setPendingMembers([]);
       setLoading(false);
       return;
     }
@@ -233,7 +234,7 @@ export default function StructureDashboard() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isValidated && (
+            {isValidated && !isPreview && (
               <button onClick={() => navigate('/structure/offres-emploi')}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                 style={{ background: '#002050' }}>

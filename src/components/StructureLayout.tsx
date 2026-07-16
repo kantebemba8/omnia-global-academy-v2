@@ -45,6 +45,14 @@ export function StructureLayout({ children, displayName }: Props) {
   const [user, setUser] = useState<{ full_name: string; email: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const previewMode = new URLSearchParams(location.search).get('preview') === 'true' && (() => {
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
+    catch { return false; }
+  })();
+  const buildPath = (path: string) => previewMode
+    ? `${path}${path.includes('?') ? '&' : '?'}preview=true`
+    : path;
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem('omnia_user');
@@ -53,6 +61,7 @@ export function StructureLayout({ children, displayName }: Props) {
   }, []);
 
   function handleLogout() {
+    if (previewMode) { navigate('/admin/dashboard'); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (token) {
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-logout`, {
@@ -98,7 +107,7 @@ export function StructureLayout({ children, displayName }: Props) {
           return (
             <Link
               key={item.path}
-              to={item.path}
+              to={buildPath(item.path)}
               onClick={() => setSidebarOpen(false)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
               style={{
@@ -180,6 +189,18 @@ export function StructureLayout({ children, displayName }: Props) {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto" style={{ background: '#F8F9FA' }}>
+          {previewMode && (
+            <div className="flex items-center gap-3 px-5 py-3" style={{ backgroundColor: '#002050' }}>
+              <span className="text-white text-xs font-medium flex-1">
+                👁 Mode aperçu Super-admin — Espace Structure — Lecture seule
+              </span>
+              <button
+                onClick={() => navigate('/admin/dashboard')}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white border border-white/30 hover:bg-white/10 transition-colors flex-shrink-0">
+                ← Retour au Dashboard Super Admin
+              </button>
+            </div>
+          )}
           {children}
         </main>
       </div>
