@@ -50,16 +50,69 @@ async function queueNotification(sb: ReturnType<typeof createClient>, userId: st
   await sb.from("notification_queue").insert({ notification_type: type, user_id: userId, payload }).catch(() => {});
 }
 
+async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
+  const { data, error } = await sb
+    .from("career_public_profiles")
+    .select("user_id,full_name,professional_title,location,bio,skills,sectors,languages,certifications,photo_url,availability,experience_level,portfolio_url,contact_enabled,updated_at")
+    .eq("visibility", "public")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map((profile: any) => ({ ...profile, id: profile.user_id }));
+}
+
+async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Request, body: any) {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return json({ error: "SESSION_INVALID" }, 401);
+  const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  if (!session) return json({ error: "SESSION_INVALID" }, 401);
+  const userId = String(session.user_id);
+  const profile = body.profile || {};
+  const row = {
+    user_id: userId,
+    full_name: profile.full_name || "",
+    professional_title: profile.title || profile.professional_title || null,
+    email: profile.email || null,
+    phone: profile.phone || null,
+    location: profile.location || null,
+    linkedin: profile.linkedin || null,
+    bio: profile.summary || profile.bio || null,
+    skills: Array.isArray(profile.skills) ? profile.skills : [],
+    sectors: Array.isArray(profile.sectors) ? profile.sectors : [],
+    languages: Array.isArray(profile.languages) ? profile.languages : [],
+    certifications: Array.isArray(profile.certifications) ? profile.certifications : [],
+    photo_url: profile.photo_url || null,
+    availability: profile.availability || null,
+    experience_level: profile.experience_level || null,
+    portfolio_url: profile.portfolio_url || null,
+    contact_enabled: profile.contact_enabled !== false,
+    visibility: profile.visibility || "private",
+    documents_visibility: profile.documents_visibility || "private",
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await sb.from("career_public_profiles").upsert(row, { onConflict: "user_id" }).select().single();
+  if (error) throw error;
+  return json({ success: true, profile: data });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const body = await req.json().catch(() => ({}));
+    const action = String(body.action || "");
+
+    // Public profile actions formerly handled by career-public-profiles.
+    if (action === "public_list" || action === "list_public_profiles" || action === "list") {
+      return json({ success: true, profiles: await listPublicProfiles(sb) });
+    }
+    if (action === "save_public_profile" || action === "save") {
+      return await savePublicProfile(sb, req, body);
+    }
+
     const session = await authenticate(sb, req);
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
     if (!canUseRecruiter(session)) return json({ error: "FORBIDDEN" }, 403);
-    const body = await req.json().catch(() => ({}));
-    const action = String(body.action || "");
     const scope = body.scope === "structure" ? "structure" : "recruiter";
     const organizationId = scopeOrg(session, scope);
     if (scope === "structure" && !organizationId && !hasRole(session, "super_admin")) return json({ error: "NO_STRUCTURE" }, 403);
