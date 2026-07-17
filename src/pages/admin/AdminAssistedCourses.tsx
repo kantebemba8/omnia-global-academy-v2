@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Clock3, FileText, RefreshCw, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -5,7 +6,7 @@ import { DashboardLayout } from '../../components/DashboardLayout';
 const API=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const BLUE='#002050', GOLD='#BF8813', BORDER='#E4E7EC';
 function token(){return localStorage.getItem('omnia_session_token')||''}
-async function call(action:string,body:any={}){const r=await fetch(API,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action,...body})});const d=await r.json();if(!r.ok||d.success===false)throw new Error(d.message||d.error||'Erreur');return d}
+async function call(action:string,body:any={}){const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...body})});const d=await r.json();if(!r.ok||d.success===false)throw new Error(d.message||d.error||'Erreur');return d}
 
 export default function AdminAssistedCourses(){
  const [tab,setTab]=useState<'assisted'|'certifications'>('assisted');const [items,setItems]=useState<any[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');

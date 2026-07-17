@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -60,7 +61,7 @@ export default function AdminMesFormations() {
     try {
       const res = await fetch(API, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_courses' }),
       });
       const data = await res.json();
@@ -264,7 +265,7 @@ export default function AdminMesFormations() {
                         <button onClick={async () => {
                           const res = await fetch(API, {
                             method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                            headers: edgeAuthHeaders(),
                             body: JSON.stringify({ action: 'admin_publish', course_id: f.id }),
                           });
                           const data = await res.json();

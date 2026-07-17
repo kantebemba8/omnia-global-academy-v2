@@ -260,6 +260,19 @@ export default function StudioConceptionFormation() {
     }
   }
 
+
+  async function reloadCourse(courseIdToLoad: string) {
+    const data = await api('get_course', { course_id: courseIdToLoad });
+    if (!data.success) {
+      showToast(data.error === 'AUTH_REQUIRED' ? 'Session expirée. Reconnectez-vous.' : 'Impossible de recharger la formation.', 'error');
+      return false;
+    }
+    setCourse(data.course);
+    setModules(data.modules || []);
+    setAdvancedMode(data.course?.studio_mode === 'advanced');
+    return true;
+  }
+
   // ─── Autosave ──────────────────────────────────────────────
   const scheduleAutosave = useCallback(() => {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
@@ -279,7 +292,7 @@ export default function StudioConceptionFormation() {
     const onBeforeUnload = () => {
       const c = courseRef.current;
       if (!c?.id) return;
-      fetch(API, { method: 'POST', keepalive: true, headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }) }).catch(() => undefined);
+      fetch(API, { method: 'POST', keepalive: true, headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }) }).catch(() => undefined);
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => { window.clearInterval(interval); window.removeEventListener('beforeunload', onBeforeUnload); };
@@ -891,7 +904,7 @@ export default function StudioConceptionFormation() {
                 style={{ borderColor: '#002050', color: '#002050' }}>
                 <Plus size={11} /> Module
               </button>
-              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await loadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
+              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
             </div>
           </div>

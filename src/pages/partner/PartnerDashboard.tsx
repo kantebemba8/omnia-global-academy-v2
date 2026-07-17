@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -100,7 +101,7 @@ export default function PartnerDashboard() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/partner-org-manage`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_org' }),
       });
       const data = await res.json();
@@ -113,7 +114,7 @@ export default function PartnerDashboard() {
       if (data.organization?.id) {
         const codesRes = await fetch(`${SUPABASE_URL}/functions/v1/partner-code-manage`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+          headers: edgeAuthHeaders(),
           body: JSON.stringify({ action: 'get_my_codes', org_id: data.organization.id }),
         });
         const codesData = await codesRes.json();
@@ -128,7 +129,7 @@ export default function PartnerDashboard() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/studio-unified`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_courses' }),
       });
       const data = await res.json();
@@ -146,7 +147,7 @@ export default function PartnerDashboard() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/partner-code-manage`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'create_code', org_id: org.id, ...newCode, expires_at: newCode.expires_at || null }),
       });
       const data = await res.json();
@@ -163,7 +164,7 @@ export default function PartnerDashboard() {
   async function submitCode(codeId: string) {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/partner-code-manage`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'submit_code', code_id: codeId }),
     });
     const data = await res.json();

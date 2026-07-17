@@ -14,7 +14,7 @@ function token() { return localStorage.getItem('omnia_session_token') || ''; }
 async function call(action: string, body: Record<string, unknown> = {}) {
   const res = await fetch(API, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify({ action, ...body }),
   });
   const data = await res.json().catch(() => ({ success: false, error: 'INVALID_RESPONSE' }));

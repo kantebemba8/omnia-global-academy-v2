@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -71,7 +72,7 @@ export default function AdminStudioValidation() {
   async function callApi(action: string, body: Record<string, any> = {}) {
     const res = await fetch(API, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action, ...body }),
     });
     return res.json();

@@ -64,22 +64,13 @@ export function Login() {
     setError('');
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        }
-      );
-
-      const data: LoginResponse = await response.json();
+      const data = await authFetch<LoginResponse>('auth-login', { email: email.trim(), password });
       console.log('Response:', data);
 
       if (data.success) {
         localStorage.setItem('omnia_session_token', data.session_token!);
         localStorage.setItem('omnia_user', JSON.stringify(data.user));
-        window.location.href = data.redirect_url || '/admin/dashboard';
+        navigate(data.redirect_url || '/dashboard', { replace: true });
       } else {
         setError(data.message || 'Identifiants incorrects');
       }
@@ -100,19 +91,11 @@ export function Login() {
     setLoading(true);
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone_number, password: phonePassword }),
-        }
-      );
-      const data = await response.json();
+      const data = await authFetch<LoginResponse>('auth-login', { phone_number, password: phonePassword });
       if (data.success) {
         localStorage.setItem('omnia_session_token', data.session_token);
         localStorage.setItem('omnia_user', JSON.stringify(data.user));
-        window.location.href = data.redirect_url || '/dashboard';
+        navigate(data.redirect_url || '/dashboard', { replace: true });
       } else {
         setError(data.message || 'Identifiants incorrects');
       }

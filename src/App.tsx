@@ -97,6 +97,7 @@ import DemoDashboard from './pages/demo/DemoDashboard';
 import { Sentry } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import StructureDashboard from './pages/structure/StructureDashboard';
+import StructureMesFormations from './pages/structure/StructureMesFormations';
 import StructureProfil from './pages/structure/StructureProfil';
 import StructureCodes from './pages/structure/StructureCodes';
 import StructureMembres from './pages/structure/StructureMembres';
@@ -220,7 +221,6 @@ export default function App() {
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
-          <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />
 <Route path="/admin/structure-codes" element={<AdminStructureCodes />} />

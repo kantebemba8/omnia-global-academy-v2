@@ -6,7 +6,7 @@ const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const token = () => localStorage.getItem('omnia_session_token') || '';
 
 async function call(action: string, payload: Record<string, unknown>) {
-  const response = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` }, body: JSON.stringify({ action, ...payload }) });
+  const response = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action, ...payload }) });
   const data = await response.json();
   if (!response.ok || data.success === false) throw new Error(data.message || data.error || 'Erreur');
   return data;
