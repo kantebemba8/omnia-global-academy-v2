@@ -125,6 +125,7 @@ import TalentExplore from './pages/talent/TalentExplore';
 import TalentRecruiters from './pages/talent/TalentRecruiters';
 import RecruiterDashboard from './pages/talent/RecruiterDashboard';
 import TalentAbout from './pages/talent/TalentAbout';
+import TalentCommunity from './pages/talent/TalentCommunity';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
@@ -174,6 +175,7 @@ export default function App() {
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
+          <Route path="/talent/communaute" element={<TalentCommunity />} />
           <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
