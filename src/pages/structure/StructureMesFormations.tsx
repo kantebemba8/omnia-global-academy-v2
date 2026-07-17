@@ -1,4 +1,5 @@
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle } from 'lucide-react';
@@ -15,7 +16,7 @@ type Formation = {
   admin_comment?: string | null;
 };
 
-const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
+const API = `${API_BASE_URL}/studio-unified`;
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: 'Brouillon', color: '#6B7280', bg: '#F3F4F6' },
   pending_validation: { label: 'En attente', color: '#92400E', bg: '#FEF3C7' },
@@ -41,11 +42,20 @@ export default function StructureMesFormations() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'get_my_courses' }),
-      });
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+      let res: Response;
+      try {
+        res = await fetch(API, {
+          method: 'POST',
+          headers: edgeAuthHeaders({ Accept: 'application/json' }),
+          body: JSON.stringify({ action: 'get_my_courses' }),
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeout);
+      }
       const data = await res.json().catch(() => null);
       if (res.status === 401 || data?.error === 'AUTH_REQUIRED') {
         navigate('/connexion', { replace: true });
@@ -56,7 +66,14 @@ export default function StructureMesFormations() {
       }
       setFormations(data.courses || []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de charger les formations.');
+      const message = e instanceof DOMException && e.name === 'AbortError'
+        ? 'Le chargement prend trop de temps. Réessayez dans quelques secondes.'
+        : e instanceof TypeError
+          ? 'Connexion au service des formations impossible. Vérifiez que la fonction studio-unified est déployée puis réessayez.'
+          : e instanceof Error
+            ? e.message
+            : 'Impossible de charger les formations.';
+      setError(message);
     } finally {
       setLoading(false);
     }

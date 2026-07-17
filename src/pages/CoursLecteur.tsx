@@ -6,7 +6,6 @@ import { useCpdTimer } from '../hooks/useCpdTimer';
 import { QuizLecon, type QuizQuestion } from './QuizLecon';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
-import { ScormPlayer } from '../components/ScormPlayer';
 import { AssessmentEngine } from '../components/AssessmentEngine';
 interface AiMessage {
   id: string;
@@ -237,6 +236,8 @@ export function CoursLecteur() {
   const { id: courseId, lessonId: routeLessonId } = useParams<{ id: string; lessonId?: string }>();
   const navigate = useNavigate();
   const { user, sessionToken, loading: authLoading } = useAuth();
+  const previewMode = new URLSearchParams(window.location.search).get('preview');
+  const isAdminPreview = previewMode === 'admin';
 
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [finalUnlocked, setFinalUnlocked] = useState(false);
@@ -263,7 +264,11 @@ export function CoursLecteur() {
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { if (!authLoading && !user) navigate('/connexion'); }, [authLoading, user, navigate]);
+  useEffect(() => {
+    // L'aperçu Super Admin reste accessible avec la session active et ne doit pas
+    // rediriger vers la connexion pendant l'initialisation du hook d'authentification.
+    if (!authLoading && !user && !isAdminPreview) navigate('/connexion');
+  }, [authLoading, user, navigate, isAdminPreview]);
 
   const loadProgress = useCallback(async () => {
     if (!sessionToken || !courseId) return;
@@ -441,8 +446,14 @@ export function CoursLecteur() {
     <div className="flex flex-col h-screen" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
-        <button onClick={() => navigate(`/cours/${courseId}`)} className="hover:opacity-70 transition-opacity">
-          <ArrowLeft size={18} style={{ color: 'rgba(255,255,255,0.65)' }} />
+        <button
+          onClick={() => navigate(isAdminPreview ? '/admin/dashboard' : `/cours/${courseId}`)}
+          className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
+          title={isAdminPreview ? 'Retour au dashboard Super Admin' : 'Retour à la formation'}
+          aria-label={isAdminPreview ? 'Retour au dashboard Super Admin' : 'Retour à la formation'}
+        >
+          <ArrowLeft size={18} style={{ color: '#FFFFFF' }} />
+          {isAdminPreview && <span className="hidden sm:inline text-xs font-semibold text-white">Dashboard Super Admin</span>}
         </button>
         <div className="flex-1 flex items-center gap-3">
           <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.15)' }}>
@@ -572,17 +583,6 @@ export function CoursLecteur() {
                 </div>
               )}
               
-              {block.block_type === 'scorm' && block.file_url && (
-  <ScormPlayer
-    scormUrl={block.file_url}
-    packageType={block.content_json?.package_type || 'scorm_12'}
-    title={block.content_json?.title || block.file_name}
-    onComplete={(score) => {
-      // Marquer la leçon comme complétée
-    }}
-    onProgress={(pct) => console.log('SCORM progress:', pct)}
-  />
-)}
 
               {/* Auto exercises for language courses */}
               {(lesson.exercices_auto?.length ?? 0) > 0 && lesson.course_category?.toLowerCase().includes('langue') && (
