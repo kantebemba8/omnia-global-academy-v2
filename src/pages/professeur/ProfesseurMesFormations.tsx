@@ -2,7 +2,7 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2 } from 'lucide-react';
+import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2 } from 'lucide-react';
 
 interface Formation {
   id: string; title: string; status: string;
@@ -51,7 +51,7 @@ export function ProfesseurMesFormations() {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
         method: 'POST',
         headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'get_my_courses' }),
+        body: JSON.stringify({ action: 'get_my_courses', creator_context: 'professeur' }),
       });
       const json = await res.json().catch(() => null);
       if (res.status === 401 || json?.error === 'AUTH_REQUIRED') {
@@ -73,6 +73,20 @@ export function ProfesseurMesFormations() {
     finally { setLoading(false); }
   }, [navigate, bypassAuth]);
   useEffect(() => { load(); }, [load]);
+
+
+  async function deleteDraft(id: string, title: string) {
+    if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
+        method: 'POST', headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'delete_course', course_id: id, creator_context: 'professeur' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Suppression impossible');
+      setFormations(items => items.filter(item => item.id !== id));
+    } catch (e) { alert(e instanceof Error ? e.message : 'Suppression impossible'); }
+  }
 
   const filtered = filter ? formations.filter((f) => f.status === filter) : formations;
 
@@ -158,6 +172,13 @@ export function ProfesseurMesFormations() {
                           style={{ borderColor: '#002050', color: '#002050' }}>
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </Link>
+                      )}
+                      {['brouillon', 'draft'].includes(f.status) && (
+                        <button type="button" onClick={() => deleteDraft(f.id, f.title)}
+                          className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center justify-center"
+                          style={{ borderColor: '#DC2626', color: '#DC2626' }} title="Supprimer le brouillon">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                       {['publiee', 'published'].includes(f.status) && (
                         <Link to="/professeur/analytics"

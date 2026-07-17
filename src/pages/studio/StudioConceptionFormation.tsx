@@ -498,7 +498,9 @@ export default function StudioConceptionFormation() {
     if (!course.short_description?.trim()) { showToast('Ajoutez la description courte visible avant achat.', 'error'); return null; }
     setCreatingDraft(true);
     try {
+      const creatorContext = window.location.pathname.includes('/structure/') ? 'structure' : window.location.pathname.includes('/admin/') ? 'super_admin' : 'professeur';
       const data = await api('create_course', {
+        creator_context: creatorContext,
         client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
         title: course.title,
         short_description: course.short_description,

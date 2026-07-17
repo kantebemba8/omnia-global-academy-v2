@@ -176,13 +176,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
               <span>{user.ai_tokens} jeton{user.ai_tokens !== 1 ? 's' : ''} IA</span>
             </div>
           )}
-          {role === 'professeur' && (
-            <Link to={buildPath('/professeur/courses/new')} onClick={() => setSidebarOpen(false)}
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold py-1.5 px-2 rounded-lg justify-center hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              <PlusCircle className="w-3.5 h-3.5" /> Nouvelle formation
-            </Link>
-          )}
           {role === 'directeur' && (
             <div className="mt-2">
               <span className="text-white/40 text-xs flex items-center gap-1"><Building2 className="w-3 h-3" /> Directeur</span>

@@ -40,6 +40,7 @@ export default function ProfessorCourseStart() {
     try {
       const draftKey = crypto.randomUUID();
       const created = await call('create_course', {
+        creator_context: 'professeur',
         client_draft_key: draftKey,
         title: title.trim(),
         short_description: 'Formation en saisie assistée par Omnia',

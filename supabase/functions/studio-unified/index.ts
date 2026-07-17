@@ -82,9 +82,22 @@ Deno.serve(async(req)=>{
    return json({success:true,structure:organization?{id:organization.id,name:organization.org_name,display_name:organization.org_name,structure_type:organization.org_type||"autre",status:organization.status||"pending_validation",status_label:organization.status||"pending_validation",logo_url:organization.logo_url,admin_comment:organization.admin_comment,modification_note:organization.modification_note}:null,stats:{members:0,active_codes:activeCodes,active_benefits:0,courses:courseCount||0},pending_members:[]});
   }
   if(action==="get_my_courses"){
-   let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
+   const context=String(b.creator_context||"").trim();
+   let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,creator_context,structure_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
    if(!isAdmin) q=q.eq("creator_id",userId);
+   if(context) q=q.eq("creator_context",context);
    const {data,error}=await q;if(error)throw error;return json({success:true,courses:data||[]});
+  }
+  if(action==="delete_course"){
+   const courseId=String(b.course_id||""); if(!courseId)return json({success:false,error:"COURSE_ID_REQUIRED"},400);
+   const {data:course,error:readError}=await sb.from("courses").select("id,creator_id,studio_status,creator_context").eq("id",courseId).maybeSingle();
+   if(readError)throw readError;if(!course)return json({success:false,error:"NOT_FOUND"},404);
+   if(!isAdmin&&course.creator_id!==userId)return json({success:false,error:"FORBIDDEN"},403);
+   if(!["draft","brouillon"].includes(String(course.studio_status||"")))return json({success:false,error:"ONLY_DRAFT_CAN_BE_DELETED",message:"Seuls les brouillons peuvent être supprimés."},409);
+   if(b.creator_context&&course.creator_context!==b.creator_context)return json({success:false,error:"CONTEXT_MISMATCH"},403);
+   await log(sb,courseId,userId,"course_deleted",{creator_context:course.creator_context});
+   const {error}=await sb.from("courses").delete().eq("id",courseId);if(error)throw error;
+   return json({success:true});
   }
   if(action==="get_pending_courses"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
@@ -92,15 +105,19 @@ Deno.serve(async(req)=>{
   }
   if(action==="create_course"){
    if(b.client_draft_key){
-    const {data:existing}=await sb.from("courses").select("*").eq("creator_id",userId).eq("client_draft_key",b.client_draft_key).maybeSingle();
+    const requestedContext=["professeur","structure","super_admin"].includes(String(b.creator_context))?String(b.creator_context):(isAdmin?"super_admin":"professeur");
+    const {data:existing}=await sb.from("courses").select("*").eq("creator_id",userId).eq("creator_context",requestedContext).eq("client_draft_key",b.client_draft_key).maybeSingle();
     if(existing){
       const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",existing.id).order("position");
       const ids=(mods||[]).map((m:any)=>m.id); const {data:lessons}=ids.length?await sb.from("course_lessons").select("*").in("module_id",ids).order("position"):{data:[]};
       return json({success:true,course:existing,modules:(mods||[]).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id)})),reused:true});
     }
    }
+   const creatorContext=["professeur","structure","super_admin"].includes(String(b.creator_context))?String(b.creator_context):(isAdmin?"super_admin":"professeur");
+   let structureId:string|null=null;
+   if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null;}
    const insert:any={
-    title:b.title||"Nouvelle formation",creator_id:userId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
+    title:b.title||"Nouvelle formation",creator_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
     studio_mode:b.studio_mode||"simple",studio_status:"draft",short_description:b.short_description||"",
     long_description:b.long_description||"",category:b.category||null,level:b.level||null,language:b.language||"fr",
     prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",

@@ -189,18 +189,6 @@ export function StructureLayout({ children, displayName }: Props) {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto" style={{ background: '#F8F9FA' }}>
-          {previewMode && (
-            <div className="flex items-center gap-3 px-5 py-3" style={{ backgroundColor: '#002050' }}>
-              <span className="text-white text-xs font-medium flex-1">
-                👁 Mode aperçu Super-admin — Espace Structure — Lecture seule
-              </span>
-              <button
-                onClick={() => navigate('/admin/dashboard')}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white border border-white/30 hover:bg-white/10 transition-colors flex-shrink-0">
-                ← Retour au Dashboard Super Admin
-              </button>
-            </div>
-          )}
           {children}
         </main>
       </div>
