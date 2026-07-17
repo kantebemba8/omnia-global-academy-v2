@@ -22,6 +22,7 @@ type Props={
 };
 
 export default function StudioCommercialCertificationPanel({course,locked=false,onPatch,onSaved}:Props){
+  const isProfessor = typeof window !== 'undefined' && window.location.pathname.includes('/professeur/');
   const [saving,setSaving]=useState(false);
   const [rules,setRules]=useState<any>(null);
   const [files,setFiles]=useState<File[]>([]);
@@ -86,6 +87,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       <button disabled={saving||locked} onClick={saveCommercial} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={14}/>Enregistrer la commercialisation</button>
     </div>
 
+    {!isProfessor && (<>
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
       <div className="flex items-center gap-2"><HandHelping size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Saisie assistée par Omnia</h3></div>
       <p className="mt-1 text-xs text-gray-500">Envoyez vos documents et consignes. Omnia saisira la formation dans votre Studio, puis vous la retrouverez prête à valider.</p>
@@ -96,6 +98,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       <button disabled={saving||locked||(assistedType==='with_certification'&&!instructions.trim())} onClick={requestAssistance} className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:GOLD}}>{assistedType==='with_certification'?'Envoyer la demande':'Valider la demande'}</button>
       {course.assisted_status&&<span className="ml-3 text-xs text-gray-500">Statut : {course.assisted_status}</span>}
     </div>
+    </>)}
 
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
       <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certification de la formation</h3></div>

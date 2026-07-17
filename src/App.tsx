@@ -79,6 +79,7 @@ import AdminStructures from './pages/admin/AdminStructures';
 import AdminStructureCodes from './pages/admin/AdminStructureCodes';
 import AdminStructureAvantages from './pages/admin/AdminStructureAvantages';
 import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
+import ProfessorCourseStart from './pages/studio/ProfessorCourseStart';
 import Checkout from './pages/Checkout';
 import PaymentConfirmation from './pages/PaymentConfirmation';
 import PaymentFailed from './pages/PaymentFailed';
@@ -209,8 +210,8 @@ export default function App() {
         <Route path="/admin/payouts" element={<AdminRetraits />} />
         <Route path="/admin/marketing" element={<AdminMarketing />} />
         <Route path="/admin/courses" element={<AdminCatalogue />} />
-        <Route path="/admin/courses/new" element={<ProfesseurStudioCreation is_admin={true} />} />
-        <Route path="/admin/courses/:id/edit" element={<ProfesseurStudioCreation is_admin={true} />} />
+        <Route path="/admin/courses/new" element={<Navigate to="/admin/studio/new" replace />} />
+        <Route path="/admin/courses/:id/edit" element={<StudioConceptionFormation />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
@@ -259,8 +260,8 @@ export default function App() {
         {/* Module 7 — Dashboard professeur — always accessible */}
         <Route path="/professeur/dashboard" element={<DashboardProfesseur />} />
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
-        <Route path="/professeur/courses/new" element={<ProfesseurStudioCreation />} />
-        <Route path="/professeur/courses/:id/edit" element={<ProfesseurStudioCreation />} />
+        <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
+        <Route path="/professeur/courses/:id/edit" element={<StudioConceptionFormation />} />
           <Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
 <Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
 <Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
@@ -270,6 +271,10 @@ export default function App() {
         <Route path="/admin/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/professeur/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/structure/studio/:courseId/evaluations" element={<StudioEvaluations />} />
+<Route path="/structure/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/structure/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/structure/formations/nouvelle" element={<Navigate to="/structure/studio/new" replace />} />
+
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
         <Route path="/professeur/profile" element={<ProfesseurProfil />} />

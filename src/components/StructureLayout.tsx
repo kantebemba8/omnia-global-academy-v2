@@ -13,7 +13,7 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/dashboard',           label: 'Tableau de bord',          icon: LayoutDashboard, exact: true },
   { path: '/structure/profil',              label: 'Profil de la structure',    icon: Building2 },
   { path: '/structure/formations',          label: 'Formations',                icon: BookOpen },
-  { path: '/structure/formations/nouvelle', label: 'Créer une formation',       icon: PlusCircle },
+  { path: '/structure/studio/new',           label: 'Créer une formation',       icon: PlusCircle },
   { path: '/structure/membres',             label: 'Membres liés',              icon: Users },
   { path: '/structure/rattachements',       label: 'Demandes de rattachement',  icon: UserCheck },
   { path: '/structure/codes',               label: 'Codes structure',           icon: QrCode },

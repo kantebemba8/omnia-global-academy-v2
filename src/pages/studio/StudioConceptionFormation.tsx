@@ -152,9 +152,10 @@ async function api(action: string, body: Record<string, any> = {}) {
 // ─── Composant principal ──────────────────────────────────────
 export default function StudioConceptionFormation() {
   const navigate = useNavigate();
-  const { courseId } = useParams<{ courseId: string }>();
+  const params = useParams<{ courseId?: string; id?: string }>();
+  const courseId = params.courseId || params.id;
   const [searchParams] = useSearchParams();
-  const isNew = courseId === 'new';
+  const isNew = !courseId || courseId === 'new';
 
   // État principal
   const [course, setCourse] = useState<Course>(EMPTY_COURSE);
@@ -488,7 +489,7 @@ export default function StudioConceptionFormation() {
         template_used: course.template_used || 'simple_textual',
         studio_mode: course.studio_mode || 'simple',
         create_introduction: true,
-        free_preview_mode: course.free_preview_mode || 'introduction',
+        free_preview_mode: 'introduction',
       });
       if (!data.success) throw new Error(data.message || data.error || 'Création impossible');
       setCourse(data.course);
@@ -529,7 +530,7 @@ export default function StudioConceptionFormation() {
         cover_image_prompt: course.cover_image_prompt,
         course_intro_title: course.course_intro_title,
         course_intro_summary: course.course_intro_summary,
-        word_count: wordCount, free_preview_mode: course.free_preview_mode || 'introduction',
+        word_count: wordCount, free_preview_mode: 'introduction',
       });
       if (data.success) {
         setCourse(data.course);
@@ -959,30 +960,7 @@ export default function StudioConceptionFormation() {
                   </div>
                 </div>
 
-                {/* Introduction obligatoire avant les modules */}
-                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
-                  <div className="flex items-center gap-2 mb-1"><BookOpen size={16} style={{ color: '#BF8813' }} /><label className="text-xs font-semibold" style={{ color: '#002050' }}>Introduction de la formation *</label></div>
-                  <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Comme sur Coursera ou Udemy, cette introduction accueille l’apprenant avant le Module 1. Après le premier enregistrement, vous pourrez la construire avec les mêmes blocs que les leçons.</p>
-                  <input className="w-full px-3 py-2.5 border rounded-lg text-sm mb-2" style={{ borderColor: '#E4E7EC' }} value={course.course_intro_title || ''} onChange={e => updateCourse('course_intro_title', e.target.value)} placeholder="Titre de l’introduction" disabled={locked} />
-                  <textarea className="w-full px-3 py-2.5 border rounded-lg text-sm resize-none" style={{ borderColor: '#E4E7EC' }} rows={3} value={course.course_intro_summary || ''} onChange={e => updateCourse('course_intro_summary', e.target.value)} placeholder="Message de bienvenue, fonctionnement de la formation, conseils pour réussir..." disabled={locked} />
-                </div>
-
-
-                {/* Aperçu gratuit avant achat */}
-                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#FFFBEB' }}><Eye size={17} style={{ color: '#BF8813' }} /></div>
-                    <div className="flex-1">
-                      <label className="block text-xs font-semibold mb-1" style={{ color: '#002050' }}>Aperçu gratuit avant achat</label>
-                      <p className="text-xs mb-3" style={{ color: '#6B7280' }}>L’introduction peut être lue gratuitement depuis la fiche publique. Les modules, leçons, évaluations, conclusion et examen final restent verrouillés.</p>
-                      <select className="w-full px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }} value={course.free_preview_mode || 'introduction'} onChange={e => updateCourse('free_preview_mode', e.target.value as any)} disabled={locked}>
-                        <option value="introduction">Introduction uniquement — recommandé</option>
-                        <option value="none">Aucun aperçu gratuit</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
+                {/* L’introduction est construite après cet écran avec les mêmes blocs que les leçons. */}
                 {/* Objectifs */}
                 <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
                   <label className="block text-xs font-semibold mb-2" style={{ color: '#002050' }}>Objectifs pédagogiques *</label>

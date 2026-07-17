@@ -79,7 +79,7 @@ Deno.serve(async(req)=>{
     prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",
     learning_outcomes:b.learning_outcomes||[],cover_image_url:b.cover_image_url||null,
     cover_image_prompt:b.cover_image_prompt||"",course_intro_title:b.course_intro_title||"Bienvenue dans cette formation",
-    course_intro_summary:b.course_intro_summary||"",free_preview_mode:b.free_preview_mode||"introduction",
+    course_intro_summary:b.course_intro_summary||"",free_preview_mode:"introduction",
     quality_status:"incomplete",ready_to_submit:false,current_version:"1.0"
    };
    const {data,error}=await sb.from("courses").insert(insert).select("*").single(); if(error)throw error;
@@ -166,7 +166,7 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","free_preview_mode"])if(b[k]!==undefined)updates[k]=b[k];if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id"])if(b[k]!==undefined)updates[k]=b[k]; updates.free_preview_mode="introduction";if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
@@ -313,9 +313,9 @@ Deno.serve(async(req)=>{
    if(!c.level)errors.push("Sélectionnez un niveau.");
    if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
    if(!(c.objectives||[]).filter((x:any)=>String(x||"").trim()).length)errors.push("Ajoutez au moins un objectif pédagogique.");
-   if(!c.course_intro_title?.trim()||!c.course_intro_summary?.trim())errors.push("Complétez l’introduction de la formation.");
-   if(!["none","introduction"].includes(c.free_preview_mode||""))errors.push("Configurez l’aperçu gratuit.");
+   
    const intro=(m||[]).find((x:any)=>x.is_intro);const conclusion=(m||[]).find((x:any)=>x.is_conclusion);const finalExam=(m||[]).find((x:any)=>x.is_final_exam);
+   if(intro){ const introLessons=(l||[]).filter((x:any)=>x.module_id===intro.id); const introHasBlocks=introLessons.some((lesson:any)=>(bl||[]).some((block:any)=>block.lesson_id===lesson.id)); if(!introHasBlocks)errors.push("Construisez l’introduction avec au moins un bloc."); }
    const normalModules=(m||[]).filter((x:any)=>!x.is_intro&&!x.is_conclusion&&!x.is_final_exam);
    if(!intro)errors.push("Ajoutez l’introduction de la formation.");
    if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");
