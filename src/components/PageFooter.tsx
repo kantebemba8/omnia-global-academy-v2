@@ -25,6 +25,7 @@ const FOOTER_COLS = {
     { label: 'Catalogue complet',   href: '/catalogue' },
     { label: 'Formations gratuites', href: '/catalogue?prix=gratuit' },
     { label: 'Certifications CPD',  href: '/catalogue?type=cpd' },
+    { label: 'Vérifier un certificat', href: '/verify' },
     { label: 'Nouveautés',          href: '/catalogue?tri=recent' },
   ],
   omnia: [

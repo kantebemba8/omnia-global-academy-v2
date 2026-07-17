@@ -9,6 +9,7 @@ interface NavbarProps {
 const NAV_LINKS = [
   { label: 'Catalogue',          href: '/catalogue' },
   { label: 'Talent',             href: '/talent' },
+  { label: 'Vérifier un certificat', href: '/verify' },
   { label: 'Devenir Formateur',  href: '/inscription/professeur' },
   { label: 'À propos',           href: '/a-propos' },
 ];
