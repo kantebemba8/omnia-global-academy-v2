@@ -284,6 +284,7 @@ export default function App() {
 
         {/* Module 8 — Dashboard directeur — always accessible */}
           <Route path="/structure/dashboard" element={<StructureDashboard />} />
+          <Route path="/structure/formations" element={<StructureMesFormations />} />
           <Route path="/structure/profil" element={<StructureProfil />} />
 <Route path="/structure/codes" element={<StructureCodes />} />
 <Route path="/structure/membres" element={<StructureMembres />} />

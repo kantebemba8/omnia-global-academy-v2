@@ -25,6 +25,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   rejetee:                        { label: 'Rejetée', color: '#DC2626', bg: '#FEF2F2' },
   modification_demandee:          { label: 'À modifier', color: '#EA580C', bg: '#FFF7ED' },
   suspendue:                      { label: 'Suspendue', color: '#6B7280', bg: '#F9FAFB' },
+  draft:                          { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
+  pending_validation:             { label: 'En vérification', color: '#F59E0B', bg: '#FFFBEB' },
+  validated:                      { label: 'Validée', color: '#16A34A', bg: '#F0FDF4' },
+  published:                      { label: 'Publiée', color: '#1E7A52', bg: '#ECFDF5' },
+  rejected:                       { label: 'Rejetée', color: '#DC2626', bg: '#FEF2F2' },
+  changes_requested:              { label: 'À modifier', color: '#EA580C', bg: '#FFF7ED' },
 };
 
 export function ProfesseurMesFormations() {
@@ -39,18 +45,32 @@ export function ProfesseurMesFormations() {
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token && !bypassAuth) { navigate('/connexion'); return; }
+    if (!token) { navigate('/connexion', { replace: true }); return; }
     try {
-      const res = await fetch(`${getApiBase()}/dashboard-professeur`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_my_courses' }),
       });
-      if (res.status === 403 && !bypassAuth) { navigate('/connexion'); return; }
-      const json = await res.json();
-      if (res.ok) setFormations(json.formations ?? []);
-    } catch { /* ignore */ }
+      const json = await res.json().catch(() => null);
+      if (res.status === 401 || json?.error === 'AUTH_REQUIRED') {
+        navigate('/connexion', { replace: true });
+        return;
+      }
+      if (res.ok && json?.success !== false) {
+        setFormations((json.courses ?? []).map((course: any) => ({
+          ...course,
+          status: course.status || course.studio_status || 'brouillon',
+          total_students: course.total_students || 0,
+          average_rating: course.average_rating || 0,
+          projets_a_corriger: course.projets_a_corriger || 0,
+          prix_provisoire_xof: course.prix_provisoire_xof || null,
+          price_xof: course.price_xof || null,
+        })));
+      }
+    } catch { /* conserver la session et afficher simplement une liste vide */ }
     finally { setLoading(false); }
   }, [navigate, bypassAuth]);
-
   useEffect(() => { load(); }, [load]);
 
   const filtered = filter ? formations.filter((f) => f.status === filter) : formations;
@@ -108,7 +128,7 @@ export function ProfesseurMesFormations() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((f) => {
               const sc = STATUS_CONFIG[f.status] ?? STATUS_CONFIG.brouillon;
-              const price = f.status === 'publiee' ? f.price_xof : f.prix_provisoire_xof;
+              const price = ['publiee', 'published'].includes(f.status) ? f.price_xof : f.prix_provisoire_xof;
               return (
                 <div key={f.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                   <div className="h-28 relative flex items-center justify-center" style={{ backgroundColor: '#002050' + '10' }}>
@@ -131,21 +151,21 @@ export function ProfesseurMesFormations() {
                       {price && <span className="font-semibold" style={{ color: '#BF8813' }}>{price.toLocaleString()} XOF</span>}
                     </div>
                     <div className="flex gap-2">
-                      {['brouillon', 'rejetee', 'modification_demandee'].includes(f.status) && (
+                      {['brouillon', 'rejetee', 'modification_demandee', 'draft', 'rejected', 'changes_requested'].includes(f.status) && (
                         <Link to={`/professeur/studio/${f.id}`}
                           className="flex-1 py-2 text-xs font-semibold text-center rounded-lg border flex items-center justify-center gap-1"
                           style={{ borderColor: '#002050', color: '#002050' }}>
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </Link>
                       )}
-                      {f.status === 'publiee' && (
+                      {['publiee', 'published'].includes(f.status) && (
                         <Link to="/professeur/analytics"
                           className="flex-1 py-2 text-xs font-semibold text-center rounded-lg flex items-center justify-center gap-1 text-white"
                           style={{ backgroundColor: '#002050' }}>
                           <Eye className="w-3.5 h-3.5" /> Analytique
                         </Link>
                       )}
-                      {['soumise', 'en_attente_validation_manuelle', 'validee'].includes(f.status) && (
+                      {['soumise', 'en_attente_validation_manuelle', 'validee', 'pending_validation', 'validated'].includes(f.status) && (
                         <div className="flex-1 py-2 text-xs text-center rounded-lg" style={{ backgroundColor: '#f9fafb', color: '#9ca3af' }}>
                           <CheckCircle className="w-3.5 h-3.5 inline mr-1" /> En attente
                         </div>
