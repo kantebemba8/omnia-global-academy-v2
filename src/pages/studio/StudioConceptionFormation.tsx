@@ -270,6 +270,20 @@ export default function StudioConceptionFormation() {
     }, 30000);
   }, [wordCount]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const c = courseRef.current;
+      if (c?.id) api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }).then(d => { if (d.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })); });
+    }, 30000);
+    const onBeforeUnload = () => {
+      const c = courseRef.current;
+      if (!c?.id) return;
+      fetch(API, { method: 'POST', keepalive: true, headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }) }).catch(() => undefined);
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => { window.clearInterval(interval); window.removeEventListener('beforeunload', onBeforeUnload); };
+  }, [wordCount]);
+
   function updateCourse(field: keyof Course, value: any) {
     setCourse(c => ({ ...c, [field]: value }));
     scheduleAutosave();

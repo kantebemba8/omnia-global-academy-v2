@@ -3,7 +3,7 @@ import { DashboardLayout } from './DashboardLayout';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag,
   BookOpen, Users, Monitor, Award, Eye, MessageSquare,
-  Briefcase, Building2, PlusCircle, QrCode, Gift, Search, Shield
+  Briefcase, Building2, PlusCircle, QrCode, Gift, Search, Shield, Activity
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { path: '/admin/studio-mes-formations',  label: 'Mes formations OGA',     icon: BookOpen },
   { path: '/admin/studio/new',             label: 'Créer une formation',    icon: PlusCircle },
   { path: '/admin/studio-validation',      label: 'Validation formations',  icon: Eye },
+  { path: '/admin/course-health',          label: 'Santé des formations',    icon: Activity },
   { path: '/admin/team',                   label: 'Équipe & Modérateurs',   icon: Users },
   { path: '/admin/cpd-credits',            label: 'Crédits Open CPD',       icon: Award },
   { path: '/admin/certificates',           label: 'Certificats délivrés',   icon: Award },

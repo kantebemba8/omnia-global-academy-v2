@@ -15,7 +15,7 @@ async function sessionUser(sb:any, req:Request){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string){const {data}=await sb.from("courses").select("creator_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);return data.creator_id===userId||rs.includes("super_admin")}
-async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details})}
+async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 async function triggerCertificate(userId:string,courseId:string,source:string){
  try{
