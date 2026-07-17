@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, Building2, FileUp, HandHelping, Save, ShieldCheck, Wallet } from 'lucide-react';
 
@@ -8,7 +9,7 @@ const BORDER = '#E4E7EC';
 
 function authToken(){ return localStorage.getItem('omnia_session_token') || ''; }
 async function call(action:string, body:Record<string,unknown>={}){
-  const res = await fetch(API,{method:'POST',headers:{Authorization:`Bearer ${authToken()}`,'Content-Type':'application/json'},body:JSON.stringify({action,...body})});
+  const res = await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...body})});
   const data = await res.json().catch(()=>({success:false,error:'INVALID_RESPONSE'}));
   if(!res.ok || data.success===false) throw new Error(data.message||data.error||'Une erreur est survenue');
   return data;

@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -98,9 +99,9 @@ export function DashboardProfesseur() {
     if (!token) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
       });
-      if (res.status === 403) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
+      if (res.status === 401) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
       const json = await res.json();
       if (res.ok) setData(json);
     } catch { /* ignore */ }

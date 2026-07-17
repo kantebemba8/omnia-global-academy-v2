@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle } from 'lucide-react';
@@ -42,7 +43,7 @@ export default function StructureMesFormations() {
     try {
       const res = await fetch(API, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_courses' }),
       });
       const data = await res.json().catch(() => null);

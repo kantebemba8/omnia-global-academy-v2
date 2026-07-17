@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Clock, FileText, Loader2, Send, Upload, XCircle } from 'lucide-react';
 

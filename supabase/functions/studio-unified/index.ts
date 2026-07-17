@@ -1,11 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
 async function sessionUser(sb:any, req:Request){
- const token=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
+ const token=(req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
  if(!token) return null;
  const {data}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(data?.user_id) return data.user_id;
@@ -38,7 +38,7 @@ Deno.serve(async(req)=>{
    const courseId=String(b.course_id||""); if(!courseId)return json({success:false,error:"COURSE_ID_REQUIRED"},400);
    const {data:course,error:courseError}=await sb.from("courses").select("id,title,short_description,long_description,cover_image_url,category,level,language,target_audience,objectives,learning_outcomes,course_intro_title,course_intro_summary,sale_mode,desired_price_amount,sale_currency,free_preview_mode,studio_status,is_published,creator_id,current_version").eq("id",courseId).maybeSingle();
    if(courseError)throw courseError;if(!course)return json({success:false,error:"NOT_FOUND"},404);
-   const token=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
+   const token=(req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
    const viewerId=token?await sessionUser(sb,req):null; const viewerRoles=viewerId?await roles(sb,viewerId):[];
    const privileged=!!viewerId&&(viewerId===course.creator_id||viewerRoles.includes("super_admin"));
    if(!course.is_published&&!privileged)return json({success:false,error:"NOT_FOUND"},404);
@@ -54,6 +54,20 @@ Deno.serve(async(req)=>{
 
   const userId=await sessionUser(sb,req); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
   const userRoles=await roles(sb,userId); const isAdmin=userRoles.includes("super_admin");
+
+  // Gouvernance Studio 4D fusionnée dans studio-unified afin d'économiser un emplacement Edge Function.
+  if(action==="health"){
+   if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("studio_course_health").select("*").order("updated_at",{ascending:true});if(error)throw error;
+   const rows=(data||[]).map((x:any)=>{const issues:string[]=[];if(x.never_purchased)issues.push("Jamais achetée");if(x.high_abandon)issues.push("Abandon élevé");if(x.certification_expiring)issues.push("Certification à renouveler");if(Number(x.pending_assisted||0)>0)issues.push("Saisie assistée en attente");if(x.stale_content)issues.push("Contenu ancien");const score=Math.max(0,100-issues.length*20);return {...x,issues,score}});
+   return json({success:true,rows,summary:{total:rows.length,critical:rows.filter((x:any)=>x.score<60).length,healthy:rows.filter((x:any)=>x.score>=80).length,pending_assisted:rows.reduce((n:number,x:any)=>n+Number(x.pending_assisted||0),0)}});
+  }
+  if(action==="audit"){
+   if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
+   let q=sb.from("course_audit_log").select("*,users:actor_id(full_name,email),courses(title)").order("created_at",{ascending:false}).limit(300);
+   if(b.course_id)q=q.eq("course_id",b.course_id);if(b.audit_action)q=q.eq("action",b.audit_action);
+   const {data,error}=await q;if(error)throw error;return json({success:true,rows:data||[]});
+  }
   if(action==="get_my_courses"){
    let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
    if(!isAdmin) q=q.eq("creator_id",userId);

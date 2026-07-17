@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
@@ -138,15 +139,15 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
-function token() { return localStorage.getItem('omnia_session_token') || ''; }
-
 async function api(action: string, body: Record<string, any> = {}) {
   const res = await fetch(API, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify({ action, ...body }),
   });
-  return res.json();
+  const data = await res.json().catch(() => ({ success: false, error: `HTTP_${res.status}` }));
+  if (!res.ok && !data.error) data.error = `HTTP_${res.status}`;
+  return data;
 }
 
 // ─── Composant principal ──────────────────────────────────────
@@ -730,7 +731,7 @@ export default function StudioConceptionFormation() {
       <div className="flex flex-1 overflow-hidden relative">
         <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
           <div className="pointer-events-auto max-w-4xl mx-auto">
-            <AssessmentRulesCard durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
+            <AssessmentRulesCard courseId={course.id || 'new'} durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
           </div>
         </div>
 

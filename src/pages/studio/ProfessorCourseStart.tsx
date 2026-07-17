@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen, FileUp, HandHelping, PenLine, ShieldCheck } from 'lucide-react';

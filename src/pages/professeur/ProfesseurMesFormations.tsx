@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -49,7 +50,7 @@ export function ProfesseurMesFormations() {
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_courses' }),
       });
       const json = await res.json().catch(() => null);

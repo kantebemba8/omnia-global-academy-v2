@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BarChart3, CheckCircle, Loader2 } from 'lucide-react';
