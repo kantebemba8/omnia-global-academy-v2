@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
-  ArrowLeft, Search,
+  Search,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -258,25 +258,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
           )}
         </div>
         <main className="flex-1 overflow-y-auto">
-          {previewMode && (
-            <div className="flex items-center gap-3 px-5 py-3" style={{ backgroundColor: '#002050' }}>
-              <span className="text-white text-xs font-medium flex-1">
-                👁 Mode aperçu Super-admin — Tableau de bord {
-                  role === 'apprenant' ? 'Apprenant'
-                  : role === 'professeur' ? 'Formateur'
-                  : role === 'directeur' ? 'École'
-                  : role === 'moderateur' ? 'Modérateur'
-                  : 'Utilisateur'
-                } — Lecture seule
-              </span>
-              <button
-                onClick={() => navigate('/admin/dashboard')}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white border border-white/30 hover:bg-white/10 transition-colors flex-shrink-0">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Retour au dashboard admin
-              </button>
-            </div>
-          )}
           {children}
         </main>
       </div>

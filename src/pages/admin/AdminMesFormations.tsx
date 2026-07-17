@@ -5,7 +5,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import {
   BookOpen, PlusCircle, Edit2, Eye, RefreshCw,
   Clock, CheckCircle, AlertCircle, Archive,
-  BarChart2, Send, XCircle
+  BarChart2, Send, XCircle, Trash2
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -48,6 +48,7 @@ export default function AdminMesFormations() {
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const token = () => localStorage.getItem('omnia_session_token') || '';
 
@@ -62,7 +63,7 @@ export default function AdminMesFormations() {
       const res = await fetch(API, {
         method: 'POST',
         headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'get_my_courses' }),
+        body: JSON.stringify({ action: 'get_my_courses', creator_context: 'super_admin' }),
       });
       const data = await res.json();
       if (data.success) setFormations(data.courses || []);
@@ -71,6 +72,32 @@ export default function AdminMesFormations() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function deleteDraft(id: string, title: string) {
+    if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          action: 'delete_course',
+          course_id: id,
+          creator_context: 'super_admin',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Suppression impossible');
+      }
+      setFormations((current) => current.filter((course) => course.id !== id));
+      showToast('Brouillon supprimé');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Suppression impossible');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   // Stats par statut
   const stats = {
@@ -283,6 +310,21 @@ export default function AdminMesFormations() {
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
                           style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                           <BarChart2 size={12} /> Stats
+                        </button>
+                      )}
+
+
+                      {(f.studio_status === 'draft' || f.studio_status === 'brouillon') && (
+                        <button
+                          type="button"
+                          onClick={() => deleteDraft(f.id, f.title)}
+                          disabled={deletingId === f.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                          style={{ borderColor: '#DC2626', color: '#DC2626' }}
+                          title="Supprimer le brouillon"
+                        >
+                          <Trash2 size={12} />
+                          {deletingId === f.id ? 'Suppression…' : 'Supprimer'}
                         </button>
                       )}
 
