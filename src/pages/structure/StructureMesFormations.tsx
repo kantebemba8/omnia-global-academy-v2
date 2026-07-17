@@ -1,4 +1,3 @@
-import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -17,6 +16,12 @@ type Formation = {
 };
 
 const API = `${API_BASE_URL}/studio-unified`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const gatewayHeaders = () => ({
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
+  ...(ANON_KEY ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } : {}),
+});
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: 'Brouillon', color: '#6B7280', bg: '#F3F4F6' },
   pending_validation: { label: 'En attente', color: '#92400E', bg: '#FEF3C7' },
@@ -48,8 +53,8 @@ export default function StructureMesFormations() {
       try {
         res = await fetch(API, {
           method: 'POST',
-          headers: edgeAuthHeaders({ Accept: 'application/json' }),
-          body: JSON.stringify({ action: 'get_my_courses' }),
+          headers: gatewayHeaders(),
+          body: JSON.stringify({ action: 'get_my_courses', session_token: token }),
           cache: 'no-store',
           signal: controller.signal,
         });

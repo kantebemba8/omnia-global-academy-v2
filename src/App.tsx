@@ -96,6 +96,7 @@ import FormulaireRecruteur from './pages/FormulaireRecruteur';
 import DemoDashboard from './pages/demo/DemoDashboard';
 import { Sentry } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { PreviewReturnButton } from './components/PreviewReturnButton';
 import StructureDashboard from './pages/structure/StructureDashboard';
 import StructureMesFormations from './pages/structure/StructureMesFormations';
 import StructureProfil from './pages/structure/StructureProfil';
@@ -163,6 +164,7 @@ export default function App() {
       )}
     >
       <BrowserRouter>
+      <PreviewReturnButton />
         <SiteModeProvider>
         <Routes>
         <Route path="/" element={<RootGate />} />

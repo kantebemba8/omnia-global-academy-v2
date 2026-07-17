@@ -7,8 +7,13 @@ import {
   Building2, UserCheck, Shield, XCircle,
 } from 'lucide-react';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const API = `${SUPABASE_URL}/functions/v1/structure-manage`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const API = `${SUPABASE_URL}/functions/v1/studio-unified`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const gatewayHeaders = () => ({
+  'Content-Type': 'application/json',
+  ...(ANON_KEY ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } : {}),
+});
 
 const STRUCTURE_LABELS: Record<string, string> = {
   ministere: 'Espace Ministère',
@@ -75,15 +80,9 @@ export default function StructureDashboard() {
 
  async function load() {
     if (isPreview) {
-      // Mode aperçu : aucune donnée fictive. Les valeurs restent à zéro.
       setStructure({
-        id: 'preview',
-        name: 'Espace Structure',
-        structure_type: 'autre',
-        status: 'validated',
-        display_name: 'Espace Structure',
-        status_label: 'Lecture seule',
-        logo_url: undefined,
+        id: 'preview', name: 'Espace Structure', structure_type: 'autre', status: 'validated',
+        display_name: 'Espace Structure', status_label: 'Lecture seule', logo_url: undefined,
         admin_comment: undefined,
       });
       setStats({ members: 0, active_codes: 0, active_benefits: 0 });
@@ -91,45 +90,39 @@ export default function StructureDashboard() {
       setLoading(false);
       return;
     }
+    const sessionToken = token();
+    if (!sessionToken) {
+      navigate('/connexion', { replace: true });
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      // Charger la structure
       const res = await fetch(API, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_my_structure' }),
+        headers: gatewayHeaders(),
+        body: JSON.stringify({ action: 'structure_dashboard', session_token: sessionToken }),
       });
-      const data = await res.json();
-
-      if (!data.success) {
-        if (data.error === 'NO_STRUCTURE') {
-          setError('no_structure');
-        } else {
-          setError(data.error ?? 'Erreur de chargement');
-        }
+      const data = await res.json().catch(() => null);
+      if (res.status === 401 || data?.error === 'AUTH_REQUIRED') {
+        navigate('/connexion', { replace: true });
         return;
       }
-
-      setStructure(data.structure);
-      setStats(data.stats);
-
-      // Charger les membres en attente si validée
-      if (data.structure.status === 'validated') {
-        const membRes = await fetch(API, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'list_members',
-            structure_id: data.structure.id,
-            status_filter: 'pending',
-          }),
-        });
-        const membData = await membRes.json();
-        if (membData.success) setPendingMembers(membData.members ?? []);
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || data?.error || 'Erreur de chargement');
       }
-    } catch {
-      setError('Erreur réseau');
+      if (!data?.structure) {
+        setError('no_structure');
+        setStructure(null);
+        setStats(data?.stats ?? { members: 0, active_codes: 0, active_benefits: 0 });
+        setPendingMembers([]);
+        return;
+      }
+      setStructure(data.structure);
+      setStats(data.stats ?? { members: 0, active_codes: 0, active_benefits: 0 });
+      setPendingMembers(data.pending_members ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur réseau');
     } finally {
       setLoading(false);
     }
@@ -137,19 +130,8 @@ export default function StructureDashboard() {
 
   useEffect(() => { load(); }, []);
 
-  async function handleMembership(membershipId: string, decision: 'approve' | 'reject') {
-    if (!structure) return;
-    await fetch(API, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'handle_membership',
-        structure_id: structure.id,
-        membership_id: membershipId,
-        decision,
-      }),
-    });
-    load();
+  async function handleMembership(_membershipId: string, _decision: 'approve' | 'reject') {
+    setError('La gestion des rattachements est disponible dans le menu « Demandes de rattachement ».');
   }
 
   const displayName = structure

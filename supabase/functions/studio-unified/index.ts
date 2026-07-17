@@ -4,8 +4,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
-async function sessionUser(sb:any, req:Request){
- const token=(req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
+async function sessionUser(sb:any, req:Request, bodyToken=""){
+ const token=(bodyToken||req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
  if(!token) return null;
  const {data}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(data?.user_id) return data.user_id;
@@ -52,7 +52,7 @@ Deno.serve(async(req)=>{
    return json({success:true,course,preview_enabled:course.free_preview_mode!=="none",introduction:introLesson?{...introLesson,blocks}:null,program,privileged});
   }
 
-  const userId=await sessionUser(sb,req); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
+  const userId=await sessionUser(sb,req,String(b.session_token||"")); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
   const userRoles=await roles(sb,userId); const isAdmin=userRoles.includes("super_admin");
 
   // Gouvernance Studio 4D fusionnée dans studio-unified afin d'économiser un emplacement Edge Function.
@@ -67,6 +67,19 @@ Deno.serve(async(req)=>{
    let q=sb.from("course_audit_log").select("*,users:actor_id(full_name,email),courses(title)").order("created_at",{ascending:false}).limit(300);
    if(b.course_id)q=q.eq("course_id",b.course_id);if(b.audit_action)q=q.eq("action",b.audit_action);
    const {data,error}=await q;if(error)throw error;return json({success:true,rows:data||[]});
+  }
+  if(action==="structure_dashboard"){
+   const structureRoles=["gestionnaire_partenaire","responsable_structure","structure_admin","directeur","etablissement_directeur"];
+   if(!isAdmin&&!userRoles.some((r:string)=>structureRoles.includes(r)))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:manager}=await sb.from("partner_managers").select("organization_id,status").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();
+   let organization:any=null;
+   if(manager?.organization_id){
+    const {data}=await sb.from("partner_organizations").select("id,org_name,org_type,status,logo_url,admin_comment,modification_note").eq("id",manager.organization_id).maybeSingle();organization=data;
+   }
+   const {count:courseCount}=await sb.from("courses").select("id",{count:"exact",head:true}).eq("creator_id",userId);
+   let activeCodes=0;
+   if(manager?.organization_id){const {count}=await sb.from("partner_codes").select("id",{count:"exact",head:true}).eq("organization_id",manager.organization_id).eq("status","active");activeCodes=count||0;}
+   return json({success:true,structure:organization?{id:organization.id,name:organization.org_name,display_name:organization.org_name,structure_type:organization.org_type||"autre",status:organization.status||"pending_validation",status_label:organization.status||"pending_validation",logo_url:organization.logo_url,admin_comment:organization.admin_comment,modification_note:organization.modification_note}:null,stats:{members:0,active_codes:activeCodes,active_benefits:0,courses:courseCount||0},pending_members:[]});
   }
   if(action==="get_my_courses"){
    let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
