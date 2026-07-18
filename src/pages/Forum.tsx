@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
 import { PageFooter } from '../components/PageFooter';
 import { MessageCircle, Briefcase, BookOpen, Globe, ChevronDown, Users } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
@@ -65,7 +65,7 @@ export default function Forum() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <Navbar />
+      <ForumHamburgerNav />
 
 {/* Hero */}
       <section className="py-16 px-4" style={{ background: 'linear-gradient(135deg, #001840 0%, #002050 60%, #003580 100%)' }}>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { MessageCircle, Plus, X, Search, ThumbsUp, MessageSquare, Pin, CheckCircle, Award } from 'lucide-react';
@@ -87,7 +87,7 @@ export default function ForumCours() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <Navbar />
+      <ForumHamburgerNav />
 
       {/* Header */}
       <div className="bg-white border-b border-gray-100">

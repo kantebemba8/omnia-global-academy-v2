@@ -125,7 +125,7 @@ import TalentExplore from './pages/talent/TalentExplore';
 import TalentRecruiters from './pages/talent/TalentRecruiters';
 import RecruiterDashboard from './pages/talent/RecruiterDashboard';
 import TalentAbout from './pages/talent/TalentAbout';
-import TalentCommunity from './pages/talent/TalentCommunity';
+import TalentOrganisations from './pages/talent/TalentOrganisations';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
@@ -175,7 +175,6 @@ export default function App() {
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
-          <Route path="/talent/communaute" element={<TalentCommunity />} />
           <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
@@ -185,6 +184,7 @@ export default function App() {
           <Route path="/talent/recruteur/messages" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/profil" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/parametres" element={<RecruiterDashboard />} />
+          <Route path="/talent/organisations" element={<TalentOrganisations />} />
           <Route path="/talent/a-propos" element={<TalentAbout />} />
           <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
@@ -331,18 +331,15 @@ export default function App() {
         <Route path="/emploi" element={<EspaceCarriere />} />
         <Route path="/emploi/:jobId" element={<JobDetail />} />
 
-          <Route path="/omnia-career" element={<Navigate to="/dashboard/career-studio" replace />} />
-
 <Route element={<RequireOmniaCareerLearner />}>
-  <Route element={<OmniaCareerLayout />}>
-    <Route path="/omnia-career/cv-builder" element={<Navigate to="/dashboard/career-studio?section=cv" replace />} />
-    <Route path="/omnia-career/lettres" element={<Navigate to="/dashboard/career-studio?section=lm" replace />} />
-    <Route path="/omnia-career/entretien" element={<Navigate to="/dashboard/career-studio?section=interview" replace />} />
-    <Route path="/omnia-career/candidatures" element={<Navigate to="/dashboard/career-studio?section=applications" replace />} />
-    <Route path="/omnia-career/profil" element={<Navigate to="/dashboard/career-studio?section=profile" replace />} />
-    <Route path="/omnia-career/coaching" element={<Navigate to="/dashboard/career-studio?section=coaching" replace />} />
-    <Route path="/omnia-career/parametres" element={<Navigate to="/dashboard/career-studio?section=settings" replace />} />
-  </Route>
+  <Route path="/omnia-career" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/cv-builder" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/lettres" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/entretien" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/candidatures" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/profil" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/coaching" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/parametres" element={<DashboardCareerStudio />} />
 </Route>
 
 <Route element={<RequireOmniaCareerAdmin />}>

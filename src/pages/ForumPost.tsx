@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { ThumbsUp, Flag, CheckCircle, Pin, ArrowLeft, X, Send, MessageSquare } from 'lucide-react';
@@ -185,7 +185,7 @@ export default function ForumPost() {
 
   if (loading) return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <ForumHamburgerNav />
       <div className="flex-1 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
       </div>
@@ -194,7 +194,7 @@ export default function ForumPost() {
 
   if (!post) return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <ForumHamburgerNav />
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500">Discussion introuvable.</p>
@@ -213,7 +213,7 @@ export default function ForumPost() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <Navbar />
+      <ForumHamburgerNav />
 
       <div className="max-w-3xl mx-auto px-4 py-6 w-full flex-1">
         {/* Breadcrumb */}

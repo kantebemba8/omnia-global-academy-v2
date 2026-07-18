@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Award,
   BarChart3,
@@ -41,6 +41,7 @@ import { ENDPOINTS } from '../../lib/config';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedCoaching, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
+import SubspaceHamburgerLayout from '../../components/SubspaceHamburgerLayout';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -111,7 +112,7 @@ interface CurrentUser {
 }
 
 const navItems: { id: ActiveView; label: string; icon: typeof FileText }[] = [
-  { id: 'dashboard', label: 'Tableau de bord', icon: BarChart3 },
+  { id: 'dashboard', label: 'Accueil Career', icon: BarChart3 },
   { id: 'cv', label: 'CV Builder', icon: FileText },
   { id: 'lm', label: 'Lettres de motivation', icon: Mail },
   { id: 'interview', label: 'Préparation entretien', icon: MessageSquare },
@@ -179,6 +180,7 @@ function SmallBadge({ children, tone = 'blue' }: { children: React.ReactNode; to
 
 export default function DashboardCareerStudio() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [documents, setDocuments] = useState<CareerDocument[]>([]);
@@ -268,42 +270,29 @@ export default function DashboardCareerStudio() {
   }, []);
 
   useEffect(() => {
-    const section = searchParams.get('section') || 'dashboard';
-    const sectionMap: Record<string, ActiveView> = {
-      dashboard: 'dashboard',
-      cv: 'cv',
-      builder: 'cv',
-      letters: 'lm',
-      lettre: 'lm',
-      lm: 'lm',
-      interview: 'interview',
-      entretien: 'interview',
-      applications: 'applications',
-      candidatures: 'applications',
-      profile: 'profile',
-      profil: 'profile',
-      coaching: 'coaching',
-      settings: 'settings',
-      parametres: 'settings',
+    const pathMap: Record<string, ActiveView> = {
+      '/omnia-career': 'dashboard',
+      '/omnia-career/cv-builder': 'cv',
+      '/omnia-career/lettres': 'lm',
+      '/omnia-career/entretien': 'interview',
+      '/omnia-career/candidatures': 'applications',
+      '/omnia-career/profil': 'profile',
+      '/omnia-career/coaching': 'coaching',
+      '/omnia-career/parametres': 'settings',
     };
-    setActiveView(sectionMap[section] || 'dashboard');
-  }, [searchParams]);
+    const section = searchParams.get('section') || 'dashboard';
+    const sectionMap: Record<string, ActiveView> = { dashboard:'dashboard', cv:'cv', builder:'cv', letters:'lm', lettre:'lm', lm:'lm', interview:'interview', entretien:'interview', applications:'applications', candidatures:'applications', profile:'profile', profil:'profile', coaching:'coaching', settings:'settings', parametres:'settings' };
+    setActiveView(pathMap[location.pathname] || sectionMap[section] || 'dashboard');
+  }, [location.pathname, searchParams]);
 
   function goToView(view: ActiveView) {
-    const sectionQuery: Record<ActiveView, string> = {
-      dashboard: '',
-      cv: 'section=cv',
-      lm: 'section=lm',
-      interview: 'section=interview',
-      applications: 'section=applications',
-      profile: 'section=profile',
-      coaching: 'section=coaching',
-      settings: 'section=settings',
+    const routes: Record<ActiveView, string> = {
+      dashboard: '/omnia-career', cv: '/omnia-career/cv-builder', lm: '/omnia-career/lettres', interview: '/omnia-career/entretien',
+      applications: '/omnia-career/candidatures', profile: '/omnia-career/profil', coaching: '/omnia-career/coaching', settings: '/omnia-career/parametres',
     };
     const currentJob = searchParams.get('job_id');
-    const base = sectionQuery[view];
-    const query = [base, currentJob && (view === 'interview' || view === 'applications') ? `job_id=${encodeURIComponent(currentJob)}` : ''].filter(Boolean).join('&');
-    navigate(`/dashboard/career-studio${query ? `?${query}` : ''}`);
+    const query = currentJob && (view === 'interview' || view === 'applications') ? `?job_id=${encodeURIComponent(currentJob)}` : '';
+    navigate(`${routes[view]}${query}`);
   }
 
   function createDoc(docType: DocType, templateKey?: string) {
@@ -339,128 +328,39 @@ export default function DashboardCareerStudio() {
     { label: 'Évaluer mon profil', icon: Star, action: () => goToView('profile') },
   ];
 
+  const careerNavItems = navItems.map((item) => ({
+    label: item.label,
+    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/omnia-career/profil', coaching:'/omnia-career/coaching', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
+    icon: item.icon,
+    exact: item.id === 'dashboard',
+  }));
+
   return (
-    <div className="min-h-screen" style={{ background: PAGE_BG, color: '#111827' }}>
-      {toast && (
-        <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>
-          {toast}
-        </div>
-      )}
-
-      <div className="flex min-h-screen">
-        {/* Sidebar Omnia Career */}
-        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col text-white shadow-xl" style={{ background: OMNIA_BLUE }}>
-          <div className="px-5 pb-4 pt-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white">
-                <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-full w-full object-cover" />
-              </div>
-              <div className="leading-tight">
-                <div className="text-base font-bold text-white">Omnia Global</div>
-                <div className="text-base font-bold text-white">Academy</div>
-              </div>
+    <SubspaceHamburgerLayout title="Omnia Career" navItems={careerNavItems} showSearch={false}>
+      <div className="min-h-[calc(100vh-72px)]" style={{ background: PAGE_BG, color: '#111827' }}>
+        {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
+        <div className="border-b bg-white px-5 py-4 md:px-8" style={{ borderColor: BORDER }}>
+          <div className="relative max-w-[620px]">
+            <div className="flex h-11 items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
+              <Search size={18} color="#9CA3AF" />
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ml-3 h-full flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher dans Omnia Career..." />
+              {searchQuery && <button onClick={() => setSearchQuery('')} className="rounded-full p-1 hover:bg-slate-100"><X size={15} color={MUTED} /></button>}
             </div>
-            <div className="mt-8">
-              <h2 className="text-xl font-semibold" style={{ color: OMNIA_GOLD }}>Omnia Career</h2>
-              <div className="mt-3 h-0.5 w-10 rounded-full" style={{ background: OMNIA_GOLD }} />
-            </div>
+            {searchQuery && <div className="absolute left-0 right-0 top-13 z-50 max-h-80 overflow-y-auto rounded-2xl border bg-white p-2 shadow-xl" style={{ borderColor: BORDER }}>{searchResults.length ? searchResults.map((result,index)=><button key={`${result.label}-${index}`} onClick={()=>{result.action();setSearchQuery('')}} className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"><span><span className="block text-sm font-semibold" style={{color:OMNIA_BLUE}}>{result.label}</span><span className="text-xs" style={{color:MUTED}}>{result.subtitle}</span></span><ChevronRight size={15} color={MUTED}/></button>) : <div className="px-3 py-5 text-center text-sm" style={{color:MUTED}}>Aucun résultat.</div>}</div>}
           </div>
-
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => goToView(item.id)}
-                  className="group relative flex h-11 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-medium transition"
-                  style={{
-                    background: isActive ? 'rgba(255,255,255,0.10)' : 'transparent',
-                    color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
-                  }}
-                >
-                  {isActive && <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full" style={{ background: OMNIA_GOLD }} />}
-                  <Icon size={19} style={{ color: isActive ? OMNIA_GOLD : 'rgba(255,255,255,0.82)' }} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-          <div className="border-t border-white/10 px-3 py-3">
-            <button
-              type="button"
-              onClick={() => goToView('settings')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold text-[#002050] shadow-sm transition hover:brightness-105"
-              style={{ background: OMNIA_GOLD }}
-            >
-              <Crown size={17} />
-              <span>Passer à Premium</span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <div className="ml-[280px] flex min-h-screen flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b bg-white px-8" style={{ borderColor: BORDER }}>
-            <div className="relative w-full max-w-[560px]">
-              <div className="flex h-11 items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
-                <Search size={18} color="#9CA3AF" />
-                <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ml-3 h-full flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher dans Omnia Career..." />
-                {searchQuery && <button onClick={() => setSearchQuery('')} className="rounded-full p-1 hover:bg-slate-100"><X size={15} color={MUTED} /></button>}
-              </div>
-              {searchQuery && (
-                <div className="absolute left-0 right-0 top-13 z-50 max-h-80 overflow-y-auto rounded-2xl border bg-white p-2 shadow-xl" style={{ borderColor: BORDER }}>
-                  {searchResults.length ? searchResults.map((result, index) => (
-                    <button key={`${result.label}-${index}`} onClick={() => { result.action(); setSearchQuery(''); }} className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50">
-                      <span><span className="block text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{result.label}</span><span className="text-xs" style={{ color: MUTED }}>{result.subtitle}</span></span><ChevronRight size={15} color={MUTED} />
-                    </button>
-                  )) : <div className="px-3 py-5 text-center text-sm" style={{ color: MUTED }}>Aucun résultat.</div>}
-                </div>
-              )}
-            </div>
-            <div className="ml-6 flex items-center gap-4">
-              <div className="relative">
-                <button onClick={() => setNotificationOpen(v => !v)} className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Notifications">
-                  <Bell size={18} color={OMNIA_BLUE} />
-                </button>
-                {notificationOpen && <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border bg-white p-4 shadow-xl" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>Notifications</div><p className="mt-3 text-sm" style={{ color: MUTED }}>Aucune notification non lue.</p></div>}
-              </div>
-              <div className="h-8 w-px bg-gray-200" />
-              <div className="relative">
-                <button onClick={() => setProfileMenuOpen((v) => !v)} className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-gray-100">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: OMNIA_BLUE }}>{initials}</div>
-                  <div className="hidden text-left md:block">
-                    <div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{displayName}</div>
-                    <div className="text-xs" style={{ color: MUTED }}>Apprenant</div>
-                  </div>
-                  <ChevronDown size={16} color={MUTED} className={profileMenuOpen ? 'rotate-180' : ''} />
-                </button>
-                {profileMenuOpen && (
-                  <div className="absolute right-0 top-12 z-50 w-64 rounded-2xl border bg-white p-2 shadow-xl" style={{ borderColor: BORDER }}>
-                    <button onClick={() => navigate('/dashboard')} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-gray-50" style={{ color: OMNIA_BLUE }}>
-                      <ChevronRight size={17} className="rotate-180" /> Retour au Dashboard
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </header>
-
-          <main className="flex-1 px-8 py-7">
-            {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
-            {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
-            {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
-            {activeView === 'interview' && <EnhancedInterview />}
-            {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
-            {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
-            {activeView === 'coaching' && <EnhancedCoaching />}
-            {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}
-          </main>
         </div>
+        <main className="px-5 py-7 md:px-8">
+          {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
+          {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
+          {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
+          {activeView === 'interview' && <EnhancedInterview />}
+          {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
+          {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
+          {activeView === 'coaching' && <EnhancedCoaching />}
+          {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}
+        </main>
       </div>
-    </div>
+    </SubspaceHamburgerLayout>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { MessageCircle, Plus, X, ChevronDown, Search, Globe, ThumbsUp, MessageSquare, Pin, CheckCircle, Flag } from 'lucide-react';
@@ -97,7 +97,7 @@ export default function ForumGeneral() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <Navbar />
+      <ForumHamburgerNav />
 
       {/* Header */}
       <div className="bg-white border-b border-gray-100">
