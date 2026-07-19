@@ -38,8 +38,8 @@ export default function Forum() {
 
     // Load forum stats
     Promise.all([
-      fetch(`${ENDPOINTS.forumPostsList}?space=general&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
-      fetch(`${ENDPOINTS.forumPostsList}?space=carriere&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
+      fetch(`${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
+      fetch(`${ENDPOINTS.forumPostsList}&space=carriere&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
       fetch(`${ENDPOINTS.jobsList}?limit=1`).then(r => r.json()).catch(() => ({})),
     ]).then(([gen, carr, jobs]) => {
       setStats({ general: gen.total || 0, carriere: carr.total || 0, jobs: jobs.total || 0 });

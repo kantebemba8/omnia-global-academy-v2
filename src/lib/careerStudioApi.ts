@@ -103,7 +103,7 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       documents?: CareerDocumentSummary[];
       templates?: ReturnType<typeof getCareerTemplates>;
       user?: { cv_tokens?: number };
-    }>('career-studio-list', { doc_type: docType });
+    }>('career-studio-manage?action=list', { doc_type: docType });
 
     if (data.templates?.length) cacheCareerTemplates(data.templates as any);
     return {
@@ -129,7 +129,7 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
 }> {
   if (documentId && documentId !== 'new' && !documentId.startsWith('local_')) {
     try {
-      const data = await functionPost<{ document: CareerDocumentFull }>('career-studio-save', {
+      const data = await functionPost<{ document: CareerDocumentFull }>('career-studio-manage?action=save', {
         action: 'get',
         document_id: documentId,
       });
@@ -167,7 +167,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
   };
 
   try {
-    const data = await functionPost<{ document: { id: string; title: string; content_hash?: string } }>('career-studio-save', payload);
+    const data = await functionPost<{ document: { id: string; title: string; content_hash?: string } }>('career-studio-manage?action=save', payload);
     const saved: CareerDocumentFull = {
       ...document,
       id: data.document.id,
@@ -197,7 +197,7 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
 export async function deleteCareerDocument(docType: CareerDocType, documentId: string) {
   try {
     if (!documentId.startsWith('local_')) {
-      await functionPost('career-studio-save', { action: 'delete', document_id: documentId });
+      await functionPost('career-studio-manage?action=save', { action: 'delete', document_id: documentId });
       return;
     }
   } catch {
@@ -369,7 +369,7 @@ export async function runCareerAiAction(payload: CareerAiPayload): Promise<Caree
       tokens_consumed?: number;
       tokens_remaining?: number;
       message?: string;
-    }>('career-studio-ai', payload);
+    }>('career-studio-manage?action=ai', payload);
 
     return {
       success: true,

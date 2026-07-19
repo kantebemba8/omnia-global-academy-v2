@@ -62,7 +62,7 @@ export default function ForumGeneral() {
       const q = new URLSearchParams({ space, country_code: country, page: String(page), sort, ...(search ? { search } : {}) });
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${ENDPOINTS.forumPostsList}?${q}`, { headers });
+      const res = await fetch(`${ENDPOINTS.forumPostsList}&${q}`, { headers });
       const d = await res.json();
       setPosts(d.posts || []);
       setTotal(d.total || 0);

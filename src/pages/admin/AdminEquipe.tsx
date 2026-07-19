@@ -94,7 +94,7 @@ export default function AdminEquipe() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=list`, {
         headers: { 'Authorization': `Bearer ${token()}` }
       });
       if (!res.ok) throw new Error('Impossible de charger les modérateurs');
@@ -157,10 +157,10 @@ export default function AdminEquipe() {
   const savePermissions = async (userId: string) => {
     try {
       setSavingModeratorId(userId);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ user_id: userId, permissions: localPermissions[userId] })
+        body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
       });
       if (!res.ok) throw new Error('Échec de la sauvegarde');
       setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
@@ -177,10 +177,10 @@ export default function AdminEquipe() {
   const deleteModerator = async (userId: string) => {
     if (!confirm('Révoquer les permissions de ce modérateur ?')) return;
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-delete`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ user_id: userId })
+        body: JSON.stringify({ moderator_id: userId, action: 'delete' })
       });
       if (!res.ok) throw new Error('Échec de la suppression');
       setModerators(prev => prev.filter(m => m.user_id !== userId));
@@ -198,7 +198,7 @@ export default function AdminEquipe() {
     setCreatingMod(true);
     setError(null);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
         body: JSON.stringify({

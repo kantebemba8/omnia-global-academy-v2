@@ -27,7 +27,6 @@ import { ForcePasswordChange } from './pages/auth/ForcePasswordChange';
 import { DashboardApprenant } from './pages/dashboard/DashboardApprenant';
 import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
-import DashboardCvBuilder from './pages/dashboard/DashboardCvBuilder';
 import DashboardCareerStudio from './pages/dashboard/DashboardCareerStudio';
 import CareerStudioEditor from './pages/dashboard/CareerStudioEditor';
 import OmniaCareerStudio from './pages/OmniaCareerStudio';
@@ -255,7 +254,6 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardApprenant />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
-        <Route path="/dashboard/cv-builder" element={<DashboardCvBuilder />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />

@@ -29,7 +29,7 @@ function saveJson(key:string,value:any){localStorage.setItem(key,JSON.stringify(
 function token(){return localStorage.getItem('omnia_session_token')||''}
 async function callAi(text:string){
   if(!SUPABASE_URL||!token()) throw new Error('IA indisponible');
-  const response=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-ai`,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'make_professional',text})});
+  const response=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'make_professional',text})});
   const data=await response.json(); if(!response.ok) throw new Error(data?.error||'IA indisponible'); return data.result||data.text||'';
 }
 

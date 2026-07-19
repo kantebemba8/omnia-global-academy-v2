@@ -413,7 +413,7 @@ export function LandingPage() {
                 </li>
               ))}
             </ul>
-            <button onClick={() => navigate('/dashboard/cv-builder')}
+            <button onClick={() => navigate('/omnia-career/cv-builder')}
               className="px-6 py-3 rounded-lg font-semibold transition-opacity hover:opacity-85"
               style={{ backgroundColor: '#BF8813', color: 'white' }}>
               Créer mon CV gratuitement →
