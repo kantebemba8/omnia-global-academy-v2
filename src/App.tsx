@@ -181,6 +181,8 @@ import ParticipantMyLives from './pages/omnia-live/participant/ParticipantMyLive
 import ParticipantLibrary from './pages/omnia-live/participant/ParticipantLibrary';
 import ParticipantNotifications from './pages/omnia-live/participant/ParticipantNotifications';
 import ParticipantRefunds from './pages/omnia-live/participant/ParticipantRefunds';
+import OmniaLiveMediaHub from './pages/omnia-live/media/OmniaLiveMediaHub';
+import OmniaLiveMediaVersions from './pages/omnia-live/media/OmniaLiveMediaVersions';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
