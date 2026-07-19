@@ -176,6 +176,11 @@ import OrganizerParticipants from './pages/omnia-live/organizer/OrganizerPartici
 import OrganizerMedia from './pages/omnia-live/organizer/OrganizerMedia';
 import OrganizerAnalytics from './pages/omnia-live/organizer/OrganizerAnalytics';
 import OrganizerSettings from './pages/omnia-live/organizer/OrganizerSettings';
+import ParticipantDashboard from './pages/omnia-live/participant/ParticipantDashboard';
+import ParticipantMyLives from './pages/omnia-live/participant/ParticipantMyLives';
+import ParticipantLibrary from './pages/omnia-live/participant/ParticipantLibrary';
+import ParticipantNotifications from './pages/omnia-live/participant/ParticipantNotifications';
+import ParticipantRefunds from './pages/omnia-live/participant/ParticipantRefunds';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -241,7 +246,7 @@ export default function App() {
           <Route path="/omnia-live/formations" element={<CatalogView title="Formations Live" subtitle="Des formations synchrones structurées en plusieurs classes et sessions." filter="training" />} />
           <Route path="/omnia-live/videos" element={<CatalogView title="Vidéos & Replays" subtitle="Masterclass enregistrées, vidéos à la demande et replays validés par Omnia." filter="video" />} />
           <Route path="/omnia-live/organisateurs" element={<OmniaLiveOrganizers />} />
-          <Route path="/omnia-live/mes-lives" element={<OmniaLiveMyLives />} />
+          <Route path="/omnia-live/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/proposer" element={<OmniaLivePropose />} />
           <Route path="/omnia-live/studio/:liveId" element={<OmniaLiveStudio />} />
           <Route path="/omnia-live/studio/:liveId/presentation" element={<OmniaLiveStudioPresentation />} />
@@ -266,6 +271,11 @@ export default function App() {
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />
           <Route path="/omnia-live/mes-documents" element={<OmniaLiveDocuments />} />
           <Route path="/omnia-live/verifier-document" element={<OmniaLiveDocumentVerify />} />
+          <Route path="/omnia-live/participant" element={<ParticipantDashboard />} />
+          <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
+          <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
+          <Route path="/omnia-live/participant/notifications" element={<ParticipantNotifications />} />
+          <Route path="/omnia-live/participant/remboursements" element={<ParticipantRefunds />} />
           <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
           <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />
           <Route path="/omnia-live/organisateur/evenements/:eventId" element={<OrganizerEventDetail />} />
