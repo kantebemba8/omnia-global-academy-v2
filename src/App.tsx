@@ -169,6 +169,13 @@ import AdminOmniaLiveFinance from './pages/omnia-live/admin/AdminOmniaLiveFinanc
 import AdminOmniaLiveOperations from './pages/omnia-live/admin/AdminOmniaLiveOperations';
 import AdminOmniaLiveModeration from './pages/omnia-live/admin/AdminOmniaLiveModeration';
 import AdminOmniaLiveSettings from './pages/omnia-live/admin/AdminOmniaLiveSettings';
+import OrganizerDashboard from './pages/omnia-live/organizer/OrganizerDashboard';
+import OrganizerEvents from './pages/omnia-live/organizer/OrganizerEvents';
+import OrganizerEventDetail from './pages/omnia-live/organizer/OrganizerEventDetail';
+import OrganizerParticipants from './pages/omnia-live/organizer/OrganizerParticipants';
+import OrganizerMedia from './pages/omnia-live/organizer/OrganizerMedia';
+import OrganizerAnalytics from './pages/omnia-live/organizer/OrganizerAnalytics';
+import OrganizerSettings from './pages/omnia-live/organizer/OrganizerSettings';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -259,6 +266,13 @@ export default function App() {
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />
           <Route path="/omnia-live/mes-documents" element={<OmniaLiveDocuments />} />
           <Route path="/omnia-live/verifier-document" element={<OmniaLiveDocumentVerify />} />
+          <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
+          <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />
+          <Route path="/omnia-live/organisateur/evenements/:eventId" element={<OrganizerEventDetail />} />
+          <Route path="/omnia-live/organisateur/participants" element={<OrganizerParticipants />} />
+          <Route path="/omnia-live/organisateur/medias" element={<OrganizerMedia />} />
+          <Route path="/omnia-live/organisateur/statistiques" element={<OrganizerAnalytics />} />
+          <Route path="/omnia-live/organisateur/parametres" element={<OrganizerSettings />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />

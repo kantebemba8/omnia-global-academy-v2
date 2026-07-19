@@ -1,0 +1,11 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { liveApi } from '../liveApi';
+import OrganizerShell from './OrganizerShell';
+export default function OrganizerMedia(){
+ const [events,setEvents]=useState<any[]>([]),[eventId,setEventId]=useState(''),[rows,setRows]=useState<any[]>([]),[reviews,setReviews]=useState<any[]>([]),[msg,setMsg]=useState('');
+ useEffect(()=>{liveApi('organizer_events').then(d=>{setEvents(d.items||[]);if(d.items?.[0])setEventId(d.items[0].id)})},[]);
+ useEffect(()=>{if(eventId)liveApi('organizer_media',{}, {event_id:eventId}).then(d=>{setRows(d.media||[]);setReviews(d.reviews||[])}).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'))},[eventId]);
+ const latest:any={};for(const r of reviews)if(!latest[r.media_id])latest[r.media_id]=r;
+ return <OrganizerShell title="Médias & Replays" subtitle="Vidéos, documents, traitement et validation Super Admin."><div className="mb-5 flex flex-wrap gap-3"><select value={eventId} onChange={e=>setEventId(e.target.value)} className="rounded-xl border px-4 py-2">{events.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select>{eventId&&<Link to={`/omnia-live/studio/${eventId}/upload`} className="rounded-xl bg-[#002050] px-4 py-2 font-bold text-white">Téléverser</Link>}</div>{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-4">{msg}</div>}<div className="grid gap-4 md:grid-cols-2">{rows.map(x=><div key={x.id} className="rounded-2xl border bg-white p-5"><div className="font-bold text-[#002050]">{x.title||x.file_name||x.media_type}</div><div className="mt-1 text-sm text-slate-500">{x.media_type} · {x.status} · {x.processing_status}</div>{latest[x.id]&&<div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">Décision: {latest[x.id].decision}<br/>{latest[x.id].reason}</div>}{x.processing_status!=='ready'&&<Link to={`/omnia-live/media/${x.id}/processing`} className="mt-4 inline-block font-bold text-[#002050]">Voir le traitement</Link>}</div>)}{!rows.length&&<div className="rounded-2xl bg-slate-50 p-8 text-slate-500">Aucun média.</div>}</div></OrganizerShell>
+}
