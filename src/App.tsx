@@ -135,6 +135,7 @@ import OmniaLiveMyLives from './pages/omnia-live/OmniaLiveMyLives';
 import OmniaLiveOrganizers from './pages/omnia-live/OmniaLiveOrganizers';
 import OmniaLivePropose from './pages/omnia-live/OmniaLivePropose';
 import OmniaLiveDetail from './pages/omnia-live/OmniaLiveDetail';
+import OmniaLiveStudio from './pages/omnia-live/OmniaLiveStudio';
 import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 
 function GuardedRoutes() {
@@ -203,6 +204,7 @@ export default function App() {
           <Route path="/omnia-live/organisateurs" element={<OmniaLiveOrganizers />} />
           <Route path="/omnia-live/mes-lives" element={<OmniaLiveMyLives />} />
           <Route path="/omnia-live/proposer" element={<OmniaLivePropose />} />
+          <Route path="/omnia-live/studio/:liveId" element={<OmniaLiveStudio />} />
           <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />

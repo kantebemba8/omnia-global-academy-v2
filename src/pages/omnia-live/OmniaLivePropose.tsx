@@ -20,7 +20,7 @@ export default function OmniaLivePropose() {
         body: JSON.stringify({ title, event_type: type, delivery_type: deliveryType }),
       });
       setMessage('Brouillon Omnia Live créé avec succès.');
-      if (data?.event?.id) navigate(`/omnia-live/${data.event.id}`);
+      if (data?.event?.id) navigate(`/omnia-live/studio/${data.event.id}`);
     } catch (e: any) {
       setMessage(e?.message || 'Impossible de créer le brouillon.');
     } finally {
