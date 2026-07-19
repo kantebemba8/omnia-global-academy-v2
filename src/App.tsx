@@ -142,7 +142,6 @@ import OmniaLiveStudioPricing from './pages/omnia-live/OmniaLiveStudioPricing';
 import OmniaLiveStudioSpeakers from './pages/omnia-live/OmniaLiveStudioSpeakers';
 import OmniaLiveStudioResources from './pages/omnia-live/OmniaLiveStudioResources';
 import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
-import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
 import OmniaLiveMediaProcessing from './pages/omnia-live/OmniaLiveMediaProcessing';
 import OmniaLiveRoom from './pages/omnia-live/OmniaLiveRoom';
@@ -159,6 +158,17 @@ import OmniaLiveOrganizerProfile from './pages/omnia-live/OmniaLiveOrganizerProf
 import OmniaLiveAnalytics from './pages/omnia-live/OmniaLiveAnalytics';
 import OmniaLiveDocuments from './pages/omnia-live/OmniaLiveDocuments';
 import OmniaLiveDocumentVerify from './pages/omnia-live/OmniaLiveDocumentVerify';
+import AdminOmniaLiveOverview from './pages/omnia-live/admin/AdminOmniaLiveOverview';
+import AdminOmniaLiveValidation from './pages/omnia-live/admin/AdminOmniaLiveValidation';
+import AdminOmniaLiveEvents from './pages/omnia-live/admin/AdminOmniaLiveEvents';
+import AdminOmniaLiveEventDetail from './pages/omnia-live/admin/AdminOmniaLiveEventDetail';
+import AdminOmniaLiveOrganizers from './pages/omnia-live/admin/AdminOmniaLiveOrganizers';
+import AdminOmniaLiveStructures from './pages/omnia-live/admin/AdminOmniaLiveStructures';
+import AdminOmniaLiveMedia from './pages/omnia-live/admin/AdminOmniaLiveMedia';
+import AdminOmniaLiveFinance from './pages/omnia-live/admin/AdminOmniaLiveFinance';
+import AdminOmniaLiveOperations from './pages/omnia-live/admin/AdminOmniaLiveOperations';
+import AdminOmniaLiveModeration from './pages/omnia-live/admin/AdminOmniaLiveModeration';
+import AdminOmniaLiveSettings from './pages/omnia-live/admin/AdminOmniaLiveSettings';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -274,7 +284,17 @@ export default function App() {
         {/* Admin — always accessible */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
-        <Route path="/admin/omnia-live" element={<AdminOmniaLive />} />
+        <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
+        <Route path="/admin/omnia-live/validation" element={<AdminOmniaLiveValidation />} />
+        <Route path="/admin/omnia-live/evenements" element={<AdminOmniaLiveEvents />} />
+        <Route path="/admin/omnia-live/evenements/:eventId" element={<AdminOmniaLiveEventDetail />} />
+        <Route path="/admin/omnia-live/organisateurs" element={<AdminOmniaLiveOrganizers />} />
+        <Route path="/admin/omnia-live/structures" element={<AdminOmniaLiveStructures />} />
+        <Route path="/admin/omnia-live/medias" element={<AdminOmniaLiveMedia />} />
+        <Route path="/admin/omnia-live/finance" element={<AdminOmniaLiveFinance />} />
+        <Route path="/admin/omnia-live/operations" element={<AdminOmniaLiveOperations />} />
+        <Route path="/admin/omnia-live/moderation" element={<AdminOmniaLiveModeration />} />
+        <Route path="/admin/omnia-live/parametres" element={<AdminOmniaLiveSettings />} />
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />

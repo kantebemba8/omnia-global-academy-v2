@@ -1,0 +1,10 @@
+import { useEffect, useState } from 'react';
+import { liveApi } from '../liveApi';
+import AdminOmniaLiveShell from './AdminOmniaLiveShell';
+export default function AdminOmniaLiveOrganizers(){
+ const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState('');
+ const load=()=>liveApi('admin_organizers').then(d=>setRows(d.organizers||[])).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));
+ useEffect(()=>{load()},[]);
+ async function decide(id:string,decision:string){const note=prompt('Note Super Admin :')||'';try{await liveApi('admin_organizer_decision',{method:'POST',body:JSON.stringify({profile_id:id,decision,note})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ return <AdminOmniaLiveShell title="Organisateurs" subtitle="Vérification, réputation et statut des organisateurs.">{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-4">{msg}</div>}<div className="space-y-3">{rows.map(x=><div key={x.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border bg-white p-5"><div><div className="font-bold text-[#002050]">{x.display_name}</div><div className="text-sm text-slate-500">{x.users?.email} · {x.verification_status} · note {Number(x.public_rating||0).toFixed(1)}/5</div><div className="mt-1 text-xs text-slate-400">{x.completed_events||0} terminés · {x.cancellation_count||0} annulations · {x.refund_count||0} remboursements</div></div><div className="flex gap-2"><button onClick={()=>decide(x.id,'verified')} className="rounded-lg bg-[#002050] px-3 py-2 text-sm font-bold text-white">Valider</button><button onClick={()=>decide(x.id,'suspended')} className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700">Suspendre</button><button onClick={()=>decide(x.id,'rejected')} className="rounded-lg border px-3 py-2 text-sm">Refuser</button></div></div>)}{!rows.length&&<div className="rounded-2xl bg-slate-50 p-8 text-center text-slate-500">Aucun profil organisateur.</div>}</div></AdminOmniaLiveShell>
+}

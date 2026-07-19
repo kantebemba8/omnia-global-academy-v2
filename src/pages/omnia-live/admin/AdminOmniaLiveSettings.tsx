@@ -1,0 +1,9 @@
+import { useEffect, useState } from 'react';
+import { liveApi } from '../liveApi';
+import AdminOmniaLiveShell from './AdminOmniaLiveShell';
+export default function AdminOmniaLiveSettings(){
+ const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState('');const load=()=>liveApi('admin_settings_get').then(d=>setRows(d.settings||[])).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));useEffect(()=>{load()},[]);
+ function change(i:number,key:string,value:any){setRows(x=>x.map((r,n)=>n===i?{...r,config_value:{...r.config_value,[key]:value}}:r))}
+ async function save(r:any){try{await liveApi('admin_settings_save',{method:'POST',body:JSON.stringify({config_key:r.config_key,config_value:r.config_value,description:r.description,is_public:r.is_public})});setMsg(`${r.config_key} enregistré.`)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ return <AdminOmniaLiveShell title="Paramètres Omnia Live" subtitle="Fonctions globales, limites et futurs abonnements configurables.">{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-4">{msg}</div>}<div className="space-y-5">{rows.map((r,i)=><div key={r.config_key} className="rounded-2xl border bg-white p-5"><div className="font-bold text-[#002050]">{r.config_key}</div><p className="text-sm text-slate-500">{r.description}</p><div className="mt-4 grid gap-3 md:grid-cols-2">{Object.entries(r.config_value||{}).map(([k,v])=><label key={k} className="rounded-xl bg-slate-50 p-3 text-sm"><span className="block font-semibold">{k}</span>{typeof v==='boolean'?<input type="checkbox" checked={v} onChange={e=>change(i,k,e.target.checked)} className="mt-2"/>:<input value={String(v??'')} onChange={e=>change(i,k,typeof v==='number'?Number(e.target.value):e.target.value)} className="mt-2 w-full rounded-lg border bg-white p-2"/>}</label>)}</div><button onClick={()=>save(r)} className="mt-4 rounded-xl bg-[#002050] px-4 py-2 font-bold text-white">Enregistrer</button></div>)}</div></AdminOmniaLiveShell>
+}
