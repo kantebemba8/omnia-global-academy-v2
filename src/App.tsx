@@ -143,6 +143,7 @@ import OmniaLiveStudioSpeakers from './pages/omnia-live/OmniaLiveStudioSpeakers'
 import OmniaLiveStudioResources from './pages/omnia-live/OmniaLiveStudioResources';
 import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
 import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
+import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -216,6 +217,7 @@ export default function App() {
           <Route path="/omnia-live/studio/:liveId/tarification" element={<OmniaLiveStudioPricing />} />
           <Route path="/omnia-live/studio/:liveId/intervenants" element={<OmniaLiveStudioSpeakers />} />
           <Route path="/omnia-live/studio/:liveId/ressources" element={<OmniaLiveStudioResources />} />
+          <Route path="/omnia-live/studio/:liveId/upload" element={<OmniaLiveUpload />} />
           <Route path="/omnia-live/studio/:liveId/previsualisation" element={<OmniaLiveStudioPreview />} />
           <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
