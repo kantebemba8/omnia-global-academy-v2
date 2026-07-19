@@ -140,6 +140,8 @@ import OmniaLiveStudioPresentation from './pages/omnia-live/OmniaLiveStudioPrese
 import OmniaLiveStudioPlanning from './pages/omnia-live/OmniaLiveStudioPlanning';
 import OmniaLiveStudioPricing from './pages/omnia-live/OmniaLiveStudioPricing';
 import OmniaLiveStudioSpeakers from './pages/omnia-live/OmniaLiveStudioSpeakers';
+import OmniaLiveStudioResources from './pages/omnia-live/OmniaLiveStudioResources';
+import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
 import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 
 function GuardedRoutes() {
@@ -213,6 +215,8 @@ export default function App() {
           <Route path="/omnia-live/studio/:liveId/planification" element={<OmniaLiveStudioPlanning />} />
           <Route path="/omnia-live/studio/:liveId/tarification" element={<OmniaLiveStudioPricing />} />
           <Route path="/omnia-live/studio/:liveId/intervenants" element={<OmniaLiveStudioSpeakers />} />
+          <Route path="/omnia-live/studio/:liveId/ressources" element={<OmniaLiveStudioResources />} />
+          <Route path="/omnia-live/studio/:liveId/previsualisation" element={<OmniaLiveStudioPreview />} />
           <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
