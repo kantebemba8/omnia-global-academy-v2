@@ -157,6 +157,8 @@ import OmniaLiveReviews from './pages/omnia-live/OmniaLiveReviews';
 import OmniaLivePrivateAccess from './pages/omnia-live/OmniaLivePrivateAccess';
 import OmniaLiveOrganizerProfile from './pages/omnia-live/OmniaLiveOrganizerProfile';
 import OmniaLiveAnalytics from './pages/omnia-live/OmniaLiveAnalytics';
+import OmniaLiveDocuments from './pages/omnia-live/OmniaLiveDocuments';
+import OmniaLiveDocumentVerify from './pages/omnia-live/OmniaLiveDocumentVerify';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -245,6 +247,8 @@ export default function App() {
           <Route path="/omnia-live/acces-prive" element={<OmniaLivePrivateAccess />} />
           <Route path="/omnia-live/profil-organisateur" element={<OmniaLiveOrganizerProfile />} />
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />
+          <Route path="/omnia-live/mes-documents" element={<OmniaLiveDocuments />} />
+          <Route path="/omnia-live/verifier-document" element={<OmniaLiveDocumentVerify />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
