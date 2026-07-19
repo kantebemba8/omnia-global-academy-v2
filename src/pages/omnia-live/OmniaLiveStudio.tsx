@@ -57,7 +57,7 @@ export default function OmniaLiveStudio() {
       .finally(() => setLoading(false));
   }, [liveId]);
 
-  async function save() {
+  async function save(goNext = false) {
     if (!liveId) return;
 
     setSaving(true);
@@ -74,7 +74,11 @@ export default function OmniaLiveStudio() {
         }),
       });
 
-      setMessage('Étape 1 enregistrée.');
+      if (goNext) {
+        navigate(`/omnia-live/studio/${liveId}/presentation`);
+      } else {
+        setMessage('Étape 1 enregistrée.');
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible d’enregistrer.');
     } finally {
@@ -182,15 +186,26 @@ export default function OmniaLiveStudio() {
               Quitter le Studio
             </button>
 
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="rounded-xl px-6 py-3 font-bold text-white disabled:opacity-50"
-              style={{ background: BLUE }}
-            >
-              {saving ? 'Enregistrement...' : 'Enregistrer l’étape 1'}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => save(false)}
+                disabled={saving}
+                className="rounded-xl border px-5 py-3 font-bold disabled:opacity-50"
+                style={{ borderColor: BLUE, color: BLUE }}
+              >
+                Enregistrer
+              </button>
+              <button
+                type="button"
+                onClick={() => save(true)}
+                disabled={saving}
+                className="rounded-xl px-6 py-3 font-bold text-white disabled:opacity-50"
+                style={{ background: BLUE }}
+              >
+                {saving ? 'Enregistrement...' : 'Continuer →'}
+              </button>
+            </div>
           </div>
         </div>
       </section>
