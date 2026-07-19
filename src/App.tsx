@@ -144,6 +144,7 @@ import OmniaLiveStudioResources from './pages/omnia-live/OmniaLiveStudioResource
 import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
 import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
+import OmniaLiveMediaProcessing from './pages/omnia-live/OmniaLiveMediaProcessing';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
