@@ -151,6 +151,9 @@ import OmniaLiveAttendance from './pages/omnia-live/OmniaLiveAttendance';
 import OmniaLiveCheckout from './pages/omnia-live/OmniaLiveCheckout';
 import OmniaLiveOrders from './pages/omnia-live/OmniaLiveOrders';
 import AdminOmniaLiveRefunds from './pages/omnia-live/AdminOmniaLiveRefunds';
+import AdminOmniaLiveCancellations from './pages/omnia-live/AdminOmniaLiveCancellations';
+import OmniaLiveOrganizerFinance from './pages/omnia-live/OmniaLiveOrganizerFinance';
+import OmniaLiveReviews from './pages/omnia-live/OmniaLiveReviews';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -233,6 +236,9 @@ export default function App() {
           <Route path="/omnia-live/:liveId/inscription" element={<OmniaLiveCheckout />} />
           <Route path="/omnia-live/mes-achats" element={<OmniaLiveOrders />} />
           <Route path="/admin/omnia-live/remboursements" element={<AdminOmniaLiveRefunds />} />
+          <Route path="/omnia-live/:liveId/avis" element={<OmniaLiveReviews />} />
+          <Route path="/omnia-live/revenus" element={<OmniaLiveOrganizerFinance />} />
+          <Route path="/admin/omnia-live/annulations" element={<AdminOmniaLiveCancellations />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
