@@ -145,6 +145,9 @@ import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
 import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
 import OmniaLiveMediaProcessing from './pages/omnia-live/OmniaLiveMediaProcessing';
+import OmniaLiveRoom from './pages/omnia-live/OmniaLiveRoom';
+import OmniaLiveHostRoom from './pages/omnia-live/OmniaLiveHostRoom';
+import OmniaLiveAttendance from './pages/omnia-live/OmniaLiveAttendance';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -221,6 +224,9 @@ export default function App() {
           <Route path="/omnia-live/studio/:liveId/upload" element={<OmniaLiveUpload />} />
           <Route path="/omnia-live/studio/:liveId/previsualisation" element={<OmniaLiveStudioPreview />} />
           <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
+          <Route path="/omnia-live/:liveId/salle" element={<OmniaLiveRoom />} />
+          <Route path="/omnia-live/:liveId/organiser" element={<OmniaLiveHostRoom />} />
+          <Route path="/omnia-live/:liveId/presence" element={<OmniaLiveAttendance />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
