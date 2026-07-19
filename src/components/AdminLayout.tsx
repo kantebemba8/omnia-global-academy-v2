@@ -3,7 +3,7 @@ import { DashboardLayout } from './DashboardLayout';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag,
   BookOpen, Users, Monitor, Award, Eye, MessageSquare,
-  Briefcase, Building2, PlusCircle, QrCode, Gift, Search, Shield, Activity
+  Briefcase, Building2, PlusCircle, QrCode, Gift, Search, Shield, Activity, Radio
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -27,6 +27,7 @@ const ADMIN_NAV = [
   { path: '/admin/career-studio',          label: 'Omnia Career Studio',    icon: Briefcase },
   { path: '/talent',                      label: 'Talent Omnia',           icon: Search },
   { path: '/admin/talent',                label: 'Supervision Talent',      icon: Shield },
+  { path: '/admin/omnia-live',            label: 'Gestion Omnia Live',      icon: Radio },
   { path: '/admin/offres-emploi',          label: 'Offres d’emploi',        icon: Briefcase },
   { path: '/admin/structures',             label: 'Structures',             icon: Building2 },
   { path: '/admin/structure-codes',        label: 'Codes structure',        icon: QrCode },

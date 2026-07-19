@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, User, LogOut,
   ChevronRight, Menu, X, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -26,6 +26,7 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/recrutement/entretiens',label:'Entretiens',                icon: CalendarDays },
   { path: '/structure/recrutement/messages', label: 'Messages recrutement',      icon: MessageSquare },
   { path: '/talent',                         label: 'Talent Omnia',              icon: Search },
+  { path: '/omnia-live',                     label: 'Omnia Live',                 icon: Radio },
   { path: '/structure/equipe',              label: 'Équipe de la structure',    icon: Shield },
   { path: '/structure/statistiques',        label: 'Statistiques',              icon: BarChart2 },
   { path: '/structure/notifications',       label: 'Notifications',             icon: Bell },

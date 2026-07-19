@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, LogIn, Menu, Search } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Home, Menu, Search } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -71,6 +71,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
           >
             <Menu size={23} />
           </button>
+          <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-9 w-9 rounded-lg object-cover" />
           <div className="truncate text-lg font-bold md:text-xl">{title}</div>
         </div>
 
@@ -88,8 +89,8 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
               <ArrowLeft size={16} /> Retour au Dashboard
             </button>
           ) : (
-            <button type="button" onClick={() => navigate('/connexion')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
-              <LogIn size={16} /> Connexion
+            <button type="button" onClick={() => navigate('/accueil')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
+              <ArrowLeft size={16} /> Retour à Omnia Global Academy
             </button>
           )}
           {user && <div className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</div>}
@@ -100,7 +101,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
       {open && (
         <div className="fixed inset-0 z-50">
           <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Fermer le menu en cliquant à l’extérieur" />
-          <aside className="absolute bottom-0 left-0 top-0 w-[286px] max-w-[86vw] overflow-y-auto border-r border-slate-200 bg-white shadow-2xl">
+          <aside className="absolute left-3 top-[84px] w-[286px] max-w-[86vw] max-h-[calc(100vh-100px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
               <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-12 w-12 rounded-xl object-cover" />
               <div className="min-w-0">
@@ -125,9 +126,9 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
               })}
             </nav>
             <div className="mt-auto border-t border-slate-100 px-3 py-4">
-              <button type="button" onClick={() => { setOpen(false); navigate(user ? dashboardPath : '/connexion'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
-                {user ? <ArrowLeft size={18} /> : <LogIn size={18} />}
-                {user ? 'Retour au Dashboard' : 'Se connecter'}
+              <button type="button" onClick={() => { setOpen(false); navigate(user ? dashboardPath : '/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
+                {user ? <ArrowLeft size={18} /> : <Home size={18} />}
+                {user ? 'Retour au Dashboard' : 'Retour à Omnia Global Academy'}
               </button>
             </div>
           </aside>

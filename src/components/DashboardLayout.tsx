@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
-  Search,
+  Search, Radio,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -27,6 +27,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard/certificats', label: 'Certificats', icon: Award },
  { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText, badge: 'Nouveau' },
   { path: '/talent', label: 'Talent Omnia', icon: Search },
+  { path: '/omnia-live', label: 'Omnia Live', icon: Radio },
   { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
   { path: '/forum', label: 'Forum communauté', icon: MessageSquare },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
@@ -41,6 +42,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Talent Omnia', icon: Search },
+  { path: '/omnia-live', label: 'Omnia Live', icon: Radio },
   { path: '/forum', label: 'Forums & Entraide', icon: MessageSquare },
   { path: '/professeur/profile', label: 'Configuration profil', icon: Settings },
   { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
@@ -89,6 +91,7 @@ const ADMIN_NAV = [
   { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
   { path: '/talent', label: 'Talent Omnia', icon: Search },
   { path: '/admin/talent', label: 'Supervision Talent', icon: Shield },
+  { path: '/admin/omnia-live', label: 'Gestion Omnia Live', icon: Radio },
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 

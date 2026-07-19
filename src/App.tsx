@@ -128,6 +128,14 @@ import TalentOrganisations from './pages/talent/TalentOrganisations';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
+import OmniaLiveHome from './pages/omnia-live/OmniaLiveHome';
+import CatalogView from './pages/omnia-live/CatalogView';
+import OmniaLiveAbout from './pages/omnia-live/OmniaLiveAbout';
+import OmniaLiveMyLives from './pages/omnia-live/OmniaLiveMyLives';
+import OmniaLiveOrganizers from './pages/omnia-live/OmniaLiveOrganizers';
+import OmniaLivePropose from './pages/omnia-live/OmniaLivePropose';
+import OmniaLiveDetail from './pages/omnia-live/OmniaLiveDetail';
+import AdminOmniaLive from './pages/omnia-live/AdminOmniaLive';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -186,6 +194,17 @@ export default function App() {
           <Route path="/talent/organisations" element={<TalentOrganisations />} />
           <Route path="/talent/a-propos" element={<TalentAbout />} />
           <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
+          <Route path="/omnia-live" element={<OmniaLiveHome />} />
+          <Route path="/omnia-live/en-direct" element={<CatalogView title="En direct maintenant" subtitle="Les sessions actuellement ouvertes apparaissent ici en temps réel." filter="live" />} />
+          <Route path="/omnia-live/a-venir" element={<CatalogView title="Lives à venir" subtitle="Découvrez les prochains événements et consultez les horaires dans votre fuseau local." filter="upcoming" />} />
+          <Route path="/omnia-live/explorer" element={<CatalogView title="Explorer Omnia Live" subtitle="Explorez les Lives, masterclass, ateliers, conférences et contenus disponibles." />} />
+          <Route path="/omnia-live/formations" element={<CatalogView title="Formations Live" subtitle="Des formations synchrones structurées en plusieurs classes et sessions." filter="training" />} />
+          <Route path="/omnia-live/videos" element={<CatalogView title="Vidéos & Replays" subtitle="Masterclass enregistrées, vidéos à la demande et replays validés par Omnia." filter="video" />} />
+          <Route path="/omnia-live/organisateurs" element={<OmniaLiveOrganizers />} />
+          <Route path="/omnia-live/mes-lives" element={<OmniaLiveMyLives />} />
+          <Route path="/omnia-live/proposer" element={<OmniaLivePropose />} />
+          <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
+          <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
@@ -210,6 +229,7 @@ export default function App() {
         {/* Admin — always accessible */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
+        <Route path="/admin/omnia-live" element={<AdminOmniaLive />} />
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
