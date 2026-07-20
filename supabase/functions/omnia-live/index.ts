@@ -4772,7 +4772,11 @@ async function adminDashboard(
     ledgerRes,
     roomsRes,
   ] = await Promise.all([
-    sb.from("live_events").select("id,status,price_amount,currency,starts_at,delivery_type,created_at"),
+    sb.from("live_events")
+      .select("id,title,status,price_amount,currency,starts_at,delivery_type,event_type,organizer_display_name,created_at")
+      .neq("status","archived")
+      .is("deleted_at",null)
+      .order("created_at",{ascending:false}),
     sb.from("live_registrations").select("id,status,event_id"),
     sb.from("live_orders").select("id,payment_status,amount,currency,event_id"),
     sb.from("live_refund_requests").select("id,status,requested_amount,approved_amount"),
@@ -4785,7 +4789,9 @@ async function adminDashboard(
   ]);
 
   const events = eventsRes.data ?? [];
-  const orders = ordersRes.data ?? [];
+  const activeEventIds = new Set(events.map((e:any)=>e.id));
+  const registrations = (registrationsRes.data ?? []).filter((r:any)=>activeEventIds.has(r.event_id));
+  const orders = (ordersRes.data ?? []).filter((o:any)=>!o.event_id || activeEventIds.has(o.event_id));
   const ledger = ledgerRes.data ?? [];
 
   const sum = (rows: any[], key: string) =>
@@ -4793,6 +4799,21 @@ async function adminDashboard(
 
   const countStatus = (rows: any[], key: string, value: string) =>
     rows.filter((row) => row[key] === value).length;
+
+  const registrationCounts = new Map<string,number>();
+  for (const r of registrations) {
+    registrationCounts.set(r.event_id,(registrationCounts.get(r.event_id)||0)+1);
+  }
+
+  const recentEvents = events.slice(0,10).map((e:any)=>({
+    ...e,
+    registrations_count: registrationCounts.get(e.id)||0,
+  }));
+
+  const activeRooms = (roomsRes.data ?? []).filter((room:any)=>
+    activeEventIds.has(room.event_id) &&
+    ["open","live"].includes(room.status)
+  );
 
   return json({
     success: true,
@@ -4804,7 +4825,7 @@ async function adminDashboard(
       live_now: countStatus(events, "status", "live"),
       completed: countStatus(events, "status", "completed"),
       suspended: countStatus(events, "status", "suspended"),
-      registrations: (registrationsRes.data ?? []).length,
+      registrations: registrations.length,
       paid_orders: countStatus(orders, "payment_status", "paid"),
       gross_revenue: sum(orders.filter((o:any)=>o.payment_status==="paid"), "amount"),
       refunds_pending: (refundsRes.data ?? []).filter((x:any)=>["pending","under_review"].includes(x.status)).length,
@@ -4812,10 +4833,11 @@ async function adminDashboard(
       media_processing: (mediaRes.data ?? []).filter((x:any)=>["pending","uploaded","processing"].includes(x.processing_status)).length,
       organizers_pending: (organizersRes.data ?? []).filter((x:any)=>x.verification_status==="pending").length,
       reports_open: (reportsRes.data ?? []).filter((x:any)=>["open","under_review"].includes(x.status)).length,
-      live_rooms_active: (roomsRes.data ?? []).filter((x:any)=>["open","live"].includes(x.status)).length,
+      live_rooms_active: activeRooms.length,
       organizer_due: sum(ledger.filter((x:any)=>["pending","available"].includes(x.status)), "organizer_amount"),
       oga_revenue: sum(ledger.filter((x:any)=>x.status!=="reversed"), "oga_amount"),
     },
+    recent_events: recentEvents,
   });
 }
 
@@ -7460,41 +7482,55 @@ async function adminDeleteSuspended(
   if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
   const body = (await req.json().catch(() => ({}))) as any;
-  if (!body.event_id || !String(body.reason || "").trim()) {
-    return json({ error: "EVENT_ID_AND_REASON_REQUIRED" }, 400);
-  }
+  if (!body.event_id) return json({ error: "EVENT_ID_REQUIRED" }, 400);
 
-  const ev = await eventForAccess(sb, body.event_id);
+  const { data: ev, error: eventError } = await sb.from("live_events")
+    .select("*")
+    .eq("id", body.event_id)
+    .maybeSingle();
+
+  if (eventError) throw eventError;
   if (!ev) return json({ error: "EVENT_NOT_FOUND" }, 404);
   if (ev.status !== "suspended") {
     return json({ error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED" }, 409);
   }
 
-  const now = new Date().toISOString();
-  const { data, error } = await sb.from("live_events").update({
-    status: "archived",
-    deleted_at: now,
+  const { data: history } = await sb.from("live_review_log")
+    .select("*")
+    .eq("event_id", ev.id)
+    .order("created_at");
+
+  // Store a detached immutable audit snapshot first.
+  const { error: auditError } = await sb.from("live_deleted_event_audit").insert({
+    original_event_id: ev.id,
+    title: ev.title,
+    previous_status: ev.status,
+    organizer_snapshot: {
+      owner_user_id: ev.owner_user_id,
+      owner_structure_id: ev.owner_structure_id,
+      organizer_kind: ev.organizer_kind,
+      organizer_display_name: ev.organizer_display_name,
+    },
+    event_snapshot: ev,
+    validation_history: history ?? [],
     deleted_by: ctx.userId,
-    deletion_reason: String(body.reason).trim(),
-    updated_at: now,
-  }).eq("id", body.event_id).select("*").single();
-
-  if (error) throw error;
-
-  await reviewLog(sb, {
-    eventId: body.event_id,
-    action: "archived",
-    actorUserId: ctx.userId,
-    fromStatus: "suspended",
-    toStatus: "archived",
-    message: `Suppression/archivage : ${String(body.reason).trim()}`,
-    snapshot: data,
   });
+  if (auditError) throw auditError;
+
+  // Explicitly close/remove rooms so "Salles actives" becomes correct immediately.
+  await sb.from("live_room_members").delete().eq("event_id", ev.id);
+  await sb.from("live_room_actions").delete().eq("event_id", ev.id);
+  await sb.from("live_rooms").delete().eq("event_id", ev.id);
+
+  // Physically delete the event. Existing FK cascade rules remove dependent active records.
+  const { error: deleteError } = await sb.from("live_events").delete().eq("id", ev.id);
+  if (deleteError) throw deleteError;
 
   return json({
     success: true,
-    event: data,
-    message: "Live supprimé des espaces actifs. Historique conservé.",
+    deleted: true,
+    event_id: ev.id,
+    message: "Live supprimé définitivement. Une trace administrative détachée a été conservée.",
   });
 }
 

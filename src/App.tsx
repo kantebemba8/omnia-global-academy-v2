@@ -207,6 +207,7 @@ import AdminOmniaLiveAudit from './pages/omnia-live/admin/AdminOmniaLiveAudit';
 import OmniaLiveSystemStatus from './pages/omnia-live/system/OmniaLiveSystemStatus';
 import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
 import AdminProfile from './pages/admin/AdminProfile';
+import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -357,6 +358,7 @@ export default function App() {
         <Route path="/admin/profil" element={<AdminProfile />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
+        <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />
         <Route path="/admin/omnia-live/validation" element={<AdminOmniaLiveValidation />} />
         <Route path="/admin/omnia-live/evenements" element={<AdminOmniaLiveEvents />} />
         <Route path="/admin/omnia-live/evenements/:eventId" element={<AdminOmniaLiveEventDetail />} />

@@ -59,20 +59,17 @@ export default function AdminOmniaLiveEventDetail(){
 
  async function deleteSuspended(){
    const r=await omniaDialog({
-     title:'Supprimer ce Live suspendu',
-     message:'Le Live sera retiré des espaces actifs mais son historique de validation et d’audit restera conservé.',
+     title:'Supprimer ce Live ?',
+     message:'Le Live sera supprimé définitivement des événements et des salles actives. L’action restera enregistrée dans l’historique administratif.',
      confirmLabel:'Supprimer',
-     danger:true,
-     inputLabel:'Motif de suppression',
-     inputRequired:true,
-     inputPlaceholder:'Pourquoi supprimer ce Live ?'
+     danger:true
    });
    if(!r.confirmed)return;
    setBusy('delete'); setMsg('');
    try{
-     await liveApi('admin_delete_suspended',{method:'POST',body:JSON.stringify({event_id:eventId,reason:r.value})});
-     setMsg('Live supprimé. L’historique a été conservé.');
-     await load();
+     const result=await liveApi('admin_delete_suspended',{method:'POST',body:JSON.stringify({event_id:eventId})});
+     if(result?.deleted) window.location.href='/admin/omnia-live';
+     else throw new Error(result?.message||'Suppression impossible.');
    }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
    finally{setBusy('')}
  }
@@ -97,10 +94,9 @@ export default function AdminOmniaLiveEventDetail(){
   {['approved','published','live'].includes(e.status)&&
     <button disabled={!!busy} onClick={()=>review('suspend')} className="rounded-xl border border-red-500 p-3 font-semibold text-red-800 disabled:opacity-50">Suspendre</button>
   }
-  {e.status==='suspended'&&<>
-    <div className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">Ce Live est suspendu. La prévisualisation et la supervision sont désactivées.</div>
+  {e.status==='suspended'&&
     <button disabled={!!busy} onClick={deleteSuspended} className="rounded-xl bg-red-700 p-3 font-bold text-white disabled:opacity-50">Supprimer le Live</button>
-  </>}
+  }
   {e.status==='archived'&&<div className="rounded-xl bg-slate-100 p-3 text-sm font-semibold text-slate-700">Ce Live a été supprimé/archivé. Son historique reste conservé.</div>}
 </div><div className="rounded-xl bg-slate-50 p-4 text-sm"><b>{d.registrations.length}</b> inscriptions<br/><b>{d.orders.length}</b> commandes<br/><b>{d.rooms.length}</b> salles<br/><b>{d.reports.length}</b> signalements</div></aside></div>
  </AdminOmniaLiveShell>
