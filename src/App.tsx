@@ -189,6 +189,23 @@ import OmniaLiveCommerceCheckout from './pages/omnia-live/commerce/OmniaLiveComm
 import OmniaLiveEntitlements from './pages/omnia-live/commerce/OmniaLiveEntitlements';
 import OrganizerPayouts from './pages/omnia-live/commerce/OrganizerPayouts';
 import AdminOmniaLiveCommerce from './pages/omnia-live/commerce/AdminOmniaLiveCommerce';
+import MyLiveDocuments from './pages/omnia-live/documents/MyLiveDocuments';
+import VerifyLiveDocument from './pages/omnia-live/documents/VerifyLiveDocument';
+import AdminLiveDocuments from './pages/omnia-live/documents/AdminLiveDocuments';
+import EventDocumentSettings from './pages/omnia-live/documents/EventDocumentSettings';
+import OmniaLiveNotificationCenter from './pages/omnia-live/notifications/OmniaLiveNotificationCenter';
+import OrganizerCommunications from './pages/omnia-live/organizer/OrganizerCommunications';
+import AdminOmniaLiveCommunications from './pages/omnia-live/admin/AdminOmniaLiveCommunications';
+import AdminOmniaLiveAutomationRules from './pages/omnia-live/admin/AdminOmniaLiveAutomationRules';
+import OrganizerAnalyticsAdvanced from './pages/omnia-live/analytics/OrganizerAnalyticsAdvanced';
+import AdminOmniaLiveAnalytics from './pages/omnia-live/admin/AdminOmniaLiveAnalytics';
+import AdminOmniaLiveReports from './pages/omnia-live/admin/AdminOmniaLiveReports';
+import StructureOmniaLiveReports from './pages/omnia-live/structure/StructureOmniaLiveReports';
+import AdminOmniaLiveSecurity from './pages/omnia-live/admin/AdminOmniaLiveSecurity';
+import AdminOmniaLiveIntegrity from './pages/omnia-live/admin/AdminOmniaLiveIntegrity';
+import AdminOmniaLiveAudit from './pages/omnia-live/admin/AdminOmniaLiveAudit';
+import OmniaLiveSystemStatus from './pages/omnia-live/system/OmniaLiveSystemStatus';
+import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -277,7 +294,7 @@ export default function App() {
           <Route path="/omnia-live/acces-prive" element={<OmniaLivePrivateAccess />} />
           <Route path="/omnia-live/profil-organisateur" element={<OmniaLiveOrganizerProfile />} />
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />
-          <Route path="/omnia-live/mes-documents" element={<OmniaLiveDocuments />} />
+          <Route path="/omnia-live/mes-documents" element={<MyLiveDocuments />} />
           <Route path="/omnia-live/verifier-document" element={<OmniaLiveDocumentVerify />} />
           <Route path="/omnia-live/checkout" element={<OmniaLiveCommerceCheckout />} />
           <Route path="/omnia-live/mes-acces" element={<OmniaLiveEntitlements />} />
@@ -295,6 +312,23 @@ export default function App() {
           <Route path="/omnia-live/organisateur/medias" element={<OrganizerMedia />} />
           <Route path="/omnia-live/organisateur/statistiques" element={<OrganizerAnalytics />} />
           <Route path="/omnia-live/organisateur/parametres" element={<OrganizerSettings />} />
+          <Route path="/omnia-live/media-center" element={<OmniaLiveMediaHub />} />
+          <Route path="/omnia-live/media/:mediaId/versions" element={<OmniaLiveMediaVersions />} />
+          <Route path="/omnia-live/watch/:mediaId" element={<OmniaLiveWatch />} />
+          <Route path="/verify/live-document/:code" element={<VerifyLiveDocument />} />
+          <Route path="/admin/omnia-live/documents" element={<AdminLiveDocuments />} />
+          <Route path="/omnia-live/studio/:liveId/documents" element={<EventDocumentSettings />} />
+          <Route path="/omnia-live/organisateur/communications" element={<OrganizerCommunications />} />
+          <Route path="/admin/omnia-live/communications" element={<AdminOmniaLiveCommunications />} />
+          <Route path="/admin/omnia-live/automatisations" element={<AdminOmniaLiveAutomationRules />} />
+          <Route path="/omnia-live/organisateur/analytics-avances" element={<OrganizerAnalyticsAdvanced />} />
+          <Route path="/admin/omnia-live/analytics" element={<AdminOmniaLiveAnalytics />} />
+          <Route path="/admin/omnia-live/rapports" element={<AdminOmniaLiveReports />} />
+          <Route path="/omnia-live/structure/rapports" element={<StructureOmniaLiveReports />} />
+          <Route path="/admin/omnia-live/securite" element={<AdminOmniaLiveSecurity />} />
+          <Route path="/admin/omnia-live/integrite" element={<AdminOmniaLiveIntegrity />} />
+          <Route path="/admin/omnia-live/audit" element={<AdminOmniaLiveAudit />} />
+          <Route path="/omnia-live/system-status" element={<OmniaLiveSystemStatus />} />
           <Route path="/omnia-live/:liveId" element={<OmniaLiveDetail />} />
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
