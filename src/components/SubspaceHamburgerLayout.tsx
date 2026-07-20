@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Search, UserRound, Video } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Search, UserRound, Radio } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -21,8 +21,6 @@ type Props = {
   searchPlaceholder?: string;
   showSearch?: boolean;
   rightContent?: ReactNode;
-  profileSpaceLabel?: string;
-  profileSpacePath?: string;
 };
 
 export function getDashboardPath(roles: string[] = []) {
@@ -41,7 +39,7 @@ function initials(user: StoredUser | null) {
   return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : source.slice(0, 2).toUpperCase();
 }
 
-export default function SubspaceHamburgerLayout({ title, navItems, children, searchPlaceholder, showSearch = true, rightContent, profileSpaceLabel, profileSpacePath }: Props) {
+export default function SubspaceHamburgerLayout({ title, navItems, children, searchPlaceholder, showSearch = true, rightContent }: Props) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const location = useLocation();
@@ -49,32 +47,25 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
   const user = useMemo<StoredUser | null>(() => {
     try { const raw = localStorage.getItem('omnia_user'); return raw ? JSON.parse(raw) : null; } catch { return null; }
   }, []);
-  const dashboardPath = getDashboardPath(user?.roles || []);
+  const roles = user?.roles || [];
+  const dashboardPath = getDashboardPath(roles);
+  const isSuperAdmin = roles.includes('super_admin');
+  const isOrganizer = roles.some(r => ['organisateur','professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r))
+    || Boolean((user as any)?.omnia_live_organizer);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); setProfileOpen(false); } };
+    if (!open && !profileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        setProfileOpen(false);
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, profileOpen]);
 
   useEffect(() => { setOpen(false); setProfileOpen(false); }, [location.pathname, location.search]);
-
-  function logout() {
-    localStorage.removeItem('omnia_session_token');
-    localStorage.removeItem('omnia_user');
-    setProfileOpen(false);
-    navigate('/connexion');
-  }
-
-  const liveRoleLabel = profileSpaceLabel || (title === 'Omnia Live'
-    ? ((user?.roles || []).includes('super_admin') ? 'Administration Omnia Live'
-      : (user?.roles || []).some(r => ['professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r)) || (user as any)?.omnia_live_organizer ? 'Espace Organisateur' : 'Mes Lives')
-    : title);
-  const liveRolePath = profileSpacePath || (title === 'Omnia Live'
-    ? ((user?.roles || []).includes('super_admin') ? '/admin/omnia-live'
-      : (user?.roles || []).some(r => ['professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r)) || (user as any)?.omnia_live_organizer ? '/omnia-live/organisateur' : '/omnia-live/mes-lives')
-    : dashboardPath);
 
   return (
     <div className="min-h-screen bg-white" style={{ color: BLUE }}>
@@ -104,27 +95,61 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
         <div className="flex flex-shrink-0 items-center gap-3">
           {rightContent}
           {user ? (
-            <div className="relative">
-              <button type="button" onClick={() => setProfileOpen(v => !v)} className="flex items-center gap-2 rounded-xl px-1.5 py-1 transition hover:bg-slate-100" aria-expanded={profileOpen}>
-                <div className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</div>
-                <ChevronDown size={15} className={`text-slate-400 transition ${profileOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {profileOpen && <>
-                <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu profil" />
-                <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl">
-                  <button onClick={() => {setProfileOpen(false);navigate('/profil')}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><UserRound size={17}/>Mon profil</button>
-                  <button onClick={() => {setProfileOpen(false);navigate(title === 'Omnia Live' ? '/omnia-live/notifications' : '/notifications')}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={17}/>Notifications</button>
-                  <button onClick={() => {setProfileOpen(false);navigate(liveRolePath)}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Video size={17}/>{liveRoleLabel}</button>
-                  <button onClick={() => {setProfileOpen(false);navigate(dashboardPath)}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><ArrowLeft size={17}/>Retour au Dashboard</button>
-                  <div className="my-1 border-t border-slate-100"/>
-                  <button onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={17}/>Se déconnecter</button>
-                </div>
-              </>}
-            </div>
+            <button type="button" onClick={() => navigate(dashboardPath)} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
+              <ArrowLeft size={16} /> Retour au Dashboard
+            </button>
           ) : (
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => navigate('/connexion')} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-slate-100">Se connecter</button>
-              <button type="button" onClick={() => navigate('/inscription')} className="hidden rounded-lg px-3 py-2 text-sm font-bold text-white sm:block" style={{background:BLUE}}>Créer un compte</button>
+            <button type="button" onClick={() => navigate('/accueil')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
+              <ArrowLeft size={16} /> Retour à Omnia Global Academy
+            </button>
+          )}
+          {user && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(v => !v)}
+                className="flex items-center gap-1 rounded-xl px-1.5 py-1 transition hover:bg-slate-100"
+                aria-expanded={profileOpen}
+                aria-label="Ouvrir le menu du profil"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                <ChevronDown size={15} className="text-slate-400" />
+              </button>
+
+              {profileOpen && (
+                <>
+                  <button type="button" aria-label="Fermer le menu profil" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
+                  <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
+                    <button onClick={() => navigate('/dashboard/profil')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <UserRound size={17} /> Mon profil
+                    </button>
+                    <button onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <Bell size={17} /> Notifications
+                    </button>
+                    <button
+                      onClick={() => navigate(isSuperAdmin ? '/admin/omnia-live' : isOrganizer ? '/omnia-live/organisateur' : '/omnia-live/mes-lives')}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"
+                    >
+                      <Radio size={17} /> {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
+                    </button>
+                    <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <ArrowLeft size={17} /> Retour au Dashboard
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('omnia_user');
+                        localStorage.removeItem('omnia_access_token');
+                        localStorage.removeItem('access_token');
+                        navigate('/connexion');
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      <LogOut size={17} /> Se déconnecter
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

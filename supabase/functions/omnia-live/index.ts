@@ -80,13 +80,6 @@ function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return ctx.roles.some((r) => allowed.has(r));
 }
 
-async function canOrganizeLive(sb: ReturnType<typeof createClient>, ctx: Awaited<ReturnType<typeof sessionContext>>) {
-  if (!ctx) return false;
-  if (canOrganize(ctx)) return true;
-  const { data } = await sb.from("live_organizer_profiles").select("verified,verification_status").eq("user_id",ctx.userId).maybeSingle();
-  return Boolean(data?.verified && data?.verification_status === "verified");
-}
-
 function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return "user";
   if (ctx.roles.includes("super_admin")) return "omnia";
@@ -584,7 +577,7 @@ async function createDraft(
 ) {
   if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  if (!(await canOrganizeLive(sb, ctx))) {
+  if (!canOrganize(ctx)) {
     return json({ error: "ORGANIZER_PERMISSION_REQUIRED" }, 403);
   }
 
@@ -671,6 +664,12 @@ async function updateDraft(
   return json({
     success: true,
     event: data,
+    message:
+      body.decision === "start_review" ? "Examen commencé." :
+      body.decision === "request_changes" ? "Demande de modifications envoyée à l’organisateur." :
+      body.decision === "approve" ? "Live approuvé." :
+      body.decision === "reject" ? "Live refusé." :
+      body.decision === "suspend" ? "Live suspendu." : "Action enregistrée.",
   });
 }
 
@@ -1144,18 +1143,6 @@ async function adminReview(
     message: body.reason?.trim() || null,
     snapshot: data,
   });
-
-  if (body.decision === "request_changes" && ev.owner_user_id) {
-    await sb.from("live_notification_inbox").insert({
-      user_id: ev.owner_user_id,
-      event_id: body.event_id,
-      notification_type: "changes_requested",
-      title: "Modifications demandées",
-      message: body.reason?.trim() || "Le Super Admin demande des modifications avant validation.",
-      action_url: `/omnia-live/studio/${body.event_id}`,
-      priority: "high",
-    }).catch(() => null);
-  }
 
   return json({
     success: true,
@@ -2295,8 +2282,10 @@ async function roomAccessAllowed(
 
   if (registration) return true;
 
-  // Même un Live public et gratuit exige une inscription confirmée.
-  // Seuls le Super Admin, le propriétaire et les intervenants autorisés contournent l’inscription.
+  if (ev.visibility === "public" && Number(ev.price_amount || 0) === 0) {
+    return true;
+  }
+
   return false;
 }
 
@@ -4018,16 +4007,6 @@ async function organizerProfileUpsert(
   const {data,error}=await sb.from("live_organizer_profiles").upsert(row,{onConflict:"user_id"}).select("*").single();
   if(error) throw error;
   return json({success:true,profile:data});
-}
-
-async function organizerProfileMe(
-  sb: ReturnType<typeof createClient>,
-  ctx: Awaited<ReturnType<typeof sessionContext>>,
-) {
-  if(!ctx) return json({error:"AUTH_REQUIRED"},401);
-  const {data,error}=await sb.from("live_organizer_profiles").select("*").eq("user_id",ctx.userId).maybeSingle();
-  if(error) throw error;
-  return json({success:true,profile:data||null,can_organize:await canOrganizeLive(sb,ctx)});
 }
 
 async function organizerProfileGet(
@@ -7392,6 +7371,86 @@ async function integrityChecksRun(req:Request,sb:any,ctx:any){if(!ctx||!isSuperA
 async function integrityCheckResolve(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.check_id)return json({error:"CHECK_ID_REQUIRED"},400);const {data,error}=await sb.from("live_integrity_checks").update({status:b.status||"resolved",resolved_at:new Date().toISOString(),resolved_by:ctx.userId}).eq("id",b.check_id).select("*").single();if(error)throw error;return json({success:true,check:data});}
 async function systemStatus(sb:any){const services:any={database:{status:"ok"},r2:{status:Deno.env.get("R2_BUCKET_NAME")?"configured":"missing"},brevo:{status:Deno.env.get("BREVO_API_KEY")?"configured":"missing"},fedapay:{status:Deno.env.get("FEDAPAY_SECRET_KEY")?"configured":"disabled_or_missing"},media_worker:{status:Deno.env.get("MEDIA_WORKER_SECRET")?"configured":"missing"},recording:{status:Deno.env.get("LIVE_RECORDING_SECRET")?"configured":"disabled_or_missing"}};const ok=!Object.values(services).some((x:any)=>x.status==="missing");return json({success:true,ok,services});}
 
+
+async function adminCreateLive(
+  req: Request,
+  sb: ReturnType<typeof createClient>,
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+) {
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+
+  const body = (await req.json().catch(() => ({}))) as any;
+  if (!String(body.title || "").trim()) return json({ error: "TITLE_REQUIRED" }, 400);
+
+  const mode = String(body.creation_mode || "omnia");
+  if (!["omnia", "organizer", "structure"].includes(mode)) return json({ error: "INVALID_CREATION_MODE" }, 400);
+  if (mode === "organizer" && !body.owner_user_id) return json({ error: "OWNER_USER_ID_REQUIRED" }, 400);
+  if (mode === "structure" && !body.owner_structure_id) return json({ error: "OWNER_STRUCTURE_ID_REQUIRED" }, 400);
+
+  const publishNow = mode === "omnia" && Boolean(body.publish_now);
+  const now = new Date().toISOString();
+
+  const payload: any = {
+    owner_user_id: mode === "omnia" ? ctx.userId : (mode === "organizer" ? body.owner_user_id : ctx.userId),
+    owner_structure_id: mode === "structure" ? body.owner_structure_id : null,
+    organizer_kind: mode === "omnia" ? "omnia" : mode === "structure" ? "structure" : "user",
+    organizer_display_name: mode === "omnia" ? "Omnia Global Academy" : (body.organizer_display_name || null),
+    title: String(body.title).trim(),
+    slug: makeSlug(String(body.title)),
+    event_type: EVENT_TYPES.has(String(body.event_type)) ? String(body.event_type) : "masterclass",
+    delivery_type: DELIVERY_TYPES.has(String(body.delivery_type)) ? String(body.delivery_type) : "single_live",
+    status: publishNow ? "published" : "draft",
+    created_at: now,
+    updated_at: now,
+    last_reviewed_by: ctx.userId,
+    last_reviewed_at: now,
+  };
+
+  if (publishNow) {
+    payload.approved_at = now;
+    payload.published_at = now;
+    payload.admin_review_message = "Créé et publié directement par le Super Admin au nom d’Omnia Global Academy.";
+  }
+
+  const { data: event, error } = await sb.from("live_events").insert(payload).select("*").single();
+  if (error) throw error;
+
+  if (String(body.presenter_name || "").trim()) {
+    const { error: speakerError } = await sb.from("live_event_speakers").insert({
+      event_id: event.id,
+      external_name: String(body.presenter_name).trim(),
+      external_email: body.presenter_email ? String(body.presenter_email).trim() : null,
+      title: body.presenter_title ? String(body.presenter_title).trim() : null,
+      organization: body.presenter_organization ? String(body.presenter_organization).trim() : null,
+      role: "speaker",
+      invitation_status: body.presenter_email ? "pending" : "not_required",
+      display_order: 0,
+    });
+    if (speakerError) throw speakerError;
+  }
+
+  await reviewLog(sb, {
+    eventId: event.id,
+    action: publishNow ? "published" : "under_review",
+    actorUserId: ctx.userId,
+    fromStatus: null,
+    toStatus: event.status,
+    message: publishNow
+      ? "Créé et publié directement par le Super Admin au nom d’Omnia Global Academy."
+      : "Brouillon créé par le Super Admin.",
+    snapshot: event,
+  });
+
+  return json({
+    success: true,
+    event,
+    validation_skipped: publishNow,
+    message: publishNow
+      ? "Live Omnia créé et publié directement."
+      : "Brouillon créé. Il peut être complété dans le Studio.",
+  }, 201);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -7584,9 +7643,6 @@ Deno.serve(async (req: Request) => {
       case "organizer_profile_get":
         return await organizerProfileGet(req, sb);
 
-      case "organizer_profile_me":
-        return await organizerProfileMe(sb, ctx);
-
       case "organizer_profile_refresh_stats":
         return await organizerProfileRefreshStats(req, sb, ctx);
 
@@ -7616,6 +7672,9 @@ Deno.serve(async (req: Request) => {
 
       case "notification_dispatch":
         return await notificationDispatch(req, sb, ctx);
+
+      case "admin_create_live":
+        return await adminCreateLive(req, sb, ctx);
 
       case "admin_dashboard":
         return await adminDashboard(sb, ctx);
@@ -7951,7 +8010,6 @@ Deno.serve(async (req: Request) => {
               "archive_create",
               "organizer_profile_upsert",
               "organizer_profile_get",
-              "organizer_profile_me",
               "organizer_profile_refresh_stats",
               "analytics_rebuild",
               "analytics_get",
@@ -7962,6 +8020,7 @@ Deno.serve(async (req: Request) => {
               "document_download",
               "document_verify",
               "notification_dispatch",
+              "admin_create_live",
               "admin_dashboard",
               "admin_events",
               "admin_event_detail",

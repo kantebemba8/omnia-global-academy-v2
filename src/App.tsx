@@ -206,6 +206,7 @@ import AdminOmniaLiveIntegrity from './pages/omnia-live/admin/AdminOmniaLiveInte
 import AdminOmniaLiveAudit from './pages/omnia-live/admin/AdminOmniaLiveAudit';
 import OmniaLiveSystemStatus from './pages/omnia-live/system/OmniaLiveSystemStatus';
 import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
+import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -270,7 +271,6 @@ export default function App() {
           <Route path="/omnia-live/explorer" element={<CatalogView title="Explorer Omnia Live" subtitle="Explorez les Lives, masterclass, ateliers, conférences et contenus disponibles." />} />
           <Route path="/omnia-live/formations" element={<CatalogView title="Formations Live" subtitle="Des formations synchrones structurées en plusieurs classes et sessions." filter="training" />} />
           <Route path="/omnia-live/videos" element={<CatalogView title="Vidéos & Replays" subtitle="Masterclass enregistrées, vidéos à la demande et replays validés par Omnia." filter="video" />} />
-          <Route path="/omnia-live/replays" element={<CatalogView title="Replays" subtitle="Revivez les sessions disponibles selon vos droits d’accès." filter="replay" />} />
           <Route path="/omnia-live/organisateurs" element={<OmniaLiveOrganizers />} />
           <Route path="/omnia-live/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/proposer" element={<OmniaLivePropose />} />
@@ -356,6 +356,7 @@ export default function App() {
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
+        <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />
         <Route path="/admin/omnia-live/validation" element={<AdminOmniaLiveValidation />} />
         <Route path="/admin/omnia-live/evenements" element={<AdminOmniaLiveEvents />} />
         <Route path="/admin/omnia-live/evenements/:eventId" element={<AdminOmniaLiveEventDetail />} />
