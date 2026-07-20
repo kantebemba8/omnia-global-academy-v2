@@ -183,6 +183,8 @@ import ParticipantNotifications from './pages/omnia-live/participant/Participant
 import ParticipantRefunds from './pages/omnia-live/participant/ParticipantRefunds';
 import OmniaLiveMediaHub from './pages/omnia-live/media/OmniaLiveMediaHub';
 import OmniaLiveMediaVersions from './pages/omnia-live/media/OmniaLiveMediaVersions';
+import LiveEngineRoom from './pages/omnia-live/live-engine/LiveEngineRoom';
+import LiveEngineHost from './pages/omnia-live/live-engine/LiveEngineHost';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -259,8 +261,8 @@ export default function App() {
           <Route path="/omnia-live/studio/:liveId/upload" element={<OmniaLiveUpload />} />
           <Route path="/omnia-live/studio/:liveId/previsualisation" element={<OmniaLiveStudioPreview />} />
           <Route path="/omnia-live/a-propos" element={<OmniaLiveAbout />} />
-          <Route path="/omnia-live/:liveId/salle" element={<OmniaLiveRoom />} />
-          <Route path="/omnia-live/:liveId/organiser" element={<OmniaLiveHostRoom />} />
+          <Route path="/omnia-live/:liveId/salle" element={<LiveEngineRoom />} />
+          <Route path="/omnia-live/:liveId/organiser" element={<LiveEngineHost />} />
           <Route path="/omnia-live/:liveId/presence" element={<OmniaLiveAttendance />} />
           <Route path="/omnia-live/:liveId/inscription" element={<OmniaLiveCheckout />} />
           <Route path="/omnia-live/mes-achats" element={<OmniaLiveOrders />} />
