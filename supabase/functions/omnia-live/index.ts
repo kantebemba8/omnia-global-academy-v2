@@ -3616,13 +3616,33 @@ async function cancellationAdminQueue(
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
-  const { data, error } = await sb.from("live_cancellation_requests")
-    .select("*,live_events(title,starts_at,organizer_display_name),users(full_name,email)")
+  const { data: rows, error } = await sb.from("live_cancellation_requests")
+    .select("*")
     .in("status", ["pending","under_review","approved"])
-    .order("created_at");
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return json({ success: true, requests: data ?? [] });
+  const requests = rows ?? [];
+
+  const eventMap = await hydrateEventMap(sb, requests.map((r:any)=>r.event_id));
+  const requesterIds = requests.map((r:any)=>r.requested_by || r.user_id).filter(Boolean);
+  const userMap = await hydrateUserMap(sb, requesterIds);
+
+  return json({
+    success: true,
+    requests: requests.map((r:any)=>{
+      const ev=eventMap.get(r.event_id);
+      const u=userMap.get(r.requested_by || r.user_id);
+      return {
+        ...r,
+        event_title: ev?.title ?? null,
+        event_starts_at: ev?.starts_at ?? null,
+        organizer_display_name: ev?.organizer_display_name ?? null,
+        user_name: u?.full_name ?? null,
+        user_email: u?.email ?? null,
+      };
+    }),
+  });
 }
 
 async function reviewCreate(
@@ -5094,11 +5114,38 @@ async function adminReports(
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
-  const { data, error } = await sb.from("live_content_reports")
-    .select("*,live_events(title),live_media(title,media_type),users(full_name,email)")
+
+  const { data: rows, error } = await sb.from("live_content_reports")
+    .select("*")
     .order("created_at",{ascending:false});
+
   if(error) throw error;
-  return json({ success:true,reports:data??[] });
+  const reports = rows ?? [];
+
+  const eventMap = await hydrateEventMap(sb, reports.map((r:any)=>r.event_id));
+  const userMap = await hydrateUserMap(sb, reports.map((r:any)=>r.reporter_user_id || r.user_id).filter(Boolean));
+
+  const mediaIds=[...new Set(reports.map((r:any)=>r.media_id).filter(Boolean))];
+  let mediaMap=new Map<string,any>();
+  if(mediaIds.length){
+    const {data:media}=await sb.from("live_media").select("id,title,media_type").in("id",mediaIds);
+    mediaMap=new Map((media??[]).map((x:any)=>[x.id,x]));
+  }
+
+  return json({
+    success:true,
+    reports:reports.map((r:any)=>{
+      const ev=eventMap.get(r.event_id);
+      const media=mediaMap.get(r.media_id);
+      const u=userMap.get(r.reporter_user_id || r.user_id);
+      return {
+        ...r,
+        target_title: ev?.title || media?.title || "Signalement",
+        user_name: u?.full_name ?? null,
+        user_email: u?.email ?? null,
+      };
+    }),
+  });
 }
 
 async function adminReportDecision(
@@ -7484,54 +7531,35 @@ async function adminDeleteSuspended(
   const body = (await req.json().catch(() => ({}))) as any;
   if (!body.event_id) return json({ error: "EVENT_ID_REQUIRED" }, 400);
 
-  const { data: ev, error: eventError } = await sb.from("live_events")
-    .select("*")
-    .eq("id", body.event_id)
-    .maybeSingle();
-
-  if (eventError) throw eventError;
-  if (!ev) return json({ error: "EVENT_NOT_FOUND" }, 404);
-  if (ev.status !== "suspended") {
-    return json({ error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED" }, 409);
-  }
-
-  const { data: history } = await sb.from("live_review_log")
-    .select("*")
-    .eq("event_id", ev.id)
-    .order("created_at");
-
-  // Store a detached immutable audit snapshot first.
-  const { error: auditError } = await sb.from("live_deleted_event_audit").insert({
-    original_event_id: ev.id,
-    title: ev.title,
-    previous_status: ev.status,
-    organizer_snapshot: {
-      owner_user_id: ev.owner_user_id,
-      owner_structure_id: ev.owner_structure_id,
-      organizer_kind: ev.organizer_kind,
-      organizer_display_name: ev.organizer_display_name,
-    },
-    event_snapshot: ev,
-    validation_history: history ?? [],
-    deleted_by: ctx.userId,
+  const { data, error } = await sb.rpc("omnia_live_delete_event_permanently", {
+    p_event_id: body.event_id,
+    p_deleted_by: ctx.userId,
   });
-  if (auditError) throw auditError;
 
-  // Explicitly close/remove rooms so "Salles actives" becomes correct immediately.
-  await sb.from("live_room_members").delete().eq("event_id", ev.id);
-  await sb.from("live_room_actions").delete().eq("event_id", ev.id);
-  await sb.from("live_rooms").delete().eq("event_id", ev.id);
-
-  // Physically delete the event. Existing FK cascade rules remove dependent active records.
-  const { error: deleteError } = await sb.from("live_events").delete().eq("id", ev.id);
-  if (deleteError) throw deleteError;
+  if (error) throw error;
+  if (!data) return json({ error: "EVENT_NOT_FOUND" }, 404);
 
   return json({
     success: true,
     deleted: true,
-    event_id: ev.id,
-    message: "Live supprimé définitivement. Une trace administrative détachée a été conservée.",
+    event_id: body.event_id,
+    message: "Live supprimé définitivement. L’action reste enregistrée dans l’historique administratif.",
   });
+}
+
+
+async function hydrateUserMap(sb: ReturnType<typeof createClient>, ids: string[]) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map<string, any>();
+  const { data } = await sb.from("users").select("id,full_name,email").in("id", unique);
+  return new Map((data ?? []).map((x:any)=>[x.id,x]));
+}
+
+async function hydrateEventMap(sb: ReturnType<typeof createClient>, ids: string[]) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map<string, any>();
+  const { data } = await sb.from("live_events").select("id,title,starts_at,organizer_display_name").in("id", unique);
+  return new Map((data ?? []).map((x:any)=>[x.id,x]));
 }
 
 Deno.serve(async (req: Request) => {

@@ -60,7 +60,7 @@ export default function AdminOmniaLiveEventDetail(){
  async function deleteSuspended(){
    const r=await omniaDialog({
      title:'Supprimer ce Live ?',
-     message:'Le Live sera supprimé définitivement des événements et des salles actives. L’action restera enregistrée dans l’historique administratif.',
+     message:'Le Live sera supprimé définitivement, mais l’action restera enregistrée dans l’historique administratif.',
      confirmLabel:'Supprimer',
      danger:true
    });
