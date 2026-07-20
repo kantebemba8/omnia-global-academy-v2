@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
 import { liveApi } from '../liveApi';
+import { omniaDialog } from '../../../lib/omniaDialog';
 
 export default function LiveEngineHost(){
  const {liveId}=useParams();const navigate=useNavigate();
@@ -10,12 +11,12 @@ export default function LiveEngineHost(){
  async function refresh(id=room?.id){if(!id)return;const [m,q,p]=await Promise.all([liveApi('room_participants',{}, {room_id:id}),liveApi('question_list',{}, {room_id:id}),liveApi('poll_list',{}, {room_id:id})]);setMembers(m.members||[]);setQuestions(q.questions||[]);setPolls(p.polls||[])}
  useEffect(()=>{init()},[liveId]);useEffect(()=>{if(!room?.id)return;const t=setInterval(()=>refresh(room.id),5000);return()=>clearInterval(t)},[room?.id]);
  async function start(){const r=await liveApi('room_start',{method:'POST',body:JSON.stringify({room_id:room.id})});setRoom(r.room)}
- async function end(){if(!confirm('Terminer la session ?'))return;await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setMsg('Session terminée.')}
+ async function end(){const r=await omniaDialog({title:'Terminer la session',message:'Voulez-vous réellement terminer cette session Live ?',confirmLabel:'Terminer',danger:true});if(!r.confirmed)return;await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setMsg('Session terminée.')}
  async function admit(id:string){await liveApi('room_admit',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:id})});await refresh()}
  async function remove(id:string,block=false){await liveApi('room_remove_participant',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:id,block})});await refresh()}
  async function toggle(key:string,val:any){const r=await liveApi('room_controls_update',{method:'POST',body:JSON.stringify({room_id:room.id,[key]:val})});setControls(r.controls)}
  async function rec(action:'start'|'stop'){try{await liveApi(action==='start'?'recording_start':'recording_stop',{method:'POST',body:JSON.stringify({room_id:room.id})});setMsg(action==='start'?'Enregistrement demandé.':'Arrêt demandé, Replay en préparation.');const c=await liveApi('room_controls_get',{}, {room_id:room.id});setControls(c.controls)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
- async function answer(id:string){const a=prompt('Réponse :');if(a===null)return;await liveApi('question_answer',{method:'POST',body:JSON.stringify({question_id:id,answer_text:a,status:'answered'})});await refresh()}
+ async function answer(id:string){const r=await omniaDialog({title:'Répondre à la question',confirmLabel:'Envoyer',inputLabel:'Réponse',inputRequired:true});if(!r.confirmed)return;await liveApi('question_answer',{method:'POST',body:JSON.stringify({question_id:id,answer_text:r.value,status:'answered'})});await refresh()}
  async function createPoll(){const q=prompt('Question du sondage :');if(!q)return;const raw=prompt('Options séparées par | :');if(!raw)return;const options=raw.split('|').map(x=>x.trim()).filter(Boolean);if(options.length<2)return;await liveApi('poll_create',{method:'POST',body:JSON.stringify({room_id:room.id,question:q,options})});await refresh()}
  async function pollState(id:string,status:string){await liveApi('poll_update',{method:'POST',body:JSON.stringify({poll_id:id,status})});await refresh()}
  if(!room)return <OmniaLiveLayout><div className="mx-auto max-w-5xl px-4 py-10">{msg||'Préparation...'}</div></OmniaLiveLayout>;

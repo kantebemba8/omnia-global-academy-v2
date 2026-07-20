@@ -7451,6 +7451,53 @@ async function adminCreateLive(
   }, 201);
 }
 
+
+async function adminDeleteSuspended(
+  req: Request,
+  sb: ReturnType<typeof createClient>,
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+) {
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+
+  const body = (await req.json().catch(() => ({}))) as any;
+  if (!body.event_id || !String(body.reason || "").trim()) {
+    return json({ error: "EVENT_ID_AND_REASON_REQUIRED" }, 400);
+  }
+
+  const ev = await eventForAccess(sb, body.event_id);
+  if (!ev) return json({ error: "EVENT_NOT_FOUND" }, 404);
+  if (ev.status !== "suspended") {
+    return json({ error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED" }, 409);
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await sb.from("live_events").update({
+    status: "archived",
+    deleted_at: now,
+    deleted_by: ctx.userId,
+    deletion_reason: String(body.reason).trim(),
+    updated_at: now,
+  }).eq("id", body.event_id).select("*").single();
+
+  if (error) throw error;
+
+  await reviewLog(sb, {
+    eventId: body.event_id,
+    action: "archived",
+    actorUserId: ctx.userId,
+    fromStatus: "suspended",
+    toStatus: "archived",
+    message: `Suppression/archivage : ${String(body.reason).trim()}`,
+    snapshot: data,
+  });
+
+  return json({
+    success: true,
+    event: data,
+    message: "Live supprimé des espaces actifs. Historique conservé.",
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -7675,6 +7722,9 @@ Deno.serve(async (req: Request) => {
 
       case "admin_create_live":
         return await adminCreateLive(req, sb, ctx);
+
+      case "admin_delete_suspended":
+        return await adminDeleteSuspended(req, sb, ctx);
 
       case "admin_dashboard":
         return await adminDashboard(sb, ctx);
@@ -8021,6 +8071,7 @@ Deno.serve(async (req: Request) => {
               "document_verify",
               "notification_dispatch",
               "admin_create_live",
+              "admin_delete_suspended",
               "admin_dashboard",
               "admin_events",
               "admin_event_detail",

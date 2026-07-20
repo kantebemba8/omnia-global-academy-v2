@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { liveApi } from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
+import { omniaDialog } from '../../../lib/omniaDialog';
 export default function AdminOmniaLiveMedia(){
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState('');
  const load=()=>liveApi('admin_media_queue').then(d=>setRows(d.media||[])).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));
  useEffect(()=>{load()},[]);
- async function decide(id:string,decision:string){const reason=prompt('Motif :')||'';try{await liveApi('admin_media_review',{method:'POST',body:JSON.stringify({media_id:id,decision,reason})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function decide(id:string,decision:string){const r=await omniaDialog({title:'Décision sur le média',message:'Confirmez cette action.',confirmLabel:'Valider',inputLabel:'Motif / note',inputRequired:decision!=='approve'});if(!r.confirmed)return;try{await liveApi('admin_media_review',{method:'POST',body:JSON.stringify({media_id:id,decision,reason:r.value})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
  return <AdminOmniaLiveShell title="Médias & Replays" subtitle="Traitement, validation, suspension et publication des médias.">{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-4">{msg}</div>}<div className="space-y-3">{rows.map(x=><div key={x.id} className="rounded-2xl border bg-white p-5"><div className="flex flex-wrap justify-between gap-3"><div><div className="font-bold text-[#002050]">{x.title||x.file_name||x.media_type}</div><div className="text-sm text-slate-500">{x.live_events?.title} · {x.media_type} · {x.status} · {x.processing_status}</div></div><div className="flex flex-wrap gap-2"><button onClick={()=>decide(x.id,'approved')} className="rounded-lg bg-[#002050] px-3 py-2 text-sm text-white">Approuver</button><button onClick={()=>decide(x.id,'changes_requested')} className="rounded-lg border border-amber-300 px-3 py-2 text-sm">Corrections</button><button onClick={()=>decide(x.id,'rejected')} className="rounded-lg border px-3 py-2 text-sm">Refuser</button><button onClick={()=>decide(x.id,'suspended')} className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700">Suspendre</button></div></div></div>)}{!rows.length&&<div className="rounded-2xl bg-slate-50 p-8 text-center text-slate-500">Aucun média.</div>}</div></AdminOmniaLiveShell>
 }

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { liveApi } from '../liveApi';
 import OrganizerShell from './OrganizerShell';
+import { omniaDialog } from '../../../lib/omniaDialog';
 
 export default function OrganizerEventDetail(){
  const {eventId}=useParams();const [d,setD]=useState<any>(null),[parts,setParts]=useState<any[]>([]),[wait,setWait]=useState<any[]>([]),[codes,setCodes]=useState<any[]>([]),[msg,setMsg]=useState('');
  const load=async()=>{try{const [studio,p,c]=await Promise.all([liveApi('studio_get',{}, {event_id:eventId||''}),liveApi('organizer_participants',{}, {event_id:eventId||''}),liveApi('organizer_access_codes',{}, {event_id:eventId||''})]);setD(studio);setParts(p.participants||[]);setWait(p.waitlist||[]);setCodes(c.codes||[])}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}};
  useEffect(()=>{load()},[eventId]);
  async function code(){try{await liveApi('private_code_create',{method:'POST',body:JSON.stringify({event_id:eventId,access_type:d?.event?.visibility==='structure'?'structure':'private'})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
- async function cancel(){const reason=prompt('Motif de la demande d’annulation ou report :');if(!reason)return;try{await liveApi('cancellation_request',{method:'POST',body:JSON.stringify({event_id:eventId,request_type:'cancel',reason_code:'organizer_request',reason_details:reason})});setMsg('Demande envoyée au Super Admin.')}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function cancel(){const r=await omniaDialog({title:'Demander une annulation',message:'La demande sera envoyée au Super Admin.',confirmLabel:'Envoyer',danger:true,inputLabel:'Motif de la demande',inputRequired:true});if(!r.confirmed)return;try{await liveApi('cancellation_request',{method:'POST',body:JSON.stringify({event_id:eventId,request_type:'cancel',reason_code:'organizer_request',reason_details:r.value})});setMsg('Demande envoyée au Super Admin.')}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
  if(!d)return <OrganizerShell title="Événement">{msg||'Chargement...'}</OrganizerShell>;
  const e=d.event;
  return <OrganizerShell title={e.title} subtitle={`${e.status} · ${e.delivery_type}`}>

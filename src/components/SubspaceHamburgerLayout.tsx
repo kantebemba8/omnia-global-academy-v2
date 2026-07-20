@@ -96,7 +96,13 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
             <Menu size={23} />
           </button>
           <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-9 w-9 rounded-lg object-cover" />
-          <div className="truncate text-lg font-bold md:text-xl">{title}</div>
+          {title === 'Omnia Live' ? (
+            <button type="button" onClick={() => navigate('/omnia-live')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Live">
+              <span>Omnia </span><span style={{ color: GOLD }}>Live</span>
+            </button>
+          ) : (
+            <div className="truncate text-lg font-bold md:text-xl">{title}</div>
+          )}
         </div>
 
         {showSearch && (
