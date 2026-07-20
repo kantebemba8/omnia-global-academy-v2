@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarDays, CircleCheck, Eye, Radio, Search, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Eye, Radio, Search, ShieldCheck } from 'lucide-react';
 import { liveApi } from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 
@@ -50,7 +50,7 @@ export default function AdminOmniaLiveOverview(){
     {label:'Événements',value:k.total_events||0,icon:CalendarDays},
     {label:'À valider',value:(k.submitted||0)+(k.under_review||0),icon:ShieldCheck},
     {label:'En direct',value:k.live_now||0,icon:Radio},
-    {label:'Terminés',value:k.completed||0,icon:CircleCheck},
+    {label:'Terminés',value:k.completed||0,icon:CheckCircle2},
     {label:'Suspendus',value:k.suspended||0,icon:AlertTriangle},
   ];
 
