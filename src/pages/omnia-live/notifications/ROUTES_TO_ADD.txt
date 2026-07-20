@@ -1,0 +1,13 @@
+Ajouter dans src/App.tsx :
+
+IMPORTS
+import OmniaLiveNotificationCenter from './pages/omnia-live/notifications/OmniaLiveNotificationCenter';
+import OrganizerCommunications from './pages/omnia-live/organizer/OrganizerCommunications';
+import AdminOmniaLiveCommunications from './pages/omnia-live/admin/AdminOmniaLiveCommunications';
+import AdminOmniaLiveAutomationRules from './pages/omnia-live/admin/AdminOmniaLiveAutomationRules';
+
+ROUTES
+<Route path="/omnia-live/notifications" element={<OmniaLiveNotificationCenter />} />
+<Route path="/omnia-live/organisateur/communications" element={<OrganizerCommunications />} />
+<Route path="/admin/omnia-live/communications" element={<AdminOmniaLiveCommunications />} />
+<Route path="/admin/omnia-live/automatisations" element={<AdminOmniaLiveAutomationRules />} />
