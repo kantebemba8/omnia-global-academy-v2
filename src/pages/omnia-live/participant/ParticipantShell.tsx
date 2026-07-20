@@ -8,6 +8,7 @@ const NAV=[
  ['/omnia-live/explorer','Explorer',Compass],
  ['/omnia-live/participant/mes-lives','Mes Lives',CalendarDays],
  ['/omnia-live/participant/bibliotheque','Bibliothèque',Library],
+ ['/omnia-live/mes-acces','Mes accès',Library],
  ['/omnia-live/mes-achats','Achats & factures',ReceiptText],
  ['/omnia-live/mes-documents','Documents',FileBadge],
  ['/omnia-live/participant/notifications','Notifications',Bell],

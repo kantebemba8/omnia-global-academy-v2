@@ -11,6 +11,7 @@ const NAV=[
  ['/omnia-live/organisateur/medias','Médias & Replays',Film],
  ['/omnia-live/organisateur/statistiques','Statistiques',BarChart3],
  ['/omnia-live/revenus','Revenus',Wallet],
+ ['/omnia-live/organisateur/payouts','Payouts',Wallet],
  ['/omnia-live/profil-organisateur','Profil',UserRound],
  ['/omnia-live/organisateur/parametres','Paramètres',Settings2],
 ] as const;

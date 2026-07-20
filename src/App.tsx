@@ -185,6 +185,10 @@ import OmniaLiveMediaHub from './pages/omnia-live/media/OmniaLiveMediaHub';
 import OmniaLiveMediaVersions from './pages/omnia-live/media/OmniaLiveMediaVersions';
 import LiveEngineRoom from './pages/omnia-live/live-engine/LiveEngineRoom';
 import LiveEngineHost from './pages/omnia-live/live-engine/LiveEngineHost';
+import OmniaLiveCommerceCheckout from './pages/omnia-live/commerce/OmniaLiveCommerceCheckout';
+import OmniaLiveEntitlements from './pages/omnia-live/commerce/OmniaLiveEntitlements';
+import OrganizerPayouts from './pages/omnia-live/commerce/OrganizerPayouts';
+import AdminOmniaLiveCommerce from './pages/omnia-live/commerce/AdminOmniaLiveCommerce';
 
 function GuardedRoutes() {
   const { comingSoon, loading } = useSiteMode();
@@ -275,6 +279,10 @@ export default function App() {
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />
           <Route path="/omnia-live/mes-documents" element={<OmniaLiveDocuments />} />
           <Route path="/omnia-live/verifier-document" element={<OmniaLiveDocumentVerify />} />
+          <Route path="/omnia-live/checkout" element={<OmniaLiveCommerceCheckout />} />
+          <Route path="/omnia-live/mes-acces" element={<OmniaLiveEntitlements />} />
+          <Route path="/omnia-live/organisateur/payouts" element={<OrganizerPayouts />} />
+          <Route path="/admin/omnia-live/commerce" element={<AdminOmniaLiveCommerce />} />
           <Route path="/omnia-live/participant" element={<ParticipantDashboard />} />
           <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
