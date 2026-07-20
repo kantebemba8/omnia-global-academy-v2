@@ -1,0 +1,13 @@
+Ajouter dans src/App.tsx :
+
+IMPORTS
+import OrganizerAnalyticsAdvanced from './pages/omnia-live/analytics/OrganizerAnalyticsAdvanced';
+import AdminOmniaLiveAnalytics from './pages/omnia-live/admin/AdminOmniaLiveAnalytics';
+import AdminOmniaLiveReports from './pages/omnia-live/admin/AdminOmniaLiveReports';
+import StructureOmniaLiveReports from './pages/omnia-live/structure/StructureOmniaLiveReports';
+
+ROUTES
+<Route path="/omnia-live/organisateur/analytics-avances" element={<OrganizerAnalyticsAdvanced />} />
+<Route path="/admin/omnia-live/analytics" element={<AdminOmniaLiveAnalytics />} />
+<Route path="/admin/omnia-live/rapports" element={<AdminOmniaLiveReports />} />
+<Route path="/omnia-live/structure/rapports" element={<StructureOmniaLiveReports />} />
