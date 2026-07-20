@@ -1,0 +1,13 @@
+Ajouter dans src/App.tsx :
+
+IMPORTS
+import AdminOmniaLiveSecurity from './pages/omnia-live/admin/AdminOmniaLiveSecurity';
+import AdminOmniaLiveIntegrity from './pages/omnia-live/admin/AdminOmniaLiveIntegrity';
+import AdminOmniaLiveAudit from './pages/omnia-live/admin/AdminOmniaLiveAudit';
+import OmniaLiveSystemStatus from './pages/omnia-live/system/OmniaLiveSystemStatus';
+
+ROUTES
+<Route path="/admin/omnia-live/securite" element={<AdminOmniaLiveSecurity />} />
+<Route path="/admin/omnia-live/integrite" element={<AdminOmniaLiveIntegrity />} />
+<Route path="/admin/omnia-live/audit" element={<AdminOmniaLiveAudit />} />
+<Route path="/omnia-live/system-status" element={<OmniaLiveSystemStatus />} />
