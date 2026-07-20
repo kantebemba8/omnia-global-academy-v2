@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Search, UserRound, Radio } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Radio, Search, UserRound } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -33,6 +33,16 @@ export function getDashboardPath(roles: string[] = []) {
   return '/dashboard';
 }
 
+export function getProfilePath(roles: string[] = []) {
+  // IMPORTANT: always use the REAL authenticated role.
+  // A preview URL (?preview=true) must never change the personal profile destination.
+  if (roles.includes('super_admin')) return '/admin/profil';
+  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/profil';
+  if (roles.includes('recruteur')) return '/talent/recruteur/profil';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/profile';
+  return '/dashboard/profil';
+}
+
 function initials(user: StoredUser | null) {
   const source = user?.full_name || user?.name || user?.email || 'Omnia';
   const parts = source.trim().split(/\s+/).filter(Boolean);
@@ -49,6 +59,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
   }, []);
   const roles = user?.roles || [];
   const dashboardPath = getDashboardPath(roles);
+  const profilePath = getProfilePath(roles);
   const isSuperAdmin = roles.includes('super_admin');
   const isOrganizer = roles.some(r => ['organisateur','professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r))
     || Boolean((user as any)?.omnia_live_organizer);
@@ -65,7 +76,10 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
     return () => window.removeEventListener('keydown', onKey);
   }, [open, profileOpen]);
 
-  useEffect(() => { setOpen(false); setProfileOpen(false); }, [location.pathname, location.search]);
+  useEffect(() => {
+    setOpen(false);
+    setProfileOpen(false);
+  }, [location.pathname, location.search]);
 
   return (
     <div className="min-h-screen bg-white" style={{ color: BLUE }}>
@@ -118,9 +132,14 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
 
               {profileOpen && (
                 <>
-                  <button type="button" aria-label="Fermer le menu profil" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
+                  <button
+                    type="button"
+                    aria-label="Fermer le menu du profil"
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setProfileOpen(false)}
+                  />
                   <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
-                    <button onClick={() => navigate('/dashboard/profil')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                    <button onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <UserRound size={17} /> Mon profil
                     </button>
                     <button onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
@@ -130,7 +149,8 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                       onClick={() => navigate(isSuperAdmin ? '/admin/omnia-live' : isOrganizer ? '/omnia-live/organisateur' : '/omnia-live/mes-lives')}
                       className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"
                     >
-                      <Radio size={17} /> {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
+                      <Radio size={17} />
+                      {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
                     </button>
                     <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <ArrowLeft size={17} /> Retour au Dashboard
@@ -139,6 +159,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                     <button
                       onClick={() => {
                         localStorage.removeItem('omnia_user');
+                        localStorage.removeItem('omnia_session_token');
                         localStorage.removeItem('omnia_access_token');
                         localStorage.removeItem('access_token');
                         navigate('/connexion');

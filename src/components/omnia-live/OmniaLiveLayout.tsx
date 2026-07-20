@@ -7,7 +7,9 @@ function canProposeLive() {
     const raw = localStorage.getItem('omnia_user');
     const user = raw ? JSON.parse(raw) : null;
     const roles: string[] = user?.roles || [];
-    return roles.some((r) => ['super_admin', 'organisateur', 'professeur', 'formateur', 'responsable_structure', 'structure_admin', 'directeur'].includes(r))
+    // Super Admin does NOT use the external "Proposer un Live" workflow.
+    // Learners never see it. Only actual organizers/professors/structures do.
+    return roles.some((r) => ['organisateur', 'professeur', 'formateur', 'responsable_structure', 'structure_admin', 'directeur'].includes(r))
       || Boolean(user?.omnia_live_organizer);
   } catch {
     return false;
