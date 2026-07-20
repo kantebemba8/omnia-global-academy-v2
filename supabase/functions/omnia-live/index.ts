@@ -80,6 +80,13 @@ function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return ctx.roles.some((r) => allowed.has(r));
 }
 
+async function canOrganizeLive(sb: ReturnType<typeof createClient>, ctx: Awaited<ReturnType<typeof sessionContext>>) {
+  if (!ctx) return false;
+  if (canOrganize(ctx)) return true;
+  const { data } = await sb.from("live_organizer_profiles").select("verified,verification_status").eq("user_id",ctx.userId).maybeSingle();
+  return Boolean(data?.verified && data?.verification_status === "verified");
+}
+
 function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return "user";
   if (ctx.roles.includes("super_admin")) return "omnia";
@@ -577,7 +584,7 @@ async function createDraft(
 ) {
   if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  if (!canOrganize(ctx)) {
+  if (!(await canOrganizeLive(sb, ctx))) {
     return json({ error: "ORGANIZER_PERMISSION_REQUIRED" }, 403);
   }
 
@@ -1137,6 +1144,18 @@ async function adminReview(
     message: body.reason?.trim() || null,
     snapshot: data,
   });
+
+  if (body.decision === "request_changes" && ev.owner_user_id) {
+    await sb.from("live_notification_inbox").insert({
+      user_id: ev.owner_user_id,
+      event_id: body.event_id,
+      notification_type: "changes_requested",
+      title: "Modifications demandées",
+      message: body.reason?.trim() || "Le Super Admin demande des modifications avant validation.",
+      action_url: `/omnia-live/studio/${body.event_id}`,
+      priority: "high",
+    }).catch(() => null);
+  }
 
   return json({
     success: true,
@@ -2276,10 +2295,8 @@ async function roomAccessAllowed(
 
   if (registration) return true;
 
-  if (ev.visibility === "public" && Number(ev.price_amount || 0) === 0) {
-    return true;
-  }
-
+  // Même un Live public et gratuit exige une inscription confirmée.
+  // Seuls le Super Admin, le propriétaire et les intervenants autorisés contournent l’inscription.
   return false;
 }
 
@@ -4001,6 +4018,16 @@ async function organizerProfileUpsert(
   const {data,error}=await sb.from("live_organizer_profiles").upsert(row,{onConflict:"user_id"}).select("*").single();
   if(error) throw error;
   return json({success:true,profile:data});
+}
+
+async function organizerProfileMe(
+  sb: ReturnType<typeof createClient>,
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+) {
+  if(!ctx) return json({error:"AUTH_REQUIRED"},401);
+  const {data,error}=await sb.from("live_organizer_profiles").select("*").eq("user_id",ctx.userId).maybeSingle();
+  if(error) throw error;
+  return json({success:true,profile:data||null,can_organize:await canOrganizeLive(sb,ctx)});
 }
 
 async function organizerProfileGet(
@@ -7557,6 +7584,9 @@ Deno.serve(async (req: Request) => {
       case "organizer_profile_get":
         return await organizerProfileGet(req, sb);
 
+      case "organizer_profile_me":
+        return await organizerProfileMe(sb, ctx);
+
       case "organizer_profile_refresh_stats":
         return await organizerProfileRefreshStats(req, sb, ctx);
 
@@ -7921,6 +7951,7 @@ Deno.serve(async (req: Request) => {
               "archive_create",
               "organizer_profile_upsert",
               "organizer_profile_get",
+              "organizer_profile_me",
               "organizer_profile_refresh_stats",
               "analytics_rebuild",
               "analytics_get",

@@ -12,6 +12,7 @@ export default function CatalogView({ title, subtitle, filter }: { title: string
     if (filter === 'live') return { status: 'live' };
     if (filter === 'training') return { delivery_type: 'synchronous_training' };
     if (filter === 'video') return { delivery_type: 'recorded_video' };
+    if (filter === 'replay') return {};
     return {};
   }, [filter]);
 
@@ -21,6 +22,9 @@ export default function CatalogView({ title, subtitle, filter }: { title: string
     liveApi('list', {}, params)
       .then((d) => {
         let next = (d.items || []) as LiveItem[];
+        if (filter === 'replay') {
+          next = next.filter((item) => item.replay_enabled && ['completed','published','live'].includes(item.status || ''));
+        }
         if (filter === 'upcoming') {
           const now = Date.now();
           next = next.filter((item) => item.starts_at && new Date(item.starts_at).getTime() > now && item.status === 'published');

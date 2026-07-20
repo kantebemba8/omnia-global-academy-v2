@@ -7,7 +7,7 @@ export default function AdminOmniaLiveEventDetail(){
  const {eventId}=useParams();const [d,setD]=useState<any>(null),[msg,setMsg]=useState(''),[reason,setReason]=useState('');
  const load=()=>liveApi('admin_event_detail',{}, {event_id:eventId||''}).then(setD).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));
  useEffect(()=>{load()},[eventId]);
- async function review(decision:string){try{await liveApi('admin_review',{method:'POST',body:JSON.stringify({event_id:eventId,decision,reason})});setReason('');await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function review(decision:string){if(['request_changes','reject','suspend'].includes(decision)&&!reason.trim()){setMsg('Veuillez saisir un motif avant de continuer.');return;}try{await liveApi('admin_review',{method:'POST',body:JSON.stringify({event_id:eventId,decision,reason})});setReason('');await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
  if(!d)return <AdminOmniaLiveShell title="Événement">{msg||'Chargement...'}</AdminOmniaLiveShell>;
  const e=d.event;
  return <AdminOmniaLiveShell title={e.title} subtitle={`${e.organizer_display_name||'—'} · ${e.status}`}>

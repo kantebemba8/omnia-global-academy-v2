@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, Home, Menu, Search } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Search, UserRound, Video } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -21,6 +21,8 @@ type Props = {
   searchPlaceholder?: string;
   showSearch?: boolean;
   rightContent?: ReactNode;
+  profileSpaceLabel?: string;
+  profileSpacePath?: string;
 };
 
 export function getDashboardPath(roles: string[] = []) {
@@ -39,8 +41,9 @@ function initials(user: StoredUser | null) {
   return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : source.slice(0, 2).toUpperCase();
 }
 
-export default function SubspaceHamburgerLayout({ title, navItems, children, searchPlaceholder, showSearch = true, rightContent }: Props) {
+export default function SubspaceHamburgerLayout({ title, navItems, children, searchPlaceholder, showSearch = true, rightContent, profileSpaceLabel, profileSpacePath }: Props) {
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const user = useMemo<StoredUser | null>(() => {
@@ -50,12 +53,28 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); setProfileOpen(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  useEffect(() => { setOpen(false); }, [location.pathname, location.search]);
+  useEffect(() => { setOpen(false); setProfileOpen(false); }, [location.pathname, location.search]);
+
+  function logout() {
+    localStorage.removeItem('omnia_session_token');
+    localStorage.removeItem('omnia_user');
+    setProfileOpen(false);
+    navigate('/connexion');
+  }
+
+  const liveRoleLabel = profileSpaceLabel || (title === 'Omnia Live'
+    ? ((user?.roles || []).includes('super_admin') ? 'Administration Omnia Live'
+      : (user?.roles || []).some(r => ['professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r)) || (user as any)?.omnia_live_organizer ? 'Espace Organisateur' : 'Mes Lives')
+    : title);
+  const liveRolePath = profileSpacePath || (title === 'Omnia Live'
+    ? ((user?.roles || []).includes('super_admin') ? '/admin/omnia-live'
+      : (user?.roles || []).some(r => ['professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r)) || (user as any)?.omnia_live_organizer ? '/omnia-live/organisateur' : '/omnia-live/mes-lives')
+    : dashboardPath);
 
   return (
     <div className="min-h-screen bg-white" style={{ color: BLUE }}>
@@ -85,16 +104,29 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
         <div className="flex flex-shrink-0 items-center gap-3">
           {rightContent}
           {user ? (
-            <button type="button" onClick={() => navigate(dashboardPath)} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
-              <ArrowLeft size={16} /> Retour au Dashboard
-            </button>
+            <div className="relative">
+              <button type="button" onClick={() => setProfileOpen(v => !v)} className="flex items-center gap-2 rounded-xl px-1.5 py-1 transition hover:bg-slate-100" aria-expanded={profileOpen}>
+                <div className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</div>
+                <ChevronDown size={15} className={`text-slate-400 transition ${profileOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {profileOpen && <>
+                <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu profil" />
+                <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl">
+                  <button onClick={() => {setProfileOpen(false);navigate('/profil')}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><UserRound size={17}/>Mon profil</button>
+                  <button onClick={() => {setProfileOpen(false);navigate(title === 'Omnia Live' ? '/omnia-live/notifications' : '/notifications')}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={17}/>Notifications</button>
+                  <button onClick={() => {setProfileOpen(false);navigate(liveRolePath)}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Video size={17}/>{liveRoleLabel}</button>
+                  <button onClick={() => {setProfileOpen(false);navigate(dashboardPath)}} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><ArrowLeft size={17}/>Retour au Dashboard</button>
+                  <div className="my-1 border-t border-slate-100"/>
+                  <button onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={17}/>Se déconnecter</button>
+                </div>
+              </>}
+            </div>
           ) : (
-            <button type="button" onClick={() => navigate('/accueil')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
-              <ArrowLeft size={16} /> Retour à Omnia Global Academy
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => navigate('/connexion')} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-slate-100">Se connecter</button>
+              <button type="button" onClick={() => navigate('/inscription')} className="hidden rounded-lg px-3 py-2 text-sm font-bold text-white sm:block" style={{background:BLUE}}>Créer un compte</button>
+            </div>
           )}
-          {user && <div className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</div>}
-          <ChevronDown size={15} className="hidden text-slate-400 sm:block" />
         </div>
       </header>
 
