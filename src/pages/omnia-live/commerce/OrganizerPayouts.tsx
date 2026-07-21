@@ -1,10 +1,2 @@
-import { useEffect, useState } from 'react';
-import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
-import { liveApi } from '../liveApi';
-
-export default function OrganizerPayouts(){
- const [requests,setRequests]=useState<any[]>([]),[amount,setAmount]=useState(''),[currency,setCurrency]=useState('XOF'),[method,setMethod]=useState('bank_transfer'),[msg,setMsg]=useState('');
- const load=()=>liveApi('payout_requests_mine').then(d=>setRequests(d.requests||[])).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));useEffect(()=>{load()},[]);
- async function send(){try{await liveApi('payout_request_create',{method:'POST',body:JSON.stringify({currency,requested_amount:Number(amount),payout_method:method})});setAmount('');setMsg('Demande envoyée.');await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
- return <OmniaLiveLayout><section className="mx-auto max-w-5xl px-4 py-10"><h1 className="text-3xl font-black text-[#002050]">Mes demandes de paiement</h1><div className="mt-6 rounded-2xl border bg-white p-5"><div className="grid gap-3 md:grid-cols-3"><input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Montant" className="rounded-xl border p-3"/><input value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())} className="rounded-xl border p-3"/><select value={method} onChange={e=>setMethod(e.target.value)} className="rounded-xl border p-3"><option value="bank_transfer">Virement bancaire</option><option value="mobile_money">Mobile Money</option><option value="manual">Autre</option></select></div><button onClick={send} className="mt-4 rounded-xl bg-[#002050] px-5 py-3 font-bold text-white">Demander un payout</button>{msg&&<div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">{msg}</div>}</div><div className="mt-7 space-y-3">{requests.map(x=><div key={x.id} className="rounded-2xl border bg-white p-5"><div className="font-bold">{x.requested_amount} {x.currency}</div><div className="text-sm text-slate-500">{x.status} · {x.payout_method||'—'}</div>{x.decision_note&&<div className="mt-2 text-sm">{x.decision_note}</div>}</div>)}</div></section></OmniaLiveLayout>
-}
+import {Navigate} from 'react-router-dom';
+export default function OrganizerPayouts(){return <Navigate to="/omnia-live/revenus" replace/>}
