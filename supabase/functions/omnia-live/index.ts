@@ -7579,104 +7579,147 @@ async function adminDeleteSuspended(
   sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+  try {
+    if (!ctx || !isSuperAdmin(ctx)) {
+      return json({ error: "FORBIDDEN", message: "Accès Super Admin requis." }, 403);
+    }
 
-  const url = new URL(req.url);
-  const body = req.method === "POST"
-    ? ((await req.json().catch(() => ({}))) as any)
-    : {};
+    const url = new URL(req.url);
+    const body = req.method === "POST"
+      ? ((await req.json().catch(() => ({}))) as any)
+      : {};
+    const eventId = String(body.event_id || url.searchParams.get("event_id") || "").trim();
 
-  const eventId = String(body.event_id || url.searchParams.get("event_id") || "").trim();
+    if (!eventId) {
+      return json({ error: "EVENT_ID_REQUIRED", message: "Identifiant du Live manquant." }, 400);
+    }
 
-  if (!eventId) {
-    return json({
-      error: "EVENT_ID_REQUIRED",
-      message: "Identifiant du Live manquant.",
-    }, 400);
-  }
+    const { data: event, error: lookupError } = await sb
+      .from("live_events")
+      .select("*")
+      .eq("id", eventId)
+      .maybeSingle();
 
-  const { data: event, error: lookupError } = await sb
-    .from("live_events")
-    .select("id,title,status")
-    .eq("id", eventId)
-    .maybeSingle();
+    if (lookupError) {
+      return json({
+        error: "EVENT_LOOKUP_FAILED",
+        message: lookupError.message,
+        code: lookupError.code,
+        details: lookupError.details,
+        hint: lookupError.hint,
+      }, 400);
+    }
 
-  if (lookupError) {
-    return json({
-      error: "EVENT_LOOKUP_FAILED",
-      message: lookupError.message,
-      code: lookupError.code,
-      details: lookupError.details,
-    }, 400);
-  }
+    if (!event) {
+      return json({
+        success: true,
+        deleted: true,
+        already_deleted: true,
+        event_id: eventId,
+        message: "Ce Live est déjà supprimé.",
+      });
+    }
 
-  if (!event) {
+    if (event.status !== "suspended") {
+      return json({
+        error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED",
+        message: `Le Live doit être suspendu avant suppression. Statut actuel : ${event.status}.`,
+        current_status: event.status,
+      }, 409);
+    }
+
+    let history: any[] = [];
+    const hr = await sb.from("live_review_history")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: true });
+    if (!hr.error) history = hr.data ?? [];
+
+    const { error: auditError } = await sb.from("live_deleted_event_audit").insert({
+      original_event_id: event.id,
+      title: event.title,
+      previous_status: event.status,
+      organizer_snapshot: {
+        owner_user_id: event.owner_user_id ?? null,
+        owner_structure_id: event.owner_structure_id ?? null,
+        organizer_kind: event.organizer_kind ?? null,
+        organizer_display_name: event.organizer_display_name ?? null,
+      },
+      event_snapshot: event,
+      validation_history: history,
+      deleted_by: ctx.userId,
+    });
+
+    if (auditError) {
+      return json({
+        error: "DELETE_AUDIT_FAILED",
+        message: auditError.message,
+        code: auditError.code,
+        details: auditError.details,
+        hint: auditError.hint,
+      }, 400);
+    }
+
+    const { error: deleteError } = await sb
+      .from("live_events")
+      .delete()
+      .eq("id", eventId);
+
+    if (deleteError) {
+      return json({
+        error: "DELETE_EVENT_FAILED",
+        message: deleteError.message,
+        code: deleteError.code,
+        details: deleteError.details,
+        hint: deleteError.hint,
+      }, 400);
+    }
+
+    const { data: remaining, error: verifyError } = await sb
+      .from("live_events")
+      .select("id")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (verifyError) {
+      return json({
+        error: "DELETE_VERIFY_FAILED",
+        message: verifyError.message,
+        code: verifyError.code,
+        details: verifyError.details,
+        hint: verifyError.hint,
+      }, 400);
+    }
+
+    if (remaining) {
+      return json({
+        error: "DELETE_FAILED_EVENT_STILL_EXISTS",
+        message: "Le Live existe encore dans la base après la suppression.",
+      }, 409);
+    }
+
     return json({
       success: true,
       deleted: true,
-      already_deleted: true,
       event_id: eventId,
-      message: "Ce Live est déjà supprimé.",
+      message: "Live supprimé définitivement. L’action reste dans l’historique administratif.",
     });
-  }
-
-  if (event.status !== "suspended") {
+  } catch (error) {
+    const e = error as any;
     return json({
-      error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED",
-      current_status: event.status,
-      message: `Le Live doit être suspendu avant suppression définitive. Statut actuel : ${event.status}.`,
-    }, 409);
+      error: "DELETE_UNEXPECTED_ERROR",
+      message:
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+          ? error
+          : (() => {
+              try { return JSON.stringify(error); }
+              catch { return String(error); }
+            })(),
+      raw: e && typeof e === "object" ? e : undefined,
+    }, 500);
   }
-
-  const { data: deleted, error } = await sb.rpc("omnia_live_delete_event_permanently", {
-    p_event_id: eventId,
-    p_deleted_by: ctx.userId,
-  });
-
-  if (error) {
-    return json({
-      error: "DELETE_RPC_FAILED",
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    }, 400);
-  }
-
-  if (!deleted) {
-    return json({
-      error: "DELETE_NOT_CONFIRMED",
-      message: "La base n’a pas confirmé la suppression.",
-    }, 409);
-  }
-
-  const { data: remaining, error: verifyError } = await sb
-    .from("live_events")
-    .select("id")
-    .eq("id", eventId)
-    .maybeSingle();
-
-  if (verifyError) {
-    return json({
-      error: "DELETE_VERIFY_FAILED",
-      message: verifyError.message,
-      code: verifyError.code,
-    }, 400);
-  }
-
-  if (remaining) {
-    return json({
-      error: "DELETE_FAILED_EVENT_STILL_EXISTS",
-      message: "Le Live existe encore après suppression.",
-    }, 409);
-  }
-
-  return json({
-    success: true,
-    deleted: true,
-    event_id: eventId,
-    message: "Live supprimé définitivement. L’action reste dans l’historique administratif.",
-  });
 }
 
 
@@ -8396,11 +8439,29 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("omnia-live error:", error);
 
+    let message = "Unknown error";
+    let raw: unknown = undefined;
+
+    if (error instanceof Error) {
+      message = error.message;
+      raw = { name: error.name, stack: error.stack };
+    } else if (typeof error === "string") {
+      message = error;
+      raw = error;
+    } else {
+      try {
+        message = JSON.stringify(error);
+        raw = error;
+      } catch {
+        message = String(error);
+      }
+    }
+
     return json(
       {
         error: "SERVER_ERROR",
-        message:
-          error instanceof Error ? error.message : "Unknown error",
+        message,
+        raw,
       },
       500,
     );
