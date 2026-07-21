@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
 import { liveApi } from '../liveApi';
 import { omniaDialog } from '../../../lib/omniaDialog';
+import { liveStatusLabel } from '../../../lib/omniaLiveLabels';
 
 export default function LiveEngineHost(){
  const {liveId}=useParams();const navigate=useNavigate();
@@ -10,18 +11,37 @@ export default function LiveEngineHost(){
  async function init(){try{const r=await liveApi('room_open',{method:'POST',body:JSON.stringify({event_id:liveId})});setRoom(r.room);const c=await liveApi('room_controls_get',{}, {room_id:r.room.id});setControls(c.controls);await refresh(r.room.id)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
  async function refresh(id=room?.id){if(!id)return;const [m,q,p]=await Promise.all([liveApi('room_participants',{}, {room_id:id}),liveApi('question_list',{}, {room_id:id}),liveApi('poll_list',{}, {room_id:id})]);setMembers(m.members||[]);setQuestions(q.questions||[]);setPolls(p.polls||[])}
  useEffect(()=>{init()},[liveId]);useEffect(()=>{if(!room?.id)return;const t=setInterval(()=>refresh(room.id),5000);return()=>clearInterval(t)},[room?.id]);
- async function start(){const r=await liveApi('room_start',{method:'POST',body:JSON.stringify({room_id:room.id})});setRoom(r.room)}
- async function end(){const r=await omniaDialog({title:'Terminer la session',message:'Voulez-vous réellement terminer cette session Live ?',confirmLabel:'Terminer',danger:true});if(!r.confirmed)return;await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setMsg('Session terminée.')}
+ async function start(){
+  if(!room?.id||room.status==='live'||room.status==='ended')return;
+  try{const r=await liveApi('room_start',{method:'POST',body:JSON.stringify({room_id:room.id})});setRoom(r.room);setMsg('La session est maintenant en direct.')}
+  catch(e){setMsg(e instanceof Error?e.message:'Impossible de démarrer la session.')}
+ }
+ async function end(){
+  if(!room?.id||room.status==='ended')return;
+  const r=await omniaDialog({title:'Terminer la session',message:'Voulez-vous réellement terminer cette session Live ? La présence sera clôturée et le traitement de l’enregistrement pourra commencer.',confirmLabel:'Terminer',danger:true});
+  if(!r.confirmed)return;
+  try{const ended=await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setRoom(ended.room||{...room,status:'ended'});setMsg('Session terminée.')}
+  catch(e){setMsg(e instanceof Error?e.message:'Impossible de terminer la session.')}
+ }
  async function admit(id:string){await liveApi('room_admit',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:id})});await refresh()}
  async function remove(id:string,block=false){await liveApi('room_remove_participant',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:id,block})});await refresh()}
  async function toggle(key:string,val:any){const r=await liveApi('room_controls_update',{method:'POST',body:JSON.stringify({room_id:room.id,[key]:val})});setControls(r.controls)}
  async function rec(action:'start'|'stop'){try{await liveApi(action==='start'?'recording_start':'recording_stop',{method:'POST',body:JSON.stringify({room_id:room.id})});setMsg(action==='start'?'Enregistrement demandé.':'Arrêt demandé, Replay en préparation.');const c=await liveApi('room_controls_get',{}, {room_id:room.id});setControls(c.controls)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
  async function answer(id:string){const r=await omniaDialog({title:'Répondre à la question',confirmLabel:'Envoyer',inputLabel:'Réponse',inputRequired:true});if(!r.confirmed)return;await liveApi('question_answer',{method:'POST',body:JSON.stringify({question_id:id,answer_text:r.value,status:'answered'})});await refresh()}
- async function createPoll(){const q=prompt('Question du sondage :');if(!q)return;const raw=prompt('Options séparées par | :');if(!raw)return;const options=raw.split('|').map(x=>x.trim()).filter(Boolean);if(options.length<2)return;await liveApi('poll_create',{method:'POST',body:JSON.stringify({room_id:room.id,question:q,options})});await refresh()}
+ async function createPoll(){
+  const q=await omniaDialog({title:'Créer un sondage',confirmLabel:'Continuer',inputLabel:'Question du sondage',inputRequired:true});
+  if(!q.confirmed)return;
+  const raw=await omniaDialog({title:'Options du sondage',message:'Séparez les réponses avec le caractère |',confirmLabel:'Créer',inputLabel:'Exemple : Oui | Non | Peut-être',inputRequired:true});
+  if(!raw.confirmed)return;
+  const options=String(raw.value||'').split('|').map(x=>x.trim()).filter(Boolean);
+  if(options.length<2){setMsg('Ajoutez au moins deux options au sondage.');return}
+  await liveApi('poll_create',{method:'POST',body:JSON.stringify({room_id:room.id,question:q.value,options})});
+  await refresh();
+ }
  async function pollState(id:string,status:string){await liveApi('poll_update',{method:'POST',body:JSON.stringify({poll_id:id,status})});await refresh()}
  if(!room)return <OmniaLiveLayout><div className="mx-auto max-w-5xl px-4 py-10">{msg||'Préparation...'}</div></OmniaLiveLayout>;
  const waiting=members.filter(m=>m.access_status==='waiting'),admitted=members.filter(m=>m.access_status==='admitted');
- return <OmniaLiveLayout><section className="mx-auto max-w-[1700px] px-3 py-5 md:px-6"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><button onClick={()=>navigate(-1)} className="font-semibold text-[#002050]">← Retour</button><div className="flex flex-wrap gap-2"><button onClick={start} className="rounded-lg bg-[#002050] px-3 py-2 text-sm font-bold text-white">Démarrer</button>{controls?.recording_status==='recording'?<button onClick={()=>rec('stop')} className="rounded-lg border border-red-400 px-3 py-2 text-sm font-bold text-red-700">Arrêter enregistrement</button>:<button onClick={()=>rec('start')} className="rounded-lg border px-3 py-2 text-sm font-bold">Enregistrer</button>}<button onClick={end} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-bold text-red-700">Terminer</button></div></div>{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm">{msg}</div>}<div className="grid gap-4 xl:grid-cols-[1fr_420px]">
+ return <OmniaLiveLayout><section className="mx-auto max-w-[1700px] px-3 py-5 md:px-6"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><button onClick={()=>navigate(-1)} className="font-semibold text-[#002050]">← Retour</button><div className="mt-1 text-xs text-slate-500">Statut : <b>{liveStatusLabel(room?.status)}</b></div></div><div className="flex flex-wrap gap-2"><button onClick={start} disabled={room?.status==='live'||room?.status==='ended'} className="rounded-lg bg-[#002050] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">Démarrer</button>{controls?.recording_status==='recording'?<button onClick={()=>rec('stop')} className="rounded-lg border border-red-400 px-3 py-2 text-sm font-bold text-red-700">Arrêter enregistrement</button>:<button onClick={()=>rec('start')} className="rounded-lg border px-3 py-2 text-sm font-bold">Enregistrer</button>}<button onClick={end} disabled={room?.status==='ended'} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-40">Terminer</button></div></div>{msg&&<div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm">{msg}</div>}<div className="grid gap-4 xl:grid-cols-[1fr_420px]">
  <div className="overflow-hidden rounded-3xl bg-black">{room.provider_host_url?<iframe title="Host" src={room.provider_host_url} allow="camera; microphone; fullscreen; display-capture; autoplay" className="h-[76vh] w-full border-0"/>:<div className="flex h-[76vh] items-center justify-center text-white">Moteur vidéo non configuré.</div>}</div>
  <aside className="max-h-[76vh] space-y-4 overflow-auto">
   <div className="rounded-2xl border bg-white p-4"><h2 className="font-bold text-[#002050]">Contrôles</h2><div className="mt-3 grid grid-cols-2 gap-2 text-sm">{[['Chat','chat_enabled'],['Q&A','qa_enabled'],['Sondages','polls_enabled'],['Caméra','participant_camera_enabled'],['Partage écran','screen_share_enabled']].map(([l,k])=><label key={k} className="flex items-center justify-between rounded-lg bg-slate-50 p-2"><span>{l}</span><input type="checkbox" checked={Boolean(controls?.[k])} onChange={e=>toggle(k,e.target.checked)}/></label>)}</div></div>
