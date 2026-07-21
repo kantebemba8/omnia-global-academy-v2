@@ -25,7 +25,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
   { path: '/dashboard/certificats', label: 'Certificats', icon: Award },
- { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText, badge: 'Nouveau' },
+ { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
   { path: '/talent', label: 'Talent Omnia', icon: Search },
   { path: '/omnia-live', label: 'Omnia Live', icon: Radio },
   { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
@@ -163,7 +163,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
         </Link>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="sidebar-scrollbar flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item);
           return (

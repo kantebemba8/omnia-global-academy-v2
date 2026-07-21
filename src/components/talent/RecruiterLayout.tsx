@@ -59,7 +59,7 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav className="sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {NAV.map(item => {
           const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
           const Icon = item.icon;

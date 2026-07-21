@@ -94,7 +94,7 @@ export function StructureLayout({ children, displayName }: Props) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
+      <nav className="sidebar-scrollbar flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
         {STRUCTURE_NAV.map(item => {
           const active = isActive(item);
           const Icon = item.icon;

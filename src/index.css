@@ -30,3 +30,34 @@ body {
 .font-mono {
   font-family: 'IBM Plex Mono', monospace;
 }
+
+
+/* Scrollbar harmonisée pour tous les sidebars bleus.
+   Elle apparaît automatiquement uniquement lorsque le contenu dépasse la hauteur disponible. */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(191, 136, 19, 0.72) #002050;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: #002050;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(191, 136, 19, 0.72);
+  border-radius: 999px;
+  border: 2px solid #002050;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #BF8813;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-corner {
+  background: #002050;
+}

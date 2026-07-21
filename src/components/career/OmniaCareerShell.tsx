@@ -129,7 +129,7 @@ export function OmniaCareerShell({
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+        <nav className="sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = activeSection === item.key;
