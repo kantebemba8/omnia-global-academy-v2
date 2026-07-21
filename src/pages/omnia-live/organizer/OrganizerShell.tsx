@@ -2,7 +2,7 @@ import {ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
   LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,Settings2,
-  PlusCircle,MessageSquare,KeyRound,Menu,X,ExternalLink,LogOut
+  PlusCircle,MessageSquare,KeyRound,Menu,X,ExternalLink,LogOut,ArrowLeft
 } from 'lucide-react';
 
 const BLUE='#002050';
@@ -28,7 +28,14 @@ export default function OrganizerShell({
   const navigate=useNavigate();
   const [mobileOpen,setMobileOpen]=useState(false);
 
-  const preview=new URLSearchParams(location.search).get('preview')==='true';
+  const previewRequested=new URLSearchParams(location.search).get('preview')==='true';
+  const isSuperAdmin=(()=>{
+    try{
+      const u=JSON.parse(localStorage.getItem('omnia_user')||'{}');
+      return Array.isArray(u?.roles)&&u.roles.includes('super_admin');
+    }catch{return false}
+  })();
+  const preview=previewRequested&&isSuperAdmin;
 
   const buildPath=(path:string)=>{
     if(!preview)return path;
@@ -38,12 +45,10 @@ export default function OrganizerShell({
   useEffect(()=>setMobileOpen(false),[location.pathname]);
 
   function logout(){
-    if(preview){
-      navigate('/admin/dashboard');
-      return;
-    }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
+    localStorage.removeItem('omnia_access_token');
+    localStorage.removeItem('access_token');
     navigate('/connexion');
   }
 
@@ -66,7 +71,7 @@ export default function OrganizerShell({
       </div>
     </div>
 
-    <nav className="sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {NAV.map(([path,label,Icon,exact])=>
         <NavLink
           key={path}
@@ -103,7 +108,7 @@ export default function OrganizerShell({
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white"
       >
         <LogOut style={{width:18,height:18}}/>
-        <span>{preview?'Retour au Dashboard':'Déconnexion'}</span>
+        <span>Déconnexion</span>
       </button>
     </div>
   </aside>;
@@ -147,6 +152,17 @@ export default function OrganizerShell({
         </Link>
         <span className="w-8"/>
       </header>
+
+      {preview&&(
+        <button
+          type="button"
+          onClick={()=>navigate('/admin/dashboard')}
+          className="fixed bottom-5 left-[280px] z-50 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:opacity-95 max-lg:left-5"
+        >
+          <ArrowLeft size={16}/>
+          <span>Retour au dashboard admin</span>
+        </button>
+      )}
 
       <main className="flex-1 overflow-y-auto bg-white">
         <section className="mx-auto max-w-7xl px-4 py-8 md:px-8">
