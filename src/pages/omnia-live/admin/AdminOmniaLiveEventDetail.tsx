@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { liveApi } from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 import { omniaDialog } from '../../../lib/omniaDialog';
+import {deliveryLabel,liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
 export default function AdminOmniaLiveEventDetail(){
  const {eventId}=useParams();

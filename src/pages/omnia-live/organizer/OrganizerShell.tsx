@@ -10,6 +10,7 @@ const GOLD='#BF8813';
 
 const NAV=[
   ['/omnia-live/organisateur','Tableau de bord',LayoutDashboard,true],
+  ['/omnia-live/proposer','Créer un événement',PlusCircle],
   ['/omnia-live/organisateur/evenements','Mes événements',Radio],
   ['/omnia-live/organisateur/participants','Participants',Users],
   ['/omnia-live/organisateur/medias','Médias & Replays',Film],
@@ -155,14 +156,6 @@ export default function OrganizerShell({
                 <h1 className="text-3xl font-bold tracking-tight" style={{color:BLUE}}>{title}</h1>
                 {subtitle&&<p className="mt-2 max-w-3xl text-sm text-slate-600">{subtitle}</p>}
               </div>
-              <Link
-                to={buildPath('/omnia-live/proposer')}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
-                style={{backgroundColor:BLUE}}
-              >
-                <PlusCircle size={18}/>
-                <span>Créer un événement</span>
-              </Link>
             </div>
           </div>
           {children}

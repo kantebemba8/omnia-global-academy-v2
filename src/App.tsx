@@ -196,6 +196,7 @@ import AdminLiveDocuments from './pages/omnia-live/documents/AdminLiveDocuments'
 import EventDocumentSettings from './pages/omnia-live/documents/EventDocumentSettings';
 import OmniaLiveNotificationCenter from './pages/omnia-live/notifications/OmniaLiveNotificationCenter';
 import OrganizerCommunications from './pages/omnia-live/organizer/OrganizerCommunications';
+import OrganizerAccessCodes from './pages/omnia-live/organizer/OrganizerAccessCodes';
 import AdminOmniaLiveCommunications from './pages/omnia-live/admin/AdminOmniaLiveCommunications';
 import AdminOmniaLiveAutomationRules from './pages/omnia-live/admin/AdminOmniaLiveAutomationRules';
 import OrganizerAnalyticsAdvanced from './pages/omnia-live/analytics/OrganizerAnalyticsAdvanced';
@@ -322,6 +323,7 @@ export default function App() {
           <Route path="/admin/omnia-live/documents" element={<AdminLiveDocuments />} />
           <Route path="/omnia-live/studio/:liveId/documents" element={<EventDocumentSettings />} />
           <Route path="/omnia-live/organisateur/communications" element={<OrganizerCommunications />} />
+          <Route path="/omnia-live/organisateur/acces-prives" element={<OrganizerAccessCodes />} />
           <Route path="/admin/omnia-live/communications" element={<AdminOmniaLiveCommunications />} />
           <Route path="/admin/omnia-live/automatisations" element={<AdminOmniaLiveAutomationRules />} />
           <Route path="/omnia-live/organisateur/analytics-avances" element={<OrganizerAnalyticsAdvanced />} />
