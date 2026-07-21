@@ -154,6 +154,40 @@ export default function OmniaLiveStudioPlanning() {
         setMessage('Chaque session doit avoir une date et une heure de début.');
         return;
       }
+
+      const normalized = sessions.map((s, index) => ({
+        index,
+        start: toIso(s.date, s.startTime),
+        end: s.endTime ? toIso(s.date, s.endTime) : null,
+      }));
+
+      if (normalized.some((s) => !s.start)) {
+        setMessage('Une date ou une heure de session est invalide.');
+        return;
+      }
+
+      for (const item of normalized) {
+        if (item.end && item.start && new Date(item.end).getTime() <= new Date(item.start).getTime()) {
+          setMessage(`L’heure de fin de la session ${item.index + 1} doit être postérieure à son heure de début.`);
+          return;
+        }
+      }
+
+      const ordered = [...normalized].sort((a,b)=>new Date(a.start as string).getTime()-new Date(b.start as string).getTime());
+      for (let i=1;i<ordered.length;i++) {
+        const previousEnd = ordered[i-1].end || ordered[i-1].start;
+        if (previousEnd && new Date(ordered[i].start as string).getTime() < new Date(previousEnd as string).getTime()) {
+          setMessage('Deux sessions se chevauchent. Corrigez les horaires avant de continuer.');
+          return;
+        }
+      }
+    }
+
+    const maxP = maxParticipants ? Number(maxParticipants) : null;
+    const minP = minimumParticipants ? Number(minimumParticipants) : null;
+    if (maxP !== null && minP !== null && minP > maxP) {
+      setMessage('Le minimum de participants ne peut pas dépasser le maximum autorisé.');
+      return;
     }
 
     setSaving(true);

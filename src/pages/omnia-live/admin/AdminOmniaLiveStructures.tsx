@@ -2,6 +2,7 @@ import { useEffect,useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { liveApi } from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
+import {liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
 export default function AdminOmniaLiveStructures(){
  const [packs,setPacks]=useState<any[]>([]),[msg,setMsg]=useState(''),[open,setOpen]=useState(false);
@@ -35,16 +36,16 @@ export default function AdminOmniaLiveStructures(){
   <div className="overflow-hidden rounded-2xl border bg-white">
    <table className="w-full min-w-[850px] text-left text-sm">
     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Pack</th><th className="px-4 py-3">Structure</th><th className="px-4 py-3">Membres</th><th className="px-4 py-3">Lives</th><th className="px-4 py-3">Stockage</th><th className="px-4 py-3">Options</th><th className="px-4 py-3">Statut</th></tr></thead>
-    <tbody>{packs.map(x=><tr key={x.id} className="border-t"><td className="px-5 py-4 font-bold text-[#002050]">{x.pack_name}</td><td className="px-4 py-4">{x.structure_id}</td><td className="px-4 py-4">{x.max_members??'Illimité'}</td><td className="px-4 py-4">{x.max_live_events??'Illimité'}</td><td className="px-4 py-4">{x.storage_gb??'—'} GB</td><td className="px-4 py-4 text-xs">{[x.archive_enabled&&'Archive',x.certificates_enabled&&'Certificats',x.reports_enabled&&'Rapports'].filter(Boolean).join(' · ')||'—'}</td><td className="px-4 py-4">{x.status}</td></tr>)}
+    <tbody>{packs.map(x=><tr key={x.id} className="border-t"><td className="px-5 py-4 font-bold text-[#002050]">{x.pack_name}</td><td className="px-4 py-4">{x.structure_id}</td><td className="px-4 py-4">{x.max_members??'Illimité'}</td><td className="px-4 py-4">{x.max_live_events??'Illimité'}</td><td className="px-4 py-4">{x.storage_gb??'—'} GB</td><td className="px-4 py-4 text-xs">{[x.archive_enabled&&'Archive',x.certificates_enabled&&'Certificats',x.reports_enabled&&'Rapports'].filter(Boolean).join(' · ')||'—'}</td><td className="px-4 py-4">{liveStatusLabel(x.status)}</td></tr>)}
     {!packs.length&&<tr><td colSpan={7} className="px-5 py-10 text-center text-slate-500">Aucun Pack Omnia Live configuré.</td></tr>}</tbody>
    </table>
   </div>
 
   {open&&<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4">
    <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-    <div className="flex items-center justify-between"><div><h2 className="text-xl font-bold text-[#002050]">Créer un Pack Omnia Live</h2><p className="mt-1 text-sm text-slate-500">Le Pack fixe les limites et services accordés à une Structure.</p></div><button onClick={()=>setOpen(false)}><X/></button></div>
+    <div className="flex items-center justify-between"><div><h2 className="text-xl font-bold text-[#002050]">Créer un Pack Omnia Live</h2><p className="mt-1 text-sm text-slate-500">Le Pack fixe les limites et services accordés à une Structure validée. Aucun prix public n’est affiché ici ; la contractualisation reste gérée par l’administration.</p></div><button onClick={()=>setOpen(false)}><X/></button></div>
     <div className="mt-5 grid gap-4 md:grid-cols-2">
-     <label className="md:col-span-2"><span className="text-sm font-semibold">Structure</span><input value={form.structure_id} onChange={e=>setForm({...form,structure_id:e.target.value})} placeholder="ID de la Structure" className="mt-1 w-full rounded-xl border p-3"/></label>
+     <label className="md:col-span-2"><span className="text-sm font-semibold">Structure</span><input value={form.structure_id} onChange={e=>setForm({...form,structure_id:e.target.value})} placeholder="Identifiant de la Structure validée" className="mt-1 w-full rounded-xl border p-3"/></label>
      <label className="md:col-span-2"><span className="text-sm font-semibold">Nom du Pack</span><input value={form.pack_name} onChange={e=>setForm({...form,pack_name:e.target.value})} placeholder="Ex. Pack Institutionnel 100" className="mt-1 w-full rounded-xl border p-3"/></label>
      <label><span className="text-sm font-semibold">Membres maximum</span><input type="number" value={form.max_members} onChange={e=>setForm({...form,max_members:e.target.value})} className="mt-1 w-full rounded-xl border p-3" placeholder="Vide = illimité"/></label>
      <label><span className="text-sm font-semibold">Lives maximum</span><input type="number" value={form.max_live_events} onChange={e=>setForm({...form,max_live_events:e.target.value})} className="mt-1 w-full rounded-xl border p-3" placeholder="Vide = illimité"/></label>
