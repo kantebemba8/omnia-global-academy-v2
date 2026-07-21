@@ -7580,106 +7580,21 @@ async function adminDeleteSuspended(
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
-  const url = new URL(req.url);
-  const body = req.method === "POST"
-    ? ((await req.json().catch(() => ({}))) as any)
-    : {};
-
-  const eventId = String(body.event_id || url.searchParams.get("event_id") || "").trim();
-
-  if (!eventId) {
-    return json({
-      error: "EVENT_ID_REQUIRED",
-      message: "Identifiant du Live manquant dans la demande de suppression.",
-    }, 400);
-  }
-
-  // Read current state first so a stale frontend cannot hide the actual reason.
-  const { data: event, error: readError } = await sb.from("live_events")
-    .select("id,title,status")
-    .eq("id", eventId)
-    .maybeSingle();
-
-  if (readError) {
-    return json({
-      error: "EVENT_LOOKUP_FAILED",
-      message: readError.message,
-      code: readError.code,
-      details: readError.details,
-    }, 400);
-  }
-
-  if (!event) {
-    // Already deleted: treat as idempotent success.
-    return json({
-      success: true,
-      deleted: true,
-      already_deleted: true,
-      event_id: eventId,
-      message: "Ce Live est déjà supprimé.",
-    });
-  }
-
-  if (event.status !== "suspended") {
-    return json({
-      error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED",
-      message: `Suppression impossible : le statut actuel du Live est "${event.status}".`,
-      current_status: event.status,
-      event_id: eventId,
-    }, 409);
-  }
+  const body = (await req.json().catch(() => ({}))) as any;
+  if (!body.event_id) return json({ error: "EVENT_ID_REQUIRED" }, 400);
 
   const { data, error } = await sb.rpc("omnia_live_delete_event_permanently", {
-    p_event_id: eventId,
+    p_event_id: body.event_id,
     p_deleted_by: ctx.userId,
   });
 
-  if (error) {
-    return json({
-      error: "DELETE_RPC_FAILED",
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      event_id: eventId,
-    }, 400);
-  }
-
-  if (!data) {
-    return json({
-      error: "DELETE_NOT_CONFIRMED",
-      message: "La base de données n’a pas confirmé la suppression.",
-      event_id: eventId,
-    }, 409);
-  }
-
-  // Verify physical deletion before returning success.
-  const { data: remaining, error: verifyError } = await sb.from("live_events")
-    .select("id")
-    .eq("id", eventId)
-    .maybeSingle();
-
-  if (verifyError) {
-    return json({
-      error: "DELETE_VERIFY_FAILED",
-      message: verifyError.message,
-      code: verifyError.code,
-      details: verifyError.details,
-    }, 400);
-  }
-
-  if (remaining) {
-    return json({
-      error: "DELETE_FAILED_EVENT_STILL_EXISTS",
-      message: "Le Live existe encore après la tentative de suppression.",
-      event_id: eventId,
-    }, 409);
-  }
+  if (error) throw error;
+  if (!data) return json({ error: "EVENT_NOT_FOUND" }, 404);
 
   return json({
     success: true,
     deleted: true,
-    event_id: eventId,
+    event_id: body.event_id,
     message: "Live supprimé définitivement. L’action reste enregistrée dans l’historique administratif.",
   });
 }
