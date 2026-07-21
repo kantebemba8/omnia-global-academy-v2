@@ -6,7 +6,7 @@ import { useSiteMode } from '../../context/SiteModeContext';
 import {
   TrendingUp, DollarSign, Lock, Users, AlertTriangle, BookOpen,
   Wallet, Shield, Briefcase, ArrowRight, Clock, Eye,
- GraduationCap, Building2, UserCheck,, Radio
+ GraduationCap, Building2, UserCheck, Radio
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
