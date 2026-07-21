@@ -17,6 +17,7 @@ const ROLE_REDIRECT: Record<string, string> = {
   directeur: "/structure/dashboard",
   etablissement_directeur: "/structure/dashboard",
   etablissement_enseignant: "/structure/dashboard",
+  organizer: "/omnia-live/organisateur",
   professeur: "/professeur/dashboard",
   apprenant: "/dashboard",
 };
@@ -26,7 +27,7 @@ function getRedirectUrl(roles: string[]): string {
     "super_admin", "moderateur", "responsable_structure",
     "gestionnaire_partenaire", "directeur",
     "etablissement_directeur", "etablissement_enseignant",
-    "professeur", "apprenant",
+    "organizer", "professeur", "apprenant",
   ];
   for (const r of priority) {
     if (roles.includes(r)) return ROLE_REDIRECT[r];

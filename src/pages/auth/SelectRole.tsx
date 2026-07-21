@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Building2, ChevronRight } from 'lucide-react';
+import { BookOpen, GraduationCap, Building2, ChevronRight, Radio } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 
 const roles = [
@@ -16,6 +16,13 @@ const roles = [
     title: 'Professeur',
     description: 'Je partage mon expertise et crée des cours',
     path: '/inscription/professeur',
+  },
+  {
+    key: 'organizer',
+    icon: Radio,
+    title: 'Organisateur',
+    description: "J’organise des Lives, conférences, masterclass et événements en ligne",
+    path: '/inscription/organisateur',
   },
   {
     key: 'structure',

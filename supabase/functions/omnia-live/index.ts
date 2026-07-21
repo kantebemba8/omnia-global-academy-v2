@@ -4990,13 +4990,45 @@ async function adminOrganizers(
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
 
-  const { data, error } = await sb.from("live_organizer_profiles")
+  const { data: applications, error: appError } = await sb
+    .from("live_organizer_applications")
+    .select("*,users(id,full_name,email,status)")
+    .order("created_at",{ascending:false});
+  if (appError) throw appError;
+
+  const { data: profiles, error: profileError } = await sb
+    .from("live_organizer_profiles")
     .select("*,users(id,full_name,email,status)")
     .order("updated_at",{ascending:false});
+  if (profileError) throw profileError;
 
-  if (error) throw error;
-  return json({ success:true, organizers:data??[] });
+  const byUser=new Map((profiles??[]).map((p:any)=>[p.user_id,p]));
+  const organizers=(applications??[]).map((a:any)=>{
+    const p=byUser.get(a.user_id) as any;
+    return {
+      ...(p||{}),
+      application_id:a.id,
+      id:a.id,
+      user_id:a.user_id,
+      display_name:a.display_name,
+      organizer_type:a.organizer_type,
+      professional_title:a.professional_title,
+      organization_name:a.organization_name,
+      experience_summary:a.experience_summary,
+      event_topics:a.event_topics,
+      admin_note:a.admin_note,
+      verification_status:a.status,
+      users:a.users,
+      public_rating:p?.public_rating??0,
+      completed_events:p?.completed_events??0,
+      cancellation_count:p?.cancellation_count??0,
+      refund_count:p?.refund_count??0,
+    };
+  });
+
+  return json({ success:true, organizers, applications, profiles:profiles??[] });
 }
+
 
 async function adminOrganizerDecision(
   req: Request,
@@ -5004,25 +5036,20 @@ async function adminOrganizerDecision(
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
-  const body = await req.json().catch(()=>({})) as any;
-  if (!body.profile_id || !body.decision) return json({ error:"MISSING_PARAMS" },400);
-  if (!["verified","rejected","suspended","pending"].includes(body.decision)) return json({ error:"INVALID_DECISION" },400);
+  const body=await req.json().catch(()=>({})) as any;
+  const applicationId=body.application_id||body.profile_id;
+  if(!applicationId||!body.decision) return json({error:"MISSING_PARAMS"},400);
 
-  const { data, error } = await sb.from("live_organizer_profiles").update({
-    verification_status:body.decision,
-    verified:body.decision==="verified",
-    updated_at:new Date().toISOString(),
-  }).eq("id",body.profile_id).select("*").single();
-
-  if (error) throw error;
-
-  if (body.note) {
-    await sb.from("live_admin_notes").insert({
-      entity_type:"organizer",entity_id:body.profile_id,note:body.note,created_by:ctx.userId
-    });
-  }
-  return json({ success:true, organizer:data });
+  const {data,error}=await sb.rpc("omnia_live_approve_organizer",{
+    p_application_id:applicationId,
+    p_admin_id:ctx.userId,
+    p_decision:body.decision,
+    p_note:body.note||null,
+  });
+  if(error) return json({error:"ORGANIZER_DECISION_FAILED",message:error.message,code:error.code,details:error.details},400);
+  return json({success:true,result:data});
 }
+
 
 async function adminStructurePacks(
   sb: ReturnType<typeof createClient>,

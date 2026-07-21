@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
-import { LayoutDashboard, Radio, Users, Film, BarChart3, Wallet, UserRound, Settings2, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Radio, Users, Film, BarChart3, Wallet, UserRound, Settings2, PlusCircle, MessageSquare, KeyRound } from 'lucide-react';
 
 const NAV=[
  ['/omnia-live/organisateur','Tableau de bord',LayoutDashboard,true],
@@ -9,8 +9,10 @@ const NAV=[
  ['/omnia-live/proposer','Créer',PlusCircle],
  ['/omnia-live/organisateur/participants','Participants',Users],
  ['/omnia-live/organisateur/medias','Médias & Replays',Film],
- ['/omnia-live/organisateur/statistiques','Statistiques',BarChart3],
- ['/omnia-live/revenus','Revenus',Wallet],
+ ['/omnia-live/organisateur/communications','Communications',MessageSquare],
+ ['/omnia-live/organisateur/acces-prives','Codes privés',KeyRound],
+ ['/omnia-live/organisateur/statistiques','Analytics',BarChart3],
+ ['/omnia-live/revenus','Revenus & Payouts',Wallet],
  ['/omnia-live/organisateur/payouts','Payouts',Wallet],
  ['/omnia-live/profil-organisateur','Profil',UserRound],
  ['/omnia-live/organisateur/parametres','Paramètres',Settings2],

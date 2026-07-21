@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { role, email, phone_number, password, birth_date, country_code = "ML" } = body;
 
-    if (!["apprenant", "professeur", "etablissement"].includes(role)) {
+    if (!["apprenant", "professeur", "organizer", "etablissement"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -159,6 +159,24 @@ Deno.serve(async (req: Request) => {
       fullName = body.full_name.trim();
       roleForDB = "professeur";
       profileData = { bio: body.bio?.trim() || null, expertise_domain: body.expertise_domain.trim(), cv_diploma_url: null };
+    } else if (role === "organizer") {
+      if (!body.full_name?.trim() || !body.display_name?.trim() || !body.experience_summary?.trim()) {
+        return new Response(JSON.stringify({ success: false, message: "Nom, nom public et expérience sont requis" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      fullName = body.full_name.trim();
+      roleForDB = "apprenant"; // organizer role is granted only after Super Admin approval
+      profileData = {
+        display_name: body.display_name.trim(),
+        organizer_type: body.organizer_type || "independent",
+        professional_title: body.professional_title?.trim() || null,
+        organization_name: body.organization_name?.trim() || null,
+        website_url: body.website_url?.trim() || null,
+        bio: body.bio?.trim() || null,
+        experience_summary: body.experience_summary.trim(),
+        event_topics: Array.isArray(body.event_topics) ? body.event_topics : [],
+      };
     } else {
       if (!body.school_name?.trim()) {
         return new Response(JSON.stringify({ success: false, message: "Nom de l'établissement requis" }), {
@@ -265,7 +283,10 @@ Deno.serve(async (req: Request) => {
     if (rolesError) throw rolesError;
 
     if (profileData) {
-      const tableName = role === "professeur" ? "professeur_profiles" : "etablissement_profiles";
+      const tableName =
+        role === "professeur" ? "professeur_profiles" :
+        role === "organizer" ? "live_organizer_applications" :
+        "etablissement_profiles";
       const { error: profileError } = await supabase.from(tableName).insert({ user_id: userId, ...profileData });
       if (profileError) throw profileError;
     }
