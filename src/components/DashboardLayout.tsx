@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
-  Search, Radio,
+  Search, Radio, ExternalLink,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -153,58 +153,24 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
 
   const sidebar = (
     <aside className="flex flex-col h-full" style={{ backgroundColor: '#002050' }}>
-      <div className="px-6 py-5 border-b border-white/10">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-            style={{ backgroundColor: '#BF8813' }}>OA</div>
-          <span className="text-white font-bold text-base leading-tight">Omnia Global<br />Academy</span>
+      <div className="px-5 py-5 border-b border-white/10">
+        <Link to="/" className="flex items-center gap-3">
+          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain flex-shrink-0" />
+          <div className="leading-tight font-bold">
+            <div className="text-white text-base">Omnia</div>
+            <div className="text-sm" style={{ color: '#BF8813' }}>Global Academy</div>
+          </div>
         </Link>
       </div>
 
-      {user && (
-        <div className="px-4 py-4 mx-3 mt-4 rounded-xl bg-white/5 border border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              {monogram(user.full_name)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-white text-sm font-semibold truncate">{user.full_name}</p>
-              <p className="text-white/50 text-xs truncate capitalize">{role}</p>
-            </div>
-          </div>
-          {role === 'apprenant' && user.ai_tokens != null && (
-            <div className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: '#BF8813' }}>
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{user.ai_tokens} jeton{user.ai_tokens !== 1 ? 's' : ''} IA</span>
-            </div>
-          )}
-          {role === 'directeur' && (
-            <div className="mt-2">
-              <span className="text-white/40 text-xs flex items-center gap-1"><Building2 className="w-3 h-3" /> Directeur</span>
-            </div>
-          )}
-          {role === 'enseignant' && (
-            <Link to={buildPath('/staff/courses/new')} onClick={() => setSidebarOpen(false)}
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold py-1.5 px-2 rounded-lg justify-center hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              <PlusCircle className="w-3.5 h-3.5" /> Nouvelle formation
-            </Link>
-          )}
-          {role === 'moderateur' && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <Shield className="w-3 h-3" style={{ color: '#BF8813' }} />
-              <span className="text-white/40 text-xs">Modérateur</span>
-            </div>
-          )}
-          {role === 'super_admin' && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <Monitor className="w-3 h-3" style={{ color: '#BF8813' }} />
-              <span className="text-white/40 text-xs">Super-admin</span>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="px-3 pt-4">
+        <Link to="/" onClick={() => setSidebarOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all hover:bg-white/5"
+          style={{ color: '#BF8813' }}>
+          <ExternalLink style={{ width: 18, height: 18, flexShrink: 0 }} />
+          <span>Voir Omnia Global Academy</span>
+        </Link>
+      </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map((item) => {

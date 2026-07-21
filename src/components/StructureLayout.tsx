@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, User, LogOut,
   ChevronRight, Menu, X, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -82,22 +82,24 @@ export function StructureLayout({ children, displayName }: Props) {
 
   const Sidebar = () => (
     <div className="flex flex-col h-full" style={{ background: '#002050' }}>
-      {/* Logo + nom espace */}
+      {/* Identité Omnia */}
       <div className="px-5 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: '#BF8813' }}>
-            <Building2 size={18} color="white" />
+        <Link to="/" className="flex items-center gap-3">
+          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain flex-shrink-0" />
+          <div className="leading-tight font-bold">
+            <div className="text-white text-base">Omnia</div>
+            <div className="text-sm" style={{ color: '#BF8813' }}>Global Academy</div>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-white truncate">
-              {displayName ?? 'Espace Structure'}
-            </p>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
-              Omnia Global Academy
-            </p>
-          </div>
-        </div>
+        </Link>
+      </div>
+
+      <div className="px-3 pt-4">
+        <Link to="/" onClick={() => setSidebarOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5 transition-all"
+          style={{ color: '#BF8813' }}>
+          <ExternalLink size={18} />
+          <span>Voir Omnia Global Academy</span>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -129,35 +131,21 @@ export function StructureLayout({ children, displayName }: Props) {
         })}
       </nav>
 
-      {/* User */}
-      {user && (
-        <div className="px-3 pb-4 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <div className="flex items-center gap-3 px-2 mb-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: '#BF8813', color: 'white' }}>
-              {monogram(user.full_name)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-white truncate">{user.full_name}</p>
-              <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                Responsable de structure
-              </p>
-            </div>
-          </div>
-          <button onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all hover:bg-red-500/10"
-            style={{ color: 'rgba(255,255,255,0.5)' }}>
-            <LogOut size={14} /> Déconnexion
-          </button>
-        </div>
-      )}
+      <div className="px-3 pb-4 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <button onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all hover:bg-white/5"
+          style={{ color: 'rgba(255,255,255,0.55)' }}>
+          <LogOut size={18} />
+          <span>{previewMode ? 'Retour au Dashboard' : 'Déconnexion'}</span>
+        </button>
+      </div>
     </div>
   );
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Sidebar desktop */}
-      <aside className="hidden md:flex flex-col flex-shrink-0" style={{ width: 240 }}>
+      <aside className="hidden md:flex flex-col flex-shrink-0" style={{ width: 260 }}>
         <Sidebar />
       </aside>
 

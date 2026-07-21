@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell, Briefcase, CalendarDays, ChevronRight, FileText, Heart,
   LayoutDashboard, LogOut, Menu, MessageSquare, Search, Settings, UserRound,
-  UsersRound, X,
+  UsersRound, X, ExternalLink,
 } from 'lucide-react';
 import { clearSession, getStoredUser } from '../../lib/session';
 
@@ -49,23 +49,23 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
 
   const sidebar = (
     <aside className="flex h-full flex-col" style={{ backgroundColor: BLUE }}>
-      <div className="border-b border-white/10 px-6 py-5">
-        <Link to="/talent" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ backgroundColor: GOLD }}>OA</div>
-          <span className="text-base font-bold leading-tight text-white">Omnia Global<br />Academy</span>
+      <div className="border-b border-white/10 px-5 py-5">
+        <Link to="/" className="flex items-center gap-3">
+          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-10 w-10 flex-shrink-0 object-contain" />
+          <div className="font-bold leading-tight">
+            <div className="text-base text-white">Omnia</div>
+            <div className="text-sm" style={{ color: GOLD }}>Global Academy</div>
+          </div>
         </Link>
       </div>
 
-      <div className="mx-3 mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold" style={{ backgroundColor: GOLD, color: BLUE }}>
-            {initials(user?.full_name)}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">{user?.full_name || 'Compte recruteur'}</p>
-            <p className="truncate text-xs capitalize text-white/50">{roleLabel}</p>
-          </div>
-        </div>
+      <div className="px-3 pt-4">
+        <Link to="/" onClick={() => setOpen(false)}
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
+          style={{ color: GOLD }}>
+          <ExternalLink size={18} />
+          <span>Voir Omnia Global Academy</span>
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">

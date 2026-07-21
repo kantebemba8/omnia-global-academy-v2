@@ -50,12 +50,13 @@ export default function OrganizerShell({
     <div className="border-b border-white/10 px-5 py-5">
       <Link to={buildPath('/')} className="flex items-center gap-3">
         <img
-          src="/logo.png"
+          src="/omnia-sidebar-logo.png"
           alt="Omnia Global Academy"
           className="h-10 w-10 flex-shrink-0 object-contain"
         />
-        <div className="leading-tight">
-          <div className="text-sm font-bold text-white">Omnia Global Academy</div>
+        <div className="font-bold leading-tight">
+          <div className="text-base text-white">Omnia</div>
+          <div className="text-sm" style={{color:GOLD}}>Global Academy</div>
         </div>
       </Link>
       <div className="mt-4 text-base font-bold">
