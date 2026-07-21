@@ -6,7 +6,7 @@ import { useSiteMode } from '../../context/SiteModeContext';
 import {
   TrendingUp, DollarSign, Lock, Users, AlertTriangle, BookOpen,
   Wallet, Shield, Briefcase, ArrowRight, Clock, Eye,
- GraduationCap, Building2, UserCheck,
+ GraduationCap, Building2, UserCheck,, Radio
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -133,11 +133,12 @@ export default function AdminDashboard() {
             <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Prévisualiser les espaces</h3>
           </div>
           <p className="text-xs text-gray-400 mb-4">Accédez en lecture seule aux tableaux de bord de chaque rôle</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
               { label: 'Espace Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
               { label: 'Espace Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
-             { label: 'Espace Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
+              { label: 'Espace Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
+              { label: 'Espace Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
               { label: 'Espace Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
             ].map((item) => (
               <button

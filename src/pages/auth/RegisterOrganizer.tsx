@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Eye,EyeOff} from 'lucide-react';
+import {Eye,EyeOff,Info} from 'lucide-react';
 import {AuthLayout} from '../../components/AuthLayout';
 import {authFetch} from '../../lib/authApi';
 import {COUNTRIES,getPrefix} from '../../lib/countries';
@@ -18,6 +18,14 @@ export function RegisterOrganizer(){
  }
  return <AuthLayout title="Inscription Organisateur" subtitle="Organisez des Lives, conférences, masterclass et événements sur Omnia Live">
   <form onSubmit={submit} className="mt-4 space-y-4">{error&&<div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+   <div className="flex items-start gap-2 p-3 rounded-lg"
+     style={{ backgroundColor: '#FFF8E7', border: '1px solid #FDE68A' }}>
+     <Info size={15} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
+     <p className="text-xs" style={{ color: '#374151' }}>
+       Votre demande sera examinée par notre équipe sous 48h ouvrées.
+       L’organisateur ne sera activé qu’après validation.
+     </p>
+   </div>
    <div><label className={label}>Nom complet</label><input required className={input} value={f.full_name} onChange={e=>set('full_name',e.target.value)}/></div>
    <div><label className={label}>Nom public / nom d’organisateur</label><input required className={input} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="Nom affiché sur vos événements"/></div>
    <div><label className={label}>Email</label><input required type="email" className={input} value={f.email} onChange={e=>set('email',e.target.value)}/></div>
@@ -32,7 +40,6 @@ export function RegisterOrganizer(){
    <div><label className={label}>Présentation</label><textarea rows={3} className={input} value={f.bio} onChange={e=>set('bio',e.target.value)}/></div>
    <div><label className={label}>Mot de passe</label><div className="relative"><input required minLength={8} type={show?'text':'password'} className={input} value={f.password} onChange={e=>set('password',e.target.value)}/><button type="button" onClick={()=>setShow(!show)} className="absolute right-3 top-3.5 text-gray-400">{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></div>
    <div><label className={label}>Confirmer le mot de passe</label><input required type={show?'text':'password'} className={input} value={f.confirm_password} onChange={e=>set('confirm_password',e.target.value)}/></div>
-   <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">Après vérification du téléphone, votre candidature Organisateur sera examinée par le Super Admin. La création de Lives sera activée après validation.</p>
    <button disabled={loading} className="w-full rounded-lg bg-[#002050] py-3 font-semibold text-white">{loading?'Inscription…':'Soumettre ma candidature'}</button>
   </form>
  </AuthLayout>
