@@ -163,15 +163,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
         </Link>
       </div>
 
-      <div className="px-3 pt-4">
-        <Link to="/" onClick={() => setSidebarOpen(false)}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all hover:bg-white/5"
-          style={{ color: '#BF8813' }}>
-          <ExternalLink style={{ width: 18, height: 18, flexShrink: 0 }} />
-          <span>Voir Omnia Global Academy</span>
-        </Link>
-      </div>
-
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item);
@@ -192,7 +183,13 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
         })}
       </nav>
 
-      <div className="px-3 pb-5">
+      <div className="px-3 pb-5 border-t border-white/10 pt-3">
+        <Link to="/" onClick={() => setSidebarOpen(false)}
+          className="mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all hover:bg-white/5"
+          style={{ color: '#BF8813' }}>
+          <ExternalLink style={{ width: 18, height: 18, flexShrink: 0 }} />
+          <span>Voir Omnia Global Academy</span>
+        </Link>
         <button onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all text-sm">
           <LogOut style={{ width: 18, height: 18 }} />

@@ -59,15 +59,6 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
         </Link>
       </div>
 
-      <div className="px-3 pt-4">
-        <Link to="/" onClick={() => setOpen(false)}
-          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
-          style={{ color: GOLD }}>
-          <ExternalLink size={18} />
-          <span>Voir Omnia Global Academy</span>
-        </Link>
-      </div>
-
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {NAV.map(item => {
           const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
@@ -85,6 +76,11 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
       </nav>
 
       <div className="border-t border-white/10 px-3 py-4">
+        <Link to="/" onClick={() => setOpen(false)}
+          className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold hover:bg-white/5"
+          style={{ color: GOLD }}>
+          <ExternalLink size={18} /> Voir Omnia Global Academy
+        </Link>
         <Link to="/talent" className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/60 hover:bg-white/5 hover:text-white">
           <UsersRound size={18} /> Voir Talent Omnia
         </Link>

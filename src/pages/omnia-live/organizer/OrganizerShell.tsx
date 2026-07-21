@@ -65,17 +65,6 @@ export default function OrganizerShell({
       </div>
     </div>
 
-    <div className="px-3 pt-4">
-      <Link
-        to={buildPath('/omnia-live')}
-        className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/10"
-        style={{color:GOLD}}
-      >
-        <ExternalLink style={{width:18,height:18,flexShrink:0}}/>
-        <span>Voir Omnia Live</span>
-      </Link>
-    </div>
-
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {NAV.map(([path,label,Icon,exact])=>
         <NavLink
@@ -100,6 +89,14 @@ export default function OrganizerShell({
     </nav>
 
     <div className="border-t border-white/10 px-3 pb-5 pt-3">
+      <Link
+        to={buildPath('/omnia-live')}
+        className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
+        style={{color:GOLD}}
+      >
+        <ExternalLink style={{width:18,height:18,flexShrink:0}}/>
+        <span>Voir Omnia Live</span>
+      </Link>
       <button
         onClick={logout}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white"
