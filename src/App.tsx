@@ -345,8 +345,8 @@ export default function App() {
         <Route path="/connexion-rapide" element={<LoginOTP />} />
         <Route path="/inscription" element={<SelectRole />} />
         <Route path="/inscription/apprenant" element={<RegisterApprenant />} />
-        <Route path="/inscription/professeur" element={<RegisterProfesseur />
-          <Route path="/inscription/organisateur" element={<RegisterOrganizer />} />} />
+        <Route path="/inscription/professeur" element={<RegisterProfesseur />} />
+          <Route path="/inscription/organisateur" element={<RegisterOrganizer />} />
           <Route path="/inscription/structure" element={<RegisterStructure />} />
           <Route path="/inscription/organisation" element={<RegisterOrganisation />} />
         <Route path="/verifier-otp" element={<VerifyOTP />} />
