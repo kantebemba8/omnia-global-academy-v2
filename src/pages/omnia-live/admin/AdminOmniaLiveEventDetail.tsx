@@ -60,14 +60,18 @@ export default function AdminOmniaLiveEventDetail(){
  async function deleteSuspended(){
    const r=await omniaDialog({
      title:'Supprimer ce Live ?',
-     message:'Le Live sera supprimé définitivement, mais l’action restera enregistrée dans l’historique administratif.',
+     message:'Le Live sera supprimé définitivement des événements et des salles actives. L’action restera enregistrée dans l’historique administratif.',
      confirmLabel:'Supprimer',
      danger:true
    });
    if(!r.confirmed)return;
    setBusy('delete'); setMsg('');
    try{
-     const result=await liveApi('admin_delete_suspended',{method:'POST',body:JSON.stringify({event_id:eventId})});
+     const result=await liveApi(
+     'admin_delete_suspended',
+     {method:'POST',body:JSON.stringify({event_id:eventId})},
+     {event_id:eventId||''}
+   );
      if(result?.deleted) window.location.href='/admin/omnia-live';
      else throw new Error(result?.message||'Suppression impossible.');
    }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}

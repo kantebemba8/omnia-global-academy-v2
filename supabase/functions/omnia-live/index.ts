@@ -3508,15 +3508,67 @@ async function refundsAdminQueue(
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
-  const { data, error } = await sb
-    .from("live_refund_requests")
-    .select("*,live_orders(order_number,amount,currency,payment_status),live_events(title),users(full_name,email)")
+  // IMPORTANT:
+  // Do not embed "users" directly here. live_refund_requests has two FKs to users
+  // (user_id and decided_by), which causes PGRST201 ambiguity.
+  const { data: rows, error } = await sb.from("live_refund_requests")
+    .select("*")
     .in("status", ["pending","under_review","approved","partially_approved"])
-    .order("created_at");
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
+  const refunds = rows ?? [];
 
-  return json({ success: true, refunds: data ?? [] });
+  const eventIds = [...new Set(refunds.map((r:any)=>r.event_id).filter(Boolean))];
+  const userIds = [...new Set(refunds.map((r:any)=>r.user_id).filter(Boolean))];
+  const orderIds = [...new Set(refunds.map((r:any)=>r.order_id).filter(Boolean))];
+
+  let eventMap = new Map<string,any>();
+  let userMap = new Map<string,any>();
+  let orderMap = new Map<string,any>();
+
+  if (eventIds.length) {
+    const { data, error: e } = await sb.from("live_events")
+      .select("id,title,starts_at,organizer_display_name")
+      .in("id", eventIds);
+    if (e) throw e;
+    eventMap = new Map((data ?? []).map((x:any)=>[x.id,x]));
+  }
+
+  if (userIds.length) {
+    const { data, error: e } = await sb.from("users")
+      .select("id,full_name,email")
+      .in("id", userIds);
+    if (e) throw e;
+    userMap = new Map((data ?? []).map((x:any)=>[x.id,x]));
+  }
+
+  if (orderIds.length) {
+    const { data, error: e } = await sb.from("live_orders")
+      .select("id,currency,amount,payment_status")
+      .in("id", orderIds);
+    if (e) throw e;
+    orderMap = new Map((data ?? []).map((x:any)=>[x.id,x]));
+  }
+
+  return json({
+    success: true,
+    refunds: refunds.map((r:any)=>{
+      const ev = eventMap.get(r.event_id);
+      const u = userMap.get(r.user_id);
+      const o = orderMap.get(r.order_id);
+      return {
+        ...r,
+        event_title: ev?.title ?? null,
+        event_starts_at: ev?.starts_at ?? null,
+        organizer_display_name: ev?.organizer_display_name ?? null,
+        user_name: u?.full_name ?? null,
+        user_email: u?.email ?? null,
+        currency: o?.currency ?? null,
+        order_amount: o?.amount ?? null,
+      };
+    }),
+  });
 }
 
 
@@ -7528,21 +7580,106 @@ async function adminDeleteSuspended(
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
-  const body = (await req.json().catch(() => ({}))) as any;
-  if (!body.event_id) return json({ error: "EVENT_ID_REQUIRED" }, 400);
+  const url = new URL(req.url);
+  const body = req.method === "POST"
+    ? ((await req.json().catch(() => ({}))) as any)
+    : {};
+
+  const eventId = String(body.event_id || url.searchParams.get("event_id") || "").trim();
+
+  if (!eventId) {
+    return json({
+      error: "EVENT_ID_REQUIRED",
+      message: "Identifiant du Live manquant dans la demande de suppression.",
+    }, 400);
+  }
+
+  // Read current state first so a stale frontend cannot hide the actual reason.
+  const { data: event, error: readError } = await sb.from("live_events")
+    .select("id,title,status")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (readError) {
+    return json({
+      error: "EVENT_LOOKUP_FAILED",
+      message: readError.message,
+      code: readError.code,
+      details: readError.details,
+    }, 400);
+  }
+
+  if (!event) {
+    // Already deleted: treat as idempotent success.
+    return json({
+      success: true,
+      deleted: true,
+      already_deleted: true,
+      event_id: eventId,
+      message: "Ce Live est déjà supprimé.",
+    });
+  }
+
+  if (event.status !== "suspended") {
+    return json({
+      error: "ONLY_SUSPENDED_EVENT_CAN_BE_DELETED",
+      message: `Suppression impossible : le statut actuel du Live est "${event.status}".`,
+      current_status: event.status,
+      event_id: eventId,
+    }, 409);
+  }
 
   const { data, error } = await sb.rpc("omnia_live_delete_event_permanently", {
-    p_event_id: body.event_id,
+    p_event_id: eventId,
     p_deleted_by: ctx.userId,
   });
 
-  if (error) throw error;
-  if (!data) return json({ error: "EVENT_NOT_FOUND" }, 404);
+  if (error) {
+    return json({
+      error: "DELETE_RPC_FAILED",
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      event_id: eventId,
+    }, 400);
+  }
+
+  if (!data) {
+    return json({
+      error: "DELETE_NOT_CONFIRMED",
+      message: "La base de données n’a pas confirmé la suppression.",
+      event_id: eventId,
+    }, 409);
+  }
+
+  // Verify physical deletion before returning success.
+  const { data: remaining, error: verifyError } = await sb.from("live_events")
+    .select("id")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (verifyError) {
+    return json({
+      error: "DELETE_VERIFY_FAILED",
+      message: verifyError.message,
+      code: verifyError.code,
+      details: verifyError.details,
+    }, 400);
+  }
+
+  if (remaining) {
+    return json({
+      error: "DELETE_FAILED_EVENT_STILL_EXISTS",
+      message: "Le Live existe encore après la tentative de suppression.",
+      event_id: eventId,
+    }, 409);
+  }
 
   return json({
     success: true,
     deleted: true,
-    event_id: body.event_id,
+    event_id: eventId,
     message: "Live supprimé définitivement. L’action reste enregistrée dans l’historique administratif.",
   });
 }
