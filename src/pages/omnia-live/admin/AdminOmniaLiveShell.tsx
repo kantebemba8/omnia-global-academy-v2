@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AdminLayout } from '../../../components/AdminLayout';
-import { LayoutDashboard, ListChecks, Radio, Users, Building2, Film, Wallet, ShieldAlert, Settings, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, ListChecks, Radio, Users, Building2, Film, Wallet, Settings, RotateCcw } from 'lucide-react';
 
 const NAV = [
   ['/admin/omnia-live','Vue d’ensemble',LayoutDashboard,true],
@@ -12,7 +12,6 @@ const NAV = [
   ['/admin/omnia-live/medias','Médias & Replays',Film],
   ['/admin/omnia-live/finance','Finance & Payouts',Wallet],
   ['/admin/omnia-live/operations','Opérations',RotateCcw],
-  ['/admin/omnia-live/moderation','Modération',ShieldAlert],
   ['/admin/omnia-live/parametres','Paramètres',Settings],
 ] as const;
 
