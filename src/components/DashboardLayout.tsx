@@ -175,33 +175,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
           </span>
         </Link>
       </div>
-          {role === 'directeur' && (
-            <div className="mt-2">
-              <span className="text-white/40 text-xs flex items-center gap-1"><Building2 className="w-3 h-3" /> Directeur</span>
-            </div>
-          )}
-          {role === 'enseignant' && (
-            <Link to={buildPath('/staff/courses/new')} onClick={() => setSidebarOpen(false)}
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold py-1.5 px-2 rounded-lg justify-center hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              <PlusCircle className="w-3.5 h-3.5" /> Nouvelle formation
-            </Link>
-          )}
-          {role === 'moderateur' && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <Shield className="w-3 h-3" style={{ color: '#BF8813' }} />
-              <span className="text-white/40 text-xs">Modérateur</span>
-            </div>
-          )}
-          {role === 'super_admin' && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <Monitor className="w-3 h-3" style={{ color: '#BF8813' }} />
-              <span className="text-white/40 text-xs">Super-admin</span>
-            </div>
-          )}
-        </div>
-      )}
-
       <nav
         className="oga-sidebar-scroll flex-1 min-h-0 px-3 py-4 overflow-y-auto overscroll-contain"
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#BF8813 transparent' }}
