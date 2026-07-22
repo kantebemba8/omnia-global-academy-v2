@@ -197,9 +197,13 @@ export default function AdminCMS() {
           omnia_live: { ...DEFAULT_PAGE_CONTENT.omnia_live, ...(loadedPageContent.omnia_live || {}) },
         });
 
-        if (map.category_multipliers) {
-          try { setMultipliers({ ...getDefaultMultipliers(), ...JSON.parse(map.category_multipliers) }); } catch { /* use defaults */ }
-        }
+        const dbMultipliers: Record<string, string> = getDefaultMultipliers();
+        (d.category_multipliers ?? []).forEach((row: { category_name: string; multiplier: number | string }) => {
+          if (CATEGORY_LABELS.includes(row.category_name as any)) {
+            dbMultipliers[row.category_name] = String(row.multiplier);
+          }
+        });
+        setMultipliers(dbMultipliers);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -389,7 +393,31 @@ export default function AdminCMS() {
   }
 
   async function saveMultipliers() {
-    await save([{ key: 'category_multipliers', value: JSON.stringify(multipliers) }]);
+    setSaving(true);
+    setToast('');
+    const token = localStorage.getItem('omnia_session_token');
+    try {
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_category_multipliers',
+          multipliers: CATEGORY_LABELS.map(category_name => ({
+            category_name,
+            multiplier: Number(multipliers[category_name] ?? 1),
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
+      setToast('Multiplicateurs enregistrés. Le moteur de tarification utilise immédiatement ces valeurs.');
+      load();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Erreur pendant l’enregistrement des multiplicateurs.');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setToast(''), 3500);
+    }
   }
 
   async function sendMaintenanceNotice() {

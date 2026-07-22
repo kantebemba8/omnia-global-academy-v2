@@ -18,6 +18,66 @@ const RESOURCE_POINTS: Record<string, { pts: number; max: number }> = {
 };
 const NIVEAU_POINTS: Record<string, number> = { debutant: 2, intermediaire: 5, avance: 8, expert: 12 };
 const normalize = (v: string) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "_");
+const CATEGORY_ALIASES: Record<string, string> = {
+  "data_&_ia": "Data & Intelligence Artificielle",
+  "intelligence_artificielle": "Data & Intelligence Artificielle",
+  "informatique": "Informatique & Développement",
+  "informatique_de_gestion": "Informatique & Développement",
+  "bureautique_&_productivite": "Informatique & Développement",
+  "developpement_web": "Informatique & Développement",
+  "cybersecurite": "Cybersécurité & Réseaux",
+  "business": "Business & Entrepreneuriat",
+  "entrepreneuriat": "Business & Entrepreneuriat",
+  "gestion_de_projet": "Business & Entrepreneuriat",
+  "management_&_leadership": "Business & Entrepreneuriat",
+  "ressources_humaines": "Business & Entrepreneuriat",
+  "commerce_international": "Business & Entrepreneuriat",
+  "comptabilite_&_finance": "Finance & Comptabilité",
+  "finance": "Finance & Comptabilité",
+  "comptabilite": "Finance & Comptabilité",
+  "fiscalite": "Finance & Comptabilité",
+  "banque_&_microfinance": "Finance & Comptabilité",
+  "droit": "Droit & Juridique",
+  "juridique": "Droit & Juridique",
+  "droit_des_affaires": "Droit & Juridique",
+  "marketing": "Marketing & Communication",
+  "marketing_digital": "Marketing & Communication",
+  "communication_professionnelle": "Marketing & Communication",
+  "vente_&_negociation": "Marketing & Communication",
+  "sante": "Santé & Médecine",
+  "sante_&_securite_au_travail": "Santé & Médecine",
+  "architecture": "Architecture & BTP",
+  "education": "Éducation & Pédagogie",
+  "langues": "Langues & Linguistique",
+  "agriculture": "Agriculture & Agro-business",
+  "agriculture_&_agribusiness": "Agriculture & Agro-business",
+  "tourisme": "Tourisme & Hôtellerie",
+  "energie_&_environnement": "Environnement & Développement durable",
+  "environnement": "Environnement & Développement durable",
+  "developpement_personnel": "Bien-être & Développement personnel",
+  "bien_etre": "Bien-être & Développement personnel",
+  "artisanat": "Artisanat & Métiers manuels",
+  "cuisine": "Cuisine & Gastronomie",
+  "mode": "Mode & Stylisme",
+  "elevage": "Élevage & Pêche",
+  "arts": "Arts & Créativité",
+  "musique": "Musique & Audio",
+  "loisirs": "Loisirs & Hobbies"
+};
+async function resolveCategoryMultiplier(sb: any, category: string) {
+  const canonical = CATEGORY_ALIASES[normalize(category)] || category;
+  const { data: direct } = await sb.from("category_multipliers")
+    .select("category_name,multiplier")
+    .eq("category_name", canonical)
+    .maybeSingle();
+  if (direct) return { category_name: direct.category_name, multiplier: Number(direct.multiplier || 1) };
+
+  const { data: rows } = await sb.from("category_multipliers").select("category_name,multiplier");
+  const match = (rows || []).find((row: any) => normalize(row.category_name) === normalize(canonical));
+  return match
+    ? { category_name: match.category_name, multiplier: Number(match.multiplier || 1) }
+    : { category_name: canonical, multiplier: 1 };
+}
 const VALIDATION_POINTS: Record<string, number> = { qcm: 3, projet_soumettre: 8, projet_corriger: 12 };
 
 async function wordCount(text: string): Promise<number> {
@@ -136,8 +196,8 @@ Deno.serve(async (req: Request) => {
     }
     score += Math.min(bonusTotal, 5.0);
 
-    const { data: multRow } = await sb.from("category_multipliers").select("multiplier").eq("category_name", String(courseTyped.category ?? "")).maybeSingle();
-    const multiplier = parseFloat(String(multRow?.multiplier ?? 1.0));
+    const multiplierRow = await resolveCategoryMultiplier(sb, String(courseTyped.category ?? ""));
+    const multiplier = multiplierRow.multiplier;
     score *= multiplier;
     score = Math.round(score * 10) / 10;
 

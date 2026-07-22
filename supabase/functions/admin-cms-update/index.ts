@@ -60,6 +60,7 @@ Deno.serve(async (req: Request) => {
       partner?: Record<string, unknown>;
       category_name?: string;
       multiplier?: number;
+      multipliers?: Array<{ category_name: string; multiplier: number }>;
     };
 
     // Favicon library management
@@ -184,6 +185,46 @@ Deno.serve(async (req: Request) => {
       if (!body.partner_id) return json({ error: "PARTNER_ID_REQUIRED" }, 400);
       await sb.from("public_partners").delete().eq("id", body.partner_id);
       return json({ success: true });
+    }
+
+    if (body.action === "save_category_multipliers") {
+      if (!Array.isArray(body.multipliers) || body.multipliers.length !== 22) {
+        return json({ error: "EXACTLY_22_MULTIPLIERS_REQUIRED" }, 400);
+      }
+
+      for (const item of body.multipliers) {
+        const categoryName = String(item.category_name || "").trim();
+        const mult = Number(item.multiplier);
+        if (!categoryName || !Number.isFinite(mult) || mult < 0.5 || mult > 2) {
+          return json({ error: "INVALID_MULTIPLIER", category_name: categoryName }, 400);
+        }
+      }
+
+      for (const item of body.multipliers) {
+        const categoryName = String(item.category_name).trim();
+        const mult = Number(item.multiplier);
+        const { data: old } = await sb.from("category_multipliers")
+          .select("multiplier").eq("category_name", categoryName).maybeSingle();
+
+        await sb.from("category_multipliers").upsert({
+          category_name: categoryName,
+          multiplier: mult,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "category_name" });
+
+        if (Number(old?.multiplier) !== mult) {
+          try {
+            await sb.from("multiplier_audit_log").insert({
+              category_name: categoryName,
+              old_value: old?.multiplier ?? null,
+              new_value: mult,
+              changed_by: adminId,
+            });
+          } catch {}
+        }
+      }
+
+      return json({ success: true, count: body.multipliers.length });
     }
 
     if (body.action === "update_category_multiplier") {

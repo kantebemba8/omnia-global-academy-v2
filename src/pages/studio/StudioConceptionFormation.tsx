@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
+import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
   Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check,
@@ -931,7 +932,7 @@ export default function StudioConceptionFormation() {
                   { field: 'short_description', label: 'Description courte *', placeholder: 'Résumé affiché sur la carte et avant l’achat...', type: 'textarea' },
                   { field: 'long_description', label: 'Présentation détaillée *', placeholder: 'Présentez le contenu, l’approche pédagogique, les bénéfices et ce que l’apprenant saura faire...', type: 'textarea' },
                   { field: 'target_audience', label: 'À qui s’adresse cette formation ?', placeholder: 'Ex : débutants, entrepreneurs, responsables administratifs...', type: 'textarea' },
-                  { field: 'category', label: 'Catégorie *', placeholder: '', type: 'select', options: ['Comptabilité & Finance', 'Marketing digital', 'Management & Leadership', 'Informatique de gestion', 'Langues & Linguistique', 'Entrepreneuriat', 'Ressources humaines', 'Commerce international', 'Autre'] },
+                  { field: 'category', label: 'Catégorie *', placeholder: '', type: 'select', options: [...CATEGORY_LABELS] },
                   { field: 'level', label: 'Niveau *', placeholder: '', type: 'select', options: ['debutant', 'intermediaire', 'avance'] },
                   { field: 'language', label: 'Langue *', placeholder: '', type: 'select', options: ['fr', 'en', 'ar', 'bm'] },
                   { field: 'prerequisites', label: 'Prérequis', placeholder: 'Aucun prérequis particulier...', type: 'textarea' },

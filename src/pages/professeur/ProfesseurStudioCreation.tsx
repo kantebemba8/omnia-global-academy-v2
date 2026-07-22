@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import {
+import { CATEGORY_LABELS } from '../../lib/categories';
   ChevronRight, ChevronLeft, PlusCircle, Trash2, Wand2, Upload,
   AlertCircle, CheckCircle, Info, ChevronDown, ChevronUp, Loader2,
   BookOpen, FileText, Video, Headphones, Link2, Sparkles
@@ -46,15 +47,7 @@ function getApiBase() {
   return url ? `${url}/functions/v1` : '/api';
 }
 
-const CATEGORIES = [
-  'Comptabilité & Finance', 'Fiscalité', 'Droit des affaires', 'Gestion de projet',
-  'Management & Leadership', 'Ressources humaines', 'Marketing digital', 'Vente & Négociation',
-  'Entrepreneuriat', 'Informatique de gestion', 'Bureautique & Productivité',
-  'Langues & Linguistique', 'Communication professionnelle', 'Logistique & Supply chain',
-  'Qualité & Processus', 'Banque & Microfinance', 'Agriculture & Agribusiness',
-  'Santé & Sécurité au travail', 'Développement personnel', 'Secteur public & Gouvernance',
-  'Commerce international', 'Énergie & Environnement',
-];
+const CATEGORIES = CATEGORY_LABELS;
 const LEVELS = [
   { value: 'debutant', label: 'Débutant' },
   { value: 'intermediaire', label: 'Intermédiaire' },

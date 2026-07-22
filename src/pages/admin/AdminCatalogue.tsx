@@ -4,6 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, DollarSign, AlertTriangle, Send, Upload, FileText, Package } from 'lucide-react';
 
+import { CATEGORY_LABELS } from '../../lib/categories';
 interface CourseItem {
   id: string; title: string; creator_name: string; score_calcule: number | null;
   prix_provisoire_xof: number | null; category: string; created_at: string;
@@ -330,7 +331,7 @@ export default function AdminCatalogue() {
   );
 }
 
-const CATEGORIES_LIST = ['Finance', 'Comptabilité', 'Marketing', 'Management', 'Tech & Digital', 'Droit', 'RH', 'Santé', 'Education', 'Autre'];
+const CATEGORIES_LIST = CATEGORY_LABELS;
 const LEVELS_LIST = ['Débutant', 'Intermédiaire', 'Avancé', 'Expert'];
 
 function AssisteeTab() {

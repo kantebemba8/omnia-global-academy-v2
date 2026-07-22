@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { User, Mail, Phone, Globe, Lock, Eye, EyeOff, CheckCircle, AlertTriangle, FileText, ExternalLink } from 'lucide-react';
 
+import { CATEGORY_LABELS } from '../../lib/categories';
 interface ProfUser {
   id: string; full_name: string; email: string; phone_number: string;
   country_code: string; allow_email: boolean; allow_sms: boolean;
@@ -13,15 +14,7 @@ interface ProfProfile {
   bio: string | null; expertise_domain: string | null; cv_diploma_url: string | null; kyc_status: string;
 }
 
-const CATEGORIES = [
-  'Data & Intelligence Artificielle', 'Informatique & Développement', 'Cybersécurité & Réseaux',
-  'Business & Entrepreneuriat', 'Finance & Comptabilité', 'Droit & Juridique',
-  'Marketing & Communication', 'Santé & Médecine', 'Architecture & BTP',
-  'Éducation & Pédagogie', 'Langues & Linguistique', 'Agriculture & Agro-business',
-  'Tourisme & Hôtellerie', 'Environnement & Développement durable', 'Bien-être & Développement personnel',
-  'Artisanat & Métiers manuels', 'Cuisine & Gastronomie', 'Mode & Stylisme',
-  'Élevage & Pêche', 'Arts & Créativité', 'Musique & Audio', 'Loisirs & Hobbies',
-];
+const CATEGORIES = CATEGORY_LABELS;
 
 function getApiBase() {
   const url = import.meta.env.VITE_SUPABASE_URL || '';

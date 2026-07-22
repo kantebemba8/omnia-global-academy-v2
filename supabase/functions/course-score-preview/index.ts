@@ -19,11 +19,51 @@ const DEFAULT_RULES:any={
   }
 };
 const normalize=(v:string)=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/\s+/g,"_");
-const CATEGORY_ALIASES:Record<string,string>={
-  "comptabilite_&_finance":"Finance & Comptabilité","finance_&_comptabilite":"Finance & Comptabilité",
-  "informatique_&_developpement":"Informatique & Développement","developpement_web":"Informatique & Développement",
-  "cybersecurite_&_reseaux":"Cybersécurité & Réseaux","droit_des_affaires":"Droit & Juridique",
-  "marketing_&_communication":"Marketing & Communication","data_&_intelligence_artificielle":"Data & Intelligence Artificielle"
+const CATEGORY_ALIASES: Record<string, string> = {
+  "data_&_ia": "Data & Intelligence Artificielle",
+  "intelligence_artificielle": "Data & Intelligence Artificielle",
+  "informatique": "Informatique & Développement",
+  "informatique_de_gestion": "Informatique & Développement",
+  "bureautique_&_productivite": "Informatique & Développement",
+  "developpement_web": "Informatique & Développement",
+  "cybersecurite": "Cybersécurité & Réseaux",
+  "business": "Business & Entrepreneuriat",
+  "entrepreneuriat": "Business & Entrepreneuriat",
+  "gestion_de_projet": "Business & Entrepreneuriat",
+  "management_&_leadership": "Business & Entrepreneuriat",
+  "ressources_humaines": "Business & Entrepreneuriat",
+  "commerce_international": "Business & Entrepreneuriat",
+  "comptabilite_&_finance": "Finance & Comptabilité",
+  "finance": "Finance & Comptabilité",
+  "comptabilite": "Finance & Comptabilité",
+  "fiscalite": "Finance & Comptabilité",
+  "banque_&_microfinance": "Finance & Comptabilité",
+  "droit": "Droit & Juridique",
+  "juridique": "Droit & Juridique",
+  "droit_des_affaires": "Droit & Juridique",
+  "marketing": "Marketing & Communication",
+  "marketing_digital": "Marketing & Communication",
+  "communication_professionnelle": "Marketing & Communication",
+  "vente_&_negociation": "Marketing & Communication",
+  "sante": "Santé & Médecine",
+  "sante_&_securite_au_travail": "Santé & Médecine",
+  "architecture": "Architecture & BTP",
+  "education": "Éducation & Pédagogie",
+  "langues": "Langues & Linguistique",
+  "agriculture": "Agriculture & Agro-business",
+  "agriculture_&_agribusiness": "Agriculture & Agro-business",
+  "tourisme": "Tourisme & Hôtellerie",
+  "energie_&_environnement": "Environnement & Développement durable",
+  "environnement": "Environnement & Développement durable",
+  "developpement_personnel": "Bien-être & Développement personnel",
+  "bien_etre": "Bien-être & Développement personnel",
+  "artisanat": "Artisanat & Métiers manuels",
+  "cuisine": "Cuisine & Gastronomie",
+  "mode": "Mode & Stylisme",
+  "elevage": "Élevage & Pêche",
+  "arts": "Arts & Créativité",
+  "musique": "Musique & Audio",
+  "loisirs": "Loisirs & Hobbies"
 };
 
 async function loadRules(sb:any){
