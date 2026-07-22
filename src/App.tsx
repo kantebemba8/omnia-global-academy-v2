@@ -79,6 +79,7 @@ import AdminDemoAccess from './pages/admin/AdminDemoAccess';
 import AdminCpdCredits from './pages/admin/AdminCpdCredits';
 import AdminCertificates from './pages/admin/AdminCertificates';
 import AdminCertificateSettings from './pages/admin/AdminCertificateSettings';
+import AdminCertificateTemplates from './pages/admin/AdminCertificateTemplates';
 import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
 import AdminMesFormations from './pages/admin/AdminMesFormations';
 import AdminStructures from './pages/admin/AdminStructures';
@@ -453,6 +454,7 @@ export default function App() {
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
+          <Route path="/admin/certificate-templates" element={<AdminCertificateTemplates />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />

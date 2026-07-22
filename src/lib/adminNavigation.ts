@@ -48,9 +48,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'Certificats',
     icon: Award,
     items: [
-      { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
-      { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
-      { path: '/admin/certificate-preview', label: 'Aperçu Certificats', icon: Eye },
+      { path: '/admin/certificates', label: 'Documents délivrés', icon: Award },
+      { path: '/admin/certificate-templates', label: 'Modèles', icon: FileText },
+      { path: '/admin/certificate-settings', label: 'Paramètres', icon: Settings },
+      { path: '/admin/certificate-preview', label: 'Aperçu & Tests', icon: Eye },
     ],
   },
   {

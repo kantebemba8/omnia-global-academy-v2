@@ -212,9 +212,10 @@ export default function AdminCertificatePreview() {
   return (
     <AdminLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>
-          Aperçu des certificats
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Aperçu & tests des certificats</h1>
+          <p className="text-sm mt-1 text-amber-700">Mode aperçu — toutes les données affichées ici sont fictives et aucun certificat réel n’est créé.</p>
+        </div>
 
         <div className="grid grid-cols-3 gap-6">
           {/* Contrôles */}
@@ -234,7 +235,7 @@ export default function AdminCertificatePreview() {
                       Template {t}
                     </span>
                     <span className="text-xs ml-2" style={{ color: '#6B7280' }}>
-                      {t === 'A' ? '— Professeur' : t === 'B' ? '— Établissement' : '— Plateforme'}
+                      {t === 'A' ? '— Professeur' : t === 'B' ? '— Structure' : '— Plateforme'}
                     </span>
                   </div>
                 </label>
@@ -246,7 +247,7 @@ export default function AdminCertificatePreview() {
                   style={{ accentColor: '#BF8813' }} />
                 <label htmlFor="cpd" className="text-sm cursor-pointer"
                   style={{ color: '#002050' }}>
-                  Badge CPD
+                  Badge / accréditation de test
                 </label>
               </div>
             </div>
@@ -298,7 +299,7 @@ export default function AdminCertificatePreview() {
                 <>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                      École
+                      Structure
                     </label>
                     <input type="text" value={schoolName}
                       onChange={e => setSchoolName(e.target.value)}

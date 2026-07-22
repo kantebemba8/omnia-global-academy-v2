@@ -217,7 +217,13 @@ export default function VerifyCertificate() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState(certificateId ?? '');
   const [activeTab, setActiveTab] = useState<'id' | 'qr'>('id');
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin?action=public_settings`)
+      .then(r => r.json()).then(d => setPublicSettings(d.settings || {})).catch(() => {});
+  }, []);
+
   const [result, setResult] = useState<VerifyResponse | null>(null);
+  const [publicSettings, setPublicSettings] = useState<Record<string,string>>({});
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [searched, setSearched] = useState(false);

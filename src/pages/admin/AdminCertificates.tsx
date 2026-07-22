@@ -1,208 +1,105 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
-import { Award, Search, Download, XCircle, Eye } from 'lucide-react';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { Download, Eye, RefreshCw, Search, XCircle } from 'lucide-react';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const API=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin`;
+const BLUE='#002050', GOLD='#BF8813';
 
-export default function AdminCertificates() {
-  const [certificates, setCertificates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
+export default function AdminCertificates(){
+  const [rows,setRows]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [search,setSearch]=useState('');
+  const [status,setStatus]=useState('all');
+  const [source,setSource]=useState('all');
+  const [revoke,setRevoke]=useState<any|null>(null);
+  const [reason,setReason]=useState('');
 
-  useEffect(() => { loadCertificates(); }, []);
+  async function load(){
+    setLoading(true);setError('');
+    try{
+      const r=await fetch(`${API}?action=list`,{headers:edgeAuthHeaders()});
+      const d=await r.json();if(!r.ok||!d.success)throw new Error(d.message||d.error||'Chargement impossible');
+      setRows(d.certificates||[]);
+    }catch(e){setError(e instanceof Error?e.message:'Erreur');}
+    finally{setLoading(false);}
+  }
+  useEffect(()=>{load()},[]);
 
-  async function loadCertificates() {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('omnia_session_token');
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/dashboard-admin`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setCertificates(data.certificates || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  async function confirmRevoke(){
+    if(!revoke||!reason.trim())return;
+    try{
+      const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'revoke',certificate_id:revoke.omnia_certificate_id,reason})});
+      const d=await r.json();if(!r.ok||!d.success)throw new Error(d.message||d.error||'Révocation impossible');
+      setRevoke(null);setReason('');await load();
+    }catch(e){setError(e instanceof Error?e.message:'Erreur');}
   }
 
-  async function revokeCertificate(certId: string) {
-    if (!confirm('Révoquer ce certificat ? Cette action est irréversible.')) return;
-    try {
-      const token = localStorage.getItem('omnia_session_token');
-      await fetch(`${SUPABASE_URL}/functions/v1/certificate-revoke`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ certificate_id: certId }),
-      });
-      loadCertificates();
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  const filtered=useMemo(()=>rows.filter(c=>{
+    const q=search.toLowerCase();
+    return (!q||`${c.student_full_name||''} ${c.course_title||''} ${c.omnia_certificate_id||''}`.toLowerCase().includes(q))
+      &&(status==='all'||(status==='active'?(c.status!=='revoked'&&c.validity_status!=='revoked'):(c.status==='revoked'||c.validity_status==='revoked')))
+      &&(source==='all'||c.source_type===source);
+  }),[rows,search,status,source]);
 
-  const filtered = certificates.filter(c => {
-    const matchSearch = !search ||
-      c.student_full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      c.course_title?.toLowerCase().includes(search.toLowerCase()) ||
-      c.omnia_certificate_id?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || c.status === filterStatus;
-    const matchType = filterType === 'all' || c.template_type === filterType;
-    return matchSearch && matchStatus && matchType;
-  });
+  const active=rows.filter(c=>c.status!=='revoked'&&c.validity_status!=='revoked').length;
+  const revoked=rows.length-active;
+  const cpd=rows.filter(c=>c.cpd_accredited||c.document_type==='cpd_certificate').length;
 
-  return (
-    <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>
-              Certificats délivrés
-            </h1>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
-              {certificates.length} certificat{certificates.length !== 1 ? 's' : ''} au total
-            </p>
-          </div>
-        </div>
+  return <AdminLayout><div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+    <header className="border-b border-gray-200 pb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Certificats & attestations</p>
+        <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Documents délivrés</h1>
+        <p className="text-sm text-gray-500 mt-1">Formations OGA, professeurs, Structures, Omnia Live et Open CPD.</p></div>
+      <button onClick={load} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>
+    </header>
 
-        <div className="flex gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-48">
-            <Search size={16} className="absolute left-3 top-3" style={{ color: '#9CA3AF' }} />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher par étudiant, formation, ID..."
-              className="w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm"
-              style={{ borderColor: '#E4E7EC' }} />
-          </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            className="px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }}>
-            <option value="all">Tous les statuts</option>
-            <option value="active">Actif</option>
-            <option value="revoked">Révoqué</option>
-          </select>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }}>
-            <option value="all">Tous les types</option>
-            <option value="A">Template A — Professeur</option>
-            <option value="B">Template B — Établissement</option>
-            <option value="C">Template C — Plateforme</option>
-          </select>
-        </div>
+    <div className="flex flex-wrap gap-x-7 gap-y-2 border-y border-gray-200 py-3 text-sm">
+      <span><strong style={{color:BLUE}}>{rows.length}</strong> délivrés</span>
+      <span><strong style={{color:'#1E7A52'}}>{active}</strong> actifs</span>
+      <span><strong style={{color:'#B42318'}}>{revoked}</strong> révoqués</span>
+      <span><strong style={{color:GOLD}}>{cpd}</strong> Open CPD / CPD</span>
+    </div>
 
-        <div className="grid grid-cols-4 gap-4">
-          {[
-            { label: 'Total', value: certificates.length, color: '#002050' },
-            { label: 'Actifs', value: certificates.filter(c => c.status === 'active').length, color: '#1E7A52' },
-            { label: 'CPD certifiés', value: certificates.filter(c => c.cpd_accredited).length, color: '#BF8813' },
-            { label: 'Révoqués', value: certificates.filter(c => c.status === 'revoked').length, color: '#DC2626' },
-          ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 border" style={{ borderColor: '#E4E7EC' }}>
-              <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
-              <div className="text-sm mt-1" style={{ color: '#6B7280' }}>{stat.label}</div>
-            </div>
-          ))}
-        </div>
+    <div className="flex flex-col md:flex-row gap-3">
+      <div className="relative flex-1"><Search size={16} className="absolute left-3 top-2.5 text-gray-400"/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Nom, formation ou identifiant…" className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm"/></div>
+      <select value={status} onChange={e=>setStatus(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="all">Tous les statuts</option><option value="active">Actifs</option><option value="revoked">Révoqués</option></select>
+      <select value={source} onChange={e=>setSource(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="all">Toutes les origines</option><option value="course">Formation</option><option value="omnia_live">Omnia Live</option></select>
+    </div>
 
-        <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: '#E4E7EC' }}>
-          {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="w-6 h-6 border-2 rounded-full animate-spin"
-                style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-12">
-              <Award size={32} style={{ color: '#E4E7EC' }} className="mx-auto mb-3" />
-              <p style={{ color: '#6B7280' }}>Aucun certificat trouvé</p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
-                  {['ID Certificat', 'Étudiant', 'Formation', 'Type', 'CPD', 'Date', 'Statut', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
-                      style={{ color: '#6B7280' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((cert, i) => (
-                  <tr key={cert.id || i}
-                    style={{ borderBottom: i < filtered.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs" style={{ color: '#002050' }}>
-                        {cert.omnia_certificate_id}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium" style={{ color: '#002050' }}>
-                        {cert.student_full_name}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm" style={{ color: '#374151' }}>
-                        {cert.course_title}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{
-                          backgroundColor: cert.template_type === 'A' ? 'rgba(0,32,80,0.08)'
-                            : cert.template_type === 'B' ? 'rgba(191,136,19,0.08)'
-                            : 'rgba(30,122,82,0.08)',
-                          color: cert.template_type === 'A' ? '#002050'
-                            : cert.template_type === 'B' ? '#BF8813' : '#1E7A52'
-                        }}>
-                        Template {cert.template_type || 'A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {cert.cpd_accredited
-                        ? <span className="text-xs font-semibold" style={{ color: '#BF8813' }}>✓ CPD</span>
-                        : <span className="text-xs" style={{ color: '#9CA3AF' }}>—</span>
-                      }
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs" style={{ color: '#6B7280' }}>
-                        {cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('fr-FR') : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        cert.status === 'revoked' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
-                      }`}>
-                        {cert.status === 'revoked' ? 'Révoqué' : 'Actif'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <a href={`/verify/${cert.omnia_certificate_id}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="p-1.5 rounded hover:bg-gray-100" title="Vérifier">
-                          <Eye size={14} style={{ color: '#6B7280' }} />
-                        </a>
-                        {cert.pdf_url ? (
-                          <a href={cert.pdf_url} target="_blank" rel="noopener noreferrer"
-                            className="p-1.5 rounded hover:bg-gray-100" title="Télécharger PDF">
-                            <Download size={14} style={{ color: '#6B7280' }} />
-                          </a>
-                        ) : null}
-                        {cert.status !== 'revoked' && (
-                          <button onClick={() => revokeCertificate(cert.omnia_certificate_id)}
-                            className="p-1.5 rounded hover:bg-red-50" title="Révoquer">
-                            <XCircle size={14} style={{ color: '#DC2626' }} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </AdminLayout>
-  );
+    {error&&<div className="border-l-4 border-red-500 pl-4 py-2 text-sm text-red-700">{error}</div>}
+
+    <div className="overflow-x-auto border-t border-gray-200">
+      <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+        <th className="py-3">Identifiant</th><th>Bénéficiaire</th><th>Document</th><th>Origine</th><th>Langue</th><th>Date</th><th>Statut</th><th></th>
+      </tr></thead><tbody>
+      {loading?<tr><td colSpan={8} className="py-14 text-center text-gray-400">Chargement…</td></tr>:
+      filtered.length===0?<tr><td colSpan={8} className="py-14 text-center text-gray-400">Aucun document trouvé.</td></tr>:
+      filtered.map(c=><tr key={c.id} className="border-b border-gray-100">
+        <td className="py-3 font-mono text-xs" style={{color:BLUE}}>{c.omnia_certificate_id}</td>
+        <td className="font-semibold text-gray-700">{c.student_full_name||'—'}</td>
+        <td><p className="text-gray-700">{c.course_title||'Document Omnia'}</p><p className="text-xs text-gray-400">{c.document_type||'completion_certificate'}</p></td>
+        <td className="text-gray-600">{c.source_type==='omnia_live'?'Omnia Live':'Formation'}</td>
+        <td className="uppercase text-xs">{c.language_code||'fr'}</td>
+        <td className="text-gray-500">{c.issued_at?new Date(c.issued_at).toLocaleDateString('fr-FR'):'—'}</td>
+        <td className={c.status==='revoked'||c.validity_status==='revoked'?'text-red-700':'text-emerald-700'}>{c.status==='revoked'||c.validity_status==='revoked'?'Révoqué':'Actif'}</td>
+        <td><div className="flex gap-2 justify-end">
+          <a href={`/verify/${c.omnia_certificate_id}`} target="_blank" rel="noreferrer" title="Vérifier"><Eye size={15}/></a>
+          {c.pdf_url&&<a href={c.pdf_url} target="_blank" rel="noreferrer" title="Télécharger"><Download size={15}/></a>}
+          {c.status!=='revoked'&&c.validity_status!=='revoked'&&<button onClick={()=>setRevoke(c)} title="Révoquer" className="text-red-600"><XCircle size={15}/></button>}
+        </div></td>
+      </tr>)}
+      </tbody></table>
+    </div>
+
+    {revoke&&<div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4"><div className="bg-white w-full max-w-md rounded-xl p-5 shadow-xl">
+      <h3 className="text-lg font-black" style={{color:BLUE}}>Révoquer ce document ?</h3>
+      <p className="text-sm text-gray-500 mt-2">{revoke.omnia_certificate_id} · {revoke.student_full_name}</p>
+      <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">Motif obligatoire</label>
+      <textarea value={reason} onChange={e=>setReason(e.target.value)} rows={4} className="w-full border border-gray-200 rounded-lg p-3 text-sm" placeholder="Erreur administrative, fraude, annulation…"/>
+      <div className="flex justify-end gap-3 mt-4"><button onClick={()=>{setRevoke(null);setReason('')}} className="px-4 py-2 border rounded-lg text-sm">Annuler</button><button disabled={!reason.trim()} onClick={confirmRevoke} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm disabled:opacity-50">Confirmer la révocation</button></div>
+    </div></div>}
+  </div></AdminLayout>;
 }

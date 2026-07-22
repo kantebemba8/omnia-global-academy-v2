@@ -33,7 +33,7 @@ export function ProfesseurProfil() {
   const [tab, setTab] = useState<'info' | 'securite' | 'profil_pro'>('info');
 
   const [form, setForm] = useState({ full_name: '', email: '', phone_number: '', country_code: 'ML' });
-  const [profForm, setProfForm] = useState({ bio: '', expertise_domain: '' });
+  const [profForm, setProfForm] = useState({ bio: '', expertise_domain: '', signature_url: '' });
   const [notifs, setNotifs] = useState({ allow_email: true, allow_sms: true, allow_push: false, subscribe_newsletter: false });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -205,6 +205,30 @@ export function ProfesseurProfil() {
                       {msg.text}
                     </div>
                   )}
+                  <div className="border-t border-gray-100 pt-4">
+                    <label className="block text-sm font-medium text-gray-700">Signature professionnelle pour certificats</label>
+                    <p className="text-xs text-gray-400 mt-1">Joignez une signature PNG transparente une seule fois. Elle pourra être utilisée uniquement sur les certificats des formations où votre signature est autorisée.</p>
+                    {profForm.signature_url && <img src={profForm.signature_url} alt="Signature" className="h-16 object-contain mt-3 border rounded-lg p-2" />}
+                    <label className="mt-3 inline-block px-3 py-2 border border-gray-200 rounded-lg text-sm cursor-pointer">
+                      Joindre / remplacer la signature
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={async (e) => {
+                        const file=e.target.files?.[0]; if(!file)return;
+                        const reader=new FileReader();
+                        reader.onload=async()=>{
+                          const token=localStorage.getItem('omnia_session_token')||'';
+                          const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin`,{
+                            method:'POST',
+                            headers:{'Content-Type':'application/json','x-omnia-session-token':token},
+                            body:JSON.stringify({action:'upload_my_signature',filename:file.name,mime:file.type,data_url:String(reader.result)})
+                          });
+                          const data=await res.json();
+                          if(data.url)setProfForm((p)=>({...p,signature_url:data.url}));
+                        };
+                        reader.readAsDataURL(file);
+                      }}/>
+                    </label>
+                  </div>
+
                   <button onClick={saveProfile} disabled={saving}
                     className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
                     style={{ backgroundColor: '#002050' }}>

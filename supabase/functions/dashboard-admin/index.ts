@@ -96,6 +96,7 @@ Deno.serve(async (req: Request) => {
     // Aucun mot de passe, téléphone, adresse, KYC ou autre donnée sensible n'est exposé.
     const requestedRole = url.searchParams.get("role");
     if (requestedRole) {
+      if (requestedRole === "super_admin") return json({ error: "FORBIDDEN" }, 403);
       const roleGroups: Record<string, string[]> = {
         apprenant: ["apprenant"],
         professeur: ["professeur"],

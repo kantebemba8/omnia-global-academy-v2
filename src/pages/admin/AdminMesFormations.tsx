@@ -148,19 +148,12 @@ export default function AdminMesFormations() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Total formations', value: stats.total, color: '#002050', bg: '#EEF2FF' },
-            { label: 'Publiées', value: stats.published, color: '#065F46', bg: '#D1FAE5' },
-            { label: 'Brouillons', value: stats.draft, color: '#6B7280', bg: '#F3F4F6' },
-            { label: 'En attente', value: stats.pending, color: '#92400E', bg: '#FEF3C7' },
-          ].map(stat => (
-            <div key={stat.label} className="rounded-2xl border p-4" style={{ borderColor: '#E4E7EC', background: stat.bg }}>
-              <p className="text-2xl font-black" style={{ color: stat.color }}>{stat.value}</p>
-              <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{stat.label}</p>
-            </div>
-          ))}
+        {/* Résumé compact — données réelles de get_my_courses */}
+        <div className="flex flex-wrap gap-x-7 gap-y-2 border-y border-gray-200 py-3 text-sm">
+          <span><strong style={{ color: '#002050' }}>{stats.total}</strong> Total</span>
+          <span><strong style={{ color: '#1E7A52' }}>{stats.published}</strong> Publiées</span>
+          <span><strong style={{ color: '#6B7280' }}>{stats.draft}</strong> Brouillons</span>
+          <span><strong style={{ color: '#BF8813' }}>{stats.pending}</strong> En attente</span>
         </div>
 
         {/* Filtres + recherche */}
