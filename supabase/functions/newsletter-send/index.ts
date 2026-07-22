@@ -44,6 +44,14 @@ Deno.serve(async (req: Request) => {
     if (channel === "sms" && !sms_text) return json({ error: "MISSING_SMS_TEXT" }, 400);
 
     if (!brevoKey) return json({ error: "BREVO_NOT_CONFIGURED" }, 500);
+    if (schedule_at && Number.isNaN(Date.parse(schedule_at))) return json({ error: "INVALID_SCHEDULE_DATE" }, 400);
+    if (schedule_at && Date.parse(schedule_at) <= Date.now()) return json({ error: "SCHEDULE_MUST_BE_FUTURE" }, 400);
+
+    let recipientsCount = 0;
+    try {
+      const listRes = await fetch("https://api.brevo.com/v3/contacts/lists/7", { headers: { "api-key": brevoKey } });
+      if (listRes.ok) { const listData = await listRes.json(); recipientsCount = Number(listData.totalSubscribers || listData.uniqueSubscribers || 0); }
+    } catch {}
 
     let campaignId: number | null = null;
 
@@ -72,10 +80,8 @@ Deno.serve(async (req: Request) => {
 
       // Send now if no schedule
       if (!schedule_at && campaignId) {
-        await fetch(`https://api.brevo.com/v3/emailCampaigns/${campaignId}/sendNow`, {
-          method: "POST",
-          headers: { "api-key": brevoKey },
-        });
+        const sendRes = await fetch(`https://api.brevo.com/v3/emailCampaigns/${campaignId}/sendNow`, { method: "POST", headers: { "api-key": brevoKey } });
+        if (!sendRes.ok) return json({ error: "BREVO_SEND_FAILED", detail: await sendRes.text(), campaign_id: campaignId }, 502);
       }
     } else {
       // Create SMS campaign via Brevo
@@ -99,10 +105,8 @@ Deno.serve(async (req: Request) => {
       campaignId = smsData.id;
 
       if (!schedule_at && campaignId) {
-        await fetch(`https://api.brevo.com/v3/smsCampaigns/${campaignId}/sendNow`, {
-          method: "POST",
-          headers: { "api-key": brevoKey },
-        });
+        const sendRes = await fetch(`https://api.brevo.com/v3/smsCampaigns/${campaignId}/sendNow`, { method: "POST", headers: { "api-key": brevoKey } });
+        if (!sendRes.ok) return json({ error: "BREVO_SMS_SEND_FAILED", detail: await sendRes.text(), campaign_id: campaignId }, 502);
       }
     }
 
@@ -114,6 +118,7 @@ Deno.serve(async (req: Request) => {
       status: schedule_at ? "scheduled" : "sent",
       sent_at: schedule_at ? null : new Date().toISOString(),
       sent_by: sess.user_id,
+      recipients_count: recipientsCount,
     });
 
     return json({ success: true, campaign_id: campaignId, scheduled: !!schedule_at });

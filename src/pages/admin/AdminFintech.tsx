@@ -24,8 +24,6 @@ export default function AdminFintech() {
           { key: 'payout_delay_label', value: settings.payout_delay_label },
           { key: 'referral_reward_referrer_xof', value: settings.referral_reward_referrer_xof },
           { key: 'referral_reward_referred_xof', value: settings.referral_reward_referred_xof },
-          { key: 'career_tokens_per_certificate', value: settings.career_tokens_per_certificate },
-          { key: 'career_pdf_export_cost_tokens', value: settings.career_pdf_export_cost_tokens },
         ],
       }),
     });
@@ -169,25 +167,7 @@ export default function AdminFintech() {
             </div>
           </div>
 
-          <div className="border-t border-gray-100 pt-5">
-            <h4 className="text-sm font-semibold text-gray-700 mb-1">Jetons Omnia Career</h4>
-            <p className="text-xs text-gray-500 mb-3">
-              Règle validée : 1 jeton accordé par certificat obtenu et 1 jeton consommé pour l’export PDF final.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Jetons accordés par certificat obtenu</label>
-                <input type="number" min="0" value={settings.career_tokens_per_certificate}
-                  onChange={(e) => set('career_tokens_per_certificate', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Coût de l’export PDF final (jetons)</label>
-                <input type="number" min="0" value={settings.career_pdf_export_cost_tokens}
-                  onChange={(e) => set('career_pdf_export_cost_tokens', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-              </div>
-            </div>
+          
           </div>
         </div>
 

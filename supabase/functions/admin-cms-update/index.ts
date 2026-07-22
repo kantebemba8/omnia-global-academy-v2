@@ -43,7 +43,8 @@ Deno.serve(async (req: Request) => {
       const { data: settings } = await sb.from("site_settings").select("key,value");
       const { data: pricingTiers } = await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min");
       const { data: partners } = await sb.from("public_partners").select("*").order("display_order").order("name");
-      const { data: multipliers } = await sb.from("category_multipliers").select("category_name,multiplier").order("category_name");
+      const { data: multipliers, error: multiplierError } = await sb.from("category_multipliers").select("category_name,multiplier").order("category_name");
+      if (multiplierError) return json({ error: "CATEGORY_MULTIPLIERS_READ_FAILED", detail: multiplierError.message }, 500);
       return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [], partners: partners ?? [], category_multipliers: multipliers ?? [] });
     }
 
@@ -206,11 +207,12 @@ Deno.serve(async (req: Request) => {
         const { data: old } = await sb.from("category_multipliers")
           .select("multiplier").eq("category_name", categoryName).maybeSingle();
 
-        await sb.from("category_multipliers").upsert({
+        const { error: upsertError } = await sb.from("category_multipliers").upsert({
           category_name: categoryName,
           multiplier: mult,
           updated_at: new Date().toISOString(),
         }, { onConflict: "category_name" });
+        if (upsertError) return json({ error: "CATEGORY_MULTIPLIER_SAVE_FAILED", category_name: categoryName, detail: upsertError.message }, 500);
 
         if (Number(old?.multiplier) !== mult) {
           try {

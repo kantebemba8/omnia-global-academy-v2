@@ -152,7 +152,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const SUB_MENUS = [
   { key: 'dashboard', label: 'Tableau de bord', icon: BarChart2 },
   { key: 'rules', label: 'Règles & Prix', icon: Settings },
-  { key: 'packs', label: 'Packs jetons', icon: Coins },
+  { key: 'packs', label: 'Jetons & Packs', icon: Coins },
   { key: 'cv_templates', label: 'Modèles CV', icon: FileText },
   { key: 'lm_templates', label: 'Modèles LM', icon: Mail },
   { key: 'ai', label: 'IA', icon: Sparkles },
@@ -178,6 +178,15 @@ async function postAdmin<T>(body: unknown): Promise<T> {
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
+  if (!res.ok) throw new Error(data?.message || data?.error || `Erreur ${res.status}`);
+  return data as T;
+}
+
+async function postTokenManager<T>(body: unknown): Promise<T> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/career-token-manage`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token()}`, apikey: ANON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || data?.error || `Erreur ${res.status}`);
   return data as T;
 }
@@ -343,7 +352,7 @@ export default function AdminCareerStudio() {
   async function saveTokenCosts() {
     setSaving(true);
     try {
-      const data = await postAdmin<{ success: boolean; updated: number }>({ action: 'save_token_config', configs: tokenConfig });
+      const data = await postTokenManager<{ success: boolean; updated: number }>({ action: 'update_config', configs: tokenConfig });
       showToast(`✅ ${data.updated} coût(s) sauvegardé(s)`);
       await loadAll();
     } catch (err) {
@@ -356,7 +365,7 @@ export default function AdminCareerStudio() {
   async function saveTokenPack(pack: TokenPack) {
     setSaving(true);
     try {
-      await postAdmin({ action: 'save_token_pack', pack });
+      await postTokenManager({ action: 'update_pack', pack_id: pack.id, pack_key: pack.pack_key, name_fr: pack.name_fr, tokens: pack.tokens, price_xof: pack.price_xof, is_active: pack.is_active, is_popular: pack.is_popular, bonus_tokens: pack.bonus_tokens, display_order: pack.display_order });
       showToast('✅ Pack sauvegardé');
       await loadAll();
     } catch (err) {
@@ -699,7 +708,7 @@ export default function AdminCareerStudio() {
             <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Packs jetons</h2>
+                  <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Gestion centralisée des jetons & packs</h2>
                   <p className="mt-1 text-sm" style={{ color: MUTED }}>Modifiez les prix, les jetons, les bonus et l’état des packs vendus aux apprenants.</p>
                 </div>
                 <button
