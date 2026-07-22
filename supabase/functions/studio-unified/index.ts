@@ -58,9 +58,24 @@ Deno.serve(async(req)=>{
   // Gouvernance Studio 4D fusionnée dans studio-unified afin d'économiser un emplacement Edge Function.
   if(action==="health"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
-   const {data,error}=await sb.from("studio_course_health").select("*").order("updated_at",{ascending:true});if(error)throw error;
-   const rows=(data||[]).map((x:any)=>{const issues:string[]=[];if(x.never_purchased)issues.push("Jamais achetée");if(x.high_abandon)issues.push("Abandon élevé");if(x.certification_expiring)issues.push("Certification à renouveler");if(Number(x.pending_assisted||0)>0)issues.push("Saisie assistée en attente");if(x.stale_content)issues.push("Contenu ancien");const score=Math.max(0,100-issues.length*20);return {...x,issues,score}});
-   return json({success:true,rows,summary:{total:rows.length,critical:rows.filter((x:any)=>x.score<60).length,healthy:rows.filter((x:any)=>x.score>=80).length,pending_assisted:rows.reduce((n:number,x:any)=>n+Number(x.pending_assisted||0),0)}});
+   const {data,error}=await sb.from("studio_course_health").select("*").order("updated_at",{ascending:false});if(error)throw error;
+   const rows=(data||[]).map((x:any)=>{
+     const issues:string[]=[];
+     if(x.never_purchased)issues.push("Jamais achetée");
+     if(x.high_abandon)issues.push("Abandon élevé");
+     if(x.certification_expiring)issues.push("Certification à renouveler");
+     if(Number(x.pending_assisted||0)>0)issues.push("Saisie assistée en attente");
+     if(x.stale_content)issues.push("Contenu ancien");
+     const health_evaluable=Boolean(x.is_published)||Number(x.enrollments||0)>0||issues.length>0;
+     const score=health_evaluable?Math.max(0,100-issues.length*20):null;
+     return {...x,issues,score,health_evaluable};
+   });
+   return json({success:true,rows,summary:{
+     total:rows.length,
+     critical:rows.filter((x:any)=>x.health_evaluable&&Number(x.score)<60).length,
+     healthy:rows.filter((x:any)=>x.health_evaluable&&Number(x.score)>=80).length,
+     pending_assisted:rows.reduce((n:number,x:any)=>n+Number(x.pending_assisted||0),0)
+   }});
   }
   if(action==="audit"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
@@ -81,6 +96,14 @@ Deno.serve(async(req)=>{
    if(manager?.organization_id){const {count}=await sb.from("partner_codes").select("id",{count:"exact",head:true}).eq("organization_id",manager.organization_id).eq("status","active");activeCodes=count||0;}
    return json({success:true,structure:organization?{id:organization.id,name:organization.org_name,display_name:organization.org_name,structure_type:organization.org_type||"autre",status:organization.status||"pending_validation",status_label:organization.status||"pending_validation",logo_url:organization.logo_url,admin_comment:organization.admin_comment,modification_note:organization.modification_note}:null,stats:{members:0,active_codes:activeCodes,active_benefits:0,courses:courseCount||0},pending_members:[]});
   }
+  if(action==="admin_catalogue"){
+   if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("courses")
+    .select("id,title,studio_status,category,level,is_published,creator_context,updated_at,submitted_at,assisted_status,certification_requested,current_version")
+    .order("updated_at",{ascending:false});
+   if(error)throw error;
+   return json({success:true,courses:data||[]});
+  }
   if(action==="get_my_courses"){
    const context=String(b.creator_context||"").trim();
    let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,creator_context,structure_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at").order("updated_at",{ascending:false});
@@ -90,12 +113,21 @@ Deno.serve(async(req)=>{
   }
   if(action==="delete_course"){
    const courseId=String(b.course_id||""); if(!courseId)return json({success:false,error:"COURSE_ID_REQUIRED"},400);
-   const {data:course,error:readError}=await sb.from("courses").select("id,creator_id,studio_status,creator_context").eq("id",courseId).maybeSingle();
+   const {data:course,error:readError}=await sb.from("courses").select("id,title,creator_id,studio_status,creator_context").eq("id",courseId).maybeSingle();
    if(readError)throw readError;if(!course)return json({success:false,error:"NOT_FOUND"},404);
    if(!isAdmin&&course.creator_id!==userId)return json({success:false,error:"FORBIDDEN"},403);
-   if(!["draft","brouillon"].includes(String(course.studio_status||"")))return json({success:false,error:"ONLY_DRAFT_CAN_BE_DELETED",message:"Seuls les brouillons peuvent être supprimés."},409);
+   if(!isAdmin&&!["draft","brouillon"].includes(String(course.studio_status||"")))return json({success:false,error:"ONLY_DRAFT_CAN_BE_DELETED",message:"Seuls les brouillons peuvent être supprimés par leur créateur."},409);
    if(b.creator_context&&course.creator_context!==b.creator_context)return json({success:false,error:"CONTEXT_MISMATCH"},403);
-   await log(sb,courseId,userId,"course_deleted",{creator_context:course.creator_context});
+   if(isAdmin){
+     const [{count:enrollments},{count:certificates},{count:orders}]=await Promise.all([
+       sb.from("user_enrollments").select("course_id",{count:"exact",head:true}).eq("course_id",courseId),
+       sb.from("certificates").select("course_id",{count:"exact",head:true}).eq("course_id",courseId),
+       sb.from("orders").select("course_id",{count:"exact",head:true}).eq("course_id",courseId)
+     ]);
+     if(Number(enrollments||0)>0||Number(certificates||0)>0||Number(orders||0)>0)
+       return json({success:false,error:"COURSE_HAS_BUSINESS_HISTORY",message:"Cette formation possède des inscriptions, certificats ou commandes et ne peut pas être supprimée définitivement."},409);
+   }
+   await log(sb,courseId,userId,"course_deleted",{creator_context:course.creator_context,title:course.title});
    const {error}=await sb.from("courses").delete().eq("id",courseId);if(error)throw error;
    return json({success:true});
   }

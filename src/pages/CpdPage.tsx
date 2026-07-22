@@ -5,10 +5,10 @@ import { PageFooter } from '../components/PageFooter';
 import { Globe, Linkedin, TrendingUp, Award, DollarSign, Star, Users, ChevronDown, BadgeCheck } from 'lucide-react';
 
 const LEARNER_ARGS = [
-  { icon: Globe, title: 'Reconnue dans +40 pays', desc: 'Votre certification CPD est valide dans tous les pays membres de l\'association CPD.' },
-  { icon: Linkedin, title: 'Badge LinkedIn en 1 clic', desc: 'Ajoutez automatiquement votre badge à votre profil LinkedIn dès l\'obtention de votre certificat.' },
-  { icon: TrendingUp, title: 'Valorisée par les recruteurs', desc: 'Les certifications CPD sont reconnues et recherchées par les employeurs dans le monde entier.' },
-  { icon: Award, title: 'Accréditation internationale', desc: 'Chaque heure de formation CPD compte officiellement dans votre développement professionnel continu.' },
+  { icon: Globe, title: 'Certificat vérifiable', desc: 'Les certificats Open CPD sont conçus pour être vérifiables et partageables selon les fonctionnalités proposées par Open CPD.' },
+  { icon: Linkedin, title: 'Partage professionnel', desc: 'Les certificats et badges Open CPD peuvent être valorisés sur LinkedIn, un CV ou une signature e-mail.' },
+  { icon: TrendingUp, title: 'Développement professionnel', desc: 'Le CPD permet de documenter les activités de formation et de développement professionnel continu.' },
+  { icon: Award, title: 'Open CPD', desc: 'Lorsque la formation est éligible, le certificat ou badge Open CPD suit le workflow configuré par Omnia Global Academy.' },
 ];
 
 const TRAINER_ARGS = [
@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: "Combien de temps prend la validation ?",
-    a: "Le certificat est généré automatiquement dès la validation finale de la formation. Le badge Open CPD est émis dans les minutes qui suivent, sous réserve de disponibilité des crédits CPD.",
+    a: "Le certificat Omnia est généré selon les règles de validation de la formation. Lorsqu’un certificat Open CPD est prévu, son émission suit le workflow Open CPD configuré par la plateforme ; il ne faut pas supposer une émission automatique tant que l’intégration officielle n’est pas activée.",
   },
   {
     q: "Mon certificat CPD est-il valide à l'étranger ?",
@@ -53,7 +53,7 @@ export default function CpdPage() {
           <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-4">
             La certification CPD qui<br />ouvre des portes partout
           </h1>
-          <p className="text-xl font-semibold mb-8" style={{ color: '#BF8813' }}>Reconnue dans plus de 40 pays</p>
+          <p className="text-xl font-semibold mb-8" style={{ color: '#BF8813' }}>Certificats et badges vérifiables avec Open CPD</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/catalogue?cpd_only=true"
               className="px-8 py-4 rounded-xl font-semibold text-base transition-opacity hover:opacity-90"

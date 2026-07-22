@@ -250,25 +250,52 @@ Deno.serve(async (req: Request) => {
       }))
       .sort((a, b) => b.amount_xof - a.amount_xof);
 
-    const roleLabels: Record<string, string> = {
-      apprenant: "Apprenants",
-      professeur: "Professeurs",
-      super_admin: "Super-admins",
-      moderator: "Modérateurs",
-      moderateur: "Modérateurs",
-      organizer: "Organisateurs",
-      responsable_structure: "Responsables Structure",
-      gestionnaire_partenaire: "Gestionnaires Structure",
+    // Dynamic role dashboard:
+    // - core business roles are always visible, even at 0;
+    // - aliases are grouped under the current product terminology;
+    // - any future/new role appears automatically without code changes.
+    const roleGroups: Record<string, string[]> = {
+      "Apprenants": ["apprenant"],
+      "Professeurs": ["professeur"],
+      "Structures": ["responsable_structure", "gestionnaire_partenaire", "etablissement_directeur", "etablissement_enseignant", "structure"],
+      "Organisateurs": ["organizer", "organisateur"],
+      "Modérateurs": ["moderateur", "moderator"],
+      "Super-admins": ["super_admin"],
     };
-    const roleMap: Record<string, Set<string>> = {};
-    for (const row of userRoles ?? []) {
-      const label = roleLabels[row.role] || row.role;
-      roleMap[label] ??= new Set();
-      roleMap[label].add(row.user_id);
+    const groupedKeys = new Set(Object.values(roleGroups).flat());
+    const allUserIds = [...new Set((userRoles ?? []).map((r:any)=>r.user_id).filter(Boolean))];
+    const userRows = allUserIds.length
+      ? await rows(sb, "users", "id,full_name,email", q => q.in("id", allUserIds))
+      : [];
+    const usersById = new Map((userRows ?? []).map((u:any)=>[u.id,u]));
+
+    const usersByRole:any[] = [];
+    for (const [label, keys] of Object.entries(roleGroups)) {
+      const ids = [...new Set((userRoles ?? []).filter((r:any)=>keys.includes(r.role)).map((r:any)=>r.user_id).filter(Boolean))];
+      usersByRole.push({
+        role: label,
+        role_keys: keys,
+        count: ids.length,
+        members: ids.map((id:string)=>{
+          const u:any = usersById.get(id);
+          return { id, name: u?.full_name ?? "", email: u?.email ?? "" };
+        }),
+      });
     }
-    const usersByRole = Object.entries(roleMap)
-      .map(([role, ids]) => ({ role, count: ids.size }))
-      .sort((a, b) => b.count - a.count);
+
+    const dynamicRoles = [...new Set((userRoles ?? []).map((r:any)=>r.role).filter((role:string)=>role && !groupedKeys.has(role)))];
+    for (const roleKey of dynamicRoles) {
+      const ids = [...new Set((userRoles ?? []).filter((r:any)=>r.role===roleKey).map((r:any)=>r.user_id).filter(Boolean))];
+      usersByRole.push({
+        role: roleKey.split("_").map((p:string)=>p.charAt(0).toUpperCase()+p.slice(1)).join(" "),
+        role_keys: [roleKey],
+        count: ids.length,
+        members: ids.map((id:string)=>{
+          const u:any = usersById.get(id);
+          return { id, name: u?.full_name ?? "", email: u?.email ?? "" };
+        }),
+      });
+    }
 
     const settingsMap: Record<string, any> = {};
     for (const row of siteSettings ?? []) settingsMap[row.key] = row.value;

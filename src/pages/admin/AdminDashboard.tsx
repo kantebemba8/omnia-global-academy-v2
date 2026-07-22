@@ -63,7 +63,7 @@ interface DashboardData {
     en_attente: NullableNumber;
     actives: NullableNumber;
   };
-  users_by_role: { role: string; count: number }[];
+  users_by_role: { role: string; count: number; role_keys?: string[]; members?: { id: string; name: string; email: string }[] }[];
   platform: {
     maintenance_global: boolean;
     maintenance_modules: string[];
@@ -107,6 +107,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30d');
   const [error, setError] = useState('');
+  const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const navigate = useNavigate();
 
   async function load(p: string) {

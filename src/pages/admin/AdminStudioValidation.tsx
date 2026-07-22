@@ -156,7 +156,8 @@ export default function AdminStudioValidation() {
 
   return (
     <AdminLayout>
-      <div className="flex h-screen" style={{ background: '#F8F9FA' }}>
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="flex min-h-[720px] border-y border-gray-200 bg-white">
 
         {/* Toast */}
         {toast && (
@@ -167,9 +168,9 @@ export default function AdminStudioValidation() {
         )}
 
         {/* ── LISTE FORMATIONS ──────────────────────────── */}
-        <div className="w-80 bg-white border-r flex flex-col" style={{ borderColor: '#E4E7EC' }}>
+        <div className="w-80 bg-white border-r flex flex-col shrink-0" style={{ borderColor: '#E4E7EC' }}>
           <div className="p-4 border-b" style={{ borderColor: '#E4E7EC' }}>
-            <h2 className="font-black text-lg" style={{ color: '#002050' }}>Validation formations</h2>
+            <h2 className="font-black text-xl" style={{ color: '#002050' }}>Validation formations</h2>
             <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Studio de Conception de Formation</p>
           </div>
 
@@ -554,6 +555,7 @@ export default function AdminStudioValidation() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </AdminLayout>
   );

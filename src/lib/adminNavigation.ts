@@ -40,7 +40,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/studio-validation', label: 'Validation formations', icon: Eye },
       { path: '/admin/course-health', label: 'Santé des formations', icon: Activity },
-      { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
+      { path: '/admin/cpd-credits', label: 'Open CPD', icon: Award },
     ],
   },
   {
