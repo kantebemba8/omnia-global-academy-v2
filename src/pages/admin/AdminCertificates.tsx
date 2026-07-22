@@ -30,7 +30,7 @@ export default function AdminCertificates(){
   async function confirmRevoke(){
     if(!revoke||!reason.trim())return;
     try{
-      const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'revoke',certificate_id:revoke.omnia_certificate_id,reason})});
+      const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'revoke',registry_source:revoke.registry_source,source_record_id:revoke.source_record_id,reason})});
       const d=await r.json();if(!r.ok||!d.success)throw new Error(d.message||d.error||'Révocation impossible');
       setRevoke(null);setReason('');await load();
     }catch(e){setError(e instanceof Error?e.message:'Erreur');}
@@ -38,13 +38,13 @@ export default function AdminCertificates(){
 
   const filtered=useMemo(()=>rows.filter(c=>{
     const q=search.toLowerCase();
-    return (!q||`${c.student_full_name||''} ${c.course_title||''} ${c.omnia_certificate_id||''}`.toLowerCase().includes(q))
+    return (!q||`${c.beneficiary_name||''} ${c.subject_title||''} ${c.document_number||''}`.toLowerCase().includes(q))
       &&(status==='all'||(status==='active'?(c.status!=='revoked'&&c.validity_status!=='revoked'):(c.status==='revoked'||c.validity_status==='revoked')))
       &&(source==='all'||c.source_type===source);
   }),[rows,search,status,source]);
 
-  const active=rows.filter(c=>c.status!=='revoked'&&c.validity_status!=='revoked').length;
-  const revoked=rows.length-active;
+  const active=rows.filter(c=>c.status!=='revoked').length;
+  const revoked=rows.filter(c=>c.status==='revoked').length;
   const cpd=rows.filter(c=>c.cpd_accredited||c.document_type==='cpd_certificate').length;
 
   return <AdminLayout><div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
@@ -78,15 +78,15 @@ export default function AdminCertificates(){
       {loading?<tr><td colSpan={8} className="py-14 text-center text-gray-400">Chargement…</td></tr>:
       filtered.length===0?<tr><td colSpan={8} className="py-14 text-center text-gray-400">Aucun document trouvé.</td></tr>:
       filtered.map(c=><tr key={c.id} className="border-b border-gray-100">
-        <td className="py-3 font-mono text-xs" style={{color:BLUE}}>{c.omnia_certificate_id}</td>
-        <td className="font-semibold text-gray-700">{c.student_full_name||'—'}</td>
-        <td><p className="text-gray-700">{c.course_title||'Document Omnia'}</p><p className="text-xs text-gray-400">{c.document_type||'completion_certificate'}</p></td>
-        <td className="text-gray-600">{c.source_type==='omnia_live'?'Omnia Live':'Formation'}</td>
+        <td className="py-3 font-mono text-xs" style={{color:BLUE}}>{c.document_number}</td>
+        <td className="font-semibold text-gray-700">{c.beneficiary_name||'—'}</td>
+        <td><p className="text-gray-700">{c.subject_title||'Document Omnia'}</p><p className="text-xs text-gray-400">{c.document_type||'completion_certificate'}</p></td>
+        <td className="text-gray-600">{c.registry_source==='omnia_live'?'Omnia Live':'Formation'}</td>
         <td className="uppercase text-xs">{c.language_code||'fr'}</td>
         <td className="text-gray-500">{c.issued_at?new Date(c.issued_at).toLocaleDateString('fr-FR'):'—'}</td>
-        <td className={c.status==='revoked'||c.validity_status==='revoked'?'text-red-700':'text-emerald-700'}>{c.status==='revoked'||c.validity_status==='revoked'?'Révoqué':'Actif'}</td>
+        <td className={c.status==='revoked'?'text-red-700':'text-emerald-700'}>{c.status==='revoked'?'Révoqué':'Actif'}</td>
         <td><div className="flex gap-2 justify-end">
-          <a href={`/verify/${c.omnia_certificate_id}`} target="_blank" rel="noreferrer" title="Vérifier"><Eye size={15}/></a>
+          <a href={`/verify/${c.document_number}`} target="_blank" rel="noreferrer" title="Vérifier"><Eye size={15}/></a>
           {c.pdf_url&&<a href={c.pdf_url} target="_blank" rel="noreferrer" title="Télécharger"><Download size={15}/></a>}
           {c.status!=='revoked'&&c.validity_status!=='revoked'&&<button onClick={()=>setRevoke(c)} title="Révoquer" className="text-red-600"><XCircle size={15}/></button>}
         </div></td>
@@ -96,7 +96,7 @@ export default function AdminCertificates(){
 
     {revoke&&<div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4"><div className="bg-white w-full max-w-md rounded-xl p-5 shadow-xl">
       <h3 className="text-lg font-black" style={{color:BLUE}}>Révoquer ce document ?</h3>
-      <p className="text-sm text-gray-500 mt-2">{revoke.omnia_certificate_id} · {revoke.student_full_name}</p>
+      <p className="text-sm text-gray-500 mt-2">{revoke.document_number} · {revoke.beneficiary_name}</p>
       <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">Motif obligatoire</label>
       <textarea value={reason} onChange={e=>setReason(e.target.value)} rows={4} className="w-full border border-gray-200 rounded-lg p-3 text-sm" placeholder="Erreur administrative, fraude, annulation…"/>
       <div className="flex justify-end gap-3 mt-4"><button onClick={()=>{setRevoke(null);setReason('')}} className="px-4 py-2 border rounded-lg text-sm">Annuler</button><button disabled={!reason.trim()} onClick={confirmRevoke} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm disabled:opacity-50">Confirmer la révocation</button></div>

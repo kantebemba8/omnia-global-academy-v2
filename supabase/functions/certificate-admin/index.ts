@@ -46,8 +46,8 @@ Deno.serve(async req=>{
 
     if(req.method==="GET" && action==="list"){
       if(!isAdmin(c))return json({success:false,error:"FORBIDDEN"},403);
-      const {data,error}=await sb.from("certificates")
-        .select("id,omnia_certificate_id,student_full_name,course_title,course_level,course_category,cpd_accredited,issued_at,status,validity_status,pdf_url,template_type,document_type,source_type,language_code,issuer_name,verification_url")
+      const {data,error}=await sb.from("certificate_registry_unified")
+        .select("*")
         .order("issued_at",{ascending:false});
       if(error)throw error;
       return json({success:true,certificates:data||[]});
@@ -124,12 +124,37 @@ Deno.serve(async req=>{
 
     if(a==="revoke"){
       if(!isAdmin(c))return json({success:false,error:"FORBIDDEN"},403);
-      const id=String(b.certificate_id||"");const reason=String(b.reason||"").trim();
-      if(!id||!reason)return json({success:false,error:"MISSING_FIELDS"},400);
+      const source=String(b.registry_source||"");
+      const sourceRecordId=String(b.source_record_id||"");
+      const reason=String(b.reason||"").trim();
+      if(!source||!sourceRecordId||!reason)return json({success:false,error:"MISSING_FIELDS"},400);
+
+      if(source==="omnia_live"){
+        const {error}=await sb.from("live_issued_documents").update({
+          status:"revoked",
+          revocation_reason:reason,
+          revoked_at:new Date().toISOString(),
+          revoked_by:c.user_id
+        }).eq("id",sourceRecordId);
+        if(error)throw error;
+        await sb.from("live_document_audit_log").insert({
+          document_id:sourceRecordId,
+          actor_user_id:c.user_id,
+          action:"revoked",
+          metadata:{reason}
+        });
+        return json({success:true});
+      }
+
       const {error}=await sb.from("certificates").update({
-        status:"revoked",validity_status:"revoked",revocation_reason:reason,revoked_at:new Date().toISOString()
-      }).eq("omnia_certificate_id",id);
-      if(error)throw error;return json({success:true});
+        status:"revoked",
+        validity_status:"revoked",
+        revocation_reason:reason,
+        revoked_at:new Date().toISOString(),
+        revoked_by:c.user_id
+      }).eq("id",sourceRecordId);
+      if(error)throw error;
+      return json({success:true});
     }
 
     return json({success:false,error:"UNKNOWN_ACTION"},400);
