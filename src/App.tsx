@@ -211,6 +211,21 @@ import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
 import AdminProfile from './pages/admin/AdminProfile';
 import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
+function MaintenanceNoticeBanner() {
+  const { maintenanceNoticePlatform, maintenanceNoticeMessage, maintenanceNoticeAt } = useSiteMode();
+  if (!maintenanceNoticePlatform || !maintenanceNoticeMessage) return null;
+
+  const showAt = maintenanceNoticeAt ? new Date(maintenanceNoticeAt).getTime() : null;
+  if (showAt && Date.now() < showAt) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9998] border-b px-4 py-2 text-center text-sm font-medium"
+      style={{backgroundColor:'#FFF8E8',borderColor:'#BF8813',color:'#002050'}}>
+      {maintenanceNoticeMessage}
+    </div>
+  );
+}
+
 function GuardedRoutes() {
   const {
     loading,
@@ -218,6 +233,7 @@ function GuardedRoutes() {
     maintenanceMessage,
     maintenanceEndTime,
     maintenanceModules,
+    maintenanceModuleSchedules,
   } = useSiteMode();
 
   if (loading) return null;
@@ -231,13 +247,25 @@ function GuardedRoutes() {
   if (isSuperAdmin) return <Outlet />;
 
   const path = window.location.pathname;
+  const scheduleActive = (start: string | null, end: string | null) => {
+    if (!start) return false;
+    const now = Date.now();
+    const startMs = new Date(start).getTime();
+    const endMs = end ? new Date(end).getTime() : null;
+    return now >= startMs && (!endMs || now < endMs);
+  };
+
+  const moduleActive = (key: keyof typeof maintenanceModules) =>
+    maintenanceModules[key] ||
+    scheduleActive(maintenanceModuleSchedules[key]?.start ?? null, maintenanceModuleSchedules[key]?.end ?? null);
+
   const targetedMaintenance =
-    (maintenanceModules.omnia_live && path.startsWith('/omnia-live')) ||
-    (maintenanceModules.career && (path.startsWith('/career-studio') || path.startsWith('/omnia-career'))) ||
-    (maintenanceModules.talent && (path.startsWith('/talent') || path.startsWith('/talents'))) ||
-    (maintenanceModules.forum && path.startsWith('/forum')) ||
-    (maintenanceModules.payments && (path.includes('/paiement') || path.includes('/checkout') || path.includes('/payout'))) ||
-    (maintenanceModules.formations && (
+    (moduleActive('omnia_live') && path.startsWith('/omnia-live')) ||
+    (moduleActive('career') && (path.startsWith('/career-studio') || path.startsWith('/omnia-career'))) ||
+    (moduleActive('talent') && (path.startsWith('/talent') || path.startsWith('/talents'))) ||
+    (moduleActive('forum') && path.startsWith('/forum')) ||
+    (moduleActive('payments') && (path.includes('/paiement') || path.includes('/checkout') || path.includes('/payout'))) ||
+    (moduleActive('formations') && (
       path.startsWith('/catalogue') ||
       path.startsWith('/cours') ||
       path.includes('/formation') ||
@@ -280,6 +308,7 @@ export default function App() {
     >
       <BrowserRouter>
         <SiteModeProvider>
+        <MaintenanceNoticeBanner />
         <PreviewReturnButton />
         <Routes>
         <Route path="/" element={<RootGate />} />

@@ -56,6 +56,52 @@ type SocialNetworks = {
 type AppDownloads = { app_store: string; google_play: string; };
 type FaviconItem = { url: string; name: string; created_at?: string; };
 
+type PublicPageContent = {
+  talent: {
+    badge: string; title: string; subtitle: string; primary_cta: string; secondary_cta: string;
+    recent_talents_title: string; recent_talents_subtitle: string;
+    recent_jobs_title: string; recent_jobs_subtitle: string;
+  };
+  omnia_live: {
+    badge: string; title: string; title_accent: string; subtitle: string;
+    primary_cta: string; secondary_cta: string;
+    live_card_title: string; live_card_text: string;
+    training_card_title: string; training_card_text: string;
+    videos_card_title: string; videos_card_text: string;
+    replays_card_title: string; replays_card_text: string;
+  };
+};
+
+const DEFAULT_PAGE_CONTENT: PublicPageContent = {
+  talent: {
+    badge: 'La vitrine professionnelle d’Omnia Global Academy',
+    title: 'Découvrez les talents qui ont choisi de rendre leur profil visible',
+    subtitle: 'Talent Omnia permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.',
+    primary_cta: 'Explorer les talents',
+    secondary_cta: 'Espace recruteurs',
+    recent_talents_title: 'Talents récemment visibles',
+    recent_talents_subtitle: 'Profils issus directement du Profil carrière Omnia.',
+    recent_jobs_title: 'Offres récentes',
+    recent_jobs_subtitle: 'Les mêmes offres que dans l’espace Emploi et le Forum Communauté.',
+  },
+  omnia_live: {
+    badge: 'APPRENDRE EN TEMPS RÉEL',
+    title: 'Apprenez. Échangez. Participez.',
+    title_accent: 'En direct.',
+    subtitle: 'Classes en ligne, masterclass, ateliers, conférences, formations synchrones et vidéos à la demande, accessibles depuis tous les pays.',
+    primary_cta: 'Explorer Omnia Live',
+    secondary_cta: 'Voir les prochains Lives',
+    live_card_title: 'Lives',
+    live_card_text: 'Classes et événements interactifs.',
+    training_card_title: 'Formations Live',
+    training_card_text: 'Parcours synchrones à plusieurs sessions.',
+    videos_card_title: 'Vidéos',
+    videos_card_text: 'Masterclass et contenus à la demande.',
+    replays_card_title: 'Replays',
+    replays_card_text: 'Revivez les sessions disponibles.',
+  },
+};
+
 function parseObject<T>(value: unknown, fallback: T): T {
   if (!value) return fallback;
   if (typeof value === 'object') return value as T;
@@ -83,6 +129,8 @@ export default function AdminCMS() {
   const [appDownloads, setAppDownloads] = useState<AppDownloads>({ app_store: '', google_play: '' });
   const [favicons, setFavicons] = useState<FaviconItem[]>([]);
   const [faviconUploading, setFaviconUploading] = useState(false);
+  const [pageEditorTarget, setPageEditorTarget] = useState<'landing' | 'talent' | 'omnia_live'>('landing');
+  const [pageContent, setPageContent] = useState<PublicPageContent>(DEFAULT_PAGE_CONTENT);
   const [multipliers, setMultipliers] = useState<Record<string, string>>(getDefaultMultipliers());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,6 +172,7 @@ export default function AdminCMS() {
           google_play: String(map.google_play_url || ''),
         });
         const faviconLibrary = parseObject<FaviconItem[]>(map.favicon_library, []);
+        const loadedPageContent = parseObject<Partial<PublicPageContent>>(map.page_content, {});
 
         setSettings(editableMap);
         setInitialSettings(map);
@@ -140,6 +189,10 @@ export default function AdminCMS() {
           google_play: apps.google_play || '',
         });
         setFavicons(Array.isArray(faviconLibrary) ? faviconLibrary : []);
+        setPageContent({
+          talent: { ...DEFAULT_PAGE_CONTENT.talent, ...(loadedPageContent.talent || {}) },
+          omnia_live: { ...DEFAULT_PAGE_CONTENT.omnia_live, ...(loadedPageContent.omnia_live || {}) },
+        });
 
         if (map.category_multipliers) {
           try { setMultipliers({ ...getDefaultMultipliers(), ...JSON.parse(map.category_multipliers) }); } catch { /* use defaults */ }
@@ -171,6 +224,10 @@ export default function AdminCMS() {
       .filter(([key]) => canCmsWrite(key))
       .filter(([key, value]) => value !== initialSettings[key])
       .map(([key, value]) => ({ key, value }));
+
+    if (tab === 'landing') {
+      updates.push({ key: 'page_content', value: pageContent });
+    }
 
     if (tab === 'general') {
       updates.push(
@@ -307,6 +364,40 @@ export default function AdminCMS() {
     await save([{ key: 'category_multipliers', value: JSON.stringify(multipliers) }]);
   }
 
+  async function sendMaintenanceNotice() {
+    const message = String(settings.maintenance_notice_message_fr || '').trim();
+    if (!message) {
+      setToast('Saisissez le message d’annonce de maintenance.');
+      return;
+    }
+
+    await save();
+
+    if (settings.maintenance_notice_email === 'true') {
+      const token = localStorage.getItem('omnia_session_token');
+      try {
+        const res = await fetch(ENDPOINTS.newsletterSend, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject: 'Information maintenance — Omnia Global Academy',
+            content_html: `<div style="font-family:Arial,sans-serif"><h2>Information maintenance</h2><p>${message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p></div>`,
+            channel: 'email',
+            schedule_at: settings.maintenance_notice_at || undefined,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Envoi impossible');
+        setToast(d.scheduled ? 'Annonce enregistrée et e-mail programmé.' : 'Annonce enregistrée et e-mail envoyé.');
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : 'Annonce enregistrée mais e-mail non envoyé.');
+      }
+    } else {
+      setToast('Annonce de maintenance enregistrée.');
+    }
+    setTimeout(() => setToast(''), 4000);
+  }
+
   async function sendNewsletter() {
     if (!nlSubject.trim()) { setToast('Objet requis.'); return; }
     if (nlChannel === 'email' && !nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
@@ -339,7 +430,7 @@ export default function AdminCMS() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'general', label: 'Identité & Branding' },
-    { key: 'landing', label: 'Pages publiques' },
+    { key: 'landing', label: 'Éditeur des pages' },
     { key: 'partenaires', label: 'Partenaires' },
     { key: 'legal', label: 'Légal' },
     { key: 'avance', label: 'Règles métier' },
@@ -356,6 +447,21 @@ export default function AdminCMS() {
           placeholder={placeholder}
           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
           style={{ '--tw-ring-color': '#002050' } as React.CSSProperties} />
+      </div>
+    );
+  }
+
+  function PageField({ label, value, onChange, area = false }: { label: string; value: string; onChange: (value: string) => void; area?: boolean }) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+        {area ? (
+          <textarea value={value} onChange={e => onChange(e.target.value)} rows={3}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none resize-y" />
+        ) : (
+          <input value={value} onChange={e => onChange(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+        )}
       </div>
     );
   }
@@ -536,58 +642,138 @@ export default function AdminCMS() {
           {/* COMING SOON */}
                     {/* LANDING PAGE */}
           {tab === 'landing' && (
-            <div className="space-y-5">
-              <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
-              <Field label="Titre principal" k="landing_hero_title_fr" />
-              <Field label="Sous-titre" k="landing_hero_subtitle_fr" />
-            <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques — Données réelles</h3>
-              <p className="text-xs text-gray-400 -mt-2">
-                Les valeurs viennent directement de la base de données. Activez ou désactivez l'affichage de chaque compteur sur la landing page.
-                Si la valeur est 0, le compteur ne peut pas être affiché.
-              </p>
-              <div className="space-y-3">
-                {[
-                  { label: 'Formations publiées', k: 'stat_formations', showKey: 'stat_show_formations' },
-                  { label: 'Apprenants actifs', k: 'stat_apprenants', showKey: 'stat_show_apprenants' },
-                  { label: 'Pays représentés', k: 'stat_pays', showKey: 'stat_show_pays' },
-                  { label: 'Formateurs', k: 'stat_formateurs', showKey: 'stat_show_formateurs' },
-                  { label: 'Établissements partenaires', k: 'stat_etablissements', showKey: 'stat_show_etablissements' },
-                ].map(({ label, k, showKey }) => {
-                  const value = settings[k];
-                  const isVisible = settings[showKey] === 'true';
-                  const hasValue = value && value !== '0' && value !== '';
-                  return (
-                    <div key={k} className="flex items-center justify-between p-3 rounded-xl border"
-                      style={{ borderColor: '#E4E7EC', backgroundColor: '#F8F9FA' }}>
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: '#002050' }}>{label}</p>
-                        <p className="text-xs mt-0.5" style={{ color: hasValue ? '#1E7A52' : '#9CA3AF' }}>
-                          {hasValue ? `Valeur actuelle : ${value}` : 'Aucune donnée (0 dans le système)'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {hasValue ? (
-                          <button
-                            onClick={() => set(showKey, isVisible ? 'false' : 'true')}
-                            className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${isVisible ? 'bg-green-500' : 'bg-gray-300'}`}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isVisible ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                          </button>
-                        ) : (
-                          <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: '#F3F4F6', color: '#9CA3AF' }}>
-                            Indisponible
-                          </span>
-                        )}
-                        <span className="text-xs font-medium w-12 text-right" style={{ color: isVisible && hasValue ? '#1E7A52' : '#9CA3AF' }}>
-                          {isVisible && hasValue ? 'Visible' : 'Masqué'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-semibold" style={{color:'#002050'}}>Éditeur des pages publiques</h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Modifiez les contenus principaux sans changer le code. Les textes enregistrés sont utilisés directement par les pages publiques.
+                </p>
               </div>
-              <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Section "Devenir Formateur"</h3>
-              <Field label="Titre" k="landing_devenir_formateur_title_fr" />
-              <TextArea label="Description" k="landing_devenir_formateur_desc_fr" rows={3} />
+
+              <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2">
+                {[
+                  ['landing','Accueil'],
+                  ['talent','Talent Omnia'],
+                  ['omnia_live','Omnia Live'],
+                ].map(([key,label]) => (
+                  <button key={key} type="button" onClick={() => setPageEditorTarget(key as typeof pageEditorTarget)}
+                    className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                    style={{
+                      backgroundColor:pageEditorTarget===key?'#002050':'transparent',
+                      color:pageEditorTarget===key?'#FFFFFF':'#475467',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {pageEditorTarget === 'landing' && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs text-blue-700">
+                    Ces champs pilotent la page d’accueil existante et ses statistiques réelles.
+                  </div>
+                  <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
+                  <Field label="Titre principal" k="landing_hero_title_fr" />
+                  <Field label="Sous-titre" k="landing_hero_subtitle_fr" />
+                  <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques — Données réelles</h3>
+                  <p className="text-xs text-gray-400 -mt-2">
+                    Les valeurs viennent directement de la base de données. Activez ou désactivez l’affichage de chaque compteur.
+                  </p>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Formations publiées', k: 'stat_formations', showKey: 'stat_show_formations' },
+                      { label: 'Apprenants actifs', k: 'stat_apprenants', showKey: 'stat_show_apprenants' },
+                      { label: 'Pays représentés', k: 'stat_pays', showKey: 'stat_show_pays' },
+                      { label: 'Formateurs', k: 'stat_formateurs', showKey: 'stat_show_formateurs' },
+                      { label: 'Établissements partenaires', k: 'stat_etablissements', showKey: 'stat_show_etablissements' },
+                    ].map(({ label, k, showKey }) => {
+                      const value = settings[k];
+                      const isVisible = settings[showKey] === 'true';
+                      const hasValue = value && value !== '0' && value !== '';
+                      return (
+                        <div key={k} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
+                          <div>
+                            <p className="text-sm font-semibold" style={{color:'#002050'}}>{label}</p>
+                            <p className="text-xs text-gray-400">{hasValue ? `Valeur actuelle : ${value}` : 'Aucune donnée réelle disponible'}</p>
+                          </div>
+                          <button type="button" disabled={!hasValue}
+                            onClick={() => set(showKey, isVisible ? 'false':'true')}
+                            className="relative h-6 w-11 shrink-0 rounded-full p-0.5 disabled:opacity-40"
+                            style={{backgroundColor:isVisible&&hasValue?'#1E7A52':'#D0D5DD'}}>
+                            <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${isVisible&&hasValue?'translate-x-5':'translate-x-0'}`} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Section « Devenir Formateur »</h3>
+                  <Field label="Titre" k="landing_devenir_formateur_title_fr" />
+                  <TextArea label="Description" k="landing_devenir_formateur_desc_fr" rows={3} />
+                </div>
+              )}
+
+              {pageEditorTarget === 'talent' && (
+                <div className="space-y-4">
+                  <PageField label="Badge supérieur" value={pageContent.talent.badge}
+                    onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,badge:v}}))} />
+                  <PageField label="Titre principal" value={pageContent.talent.title}
+                    onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,title:v}}))} />
+                  <PageField area label="Sous-titre" value={pageContent.talent.subtitle}
+                    onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,subtitle:v}}))} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <PageField label="Bouton principal" value={pageContent.talent.primary_cta}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,primary_cta:v}}))} />
+                    <PageField label="Bouton secondaire" value={pageContent.talent.secondary_cta}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,secondary_cta:v}}))} />
+                    <PageField label="Titre profils récents" value={pageContent.talent.recent_talents_title}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,recent_talents_title:v}}))} />
+                    <PageField label="Sous-titre profils récents" value={pageContent.talent.recent_talents_subtitle}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,recent_talents_subtitle:v}}))} />
+                    <PageField label="Titre offres récentes" value={pageContent.talent.recent_jobs_title}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,recent_jobs_title:v}}))} />
+                    <PageField label="Sous-titre offres récentes" value={pageContent.talent.recent_jobs_subtitle}
+                      onChange={v=>setPageContent(p=>({...p,talent:{...p.talent,recent_jobs_subtitle:v}}))} />
+                  </div>
+                </div>
+              )}
+
+              {pageEditorTarget === 'omnia_live' && (
+                <div className="space-y-4">
+                  <PageField label="Badge supérieur" value={pageContent.omnia_live.badge}
+                    onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,badge:v}}))} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <PageField label="Titre principal" value={pageContent.omnia_live.title}
+                      onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,title:v}}))} />
+                    <PageField label="Partie du titre en or" value={pageContent.omnia_live.title_accent}
+                      onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,title_accent:v}}))} />
+                  </div>
+                  <PageField area label="Sous-titre" value={pageContent.omnia_live.subtitle}
+                    onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,subtitle:v}}))} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <PageField label="Bouton principal" value={pageContent.omnia_live.primary_cta}
+                      onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,primary_cta:v}}))} />
+                    <PageField label="Bouton secondaire" value={pageContent.omnia_live.secondary_cta}
+                      onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,secondary_cta:v}}))} />
+                  </div>
+                  <h4 className="font-semibold pt-2" style={{color:'#002050'}}>Cartes principales</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      ['live_card_title','live_card_text','Lives'],
+                      ['training_card_title','training_card_text','Formations Live'],
+                      ['videos_card_title','videos_card_text','Vidéos'],
+                      ['replays_card_title','replays_card_text','Replays'],
+                    ].map(([titleKey,textKey,label])=>(
+                      <div key={titleKey} className="rounded-xl border border-gray-200 p-4 space-y-3">
+                        <p className="text-xs font-semibold text-gray-500">{label}</p>
+                        <PageField label="Titre" value={(pageContent.omnia_live as any)[titleKey]}
+                          onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,[titleKey]:v}}))} />
+                        <PageField area label="Description" value={(pageContent.omnia_live as any)[textKey]}
+                          onChange={v=>setPageContent(p=>({...p,omnia_live:{...p.omnia_live,[textKey]:v}}))} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1107,87 +1293,146 @@ export default function AdminCMS() {
         
           {/* MAINTENANCE — toujours en dernier */}
           {tab === 'maintenance' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold" style={{ color: '#002050' }}>État de maintenance</h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  Le Super-admin conserve toujours l’accès. Les visiteurs et utilisateurs concernés voient la page de maintenance.
-                </p>
+            <div className="space-y-7">
+              <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">État de maintenance</p>
+                    <h3 className="mt-1 text-lg font-semibold" style={{color:'#002050'}}>
+                      Maintenance globale {settings.maintenance_enabled === 'true' ? 'active' : 'inactive'}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Le Super-admin conserve toujours l’accès. Les autres utilisateurs voient la page de maintenance.
+                    </p>
+                  </div>
+                  <button type="button"
+                    onClick={() => set('maintenance_enabled', settings.maintenance_enabled === 'true' ? 'false':'true')}
+                    className="relative h-7 w-13 shrink-0 rounded-full p-1 transition"
+                    style={{width:52,backgroundColor:settings.maintenance_enabled==='true'?'#F97316':'#D0D5DD'}}>
+                    <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${settings.maintenance_enabled==='true'?'translate-x-6':'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Début programmé</label>
+                    <input type="datetime-local" value={settings.maintenance_start_time ?? ''}
+                      onChange={e=>set('maintenance_start_time',e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Fin prévue</label>
+                    <input type="datetime-local" value={settings.maintenance_end_time ?? ''}
+                      onChange={e=>set('maintenance_end_time',e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Message affiché pendant la maintenance</label>
+                  <textarea rows={3} value={settings.maintenance_message_fr ?? ''}
+                    onChange={e=>set('maintenance_message_fr',e.target.value)}
+                    placeholder="Une maintenance est en cours. Merci pour votre patience."
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-y" />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-xl border-2"
-                style={{
-                  borderColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#E4E7EC',
-                  backgroundColor: settings.maintenance_enabled === 'true' ? '#FFF7ED' : '#F9FAFB',
-                }}>
-                <div>
-                  <p className="font-semibold text-sm" style={{color: settings.maintenance_enabled === 'true' ? '#F97316' : '#002050'}}>
-                    Maintenance globale {settings.maintenance_enabled === 'true' ? '— ACTIVE' : '— Inactive'}
+              <div>
+                <div className="mb-4">
+                  <h3 className="font-semibold" style={{color:'#002050'}}>Maintenance ciblée</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Activez ou programmez une maintenance différente pour chaque module sans bloquer le reste de la plateforme.
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">Bloque toute la plateforme hors Super-admin.</p>
                 </div>
-                <button type="button"
-                  onClick={() => set('maintenance_enabled', settings.maintenance_enabled === 'true' ? 'false' : 'true')}
-                  className="relative w-12 h-6 rounded-full transition-colors"
-                  style={{backgroundColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#D1D5DB'}}>
-                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.maintenance_enabled === 'true' ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Début programmé</label>
-                  <input type="datetime-local" value={settings.maintenance_start_time ?? ''}
-                    onChange={e => set('maintenance_start_time', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Fin prévue</label>
-                  <input type="datetime-local" value={settings.maintenance_end_time ?? ''}
-                    onChange={e => set('maintenance_end_time', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Message de maintenance</label>
-                <textarea value={settings.maintenance_message_fr ?? ''}
-                  onChange={e => set('maintenance_message_fr', e.target.value)}
-                  rows={3}
-                  placeholder="Une maintenance est en cours. Merci pour votre patience."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none resize-y" />
-              </div>
-
-              <div className="border-t border-gray-100 pt-5">
-                <h3 className="font-semibold" style={{color:'#002050'}}>Maintenance ciblée</h3>
-                <p className="text-xs text-gray-500 mt-1 mb-4">
-                  Désactivez uniquement le module en intervention sans bloquer le reste de la plateforme.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-3">
                   {[
-                    ['maintenance_module_omnia_live','Omnia Live'],
-                    ['maintenance_module_career','Omnia Career'],
-                    ['maintenance_module_talent','Talent Omnia'],
-                    ['maintenance_module_forum','Forum'],
-                    ['maintenance_module_payments','Paiements'],
-                    ['maintenance_module_formations','Formations'],
-                  ].map(([key,label]) => {
-                    const active=settings[key] === 'true';
+                    ['omnia_live','Omnia Live'],
+                    ['career','Omnia Career'],
+                    ['talent','Talent Omnia'],
+                    ['forum','Forum'],
+                    ['payments','Paiements'],
+                    ['formations','Formations'],
+                  ].map(([slug,label])=>{
+                    const key=`maintenance_module_${slug}`;
+                    const active=settings[key]==='true';
                     return (
-                      <div key={key} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
-                        <span className="text-sm font-medium text-gray-700">{label}</span>
-                        <button type="button" onClick={() => set(key, active ? 'false':'true')}
-                          className="relative w-10 h-5 rounded-full"
-                          style={{backgroundColor:active?'#F97316':'#D1D5DB'}}>
-                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active?'translate-x-5':'translate-x-0.5'}`} />
-                        </button>
+                      <div key={slug} className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold" style={{color:'#002050'}}>{label}</p>
+                            <p className="text-xs text-gray-400">{active?'Maintenance activée manuellement':'Disponible normalement hors programmation'}</p>
+                          </div>
+                          <button type="button" onClick={()=>set(key,active?'false':'true')}
+                            className="relative h-6 shrink-0 rounded-full p-0.5"
+                            style={{width:44,backgroundColor:active?'#F97316':'#D0D5DD'}}>
+                            <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${active?'translate-x-5':'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Début programmé</label>
+                            <input type="datetime-local" value={settings[`maintenance_module_${slug}_start_time`] ?? ''}
+                              onChange={e=>set(`maintenance_module_${slug}_start_time`,e.target.value)}
+                              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Fin prévue</label>
+                            <input type="datetime-local" value={settings[`maintenance_module_${slug}_end_time`] ?? ''}
+                              onChange={e=>set(`maintenance_module_${slug}_end_time`,e.target.value)}
+                              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
+                <h3 className="font-semibold" style={{color:'#002050'}}>Informer les utilisateurs</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  La bannière plateforme est visible par tous les visiteurs. L’e-mail utilise les contacts inscrits aux communications.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                    <input type="checkbox" checked={settings.maintenance_notice_platform==='true'}
+                      onChange={e=>set('maintenance_notice_platform',e.target.checked?'true':'false')} />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Bannière plateforme</p>
+                      <p className="text-xs text-gray-400">Visible sur toute la plateforme avant la maintenance.</p>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                    <input type="checkbox" checked={settings.maintenance_notice_email==='true'}
+                      onChange={e=>set('maintenance_notice_email',e.target.checked?'true':'false')} />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">E-mail</p>
+                      <p className="text-xs text-gray-400">Envoyé aux contacts inscrits aux communications.</p>
+                    </div>
+                  </label>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Message d’annonce</label>
+                  <textarea rows={3} value={settings.maintenance_notice_message_fr ?? ''}
+                    onChange={e=>set('maintenance_notice_message_fr',e.target.value)}
+                    placeholder="Une maintenance est prévue le… de… à…"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-y" />
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date/heure d’affichage ou d’envoi</label>
+                    <input type="datetime-local" value={settings.maintenance_notice_at ?? ''}
+                      onChange={e=>set('maintenance_notice_at',e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                  </div>
+                  <div className="flex items-end">
+                    <button type="button" onClick={sendMaintenanceNotice} disabled={saving}
+                      className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                      style={{backgroundColor:'#BF8813'}}>
+                      Enregistrer et programmer l’annonce
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

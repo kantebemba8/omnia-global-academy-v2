@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Briefcase, Building2, MapPin, Search, ShieldCheck, Sparkles, UserRound, UsersRound } from 'lucide-react';
 import { TalentLayout } from '../../components/talent/TalentLayout';
 import { loadPublicJobs, loadPublicTalents, PublicJob, PublicTalent } from './talentApi';
+import { usePublicPageContent } from '../../hooks/usePublicPageContent';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -12,6 +13,7 @@ export default function TalentHome() {
   const [talents, setTalents] = useState<PublicTalent[]>([]);
   const [jobs, setJobs] = useState<PublicJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const pageContent = usePublicPageContent().talent || {};
 
   useEffect(() => {
     Promise.allSettled([loadPublicTalents(), loadPublicJobs()]).then(([talentResult, jobResult]) => {
@@ -29,20 +31,20 @@ export default function TalentHome() {
         <div className="mx-auto max-w-6xl">
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: 'rgba(191,136,19,.12)', color: GOLD }}>
-              <Sparkles size={14} /> La vitrine professionnelle d’Omnia Global Academy
+              <Sparkles size={14} /> {pageContent.badge || 'La vitrine professionnelle d’Omnia Global Academy'}
             </span>
             <h1 className="mt-5 text-3xl font-semibold leading-tight md:text-4xl" style={{ color: BLUE }}>
-              Découvrez les talents qui ont choisi de rendre leur profil visible
+              {pageContent.title || 'Découvrez les talents qui ont choisi de rendre leur profil visible'}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
-              Talent Omnia permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.
+              {pageContent.subtitle || 'Talent Omnia permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.'}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/talent/explorer" className="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>
-                <Search size={17} /> Explorer les talents
+                <Search size={17} /> {pageContent.primary_cta || 'Explorer les talents'}
               </Link>
               <Link to="/talent/recruteurs" className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}>
-                Espace recruteurs <ArrowRight size={17} />
+                {pageContent.secondary_cta || 'Espace recruteurs'} <ArrowRight size={17} />
               </Link>
             </div>
           </div>
@@ -69,8 +71,8 @@ export default function TalentHome() {
         <div className="mx-auto max-w-6xl">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>Talents récemment visibles</h2>
-              <p className="mt-1 text-sm text-gray-500">Profils issus directement du Profil carrière Omnia.</p>
+              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_talents_title || 'Talents récemment visibles'}</h2>
+              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_talents_subtitle || 'Profils issus directement du Profil carrière Omnia.'}</p>
             </div>
             <Link to="/talent/explorer?tab=talents" className="text-sm font-semibold" style={{ color: GOLD }}>Voir tous</Link>
           </div>
@@ -95,8 +97,8 @@ export default function TalentHome() {
         <div className="mx-auto max-w-6xl">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>Offres récentes</h2>
-              <p className="mt-1 text-sm text-gray-500">Les mêmes offres que dans l’espace Emploi et le Forum Communauté.</p>
+              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_jobs_title || 'Offres récentes'}</h2>
+              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Emploi et le Forum Communauté.'}</p>
             </div>
             <Link to="/talent/explorer?tab=offres" className="text-sm font-semibold" style={{ color: GOLD }}>Explorer</Link>
           </div>
