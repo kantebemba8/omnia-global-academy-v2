@@ -27,10 +27,6 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const { data: settings, error } = await supabaseAnon
       .from('site_settings')
@@ -52,12 +48,35 @@ Deno.serve(async (req: Request) => {
       try { return JSON.parse(value); } catch { return fallback; }
     };
 
-    // Build the response with only public settings
+    // Build the response with only public settings.
+    // Coming Soon / liste d'attente globale ont été retirés.
     const publicSettings = {
-      coming_soon_enabled: settingsMap.coming_soon_enabled === 'true' || settingsMap.coming_soon_enabled === true,
-      coming_soon_title_fr: settingsMap.coming_soon_title_fr || "La plateforme africaine de formation en ligne arrive bientot",
-      coming_soon_subtitle_fr: settingsMap.coming_soon_subtitle_fr || "Des formations d'elite et interactives, parfaitement adaptees aux realites professionnelles africaines.",
-      launch_date: settingsMap.launch_date || null,
+      maintenance_enabled: settingsMap.maintenance_enabled === 'true' || settingsMap.maintenance_enabled === true,
+      maintenance_message_fr: settingsMap.maintenance_message_fr || "",
+      maintenance_start_time: settingsMap.maintenance_start_time || null,
+      maintenance_end_time: settingsMap.maintenance_end_time || null,
+      maintenance_module_omnia_live: settingsMap.maintenance_module_omnia_live === 'true' || settingsMap.maintenance_module_omnia_live === true,
+      maintenance_module_career: settingsMap.maintenance_module_career === 'true' || settingsMap.maintenance_module_career === true,
+      maintenance_module_talent: settingsMap.maintenance_module_talent === 'true' || settingsMap.maintenance_module_talent === true,
+      maintenance_module_forum: settingsMap.maintenance_module_forum === 'true' || settingsMap.maintenance_module_forum === true,
+      maintenance_module_payments: settingsMap.maintenance_module_payments === 'true' || settingsMap.maintenance_module_payments === true,
+      maintenance_module_formations: settingsMap.maintenance_module_formations === 'true' || settingsMap.maintenance_module_formations === true,
+      maintenance_module_omnia_live_start_time: settingsMap.maintenance_module_omnia_live_start_time || null,
+      maintenance_module_omnia_live_end_time: settingsMap.maintenance_module_omnia_live_end_time || null,
+      maintenance_module_career_start_time: settingsMap.maintenance_module_career_start_time || null,
+      maintenance_module_career_end_time: settingsMap.maintenance_module_career_end_time || null,
+      maintenance_module_talent_start_time: settingsMap.maintenance_module_talent_start_time || null,
+      maintenance_module_talent_end_time: settingsMap.maintenance_module_talent_end_time || null,
+      maintenance_module_forum_start_time: settingsMap.maintenance_module_forum_start_time || null,
+      maintenance_module_forum_end_time: settingsMap.maintenance_module_forum_end_time || null,
+      maintenance_module_payments_start_time: settingsMap.maintenance_module_payments_start_time || null,
+      maintenance_module_payments_end_time: settingsMap.maintenance_module_payments_end_time || null,
+      maintenance_module_formations_start_time: settingsMap.maintenance_module_formations_start_time || null,
+      maintenance_module_formations_end_time: settingsMap.maintenance_module_formations_end_time || null,
+      maintenance_notice_platform: settingsMap.maintenance_notice_platform === 'true' || settingsMap.maintenance_notice_platform === true,
+      maintenance_notice_message_fr: settingsMap.maintenance_notice_message_fr || "",
+      maintenance_notice_at: settingsMap.maintenance_notice_at || null,
+      page_content: parseObjectSetting(settingsMap.page_content, {}),
       social_networks: parseObjectSetting(settingsMap.social_networks, {
         facebook: null,
         instagram: null,
@@ -76,12 +95,7 @@ Deno.serve(async (req: Request) => {
       site_slogan: settingsMap.site_slogan || null,
     };
 
-    // Fetch waitlist count via service role (bypasses RLS)
-    const { count } = await supabaseAdmin
-      .from('waitlist')
-      .select('*', { count: 'exact', head: true });
-
-    return new Response(JSON.stringify({ ...publicSettings, waitlist_count: count ?? 0 }), {
+    return new Response(JSON.stringify(publicSettings), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
