@@ -6,10 +6,10 @@ import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   Save, Settings, Eye, EyeOff, Plus, Trash2, AlertTriangle, Send, Mail,
   MessageSquare, Clock, Bot, Image, Captions, ToggleLeft, ToggleRight,
-  Users, BarChart2, MapPin, TrendingUp, Coins, X,
+  Users, BarChart2, MapPin, TrendingUp, Coins, X, Upload, CheckCircle2,
 } from 'lucide-react';
 
-type Settings = Record<string, string>;
+type Settings = Record<string, any>;
 type Tab = 'general' | 'coming_soon' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia';
 
 const COMMISSION_KEYS = [
@@ -41,6 +41,33 @@ function canCmsWrite(key: string) {
 }
 
 
+const OFFICIAL_SLOGAN = 'EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.';
+const FIXED_BRAND_COLORS = {
+  primary: '#002050',
+  accent: '#BF8813',
+  background: '#FFFFFF',
+  success: '#1E7A52',
+};
+
+type SocialNetworks = {
+  facebook: string; instagram: string; youtube: string;
+  linkedin: string; whatsapp: string; indeed: string;
+};
+type AppDownloads = { app_store: string; google_play: string; };
+type FaviconItem = { url: string; name: string; created_at?: string; };
+
+function parseObject<T>(value: unknown, fallback: T): T {
+  if (!value) return fallback;
+  if (typeof value === 'object') return value as T;
+  try {
+    const parsed = JSON.parse(String(value));
+    return (parsed && typeof parsed === 'object') ? parsed as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+
 function getDefaultMultipliers(): Record<string, string> {
   const m: Record<string, string> = {};
   CATEGORY_LABELS.forEach((c) => { m[c] = '1.0'; });
@@ -49,6 +76,13 @@ function getDefaultMultipliers(): Record<string, string> {
 
 export default function AdminCMS() {
   const [settings, setSettings] = useState<Settings>({});
+  const [initialSettings, setInitialSettings] = useState<Settings>({});
+  const [socialNetworks, setSocialNetworks] = useState<SocialNetworks>({
+    facebook: '', instagram: '', youtube: '', linkedin: '', whatsapp: '', indeed: '',
+  });
+  const [appDownloads, setAppDownloads] = useState<AppDownloads>({ app_store: '', google_play: '' });
+  const [favicons, setFavicons] = useState<FaviconItem[]>([]);
+  const [faviconUploading, setFaviconUploading] = useState(false);
   const [multipliers, setMultipliers] = useState<Record<string, string>>(getDefaultMultipliers());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,8 +119,43 @@ export default function AdminCMS() {
       .then((r) => r.json())
       .then((d) => {
         const map: Settings = {};
-        (d.settings ?? []).forEach((s: { key: string; value: string }) => { map[s.key] = s.value; });
-        setSettings(map);
+        (d.settings ?? []).forEach((s: { key: string; value: unknown }) => { map[s.key] = s.value; });
+
+        const editableMap = { ...map };
+        if (!editableMap.site_slogan || String(editableMap.site_slogan).trim().toLowerCase() === 'test') {
+          editableMap.site_slogan = OFFICIAL_SLOGAN;
+        }
+
+        const social = parseObject<SocialNetworks>(map.social_networks, {
+          facebook: String(map.social_facebook || ''),
+          instagram: String(map.social_instagram || ''),
+          youtube: String(map.social_youtube || ''),
+          linkedin: String(map.social_linkedin || ''),
+          whatsapp: String(map.social_whatsapp || ''),
+          indeed: String(map.social_indeed || ''),
+        });
+        const apps = parseObject<AppDownloads>(map.app_downloads, {
+          app_store: String(map.app_store_url || ''),
+          google_play: String(map.google_play_url || ''),
+        });
+        const faviconLibrary = parseObject<FaviconItem[]>(map.favicon_library, []);
+
+        setSettings(editableMap);
+        setInitialSettings(map);
+        setSocialNetworks({
+          facebook: social.facebook || '',
+          instagram: social.instagram || '',
+          youtube: social.youtube || '',
+          linkedin: social.linkedin || '',
+          whatsapp: social.whatsapp || '',
+          indeed: social.indeed || '',
+        });
+        setAppDownloads({
+          app_store: apps.app_store || '',
+          google_play: apps.google_play || '',
+        });
+        setFavicons(Array.isArray(faviconLibrary) ? faviconLibrary : []);
+
         if (map.category_multipliers) {
           try { setMultipliers({ ...getDefaultMultipliers(), ...JSON.parse(map.category_multipliers) }); } catch { /* use defaults */ }
         }
@@ -118,32 +187,143 @@ export default function AdminCMS() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }
 
- async function save(extraUpdates?: { key: string; value: string }[]) {
+ async function save(extraUpdates?: { key: string; value: unknown }[]) {
     setSaving(true);
     const token = localStorage.getItem('omnia_session_token');
 
-    const updates = Object.entries(settings)
+    const updates: { key: string; value: unknown }[] = Object.entries(settings)
       .filter(([key]) => canCmsWrite(key))
+      .filter(([key, value]) => value !== initialSettings[key])
       .map(([key, value]) => ({ key, value }));
 
-    if (extraUpdates) {
-      updates.push(...extraUpdates.filter(u => canCmsWrite(u.key)));
+    if (tab === 'general') {
+      updates.push(
+        { key: 'social_networks', value: {
+          facebook: socialNetworks.facebook.trim() || null,
+          instagram: socialNetworks.instagram.trim() || null,
+          youtube: socialNetworks.youtube.trim() || null,
+          linkedin: socialNetworks.linkedin.trim() || null,
+          whatsapp: socialNetworks.whatsapp.trim() || null,
+          indeed: socialNetworks.indeed.trim() || null,
+        }},
+        { key: 'app_downloads', value: {
+          app_store: appDownloads.app_store.trim() || null,
+          google_play: appDownloads.google_play.trim() || null,
+        }},
+      );
     }
 
-    const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates }),
-    });
-    const d = await res.json();
-    setSaving(false);
-    if (d.success) {
-      setToast(`${d.updated} paramètre(s) enregistré(s).${d.launched ? ' 🚀 Plateforme lancée !' : ''}`);
+    if (extraUpdates) updates.push(...extraUpdates.filter(u => canCmsWrite(u.key)));
+
+    if (updates.length === 0) {
+      setSaving(false);
+      setToast('Aucune modification à enregistrer.');
+      setTimeout(() => setToast(''), 2500);
+      return;
+    }
+
+    try {
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Enregistrement impossible');
+
+      setInitialSettings(prev => {
+        const next = { ...prev };
+        for (const update of updates) next[update.key] = update.value;
+        return next;
+      });
+      setToast('Modifications enregistrées.');
+      setTimeout(() => setToast(''), 3500);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Enregistrement impossible.');
       setTimeout(() => setToast(''), 4000);
-      // Recharger la page pour que SiteModeContext relise les settings
-      setTimeout(() => window.location.reload(), 1500);
-    } else {
-      setToast(d.message ?? `Erreur : ${d.error}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function uploadFavicon(file: File) {
+    const allowed = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml', 'image/webp', 'image/jpeg'];
+    if (!allowed.includes(file.type)) {
+      setToast('Format non pris en charge. Utilisez PNG, ICO, SVG, WEBP ou JPG.');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setToast('Le favicon doit faire moins de 1 Mo.');
+      return;
+    }
+
+    setFaviconUploading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const token = localStorage.getItem('omnia_session_token');
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload_favicon',
+          file_name: file.name,
+          mime_type: file.type,
+          base64,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Upload impossible');
+
+      setSettings(prev => ({ ...prev, favicon_url: d.favicon_url }));
+      setInitialSettings(prev => ({ ...prev, favicon_url: d.favicon_url, favicon_library: d.favicon_library }));
+      setFavicons(Array.isArray(d.favicon_library) ? d.favicon_library : []);
+      setToast('Favicon ajouté et activé.');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Upload impossible.');
+    } finally {
+      setFaviconUploading(false);
+    }
+  }
+
+  async function activateFavicon(url: string) {
+    const token = localStorage.getItem('omnia_session_token');
+    try {
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_active_favicon', favicon_url: url }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Activation impossible');
+      setSettings(prev => ({ ...prev, favicon_url: url }));
+      setInitialSettings(prev => ({ ...prev, favicon_url: url }));
+      setToast('Favicon actif mis à jour.');
+      setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Activation impossible.');
+    }
+  }
+
+  async function deleteFavicon(url: string) {
+    const token = localStorage.getItem('omnia_session_token');
+    try {
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_favicon', favicon_url: url }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Suppression impossible');
+      setFavicons(Array.isArray(d.favicon_library) ? d.favicon_library : []);
+      setToast('Favicon supprimé de la bibliothèque.');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Suppression impossible.');
     }
   }
 
@@ -155,7 +335,10 @@ export default function AdminCMS() {
     if (launchConfirmText !== 'LANCER') return;
     setLaunching(true);
     const token = localStorage.getItem('omnia_session_token');
-    const updates = Object.entries(settings).filter(([key]) => canCmsWrite(key)).map(([key, value]) => ({ key, value }));
+    const updates = Object.entries(settings)
+      .filter(([key]) => canCmsWrite(key))
+      .filter(([key, value]) => value !== initialSettings[key])
+      .map(([key, value]) => ({ key, value }));
     // Ensure coming_soon_enabled is false
     const idx = updates.findIndex(u => u.key === 'coming_soon_enabled');
     if (idx >= 0) updates[idx].value = 'false';
@@ -268,12 +451,6 @@ export default function AdminCMS() {
             <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, lancement et règles métier de la plateforme</p>
             <p className="mt-1 text-xs text-gray-400">Jetons, retraits et paramètres financiers sont centralisés dans Configuration Fintech.</p>
           </div>
-          <button onClick={() => save()} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-            style={{ backgroundColor: '#002050' }}>
-            <Save className="w-4 h-4" />
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
         </div>
 
         {/* Tab nav */}
@@ -291,80 +468,121 @@ export default function AdminCMS() {
           {tab === 'general' && (
             <div className="space-y-4">
               <h3 className="font-semibold" style={{ color: '#002050' }}>Identité de la plateforme</h3>
-              <Field label="Slogan" k="site_slogan" />
+              <Field label="Slogan officiel" k="site_slogan" placeholder={OFFICIAL_SLOGAN} />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Favicon & Identité visuelle</h3>
-              <Field label="URL du Favicon" k="favicon_url" placeholder="https://... (.png, .ico, .svg)" />
-              <p className="text-xs text-gray-400 -mt-2">
-                Lien public vers l'icône de l'onglet. Recommandé : image carrée 32×32 ou 64×64px.
-                Après sauvegarde, le favicon se met à jour au prochain chargement de la page.
-              </p>
+              <div className="md:col-span-3 pt-2 space-y-3">
+                <h3 className="font-semibold" style={{ color: '#002050' }}>Favicon & Identité visuelle</h3>
+                <div className="flex flex-wrap items-center gap-4 rounded-xl border border-gray-200 p-4">
+                  <div className="h-14 w-14 rounded-xl border border-gray-200 bg-white flex items-center justify-center overflow-hidden">
+                    {settings.favicon_url
+                      ? <img src={String(settings.favicon_url)} alt="Favicon actif" className="h-10 w-10 object-contain" />
+                      : <span className="text-xs text-gray-400">Aucun</span>}
+                  </div>
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="text-sm font-semibold" style={{color:'#002050'}}>Favicon actif</p>
+                    <p className="text-xs text-gray-500 mt-1">Joignez une image et conservez plusieurs favicons pour les fêtes et événements.</p>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                    style={{backgroundColor:'#002050'}}>
+                    <Upload className="w-4 h-4" />
+                    {faviconUploading ? 'Envoi…' : 'Joindre une image'}
+                    <input type="file" className="hidden"
+                      accept=".png,.ico,.svg,.webp,.jpg,.jpeg,image/png,image/x-icon,image/svg+xml,image/webp,image/jpeg"
+                      disabled={faviconUploading}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadFavicon(file);
+                        e.currentTarget.value = '';
+                      }} />
+                  </label>
+                </div>
+                {favicons.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Bibliothèque de favicons</p>
+                    <div className="flex flex-wrap gap-3">
+                      {favicons.map(item => {
+                        const active = String(settings.favicon_url || '') === item.url;
+                        return (
+                          <div key={item.url} className="w-28 rounded-xl border p-3 text-center"
+                            style={{borderColor: active ? '#BF8813' : '#E4E7EC'}}>
+                            <div className="mx-auto h-12 w-12 flex items-center justify-center">
+                              <img src={item.url} alt={item.name || 'Favicon'} className="max-h-10 max-w-10 object-contain" />
+                            </div>
+                            <p className="mt-2 truncate text-[11px] text-gray-500" title={item.name}>{item.name || 'Favicon'}</p>
+                            {active ? (
+                              <div className="mt-2 flex items-center justify-center gap-1 text-[11px] font-semibold" style={{color:'#BF8813'}}>
+                                <CheckCircle2 className="w-3 h-3" /> Actif
+                              </div>
+                            ) : (
+                              <button type="button" onClick={() => activateFavicon(item.url)}
+                                className="mt-2 text-[11px] font-semibold" style={{color:'#002050'}}>Activer</button>
+                            )}
+                            {!active && (
+                              <button type="button" onClick={() => deleteFavicon(item.url)}
+                                className="block mx-auto mt-1 text-[10px] text-red-600">Supprimer</button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
                 <Field label="Email Admission" k="email_admission" type="email" placeholder="admission@omniaglobalacademy.com" />
                 <Field label="Email Support" k="email_support" type="email" placeholder="support@omniaglobalacademy.com" />
                 <Field label="Email Contact" k="email_contact" type="email" placeholder="contact@omniaglobalacademy.com" />
               </div>
               <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Réseaux sociaux</h3>
+              <p className="text-xs text-gray-400 -mt-2">Une URL enregistrée est automatiquement utilisée par les pages publiques connectées aux réseaux sociaux.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {['Facebook', 'Instagram', 'YouTube', 'LinkedIn', 'WhatsApp'].map((net) => (
-                  <Field key={net} label={net} k={`social_${net.toLowerCase()}`} placeholder={`URL ${net}`} />
+                {([
+                  ['facebook','Facebook'], ['instagram','Instagram'], ['youtube','YouTube'],
+                  ['linkedin','LinkedIn'], ['whatsapp','WhatsApp'], ['indeed','Indeed'],
+                ] as const).map(([key,label]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                    <input type="url" value={socialNetworks[key]}
+                      onChange={e => setSocialNetworks(prev => ({...prev,[key]:e.target.value}))}
+                      placeholder={`URL ${label}`}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                  </div>
                 ))}
               </div>
               <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Applications mobiles</h3>
+              <p className="text-xs text-gray-400 -mt-2">Le bouton d’une boutique n’est affiché que lorsque son URL est renseignée.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="App Store (iOS)" k="app_store_url" placeholder="https://apps.apple.com/…" />
-                <Field label="Google Play (Android)" k="google_play_url" placeholder="https://play.google.com/…" />
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">App Store (iOS)</label>
+                  <input type="url" value={appDownloads.app_store}
+                    onChange={e => setAppDownloads(prev => ({...prev,app_store:e.target.value}))}
+                    placeholder="https://apps.apple.com/…"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Google Play (Android)</label>
+                  <input type="url" value={appDownloads.google_play}
+                    onChange={e => setAppDownloads(prev => ({...prev,google_play:e.target.value}))}
+                    placeholder="https://play.google.com/…"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
               </div>
 
-              {/* --- Personnalisation des couleurs --- */}
-              <div className="pt-2 border-t border-gray-100 space-y-4">
-                <h3 className="font-semibold" style={{ color: '#002050' }}>Personnalisation des couleurs</h3>
-
-                {[
-                  { key: 'color_primary', label: 'Couleur primaire', desc: 'Sidebar, titres, boutons principaux', default: '#002050' },
-                  { key: 'color_accent', label: 'Couleur accent', desc: 'Boutons secondaires, badges, liens', default: '#BF8813' },
-                  { key: 'color_bg_light', label: 'Fond général', desc: 'Arrière-plan des pages', default: '#F8F9FA' },
-                  { key: 'color_success', label: 'Couleur succès', desc: 'Validations, statuts positifs', default: '#1E7A52' },
-                ].map(({ key, label, desc, default: def }) => (
-                  <div key={key} className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={settings[key] || def}
-                      onChange={e => set(key, e.target.value)}
-                      className="w-10 h-10 rounded cursor-pointer border-0 p-0.5"
-                      style={{ border: '1px solid #E4E7EC' }}
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium" style={{ color: '#002050' }}>{label}</p>
-                      <p className="text-xs" style={{ color: '#6B7280' }}>{desc}</p>
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="font-semibold" style={{ color: '#002050' }}>Couleurs de marque</h3>
+                <p className="mt-1 text-xs text-gray-500">L’identité visuelle Omnia est fixe afin de garantir une présentation cohérente sur toute la plateforme.</p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {[
+                    ['Bleu Omnia', FIXED_BRAND_COLORS.primary],
+                    ['Or Omnia', FIXED_BRAND_COLORS.accent],
+                    ['Blanc', FIXED_BRAND_COLORS.background],
+                    ['Succès', FIXED_BRAND_COLORS.success],
+                  ].map(([label,color]) => (
+                    <div key={label} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                      <span className="h-5 w-5 rounded border border-gray-200" style={{backgroundColor:color}} />
+                      <span className="text-xs font-medium text-gray-600">{label}</span>
+                      <span className="text-[10px] font-mono text-gray-400">{color}</span>
                     </div>
-                    <span className="text-xs font-mono" style={{ color: '#9CA3AF' }}>
-                      {settings[key] || def}
-                    </span>
-                  </div>
-                ))}
-
-                <p className="text-xs" style={{ color: '#6B7280' }}>
-                  Les couleurs sont appliquées à l'ensemble de la plateforme après rechargement de la page.
-                </p>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      set('color_primary', '#002050');
-                      set('color_accent', '#BF8813');
-                      set('color_bg_light', '#F8F9FA');
-                      set('color_success', '#1E7A52');
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border"
-                    style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-                    Réinitialiser aux couleurs d'origine
-                  </button>
-                  <button onClick={() => save()} disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-                    style={{ backgroundColor: '#002050' }}>
-                    <Save className="w-4 h-4" />
-                    {saving ? 'Enregistrement…' : 'Enregistrer les couleurs'}
-                  </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1156,7 +1374,19 @@ export default function AdminCMS() {
         </div>
       </div>
 
-      {/* Launch confirmation modal */}
+      
+        {tab !== 'newsletter' && (
+          <div className="pt-5 flex justify-end">
+            <button type="button" onClick={() => save()} disabled={saving}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+              style={{backgroundColor:'#002050'}}>
+              <Save className="w-4 h-4" />
+              {saving ? 'Enregistrement…' : `Enregistrer — ${TABS.find(x => x.key === tab)?.label || 'section'}`}
+            </button>
+          </div>
+        )}
+
+{/* Launch confirmation modal */}
       {showLaunchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
