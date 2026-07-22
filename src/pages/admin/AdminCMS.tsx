@@ -19,13 +19,26 @@ const COMMISSION_KEYS = [
   { key: 'commission_assistee_avec_cpd', label: 'Assistée avec CPD', row: 'Assistée', col: 'Avec CPD' },
 ];
 
-const EXTERNAL_OWNED_KEYS = new Set([
-  // Ces paramètres restent dans site_settings pour compatibilité,
-  // mais leur interface de référence est Fintech afin d'éviter deux écrans concurrents.
+const CMS_EXCLUDED_KEYS = new Set([
+  // Propriétés de Configuration Fintech : jamais sauvegardées par le CMS.
   'payout_minimum_xof',
+  'payout_delay_label',
   'ai_token_per_registration',
   'ai_token_per_purchase',
+  // Anciennes clés fantômes conservées en base uniquement pour compatibilité historique.
+  'ai_tokens_inscription',
+  'ai_tokens_per_purchase',
 ]);
+
+const CMS_FORBIDDEN_KEYS = new Set([
+  'super_admin_id','service_role_key','fedapay_secret_key',
+  'brevo_api_key','html2pdf_api_key','cron_secret'
+]);
+
+function canCmsWrite(key: string) {
+  const normalized = key.toLowerCase();
+  return !CMS_FORBIDDEN_KEYS.has(normalized) && !CMS_EXCLUDED_KEYS.has(key);
+}
 
 
 function getDefaultMultipliers(): Record<string, string> {
@@ -109,14 +122,13 @@ export default function AdminCMS() {
     setSaving(true);
     const token = localStorage.getItem('omnia_session_token');
 
-    // Clés interdites — ne jamais envoyer au backend
-    const FORBIDDEN = new Set(['super_admin_id','service_role_key','fedapay_secret_key','brevo_api_key','html2pdf_api_key','cron_secret']);
-
     const updates = Object.entries(settings)
-      .filter(([key]) => !FORBIDDEN.has(key.toLowerCase()) && !EXTERNAL_OWNED_KEYS.has(key))
+      .filter(([key]) => canCmsWrite(key))
       .map(([key, value]) => ({ key, value }));
 
-    if (extraUpdates) updates.push(...extraUpdates.filter(u => !FORBIDDEN.has(u.key.toLowerCase())));
+    if (extraUpdates) {
+      updates.push(...extraUpdates.filter(u => canCmsWrite(u.key)));
+    }
 
     const res = await fetch(ENDPOINTS.adminCmsUpdate, {
       method: 'POST',
@@ -143,7 +155,7 @@ export default function AdminCMS() {
     if (launchConfirmText !== 'LANCER') return;
     setLaunching(true);
     const token = localStorage.getItem('omnia_session_token');
-    const updates = Object.entries(settings).filter(([key]) => !EXTERNAL_OWNED_KEYS.has(key)).map(([key, value]) => ({ key, value }));
+    const updates = Object.entries(settings).filter(([key]) => canCmsWrite(key)).map(([key, value]) => ({ key, value }));
     // Ensure coming_soon_enabled is false
     const idx = updates.findIndex(u => u.key === 'coming_soon_enabled');
     if (idx >= 0) updates[idx].value = 'false';
@@ -254,7 +266,7 @@ export default function AdminCMS() {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration CMS</h1>
             <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, lancement et règles métier de la plateforme</p>
-            <p className="mt-1 text-xs text-gray-400">Les paiements, retraits et jetons IA généraux sont centralisés dans Configuration Fintech.</p>
+            <p className="mt-1 text-xs text-gray-400">Jetons, retraits et paramètres financiers sont centralisés dans Configuration Fintech.</p>
           </div>
           <button onClick={() => save()} disabled={saving}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
@@ -760,10 +772,8 @@ export default function AdminCMS() {
                   <Field label="Récompense parrain (XOF)" k="referral_reward_referrer_xof" type="number" />
                   <Field label="Récompense filleul (XOF)" k="referral_reward_referred_xof" type="number" />
                   <div className="col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                    <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers et jetons partagés</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Le retrait minimum et les jetons IA généraux sont gérés uniquement dans Configuration Fintech pour éviter deux écrans qui modifient les mêmes valeurs.
-                    </p>
+                    <p className="text-sm font-semibold" style={{color:'#002050'}}>Jetons, retraits et paramètres financiers</p>
+                    <p className="mt-1 text-xs text-gray-500">Ces paramètres sont maintenant centralisés dans Configuration Fintech afin d’éviter les doubles réglages.</p>
                     <Link to="/admin/fintech" className="mt-3 inline-flex text-xs font-semibold" style={{color:'#BF8813'}}>
                       Ouvrir Configuration Fintech →
                     </Link>
@@ -797,13 +807,15 @@ export default function AdminCMS() {
                     </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Jetons IA à l'inscription" k="ai_tokens_inscription" type="number" placeholder="1" />
-                  <Field label="Jetons IA par achat" k="ai_tokens_per_purchase" type="number" placeholder="1" />
+                <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                  <p className="text-sm font-semibold" style={{color:'#002050'}}>Jetons IA</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Les jetons ne sont plus configurés dans le CMS. Utilisez Configuration Fintech pour les valeurs globales actives.
+                  </p>
+                  <Link to="/admin/fintech" className="mt-3 inline-flex text-xs font-semibold" style={{color:'#BF8813'}}>
+                    Gérer les jetons dans Fintech →
+                  </Link>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  Ces jetons s'ajoutent aux jetons CPD standards configurés dans la section "Parrainage & Jetons".
-                </p>
               </div>
             </div>
           )}

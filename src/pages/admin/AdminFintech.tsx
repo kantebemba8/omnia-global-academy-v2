@@ -23,14 +23,28 @@ export default function AdminFintech() {
     const token = localStorage.getItem('omnia_session_token');
     fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => { if (d.pricing_tiers) setPricingTiers(d.pricing_tiers); })
-      .catch(() => {});
+      .then(d => {
+        if (d.pricing_tiers) setPricingTiers(d.pricing_tiers);
+        if (Array.isArray(d.settings)) {
+          const map = Object.fromEntries(
+            d.settings.map((row: { key: string; value: string }) => [row.key, row.value ?? ''])
+          );
+          setSettings(prev => ({
+            ...prev,
+            payout_minimum_xof: map.payout_minimum_xof ?? '',
+            payout_delay_label: map.payout_delay_label ?? '',
+            ai_token_per_registration: map.ai_token_per_registration ?? '',
+            ai_token_per_purchase: map.ai_token_per_purchase ?? '',
+          }));
+        }
+      })
+      .catch(() => showToast('Impossible de charger les paramètres Fintech.'));
   }, []);
   const [settings, setSettings] = useState({
     payout_minimum_xof: '',
-    payout_delay_label: '24 à 48 heures ouvrées',
-    ai_token_per_registration: '10',
-    ai_token_per_purchase: '5',
+    payout_delay_label: '',
+    ai_token_per_registration: '',
+    ai_token_per_purchase: '',
     canal_mobile_money: true,
     canal_virement_uemoa: true,
     canal_swift: false,
@@ -41,22 +55,38 @@ export default function AdminFintech() {
   }
 
   async function save() {
+    if (
+      settings.payout_minimum_xof === '' ||
+      settings.ai_token_per_registration === '' ||
+      settings.ai_token_per_purchase === ''
+    ) {
+      showToast('Renseignez les valeurs obligatoires avant d’enregistrer.');
+      return;
+    }
+
     setSaving(true);
     const token = localStorage.getItem('omnia_session_token');
-    await fetch(ENDPOINTS.adminCmsUpdate, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        updates: [
-          { key: 'payout_minimum_xof', value: settings.payout_minimum_xof },
-          { key: 'payout_delay_label', value: settings.payout_delay_label },
-          { key: 'ai_token_per_registration', value: settings.ai_token_per_registration },
-          { key: 'ai_token_per_purchase', value: settings.ai_token_per_purchase },
-        ],
-      }),
-    });
-    setSaving(false);
-    showToast('Paramètres enregistrés.');
+    try {
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: [
+            { key: 'payout_minimum_xof', value: settings.payout_minimum_xof },
+            { key: 'payout_delay_label', value: settings.payout_delay_label },
+            { key: 'ai_token_per_registration', value: settings.ai_token_per_registration },
+            { key: 'ai_token_per_purchase', value: settings.ai_token_per_purchase },
+          ],
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Enregistrement impossible');
+      showToast('Paramètres Fintech enregistrés.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Enregistrement impossible.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -68,7 +98,7 @@ export default function AdminFintech() {
         )}
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration Fintech</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Passerelles de paiement, retraits et jetons IA</p>
+          <p className="text-gray-500 text-sm mt-0.5">Passerelles de paiement, retraits et jetons & crédits globaux</p>
         </div>
 
         {/* FedaPay card */}
@@ -172,7 +202,7 @@ export default function AdminFintech() {
 
         {/* AI tokens */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <h3 className="font-semibold" style={{ color: '#002050' }}>Jetons IA</h3>
+          <h3 className="font-semibold" style={{ color: '#002050' }}>Jetons & crédits globaux</h3>
           <p className="text-xs text-gray-500">Les jetons permettent de générer des CV depuis le CV Builder.</p>
           <div className="grid grid-cols-2 gap-4">
             <div>

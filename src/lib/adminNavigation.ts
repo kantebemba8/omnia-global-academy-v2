@@ -1,7 +1,7 @@
 import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
-  Award, Eye, MessageSquare, Briefcase, Building2, PlusCircle, QrCode, Gift,
+  Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
   Search, Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap
 } from 'lucide-react';
 
@@ -20,11 +20,6 @@ export interface AdminNavGroup {
   items: AdminNavItem[];
 }
 
-/**
- * Source unique de vérité du menu Super-admin.
- * Tous les anciens liens sont conservés, mais regroupés logiquement.
- * Les actions de création restent accessibles sans encombrer le premier niveau.
- */
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     id: 'dashboard',
@@ -41,7 +36,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
       { path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: GraduationCap },
-      { path: '/admin/studio/new', label: 'Créer une formation', icon: PlusCircle },
       { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
       { path: '/admin/studio-validation', label: 'Validation formations', icon: Eye },
       { path: '/admin/course-health', label: 'Santé des formations', icon: Activity },

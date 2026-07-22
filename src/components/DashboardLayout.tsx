@@ -175,11 +175,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
                 style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
                 <entry.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
                 <span className="flex-1 text-sm font-medium">{entry.label}</span>
-                {entry.badge && (
-                  <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-                    {entry.badge}
-                  </span>
-                )}
                 {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
               </Link>
             );
@@ -187,9 +182,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
 
           const groupActive = isGroupActive(entry);
           const expanded = openGroups[entry.id] ?? groupActive ?? false;
-          const onlyOne = entry.items.length === 1;
 
-          if (onlyOne) {
+          if (entry.items.length === 1) {
             const item = entry.items[0];
             const active = isActive(item);
             return (
@@ -205,21 +199,14 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
 
           return (
             <div key={entry.id} className="space-y-1">
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => setOpenGroups(prev => ({ ...prev, [entry.id]: !expanded }))}
                 className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150"
-                style={{
-                  backgroundColor: groupActive ? 'rgba(255,255,255,0.05)' : 'transparent',
-                  color: groupActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)'
-                }}
-              >
+                style={{ backgroundColor: groupActive ? 'rgba(255,255,255,0.05)' : 'transparent', color: groupActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)' }}>
                 <entry.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
                 <span className="flex-1 text-sm font-medium">{entry.label}</span>
-                <ChevronDown
-                  className="w-3.5 h-3.5 opacity-60 transition-transform duration-150"
-                  style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                />
+                <ChevronDown className="w-3.5 h-3.5 opacity-60 transition-transform duration-150"
+                  style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
               </button>
 
               {expanded && (
@@ -227,16 +214,9 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
                   {entry.items.map(item => {
                     const active = isActive(item);
                     return (
-                      <Link
-                        key={item.path}
-                        to={buildPath(item.path)}
-                        onClick={() => setSidebarOpen(false)}
+                      <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
                         className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150"
-                        style={{
-                          backgroundColor: active ? 'rgba(191,136,19,0.14)' : 'transparent',
-                          color: active ? '#BF8813' : 'rgba(255,255,255,0.58)'
-                        }}
-                      >
+                        style={{ backgroundColor: active ? 'rgba(191,136,19,0.14)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.58)' }}>
                         <item.icon style={{ width: 15, height: 15, flexShrink: 0 }} />
                         <span className="flex-1 text-[13px] font-medium leading-tight">{item.label}</span>
                         {active && <span className="h-1.5 w-1.5 rounded-full" style={{backgroundColor:'#BF8813'}} />}
