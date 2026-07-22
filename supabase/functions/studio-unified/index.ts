@@ -145,7 +145,28 @@ Deno.serve(async(req)=>{
       return json({success:true,course:existing,modules:(mods||[]).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id)})),reused:true});
     }
    }
-   const creatorContext=["professeur","structure","super_admin"].includes(String(b.creator_context))?String(b.creator_context):(isAdmin?"super_admin":"professeur");
+   const requestedCreatorContext=["professeur","structure","super_admin"].includes(String(b.creator_context))?String(b.creator_context):(isAdmin?"super_admin":"professeur");
+   // Anti-doublon serveur : protège contre un double clic / double requête lorsque la clé client n'a pas encore été persistée.
+   if(!b.client_draft_key && String(b.title||"").trim()){
+     const since=new Date(Date.now()-15000).toISOString();
+     const {data:recent}=await sb.from("courses")
+       .select("*")
+       .eq("creator_id",userId)
+       .eq("creator_context",requestedCreatorContext)
+       .eq("studio_status","draft")
+       .eq("title",String(b.title).trim())
+       .gte("created_at",since)
+       .order("created_at",{ascending:false})
+       .limit(1)
+       .maybeSingle();
+     if(recent){
+       const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",recent.id).order("position");
+       const ids=(mods||[]).map((m:any)=>m.id);
+       const {data:lessons}=ids.length?await sb.from("course_lessons").select("*").in("module_id",ids).order("position"):{data:[]};
+       return json({success:true,course:recent,modules:(mods||[]).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id)})),reused:true});
+     }
+   }
+   const creatorContext=requestedCreatorContext;
    let structureId:string|null=null;
    if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null;}
    const insert:any={
@@ -198,10 +219,6 @@ Deno.serve(async(req)=>{
     await sb.from("lesson_blocks").insert({course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"heading",position:0,content_json:{text:"Examen final",html:"Examen final",level:1},settings_json:{assessment_scope:"final",passing_score:70},created_by:userId}); result.push(m);
    }
    await log(sb,courseId,userId,"special_sections_ensured"); return json({success:true,created:result});
-  }
-  if(action==="delete_course"){
-   const {data:c}=await sb.from("courses").select("studio_status").eq("id",courseId).maybeSingle(); if(!c)return json({success:false,error:"NOT_FOUND"},404); if(c.studio_status!=="draft"&&!isAdmin)return json({success:false,error:"ONLY_DRAFT_CAN_BE_DELETED"},409);
-   const {error}=await sb.from("courses").delete().eq("id",courseId); if(error)throw error; return json({success:true});
   }
   if(action==="get_course"){
    const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle(); if(!course)return json({success:false,error:"NOT_FOUND"},404);

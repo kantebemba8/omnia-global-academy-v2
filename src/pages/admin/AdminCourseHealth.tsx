@@ -8,13 +8,21 @@ const BLUE='#002050', GOLD='#BF8813';
 
 export default function AdminCourseHealth(){
  const [rows,setRows]=useState<any[]>([]),[summary,setSummary]=useState<any>({}),[loading,setLoading]=useState(true),[q,setQ]=useState(''),[error,setError]=useState('');
+ const [deleteTarget,setDeleteTarget]=useState<{id:string;title:string}|null>(null);
+ const [deleting,setDeleting]=useState(false);
  async function call(action:string,body:any={}){
    const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...body})});
    const d=await r.json();if(!r.ok||d.success===false)throw new Error(d.message||d.error||'Erreur');return d;
  }
  async function load(){setLoading(true);setError('');try{const d=await call('health');setRows(d.rows||[]);setSummary(d.summary||{})}catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}}
  useEffect(()=>{load()},[]);
- async function remove(id:string,title:string){if(!confirm(`Supprimer définitivement « ${title} » ?`))return;try{await call('delete_course',{course_id:id});await load()}catch(e){setError(e instanceof Error?e.message:'Suppression impossible')}}
+ async function removeConfirmed(){
+   if(!deleteTarget)return;
+   setDeleting(true);setError('');
+   try{await call('delete_course',{course_id:deleteTarget.id});setDeleteTarget(null);await load()}
+   catch(e){setError(e instanceof Error?e.message:'Suppression impossible')}
+   finally{setDeleting(false)}
+ }
  const filtered=useMemo(()=>rows.filter(x=>`${x.title} ${(x.issues||[]).join(' ')}`.toLowerCase().includes(q.toLowerCase())),[rows,q]);
  return <AdminLayout><div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between border-b border-gray-200 pb-5">
@@ -37,8 +45,19 @@ export default function AdminCourseHealth(){
        <td>{x.enrollments}</td><td>{Number(x.avg_progress||0).toFixed(0)} %</td>
        <td>{x.issues?.length?<div className="flex flex-wrap gap-1">{x.issues.map((i:string)=><span key={i} className="text-xs text-red-700">{i}</span>)}</div>:<span className="text-emerald-700">Aucune alerte</span>}</td>
        <td>{x.current_version||'1.0'}</td>
-       <td><button onClick={()=>remove(x.course_id,x.title)} className="text-red-600" title="Supprimer définitivement"><Trash2 size={15}/></button></td>
+       <td><button onClick={()=>setDeleteTarget({id:x.course_id,title:x.title})} className="text-red-600" title="Supprimer définitivement"><Trash2 size={15}/></button></td>
      </tr>)}</tbody>
    </table></div>
+   {deleteTarget&&<div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4">
+     <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-200 p-5">
+       <h3 className="text-lg font-black" style={{color:BLUE}}>Supprimer la formation ?</h3>
+       <p className="text-sm text-gray-600 mt-2">Vous allez supprimer définitivement <strong>« {deleteTarget.title} »</strong>.</p>
+       <p className="text-xs text-gray-400 mt-2">La suppression sera refusée si la formation possède des inscriptions, commandes ou certificats afin de protéger l’historique métier.</p>
+       <div className="flex justify-end gap-3 mt-5">
+         <button type="button" disabled={deleting} onClick={()=>setDeleteTarget(null)} className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600">Annuler</button>
+         <button type="button" disabled={deleting} onClick={removeConfirmed} className="px-4 py-2 rounded-lg text-white text-sm font-semibold bg-red-600 disabled:opacity-50">{deleting?'Suppression…':'Supprimer définitivement'}</button>
+       </div>
+     </div>
+   </div>}
  </div></AdminLayout>
 }

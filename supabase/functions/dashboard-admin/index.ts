@@ -91,6 +91,41 @@ Deno.serve(async (req: Request) => {
     if (!adminId) return json({ error: "FORBIDDEN" }, 403);
 
     const url = new URL(req.url);
+
+    // Détail d'un rôle : uniquement nom, e-mail et date d'inscription.
+    // Aucun mot de passe, téléphone, adresse, KYC ou autre donnée sensible n'est exposé.
+    const requestedRole = url.searchParams.get("role");
+    if (requestedRole) {
+      const roleGroups: Record<string, string[]> = {
+        apprenant: ["apprenant"],
+        professeur: ["professeur"],
+        structure: ["responsable_structure","gestionnaire_partenaire","etablissement_directeur","etablissement_enseignant","structure"],
+        organisateur: ["organizer","organisateur"],
+        moderateur: ["moderateur","moderator"],
+      };
+      const keys = roleGroups[requestedRole] ?? [requestedRole];
+      const { data: roleRows, error: roleError } = await sb
+        .from("user_roles")
+        .select("user_id,role")
+        .in("role", keys);
+      if (roleError) throw roleError;
+      const ids = [...new Set((roleRows ?? []).map((r:any)=>r.user_id).filter(Boolean))];
+      const members = ids.length
+        ? await rows(sb, "users", "id,full_name,email,created_at", q => q.in("id", ids).order("created_at", { ascending: false }))
+        : [];
+      return json({
+        role: requestedRole,
+        role_keys: keys,
+        count: members?.length ?? 0,
+        members: (members ?? []).map((u:any)=>({
+          id: u.id,
+          name: u.full_name ?? "",
+          email: u.email ?? "",
+          created_at: u.created_at ?? null,
+        })),
+      });
+    }
+
     const period = url.searchParams.get("period") ?? "30d";
     const now = new Date();
     const start = new Date(now);
@@ -260,9 +295,8 @@ Deno.serve(async (req: Request) => {
       "Structures": ["responsable_structure", "gestionnaire_partenaire", "etablissement_directeur", "etablissement_enseignant", "structure"],
       "Organisateurs": ["organizer", "organisateur"],
       "Modérateurs": ["moderateur", "moderator"],
-      "Super-admins": ["super_admin"],
     };
-    const groupedKeys = new Set(Object.values(roleGroups).flat());
+    const groupedKeys = new Set([...Object.values(roleGroups).flat(), "super_admin"]);
     const allUserIds = [...new Set((userRoles ?? []).map((r:any)=>r.user_id).filter(Boolean))];
     const userRows = allUserIds.length
       ? await rows(sb, "users", "id,full_name,email", q => q.in("id", allUserIds))
@@ -272,8 +306,15 @@ Deno.serve(async (req: Request) => {
     const usersByRole:any[] = [];
     for (const [label, keys] of Object.entries(roleGroups)) {
       const ids = [...new Set((userRoles ?? []).filter((r:any)=>keys.includes(r.role)).map((r:any)=>r.user_id).filter(Boolean))];
+      const routeKey = label === "Apprenants" ? "apprenant"
+        : label === "Professeurs" ? "professeur"
+        : label === "Structures" ? "structure"
+        : label === "Organisateurs" ? "organisateur"
+        : label === "Modérateurs" ? "moderateur"
+        : keys[0];
       usersByRole.push({
         role: label,
+        role_key: routeKey,
         role_keys: keys,
         count: ids.length,
         members: ids.map((id:string)=>{
@@ -288,6 +329,7 @@ Deno.serve(async (req: Request) => {
       const ids = [...new Set((userRoles ?? []).filter((r:any)=>r.role===roleKey).map((r:any)=>r.user_id).filter(Boolean))];
       usersByRole.push({
         role: roleKey.split("_").map((p:string)=>p.charAt(0).toUpperCase()+p.slice(1)).join(" "),
+        role_key: roleKey,
         role_keys: [roleKey],
         count: ids.length,
         members: ids.map((id:string)=>{

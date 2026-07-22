@@ -33,7 +33,12 @@ export default function AdminCatalogue(){
     try{
       const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'admin_catalogue'})});
       const d=await r.json();
-      if(!r.ok||d.success===false) throw new Error(d.message||d.error||'Chargement impossible');
+      if(!r.ok||d.success===false) {
+        if (d?.error === 'UNKNOWN_ACTION') {
+          throw new Error("La fonction Supabase studio-unified déployée n'est pas à jour. Remplacez son index.ts par la V17 fournie puis redéployez.");
+        }
+        throw new Error(d.message||d.error||'Chargement impossible');
+      }
       setRows(d.courses||[]);
     }catch(e){setError(e instanceof Error?e.message:'Erreur de chargement');}
     finally{setLoading(false);}

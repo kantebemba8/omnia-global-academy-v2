@@ -63,7 +63,7 @@ interface DashboardData {
     en_attente: NullableNumber;
     actives: NullableNumber;
   };
-  users_by_role: { role: string; count: number; role_keys?: string[]; members?: { id: string; name: string; email: string }[] }[];
+  users_by_role: { role: string; role_key?: string; count: number }[];
   platform: {
     maintenance_global: boolean;
     maintenance_modules: string[];
@@ -107,7 +107,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30d');
   const [error, setError] = useState('');
-  const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const navigate = useNavigate();
 
   async function load(p: string) {
@@ -350,10 +349,15 @@ export default function AdminDashboard() {
                   {data.users_by_role.length === 0 ? (
                     <p className="text-sm text-gray-400 py-3">Aucune donnée disponible.</p>
                   ) : data.users_by_role.map(row => (
-                    <div key={row.role} className="flex justify-between py-2 border-b border-gray-100 last:border-0">
+                    <button key={row.role} type="button"
+                      onClick={() => navigate(`/admin/dashboard/roles/${encodeURIComponent(row.role_key || row.role)}`)}
+                      className="w-full flex justify-between items-center py-2 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50 px-1">
                       <span className="text-sm text-gray-600">{row.role}</span>
-                      <span className="font-bold text-sm" style={{ color: '#002050' }}>{fmt(row.count)}</span>
-                    </div>
+                      <span className="flex items-center gap-2">
+                        <span className="font-bold text-sm" style={{ color: '#002050' }}>{fmt(row.count)}</span>
+                        <ArrowRight size={13} className="text-gray-400"/>
+                      </span>
+                    </button>
                   ))}
                 </div>
               </div>
