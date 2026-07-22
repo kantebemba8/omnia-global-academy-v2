@@ -130,11 +130,11 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
   }, [navigate]);
 
   function handleLogout() {
-    const searchParams = new URLSearchParams(window.location.search);
-    const isPreview = searchParams.get('preview') === 'true';
-    if (isPreview) { navigate('/admin/dashboard'); return; }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
+    localStorage.removeItem('omnia_access_token');
+    localStorage.removeItem('access_token');
+    sessionStorage.removeItem('omnia_admin_role_preview');
     navigate('/connexion');
   }
 

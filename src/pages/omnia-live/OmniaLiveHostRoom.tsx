@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
 import { liveApi } from './liveApi';
+import {omniaDialog} from '../../lib/omniaDialog';
 
 const BLUE='#002050', GOLD='#BF8813';
 
@@ -17,7 +18,7 @@ export default function OmniaLiveHostRoom(){
  async function start(){try{const r=await liveApi('room_start',{method:'POST',body:JSON.stringify({room_id:room.id})});setRoom(r.room);setMessage('Live démarré.')}catch(e){setMessage(e instanceof Error?e.message:'Erreur.')}}
  async function admit(userId:string){try{await liveApi('room_admit',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:userId})});await refresh()}catch(e){setMessage(e instanceof Error?e.message:'Erreur.')}}
  async function remove(userId:string,block=false){try{await liveApi('room_remove_participant',{method:'POST',body:JSON.stringify({room_id:room.id,user_id:userId,block,reason:block?'Blocage par modération':'Retrait par modération'})});await refresh()}catch(e){setMessage(e instanceof Error?e.message:'Erreur.')}}
- async function end(){if(!confirm('Terminer cette session Live ?'))return;try{await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setMessage('Session terminée.');await refresh()}catch(e){setMessage(e instanceof Error?e.message:'Erreur.')}}
+ async function end(){const r=await omniaDialog({title:'Terminer la session',message:'Voulez-vous réellement terminer cette session Live ?',confirmLabel:'Terminer',danger:true});if(!r.confirmed)return;try{await liveApi('room_end',{method:'POST',body:JSON.stringify({room_id:room.id})});setMessage('Session terminée.');await refresh()}catch(e){setMessage(e instanceof Error?e.message:'Erreur.')}}
 
  if(loading)return <OmniaLiveLayout><div className="mx-auto max-w-7xl px-4 py-12 text-slate-500">Préparation de la salle...</div></OmniaLiveLayout>;
  const waiting=members.filter(m=>m.access_status==='waiting'), admitted=members.filter(m=>m.access_status==='admitted');

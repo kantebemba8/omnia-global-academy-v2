@@ -168,7 +168,6 @@ import AdminOmniaLiveStructures from './pages/omnia-live/admin/AdminOmniaLiveStr
 import AdminOmniaLiveMedia from './pages/omnia-live/admin/AdminOmniaLiveMedia';
 import AdminOmniaLiveFinance from './pages/omnia-live/admin/AdminOmniaLiveFinance';
 import AdminOmniaLiveOperations from './pages/omnia-live/admin/AdminOmniaLiveOperations';
-import AdminOmniaLiveModeration from './pages/omnia-live/admin/AdminOmniaLiveModeration';
 import AdminOmniaLiveSettings from './pages/omnia-live/admin/AdminOmniaLiveSettings';
 import OrganizerDashboard from './pages/omnia-live/organizer/OrganizerDashboard';
 import OrganizerEvents from './pages/omnia-live/organizer/OrganizerEvents';
@@ -371,7 +370,6 @@ export default function App() {
         <Route path="/admin/omnia-live/medias" element={<AdminOmniaLiveMedia />} />
         <Route path="/admin/omnia-live/finance" element={<AdminOmniaLiveFinance />} />
         <Route path="/admin/omnia-live/operations" element={<AdminOmniaLiveOperations />} />
-        <Route path="/admin/omnia-live/moderation" element={<AdminOmniaLiveModeration />} />
         <Route path="/admin/omnia-live/parametres" element={<AdminOmniaLiveSettings />} />
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />

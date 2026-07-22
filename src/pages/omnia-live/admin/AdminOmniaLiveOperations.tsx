@@ -3,6 +3,7 @@ import { AlertCircle, Ban, CheckCircle2, RotateCcw, Search, ShieldAlert } from '
 import { liveApi } from '../liveApi';
 import { omniaDialog } from '../../../lib/omniaDialog';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
+import {liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
 type Tab = 'refunds'|'cancellations'|'moderation';
 
@@ -177,7 +178,7 @@ export default function AdminOmniaLiveOperations(){
               <td className="px-4 py-4">{r.user_name||r.user_email||'—'}</td>
               <td className="px-4 py-4 font-semibold">{Number(r.requested_amount||0).toLocaleString()} {r.currency||''}</td>
               <td className="max-w-[260px] px-4 py-4 text-slate-600">{r.reason_details||r.reason_code||'—'}</td>
-              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{r.status}</span></td>
+              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{liveStatusLabel(r.status)}</span></td>
               <td className="px-4 py-4"><div className="flex justify-end gap-2">
                 {r.status==='pending'&&<button onClick={()=>refundDecision(r,'under_review')} className="rounded-lg border px-3 py-2">Examiner</button>}
                 {['pending','under_review'].includes(r.status)&&<>
@@ -204,7 +205,7 @@ export default function AdminOmniaLiveOperations(){
               <td className="px-4 py-4">{r.user_name||r.requested_by_name||'—'}</td>
               <td className="px-4 py-4">{r.request_type==='reschedule'?'Report':'Annulation'}</td>
               <td className="max-w-[260px] px-4 py-4 text-slate-600">{r.reason_details||r.reason_code||'—'}</td>
-              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{r.status}</span></td>
+              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{liveStatusLabel(r.status)}</span></td>
               <td className="px-4 py-4"><div className="flex justify-end gap-2">
                 {r.status==='pending'&&<button onClick={()=>cancellationDecision(r,'under_review')} className="rounded-lg border px-3 py-2">Examiner</button>}
                 {['pending','under_review'].includes(r.status)&&<>
@@ -230,7 +231,7 @@ export default function AdminOmniaLiveOperations(){
               <td className="px-4 py-4">{r.user_name||r.user_email||'—'}</td>
               <td className="px-4 py-4">{r.report_type||'—'}</td>
               <td className="max-w-[280px] px-4 py-4 text-slate-600">{r.reason||'—'}</td>
-              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{r.status}</span></td>
+              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(r.status)}`}>{liveStatusLabel(r.status)}</span></td>
               <td className="px-4 py-4"><div className="flex justify-end gap-2">
                 {r.status==='open'&&<button onClick={()=>moderationDecision(r,'under_review')} className="rounded-lg border px-3 py-2">Examiner</button>}
                 {['open','under_review'].includes(r.status)&&<>

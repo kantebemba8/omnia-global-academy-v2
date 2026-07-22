@@ -66,11 +66,11 @@ export default function AdminOmniaLiveOverview(){
 
     {error&&<div className="mb-5 rounded-xl bg-red-50 p-4 text-red-700">{error}</div>}
 
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="grid divide-y divide-slate-100 sm:grid-cols-5 sm:divide-x sm:divide-y-0">
-        {stats.map(({label,value,icon:Icon})=><div key={label} className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-50 text-[#002050]"><Icon size={18}/></div>
-          <div><div className="text-2xl font-black text-[#002050]">{Number(value).toLocaleString()}</div><div className="text-xs font-semibold text-slate-500">{label}</div></div>
+    <section className="border-b border-slate-200 pb-7">
+      <div className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-5">
+        {stats.map(({label,value,icon:Icon})=><div key={label} className="border-b border-slate-200 pb-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400"><Icon size={15}/>{label}</div>
+          <div className="mt-1 text-2xl font-black text-[#002050]">{Number(value).toLocaleString('fr-FR')}</div>
         </div>)}
       </div>
     </section>
