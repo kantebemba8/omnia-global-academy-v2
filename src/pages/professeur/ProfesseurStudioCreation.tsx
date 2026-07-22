@@ -69,7 +69,7 @@ const VALIDATION_TYPES = [
   { value: 'examen_oral', label: 'Examen oral', desc: 'Pour les cours de langues' },
 ];
 
-const STEPS = ['Infos générales', 'Structure', 'Contenu', 'Évaluation', 'Soumettre'];
+const STEPS = ['Infos générales', 'Structure', 'Contenu', 'Évaluation', 'Tarification', 'Soumettre'];
 
 const emptyLesson = (pos: number): Lesson => ({
   id: `new_lesson_${Date.now()}_${pos}`, title: '', position: pos,
@@ -139,6 +139,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
   const [aiGenerating, setAiGenerating] = useState(false);
   const [scorePreview, setScorePreview] = useState<ScorePreview | null>(null);
   const [scoreFetching, setScoreFetching] = useState(false);
+  const [desiredPrice, setDesiredPrice] = useState<string>('');
   const scoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [plateformeMode, setPlateformeMode] = useState(false);
   const [generatingAudio, setGeneratingAudio] = useState<string | null>(null);
@@ -245,10 +246,12 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
         requested_cpd: course.requested_cpd ? 1 : 0,
         modules_count: course.modules.length,
         lessons_count: course.modules.reduce((s, m) => s + m.lessons.length, 0),
-        resources_count: course.modules.reduce((s, m) =>
-          s + m.lessons.reduce((ls, l) => ls + l.resources.length, 0), 0),
-        has_video: course.modules.some((m) => m.lessons.some((l) => !!l.video_url)),
-        objectives_count: course.objectives.filter((o) => o.text.trim()).length,
+        cpd_hours: course.modules.reduce((s, m) => s + m.lessons.reduce((ls, l: any) => ls + Number(l.duration_seconds || 0) / 3600, 0), 0),
+        resources: Object.entries(course.modules.flatMap(m => m.lessons.flatMap(l => l.resources || []))
+          .reduce((acc: Record<string,number>, r: any) => {
+            const k = r.resource_type || r.type || 'unknown'; acc[k]=(acc[k]||0)+1; return acc;
+          }, {})).map(([type,count]) => ({type,count})),
+        final_validation_type: course.final_validation_type,
         has_oral_exam: proposeExamenOral,
       };
       const res = await fetch(`${getApiBase()}/course-score-preview`, {
@@ -322,7 +325,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
       });
       if (json?.course_id) setCourse((c) => ({ ...c, id: json.course_id }));
     }
-    setStep((s) => Math.min(s + 1, 4));
+    setStep((s) => Math.min(s + 1, 5));
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -345,6 +348,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
           examen_oral_statut: proposeExamenOral ? 'propose_par_professeur' : 'non_propose',
           examen_oral_consignes: proposeExamenOral ? examenOralConsignes : null,
           examen_oral_criteres: proposeExamenOral ? examenOralCriteres : null,
+          desired_price_amount: desiredPrice ? Number(desiredPrice) : null,
         }),
       });
       const json = await res.json();
@@ -1298,6 +1302,31 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
             {/* ── Step 4: Soumettre ── */}
             {step === 4 && (
               <div className="space-y-5">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                  <p className="font-semibold" style={{color:'#002050'}}>Tarification de votre formation</p>
+                  <p className="mt-1 text-sm text-gray-500">Le prix automatique est calculé selon l’architecture, le niveau, les ressources, la catégorie et les paliers configurés.</p>
+                  <a href="/guide-tarification-formations.pdf" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-sm font-semibold" style={{color:'#BF8813'}}>Lire le guide complet →</a>
+                </div>
+                <img src="/tarification-formations-infographie.svg" alt="Résumé de la tarification" className="w-full rounded-xl border border-gray-200"/>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border-2 p-5" style={{borderColor:'#002050'}}>
+                    <p className="text-xs text-gray-500">Prix calculé automatiquement</p>
+                    <p className="mt-1 text-2xl font-bold" style={{color:'#002050'}}>{(scorePreview?.price_xof||0).toLocaleString()} XOF</p>
+                    <p className="mt-2 text-xs text-gray-400">Score : {scorePreview?.score ?? '—'} · Palier : {String(scorePreview?.palier ?? '—')}</p>
+                  </div>
+                  <div className="rounded-xl border-2 p-5" style={{borderColor:'#BF8813'}}>
+                    <label className="text-xs text-gray-500">Votre prix souhaité (XOF)</label>
+                    <input type="number" min="0" step="500" value={desiredPrice} onChange={e=>setDesiredPrice(e.target.value)}
+                      placeholder={String(scorePreview?.price_xof||0)}
+                      className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-lg font-semibold focus:outline-none"/>
+                    <p className="mt-2 text-xs text-gray-400">Vous pouvez proposer le prix automatique ou un autre montant. Le Super-admin choisira l’un des deux.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="space-y-5">
                 <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                   <h2 className="font-semibold text-gray-900 mb-5">Récapitulatif et checklist</h2>
                   {[
@@ -1350,7 +1379,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
 
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-700 flex gap-2">
                   <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Après soumission, votre formation sera examinée par notre équipe sous 48-72 heures. Si des corrections sont nécessaires, vous en serez informé par e-mail.</span>
+                  <span>Après cette étape, votre proposition tarifaire sera examinée par le Super-admin. La validation pédagogique ne commencera qu’après votre acceptation du prix retenu.</span>
                 </div>
 
                 <button onClick={handleSubmit} disabled={submitting || !course.id}
@@ -1359,7 +1388,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
                   {submitting ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Soumission en cours...</>
                   ) : (
-                    <><CheckCircle className="w-4 h-4" /> Soumettre pour validation</>
+                    <><CheckCircle className="w-4 h-4" /> Envoyer la proposition tarifaire</>
                   )}
                 </button>
               </div>
@@ -1372,7 +1401,7 @@ export function ProfesseurStudioCreation({ is_admin = false }: { is_admin?: bool
                 <ChevronLeft className="w-4 h-4" />
                 {step === 0 ? 'Annuler' : 'Précédent'}
               </button>
-              {step < 4 && (
+              {step < 5 && (
                 <button onClick={handleNext}
                   disabled={saving || (step === 0 && (!course.title || !course.category))}
                   className="flex items-center gap-2 text-sm font-semibold text-white px-5 py-2.5 rounded-xl disabled:opacity-50 transition-opacity"

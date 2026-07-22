@@ -8,6 +8,8 @@ import {
   MessageSquare, Clock, Bot, Image, Captions, ToggleLeft, ToggleRight,
   Users, BarChart2, MapPin, TrendingUp, Coins, X, Upload, CheckCircle2,
 } from 'lucide-react';
+import { PartnersManager } from '../../components/admin/PartnersManager';
+import { PricingRulesManager } from '../../components/admin/PricingRulesManager';
 
 type Settings = Record<string, any>;
 type Tab = 'general' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia' | 'maintenance';
@@ -779,97 +781,43 @@ export default function AdminCMS() {
 
           {/* PARTENAIRES */}
           {tab === 'partenaires' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
-                <p className="text-xs text-blue-700">Les logos des partenaires fintech et des collaborations sont configurés via des URLs stockées dans les paramètres.</p>
-              </div>
-              <h3 className="font-semibold" style={{ color: '#002050' }}>Logos Fintech Mobile Money</h3>
-              {['Wave', 'Orange', 'MTN', 'Moov', 'Free'].map((name) => (
-                <Field key={name} label={`${name} — URL logo`} k={`fintech_logo_${name.toLowerCase()}`} placeholder="https://…/logo.png" />
-              ))}
-              <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Libellé "Suivez-nous"</h3>
-              <Field label="Texte affiché" k="follow_us_label_fr" placeholder="Suivez-nous" />
+            <div className="max-w-5xl mx-auto">
+              <PartnersManager />
             </div>
           )}
 
           {/* LÉGAL */}
           {tab === 'legal' && (
-            <div className="space-y-5">
-              <TextArea label="À Propos (Markdown)" k="a_propos_content_fr" rows={10} />
-              <TextArea label="Politique de Confidentialité (Markdown)" k="confidentialite_content_fr" rows={10} />
-              <TextArea label="CGU (Markdown)" k="cgu_content_fr" rows={6} />
-              <TextArea label="Mentions Légales (Markdown)" k="mentions_legales_fr" rows={6} />
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div>
+                <h3 className="font-semibold" style={{color:'#002050'}}>Documents juridiques centralisés</h3>
+                <p className="text-xs text-gray-500 mt-1">Une seule source pour toute la plateforme. Les mêmes contenus doivent être reliés depuis l’accueil, Talent Omnia, Omnia Live, Career, Forum, inscription et paiement.</p>
+              </div>
+              <TextArea label="À Propos (Markdown)" k="a_propos_content_fr" rows={8} />
+              <TextArea label="Politique de confidentialité et données personnelles (Markdown)" k="confidentialite_content_fr" rows={10} />
+              <TextArea label="Conditions Générales d’Utilisation — CGU (Markdown)" k="cgu_content_fr" rows={10} />
+              <TextArea label="Mentions légales (Markdown)" k="mentions_legales_fr" rows={8} />
+              <TextArea label="Politique cookies (Markdown)" k="cookies_content_fr" rows={8} />
+              <TextArea label="Conditions Générales de Vente — CGV (Markdown)" k="cgv_content_fr" rows={10} />
+              <TextArea label="Politique de remboursement & annulation (Markdown)" k="refund_policy_content_fr" rows={8} />
+              <TextArea label="Conditions spécifiques Formateurs (Markdown)" k="teacher_terms_content_fr" rows={8} />
+              <TextArea label="Conditions spécifiques Structures (Markdown)" k="structure_terms_content_fr" rows={8} />
+              <TextArea label="Conditions spécifiques Omnia Live (Markdown)" k="omnia_live_terms_content_fr" rows={8} />
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+                Les changements juridiques importants doivent être versionnés avant de demander une nouvelle acceptation aux utilisateurs concernés. La version et la date d’entrée en vigueur sont prévues dans la configuration juridique.
+              </div>
             </div>
           )}
 
           {/* AVANCÉ */}
           {tab === 'avance' && (
             <div className="space-y-8">
-              {/* Commissions */}
-              <div>
-                <h3 className="font-semibold mb-3" style={{ color: '#002050' }}>Commissions (% part Plateforme)</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-                    <thead style={{ backgroundColor: '#002050' }}>
-                      <tr>
-                        <th className="text-left px-4 py-2.5 text-white text-xs font-medium">Type</th>
-                        <th className="text-center px-4 py-2.5 text-white text-xs font-medium">Sans CPD</th>
-                        <th className="text-center px-4 py-2.5 text-white text-xs font-medium">Avec CPD</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {['normal', 'assistee'].map((type) => (
-                        <tr key={type} className="border-t border-gray-100">
-                          <td className="px-4 py-3 font-medium text-gray-700 capitalize">{type === 'normal' ? 'Normale' : 'Assistée'}</td>
-                          {['sans', 'avec'].map((cpd) => {
-                            const k = `commission_${type}_${cpd}_cpd`;
-                            const val = parseFloat(settings[k] ?? (type === 'normal' ? (cpd === 'sans' ? '0.30' : '0.50') : (cpd === 'sans' ? '0.50' : '0.70')));
-                            return (
-                              <td key={cpd} className="px-4 py-3 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span className="text-xs text-gray-400">Prof {Math.round((1 - val) * 100)}% /</span>
-                                  <input type="number" min="0" max="100" step="1" value={Math.round(val * 100)}
-                                    onChange={(e) => set(k, String(parseInt(e.target.value) / 100))}
-                                    className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-center focus:outline-none" />
-                                  <span className="text-xs text-gray-400">% Pf</span>
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-gray-400 mt-2">Les valeurs sont le pourcentage revenant à la Plateforme. Le professeur reçoit le complément à 100%.</p>
-              </div>
-
-              {/* Paliers de prix */}
-              <div>
-                <h3 className="font-semibold mb-1" style={{ color: '#002050' }}>Paliers de prix</h3>
-                <p className="text-xs text-gray-400 mb-3">Les 4 paliers de base (cadenas) ne peuvent pas être supprimés.</p>
-                <div className="space-y-2">
-                  {[
-                    { label: 'Palier Essentiel', min: 0, max: 15, price: '5000', base: true },
-                    { label: 'Palier Standard', min: 16, max: 30, price: '15000', base: true },
-                    { label: 'Palier Professionnel', min: 31, max: 50, price: '25000', base: true },
-                    { label: 'Palier Expert', min: 51, max: null, price: '35000', base: true },
-                  ].map((tier, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
-                      <span className="text-xs text-gray-500 w-32">{tier.label}</span>
-                      <span className="text-xs text-gray-400">Score: {tier.min}–{tier.max ?? '∞'}</span>
-                      <input type="number" defaultValue={tier.price}
-                        className="w-24 border border-gray-200 rounded px-2 py-1 text-sm text-center focus:outline-none"
-                        placeholder="XOF" />
-                      <span className="text-xs text-gray-400">XOF</span>
-                      <span className="ml-auto text-gray-300 text-sm">🔒</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Prix Premium CPD (XOF)</label>
-                  <input type="number" value={settings.cpd_premium_price_xof ?? ''} onChange={(e) => set('cpd_premium_price_xof', e.target.value)}
-                    className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              <div className="max-w-5xl mx-auto space-y-6">
+                <PricingRulesManager />
+                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                  <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers séparés</p>
+                  <p className="text-xs text-gray-500 mt-1">Les paliers de prix, commissions, prix Premium CPD, parrainage et autres montants sont gérés dans Configuration Fintech. Règles métier décide quand et comment une règle s’applique ; Fintech décide combien.</p>
+                  <Link to="/admin/fintech" className="inline-flex mt-2 text-xs font-semibold" style={{color:'#BF8813'}}>Ouvrir Configuration Fintech →</Link>
                 </div>
               </div>
 
@@ -1293,7 +1241,7 @@ export default function AdminCMS() {
         
           {/* MAINTENANCE — toujours en dernier */}
           {tab === 'maintenance' && (
-            <div className="space-y-7">
+            <div className="max-w-5xl mx-auto space-y-7">
               <div className="rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>

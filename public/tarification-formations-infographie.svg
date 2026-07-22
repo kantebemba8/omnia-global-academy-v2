@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+<rect width="1200" height="720" fill="#ffffff"/>
+<text x="600" y="70" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#002050">Comment le prix de votre formation est calculé</text>
+<text x="600" y="108" text-anchor="middle" font-family="Arial" font-size="19" fill="#667085">Le calcul automatique est une référence transparente avant validation du prix final.</text>
+<g font-family="Arial">
+<rect x="70" y="165" width="210" height="105" rx="18" fill="#F8FAFC" stroke="#D0D5DD"/><text x="175" y="205" text-anchor="middle" font-size="22" font-weight="700" fill="#002050">Architecture</text><text x="175" y="238" text-anchor="middle" font-size="17" fill="#475467">Modules + leçons + durée</text>
+<rect x="330" y="165" width="210" height="105" rx="18" fill="#F8FAFC" stroke="#D0D5DD"/><text x="435" y="205" text-anchor="middle" font-size="22" font-weight="700" fill="#002050">Niveau</text><text x="435" y="238" text-anchor="middle" font-size="17" fill="#475467">Débutant → Expert</text>
+<rect x="590" y="165" width="210" height="105" rx="18" fill="#F8FAFC" stroke="#D0D5DD"/><text x="695" y="205" text-anchor="middle" font-size="22" font-weight="700" fill="#002050">Évaluation</text><text x="695" y="238" text-anchor="middle" font-size="17" fill="#475467">QCM / projet / oral</text>
+<rect x="850" y="165" width="280" height="105" rx="18" fill="#F8FAFC" stroke="#D0D5DD"/><text x="990" y="205" text-anchor="middle" font-size="22" font-weight="700" fill="#002050">Ressources bonus</text><text x="990" y="238" text-anchor="middle" font-size="17" fill="#475467">Jusqu’à +5 points</text>
+<path d="M600 300 L600 355" stroke="#BF8813" stroke-width="7"/><polygon points="600,375 585,350 615,350" fill="#BF8813"/>
+<rect x="335" y="390" width="530" height="90" rx="20" fill="#002050"/><text x="600" y="430" text-anchor="middle" font-size="27" font-weight="700" fill="#fff">Score × multiplicateur de catégorie</text><text x="600" y="462" text-anchor="middle" font-size="17" fill="#D9E2F2">Le multiplicateur reflète la catégorie de la formation</text>
+<path d="M600 480 L600 530" stroke="#BF8813" stroke-width="7"/><polygon points="600,550 585,525 615,525" fill="#BF8813"/>
+<rect x="110" y="570" width="250" height="92" rx="18" fill="#FFF8E8" stroke="#BF8813"/><text x="235" y="606" text-anchor="middle" font-size="21" font-weight="700" fill="#002050">Prix automatique</text><text x="235" y="638" text-anchor="middle" font-size="16" fill="#475467">Selon le palier du score</text>
+<rect x="475" y="570" width="250" height="92" rx="18" fill="#FFF8E8" stroke="#BF8813"/><text x="600" y="606" text-anchor="middle" font-size="21" font-weight="700" fill="#002050">Votre prix souhaité</text><text x="600" y="638" text-anchor="middle" font-size="16" fill="#475467">Vous proposez votre montant</text>
+<rect x="840" y="570" width="250" height="92" rx="18" fill="#EAF7EF" stroke="#1E7A52"/><text x="965" y="606" text-anchor="middle" font-size="21" font-weight="700" fill="#002050">Validation finale</text><text x="965" y="638" text-anchor="middle" font-size="16" fill="#475467">Admin puis professeur</text>
+</g></svg>

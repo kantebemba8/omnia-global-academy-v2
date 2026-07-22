@@ -26,6 +26,7 @@ stats: { formations: string | null; apprenants: string | null; pays: string | nu
   social_networks: Record<string, string | null>;
   app_downloads: { google_play?: string | null; app_store?: string | null };
   collaborations_logos: Array<{ name: string; file_url: string; link?: string | null }>;
+  public_partners?: Array<{ id:string; name:string; category:string; logo_url?:string|null; website_url?:string|null; description?:string|null; is_featured?:boolean }>;
   follow_us_label_fr: string;
   category_counts: Record<string, number>;
 }
@@ -84,6 +85,7 @@ stats: { formations: null, apprenants: null, pays: null, formateurs: null, etabl
   social_networks: {},
   app_downloads: {},
   collaborations_logos: [],
+  public_partners: [],
   follow_us_label_fr: 'Suivez-nous',
   category_counts: {},
 };
@@ -99,6 +101,13 @@ export function LandingPage() {
       .then(r => r.json())
       .then(d => setData({ ...DEFAULT, ...d }))
       .catch(() => {/* keep default */});
+  }, []);
+
+  useEffect(() => {
+    fetch(ENDPOINTS.siteSettings, { headers: { Authorization: `Bearer ${ANON_KEY}` } })
+      .then(r => r.json())
+      .then(d => setData(prev => ({ ...prev, public_partners: Array.isArray(d.public_partners) ? d.public_partners : [] })))
+      .catch(() => {});
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -493,15 +502,24 @@ export function LandingPage() {
           </div>
         </div>
       </section>
-      {/* ── SECTION 8 : PARTENAIRES (conditionnel) ───────────────────── */}
-      {data.collaborations_logos?.length > 0 && (
+      {/* ── SECTION 8 : PARTENAIRES ─────────────────────────────── */}
+      {((data.public_partners?.length ?? 0) > 0 || data.collaborations_logos?.length > 0) && (
         <section className="px-6 py-12 bg-white" style={{ borderTop: '1px solid #E4E7EC' }}>
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-center font-bold mb-10" style={{ color: '#002050', fontSize: '22px' }}>
-              Nos partenaires &amp; collaborations
+            <h2 className="text-center font-bold mb-3" style={{ color: '#002050', fontSize: '22px' }}>
+              Nos partenaires
             </h2>
-            <div className="flex flex-wrap justify-center items-center gap-8">
-              {data.collaborations_logos.map((logo, i) =>
+            <p className="text-center text-sm text-gray-500 mb-9">Institutions, entreprises, organismes de certification et partenaires technologiques qui collaborent avec Omnia.</p>
+            <div className="flex flex-wrap justify-center items-stretch gap-5">
+              {(data.public_partners || []).map((partner) => {
+                const content = <div className="w-44 min-h-[120px] rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center text-center bg-white hover:shadow-sm transition">
+                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.name} className="h-12 max-w-[130px] object-contain mb-3" /> : <div className="h-12 flex items-center text-sm font-bold" style={{color:'#002050'}}>{partner.name}</div>}
+                  <p className="text-xs font-semibold" style={{color:'#002050'}}>{partner.name}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{partner.category}</p>
+                </div>;
+                return partner.website_url ? <a key={partner.id} href={partner.website_url} target="_blank" rel="noopener noreferrer">{content}</a> : <div key={partner.id}>{content}</div>;
+              })}
+              {(data.public_partners?.length ?? 0) === 0 && data.collaborations_logos?.map((logo, i) =>
                 logo.link
                   ? <a key={i} href={logo.link} target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-70"><img src={logo.file_url} alt={logo.name} style={{ height: '48px', objectFit: 'contain' }} /></a>
                   : <img key={i} src={logo.file_url} alt={logo.name} style={{ height: '48px', objectFit: 'contain' }} />

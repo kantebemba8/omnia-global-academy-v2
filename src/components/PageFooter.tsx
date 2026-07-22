@@ -38,6 +38,9 @@ const FOOTER_COLS = {
     { label: 'Politique de confidentialité', href: '/confidentialite' },
     { label: 'CGU',                          href: '/cgu' },
     { label: 'Mentions légales',             href: '/mentions-legales' },
+    { label: 'Politique cookies',              href: '/cookies' },
+    { label: 'CGV',                            href: '/cgv' },
+    { label: 'Remboursements & annulations',   href: '/remboursements' },
   ],
 };
 

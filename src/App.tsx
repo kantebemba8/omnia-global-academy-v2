@@ -6,6 +6,7 @@ import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 import { LandingPage } from './pages/LandingPage';
 import { APropos } from './pages/APropos';
 import { Confidentialite } from './pages/Confidentialite';
+import LegalDocumentPage from './pages/LegalDocumentPage';
 import { Catalogue } from './pages/Catalogue';
 import { CoursDetail } from './pages/CoursDetail';
 import { ApercuGratuit } from './pages/ApercuGratuit';
@@ -37,6 +38,7 @@ import { DashboardProfil } from './pages/dashboard/DashboardProfil';
 import { DashboardProfesseur } from './pages/professeur/DashboardProfesseur';
 import { ProfesseurMesFormations } from './pages/professeur/ProfesseurMesFormations';
 import { ProfesseurStudioCreation } from './pages/professeur/ProfesseurStudioCreation';
+import ProfesseurTarification from './pages/professeur/ProfesseurTarification';
 import { ProfesseurPortefeuille } from './pages/professeur/ProfesseurPortefeuille';
 import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
 import { ProfesseurProfil } from './pages/professeur/ProfesseurProfil';
@@ -60,6 +62,7 @@ import AdminForum from './pages/admin/AdminForum';
 import AdminCareerStudio from './pages/admin/AdminCareerStudio';
 import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminStudioValidation from './pages/admin/AdminStudioValidation';
+import AdminCoursePricing from './pages/admin/AdminCoursePricing';
 import AdminCourseHealth from './pages/admin/AdminCourseHealth';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
@@ -402,6 +405,7 @@ export default function App() {
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
           <Route path="/admin/studio-validation" element={<AdminStudioValidation />} />
+              <Route path="/admin/course-pricing" element={<AdminCoursePricing />} />
           <Route path="/admin/course-health" element={<AdminCourseHealth />} />
 
         {/* Auth — always accessible even in coming-soon mode */}
@@ -572,6 +576,11 @@ export default function App() {
         <Route element={<GuardedRoutes />}>
         <Route path="/a-propos" element={<APropos />} />
         <Route path="/confidentialite" element={<Confidentialite />} />
+              <Route path="/cgu" element={<LegalDocumentPage />} />
+              <Route path="/mentions-legales" element={<LegalDocumentPage />} />
+              <Route path="/cookies" element={<LegalDocumentPage />} />
+              <Route path="/cgv" element={<LegalDocumentPage />} />
+              <Route path="/remboursements" element={<LegalDocumentPage />} />
         <Route path="/catalogue" element={<Catalogue />} />
         <Route path="/cours/:id/apercu" element={<ApercuGratuit />} />
         <Route path="/cours/:id" element={<CoursDetail />} />

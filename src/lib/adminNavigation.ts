@@ -37,6 +37,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
       { path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: GraduationCap },
       { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
+      { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/studio-validation', label: 'Validation formations', icon: Eye },
       { path: '/admin/course-health', label: 'Santé des formations', icon: Activity },
       { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
