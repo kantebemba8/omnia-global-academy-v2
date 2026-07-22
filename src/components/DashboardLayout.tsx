@@ -21,11 +21,6 @@ interface StoredUser {
   country_code?: string; ai_tokens?: number;
 }
 
-function monogram(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
 
 const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
@@ -180,25 +175,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
           </span>
         </Link>
       </div>
-
-      {user && (
-        <div className="px-6 py-4 mt-2 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              {monogram(user.full_name)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-white text-sm font-semibold truncate">{user.full_name}</p>
-              <p className="text-white/50 text-xs truncate capitalize">{role}</p>
-            </div>
-          </div>
-          {role === 'apprenant' && user.ai_tokens != null && (
-            <div className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: '#BF8813' }}>
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{user.ai_tokens} jeton{user.ai_tokens !== 1 ? 's' : ''} IA</span>
-            </div>
-          )}
           {role === 'directeur' && (
             <div className="mt-2">
               <span className="text-white/40 text-xs flex items-center gap-1"><Building2 className="w-3 h-3" /> Directeur</span>

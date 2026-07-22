@@ -96,12 +96,12 @@ export default function OrganizerShell({
 
     <div className="border-t border-white/10 px-3 pb-5 pt-3">
       <Link
-        to={buildPath('/omnia-live')}
+        to={buildPath('/')}
         className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
         style={{color:GOLD}}
       >
         <ExternalLink style={{width:18,height:18,flexShrink:0}}/>
-        <span>Retour à Omnia Live</span>
+        <span>Retour à Omnia Global Academy</span>
       </Link>
       <button
         onClick={logout}
