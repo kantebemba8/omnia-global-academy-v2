@@ -28,6 +28,18 @@ async function processApprovedPayment(sb: ReturnType<typeof createClient>, order
     });
   }
 
+  // Consume B2B license seat exactly once after confirmed payment.
+  if (order.license_id) {
+    const { data: usage } = await sb.from("license_usages").select("id").eq("license_id", order.license_id).eq("user_id", order.user_id).maybeSingle();
+    if (!usage) {
+      const { data: license } = await sb.from("group_licenses").select("used_seats,max_seats").eq("id", order.license_id).maybeSingle();
+      if (license && Number(license.used_seats || 0) < Number(license.max_seats || 0)) {
+        await sb.from("license_usages").insert({ license_id: order.license_id, user_id: order.user_id });
+        await sb.from("group_licenses").update({ used_seats: Number(license.used_seats || 0) + 1, updated_at: new Date().toISOString() }).eq("id", order.license_id);
+      }
+    }
+  }
+
   // Increment course student count
   const { data: courseRow } = await sb.from("courses")
     .select("total_students, creator_id, cpd_accredited, is_assisted, creator_type")

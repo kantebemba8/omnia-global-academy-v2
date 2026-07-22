@@ -65,6 +65,8 @@ export const ENDPOINTS ={
   adminModeratorManage: `${API_BASE_URL}/admin-moderator-manage`,
   adminCouponManage: `${API_BASE_URL}/admin-coupon-manage`,
   adminPayoutProcess: `${API_BASE_URL}/admin-payout-process`,
+  adminLicenseManage: `${API_BASE_URL}/admin-license-manage`,
+  paymentProviderStatus: `${API_BASE_URL}/payment-provider-status`,
   adminDemoConfigure: `${API_BASE_URL}/admin-demo-configure`,
   adminSchoolSplit: `${API_BASE_URL}/admin-school-split`,
   // Module 11 — Paiement

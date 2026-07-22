@@ -60,6 +60,7 @@ Deno.serve(async (req: Request) => {
     let finalPrice = originalPrice;
     let couponId: string | null = null;
     let couponCodeApplied: string | null = null;
+    let licenseIdApplied: string | null = null;
 
     if (coupon_code) {
       const { data: coupon } = await sb.from("coupons").select("*").eq("code", coupon_code.toUpperCase()).eq("is_active", true).maybeSingle();
@@ -85,8 +86,9 @@ Deno.serve(async (req: Request) => {
 
     // License processing
     if (license_code) {
-      const { data: license } = await sb.from("group_licenses").select("*").eq("license_code", license_code).eq("is_active", true).maybeSingle().catch(() => ({ data: null }));
+      const { data: license } = await sb.from("group_licenses").select("*").eq("code", String(license_code).toUpperCase()).eq("is_active", true).maybeSingle().catch(() => ({ data: null }));
       if (license && license.course_id === course_id) {
+        licenseIdApplied = license.id;
         const expired = license.expires_at && new Date(license.expires_at) < new Date();
         const full = license.used_seats >= license.max_seats;
         if (!expired && !full) {
@@ -101,6 +103,7 @@ Deno.serve(async (req: Request) => {
             });
             await sb.from("user_enrollments").insert({ user_id: user.id, course_id, enrolled_at: new Date().toISOString() });
             await sb.from("group_licenses").update({ used_seats: (license.used_seats || 0) + 1 }).eq("id", license.id);
+            await sb.from("license_usages").upsert({ license_id: license.id, user_id: user.id }, { onConflict: "license_id,user_id" });
             return new Response(JSON.stringify({ enrolled: true, free_license: true, course_id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
           }
           finalPrice = license.price_per_seat_xof;
@@ -115,7 +118,7 @@ Deno.serve(async (req: Request) => {
       const { data: freeOrder } = await sb.from("orders").insert({
         order_number: orderNum, user_id: user.id, course_id,
         original_price_xof: originalPrice, discount_xof: discountXof, final_price_xof: 0,
-        coupon_id: couponId, coupon_code: couponCodeApplied,
+        coupon_id: couponId, coupon_code: couponCodeApplied, license_id: licenseIdApplied,
         payment_status: "completed", payment_gateway: "free",
         paid_at: new Date().toISOString(),
       }).select("id").single();
@@ -128,13 +131,18 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create pending order
+    const { data: providerSetting } = await sb.from("site_settings").select("value").eq("key", "payment_provider_primary").maybeSingle();
+    const paymentProvider = String(providerSetting?.value || "fedapay");
+    if (paymentProvider !== "fedapay") {
+      return new Response(JSON.stringify({ error: "PAYMENT_PROVIDER_NOT_IMPLEMENTED", message: `Le prestataire ${paymentProvider} n\'est pas encore connecté au checkout.` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const orderNum = generateOrderNumber();
     const idempotencyKey = await sha256hex(`${user.id}${course_id}${Date.now()}`);
     const { data: order, error: orderErr } = await sb.from("orders").insert({
       order_number: orderNum, user_id: user.id, course_id,
       original_price_xof: originalPrice, discount_xof: discountXof, final_price_xof: finalPrice,
-      coupon_id: couponId, coupon_code: couponCodeApplied,
-      payment_status: "pending", payment_gateway: "fedapay",
+      coupon_id: couponId, coupon_code: couponCodeApplied, license_id: licenseIdApplied,
+      payment_status: "pending", payment_gateway: paymentProvider,
       idempotency_key: idempotencyKey,
     }).select("id, order_number").single();
     if (orderErr) throw orderErr;
