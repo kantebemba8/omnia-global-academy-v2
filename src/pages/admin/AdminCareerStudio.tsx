@@ -155,7 +155,7 @@ const SUB_MENUS = [
   { key: 'packs', label: 'Jetons & Packs', icon: Coins },
   { key: 'cv_templates', label: 'Modèles CV', icon: FileText },
   { key: 'lm_templates', label: 'Modèles LM', icon: Mail },
-  { key: 'ai', label: 'IA', icon: Sparkles },
+  { key: 'ai', label: 'IA & Automatisation', icon: Sparkles },
   { key: 'question_bank', label: 'Banque questions', icon: MessageSquare },
   { key: 'exports', label: 'Exports', icon: Download },
   { key: 'stats', label: 'Statistiques', icon: BarChart2 },
@@ -266,6 +266,8 @@ export default function AdminCareerStudio() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [questionBank, setQuestionBank] = useState<InterviewQuestion[]>([]);
+  const [exportLogs, setExportLogs] = useState<any[]>([]);
+  const [tokenTransactions, setTokenTransactions] = useState<any[]>([]);
   const [questionForm, setQuestionForm] = useState<Omit<InterviewQuestion, 'id'>>({
     category: 'rh',
     sector: '',
@@ -292,6 +294,9 @@ export default function AdminCareerStudio() {
         ai_config: AiConfig[];
         templates: Template[];
         stats: AdminStats;
+        questions?: InterviewQuestion[];
+        exports?: any[];
+        transactions?: any[];
       }>({ action: 'get_config' });
       setRules(data.rules || []);
       setTokenConfig(data.token_config || []);
@@ -307,6 +312,9 @@ export default function AdminCareerStudio() {
       setCvTemplates(merged.filter(t => t.template_type === 'cv').sort((a,b)=>a.display_order-b.display_order));
       setLmTemplates(merged.filter(t => t.template_type === 'lm').sort((a,b)=>a.display_order-b.display_order));
       setStats(data.stats || stats);
+      setQuestionBank(data.questions || []);
+      setExportLogs(data.exports || []);
+      setTokenTransactions(data.transactions || []);
     } catch (err) {
       showToast((err as Error).message || 'Erreur de chargement', 'error');
     } finally {
@@ -316,14 +324,7 @@ export default function AdminCareerStudio() {
 
   useEffect(() => { loadAll(); }, []);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('omnia_career_question_bank');
-      setQuestionBank(stored ? JSON.parse(stored) : []);
-    } catch {
-      setQuestionBank([]);
-    }
-  }, []);
+
 
   const groupedRules = useMemo(() => {
     return rules
@@ -441,32 +442,23 @@ export default function AdminCareerStudio() {
   }
 
 
-  function persistQuestionBank(next: InterviewQuestion[]) {
-    setQuestionBank(next);
-    localStorage.setItem('omnia_career_question_bank', JSON.stringify(next));
+  async function addInterviewQuestion() {
+    if (!questionForm.question.trim()) { showToast('Veuillez saisir une question.', 'error'); return; }
+    try {
+      const data = await postAdmin<{question: InterviewQuestion}>({ action:'question_create', question:{...questionForm, question:questionForm.question.trim()} });
+      setQuestionBank(prev => [data.question, ...prev]);
+      setQuestionForm({ category:'rh', sector:'', level:'Débutant', question:'', expected_answer:'', keywords:'', is_active:true, source:'super_admin' });
+      showToast('✅ Question enregistrée et synchronisée.');
+    } catch(e) { showToast((e as Error).message || 'Erreur question','error'); }
   }
-
-  function addInterviewQuestion() {
-    if (!questionForm.question.trim()) {
-      showToast('Veuillez saisir une question.', 'error');
-      return;
-    }
-    const next: InterviewQuestion = {
-      id: `q_${Date.now()}`,
-      ...questionForm,
-      question: questionForm.question.trim(),
-    };
-    persistQuestionBank([next, ...questionBank]);
-    setQuestionForm({ category: 'rh', sector: '', level: 'Débutant', question: '', expected_answer: '', keywords: '', is_active: true, source: 'super_admin' });
-    showToast('✅ Question ajoutée à la banque officielle.');
+  async function toggleInterviewQuestion(id: string) {
+    const q=questionBank.find(x=>x.id===id); if(!q)return;
+    try { const data=await postAdmin<{question:InterviewQuestion}>({action:'question_toggle',id,is_active:!q.is_active}); setQuestionBank(prev=>prev.map(x=>x.id===id?data.question:x)); }
+    catch(e){showToast((e as Error).message||'Erreur question','error')}
   }
-
-  function toggleInterviewQuestion(id: string) {
-    persistQuestionBank(questionBank.map(q => q.id === id ? { ...q, is_active: !q.is_active } : q));
-  }
-
-  function deleteInterviewQuestion(id: string) {
-    persistQuestionBank(questionBank.filter(q => q.id !== id));
+  async function deleteInterviewQuestion(id: string) {
+    try { await postAdmin({action:'question_delete',id}); setQuestionBank(prev=>prev.filter(x=>x.id!==id)); showToast('Question supprimée.'); }
+    catch(e){showToast((e as Error).message||'Erreur suppression','error')}
   }
 
   function renderRuleInput(rule: CareerRule) {
@@ -568,11 +560,8 @@ export default function AdminCareerStudio() {
       <header className="sticky top-0 z-40 border-b bg-white" style={{ borderColor: BORDER }}>
         <div className="flex min-h-16 items-center justify-between gap-4 px-5 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ background: OMNIA_GOLD }}>OA</div>
-            <div>
-              <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>Omnia Global Academy</p>
-              <p className="text-xs" style={{ color: MUTED }}>Administration Omnia Career Studio</p>
-            </div>
+            <img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-10 w-10 rounded-lg object-contain" />
+            <div><p className="text-base font-bold leading-tight" style={{color:OMNIA_BLUE}}>Omnia</p><p className="text-base font-bold leading-tight" style={{color:OMNIA_GOLD}}>Career Studio</p></div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link
@@ -599,24 +588,21 @@ export default function AdminCareerStudio() {
           </div>
         )}
 
-        <aside className="w-60 flex-shrink-0 border-r bg-white" style={{ borderColor: BORDER }}>
-          <div className="border-b p-4" style={{ borderColor: BORDER }}>
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: OMNIA_BLUE }}>Omnia Career Studio</p>
-            <p className="mt-1 text-xs" style={{ color: MUTED }}>Gestion Super Admin</p>
-          </div>
-          <nav className="space-y-1 p-2">
+        <aside className="w-64 flex flex-shrink-0 flex-col" style={{background:OMNIA_BLUE}}>
+          <div className="border-b border-white/10 p-5 flex items-center gap-3"><img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-10 w-10 object-contain"/><div><p className="font-bold text-white">Omnia</p><p className="font-bold" style={{color:OMNIA_GOLD}}>Career Studio</p></div></div>
+          <nav className="space-y-1 p-3">
             {SUB_MENUS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setSubTab(key)}
                 className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all"
-                style={subTab === key ? { background: OMNIA_BLUE, color: 'white' } : { color: MUTED }}
+                style={subTab === key ? { background: 'rgba(191,136,19,.18)', color: OMNIA_GOLD } : { color: 'rgba(255,255,255,.78)' }}
               >
                 <Icon size={16} />
                 {label}
               </button>
             ))}
-          </nav>
+          </nav><div className="mt-auto border-t border-white/10 p-3"><Link to="/admin/dashboard" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{color:OMNIA_GOLD}}><ArrowLeft size={16}/>Retour au Dashboard</Link></div>
         </aside>
 
         <main className="flex-1 space-y-6 overflow-y-auto p-6">
@@ -657,17 +643,7 @@ export default function AdminCareerStudio() {
                   </div>
                 ))}
               </div>
-              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
-                <h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Règles principales actuellement appliquées</h2>
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {rules.slice(0, 9).map((rule) => (
-                    <div key={rule.rule_key} className="rounded-xl border p-4" style={{ borderColor: BORDER, background: '#F8FAFC' }}>
-                      <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{rule.label_fr}</p>
-                      <p className="mt-1 text-xs" style={{ color: MUTED }}>{String(valueFromJson(rule))} {rule.unit || ''}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Activité récente</h2><div className="mt-4 space-y-3">{tokenTransactions.slice(0,6).map((t:any)=><div key={t.id} className="flex items-center justify-between border-b pb-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{t.reason||t.transaction_type||'Mouvement de jetons'}</span><strong style={{color:Number(t.amount)<0?'#B91C1C':'#15803D'}}>{Number(t.amount)>0?'+':''}{t.amount||0}</strong></div>)}{tokenTransactions.length===0&&<p className="text-sm" style={{color:MUTED}}>Aucune activité enregistrée.</p>}</div></div><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>État opérationnel</h2><div className="mt-4 space-y-3 text-sm" style={{color:MUTED}}><p>{tokenPacks.filter(p=>p.is_active).length} pack(s) de jetons proposé(s)</p><p>{questionBank.filter(q=>q.is_active).length} question(s) active(s)</p><p>{exportLogs.length} export(s) récent(s) chargé(s)</p><p>{cvTemplates.filter(t=>t.is_active).length} modèles CV et {lmTemplates.filter(t=>t.is_active).length} modèles LM actifs</p></div></div></div>
             </div>
           )}
 
@@ -946,13 +922,7 @@ export default function AdminCareerStudio() {
             </div>
           )}
 
-          {!loading && subTab === 'exports' && (
-            <div className="rounded-2xl border bg-white p-8 text-center" style={{ borderColor: BORDER }}>
-              <Download size={42} className="mx-auto mb-3 opacity-25" style={{ color: OMNIA_BLUE }} />
-              <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Exports PDF et transactions</h2>
-              <p className="mt-2 text-sm" style={{ color: MUTED }}>Les historiques sont enregistrés dans career_export_logs et career_token_transactions. Les tableaux détaillés peuvent être ajoutés à l’étape reporting.</p>
-            </div>
-          )}
+          {!loading && subTab === 'exports' && (<div className="rounded-2xl border bg-white overflow-hidden" style={{borderColor:BORDER}}><div className="p-5 border-b" style={{borderColor:BORDER}}><h2 className="text-xl font-semibold" style={{color:OMNIA_BLUE}}>Exports CV & lettres de motivation</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Journal réel des exports enregistrés par la plateforme.</p></div><div className="divide-y">{exportLogs.map((e:any)=><div key={e.id} className="grid grid-cols-4 gap-3 px-5 py-3 text-sm"><span>{e.doc_type?.toUpperCase()||e.export_type||'Document'}</span><span className="truncate">{e.document_id||e.career_document_id||'—'}</span><span>{e.tokens_consumed??e.token_cost??'—'} jeton(s)</span><span>{e.created_at?new Date(e.created_at).toLocaleString('fr-FR'):'—'}</span></div>)}{exportLogs.length===0&&<div className="p-8 text-center text-sm" style={{color:MUTED}}>Aucun export enregistré.</div>}</div></div>)}
 
           {!loading && subTab === 'stats' && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

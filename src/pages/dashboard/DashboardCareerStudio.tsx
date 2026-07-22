@@ -238,6 +238,20 @@ export default function DashboardCareerStudio() {
     return response.json();
   }
 
+  async function buyTokenPack(packKey: string) {
+    if (!SUPABASE_URL) return;
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/career-token-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'checkout', pack_key: packKey }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.payment_url) throw new Error(data.message || data.error || 'Paiement indisponible');
+      window.location.href = data.payment_url;
+    } catch (error) { showToast((error as Error).message || 'Impossible de démarrer le paiement.'); }
+  }
+
   async function loadData() {
     setLoading(true);
     try {
@@ -336,7 +350,7 @@ export default function DashboardCareerStudio() {
   }));
 
   return (
-    <SubspaceHamburgerLayout title="Omnia Career" navItems={careerNavItems} showSearch={false}>
+    <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={careerNavItems} showSearch={false}>
       <div className="min-h-[calc(100vh-72px)]" style={{ background: PAGE_BG, color: '#111827' }}>
         {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
         <div className="border-b bg-white px-5 py-4 md:px-8" style={{ borderColor: BORDER }}>
@@ -350,7 +364,7 @@ export default function DashboardCareerStudio() {
           </div>
         </div>
         <main className="px-5 py-7 md:px-8">
-          {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
+          {activeView === 'dashboard' && <div className="space-y-6"><EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} /><Card className="p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Acheter des jetons</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Solde actuel : <strong>{tokens} jeton(s)</strong>. Choisissez un pack actif ; les jetons sont crédités uniquement après confirmation du paiement.</p></div><Coins style={{color:OMNIA_GOLD}} /></div><div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{packs.map(pack=><div key={pack.pack_key} className="rounded-2xl border p-5" style={{borderColor:pack.is_popular?OMNIA_GOLD:BORDER}}><div className="flex items-start justify-between gap-2"><div><div className="font-semibold" style={{color:OMNIA_BLUE}}>{pack.name_fr}</div><div className="mt-1 text-2xl font-semibold" style={{color:OMNIA_BLUE}}>{pack.tokens + (pack.bonus_tokens||0)} jetons</div></div>{pack.is_popular&&<SmallBadge tone="gold">Populaire</SmallBadge>}</div>{(pack.bonus_tokens||0)>0&&<p className="mt-2 text-xs" style={{color:MUTED}}>dont {pack.bonus_tokens} jeton(s) bonus</p>}<div className="mt-4 text-lg font-semibold" style={{color:OMNIA_GOLD}}>{Number(pack.price_xof||0).toLocaleString('fr-FR')} XOF</div><button onClick={()=>buyTokenPack(pack.pack_key)} className="mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Acheter ce pack</button></div>)}{packs.length===0&&<div className="text-sm" style={{color:MUTED}}>Aucun pack de jetons n’est actuellement proposé.</div>}</div></Card></div>}
           {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
           {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
           {activeView === 'interview' && <EnhancedInterview />}
