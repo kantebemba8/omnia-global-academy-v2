@@ -1,92 +1,36 @@
 import { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { CreditCard, Eye, EyeOff, Save, AlertTriangle, Lock, Plus, Trash2 } from 'lucide-react';
+import { CreditCard, Eye, EyeOff, Save, AlertTriangle } from 'lucide-react';
 
-interface PricingTier {
-  id: string; label: string; score_min: number; score_max: number;
-  price_xof: number; is_base_tier: boolean; is_protected: boolean;
-}
 
 export default function AdminFintech() {
   const [showPubKey, setShowPubKey] = useState(false);
   const [fedaMode, setFedaMode] = useState<'test' | 'production'>('test');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
-  const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
-  const [tierToast, setTierToast] = useState('');
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000); }
-  function showTierToast(msg: string) { setTierToast(msg); setTimeout(() => setTierToast(''), 3000); }
-
-  useEffect(() => {
-    const token = localStorage.getItem('omnia_session_token');
-    fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.pricing_tiers) setPricingTiers(d.pricing_tiers);
-        if (Array.isArray(d.settings)) {
-          const map = Object.fromEntries(
-            d.settings.map((row: { key: string; value: string }) => [row.key, row.value ?? ''])
-          );
-          setSettings(prev => ({
-            ...prev,
-            payout_minimum_xof: map.payout_minimum_xof ?? '',
-            payout_delay_label: map.payout_delay_label ?? '',
-            ai_token_per_registration: map.ai_token_per_registration ?? '',
-            ai_token_per_purchase: map.ai_token_per_purchase ?? '',
-          }));
-        }
-      })
-      .catch(() => showToast('Impossible de charger les paramètres Fintech.'));
-  }, []);
-  const [settings, setSettings] = useState({
-    payout_minimum_xof: '',
-    payout_delay_label: '',
-    ai_token_per_registration: '',
-    ai_token_per_purchase: '',
-    canal_mobile_money: true,
-    canal_virement_uemoa: true,
-    canal_swift: false,
-  });
-
-  function set<K extends keyof typeof settings>(k: K, v: (typeof settings)[K]) {
-    setSettings((prev) => ({ ...prev, [k]: v }));
-  }
 
   async function save() {
-    if (
-      settings.payout_minimum_xof === '' ||
-      settings.ai_token_per_registration === '' ||
-      settings.ai_token_per_purchase === ''
-    ) {
-      showToast('Renseignez les valeurs obligatoires avant d’enregistrer.');
-      return;
-    }
-
     setSaving(true);
     const token = localStorage.getItem('omnia_session_token');
-    try {
-      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates: [
-            { key: 'payout_minimum_xof', value: settings.payout_minimum_xof },
-            { key: 'payout_delay_label', value: settings.payout_delay_label },
-            { key: 'ai_token_per_registration', value: settings.ai_token_per_registration },
-            { key: 'ai_token_per_purchase', value: settings.ai_token_per_purchase },
-          ],
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Enregistrement impossible');
-      showToast('Paramètres Fintech enregistrés.');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Enregistrement impossible.');
-    } finally {
-      setSaving(false);
-    }
+    await fetch(ENDPOINTS.adminCmsUpdate, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        updates: [
+          { key: 'payout_minimum_xof', value: settings.payout_minimum_xof },
+          { key: 'payout_delay_label', value: settings.payout_delay_label },
+          { key: 'referral_reward_referrer_xof', value: settings.referral_reward_referrer_xof },
+          { key: 'referral_reward_referred_xof', value: settings.referral_reward_referred_xof },
+          { key: 'career_tokens_per_certificate', value: settings.career_tokens_per_certificate },
+          { key: 'career_pdf_export_cost_tokens', value: settings.career_pdf_export_cost_tokens },
+        ],
+      }),
+    });
+    setSaving(false);
+    showToast('Paramètres enregistrés.');
   }
 
   return (
@@ -98,7 +42,7 @@ export default function AdminFintech() {
         )}
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration Fintech</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Passerelles de paiement, retraits et jetons & crédits globaux</p>
+          <p className="text-gray-500 text-sm mt-0.5">Passerelles de paiement, retraits et jetons IA</p>
         </div>
 
         {/* FedaPay card */}
@@ -200,88 +144,50 @@ export default function AdminFintech() {
           </div>
         </div>
 
-        {/* AI tokens */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <h3 className="font-semibold" style={{ color: '#002050' }}>Jetons & crédits globaux</h3>
-          <p className="text-xs text-gray-500">Les jetons permettent de générer des CV depuis le CV Builder.</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Jetons offerts à l'inscription</label>
-              <input type="number" value={settings.ai_token_per_registration} onChange={(e) => set('ai_token_per_registration', e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Jetons offerts par achat confirmé</label>
-              <input type="number" value={settings.ai_token_per_purchase} onChange={(e) => set('ai_token_per_purchase', e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-            </div>
+        {/* Parrainage & Jetons */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
+          <div>
+            <h3 className="font-semibold" style={{ color: '#002050' }}>Parrainage & Jetons Omnia Career</h3>
+            <p className="text-xs text-gray-500 mt-1">Valeurs financières centralisées ici pour éviter les doubles réglages dans le CMS.</p>
           </div>
-        </div>
 
-        {/* Pricing tiers */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold" style={{ color: '#002050' }}>Paliers de prix</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Les paliers de base sont protégés contre la suppression.</p>
-            </div>
-            <button
-              onClick={async () => {
-                const token = localStorage.getItem('omnia_session_token');
-                await fetch(ENDPOINTS.adminCmsUpdate, {
-                  method: 'POST',
-                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'upsert_pricing_tier', tier: { label: 'Nouveau palier', score_min: 0, score_max: 10, price_xof: 5000 } }),
-                });
-                const r = await fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } });
-                const d = await r.json();
-                if (d.pricing_tiers) setPricingTiers(d.pricing_tiers);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-              style={{ backgroundColor: '#002050' }}>
-              <Plus className="w-3 h-3" /> Ajouter un palier
-            </button>
-          </div>
-          {tierToast && (
-            <div className="p-2 rounded-lg text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>{tierToast}</div>
-          )}
-          <div className="space-y-2">
-            {pricingTiers.map((tier) => (
-              <div key={tier.id} className="flex items-center gap-3 p-3 rounded-lg border" style={{ borderColor: tier.is_protected ? '#BF881330' : '#E4E7EC', backgroundColor: tier.is_protected ? '#FFFBEB' : '#FAFAFA' }}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-gray-800">{tier.label}</span>
-                    {tier.is_protected && (
-                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#BF881320', color: '#BF8813' }}>
-                        <Lock className="w-2.5 h-2.5" /> Protégé
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500">Score {tier.score_min}–{tier.score_max} · {tier.price_xof.toLocaleString()} XOF</p>
-                </div>
-                <button
-                  disabled={tier.is_protected}
-                  title={tier.is_protected ? 'Ce palier est protégé — modifiable uniquement' : 'Supprimer ce palier'}
-                  onClick={async () => {
-                    const token = localStorage.getItem('omnia_session_token');
-                    const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'delete_pricing_tier', tier_id: tier.id }),
-                    });
-                    const d = await res.json();
-                    if (d.error === 'PALIER_PROTECTED') { showTierToast(d.message); return; }
-                    setPricingTiers(prev => prev.filter(t => t.id !== tier.id));
-                  }}
-                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{ color: '#DC2626' }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Parrainage — valeurs par défaut du cahier des charges</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Récompense du parrain (XOF)</label>
+                <input type="number" min="0" value={settings.referral_reward_referrer_xof}
+                  onChange={(e) => set('referral_reward_referrer_xof', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
               </div>
-            ))}
-            {pricingTiers.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-4">Aucun palier configuré.</p>
-            )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Récompense du filleul (XOF)</label>
+                <input type="number" min="0" value={settings.referral_reward_referred_xof}
+                  onChange={(e) => set('referral_reward_referred_xof', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-5">
+            <h4 className="text-sm font-semibold text-gray-700 mb-1">Jetons Omnia Career</h4>
+            <p className="text-xs text-gray-500 mb-3">
+              Règle validée : 1 jeton accordé par certificat obtenu et 1 jeton consommé pour l’export PDF final.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Jetons accordés par certificat obtenu</label>
+                <input type="number" min="0" value={settings.career_tokens_per_certificate}
+                  onChange={(e) => set('career_tokens_per_certificate', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Coût de l’export PDF final (jetons)</label>
+                <input type="number" min="0" value={settings.career_pdf_export_cost_tokens}
+                  onChange={(e) => set('career_pdf_export_cost_tokens', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              </div>
+            </div>
           </div>
         </div>
 

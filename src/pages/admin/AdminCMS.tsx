@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PartnersManager } from '../../components/admin/PartnersManager';
 import { PricingRulesManager } from '../../components/admin/PricingRulesManager';
+import { PricingTiersManager } from '../../components/admin/PricingTiersManager';
 
 type Settings = Record<string, any>;
 type Tab = 'general' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia' | 'maintenance';
@@ -359,6 +360,31 @@ export default function AdminCMS() {
       setToast('Favicon supprimé de la bibliothèque.');
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Suppression impossible.');
+    }
+  }
+
+  async function saveCpdQuiz() {
+    setSaving(true);
+    setToast('');
+    try {
+      const token = localStorage.getItem('omnia_session_token');
+      const updates = [
+        { key: 'quiz_lesson_threshold', value: settings.quiz_lesson_threshold ?? '80' },
+        { key: 'quiz_module_threshold', value: settings.quiz_module_threshold ?? '70' },
+        { key: 'quiz_final_threshold', value: settings.quiz_final_threshold ?? '70' },
+      ];
+      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      });
+      if (!res.ok) throw new Error('Enregistrement impossible');
+      setToast('Paramètres CPD & Quiz enregistrés.');
+    } catch {
+      setToast('Erreur pendant l’enregistrement des paramètres CPD & Quiz.');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setToast(''), 3000);
     }
   }
 
@@ -814,9 +840,12 @@ export default function AdminCMS() {
             <div className="space-y-8">
               <div className="max-w-5xl mx-auto space-y-6">
                 <PricingRulesManager />
+                <div className="border-t border-gray-100 pt-6">
+                  <PricingTiersManager />
+                </div>
                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-                  <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers séparés</p>
-                  <p className="text-xs text-gray-500 mt-1">Les paliers de prix, commissions, prix Premium CPD, parrainage et autres montants sont gérés dans Configuration Fintech. Règles métier décide quand et comment une règle s’applique ; Fintech décide combien.</p>
+                  <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers centralisés</p>
+                  <p className="text-xs text-gray-500 mt-1">Le parrainage, les jetons, commissions, retraits et autres montants financiers sont centralisés dans Configuration Fintech. Les paliers de prix restent ici car ils font partie directement du moteur Score → Palier → Prix.</p>
                   <Link to="/admin/fintech" className="inline-flex mt-2 text-xs font-semibold" style={{color:'#BF8813'}}>Ouvrir Configuration Fintech →</Link>
                 </div>
               </div>
@@ -846,22 +875,6 @@ export default function AdminCMS() {
                 <p className="text-xs text-gray-400 mt-2">Toute modification est enregistrée dans l'audit log avec l'ancienne et la nouvelle valeur.</p>
               </div>
 
-              {/* Other params */}
-              <div>
-                <h3 className="font-semibold mb-3" style={{ color: '#002050' }}>Parrainage & Jetons</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Récompense parrain (XOF)" k="referral_reward_referrer_xof" type="number" />
-                  <Field label="Récompense filleul (XOF)" k="referral_reward_referred_xof" type="number" />
-                  <div className="col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                    <p className="text-sm font-semibold" style={{color:'#002050'}}>Jetons, retraits et paramètres financiers</p>
-                    <p className="mt-1 text-xs text-gray-500">Ces paramètres sont maintenant centralisés dans Configuration Fintech afin d’éviter les doubles réglages.</p>
-                    <Link to="/admin/fintech" className="mt-3 inline-flex text-xs font-semibold" style={{color:'#BF8813'}}>
-                      Ouvrir Configuration Fintech →
-                    </Link>
-                  </div>
-                </div>
-              </div>
-
               {/* CPD settings */}
               <div className="border-t border-gray-100 pt-6">
                 <h3 className="font-semibold mb-1" style={{ color: '#002050' }}>Paramètres CPD & Quiz</h3>
@@ -888,14 +901,16 @@ export default function AdminCMS() {
                     </div>
                   ))}
                 </div>
-                <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                  <p className="text-sm font-semibold" style={{color:'#002050'}}>Jetons IA</p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Les jetons ne sont plus configurés dans le CMS. Utilisez Configuration Fintech pour les valeurs globales actives.
-                  </p>
-                  <Link to="/admin/fintech" className="mt-3 inline-flex text-xs font-semibold" style={{color:'#BF8813'}}>
-                    Gérer les jetons dans Fintech →
-                  </Link>
+                <div className="flex justify-end">
+                  <button
+                    onClick={saveCpdQuiz}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                    style={{ backgroundColor: '#002050' }}
+                  >
+                    <Save className="w-4 h-4" />
+                    {saving ? 'Enregistrement…' : 'Enregistrer les paramètres CPD & Quiz'}
+                  </button>
                 </div>
               </div>
             </div>
