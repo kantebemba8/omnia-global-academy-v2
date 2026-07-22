@@ -94,11 +94,101 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json() as {
-      updates?: { key: string; value: string }[];
+      updates?: { key: string; value: unknown }[];
       action?: string;
       tier_id?: string;
       tier?: Record<string, unknown>;
+      file_name?: string;
+      mime_type?: string;
+      base64?: string;
+      favicon_url?: string;
     };
+
+    // Favicon library management
+    if (body.action === "upload_favicon") {
+      if (!body.base64 || !body.file_name || !body.mime_type) return json({ error: "FAVICON_FILE_REQUIRED" }, 400);
+      const allowedTypes = new Set(["image/png","image/x-icon","image/vnd.microsoft.icon","image/svg+xml","image/webp","image/jpeg"]);
+      if (!allowedTypes.has(body.mime_type)) return json({ error: "FAVICON_TYPE_NOT_ALLOWED" }, 400);
+
+      const binary = Uint8Array.from(atob(body.base64), c => c.charCodeAt(0));
+      if (binary.byteLength > 1024 * 1024) return json({ error: "FAVICON_TOO_LARGE" }, 400);
+
+      const bucketName = "site-assets";
+      const { data: existingBucket } = await sb.storage.getBucket(bucketName);
+      if (!existingBucket) {
+        const { error: bucketError } = await sb.storage.createBucket(bucketName, {
+          public: true,
+          fileSizeLimit: 1024 * 1024,
+          allowedMimeTypes: Array.from(allowedTypes),
+        });
+        if (bucketError && !String(bucketError.message || "").toLowerCase().includes("already")) throw bucketError;
+      }
+
+      const safeName = body.file_name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-80);
+      const path = `favicons/${Date.now()}-${crypto.randomUUID()}-${safeName || "favicon.png"}`;
+      const { error: uploadError } = await sb.storage.from(bucketName).upload(path, binary, {
+        contentType: body.mime_type,
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = sb.storage.from(bucketName).getPublicUrl(path);
+      const faviconUrl = publicData.publicUrl;
+
+      const { data: libraryRow } = await sb.from("site_settings").select("value").eq("key","favicon_library").maybeSingle();
+      let library: Array<{url:string;name:string;created_at:string}> = [];
+      if (Array.isArray(libraryRow?.value)) library = libraryRow.value as typeof library;
+      else if (typeof libraryRow?.value === "string") {
+        try { library = JSON.parse(libraryRow.value); } catch { library = []; }
+      }
+      library.push({ url: faviconUrl, name: body.file_name, created_at: new Date().toISOString() });
+
+      const now = new Date().toISOString();
+      await sb.from("site_settings").upsert([
+        { key:"favicon_url", value:faviconUrl, updated_at:now },
+        { key:"favicon_library", value:library, updated_at:now },
+      ], { onConflict:"key" });
+
+      return json({ success:true, favicon_url:faviconUrl, favicon_library:library });
+    }
+
+    if (body.action === "set_active_favicon") {
+      if (!body.favicon_url) return json({ error:"FAVICON_URL_REQUIRED" },400);
+      await sb.from("site_settings").upsert({
+        key:"favicon_url", value:body.favicon_url, updated_at:new Date().toISOString(),
+      }, { onConflict:"key" });
+      return json({ success:true, favicon_url:body.favicon_url });
+    }
+
+    if (body.action === "delete_favicon") {
+      if (!body.favicon_url) return json({ error:"FAVICON_URL_REQUIRED" },400);
+      const { data: activeRow } = await sb.from("site_settings").select("value").eq("key","favicon_url").maybeSingle();
+      if (activeRow?.value === body.favicon_url) {
+        return json({ error:"FAVICON_ACTIVE_CANNOT_DELETE", message:"Activez un autre favicon avant de supprimer celui-ci." },409);
+      }
+
+      const { data: libraryRow } = await sb.from("site_settings").select("value").eq("key","favicon_library").maybeSingle();
+      let library: Array<{url:string;name:string;created_at?:string}> = [];
+      if (Array.isArray(libraryRow?.value)) library = libraryRow.value as typeof library;
+      else if (typeof libraryRow?.value === "string") {
+        try { library = JSON.parse(libraryRow.value); } catch { library = []; }
+      }
+      library = library.filter(item => item?.url !== body.favicon_url);
+
+      try {
+        const marker = "/storage/v1/object/public/site-assets/";
+        const i = body.favicon_url.indexOf(marker);
+        if (i >= 0) {
+          const objectPath = decodeURIComponent(body.favicon_url.slice(i + marker.length));
+          if (objectPath) await sb.storage.from("site-assets").remove([objectPath]);
+        }
+      } catch (e) { console.error("favicon cleanup", e); }
+
+      await sb.from("site_settings").upsert({
+        key:"favicon_library", value:library, updated_at:new Date().toISOString(),
+      }, { onConflict:"key" });
+      return json({ success:true, favicon_library:library });
+    }
 
     // Pricing tier management
     if (body.action === "delete_pricing_tier") {

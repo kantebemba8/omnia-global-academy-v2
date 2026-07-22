@@ -46,26 +46,34 @@ Deno.serve(async (req: Request) => {
       settingsMap[setting.key] = setting.value;
     }
 
+    const parseObjectSetting = (value: any, fallback: any) => {
+      if (value == null) return fallback;
+      if (typeof value === "object") return value;
+      try { return JSON.parse(value); } catch { return fallback; }
+    };
+
     // Build the response with only public settings
     const publicSettings = {
       coming_soon_enabled: settingsMap.coming_soon_enabled === 'true' || settingsMap.coming_soon_enabled === true,
       coming_soon_title_fr: settingsMap.coming_soon_title_fr || "La plateforme africaine de formation en ligne arrive bientot",
       coming_soon_subtitle_fr: settingsMap.coming_soon_subtitle_fr || "Des formations d'elite et interactives, parfaitement adaptees aux realites professionnelles africaines.",
       launch_date: settingsMap.launch_date || null,
-      social_networks: settingsMap.social_networks || {
+      social_networks: parseObjectSetting(settingsMap.social_networks, {
         facebook: null,
         instagram: null,
         youtube: null,
         linkedin: null,
         indeed: null,
         whatsapp: null,
-      },
+      }),
       follow_us_label_fr: settingsMap.follow_us_label_fr || "Suivez-nous",
-      app_downloads: settingsMap.app_downloads || {
+      app_downloads: parseObjectSetting(settingsMap.app_downloads, {
         google_play: null,
         app_store: null,
-      },
-      collaborations_logos: settingsMap.collaborations_logos || [],
+      }),
+      collaborations_logos: parseObjectSetting(settingsMap.collaborations_logos, []),
+      favicon_url: settingsMap.favicon_url || null,
+      site_slogan: settingsMap.site_slogan || null,
     };
 
     // Fetch waitlist count via service role (bypasses RLS)
