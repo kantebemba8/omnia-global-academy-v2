@@ -124,9 +124,9 @@ export default function AdminStructures() {
     const data = await res.json();
     if (data.success) {
       const labels: Record<string, string> = {
-        validate: ' Structure validée', reject: ' Structure refusée',
-        request_changes: ' Modification demandée', suspend: ' Structure suspendue',
-        archive: '📦 Structure archivée', restore: ' Structure restaurée',
+        validate: '✅ Structure validée', reject: '❌ Structure refusée',
+        request_changes: '📝 Modification demandée', suspend: '⚠️ Structure suspendue',
+        archive: '📦 Structure archivée', restore: '✅ Structure restaurée',
       };
       showToast(labels[decision] ?? 'Action effectuée');
       setDetail(null);
@@ -200,8 +200,82 @@ export default function AdminStructures() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="flex flex-wrap gap-x-7 gap-y-2 border-y border-gray-200 py-3 text-sm"><span><strong>{stats?.total ?? structures.length}</strong> Total</span><span><strong>{stats?.active ?? 0}</strong> Validées</span><span><strong>{stats?.pending ?? 0}</strong> En attente</span><span><strong>{stats?.suspended ?? 0}</strong> Suspendues</span></div>
+        {/* Résumé compact — pas de cartes statistiques */}
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-2 border-y border-gray-200 py-3 text-sm text-gray-600">
+          <span><strong style={{ color: '#002050' }}>{stats.total}</strong> Total</span>
+          <span><strong style={{ color: '#065F46' }}>{stats.validated}</strong> Validées</span>
+          <span><strong style={{ color: '#92400E' }}>{stats.pending}</strong> En attente</span>
+          <span><strong style={{ color: '#374151' }}>{stats.suspended}</strong> Suspendues</span>
+        </div>
+
+        {/* Filtres */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-48">
+            <Search size={14} className="absolute left-3 top-3 text-gray-400" />
+            <input className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
+              placeholder="Rechercher une structure..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && load()} />
+          </div>
+          <select className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
+            value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="">Tous les statuts</option>
+            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+          <select className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
+            value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            <option value="">Tous les types</option>
+            {Object.entries(STRUCTURE_TYPES).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Liste */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
+          </div>
+        ) : structures.length === 0 ? (
+          <div className="bg-white rounded-2xl border-2 border-dashed p-16 text-center" style={{ borderColor: '#E4E7EC' }}>
+            <Building2 size={40} className="mx-auto mb-3 opacity-10" style={{ color: '#002050' }} />
+            <p className="font-bold" style={{ color: '#002050' }}>Aucune structure trouvée</p>
+            <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>Modifiez vos filtres</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {structures.map(s => {
+              const sc = STATUS_CONFIG[s.status] ?? STATUS_CONFIG.draft;
+              return (
+                <div key={s.id} className="bg-white rounded-2xl border p-5 hover:shadow-sm transition-all"
+                  style={{ borderColor: '#E4E7EC' }}>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: '#EEF2FF' }}>
+                      <Building2 size={22} style={{ color: '#002050' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold" style={{ color: '#002050' }}>{s.name}</h3>
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold"
+                          style={{ background: sc.bg, color: sc.color }}>
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: sc.dot }} />
+                          {sc.label}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-full"
+                          style={{ background: '#F3F4F6', color: '#6B7280' }}>
+                          {STRUCTURE_TYPES[s.structure_type] ?? s.structure_type}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap text-xs" style={{ color: '#9CA3AF' }}>
+                        {s.responsible_name && <span>{s.responsible_name}</span>}
+                        {s.professional_email && <span>{s.professional_email}</span>}
+                        {s.city && <span>{s.city}, {s.country}</span>}
+                        <span>{new Date(s.created_at).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                    </div>
                     <button onClick={() => loadDetail(s)}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0"
                       style={{ background: '#002050' }}>
