@@ -95,6 +95,22 @@ Deno.serve(async (req: Request) => {
       site_slogan: settingsMap.site_slogan || null,
     };
 
+    const { data: publicPartners } = await supabaseAnon
+      .from("public_partners")
+      .select("id,name,category,logo_url,website_url,description,display_order,is_featured")
+      .eq("is_active", true)
+      .order("display_order")
+      .order("name");
+    (publicSettings as any).public_partners = publicPartners ?? [];
+    (publicSettings as any).legal = {
+      cgu: settingsMap.cgu_content_fr || "",
+      confidentialite: settingsMap.confidentialite_content_fr || "",
+      mentions_legales: settingsMap.mentions_legales_fr || "",
+      cookies: settingsMap.cookies_content_fr || "",
+      cgv: settingsMap.cgv_content_fr || "",
+      remboursements: settingsMap.refund_policy_content_fr || "",
+    };
+
     return new Response(JSON.stringify(publicSettings), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -16,7 +16,8 @@ const RESOURCE_POINTS: Record<string, { pts: number; max: number }> = {
   glossaire: { pts: 1.0, max: 1 }, exercice_pratique: { pts: 0.5, max: 3 },
   audio: { pts: 0.5, max: 2 }, template: { pts: 0.7, max: 3 }, etude_de_cas: { pts: 1.0, max: 2 },
 };
-const NIVEAU_POINTS: Record<string, number> = { Débutant: 2, Intermédiaire: 5, Avancé: 8, Expert: 12 };
+const NIVEAU_POINTS: Record<string, number> = { debutant: 2, intermediaire: 5, avance: 8, expert: 12 };
+const normalize = (v: string) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "_");
 const VALIDATION_POINTS: Record<string, number> = { qcm: 3, projet_soumettre: 8, projet_corriger: 12 };
 
 async function wordCount(text: string): Promise<number> {
@@ -30,7 +31,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  let body: { course_id?: string; sous_categorie_langue?: string; champs_sous_categorie?: unknown; niveau_cecrl?: string; langue_enseignee?: string; langue_instruction?: string; examen_oral_statut?: string; examen_oral_consignes?: string; examen_oral_criteres?: string; requested_cpd?: boolean };
+  let body: { course_id?: string; sous_categorie_langue?: string; champs_sous_categorie?: unknown; niveau_cecrl?: string; langue_enseignee?: string; langue_instruction?: string; examen_oral_statut?: string; examen_oral_consignes?: string; examen_oral_criteres?: string; requested_cpd?: boolean; desired_price_amount?: number };
   try { body = await req.json(); } catch { return json({ error: "Invalid body" }, 400); }
   const { course_id } = body;
   if (!course_id) return json({ error: "course_id requis" }, 400);
@@ -124,7 +125,7 @@ Deno.serve(async (req: Request) => {
     score += (modules?.length ?? 0) * 2;
     score += (lessons?.length ?? 0) * 0.5;
     score += cpd_hours;
-    score += NIVEAU_POINTS[String(courseTyped.level ?? "")] ?? 0;
+    score += NIVEAU_POINTS[normalize(String(courseTyped.level ?? ""))] ?? 0;
     score += VALIDATION_POINTS[String(courseTyped.final_validation_type ?? "")] ?? 0;
 
     let bonusTotal = 0;
@@ -140,15 +141,16 @@ Deno.serve(async (req: Request) => {
     score *= multiplier;
     score = Math.round(score * 10) / 10;
 
-    let price_xof = 5000;
-    if (score > 15 && score <= 30) price_xof = 15000;
-    else if (score > 30 && score <= 50) price_xof = 25000;
-    else if (score > 50) price_xof = 35000;
+    const { data: tiers } = await sb.from("pricing_tiers")
+      .select("id,label,score_min,score_max,price_xof")
+      .order("score_min");
+    const pricingTier = (tiers ?? []).find((t: any) =>
+      score >= Number(t.score_min) && (t.score_max == null || score <= Number(t.score_max))
+    );
+    let price_xof = Number(pricingTier?.price_xof ?? 0);
 
-    if (courseTyped.requested_cpd) {
-      const { data: cpdSetting } = await sb.from("site_settings").select("value").eq("key", "cpd_premium_price_xof").maybeSingle();
-      price_xof = parseInt(String(cpdSetting?.value ?? "50000"));
-    }
+    // Le CPD ne remplace plus silencieusement le moteur de score.
+    // Un éventuel palier Premium CPD est géré séparément après validation/accréditation CPD.
 
     // ── Generate MCQ answers via Claude ──
     const questionsToGenerate = (questions ?? []).filter((q) => {
@@ -206,15 +208,44 @@ Deno.serve(async (req: Request) => {
     if (body.examen_oral_criteres !== undefined) langueFields.examen_oral_criteres = body.examen_oral_criteres;
     if (body.requested_cpd !== undefined) langueFields.requested_cpd = body.requested_cpd;
 
+    const desiredPrice = body.desired_price_amount == null ? null : Math.max(0, Number(body.desired_price_amount));
+    const pricingSnapshot = {
+      calculated_at: new Date().toISOString(),
+      modules_count: modules?.length ?? 0,
+      lessons_count: lessons?.length ?? 0,
+      cpd_hours: Math.round(cpd_hours * 100) / 100,
+      level: String(courseTyped.level ?? ""),
+      validation_type: String(courseTyped.final_validation_type ?? ""),
+      resources: resourcesArr,
+      resource_bonus: Math.min(bonusTotal, 5.0),
+      multiplier,
+      category: String(courseTyped.category ?? ""),
+      score,
+      tier_id: pricingTier?.id ?? null,
+      tier_label: pricingTier?.label ?? null,
+      automatic_price_xof: price_xof,
+    };
+
     await sb.from("courses").update({
-      status: "en_attente_validation_manuelle",
+      status: "en_attente_validation_prix_admin",
+      pricing_status: "en_attente_validation_prix_admin",
       score_calcule: score,
       prix_provisoire_xof: price_xof,
+      desired_price_amount: desiredPrice,
+      pricing_snapshot: pricingSnapshot,
+      professor_price_accepted: false,
       updated_at: new Date().toISOString(),
       ...langueFields,
     }).eq("id", course_id);
 
-    return json({ success: true, score, prix_provisoire: price_xof });
+    return json({
+      success: true,
+      score,
+      prix_provisoire: price_xof,
+      desired_price_amount: desiredPrice,
+      pricing_status: "en_attente_validation_prix_admin",
+      message: "La proposition tarifaire a été envoyée au Super-admin avant la soumission pédagogique."
+    });
   } catch (err) {
     console.error(err);
     return json({ error: "SERVER_ERROR" }, 500);

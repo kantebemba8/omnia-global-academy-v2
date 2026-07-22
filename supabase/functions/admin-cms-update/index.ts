@@ -1,6 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { corsHeaders } from "../_shared/cors.ts";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey",
+};
 
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -24,58 +28,6 @@ const FORBIDDEN_KEYS = new Set([
   "cron_secret",
 ]);
 
-async function sendBrevoLaunchEmail(sb: ReturnType<typeof createClient>) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) return;
-
-  try {
-    const res = await fetch("https://api.brevo.com/v3/emailCampaigns", {
-      method: "POST",
-      headers: {
-        "accept": "application/json",
-        "api-key": brevoKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        name: `Lancement Omnia Global Academy — ${new Date().toISOString().slice(0, 10)}`,
-        subject: "Omnia Global Academy est maintenant disponible !",
-        sender: { name: "Omnia Global Academy", email: "noreply@omniaglobalacademy.com" },
-        type: "classic",
-        recipients: { listIds: [8] },
-        htmlContent: `<!DOCTYPE html>
-<html><body style="font-family:Inter,sans-serif;background:#f8f9fa;margin:0;padding:32px 0;">
-<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-  <div style="background:#002050;padding:40px 32px;text-align:center;">
-    <h1 style="color:#ffffff;font-size:28px;margin:0 0 8px;">Omnia Global Academy</h1>
-    <p style="color:#BF8813;font-size:14px;letter-spacing:0.1em;margin:0;">LA PLATEFORME EST EN LIGNE</p>
-  </div>
-  <div style="padding:40px 32px;">
-    <p style="color:#002050;font-size:18px;font-weight:700;margin:0 0 16px;">La plateforme est enfin disponible !</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.6;margin:0 0 24px;">
-      Vous avez été parmi les premiers à vous inscrire sur notre liste d'attente. Aujourd'hui, la plateforme africaine de formation en ligne est officiellement ouverte.
-    </p>
-    <a href="https://omniaglobalacademy.com" style="display:inline-block;background:#002050;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
-      Découvrir la plateforme
-    </a>
-    <p style="color:#9CA3AF;font-size:12px;margin:32px 0 0;">© 2026 Omnia Global Academy</p>
-  </div>
-</div>
-</body></html>`,
-      }),
-    });
-
-    if (res.ok) {
-      const campaign = await res.json();
-      await fetch(`https://api.brevo.com/v3/emailCampaigns/${campaign.id}/sendNow`, {
-        method: "POST",
-        headers: { "api-key": brevoKey },
-      });
-    }
-  } catch (e) {
-    console.error("Brevo launch email error:", e);
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -90,7 +42,9 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data: settings } = await sb.from("site_settings").select("key,value");
       const { data: pricingTiers } = await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min");
-      return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [] });
+      const { data: partners } = await sb.from("public_partners").select("*").order("display_order").order("name");
+      const { data: multipliers } = await sb.from("category_multipliers").select("category_name,multiplier").order("category_name");
+      return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [], partners: partners ?? [], category_multipliers: multipliers ?? [] });
     }
 
     const body = await req.json() as {
@@ -102,6 +56,10 @@ Deno.serve(async (req: Request) => {
       mime_type?: string;
       base64?: string;
       favicon_url?: string;
+      partner_id?: string;
+      partner?: Record<string, unknown>;
+      category_name?: string;
+      multiplier?: number;
     };
 
     // Favicon library management
@@ -190,6 +148,54 @@ Deno.serve(async (req: Request) => {
       return json({ success:true, favicon_library:library });
     }
 
+    if (body.action === "upload_partner_logo") {
+      if (!body.base64 || !body.file_name || !body.mime_type) return json({ error: "FILE_REQUIRED" }, 400);
+      const allowed = new Set(["image/png","image/jpeg","image/webp","image/svg+xml"]);
+      if (!allowed.has(body.mime_type)) return json({ error: "INVALID_IMAGE_TYPE" }, 400);
+      const bytes = Uint8Array.from(atob(body.base64), c => c.charCodeAt(0));
+      if (bytes.byteLength > 2 * 1024 * 1024) return json({ error: "FILE_TOO_LARGE" }, 400);
+      const bucket = "site-assets";
+      const { data: b } = await sb.storage.getBucket(bucket);
+      if (!b) await sb.storage.createBucket(bucket, { public: true, fileSizeLimit: 2 * 1024 * 1024 });
+      const safe = body.file_name.replace(/[^a-zA-Z0-9._-]+/g,"-").slice(-80);
+      const path = `partners/${Date.now()}-${crypto.randomUUID()}-${safe}`;
+      const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType: body.mime_type, upsert: false });
+      if (error) throw error;
+      const { data: pub } = sb.storage.from(bucket).getPublicUrl(path);
+      return json({ success: true, logo_url: pub.publicUrl });
+    }
+
+    if (body.action === "upsert_partner") {
+      if (!body.partner) return json({ error: "PARTNER_REQUIRED" }, 400);
+      const p = body.partner as any;
+      const payload = {
+        name: String(p.name || "").trim(), category: String(p.category || "Autre"),
+        logo_url: p.logo_url || null, website_url: p.website_url || null, description: p.description || null,
+        display_order: Number(p.display_order || 0), is_active: p.is_active !== false, is_featured: !!p.is_featured,
+        updated_at: new Date().toISOString()
+      };
+      if (!payload.name) return json({ error: "PARTNER_NAME_REQUIRED" }, 400);
+      if (p.id) await sb.from("public_partners").update(payload).eq("id", p.id);
+      else await sb.from("public_partners").insert(payload);
+      return json({ success: true });
+    }
+
+    if (body.action === "delete_partner") {
+      if (!body.partner_id) return json({ error: "PARTNER_ID_REQUIRED" }, 400);
+      await sb.from("public_partners").delete().eq("id", body.partner_id);
+      return json({ success: true });
+    }
+
+    if (body.action === "update_category_multiplier") {
+      if (!body.category_name || body.multiplier == null) return json({ error: "INVALID_PARAMS" }, 400);
+      const mult = Number(body.multiplier);
+      if (mult < 0.5 || mult > 2) return json({ error: "MULTIPLIER_OUT_OF_RANGE" }, 400);
+      const { data: old } = await sb.from("category_multipliers").select("multiplier").eq("category_name", body.category_name).maybeSingle();
+      await sb.from("category_multipliers").upsert({ category_name: body.category_name, multiplier: mult, updated_at: new Date().toISOString() }, { onConflict: "category_name" });
+      try { await sb.from("multiplier_audit_log").insert({ category_name: body.category_name, old_value: old?.multiplier ?? null, new_value: mult, changed_by: adminId }); } catch {}
+      return json({ success: true });
+    }
+
     // Pricing tier management
     if (body.action === "delete_pricing_tier") {
       if (!body.tier_id) return json({ error: "tier_id requis" }, 400);
@@ -221,18 +227,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: "FORBIDDEN_KEY", keys: forbidden.map((u) => u.key) }, 400);
     }
 
-    // Detect coming_soon → live toggle
-    const comingSoonUpdate = updates.find((u) => u.key === "coming_soon_enabled");
-    let wasComingSoon = false;
-    if (comingSoonUpdate && comingSoonUpdate.value === "false") {
-      const { data: current } = await sb
-        .from("site_settings")
-        .select("value")
-        .eq("key", "coming_soon_enabled")
-        .maybeSingle();
-      wasComingSoon = (current as { value: string } | null)?.value === "true";
-    }
-
     const now = new Date().toISOString();
     let updated = 0;
     for (const { key, value } of updates) {
@@ -240,18 +234,7 @@ Deno.serve(async (req: Request) => {
       updated++;
     }
 
-    // Site launch detected — log + send Brevo email
-    if (wasComingSoon) {
-      await sb.from("security_audit_log").insert({
-        event_type: "site_launched",
-        severity: "info",
-        user_id: adminId,
-        metadata: { triggered_by: adminId, timestamp: now },
-      });
-      await sendBrevoLaunchEmail(sb);
-    }
-
-    return json({ success: true, updated, launched: wasComingSoon });
+    return json({ success: true, updated });
   } catch (err) {
     console.error(err);
     return json({ error: "SERVER_ERROR" }, 500);

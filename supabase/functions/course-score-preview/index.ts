@@ -2,108 +2,88 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Origin":"*",
+  "Access-Control-Allow-Methods":"POST,OPTIONS",
+  "Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
+const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 
-const RESOURCE_POINTS: Record<string, { pts: number; max: number }> = {
-  pdf_fiche:          { pts: 0.5, max: 4 },
-  url_externe:        { pts: 0.3, max: 5 },
-  glossaire:          { pts: 1.0, max: 1 },
-  exercice_pratique:  { pts: 0.5, max: 3 },
-  audio:              { pts: 0.5, max: 2 },
-  template:           { pts: 0.7, max: 3 },
-  etude_de_cas:       { pts: 1.0, max: 2 },
-};
-const NIVEAU_POINTS: Record<string, number> = { Débutant: 2, Intermédiaire: 5, Avancé: 8, Expert: 12 };
-const VALIDATION_POINTS: Record<string, number> = { qcm: 3, projet_soumettre: 8, projet_corriger: 12 };
-
-function getPalier(score: number): string {
-  if (score <= 15) return "Découverte";
-  if (score <= 30) return "Fondamentaux";
-  if (score <= 50) return "Compétence";
-  return "Expert";
-}
-
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
-  let body: {
-    modules_count?: number; lessons_count?: number; cpd_hours?: number;
-    level?: string; final_validation_type?: string; category?: string;
-    resources?: Array<{ type: string; count: number }>;
-    requested_cpd?: boolean; has_oral_exam?: boolean;
-  };
-  try { body = await req.json(); } catch { return json({ error: "Invalid body" }, 400); }
-
-  try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-
-    let score = 0;
-    score += (body.modules_count ?? 0) * 2;
-    score += (body.lessons_count ?? 0) * 0.5;
-    score += (body.cpd_hours ?? 0) * 1;
-    score += NIVEAU_POINTS[body.level ?? ""] ?? 0;
-    score += VALIDATION_POINTS[body.final_validation_type ?? ""] ?? 0;
-    if (body.has_oral_exam) score += 6;
-
-    let bonusTotal = 0;
-    for (const r of body.resources ?? []) {
-      const cfg = RESOURCE_POINTS[r.type];
-      if (!cfg) continue;
-      bonusTotal += Math.min(r.count, cfg.max) * cfg.pts;
-    }
-    score += Math.min(bonusTotal, 5.0);
-
-    // Fetch category multiplier
-    const { data: multRow } = await sb.from("category_multipliers").select("multiplier").eq("category_name", body.category ?? "").maybeSingle();
-    const multiplier = parseFloat(String(multRow?.multiplier ?? 1.0));
-    score *= multiplier;
-    score = Math.round(score * 10) / 10;
-
-    let price_xof = 5000;
-    if (score > 15 && score <= 30) price_xof = 15000;
-    else if (score > 30 && score <= 50) price_xof = 25000;
-    else if (score > 50) price_xof = 35000;
-
-    // CPD premium override
-    if (body.requested_cpd) {
-      const { data: cpdSetting } = await sb.from("site_settings").select("value").eq("key", "cpd_premium_price_xof").maybeSingle();
-      price_xof = parseInt(String(cpdSetting?.value ?? "50000"));
-    }
-
-    // Commission info
-    const commKey = body.requested_cpd ? "commission_normal_avec_cpd" : "commission_normal_sans_cpd";
-    const { data: commSetting } = await sb.from("site_settings").select("value").eq("key", commKey).maybeSingle();
-    let commission = { professeur: 70, plateforme: 30 };
-    try { if (commSetting?.value) commission = JSON.parse(commSetting.value as string); } catch { /* ignore */ }
-
-    const bonusBreakdown = Math.min(bonusTotal, 5.0);
-
-    return json({
-      score,
-      price_xof,
-      palier: getPalier(score),
-      multiplier,
-      commission,
-      breakdown: {
-        modules: (body.modules_count ?? 0) * 2,
-        lessons: (body.lessons_count ?? 0) * 0.5,
-        cpd_hours: (body.cpd_hours ?? 0) * 1,
-        level: NIVEAU_POINTS[body.level ?? ""] ?? 0,
-        validation: VALIDATION_POINTS[body.final_validation_type ?? ""] ?? 0,
-        oral_exam: body.has_oral_exam ? 6 : 0,
-        resources_bonus: bonusBreakdown,
-        multiplier_applied: multiplier,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+const DEFAULT_RULES:any={
+  module_points:2,lesson_points:.5,hour_points:1,
+  level_points:{debutant:2,intermediaire:5,avance:8,expert:12},
+  validation_points:{qcm:3,projet_soumettre:8,projet_corriger:12},
+  oral_exam_points:6,resource_global_cap:5,
+  resources:{
+    pdf_fiche:{points:.5,max:4},url_externe:{points:.3,max:5},glossaire:{points:1,max:1},
+    exercice_pratique:{points:.5,max:3},audio:{points:.5,max:2},template:{points:.7,max:3},etude_de_cas:{points:1,max:2}
   }
+};
+const normalize=(v:string)=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/\s+/g,"_");
+const CATEGORY_ALIASES:Record<string,string>={
+  "comptabilite_&_finance":"Finance & Comptabilité","finance_&_comptabilite":"Finance & Comptabilité",
+  "informatique_&_developpement":"Informatique & Développement","developpement_web":"Informatique & Développement",
+  "cybersecurite_&_reseaux":"Cybersécurité & Réseaux","droit_des_affaires":"Droit & Juridique",
+  "marketing_&_communication":"Marketing & Communication","data_&_intelligence_artificielle":"Data & Intelligence Artificielle"
+};
+
+async function loadRules(sb:any){
+  const {data}=await sb.from("site_settings").select("value").eq("key","course_pricing_rules").maybeSingle();
+  if(!data?.value)return DEFAULT_RULES;
+  try{return typeof data.value==="string"?{...DEFAULT_RULES,...JSON.parse(data.value)}:{...DEFAULT_RULES,...data.value};}catch{return DEFAULT_RULES;}
+}
+async function resolveMultiplier(sb:any,category:string){
+  const direct=await sb.from("category_multipliers").select("category_name,multiplier").eq("category_name",category).maybeSingle();
+  if(direct.data)return {name:direct.data.category_name,multiplier:Number(direct.data.multiplier||1)};
+  const alias=CATEGORY_ALIASES[normalize(category)];
+  if(alias){
+    const r=await sb.from("category_multipliers").select("category_name,multiplier").eq("category_name",alias).maybeSingle();
+    if(r.data)return {name:r.data.category_name,multiplier:Number(r.data.multiplier||1)};
+  }
+  const {data:rows}=await sb.from("category_multipliers").select("category_name,multiplier");
+  const n=normalize(category);
+  const match=(rows||[]).find((x:any)=>normalize(x.category_name)===n);
+  return match?{name:match.category_name,multiplier:Number(match.multiplier||1)}:{name:category,multiplier:1};
+}
+async function resolveTier(sb:any,score:number){
+  const {data}=await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_protected").order("score_min");
+  const tier=(data||[]).find((t:any)=>score>=Number(t.score_min)&&(t.score_max==null||score<=Number(t.score_max)));
+  return tier||{id:null,label:"Non configuré",score_min:0,score_max:null,price_xof:0};
+}
+
+Deno.serve(async(req)=>{
+  if(req.method==="OPTIONS")return new Response(null,{status:200,headers:corsHeaders});
+  if(req.method!=="POST")return json({error:"METHOD_NOT_ALLOWED"},405);
+  const body=await req.json().catch(()=>null);
+  if(!body)return json({error:"INVALID_BODY"},400);
+  try{
+    const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
+    const rules=await loadRules(sb);
+    const level=normalize(body.level);
+    const validation=normalize(body.final_validation_type);
+    const breakdown:any={
+      modules:Number(body.modules_count||0)*Number(rules.module_points||2),
+      lessons:Number(body.lessons_count||0)*Number(rules.lesson_points||.5),
+      cpd_hours:Number(body.cpd_hours||0)*Number(rules.hour_points||1),
+      level:Number(rules.level_points?.[level]||0),
+      validation:Number(rules.validation_points?.[validation]||0),
+      oral_exam:body.has_oral_exam?Number(rules.oral_exam_points||6):0,
+      resources_bonus:0,
+    };
+    let bonus=0;
+    for(const r of body.resources||[]){
+      const cfg=rules.resources?.[normalize(r.type)];
+      if(cfg)bonus+=Math.min(Number(r.count||0),Number(cfg.max||0))*Number(cfg.points||0);
+    }
+    breakdown.resources_bonus=Math.min(bonus,Number(rules.resource_global_cap||5));
+    const subtotal=Object.values(breakdown).reduce((a:any,b:any)=>Number(a)+Number(b),0);
+    const mult=await resolveMultiplier(sb,String(body.category||""));
+    const score=Math.round(subtotal*mult.multiplier*10)/10;
+    const tier=await resolveTier(sb,score);
+    return json({
+      score,price_xof:Number(tier.price_xof||0),palier:tier.label,tier_id:tier.id,
+      multiplier:mult.multiplier,multiplier_category:mult.name,
+      breakdown:{...breakdown,subtotal_before_multiplier:Math.round(subtotal*10)/10,multiplier_applied:mult.multiplier},
+      rules_version:"course_pricing_rules",
+    });
+  }catch(e){console.error(e);return json({error:"SERVER_ERROR"},500);}
 });
