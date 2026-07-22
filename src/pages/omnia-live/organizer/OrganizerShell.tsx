@@ -71,7 +71,7 @@ export default function OrganizerShell({
       </div>
     </div>
 
-    <nav className="sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {NAV.map(([path,label,Icon,exact])=>
         <NavLink
           key={path}
@@ -157,7 +157,8 @@ export default function OrganizerShell({
         <button
           type="button"
           onClick={()=>navigate('/admin/dashboard')}
-          className="fixed bottom-5 left-[280px] z-50 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:opacity-95 max-lg:left-5"
+          className="fixed bottom-5 z-50 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:opacity-95"
+          style={{right:20,left:'auto'}}
         >
           <ArrowLeft size={16}/>
           <span>Retour au dashboard admin</span>
