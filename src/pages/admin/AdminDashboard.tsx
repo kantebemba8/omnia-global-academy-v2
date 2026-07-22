@@ -1,335 +1,422 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { useSiteMode } from '../../context/SiteModeContext';
 import {
-  TrendingUp, DollarSign, Lock, Users, AlertTriangle, BookOpen,
-  Wallet, Shield, Briefcase, ArrowRight, Clock, Eye,
- GraduationCap, Building2, UserCheck, Radio
+  Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
+  Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
+  Wallet, Briefcase, MessageSquare, Wrench, CircleAlert, CheckCircle2
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
-interface AdminData {
-  kpis: { ca_brut_xof: number; revenu_net_plateforme_xof: number; tresorerie_sequestree_xof: number; dau: number };
+type NullableNumber = number | null;
+
+interface ActionItem {
+  key: string;
+  label: string;
+  count: number;
+  path: string;
+  detail?: string;
+  priority?: 'high' | 'normal';
+}
+
+interface DashboardData {
+  period: string;
+  kpis: {
+    ca_encaisse_xof: NullableNumber;
+    revenu_omnia_xof: NullableNumber;
+    a_reverser_xof: NullableNumber;
+    utilisateurs_actifs_24h: NullableNumber;
+  };
+  activity_today: {
+    nouveaux_utilisateurs: NullableNumber;
+    commandes_payees: NullableNumber;
+    formations_soumises: NullableNumber;
+    lives_crees: NullableNumber;
+    retraits_demandes: NullableNumber;
+  };
+  actions: ActionItem[];
   ventes_evolution: { date: string; amount_xof: number; count: number }[];
-  repartition_geo: { country_code: string; country_name: string; sales_count: number; amount_xof: number }[];
-  repartition_paiement: { gateway: string; count: number; percent: number }[];
-  finops: { ai_tokens_used_month: number; ai_tokens_cost_usd: number; cloudflare_stream_minutes_used: number; cloudflare_stream_cost_usd: number; r2_storage_gb: number };
-  alertes: { retraits_en_attente: number; courses_a_publier: number; kyc_en_attente: number; offres_emploi_en_attente: number };
-  cours_a_publier: { id: string; title: string; creator_name: string; score_calcule: number | null; prix_provisoire_xof: number | null; category: string; created_at: string }[];
+  repartition_geo: { country_code: string; sales_count: number; amount_xof: number }[];
+  paiements: {
+    available: boolean;
+    rows: { gateway: string; count: number; amount_xof: number; percent: number }[];
+  };
+  formations: {
+    attente_tarification: NullableNumber;
+    attente_acceptation_professeur: NullableNumber;
+    validation_pedagogique: NullableNumber;
+    pretes_a_publier: NullableNumber;
+    publiees: NullableNumber;
+  };
+  omnia_live: {
+    validation: NullableNumber;
+    programmes_ou_publies: NullableNumber;
+    en_direct: NullableNumber;
+    remboursements: NullableNumber;
+    retraits: NullableNumber;
+    organisateurs: NullableNumber;
+  };
+  structures: {
+    en_attente: NullableNumber;
+    actives: NullableNumber;
+  };
+  users_by_role: { role: string; count: number }[];
+  platform: {
+    maintenance_global: boolean;
+    maintenance_modules: string[];
+  };
+  latest_admin_activity: { label: string; created_at: string }[];
 }
 
 const PERIOD_OPTIONS = [
   { label: "Aujourd'hui", value: '1d' },
   { label: '7 jours', value: '7d' },
-  { label: 'Mois', value: '30d' },
+  { label: '30 jours', value: '30d' },
   { label: 'Année', value: '1y' },
 ];
 
-const GW_COLORS = ['#002050', '#BF8813', '#1E7A52', '#dc2626', '#7c3aed'];
+function fmt(n: NullableNumber, suffix = '') {
+  if (n == null) return 'Non disponible';
+  return `${n.toLocaleString('fr-FR')}${suffix}`;
+}
 
-function fmt(n: number) {
-  return n.toLocaleString('fr-FR');
+function shortDate(value: string) {
+  try {
+    return new Date(value).toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return value;
+  }
+}
+
+function StatLine({ label, value, suffix = '' }: { label: string; value: NullableNumber; suffix?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-2 border-b border-gray-100 last:border-b-0">
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className="text-sm font-bold" style={{ color: '#002050' }}>{fmt(value, suffix)}</span>
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
-  const [data, setData] = useState<AdminData | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30d');
-  const { comingSoon, waitlistCount, launchDate } = useSiteMode();
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  function load(p: string) {
+  async function load(p: string) {
     setLoading(true);
+    setError('');
     const token = localStorage.getItem('omnia_session_token');
     if (!token) {
       navigate('/connexion');
       return;
     }
-    fetch(`${ENDPOINTS.dashboardAdmin}?period=${p}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      }
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d && d.kpis) {
-          setData(d);
-        } else {
-          console.error('Dashboard admin error:', d);
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Dashboard admin fetch error:', err);
-        setLoading(false);
+
+    try {
+      const response = await fetch(`${ENDPOINTS.dashboardAdmin}?period=${p}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
+      const payload = await response.json();
+      if (!response.ok || !payload?.kpis) {
+        throw new Error(payload?.message || payload?.error || 'Chargement impossible');
+      }
+      setData(payload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(period); }, [period]);
 
+  const previewSpaces = [
+    { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
+    { label: 'Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
+    { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
+    { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
+    { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
+  ];
+
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
-        {/* Header + period filter */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between border-b border-gray-200 pb-5">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Tableau de bord Super-admin</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Vue globale de la plateforme</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>
+              Pilotage global
+            </p>
+            <h1 className="text-2xl font-black mt-1" style={{ color: '#002050' }}>Tableau de bord Super-admin</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Données réelles, actions prioritaires et état opérationnel de la plateforme.
+            </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {PERIOD_OPTIONS.map((o) => (
-              <button key={o.value} onClick={() => setPeriod(o.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${period === o.value ? 'text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                style={period === o.value ? { backgroundColor: '#002050' } : {}}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {PERIOD_OPTIONS.map(o => (
+              <button key={o.value} type="button" onClick={() => setPeriod(o.value)}
+                className="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
+                style={{
+                  color: period === o.value ? '#002050' : '#667085',
+                  borderColor: period === o.value ? '#BF8813' : 'transparent',
+                }}>
                 {o.label}
               </button>
             ))}
+            <button type="button" onClick={() => load(period)}
+              className="ml-2 inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg text-gray-600">
+              <RefreshCw size={14} /> Actualiser
+            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Waitlist banner — shown when site is in coming soon mode */}
-        {comingSoon && (
-          <div className="rounded-xl border-2 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-            style={{ borderColor: '#BF8813', backgroundColor: 'rgba(191,136,19,0.05)' }}>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: 'rgba(191,136,19,0.12)' }}>
-                <Users className="w-6 h-6" style={{ color: '#BF8813' }} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#BF8813' }}>
-                  Mode liste d'attente actif
-                </p>
-                <p className="text-2xl font-bold" style={{ color: '#002050' }}>
-                  {waitlistCount.toLocaleString('fr-FR')} <span className="text-base font-medium text-gray-500">inscrits</span>
-                </p>
-                {launchDate && (
-                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    Lancement prévu : {new Date(launchDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </p>
-                )}
-              </div>
-            </div>
-            <Link to="/admin/cms-branding"
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: '#002050' }}>
-              Gérer le lancement
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Eye size={16} style={{ color: '#002050' }} />
+            <h2 className="text-sm font-bold" style={{ color: '#002050' }}>Prévisualiser les espaces</h2>
           </div>
-        )}
-
-        {/* Preview spaces */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Eye className="w-4 h-4" style={{ color: '#002050' }} />
-            <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Prévisualiser les espaces</h3>
-          </div>
-          <p className="text-xs text-gray-400 mb-4">Accédez en lecture seule aux tableaux de bord de chaque rôle</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {[
-              { label: 'Espace Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
-              { label: 'Espace Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
-              { label: 'Espace Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
-              { label: 'Espace Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
-              { label: 'Espace Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
-            ].map((item) => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-center transition-colors hover:bg-gray-50"
-                style={{ borderColor: '#002050', color: '#002050' }}>
-                <item.icon className="w-5 h-5" />
-                <span className="text-xs font-semibold leading-tight">{item.label}</span>
+          <div className="flex flex-wrap gap-x-6 gap-y-3 border-y border-gray-200 py-4">
+            {previewSpaces.map(item => (
+              <button key={item.path} type="button" onClick={() => navigate(item.path)}
+                className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
+                style={{ color: '#002050' }}>
+                <item.icon size={16} />
+                {item.label}
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
+          <div className="py-24 flex justify-center">
+            <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
               style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
           </div>
-        ) : (
+        ) : error ? (
+          <div className="border-l-4 border-red-500 pl-4 py-3">
+            <p className="font-semibold text-red-700">Impossible de charger le tableau de bord</p>
+            <p className="text-sm text-gray-500 mt-1">{error}</p>
+          </div>
+        ) : data && (
           <>
-            {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <section className="grid grid-cols-2 lg:grid-cols-4 border-y border-gray-200">
               {[
-                { label: 'CA Brut', value: `${fmt(data?.kpis.ca_brut_xof ?? 0)} XOF`, sub: 'Total des ventes', icon: TrendingUp, color: '#BF8813' },
-                { label: 'Revenu Net Plateforme', value: `${fmt(data?.kpis.revenu_net_plateforme_xof ?? 0)} XOF`, sub: 'Après commissions', icon: DollarSign, color: '#1E7A52' },
-                { label: 'Trésorerie Séquestrée', value: `${fmt(data?.kpis.tresorerie_sequestree_xof ?? 0)} XOF`, sub: 'Non encore reversés', icon: Lock, color: '#dc2626' },
-                { label: 'Utilisateurs Actifs (DAU)', value: `${fmt(data?.kpis.dau ?? 0)}`, sub: 'Dernières 24h', icon: Users, color: '#002050' },
-              ].map((kpi) => (
-                <div key={kpi.label} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs text-gray-500">{kpi.label}</p>
-                      <p className="text-xl font-bold mt-1 leading-tight" style={{ color: '#002050' }}>{kpi.value}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{kpi.sub}</p>
-                    </div>
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${kpi.color}15` }}>
-                      <kpi.icon className="w-5 h-5" style={{ color: kpi.color }} />
-                    </div>
-                  </div>
+                ['CA encaissé', fmt(data.kpis.ca_encaisse_xof, ' XOF'), 'Paiements confirmés sur la période'],
+                ['Revenu Omnia', fmt(data.kpis.revenu_omnia_xof, ' XOF'), 'Part plateforme réellement enregistrée'],
+                ['À reverser', fmt(data.kpis.a_reverser_xof, ' XOF'), 'Soldes et parts disponibles/en attente'],
+                ['Actifs 24 h', fmt(data.kpis.utilisateurs_actifs_24h), 'Utilisateurs distincts connectés'],
+              ].map(([label, value, detail], index) => (
+                <div key={label} className={`py-5 px-4 ${index < 3 ? 'lg:border-r border-gray-200' : ''}`}>
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="text-xl font-black mt-1" style={{ color: '#002050' }}>{value}</p>
+                  <p className="text-xs text-gray-400 mt-1">{detail}</p>
                 </div>
               ))}
-            </div>
+            </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Central zone 65% */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Area chart sales */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                  <h3 className="font-semibold text-sm mb-4" style={{ color: '#002050' }}>Évolution des ventes</h3>
-                  {(data?.ventes_evolution?.length ?? 0) === 0 ? (
-                    <div className="h-44 flex items-center justify-center text-sm text-gray-300">Aucune donnée disponible</div>
+            <section>
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div>
+                  <h2 className="text-lg font-black" style={{ color: '#002050' }}>Actions requises</h2>
+                  <p className="text-sm text-gray-500">Uniquement les éléments qui nécessitent une intervention.</p>
+                </div>
+                <span className="text-sm font-bold" style={{ color: '#BF8813' }}>
+                  {data.actions.reduce((sum, a) => sum + a.count, 0)} à traiter
+                </span>
+              </div>
+              <div className="border-t border-gray-200">
+                {data.actions.length === 0 ? (
+                  <div className="py-5 flex items-center gap-2 text-sm text-gray-500">
+                    <CheckCircle2 size={17} style={{ color: '#1E7A52' }} />
+                    Aucune action prioritaire détectée.
+                  </div>
+                ) : data.actions.map(action => (
+                  <button key={action.key} type="button" onClick={() => navigate(action.path)}
+                    className="w-full flex items-center justify-between gap-4 py-3 border-b border-gray-100 text-left hover:bg-gray-50/70 px-1">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <CircleAlert size={17} style={{ color: action.priority === 'high' ? '#B42318' : '#BF8813' }} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800">{action.label}</p>
+                        {action.detail && <p className="text-xs text-gray-400 truncate">{action.detail}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-black" style={{ color: '#002050' }}>{action.count}</span>
+                      <ArrowRight size={15} className="text-gray-400" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-8">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-black" style={{ color: '#002050' }}>Évolution des ventes encaissées</h2>
+                  <span className="text-xs text-gray-400">Formations + Omnia Live</span>
+                </div>
+                <div className="h-72 border-y border-gray-200 py-4">
+                  {data.ventes_evolution.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                      Aucune vente encaissée sur cette période.
+                    </div>
                   ) : (
-                    <ResponsiveContainer width="100%" height={180}>
-                      <AreaChart data={data?.ventes_evolution ?? []}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.ventes_evolution}>
                         <defs>
-                          <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#002050" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="#002050" stopOpacity={0} />
+                          <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#002050" stopOpacity={0.20} />
+                            <stop offset="100%" stopColor="#002050" stopOpacity={0.02} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 10 }} />
-                        <Tooltip formatter={(v) => [`${fmt(v as number)} XOF`, 'Ventes']} />
-                        <Area type="monotone" dataKey="amount_xof" stroke="#BF8813" strokeWidth={2} fill="url(#salesGrad)" name="Montant XOF" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EAECF0" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(v: number) => `${fmt(v)} XOF`} />
+                        <Area type="monotone" dataKey="amount_xof" stroke="#002050" fill="url(#salesFill)" strokeWidth={2} />
                       </AreaChart>
                     </ResponsiveContainer>
                   )}
                 </div>
-
-                {/* Geo bar chart */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                  <h3 className="font-semibold text-sm mb-4" style={{ color: '#002050' }}>Répartition géographique</h3>
-                  {(data?.repartition_geo?.length ?? 0) === 0 ? (
-                    <div className="h-32 flex items-center justify-center text-sm text-gray-300">Aucune donnée</div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={180}>
-                      <BarChart data={data?.repartition_geo ?? []} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis type="number" tick={{ fontSize: 10 }} />
-                        <YAxis dataKey="country_code" type="category" tick={{ fontSize: 10 }} width={35} />
-                        <Tooltip formatter={(v) => [`${fmt(v as number)} XOF`, 'Ventes']} />
-                        <Bar dataKey="amount_xof" radius={[0, 4, 4, 0]} name="Montant XOF">
-                          {(data?.repartition_geo ?? []).map((_, i) => (
-                            <Cell key={i} fill={i === 0 ? '#002050' : i === 1 ? '#BF8813' : '#1E7A52'} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-
-                {/* Payment methods donut + FinOps */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <h3 className="font-semibold text-sm mb-4" style={{ color: '#002050' }}>Passerelles de paiement</h3>
-                    {(data?.repartition_paiement?.length ?? 0) === 0 ? (
-                      <div className="h-32 flex items-center justify-center text-xs text-gray-300">Aucune donnée</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height={140}>
-                        <PieChart>
-                          <Pie data={data?.repartition_paiement ?? []} dataKey="count" nameKey="gateway" cx="50%" cy="50%" innerRadius={35} outerRadius={60}>
-                            {(data?.repartition_paiement ?? []).map((_, i) => <Cell key={i} fill={GW_COLORS[i % GW_COLORS.length]} />)}
-                          </Pie>
-                          <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
-                    <h3 className="font-semibold text-sm mb-2" style={{ color: '#002050' }}>Jauges FinOps</h3>
-                    {[
-                      { label: `Jetons IA — ${fmt(data?.finops?.ai_tokens_used_month ?? 0)} (${data?.finops?.ai_tokens_cost_usd?.toFixed(2) ?? '0.00'} USD)`, val: data?.finops?.ai_tokens_used_month ?? 0, max: 50000 },
-                      { label: `Stream — ${fmt(data?.finops?.cloudflare_stream_minutes_used ?? 0)} min`, val: data?.finops?.cloudflare_stream_minutes_used ?? 0, max: 10000 },
-                      { label: `Stockage R2 — ${data?.finops?.r2_storage_gb?.toFixed(1) ?? '0'} GB`, val: data?.finops?.r2_storage_gb ?? 0, max: 100 },
-                    ].map((g) => (
-                      <div key={g.label}>
-                        <p className="text-xs text-gray-500 mb-1">{g.label}</p>
-                        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                          <div className="h-full rounded-full transition-all"
-                            style={{ width: `${Math.min(100, (g.val / g.max) * 100)}%`, backgroundColor: '#BF8813' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
 
-              {/* Side zone 35% */}
-              <div className="space-y-4">
-                {/* Alertes */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-500" />
-                    <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Centre d'alertes</h3>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {[
-                      { count: data?.alertes?.retraits_en_attente ?? 0, label: 'retrait(s) en attente', link: '/admin/payouts', icon: Wallet, color: '#BF8813' },
-                      { count: data?.alertes?.courses_a_publier ?? 0, label: 'formation(s) à approuver', link: '/admin/courses', icon: BookOpen, color: '#002050' },
-                      { count: data?.alertes?.kyc_en_attente ?? 0, label: 'KYC en attente', link: '/admin/team', icon: Shield, color: '#1E7A52' },
-                      { count: data?.alertes?.offres_emploi_en_attente ?? 0, label: "offre(s) d'emploi", link: '/admin/marketing', icon: Briefcase, color: '#7c3aed' },
-                    ].map((a) => (
-                      <Link key={a.label} to={a.link}
-                        className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors ${a.count === 0 ? 'opacity-40' : ''}`}>
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: `${a.color}15` }}>
-                          <a.icon className="w-3.5 h-3.5" style={{ color: a.color }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold" style={{ color: a.count > 0 ? '#002050' : '#9ca3af' }}>{a.count}</p>
-                          <p className="text-xs text-gray-400">{a.label}</p>
-                        </div>
-                        {a.count > 0 && <ArrowRight className="w-3.5 h-3.5 text-gray-300" />}
-                      </Link>
-                    ))}
-                  </div>
+              <div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Activité aujourd’hui</h2>
+                <div className="border-y border-gray-200 py-2">
+                  <StatLine label="Nouveaux utilisateurs" value={data.activity_today.nouveaux_utilisateurs} />
+                  <StatLine label="Commandes payées" value={data.activity_today.commandes_payees} />
+                  <StatLine label="Formations soumises" value={data.activity_today.formations_soumises} />
+                  <StatLine label="Lives créés" value={data.activity_today.lives_crees} />
+                  <StatLine label="Retraits demandés" value={data.activity_today.retraits_demandes} />
                 </div>
+              </div>
+            </section>
 
-                {/* Formations prêtes à publier */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Prêtes à publier</h3>
-                    <Link to="/admin/courses" className="text-xs hover:underline" style={{ color: '#BF8813' }}>Voir tout</Link>
-                  </div>
-                  {(data?.cours_a_publier?.length ?? 0) === 0 ? (
-                    <div className="px-5 py-6 text-center text-xs text-gray-400">Aucune formation en attente</div>
-                  ) : (
-                    <div className="divide-y divide-gray-50">
-                      {(data?.cours_a_publier ?? []).slice(0, 5).map((c) => (
-                        <div key={c.id} className="flex items-center gap-3 px-5 py-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-800 truncate">{c.title}</p>
-                            <p className="text-xs text-gray-400">{c.creator_name}</p>
-                          </div>
-                          <Link to="/admin/courses"
-                            className="text-xs px-2.5 py-1 rounded-lg text-white font-medium flex-shrink-0 hover:opacity-90 transition-opacity"
-                            style={{ backgroundColor: '#1E7A52' }}>
-                            Publier →
-                          </Link>
-                        </div>
-                      ))}
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div>
+                <h2 className="text-base font-black mb-2" style={{ color: '#002050' }}>Formations</h2>
+                <div className="border-t border-gray-200">
+                  <StatLine label="Tarifications à valider" value={data.formations.attente_tarification} />
+                  <StatLine label="Acceptation professeur" value={data.formations.attente_acceptation_professeur} />
+                  <StatLine label="Validation pédagogique" value={data.formations.validation_pedagogique} />
+                  <StatLine label="Prêtes à publier" value={data.formations.pretes_a_publier} />
+                  <StatLine label="Publiées" value={data.formations.publiees} />
+                </div>
+                <button onClick={() => navigate('/admin/studio-validation')}
+                  className="mt-3 text-xs font-bold inline-flex items-center gap-1" style={{ color: '#BF8813' }}>
+                  Gérer les formations <ArrowRight size={13} />
+                </button>
+              </div>
+
+              <div>
+                <h2 className="text-base font-black mb-2" style={{ color: '#002050' }}>Omnia Live</h2>
+                <div className="border-t border-gray-200">
+                  <StatLine label="À valider" value={data.omnia_live.validation} />
+                  <StatLine label="Programmés / publiés" value={data.omnia_live.programmes_ou_publies} />
+                  <StatLine label="En direct" value={data.omnia_live.en_direct} />
+                  <StatLine label="Remboursements à traiter" value={data.omnia_live.remboursements} />
+                  <StatLine label="Retraits organisateurs" value={data.omnia_live.retraits} />
+                  <StatLine label="Organisateurs à valider" value={data.omnia_live.organisateurs} />
+                </div>
+                <button onClick={() => navigate('/admin/omnia-live')}
+                  className="mt-3 text-xs font-bold inline-flex items-center gap-1" style={{ color: '#BF8813' }}>
+                  Ouvrir Omnia Live <ArrowRight size={13} />
+                </button>
+              </div>
+
+              <div>
+                <h2 className="text-base font-black mb-2" style={{ color: '#002050' }}>Structures</h2>
+                <div className="border-t border-gray-200">
+                  <StatLine label="En attente de validation" value={data.structures.en_attente} />
+                  <StatLine label="Actives / validées" value={data.structures.actives} />
+                </div>
+                <button onClick={() => navigate('/admin/structures')}
+                  className="mt-3 text-xs font-bold inline-flex items-center gap-1" style={{ color: '#BF8813' }}>
+                  Gérer les structures <ArrowRight size={13} />
+                </button>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Utilisateurs par rôle</h2>
+                <div className="border-y border-gray-200 py-2">
+                  {data.users_by_role.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-3">Aucune donnée disponible.</p>
+                  ) : data.users_by_role.map(row => (
+                    <div key={row.role} className="flex justify-between py-2 border-b border-gray-100 last:border-0">
+                      <span className="text-sm text-gray-600">{row.role}</span>
+                      <span className="font-bold text-sm" style={{ color: '#002050' }}>{fmt(row.count)}</span>
                     </div>
-                  )}
+                  ))}
                 </div>
               </div>
-            </div>
+
+              <div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Moyens de paiement</h2>
+                <div className="border-y border-gray-200 py-2">
+                  {!data.paiements.available ? (
+                    <p className="text-sm text-gray-400 py-3">
+                      Aucune transaction payée ne permet encore d’établir une répartition.
+                    </p>
+                  ) : data.paiements.rows.map(row => (
+                    <div key={row.gateway} className="py-2 border-b border-gray-100 last:border-0">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-sm text-gray-600">{row.gateway}</span>
+                        <span className="text-sm font-bold" style={{ color: '#002050' }}>
+                          {row.percent.toFixed(1)} % · {fmt(row.amount_xof)} XOF
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8">
+              <div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>État de la plateforme</h2>
+                <div className="border-y border-gray-200 py-2">
+                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span className="text-sm text-gray-600">Maintenance globale</span>
+                    <span className="text-sm font-bold" style={{ color: data.platform.maintenance_global ? '#B42318' : '#1E7A52' }}>
+                      {data.platform.maintenance_global ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="py-2">
+                    <p className="text-sm text-gray-600">Maintenance ciblée</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {data.platform.maintenance_modules.length
+                        ? data.platform.maintenance_modules.join(', ')
+                        : 'Aucun module en maintenance'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => navigate('/admin/cms-branding')}
+                  className="mt-3 text-xs font-bold inline-flex items-center gap-1" style={{ color: '#BF8813' }}>
+                  Gérer la maintenance <ArrowRight size={13} />
+                </button>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Dernières activités administratives</h2>
+                <div className="border-y border-gray-200">
+                  {data.latest_admin_activity.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-4">Aucun journal administratif disponible.</p>
+                  ) : data.latest_admin_activity.map((row, i) => (
+                    <div key={`${row.created_at}-${i}`} className="py-3 border-b border-gray-100 last:border-0">
+                      <p className="text-sm text-gray-700">{row.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{shortDate(row.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
           </>
         )}
       </div>

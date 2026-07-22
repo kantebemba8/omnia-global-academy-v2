@@ -3,109 +3,386 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+async function verifySuperAdmin(sb: any, token: string) {
+  const { data: session } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!session) return null;
+
+  const { data: role } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id)
+    .eq("role", "super_admin")
+    .maybeSingle();
+
+  return role ? session.user_id : null;
 }
 
-async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
-  const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as { user_id: string }).user_id).eq("role", "super_admin").maybeSingle();
-  if (!role) return null;
-  return (sess as { user_id: string }).user_id;
+async function rows(sb: any, table: string, columns = "*", apply?: (q: any) => any) {
+  try {
+    let q = sb.from(table).select(columns);
+    if (apply) q = apply(q);
+    const { data, error } = await q;
+    if (error) {
+      console.warn(`[dashboard-admin] ${table}:`, error.message);
+      return null;
+    }
+    return data ?? [];
+  } catch (error) {
+    console.warn(`[dashboard-admin] ${table}:`, error);
+    return null;
+  }
+}
+
+async function countRows(sb: any, table: string, apply?: (q: any) => any) {
+  try {
+    let q = sb.from(table).select("*", { count: "exact", head: true });
+    if (apply) q = apply(q);
+    const { count, error } = await q;
+    if (error) {
+      console.warn(`[dashboard-admin] count ${table}:`, error.message);
+      return null;
+    }
+    return count ?? 0;
+  } catch (error) {
+    console.warn(`[dashboard-admin] count ${table}:`, error);
+    return null;
+  }
+}
+
+function sum(list: any[] | null, key: string) {
+  if (!list) return null;
+  return list.reduce((total, row) => total + Number(row?.[key] ?? 0), 0);
+}
+
+function dayKey(value: string | null | undefined) {
+  if (!value) return null;
+  return value.slice(0, 10);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+
     const adminId = await verifySuperAdmin(sb, token);
     if (!adminId) return json({ error: "FORBIDDEN" }, 403);
 
     const url = new URL(req.url);
     const period = url.searchParams.get("period") ?? "30d";
     const now = new Date();
-    let startDate = new Date();
-    if (period === "1d") startDate.setDate(now.getDate() - 1);
-    else if (period === "7d") startDate.setDate(now.getDate() - 7);
-    else if (period === "1y") startDate.setFullYear(now.getFullYear() - 1);
-    else startDate.setDate(now.getDate() - 30);
+    const start = new Date(now);
+    if (period === "1d") start.setDate(now.getDate() - 1);
+    else if (period === "7d") start.setDate(now.getDate() - 7);
+    else if (period === "1y") start.setFullYear(now.getFullYear() - 1);
+    else start.setDate(now.getDate() - 30);
 
-    // KPIs from enrollments/wallets
-    const { data: enrollments } = await sb.from("enrollments").select("amount_paid_xof,created_at").gte("created_at", startDate.toISOString());
-    const caBrut = (enrollments ?? []).reduce((s, e) => s + ((e as { amount_paid_xof?: number }).amount_paid_xof ?? 0), 0);
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const dauStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    // DAU: sessions active in last 24h
-    const dau24h = new Date(now.getTime() - 86400000).toISOString();
-    const { data: dauSess } = await sb.from("user_sessions").select("user_id", { count: "exact", head: true }).gte("created_at", dau24h);
-    const dau = (dauSess as unknown as { count?: number } | null)?.count ?? 0;
+    const [
+      courseOrders,
+      liveOrders,
+      liveLedger,
+      wallets,
+      activeSessions,
+      newUsersToday,
+      courseSubmissionsToday,
+      liveCreatedToday,
+      payoutToday,
+      livePayoutToday,
+      pricingPending,
+      pricingProfessor,
+      pedagogicPending,
+      readyPublish,
+      publishedCourses,
+      liveValidation,
+      livePublished,
+      liveNow,
+      liveRefunds,
+      livePayouts,
+      organizerPending,
+      structurePending,
+      structureActive,
+      userRoles,
+      siteSettings,
+      jobPending,
+      forumReports,
+      auditLogs,
+      courseStudioLogs,
+    ] = await Promise.all([
+      rows(sb, "orders", "final_price_xof,platform_share_xof,payment_gateway,paid_at,user_id", q =>
+        q.eq("payment_status", "paid").gte("paid_at", start.toISOString())
+      ),
+      rows(sb, "live_orders", "amount,payment_provider,paid_at,user_id", q =>
+        q.eq("payment_status", "paid").gte("paid_at", start.toISOString())
+      ),
+      rows(sb, "live_organizer_ledger", "entry_type,oga_amount,organizer_amount,status,created_at", q =>
+        q.gte("created_at", start.toISOString())
+      ),
+      rows(sb, "wallets", "balance_xof"),
+      rows(sb, "user_sessions", "user_id,created_at", q => q.gte("created_at", dauStart.toISOString())),
+      countRows(sb, "users", q => q.gte("created_at", todayStart.toISOString())),
+      countRows(sb, "courses", q => q.eq("studio_status", "pending_validation").gte("submitted_at", todayStart.toISOString())),
+      countRows(sb, "live_events", q => q.gte("created_at", todayStart.toISOString())),
+      countRows(sb, "payout_requests", q => q.gte("requested_at", todayStart.toISOString())),
+      countRows(sb, "live_payout_requests", q => q.gte("created_at", todayStart.toISOString())),
+      countRows(sb, "courses", q => q.eq("pricing_status", "en_attente_validation_prix_admin")),
+      countRows(sb, "courses", q => q.eq("pricing_status", "en_attente_acceptation_prix_professeur")),
+      countRows(sb, "courses", q => q.eq("studio_status", "pending_validation")),
+      countRows(sb, "courses", q => q.eq("studio_status", "validated").eq("is_published", false)),
+      countRows(sb, "courses", q => q.eq("is_published", true)),
+      countRows(sb, "live_events", q => q.in("status", ["submitted", "under_review"])),
+      countRows(sb, "live_events", q => q.in("status", ["approved", "published"])),
+      countRows(sb, "live_events", q => q.eq("status", "live")),
+      countRows(sb, "live_refund_requests", q => q.in("status", ["pending", "under_review", "approved", "partially_approved"])),
+      countRows(sb, "live_payout_requests", q => q.in("status", ["pending", "under_review", "approved"])),
+      countRows(sb, "live_organizer_applications", q => q.eq("status", "pending")),
+      countRows(sb, "partner_organizations", q => q.eq("status", "pending")),
+      countRows(sb, "partner_organizations", q => q.eq("status", "validated")),
+      rows(sb, "user_roles", "role,user_id"),
+      rows(sb, "site_settings", "key,value", q =>
+        q.in("key", [
+          "maintenance_enabled",
+          "maintenance_module_omnia_live",
+          "maintenance_module_career",
+          "maintenance_module_talent",
+          "maintenance_module_forum",
+          "maintenance_module_payments",
+          "maintenance_module_formations",
+        ])
+      ),
+      countRows(sb, "job_offers", q => q.eq("status", "pending_moderation")),
+      countRows(sb, "forum_reports", q => q.eq("status", "pending")),
+      rows(sb, "admin_audit_log", "action,created_at", q => q.order("created_at", { ascending: false }).limit(6)),
+      rows(sb, "course_studio_logs", "action,created_at", q => q.order("created_at", { ascending: false }).limit(6)),
+    ]);
 
-    // Wallets aggregated
-    const { data: wallets } = await sb.from("wallets").select("balance_xof,total_earnings_xof");
-    const tresorerieSequestree = (wallets ?? []).reduce((s, w) => s + ((w as { balance_xof?: number }).balance_xof ?? 0), 0);
+    const caCourse = sum(courseOrders, "final_price_xof");
+    const caLive = sum(liveOrders, "amount");
+    const caEncaisse = caCourse == null && caLive == null ? null : Number(caCourse ?? 0) + Number(caLive ?? 0);
 
-    // Commission rates from site_settings
-    const { data: commSetting } = await sb.from("site_settings").select("value").eq("key", "commission_normal_sans_cpd").maybeSingle();
-    const commRate = parseFloat((commSetting as { value?: string } | null)?.value ?? "0.30");
-    const revenuNet = Math.round(caBrut * commRate);
+    const platformCourse = sum(courseOrders, "platform_share_xof");
+    const platformLive = liveLedger
+      ? liveLedger
+          .filter((row: any) => row.entry_type === "sale")
+          .reduce((s: number, row: any) => s + Number(row.oga_amount ?? 0), 0)
+      : null;
+    const revenuOmnia = platformCourse == null && platformLive == null
+      ? null
+      : Number(platformCourse ?? 0) + Number(platformLive ?? 0);
 
-    // Sales evolution: group enrollments by day
-    const salesByDay: Record<string, { amount: number; count: number }> = {};
-    for (const e of (enrollments ?? [])) {
-      const day = (e as { created_at: string; amount_paid_xof?: number }).created_at.slice(0, 10);
-      if (!salesByDay[day]) salesByDay[day] = { amount: 0, count: 0 };
-      salesByDay[day].amount += (e as { amount_paid_xof?: number }).amount_paid_xof ?? 0;
-      salesByDay[day].count++;
+    const walletBalance = sum(wallets, "balance_xof");
+    const organizerDue = liveLedger
+      ? liveLedger
+          .filter((row: any) => ["pending", "available"].includes(row.status))
+          .reduce((s: number, row: any) => s + Number(row.organizer_amount ?? 0), 0)
+      : null;
+    const aReverser = walletBalance == null && organizerDue == null
+      ? null
+      : Number(walletBalance ?? 0) + Number(organizerDue ?? 0);
+
+    const dau = activeSessions
+      ? new Set(activeSessions.map((row: any) => row.user_id).filter(Boolean)).size
+      : null;
+
+    const salesMap: Record<string, { amount_xof: number; count: number }> = {};
+    for (const row of courseOrders ?? []) {
+      const day = dayKey(row.paid_at);
+      if (!day) continue;
+      salesMap[day] ??= { amount_xof: 0, count: 0 };
+      salesMap[day].amount_xof += Number(row.final_price_xof ?? 0);
+      salesMap[day].count += 1;
     }
-    const ventesEvolution = Object.entries(salesByDay).map(([date, v]) => ({ date, amount_xof: v.amount, count: v.count })).sort((a, b) => a.date.localeCompare(b.date));
-
-    // Geo: from enrollments join users
-    const { data: enrollWithUser } = await sb.from("enrollments").select("amount_paid_xof, users!inner(country_code)").gte("created_at", startDate.toISOString());
-    const geoMap: Record<string, { count: number; amount: number }> = {};
-    for (const e of (enrollWithUser ?? [])) {
-      const cc = ((e as { users?: { country_code?: string } }).users?.country_code ?? "—").toUpperCase();
-      if (!geoMap[cc]) geoMap[cc] = { count: 0, amount: 0 };
-      geoMap[cc].count++;
-      geoMap[cc].amount += (e as { amount_paid_xof?: number }).amount_paid_xof ?? 0;
+    for (const row of liveOrders ?? []) {
+      const day = dayKey(row.paid_at);
+      if (!day) continue;
+      salesMap[day] ??= { amount_xof: 0, count: 0 };
+      salesMap[day].amount_xof += Number(row.amount ?? 0);
+      salesMap[day].count += 1;
     }
-    const repartitionGeo = Object.entries(geoMap).map(([country_code, v]) => ({ country_code, country_name: country_code, sales_count: v.count, amount_xof: v.amount })).sort((a, b) => b.amount_xof - a.amount_xof).slice(0, 10);
+    const ventesEvolution = Object.entries(salesMap)
+      .map(([date, value]) => ({ date, ...value }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    // FinOps from site_settings (if tracked)
-    const finops = { ai_tokens_used_month: 0, ai_tokens_cost_usd: 0, cloudflare_stream_minutes_used: 0, cloudflare_stream_cost_usd: 0, r2_storage_gb: 0 };
+    const paymentMap: Record<string, { count: number; amount_xof: number }> = {};
+    for (const row of courseOrders ?? []) {
+      const gateway = row.payment_gateway || "Non renseigné";
+      paymentMap[gateway] ??= { count: 0, amount_xof: 0 };
+      paymentMap[gateway].count += 1;
+      paymentMap[gateway].amount_xof += Number(row.final_price_xof ?? 0);
+    }
+    for (const row of liveOrders ?? []) {
+      const gateway = row.payment_provider || "Non renseigné";
+      paymentMap[gateway] ??= { count: 0, amount_xof: 0 };
+      paymentMap[gateway].count += 1;
+      paymentMap[gateway].amount_xof += Number(row.amount ?? 0);
+    }
+    const paymentTotal = Object.values(paymentMap).reduce((s, row) => s + row.amount_xof, 0);
+    const paymentRows = Object.entries(paymentMap)
+      .map(([gateway, row]) => ({
+        gateway,
+        ...row,
+        percent: paymentTotal > 0 ? row.amount_xof / paymentTotal * 100 : 0,
+      }))
+      .sort((a, b) => b.amount_xof - a.amount_xof);
 
-    // Alertes
-    const { count: retraitsCount } = await sb.from("payout_requests").select("*", { count: "exact", head: true }).eq("status", "pending");
-    const { count: coursesCount } = await sb.from("courses").select("*", { count: "exact", head: true }).eq("status", "validee");
-    const { count: kycProfCount } = await sb.from("professeur_profiles").select("*", { count: "exact", head: true }).eq("kyc_status", "en_attente");
-    const { count: kycEtabCount } = await sb.from("etablissement_profiles").select("*", { count: "exact", head: true }).eq("kyc_status", "en_attente");
-    const { count: jobsCount } = await sb.from("job_offers").select("*", { count: "exact", head: true }).eq("status", "pending_moderation");
+    const roleLabels: Record<string, string> = {
+      apprenant: "Apprenants",
+      professeur: "Professeurs",
+      super_admin: "Super-admins",
+      moderator: "Modérateurs",
+      moderateur: "Modérateurs",
+      organizer: "Organisateurs",
+      responsable_structure: "Responsables Structure",
+      gestionnaire_partenaire: "Gestionnaires Structure",
+    };
+    const roleMap: Record<string, Set<string>> = {};
+    for (const row of userRoles ?? []) {
+      const label = roleLabels[row.role] || row.role;
+      roleMap[label] ??= new Set();
+      roleMap[label].add(row.user_id);
+    }
+    const usersByRole = Object.entries(roleMap)
+      .map(([role, ids]) => ({ role, count: ids.size }))
+      .sort((a, b) => b.count - a.count);
 
-    // Courses à publier (status = validee)
-    const { data: coursesToPublish } = await sb.from("courses").select("id,title,instructor_id,score_calcule,price_xof,category,created_at,establishment_id").eq("status", "validee").order("created_at", { ascending: true }).limit(10);
-    const enrichedCourses = await Promise.all((coursesToPublish ?? []).map(async (c) => {
-      const cc = c as { id: string; title: string; instructor_id: string; score_calcule: number | null; price_xof: number | null; category: string; created_at: string; establishment_id: string | null };
-      const { data: u } = await sb.from("users").select("full_name").eq("id", cc.instructor_id).maybeSingle();
-      return { ...cc, creator_name: (u as { full_name?: string } | null)?.full_name ?? "—", prix_provisoire_xof: cc.price_xof };
-    }));
+    const settingsMap: Record<string, any> = {};
+    for (const row of siteSettings ?? []) settingsMap[row.key] = row.value;
+    const isTrue = (v: any) => v === true || v === "true";
+    const maintenanceModules = [
+      ["Omnia Live", "maintenance_module_omnia_live"],
+      ["Omnia Career", "maintenance_module_career"],
+      ["Talent Omnia", "maintenance_module_talent"],
+      ["Forum", "maintenance_module_forum"],
+      ["Paiements", "maintenance_module_payments"],
+      ["Formations", "maintenance_module_formations"],
+    ].filter(([, key]) => isTrue(settingsMap[key])).map(([label]) => label);
+
+    const payoutPending = await countRows(sb, "payout_requests", q => q.eq("status", "pending"));
+
+    const actions = [
+      { key: "pricing", label: "Tarifications de formations à valider", count: pricingPending ?? 0, path: "/admin/course-pricing", detail: "Choisir le prix avant acceptation du professeur", priority: "high" },
+      { key: "pedagogy", label: "Formations en validation pédagogique", count: pedagogicPending ?? 0, path: "/admin/studio-validation", detail: "Contenu soumis par les créateurs" },
+      { key: "payouts", label: "Retraits à traiter", count: payoutPending ?? 0, path: "/admin/payouts", detail: "Demandes de reversement classiques" },
+      { key: "structures", label: "Structures à valider", count: structurePending ?? 0, path: "/admin/structures" },
+      { key: "jobs", label: "Offres d’emploi à modérer", count: jobPending ?? 0, path: "/admin/offres-emploi" },
+      { key: "live-validation", label: "Événements Omnia Live à valider", count: liveValidation ?? 0, path: "/admin/omnia-live" },
+      { key: "live-refunds", label: "Remboursements Omnia Live à traiter", count: liveRefunds ?? 0, path: "/admin/omnia-live", priority: "high" },
+      { key: "live-payouts", label: "Retraits organisateurs Omnia Live", count: livePayouts ?? 0, path: "/admin/omnia-live" },
+      { key: "organizers", label: "Organisateurs à valider", count: organizerPending ?? 0, path: "/admin/omnia-live" },
+      { key: "forum", label: "Signalements Forum à examiner", count: forumReports ?? 0, path: "/admin/forum" },
+    ].filter(item => item.count > 0);
+
+    const combinedActivity = [
+      ...(auditLogs ?? []).map((row: any) => ({
+        label: `Administration : ${String(row.action || "action").replaceAll("_", " ")}`,
+        created_at: row.created_at,
+      })),
+      ...(courseStudioLogs ?? []).map((row: any) => ({
+        label: `Formation : ${String(row.action || "action").replaceAll("_", " ")}`,
+        created_at: row.created_at,
+      })),
+    ]
+      .filter(row => row.created_at)
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .slice(0, 8);
+
+    const geoRows = await rows(sb, "orders", "final_price_xof,paid_at,users!inner(country_code)", q =>
+      q.eq("payment_status", "paid").gte("paid_at", start.toISOString())
+    );
+    const geoMap: Record<string, { sales_count: number; amount_xof: number }> = {};
+    for (const row of geoRows ?? []) {
+      const code = String(row.users?.country_code || "—").toUpperCase();
+      geoMap[code] ??= { sales_count: 0, amount_xof: 0 };
+      geoMap[code].sales_count += 1;
+      geoMap[code].amount_xof += Number(row.final_price_xof ?? 0);
+    }
 
     return json({
-      kpis: { ca_brut_xof: caBrut, revenu_net_plateforme_xof: revenuNet, tresorerie_sequestree_xof: tresorerieSequestree, dau },
+      period,
+      kpis: {
+        ca_encaisse_xof: caEncaisse,
+        revenu_omnia_xof: revenuOmnia,
+        a_reverser_xof: aReverser,
+        utilisateurs_actifs_24h: dau,
+      },
+      activity_today: {
+        nouveaux_utilisateurs: newUsersToday,
+        commandes_payees:
+          courseOrders == null && liveOrders == null
+            ? null
+            : (courseOrders ?? []).filter((o: any) => o.paid_at >= todayStart.toISOString()).length
+              + (liveOrders ?? []).filter((o: any) => o.paid_at >= todayStart.toISOString()).length,
+        formations_soumises: courseSubmissionsToday,
+        lives_crees: liveCreatedToday,
+        retraits_demandes:
+          payoutToday == null && livePayoutToday == null ? null : Number(payoutToday ?? 0) + Number(livePayoutToday ?? 0),
+      },
+      actions,
       ventes_evolution: ventesEvolution,
-      repartition_geo: repartitionGeo,
-      repartition_paiement: [],
-      finops,
-      alertes: { retraits_en_attente: retraitsCount ?? 0, courses_a_publier: coursesCount ?? 0, kyc_en_attente: (kycProfCount ?? 0) + (kycEtabCount ?? 0), offres_emploi_en_attente: jobsCount ?? 0 },
-      cours_a_publier: enrichedCourses,
+      repartition_geo: Object.entries(geoMap)
+        .map(([country_code, value]) => ({ country_code, ...value }))
+        .sort((a, b) => b.amount_xof - a.amount_xof)
+        .slice(0, 10),
+      paiements: {
+        available: paymentRows.length > 0,
+        rows: paymentRows,
+      },
+      formations: {
+        attente_tarification: pricingPending,
+        attente_acceptation_professeur: pricingProfessor,
+        validation_pedagogique: pedagogicPending,
+        pretes_a_publier: readyPublish,
+        publiees: publishedCourses,
+      },
+      omnia_live: {
+        validation: liveValidation,
+        programmes_ou_publies: livePublished,
+        en_direct: liveNow,
+        remboursements: liveRefunds,
+        retraits: livePayouts,
+        organisateurs: organizerPending,
+      },
+      structures: {
+        en_attente: structurePending,
+        actives: structureActive,
+      },
+      users_by_role: usersByRole,
+      platform: {
+        maintenance_global: isTrue(settingsMap.maintenance_enabled),
+        maintenance_modules: maintenanceModules,
+      },
+      latest_admin_activity: combinedActivity,
     });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+  } catch (error) {
+    console.error("[dashboard-admin]", error);
+    return json({
+      error: "SERVER_ERROR",
+      message: error instanceof Error ? error.message : String(error),
+    }, 500);
   }
 });
