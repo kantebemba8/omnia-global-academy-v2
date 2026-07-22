@@ -312,12 +312,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-semibold text-sm" style={{ color: '#002050' }}>Omnia Academy</span>
-          {user && (
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-              {monogram(user.full_name)}
-            </div>
-          )}
         </div>
         <main className="flex-1 overflow-y-auto">
           {children}
