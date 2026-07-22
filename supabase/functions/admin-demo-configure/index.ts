@@ -21,7 +21,10 @@ async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: stri
 
 const DEMO_EMAIL = "test@omniaglobalacademy.com";
 
-const ALL_DEMO_ROLES = ["apprenant", "professeur", "etablissement_directeur", "moderateur"];
+const ALL_DEMO_ROLES = ["apprenant", "professeur", "responsable_structure", "moderateur"];
+const LEGACY_ROLE_MAP: Record<string, string> = {
+  etablissement_directeur: "responsable_structure",
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -37,7 +40,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data: config } = await sb
         .from("demo_account_config")
-        .select("id, password_plain, expires_at, is_online, last_seen_at, configured_at, configured_by, demo_roles, demo_course_ids, active_session_token, heartbeat_token")
+        .select("id, expires_at, is_online, last_seen_at, configured_at, configured_by, demo_roles, demo_course_ids")
         .order("configured_at", { ascending: false })
         .limit(10);
 
@@ -68,13 +71,18 @@ Deno.serve(async (req: Request) => {
       // Online status from latest config
       const latestConfig = enriched[0] ?? null;
       const status = latestConfig
-        ? {
-            is_active: latestConfig.is_online ?? false,
-            last_activity: latestConfig.last_seen_at ?? null,
-            time_remaining_seconds: latestConfig.expires_at
-              ? Math.max(0, Math.floor((new Date(latestConfig.expires_at as string).getTime() - Date.now()) / 1000))
-              : 0,
-          }
+        ? (() => {
+            const expiresMs = latestConfig.expires_at ? new Date(latestConfig.expires_at as string).getTime() : 0;
+            const lastSeenMs = latestConfig.last_seen_at ? new Date(latestConfig.last_seen_at as string).getTime() : 0;
+            const heartbeatFresh = lastSeenMs > 0 && Date.now() - lastSeenMs <= 90_000;
+            return {
+              is_active: Boolean(latestConfig.is_online) && heartbeatFresh && expiresMs > Date.now(),
+              last_activity: latestConfig.last_seen_at ?? null,
+              time_remaining_seconds: expiresMs > 0
+                ? Math.max(0, Math.floor((expiresMs - Date.now()) / 1000))
+                : 0,
+            };
+          })()
         : null;
 
       return json({
@@ -102,11 +110,25 @@ Deno.serve(async (req: Request) => {
     const passwordHash = hashSync(new_password, 10);
     const now = new Date().toISOString();
 
-    const selectedRoles: string[] = Array.isArray(demo_roles) && demo_roles.length > 0
-      ? demo_roles.filter((r) => ALL_DEMO_ROLES.includes(r))
-      : ["apprenant"];
+    const requestedRoles = Array.isArray(demo_roles) && demo_roles.length > 0 ? demo_roles : ["apprenant"];
+    const selectedRoles = [...new Set(
+      requestedRoles
+        .map((role) => LEGACY_ROLE_MAP[role] ?? role)
+        .filter((role) => ALL_DEMO_ROLES.includes(role))
+    )];
+    if (selectedRoles.length === 0) return json({ error: "NO_VALID_DEMO_ROLE" }, 400);
 
-    const selectedCourseIds: string[] = Array.isArray(demo_course_ids) ? demo_course_ids : [];
+    const requestedCourseIds: string[] = Array.isArray(demo_course_ids) ? [...new Set(demo_course_ids)] : [];
+    let selectedCourseIds: string[] = [];
+    if (requestedCourseIds.length > 0) {
+      const { data: validCourses, error: coursesError } = await sb
+        .from("courses")
+        .select("id")
+        .in("id", requestedCourseIds)
+        .eq("is_published", true);
+      if (coursesError) throw coursesError;
+      selectedCourseIds = (validCourses ?? []).map((c: { id: string }) => c.id);
+    }
 
     // Fetch demo user
     const { data: demoUser } = await sb.from("users").select("id").eq("email", DEMO_EMAIL).maybeSingle();
@@ -117,7 +139,8 @@ Deno.serve(async (req: Request) => {
       // Update password hash
       await sb.from("users").update({ password_hash: passwordHash }).eq("id", demoId);
 
-      // Enroll demo user in selected courses
+      // Keep demo enrollments exactly synchronized with the current configuration.
+      await sb.from("user_enrollments").delete().eq("user_id", demoId);
       if (selectedCourseIds.length > 0) {
         const enrollments = selectedCourseIds.map((courseId) => ({
           user_id: demoId,
@@ -125,7 +148,10 @@ Deno.serve(async (req: Request) => {
           enrolled_at: now,
           status: "active",
         }));
-        await sb.from("user_enrollments").upsert(enrollments, { onConflict: "user_id,course_id" });
+        const { error: enrollmentError } = await sb
+          .from("user_enrollments")
+          .upsert(enrollments, { onConflict: "user_id,course_id" });
+        if (enrollmentError) throw enrollmentError;
       }
     }
 
@@ -135,7 +161,6 @@ Deno.serve(async (req: Request) => {
       .neq("id", "00000000-0000-0000-0000-000000000000");
 
     await sb.from("demo_account_config").insert({
-      password_plain: new_password,
       expires_at,
       is_online: false,
       configured_by: adminId,

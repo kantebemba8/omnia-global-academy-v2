@@ -3,7 +3,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import {
   Monitor, RefreshCw, AlertTriangle, Clock, CheckCircle,
-  ShieldCheck, Wifi, WifiOff, BookOpen,
+  ShieldCheck, Wifi, WifiOff, BookOpen, Copy,
 } from 'lucide-react';
 
 interface DemoConfig {
@@ -106,6 +106,21 @@ export default function AdminDemoAccess() {
         demo_course_ids: has ? prev.demo_course_ids.filter((c) => c !== id) : [...prev.demo_course_ids, id],
       };
     });
+  }
+
+  async function copyPassword() {
+    if (!form.password) {
+      setToast('Générez ou saisissez d’abord un mot de passe.');
+      setTimeout(() => setToast(''), 3000);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(form.password);
+      setToast('Mot de passe copié.');
+    } catch {
+      setToast('Copie automatique impossible. Sélectionnez le mot de passe manuellement.');
+    }
+    setTimeout(() => setToast(''), 3000);
   }
 
   async function apply() {
@@ -236,10 +251,19 @@ export default function AdminDemoAccess() {
                 className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
               />
               <button
+                type="button"
                 onClick={() => setF('password', generate12())}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"
               >
                 <RefreshCw className="w-3 h-3" /> Générer
+              </button>
+              <button
+                type="button"
+                onClick={copyPassword}
+                disabled={!form.password}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Copy className="w-3 h-3" /> Copier
               </button>
             </div>
           </div>
