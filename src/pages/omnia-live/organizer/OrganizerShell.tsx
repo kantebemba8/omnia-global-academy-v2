@@ -71,17 +71,17 @@ export default function OrganizerShell({
       </div>
     </div>
 
-    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+    <nav className="oga-sidebar-scroll flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {NAV.map(([path,label,Icon,exact])=>
         <NavLink
           key={path}
           to={buildPath(path)}
           end={Boolean(exact)}
           className={({isActive})=>
-            `relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+            `relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition ${
               isActive
-                ? 'bg-white/10 text-white'
-                : 'text-white/75 hover:bg-white/5 hover:text-white'
+                ? 'text-white'
+                : 'text-white/75 hover:text-white'
             }`
           }
         >
@@ -101,7 +101,7 @@ export default function OrganizerShell({
         style={{color:GOLD}}
       >
         <ExternalLink style={{width:18,height:18,flexShrink:0}}/>
-        <span>Voir Omnia Live</span>
+        <span>Retour à Omnia Live</span>
       </Link>
       <button
         onClick={logout}

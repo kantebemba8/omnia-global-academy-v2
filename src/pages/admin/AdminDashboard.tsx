@@ -286,13 +286,28 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-black" style={{ color: '#002050' }}>Activité aujourd’hui</h2><button onClick={()=>navigate('/admin/dashboard/activity-today')} className="text-sm font-semibold" style={{color:'#BF8813'}}>Voir le détail →</button></div>
+                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Activité aujourd’hui</h2>
                 <div className="border-y border-gray-200 py-2">
-                  <StatLine label="Nouveaux utilisateurs" value={data.activity_today.nouveaux_utilisateurs} />
-                  <StatLine label="Commandes payées" value={data.activity_today.commandes_payees} />
-                  <StatLine label="Formations soumises" value={data.activity_today.formations_soumises} />
-                  <StatLine label="Lives créés" value={data.activity_today.lives_crees} />
-                  <StatLine label="Retraits demandés" value={data.activity_today.retraits_demandes} />
+                  {[
+                    ['Nouveaux utilisateurs', data.activity_today.nouveaux_utilisateurs, 'nouveaux-utilisateurs'],
+                    ['Commandes payées', data.activity_today.commandes_payees, 'commandes-payees'],
+                    ['Formations soumises', data.activity_today.formations_soumises, 'formations-soumises'],
+                    ['Lives créés', data.activity_today.lives_crees, 'lives-crees'],
+                    ['Retraits demandés', data.activity_today.retraits_demandes, 'retraits-demandes'],
+                  ].map(([label, value, type]) => (
+                    <button
+                      key={String(type)}
+                      type="button"
+                      onClick={() => navigate(`/admin/dashboard/activity-today?type=${encodeURIComponent(String(type))}`)}
+                      className="w-full flex justify-between items-center py-2 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50 px-1"
+                    >
+                      <span className="text-sm text-gray-600">{String(label)}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-bold text-sm" style={{ color: '#002050' }}>{fmt(value as NullableNumber)}</span>
+                        <ArrowRight size={13} className="text-gray-400" />
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </section>

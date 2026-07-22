@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
-  Search,
+  Search, ExternalLink,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -173,13 +173,16 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     <aside className="flex flex-col h-full min-h-0 overflow-hidden" style={{ backgroundColor: '#002050' }}>
       <div className="px-6 py-5 border-b border-white/10">
         <Link to="/" className="flex items-center gap-3">
-          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain rounded-lg" />
-          <span className="text-white font-bold text-base leading-tight">Omnia Global<br />Academy</span>
+          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain" />
+          <span className="font-bold leading-tight">
+            <span className="block text-white text-base">Omnia</span>
+            <span className="block text-sm" style={{ color: '#BF8813' }}>Global Academy</span>
+          </span>
         </Link>
       </div>
 
       {user && (
-        <div className="px-4 py-4 mx-3 mt-4 rounded-xl bg-white/5 border border-white/10">
+        <div className="px-6 py-4 mt-2 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{ backgroundColor: '#BF8813', color: '#002050' }}>
@@ -224,8 +227,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
       )}
 
       <nav
-        className="flex-1 min-h-0 px-3 py-4 overflow-y-auto overscroll-contain"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,.22) transparent' }}
+        className="oga-sidebar-scroll flex-1 min-h-0 px-3 py-4 overflow-y-auto overscroll-contain"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#BF8813 transparent' }}
       >
         {navGroups?.length ? (
           <div className="space-y-1">
@@ -242,12 +245,13 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                     key={group.id}
                     to={buildPath(item.path)}
                     onClick={() => setSidebarOpen(false)}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
+                    className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
                     style={{
-                      backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent',
+                      backgroundColor: 'transparent',
                       color: active ? '#BF8813' : 'rgba(255,255,255,0.72)'
                     }}
                   >
+                    {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
                     <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
                     <span className="flex-1 text-sm font-semibold">{group.label}</span>
                     {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
@@ -260,9 +264,9 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
                     style={{
-                      backgroundColor: containsActive ? 'rgba(255,255,255,0.055)' : 'transparent',
+                      backgroundColor: 'transparent',
                       color: containsActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)'
                     }}
                   >
@@ -280,12 +284,13 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                             key={item.path}
                             to={buildPath(item.path)}
                             onClick={() => setSidebarOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150"
+                            className="relative flex items-center gap-2.5 px-3 py-2 transition-all duration-150"
                             style={{
-                              backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent',
+                              backgroundColor: 'transparent',
                               color: active ? '#BF8813' : 'rgba(255,255,255,0.62)'
                             }}
                           >
+                            {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
                             <item.icon style={{ width: 15, height: 15, flexShrink: 0 }} />
                             <span className="flex-1 text-[13px] font-medium leading-snug">{item.label}</span>
                             {active && <ChevronRight className="w-3 h-3 opacity-60" />}
@@ -304,8 +309,9 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
               const active = isActive(item);
               return (
                 <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
-                  style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
+                  className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
+                  style={{ backgroundColor: 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
+                  {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
                   <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
                   <span className="flex-1 text-sm font-medium">{item.label}</span>
                   {(item as { badge?: string }).badge && (
@@ -322,6 +328,15 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
       </nav>
 
       <div className="px-3 pt-2 pb-5 border-t border-white/10 flex-shrink-0">
+        <Link
+          to={buildPath('/')}
+          onClick={() => setSidebarOpen(false)}
+          className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold transition-all"
+          style={{ color: '#BF8813' }}
+        >
+          <ExternalLink style={{ width: 18, height: 18 }} />
+          <span>Retour à Omnia Global Academy</span>
+        </Link>
         <button onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all text-sm">
           <LogOut style={{ width: 18, height: 18 }} />
