@@ -1,62 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-
-async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
-  const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as { user_id: string }).user_id).eq("role", "super_admin").maybeSingle();
-  if (!role) return null;
-  return (sess as { user_id: string }).user_id;
-}
-
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
-
-  try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return json({ error: "FORBIDDEN" }, 403);
-
-    const body = await req.json() as {
-      moderator_id: string;
-      action: "update_permissions" | "suspend" | "activate" | "delete";
-      permissions?: Record<string, boolean>;
-    };
-    const { moderator_id, action, permissions } = body;
-    if (!moderator_id || !["update_permissions", "suspend", "activate", "delete"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
-
-    const now = new Date().toISOString();
-
-    if (action === "update_permissions") {
-      const safePerms: Record<string, boolean> = {};
-      const allowed = ["can_see_pending_courses","can_validate_course_price","can_reject_course","can_transmit_course_to_admin","can_validate_professor_kyc","can_validate_establishment_kyc","can_see_learners_list","can_see_professors_list","can_suspend_account","can_moderate_forum","can_post_job_offers","can_moderate_jobs","can_manage_support","can_view_moderation_log","can_view_analytics","can_view_financial_summary"];
-      for (const k of allowed) safePerms[k] = !!(permissions ?? {})[k];
-      await sb.from("moderator_permissions").upsert({ moderator_user_id: moderator_id, ...safePerms }, { onConflict: "moderator_user_id" });
-    } else if (action === "suspend") {
-      await sb.from("users").update({ status: "suspendu" }).eq("id", moderator_id);
-      await sb.from("user_sessions").update({ expires_at: now }).eq("user_id", moderator_id);
-    } else if (action === "activate") {
-      await sb.from("users").update({ status: "actif" }).eq("id", moderator_id);
-    } else if (action === "delete") {
-      await sb.from("user_sessions").update({ expires_at: now }).eq("user_id", moderator_id);
-      await sb.from("users").update({ status: "supprime" }).eq("id", moderator_id);
-    }
-
-    return json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
-  }
-});
+const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token"};
+const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
+async function admin(sb:any,req:Request){const t=(req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();const {data:s}=await sb.from("user_sessions").select("user_id").eq("session_token",t).gt("expires_at",new Date().toISOString()).maybeSingle();if(!s)return null;const {data:r}=await sb.from("user_roles").select("role").eq("user_id",s.user_id).eq("role","super_admin").maybeSingle();return r?s.user_id:null}
+const ALLOWED=["can_see_pending_courses","can_review_course_content","can_request_course_modification","can_recommend_course_price","can_approve_transmit_course","can_manage_course_certifications","can_create_assisted_course","can_see_learners_list","can_see_professors_list","can_see_structures_list","can_see_organizers_list","can_validate_professor_kyc","can_validate_structure_kyc","can_request_account_suspension","can_moderate_forum","can_moderate_jobs","can_manage_support","can_view_ai_conversations","can_manage_reports","can_review_live_events","can_review_live_reports","can_review_live_refunds","can_review_live_organizers","can_review_structure_requests","can_review_structure_codes","can_review_structure_benefits","can_view_analytics"];
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response(null,{headers:cors});const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);try{if(!await admin(sb,req))return json({error:"FORBIDDEN"},403);const b=await req.json();if(!b.moderator_id)return json({error:"INVALID_PARAMS"},400);
+ if(b.action==="update_permissions"){const safe:any={};for(const k of ALLOWED)safe[k]=!!b.permissions?.[k];const {error}=await sb.from("moderator_permissions").upsert({moderator_user_id:b.moderator_id,permissions:safe,permission_version:2},{onConflict:"moderator_user_id"});if(error)throw error;return json({success:true})}
+ if(b.action==="delete"){await sb.from("user_sessions").update({expires_at:new Date().toISOString()}).eq("user_id",b.moderator_id);await sb.from("user_roles").delete().eq("user_id",b.moderator_id).in("role",["moderateur","moderator"]);await sb.from("moderator_permissions").delete().eq("moderator_user_id",b.moderator_id);return json({success:true})}
+ if(b.action==="suspend"||b.action==="activate"){await sb.from("users").update({status:b.action==="suspend"?"suspendu":"actif"}).eq("id",b.moderator_id);return json({success:true})}
+ return json({error:"UNKNOWN_ACTION"},400);
+}catch(e){console.error(e);return json({error:"SERVER_ERROR",message:(e as Error).message},500)}});

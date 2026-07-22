@@ -95,6 +95,7 @@ export default function AdminEquipe() {
   const [actionRequests, setActionRequests] = useState<ActionRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const token = () => localStorage.getItem('omnia_session_token') || '';
 
@@ -106,7 +107,7 @@ export default function AdminEquipe() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
         headers: { 'Authorization': `Bearer ${token()}` }
       });
-      if (!res.ok) throw new Error('Impossible de charger les modérateurs');
+      if (!res.ok) { let detail=''; try { const j=await res.json(); detail=j.message||j.error||''; } catch {} throw new Error(detail ? `Chargement impossible : ${detail}` : 'Impossible de charger les modérateurs'); }
       const data = await res.json();
       const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map((item: any) => ({
         user_id: item.id,
@@ -169,7 +170,7 @@ export default function AdminEquipe() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ user_id: userId, permissions: localPermissions[userId] })
+        body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
       });
       if (!res.ok) throw new Error('Échec de la sauvegarde');
       setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
@@ -184,16 +185,17 @@ export default function AdminEquipe() {
 
   // ── Supprimer un modérateur ───────────────────────────────
   const deleteModerator = async (userId: string) => {
-    if (!confirm('Révoquer les permissions de ce modérateur ?')) return;
+    if (pendingDeleteId !== userId) { setPendingDeleteId(userId); return; }
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-delete`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ user_id: userId })
+        body: JSON.stringify({ moderator_id: userId, action: 'delete' })
       });
       if (!res.ok) throw new Error('Échec de la suppression');
       setModerators(prev => prev.filter(m => m.user_id !== userId));
       setLocalPermissions(prev => { const u = { ...prev }; delete u[userId]; return u; });
+      setPendingDeleteId(null);
       setSuccessMessage('Modérateur révoqué');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {

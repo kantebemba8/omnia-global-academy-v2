@@ -286,7 +286,7 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Activité aujourd’hui</h2>
+                <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-black" style={{ color: '#002050' }}>Activité aujourd’hui</h2><button onClick={()=>navigate('/admin/dashboard/activity-today')} className="text-sm font-semibold" style={{color:'#BF8813'}}>Voir le détail →</button></div>
                 <div className="border-y border-gray-200 py-2">
                   <StatLine label="Nouveaux utilisateurs" value={data.activity_today.nouveaux_utilisateurs} />
                   <StatLine label="Commandes payées" value={data.activity_today.commandes_payees} />

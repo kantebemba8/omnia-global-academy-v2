@@ -31,3 +31,8 @@ export default function AdminCertificateTemplates(){
   </div></div>}
  </div></AdminLayout>
 }
+
+function documentLabel(v:string){
+ return ({completion_certificate:'Certificat de réussite',participation_attestation:'Attestation de participation',attendance_certificate:'Attestation de présence',cpd_certificate:'Certificat Open CPD'} as Record<string,string>)[v]||v;
+}
+function sourceLabel(v:string){return v==='omnia_live'?'Omnia Live':'Formation';}
