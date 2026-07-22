@@ -25,7 +25,7 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/recrutement/candidats',label: 'Candidats',                 icon: Users },
   { path: '/structure/recrutement/entretiens',label:'Entretiens',                icon: CalendarDays },
   { path: '/structure/recrutement/messages', label: 'Messages recrutement',      icon: MessageSquare },
-  { path: '/talent',                         label: 'Talent Omnia',              icon: Search },
+  { path: '/talent',                         label: 'Omnia Talent',              icon: Search },
   { path: '/omnia-live',                     label: 'Omnia Live',                 icon: Radio },
   { path: '/structure/equipe',              label: 'Équipe de la structure',    icon: Shield },
   { path: '/structure/statistiques',        label: 'Statistiques',              icon: BarChart2 },

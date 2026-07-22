@@ -62,7 +62,7 @@ export default function TalentExplore() {
     <TalentLayout>
       <div className="mx-auto max-w-7xl px-5 py-8 md:px-8">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: BLUE }}>Explorer Talent Omnia</h1>
+          <h1 className="text-2xl font-semibold" style={{ color: BLUE }}>Explorer Omnia Talent</h1>
           <p className="mt-1 text-sm text-gray-500">Recherchez dans les profils publics, les organisations visibles et les offres existantes.</p>
         </div>
 

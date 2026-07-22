@@ -11,7 +11,7 @@ export default function TalentCommunity() {
     <TalentLayout>
       <section className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
         <div className="max-w-3xl">
-          <span className="text-sm font-semibold" style={{ color: GOLD }}>Communauté Talent Omnia</span>
+          <span className="text-sm font-semibold" style={{ color: GOLD }}>Communauté Omnia Talent</span>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl" style={{ color: BLUE }}>Échangez, apprenez et développez votre réseau professionnel</h1>
           <p className="mt-4 text-base leading-7 text-gray-600">Retrouvez les échanges de la communauté Omnia autour des compétences, des métiers, des opportunités et de l’évolution professionnelle.</p>
         </div>

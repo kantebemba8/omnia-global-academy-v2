@@ -112,12 +112,9 @@ type InterviewQuestion = {
 };
 
 type AdminStats = {
-  total_cv: number;
-  total_lm: number;
-  total_exports: number;
-  tokens_consumed: number;
-  active_templates: number;
-  active_packs: number;
+  total_cv: number; total_lm: number; completed_cv: number; completed_lm: number; unique_creators: number;
+  total_exports: number; cv_exports: number; lm_exports: number; tokens_consumed: number; tokens_credited: number;
+  paid_token_orders: number; token_revenue_xof: number; active_templates: number; active_packs: number; active_questions: number;
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -261,7 +258,7 @@ export default function AdminCareerStudio() {
   const [lmTemplates, setLmTemplates] = useState<Template[]>([]);
   const [showTemplateCreator, setShowTemplateCreator] = useState(false);
   const [customTemplate, setCustomTemplate] = useState({ template_key: '', name_fr: '', description_fr: '', thumbnail_url: '', variant: 'split', primary: '#002050', accent: '#bf8813', sidebar: '#eef3f8', is_free: true, is_ats_compatible: true });
-  const [stats, setStats] = useState<AdminStats>({ total_cv: 0, total_lm: 0, total_exports: 0, tokens_consumed: 0, active_templates: 0, active_packs: 0 });
+  const [stats, setStats] = useState<AdminStats>({ total_cv:0,total_lm:0,completed_cv:0,completed_lm:0,unique_creators:0,total_exports:0,cv_exports:0,lm_exports:0,tokens_consumed:0,tokens_credited:0,paid_token_orders:0,token_revenue_xof:0,active_templates:0,active_packs:0,active_questions:0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -611,7 +608,7 @@ export default function AdminCareerStudio() {
               <div className="mb-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: `${OMNIA_GOLD}55`, background: `${OMNIA_GOLD}12`, color: OMNIA_GOLD }}>
                 <ShieldCheck size={14} /> Accès Super Admin
               </div>
-              <h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>Omnia Career Studio</h1>
+              <h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>Gestion Omnia Career Studio</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6" style={{ color: MUTED }}>
                 Gérez les règles, les prix, les jetons, les modèles CV/LM, l’IA et les exports depuis le tableau de bord Super Admin.
               </p>
@@ -627,21 +624,19 @@ export default function AdminCareerStudio() {
 
           {!loading && subTab === 'dashboard' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-                {[
-                  { label: 'CV créés', value: stats.total_cv, icon: FileText },
-                  { label: 'LM créées', value: stats.total_lm, icon: Mail },
-                  { label: 'PDF exportés', value: stats.total_exports, icon: Download },
-                  { label: 'Jetons consommés', value: stats.tokens_consumed, icon: Coins },
-                  { label: 'Modèles actifs', value: stats.active_templates, icon: Eye },
-                  { label: 'Packs actifs', value: stats.active_packs, icon: Check },
-                ].map(({ label, value, icon: Icon }) => (
-                  <div key={label} className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: BORDER }}>
-                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${OMNIA_BLUE}10`, color: OMNIA_BLUE }}><Icon size={18} /></div>
-                    <p className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{value}</p>
-                    <p className="mt-1 text-xs" style={{ color: MUTED }}>{label}</p>
-                  </div>
-                ))}
+              <div className="rounded-2xl border bg-white" style={{borderColor:BORDER}}>
+                <div className="grid gap-0 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ['Documents créés', stats.total_cv + stats.total_lm, `${stats.total_cv} CV · ${stats.total_lm} LM`],
+                    ['Documents finalisés', stats.completed_cv + stats.completed_lm, `${stats.completed_cv} CV · ${stats.completed_lm} LM`],
+                    ['Créateurs uniques', stats.unique_creators, 'Apprenants ayant créé au moins un document'],
+                    ['Exports PDF', stats.total_exports, `${stats.cv_exports} CV · ${stats.lm_exports} LM`],
+                    ['Jetons consommés', stats.tokens_consumed, `${stats.tokens_credited} jetons crédités`],
+                    ['Achats de jetons payés', stats.paid_token_orders, `${Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')} XOF encaissés`],
+                    ['Modèles actifs', stats.active_templates, `${cvTemplates.filter(t=>t.is_active).length} CV · ${lmTemplates.filter(t=>t.is_active).length} LM`],
+                    ['Questions actives', stats.active_questions, `${stats.active_packs} pack(s) de jetons actif(s)`],
+                  ].map(([label,value,detail],i)=><div key={String(label)} className="border-b p-5 md:border-r xl:[&:nth-child(4n)]:border-r-0" style={{borderColor:BORDER}}><p className="text-sm font-medium" style={{color:MUTED}}>{label}</p><p className="mt-2 text-2xl font-semibold" style={{color:OMNIA_BLUE}}>{value}</p><p className="mt-1 text-xs" style={{color:MUTED}}>{detail}</p></div>)}
+                </div>
               </div>
               <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Activité récente</h2><div className="mt-4 space-y-3">{tokenTransactions.slice(0,6).map((t:any)=><div key={t.id} className="flex items-center justify-between border-b pb-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{t.reason||t.transaction_type||'Mouvement de jetons'}</span><strong style={{color:Number(t.amount)<0?'#B91C1C':'#15803D'}}>{Number(t.amount)>0?'+':''}{t.amount||0}</strong></div>)}{tokenTransactions.length===0&&<p className="text-sm" style={{color:MUTED}}>Aucune activité enregistrée.</p>}</div></div><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>État opérationnel</h2><div className="mt-4 space-y-3 text-sm" style={{color:MUTED}}><p>{tokenPacks.filter(p=>p.is_active).length} pack(s) de jetons proposé(s)</p><p>{questionBank.filter(q=>q.is_active).length} question(s) active(s)</p><p>{exportLogs.length} export(s) récent(s) chargé(s)</p><p>{cvTemplates.filter(t=>t.is_active).length} modèles CV et {lmTemplates.filter(t=>t.is_active).length} modèles LM actifs</p></div></div></div>
             </div>

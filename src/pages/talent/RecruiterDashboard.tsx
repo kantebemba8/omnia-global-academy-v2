@@ -101,7 +101,7 @@ export default function RecruiterDashboard() {
     dashboard:'Tableau de bord recruteur', offres:'Mes offres', talents:'Rechercher des talents', favoris:'Talents favoris', candidatures:'Candidatures', entretiens:'Entretiens', messages:'Messages', profil:'Profil recruteur', parametres:'Paramètres',
   };
 
-  return <RecruiterLayout title={titleMap[section]} subtitle="Espace recruteur indépendant · Talent Omnia">
+  return <RecruiterLayout title={titleMap[section]} subtitle="Espace recruteur indépendant · Omnia Talent">
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       {error && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
       {section === 'dashboard' && <><div className="mb-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div><DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} /><div className="mt-6"><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="recruiter"/></div></>}

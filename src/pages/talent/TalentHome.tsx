@@ -37,7 +37,7 @@ export default function TalentHome() {
               {pageContent.title || 'Découvrez les talents qui ont choisi de rendre leur profil visible'}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
-              {pageContent.subtitle || 'Talent Omnia permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.'}
+              {pageContent.subtitle || 'Omnia Talent permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.'}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/talent/explorer" className="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>

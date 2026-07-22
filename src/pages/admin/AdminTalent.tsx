@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { adminLoadTalentSupervision, adminUpdateRecruiterStatus, loadTalentAnalytics, TalentAnalytics } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
-import { CheckCircle2, Clock3, Contact, RefreshCw, ShieldCheck, UserX, UsersRound } from 'lucide-react';
+import { CheckCircle2, Clock3, Contact, ExternalLink, RefreshCw, ShieldCheck, UserX, UsersRound } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -23,7 +23,7 @@ export default function AdminTalent() {
   async function load() {
     setLoading(true); setError('');
     try { const [supervision,stats]=await Promise.all([adminLoadTalentSupervision(status === 'all' ? undefined : status),loadTalentAnalytics('admin',periodDays)]); setData(supervision); setAnalytics(stats.analytics); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Supervision Talent indisponible.'); }
+    catch (e) { const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e); setError(msg && msg !== '{}' ? msg : 'Supervision Omnia Talent indisponible.'); }
     finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [status,periodDays]);
@@ -53,8 +53,8 @@ export default function AdminTalent() {
   return <AdminLayout>
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Supervision Talent Omnia</h1><p className="mt-1 text-sm text-gray-500">Validez les recruteurs et contrôlez les activités sensibles.</p></div>
-        <button onClick={load} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium" style={{borderColor:BORDER,color:BLUE}}><RefreshCw size={16}/>Actualiser</button>
+        <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Supervision Omnia Talent</h1><p className="mt-1 text-sm text-gray-500">Validez les recruteurs et contrôlez les activités sensibles.</p></div>
+        <div className="flex flex-wrap gap-2"><a href="/talent" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium" style={{borderColor:BORDER,color:BLUE}}><ExternalLink size={16}/>Ouvrir Omnia Talent</a><button onClick={load} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium" style={{borderColor:BORDER,color:BLUE}}><RefreshCw size={16}/>Actualiser</button></div>
       </div>
       {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       <div className="mt-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div>

@@ -30,7 +30,7 @@ function initials(name = 'Recruteur') {
   return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
 }
 
-export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle = 'Talent Omnia' }: Props) {
+export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle = 'Omnia Talent' }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -82,7 +82,7 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
           <ExternalLink size={18} /> Voir Omnia Global Academy
         </Link>
         <Link to="/talent" className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/60 hover:bg-white/5 hover:text-white">
-          <UsersRound size={18} /> Voir Talent Omnia
+          <UsersRound size={18} /> Voir Omnia Talent
         </Link>
         <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 hover:bg-white/5 hover:text-white">
           <LogOut size={18} /> Déconnexion

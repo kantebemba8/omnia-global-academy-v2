@@ -120,7 +120,7 @@ export default function StructureRecruitment(){
   return <StructureLayout>
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>{titles[section]}</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Module Recrutement de votre Structure · Talent Omnia</p></div>
+        <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>{titles[section]}</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Module Recrutement de votre Structure · Omnia Talent</p></div>
         {section!=='offres' && <Link to="/structure/offres-emploi" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}><Plus size={16}/>Déposer une offre</Link>}
       </div>
 

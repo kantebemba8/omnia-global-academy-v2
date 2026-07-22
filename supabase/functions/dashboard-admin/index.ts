@@ -359,7 +359,7 @@ Deno.serve(async (req: Request) => {
     const maintenanceModules = [
       ["Omnia Live", "maintenance_module_omnia_live"],
       ["Omnia Career", "maintenance_module_career"],
-      ["Talent Omnia", "maintenance_module_talent"],
+      ["Omnia Talent", "maintenance_module_talent"],
       ["Forum", "maintenance_module_forum"],
       ["Paiements", "maintenance_module_payments"],
       ["Formations", "maintenance_module_formations"],

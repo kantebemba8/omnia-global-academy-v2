@@ -79,7 +79,7 @@ const DEFAULT_PAGE_CONTENT: PublicPageContent = {
   talent: {
     badge: 'La vitrine professionnelle d’Omnia Global Academy',
     title: 'Découvrez les talents qui ont choisi de rendre leur profil visible',
-    subtitle: 'Talent Omnia permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.',
+    subtitle: 'Omnia Talent permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.',
     primary_cta: 'Explorer les talents',
     secondary_cta: 'Espace recruteurs',
     recent_talents_title: 'Talents récemment visibles',
@@ -729,7 +729,7 @@ export default function AdminCMS() {
               <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2">
                 {[
                   ['landing','Accueil'],
-                  ['talent','Talent Omnia'],
+                  ['talent','Omnia Talent'],
                   ['omnia_live','Omnia Live'],
                 ].map(([key,label]) => (
                   <button key={key} type="button" onClick={() => setPageEditorTarget(key as typeof pageEditorTarget)}
@@ -865,7 +865,7 @@ export default function AdminCMS() {
             <div className="max-w-5xl mx-auto space-y-6">
               <div>
                 <h3 className="font-semibold" style={{color:'#002050'}}>Documents juridiques centralisés</h3>
-                <p className="text-xs text-gray-500 mt-1">Une seule source pour toute la plateforme. Les mêmes contenus doivent être reliés depuis l’accueil, Talent Omnia, Omnia Live, Career, Forum, inscription et paiement.</p>
+                <p className="text-xs text-gray-500 mt-1">Une seule source pour toute la plateforme. Les mêmes contenus doivent être reliés depuis l’accueil, Omnia Talent, Omnia Live, Career, Forum, inscription et paiement.</p>
               </div>
               <TextArea label="À Propos (Markdown)" k="a_propos_content_fr" rows={8} />
               <TextArea label="Politique de confidentialité et données personnelles (Markdown)" k="confidentialite_content_fr" rows={10} />
@@ -1241,7 +1241,7 @@ export default function AdminCMS() {
                   {[
                     ['omnia_live','Omnia Live'],
                     ['career','Omnia Career'],
-                    ['talent','Talent Omnia'],
+                    ['talent','Omnia Talent'],
                     ['forum','Forum'],
                     ['payments','Paiements'],
                     ['formations','Formations'],
