@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { AdminLayout } from '../../components/AdminLayout';
 import { adminLoadTalentSupervision, adminUpdateRecruiterStatus, loadTalentAnalytics, TalentAnalytics } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 import { CheckCircle2, Clock3, Contact, RefreshCw, ShieldCheck, UserX, UsersRound } from 'lucide-react';
@@ -50,7 +50,7 @@ export default function AdminTalent() {
     ['Contacts', data.metrics?.contacts || 0, Contact],
   ] as const;
 
-  return <DashboardLayout role="super_admin">
+  return <AdminLayout>
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Supervision Talent Omnia</h1><p className="mt-1 text-sm text-gray-500">Validez les recruteurs et contrôlez les activités sensibles.</p></div>
@@ -72,5 +72,5 @@ export default function AdminTalent() {
         <section className="rounded-xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-2"><Contact color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Contacts recruteur ↔ apprenant</h2></div>{(data.contacts||[]).length===0?<p className="mt-5 text-sm text-gray-500">Aucun contact enregistré.</p>:<div className="mt-4 space-y-3">{(data.contacts||[]).slice(0,12).map((c:any)=><div key={c.id} className="border-b pb-3 text-sm"><p className="font-medium" style={{color:BLUE}}>{c.subject||'Prise de contact'}</p><p className="text-xs text-gray-500">Statut : {c.status}</p><p className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString('fr-FR')}</p></div>)}</div>}</section>
       </div>
     </div>
-  </DashboardLayout>;
+  </AdminLayout>;
 }

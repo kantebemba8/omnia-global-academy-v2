@@ -2,13 +2,15 @@ import React, { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
-  ChevronRight, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
+  ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
   Search, Radio, ExternalLink,
 } from 'lucide-react';
+import { ADMIN_NAV_GROUPS, type AdminNavGroup, type AdminNavItem } from '../lib/adminNavigation';
 
-interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
-interface Props { children: ReactNode; role?: 'apprenant' | 'professeur' | 'directeur' | 'enseignant' | 'moderateur' | 'super_admin'; navItems?: NavItem[] }
+type NavItem = AdminNavItem;
+type NavEntry = NavItem | AdminNavGroup;
+interface Props { children: ReactNode; role?: 'apprenant' | 'professeur' | 'directeur' | 'enseignant' | 'moderateur' | 'super_admin'; navItems?: NavEntry[] }
 
 interface StoredUser {
   id: string; full_name: string; email: string;
@@ -77,29 +79,12 @@ const ENSEIGNANT_NAV = [
   { path: '/forum', label: 'Forum école', icon: MessageSquare },
 ];
 
-const ADMIN_NAV = [
-  { path: '/admin/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
-  { path: '/admin/cms-branding', label: 'Configuration CMS', icon: Settings },
-  { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
-  { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },
-  { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
-  { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
-  { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
-  { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
-  { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
-  { path: '/admin/certificates', label: 'Certificats délivrés', icon: Award },
-  { path: '/admin/certificate-settings', label: 'Paramètres Certificats', icon: Settings },
-  { path: '/talent', label: 'Talent Omnia', icon: Search },
-  { path: '/admin/talent', label: 'Supervision Talent', icon: Shield },
-  { path: '/admin/omnia-live', label: 'Gestion Omnia Live', icon: Radio },
-  { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
-];
-
 export function DashboardLayout({ children, role = 'apprenant', navItems }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
   const isSuperAdmin = (() => {
@@ -138,18 +123,35 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
     navigate('/connexion');
   }
 
-  const NAV_ITEMS = navItems ?? (
+  const NAV_ITEMS: NavEntry[] = navItems ?? (
     role === 'professeur' ? PROFESSEUR_NAV
-   : role === 'directeur' ? PARTNER_NAV
+    : role === 'directeur' ? PARTNER_NAV
     : role === 'enseignant' ? ENSEIGNANT_NAV
-    : role === 'super_admin' ? ADMIN_NAV
+    : role === 'super_admin' ? ADMIN_NAV_GROUPS
     : APPRENANT_NAV
   );
 
-  function isActive(item: typeof NAV_ITEMS[0]) {
-    if ((item as { exact?: boolean }).exact) return location.pathname === item.path;
-    return location.pathname.startsWith(item.path);
+  const isGroup = (entry: NavEntry): entry is AdminNavGroup =>
+    'items' in entry && Array.isArray(entry.items);
+
+  function isActive(item: NavItem) {
+    if (item.exact) return location.pathname === item.path;
+    return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
   }
+
+  function isGroupActive(group: AdminNavGroup) {
+    return group.items.some(isActive);
+  }
+
+  useEffect(() => {
+    const activeGroups: Record<string, boolean> = {};
+    NAV_ITEMS.forEach(entry => {
+      if (isGroup(entry) && isGroupActive(entry)) activeGroups[entry.id] = true;
+    });
+    if (Object.keys(activeGroups).length) {
+      setOpenGroups(prev => ({ ...prev, ...activeGroups }));
+    }
+  }, [location.pathname]);
 
   const sidebar = (
     <aside className="flex flex-col h-full" style={{ backgroundColor: '#002050' }}>
@@ -164,21 +166,86 @@ export function DashboardLayout({ children, role = 'apprenant', navItems }: Prop
       </div>
 
       <nav className="sidebar-scrollbar flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(item);
+        {NAV_ITEMS.map((entry) => {
+          if (!isGroup(entry)) {
+            const active = isActive(entry);
+            return (
+              <Link key={entry.path} to={buildPath(entry.path)} onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
+                style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
+                <entry.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+                <span className="flex-1 text-sm font-medium">{entry.label}</span>
+                {entry.badge && (
+                  <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#BF8813', color: '#002050' }}>
+                    {entry.badge}
+                  </span>
+                )}
+                {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+              </Link>
+            );
+          }
+
+          const groupActive = isGroupActive(entry);
+          const expanded = openGroups[entry.id] ?? groupActive ?? false;
+          const onlyOne = entry.items.length === 1;
+
+          if (onlyOne) {
+            const item = entry.items[0];
+            const active = isActive(item);
+            return (
+              <Link key={entry.id} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
+                style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.72)' }}>
+                <entry.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+                <span className="flex-1 text-sm font-medium">{entry.label}</span>
+                {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+              </Link>
+            );
+          }
+
           return (
-            <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150"
-              style={{ backgroundColor: active ? 'rgba(191,136,19,0.15)' : 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
-              <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
-              <span className="flex-1 text-sm font-medium">{item.label}</span>
-              {(item as { badge?: string }).badge && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-                  {(item as { badge?: string }).badge}
-                </span>
+            <div key={entry.id} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setOpenGroups(prev => ({ ...prev, [entry.id]: !expanded }))}
+                className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150"
+                style={{
+                  backgroundColor: groupActive ? 'rgba(255,255,255,0.05)' : 'transparent',
+                  color: groupActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)'
+                }}
+              >
+                <entry.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+                <span className="flex-1 text-sm font-medium">{entry.label}</span>
+                <ChevronDown
+                  className="w-3.5 h-3.5 opacity-60 transition-transform duration-150"
+                  style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                />
+              </button>
+
+              {expanded && (
+                <div className="ml-4 border-l border-white/10 pl-2 space-y-0.5">
+                  {entry.items.map(item => {
+                    const active = isActive(item);
+                    return (
+                      <Link
+                        key={item.path}
+                        to={buildPath(item.path)}
+                        onClick={() => setSidebarOpen(false)}
+                        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150"
+                        style={{
+                          backgroundColor: active ? 'rgba(191,136,19,0.14)' : 'transparent',
+                          color: active ? '#BF8813' : 'rgba(255,255,255,0.58)'
+                        }}
+                      >
+                        <item.icon style={{ width: 15, height: 15, flexShrink: 0 }} />
+                        <span className="flex-1 text-[13px] font-medium leading-tight">{item.label}</span>
+                        {active && <span className="h-1.5 w-1.5 rounded-full" style={{backgroundColor:'#BF8813'}} />}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-              {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
-            </Link>
+            </div>
           );
         })}
       </nav>

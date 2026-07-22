@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { CATEGORY_LABELS } from '../../lib/categories';
@@ -17,6 +18,15 @@ const COMMISSION_KEYS = [
   { key: 'commission_assistee_sans_cpd', label: 'Assistée sans CPD', row: 'Assistée', col: 'Sans CPD' },
   { key: 'commission_assistee_avec_cpd', label: 'Assistée avec CPD', row: 'Assistée', col: 'Avec CPD' },
 ];
+
+const EXTERNAL_OWNED_KEYS = new Set([
+  // Ces paramètres restent dans site_settings pour compatibilité,
+  // mais leur interface de référence est Fintech afin d'éviter deux écrans concurrents.
+  'payout_minimum_xof',
+  'ai_token_per_registration',
+  'ai_token_per_purchase',
+]);
+
 
 function getDefaultMultipliers(): Record<string, string> {
   const m: Record<string, string> = {};
@@ -103,7 +113,7 @@ export default function AdminCMS() {
     const FORBIDDEN = new Set(['super_admin_id','service_role_key','fedapay_secret_key','brevo_api_key','html2pdf_api_key','cron_secret']);
 
     const updates = Object.entries(settings)
-      .filter(([key]) => !FORBIDDEN.has(key.toLowerCase()))
+      .filter(([key]) => !FORBIDDEN.has(key.toLowerCase()) && !EXTERNAL_OWNED_KEYS.has(key))
       .map(([key, value]) => ({ key, value }));
 
     if (extraUpdates) updates.push(...extraUpdates.filter(u => !FORBIDDEN.has(u.key.toLowerCase())));
@@ -133,7 +143,7 @@ export default function AdminCMS() {
     if (launchConfirmText !== 'LANCER') return;
     setLaunching(true);
     const token = localStorage.getItem('omnia_session_token');
-    const updates = Object.entries(settings).map(([key, value]) => ({ key, value }));
+    const updates = Object.entries(settings).filter(([key]) => !EXTERNAL_OWNED_KEYS.has(key)).map(([key, value]) => ({ key, value }));
     // Ensure coming_soon_enabled is false
     const idx = updates.findIndex(u => u.key === 'coming_soon_enabled');
     if (idx >= 0) updates[idx].value = 'false';
@@ -188,13 +198,13 @@ export default function AdminCMS() {
   }
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'general', label: 'Général' },
-    { key: 'coming_soon', label: 'Coming Soon' },
-    { key: 'landing', label: 'Landing Page' },
+    { key: 'general', label: 'Identité & Branding' },
+    { key: 'coming_soon', label: 'Lancement' },
+    { key: 'landing', label: 'Pages publiques' },
     { key: 'partenaires', label: 'Partenaires' },
     { key: 'legal', label: 'Légal' },
-    { key: 'avance', label: 'Paramètres avancés' },
-    { key: 'newsletter', label: 'Newsletter' },
+    { key: 'avance', label: 'Règles métier' },
+    { key: 'newsletter', label: 'Communication' },
     { key: 'ia', label: 'IA & Automatisation' },
   ];
 
@@ -243,7 +253,8 @@ export default function AdminCMS() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration CMS</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Contenu et paramètres de la plateforme</p>
+            <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, lancement et règles métier de la plateforme</p>
+            <p className="mt-1 text-xs text-gray-400">Les paiements, retraits et jetons IA généraux sont centralisés dans Configuration Fintech.</p>
           </div>
           <button onClick={() => save()} disabled={saving}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
@@ -748,9 +759,15 @@ export default function AdminCMS() {
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Récompense parrain (XOF)" k="referral_reward_referrer_xof" type="number" />
                   <Field label="Récompense filleul (XOF)" k="referral_reward_referred_xof" type="number" />
-                  <Field label="Jetons à l'inscription" k="ai_token_per_registration" type="number" />
-                  <Field label="Jetons par achat" k="ai_token_per_purchase" type="number" />
-                  <Field label="Retrait minimum (XOF)" k="payout_minimum_xof" type="number" />
+                  <div className="col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                    <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers et jetons partagés</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Le retrait minimum et les jetons IA généraux sont gérés uniquement dans Configuration Fintech pour éviter deux écrans qui modifient les mêmes valeurs.
+                    </p>
+                    <Link to="/admin/fintech" className="mt-3 inline-flex text-xs font-semibold" style={{color:'#BF8813'}}>
+                      Ouvrir Configuration Fintech →
+                    </Link>
+                  </div>
                 </div>
               </div>
 
