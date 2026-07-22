@@ -61,7 +61,7 @@ export default function AdminStructureCodes() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('✅ Action effectuée');
+      showToast('Action effectuée');
       setAdminComment('');
       if (selectedStructure) loadCodes(selectedStructure.id);
     } else showToast(data.error ?? 'Erreur');
@@ -70,7 +70,7 @@ export default function AdminStructureCodes() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium border"
             style={{ background: 'white', borderColor: '#E4E7EC', color: '#002050' }}>{toast}</div>

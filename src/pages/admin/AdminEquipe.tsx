@@ -30,44 +30,53 @@ interface ActionRequest {
 }
 
 const PERMISSION_SECTIONS: PermissionSection[] = [
-  {
-    title: 'Validation des formations',
-    perms: [
-      { key: 'can_see_pending_courses', label: 'Voir le contenu des formations en attente' },
-      { key: 'can_validate_course_price', label: 'Valider une formation et son prix' },
-      { key: 'can_reject_course', label: 'Rejeter une formation' },
-      { key: 'can_request_course_modification', label: 'Demander des modifications' },
-      { key: 'can_approve_transmit_course', label: 'Approuver et transmettre au Super-admin' },
-      { key: 'can_create_assisted_course', label: 'Créer une formation assistée' },
-    ]
-  },
-  {
-    title: 'Gestion utilisateurs et KYC',
-    perms: [
-      { key: 'can_see_learners_list', label: 'Voir la liste des apprenants' },
-      { key: 'can_see_professors_list', label: 'Voir la liste des professeurs' },
-      { key: 'can_suspend_account', label: 'Suspendre temporairement un compte' },
-      { key: 'can_validate_professor_kyc', label: 'Valider le KYC des professeurs' },
-      { key: 'can_validate_establishment_kyc', label: 'Valider le KYC des établissements' },
-    ]
-  },
-  {
-    title: 'Forum, support et IA',
-    perms: [
-      { key: 'can_moderate_forum', label: 'Modérer le forum général' },
-      { key: 'can_moderate_jobs', label: "Modérer les offres d'emploi" },
-      { key: 'can_manage_support', label: 'Gérer les tickets de support' },
-      { key: 'can_view_ai_conversations', label: 'Consulter les conversations IA' },
-    ]
-  },
-  {
-    title: 'Statistiques (non-financières uniquement)',
-    perms: [
-      { key: 'can_view_analytics', label: "Voir les statistiques d'audience" },
-    ]
-  },
+  { title:'Formations & certifications', perms:[
+    {key:'can_see_pending_courses',label:'Voir les formations en attente'},
+    {key:'can_review_course_content',label:'Contrôler le contenu pédagogique'},
+    {key:'can_request_course_modification',label:'Demander des modifications'},
+    {key:'can_recommend_course_price',label:'Proposer une décision de prix'},
+    {key:'can_approve_transmit_course',label:'Approuver et transmettre au Super-admin'},
+    {key:'can_manage_course_certifications',label:'Contrôler les demandes de certifications et badges'},
+    {key:'can_create_assisted_course',label:'Créer ou corriger une saisie assistée'},
+  ]},
+  { title:'Utilisateurs, Structures & KYC', perms:[
+    {key:'can_see_learners_list',label:'Voir la liste des apprenants'},
+    {key:'can_see_professors_list',label:'Voir la liste des professeurs'},
+    {key:'can_see_structures_list',label:'Voir les Structures'},
+    {key:'can_see_organizers_list',label:'Voir les organisateurs'},
+    {key:'can_validate_professor_kyc',label:'Examiner le KYC des professeurs'},
+    {key:'can_validate_structure_kyc',label:'Examiner le KYC des Structures'},
+    {key:'can_request_account_suspension',label:'Demander la suspension temporaire d’un compte'},
+  ]},
+  { title:'Modération, support & communication', perms:[
+    {key:'can_moderate_forum',label:'Modérer le forum'},
+    {key:'can_moderate_jobs',label:"Modérer les offres d'emploi"},
+    {key:'can_manage_support',label:'Gérer les tickets de support'},
+    {key:'can_view_ai_conversations',label:'Consulter les conversations IA autorisées'},
+    {key:'can_manage_reports',label:'Traiter les signalements'},
+  ]},
+  { title:'Omnia Live', perms:[
+    {key:'can_review_live_events',label:'Examiner les événements Omnia Live'},
+    {key:'can_review_live_reports',label:'Traiter les signalements Omnia Live'},
+    {key:'can_review_live_refunds',label:'Préparer les dossiers de remboursement'},
+    {key:'can_review_live_organizers',label:'Examiner les demandes organisateur'},
+  ]},
+  { title:'Structures', perms:[
+    {key:'can_review_structure_requests',label:'Examiner les demandes Structure'},
+    {key:'can_review_structure_codes',label:'Examiner les codes Structure'},
+    {key:'can_review_structure_benefits',label:'Examiner les avantages Structure'},
+  ]},
+  { title:'Statistiques non financières', perms:[
+    {key:'can_view_analytics',label:"Voir les statistiques d'audience et d'activité"},
+  ]},
 ];
 
+const ADMIN_ONLY_PERMISSIONS = new Set([
+ 'can_finalize_course_price','can_publish_course','can_delete_course',
+ 'can_manage_finance','can_manage_payouts','can_manage_platform_settings',
+ 'can_manage_roles','can_manage_moderator_permissions','can_revoke_certificate',
+ 'can_validate_live_refund','can_validate_live_payout'
+]);
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -94,7 +103,7 @@ export default function AdminEquipe() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=list`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
         headers: { 'Authorization': `Bearer ${token()}` }
       });
       if (!res.ok) throw new Error('Impossible de charger les modérateurs');
@@ -157,10 +166,10 @@ export default function AdminEquipe() {
   const savePermissions = async (userId: string) => {
     try {
       setSavingModeratorId(userId);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
+        body: JSON.stringify({ user_id: userId, permissions: localPermissions[userId] })
       });
       if (!res.ok) throw new Error('Échec de la sauvegarde');
       setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
@@ -177,10 +186,10 @@ export default function AdminEquipe() {
   const deleteModerator = async (userId: string) => {
     if (!confirm('Révoquer les permissions de ce modérateur ?')) return;
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-        body: JSON.stringify({ moderator_id: userId, action: 'delete' })
+        body: JSON.stringify({ user_id: userId })
       });
       if (!res.ok) throw new Error('Échec de la suppression');
       setModerators(prev => prev.filter(m => m.user_id !== userId));
@@ -198,7 +207,7 @@ export default function AdminEquipe() {
     setCreatingMod(true);
     setError(null);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
         body: JSON.stringify({
@@ -211,7 +220,7 @@ export default function AdminEquipe() {
       const data = await res.json();
       if (data.error === 'EMAIL_TAKEN') { setError('Cet email est déjà utilisé.'); return; }
       if (!res.ok) throw new Error('Échec de la création');
-      setSuccessMessage(`✅ Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
+      setSuccessMessage(`Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
       setTimeout(() => setSuccessMessage(null), 6000);
       setShowAddModal(false);
       setNewMod({ full_name: '', email: '', phone_number: '' });
@@ -255,14 +264,14 @@ export default function AdminEquipe() {
 
   return (
     <AdminLayout>
-      <div className="p-8">
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
 
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Shield size={32} style={{ color: '#002050' }} />
             <div>
-              <h1 className="text-3xl font-bold" style={{ color: '#002050' }}>Équipe de modération</h1>
+              <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe de modération</h1>
               <p className="text-gray-600 mt-1">Gérer les permissions des modérateurs</p>
             </div>
           </div>
@@ -510,7 +519,7 @@ export default function AdminEquipe() {
                   disabled={creatingMod || !newMod.full_name.trim() || !newMod.email.trim()}
                   className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                   style={{ backgroundColor: '#002050' }}>
-                  {creatingMod ? '⏳ Création...' : '✅ Créer le compte'}
+                  {creatingMod ? '⏳ Création...' : ' Créer le compte'}
                 </button>
               </div>
             </div>

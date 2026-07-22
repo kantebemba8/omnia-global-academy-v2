@@ -9,7 +9,7 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   pending_admin_validation: { label: 'En attente',         color: '#92400E', bg: '#FEF3C7' },
   changes_requested:        { label: 'Modif. demandée',    color: '#1D4ED8', bg: '#EFF6FF' },
   validated:                { label: 'Validé',             color: '#065F46', bg: '#D1FAE5' },
-  active:                   { label: 'Actif ✓',            color: '#065F46', bg: '#D1FAE5' },
+  active:                   { label: 'Actif',            color: '#065F46', bg: '#D1FAE5' },
   rejected:                 { label: 'Refusé',             color: '#991B1B', bg: '#FEE2E2' },
   suspended:                { label: 'Suspendu',           color: '#374151', bg: '#F3F4F6' },
   expired:                  { label: 'Expiré',             color: '#6B7280', bg: '#F3F4F6' },
@@ -66,9 +66,9 @@ export default function AdminStructureAvantages() {
     });
     const data = await res.json();
     const labels: Record<string, string> = {
-      validate: '✅ Avantage validé', activate: '⚡ Avantage activé',
-      reject: '❌ Avantage refusé', suspend: '⚠️ Avantage suspendu',
-      request_changes: '📝 Modification demandée',
+      validate: 'Avantage validé', activate: 'Avantage activé',
+      reject: 'Avantage refusé', suspend: 'Avantage suspendu',
+      request_changes: 'Modification demandée',
     };
     if (data.success) {
       showToast(labels[decision] ?? 'Action effectuée');
@@ -79,7 +79,7 @@ export default function AdminStructureAvantages() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium border"
             style={{ background: 'white', borderColor: '#E4E7EC', color: '#002050' }}>{toast}</div>

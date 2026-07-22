@@ -3,7 +3,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { Eye, RefreshCw } from 'lucide-react';
 
 export default function AdminCertificatePreview() {
-  const [template, setTemplate] = useState<'A' | 'B' | 'C'>('A');
+  const [template, setModèle] = useState<'A' | 'B' | 'C'>('A');
   const [cpd, setCpd] = useState(false);
   const [studentName, setStudentName] = useState('Amadou Coulibaly');
   const [courseTitle, setCourseTitle] = useState('Data Science & Intelligence Artificielle');
@@ -223,16 +223,16 @@ export default function AdminCertificatePreview() {
             <div className="bg-white rounded-xl border p-5 space-y-4"
               style={{ borderColor: '#E4E7EC' }}>
               <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>
-                Template
+                Modèle
               </h2>
               {(['A', 'B', 'C'] as const).map(t => (
                 <label key={t} className="flex items-center gap-3 cursor-pointer">
                   <input type="radio" name="template" value={t}
-                    checked={template === t} onChange={() => setTemplate(t)}
+                    checked={template === t} onChange={() => setModèle(t)}
                     style={{ accentColor: '#002050' }} />
                   <div>
                     <span className="text-sm font-medium" style={{ color: '#002050' }}>
-                      Template {t}
+                      Modèle {t}
                     </span>
                     <span className="text-xs ml-2" style={{ color: '#6B7280' }}>
                       {t === 'A' ? '— Professeur' : t === 'B' ? '— Structure' : '— Plateforme'}
@@ -247,7 +247,7 @@ export default function AdminCertificatePreview() {
                   style={{ accentColor: '#BF8813' }} />
                 <label htmlFor="cpd" className="text-sm cursor-pointer"
                   style={{ color: '#002050' }}>
-                  Badge / accréditation de test
+                  Badges / accréditations validés
                 </label>
               </div>
             </div>
@@ -326,7 +326,7 @@ export default function AdminCertificatePreview() {
               <div className="flex items-center gap-2 mb-4">
                 <Eye size={16} style={{ color: '#002050' }} />
                 <span className="font-semibold text-sm" style={{ color: '#002050' }}>
-                  Aperçu — Template {template}
+                  Aperçu — Modèle {template}
                   {cpd ? ' + CPD' : ''}
                 </span>
               </div>

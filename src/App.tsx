@@ -69,6 +69,7 @@ import ModerateurSupport from './pages/moderateur/ModerateurSupport';
 import ModerateurAnalytique from './pages/moderateur/ModerateurAnalytique';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminRoleUsers from './pages/admin/AdminRoleUsers';
+import AdminActivityToday from './pages/admin/AdminActivityToday';
 import AdminCMS from './pages/admin/AdminCMS';
 import AdminFintech from './pages/admin/AdminFintech';
 import AdminRetraits from './pages/admin/AdminRetraits';
@@ -428,6 +429,7 @@ export default function App() {
         {/* Admin — always accessible */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/dashboard/roles/:roleKey" element={<AdminRoleUsers />} />
+        <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
         <Route path="/admin/profil" element={<AdminProfile />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />

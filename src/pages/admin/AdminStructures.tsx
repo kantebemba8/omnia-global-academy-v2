@@ -124,9 +124,9 @@ export default function AdminStructures() {
     const data = await res.json();
     if (data.success) {
       const labels: Record<string, string> = {
-        validate: '✅ Structure validée', reject: '❌ Structure refusée',
-        request_changes: '📝 Modification demandée', suspend: '⚠️ Structure suspendue',
-        archive: '📦 Structure archivée', restore: '✅ Structure restaurée',
+        validate: ' Structure validée', reject: ' Structure refusée',
+        request_changes: ' Modification demandée', suspend: ' Structure suspendue',
+        archive: '📦 Structure archivée', restore: ' Structure restaurée',
       };
       showToast(labels[decision] ?? 'Action effectuée');
       setDetail(null);
@@ -145,7 +145,7 @@ export default function AdminStructures() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium border"
             style={{ background: 'white', borderColor: '#E4E7EC', color: '#002050' }}>{toast}</div>

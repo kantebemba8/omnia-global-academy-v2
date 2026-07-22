@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Plus, Save } from 'lucide-react';
+const TYPE_LABELS:Record<string,string>={completion_certificate:'Certificat de réussite',participation_attestation:'Attestation de participation',attendance_certificate:'Attestation de présence',cpd_certificate:'Certificat Open CPD'};
+const SOURCE_LABELS:Record<string,string>={course:'Formation',omnia_live:'Omnia Live'};
 const API=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin`;const BLUE='#002050',GOLD='#BF8813';
 const empty={name:'',document_type:'completion_certificate',source_type:'course',issuer_scope:'platform',language_code:'fr',is_active:true,is_default:false};
 export default function AdminCertificateTemplates(){
@@ -13,7 +15,7 @@ export default function AdminCertificateTemplates(){
   <header className="border-b border-gray-200 pb-5 flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Certificats & attestations</p><h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Modèles</h1><p className="text-sm text-gray-500 mt-1">Modèles illimités, par type de document, origine, rôle et langue. Les modèles Omnia Live sont synchronisés automatiquement avec le moteur Live.</p></div><button onClick={()=>setEdit({...empty})} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:BLUE}}><Plus size={14}/>Nouveau modèle</button></header>
   {error&&<div className="text-red-700 text-sm">{error}</div>}
   <div className="border-t border-gray-200">{rows.map(t=><button key={t.id} onClick={()=>setEdit(t)} className="w-full grid md:grid-cols-[1.4fr_.8fr_.8fr_.5fr] gap-3 py-4 border-b text-left hover:bg-gray-50">
-   <div><p className="font-semibold" style={{color:BLUE}}>{t.name}</p><p className="text-xs text-gray-400">{t.code} · v{t.version}</p></div><span className="text-sm text-gray-600">{t.document_type}</span><span className="text-sm text-gray-600">{t.source_type}</span><span className="text-sm uppercase">{t.language_code}</span>
+   <div><p className="font-semibold" style={{color:BLUE}}>{t.name}</p><p className="text-xs text-gray-400">{t.code} · v{t.version}</p></div><span className="text-sm text-gray-600">{TYPE_LABELS[t.document_type]||t.document_type}</span><span className="text-sm text-gray-600">{SOURCE_LABELS[t.source_type]||t.source_type}</span><span className="text-sm uppercase">{t.language_code}</span>
   </button>)}</div>
   {edit&&<div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4"><div className="bg-white w-full max-w-2xl rounded-xl p-6 shadow-xl">
    <h2 className="text-lg font-black" style={{color:BLUE}}>{edit.id?'Modifier le modèle':'Nouveau modèle'}</h2>

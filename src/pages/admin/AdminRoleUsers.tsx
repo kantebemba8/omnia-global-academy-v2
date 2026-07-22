@@ -7,6 +7,13 @@ import { ArrowLeft, Users } from 'lucide-react';
 const BLUE='#002050', GOLD='#BF8813';
 
 type Member={id:string;name:string;email:string;created_at:string|null};
+const TEST_EMAILS=new Set([
+ 'apprenant.test@omniaglobalacademy.com',
+ 'mod.test@omniaglobalacademy.com',
+ 'prof.test@omniaglobalacademy.com',
+ 'structure.test@omniaglobalacademy.com',
+ 'organisateur.test@omniaglobalacademy.com'
+]);
 type Payload={role:string;count:number;members:Member[]};
 
 const LABELS:Record<string,string>={
@@ -58,8 +65,8 @@ export default function AdminRoleUsers(){
           <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-200">
             <th className="py-3">Nom et prénom</th><th>E-mail</th><th>Date d’inscription</th>
           </tr></thead>
-          <tbody>{data.members.map(m=><tr key={m.id} className="border-b border-gray-100">
-            <td className="py-3 font-semibold" style={{color:BLUE}}>{m.name||'Non renseigné'}</td>
+          <tbody>{[...data.members].sort((a,b)=>Number(TEST_EMAILS.has(b.email.toLowerCase()))-Number(TEST_EMAILS.has(a.email.toLowerCase()))).map(m=><tr key={m.id} className="border-b border-gray-100">
+            <td className="py-3 font-semibold" style={{color:BLUE}}>{m.name||'Non renseigné'}{TEST_EMAILS.has(m.email.toLowerCase())&&<span className="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border border-amber-200 text-amber-700 bg-amber-50">Test</span>}</td>
             <td className="text-gray-600">{m.email||'—'}</td>
             <td className="text-gray-500">{m.created_at?new Date(m.created_at).toLocaleDateString('fr-FR'):'—'}</td>
           </tr>)}</tbody>

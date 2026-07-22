@@ -127,6 +127,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (url.searchParams.get("activity_today_detail") === "true") {
+      const startToday = new Date(); startToday.setHours(0,0,0,0);
+      const [adminRows,studioRows] = await Promise.all([
+        rows(sb,"admin_audit_log","action,created_at,metadata",q=>q.gte("created_at",startToday.toISOString()).order("created_at",{ascending:false}).limit(200)),
+        rows(sb,"course_studio_logs","action,created_at,course_id",q=>q.gte("created_at",startToday.toISOString()).order("created_at",{ascending:false}).limit(200)),
+      ]);
+      const activities=[
+        ...(adminRows||[]).map((r:any)=>({label:`Administration : ${String(r.action||"action").replaceAll("_"," ")}`,created_at:r.created_at,detail:r.metadata?JSON.stringify(r.metadata):"",source:"Administration"})),
+        ...(studioRows||[]).map((r:any)=>({label:`Formation : ${String(r.action||"action").replaceAll("_"," ")}`,created_at:r.created_at,detail:r.course_id?`Formation ${r.course_id}`:"",source:"Studio de formation"})),
+      ].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+      return json({activities});
+    }
+
     const period = url.searchParams.get("period") ?? "30d";
     const now = new Date();
     const start = new Date(now);
