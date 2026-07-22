@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 type Settings = Record<string, any>;
-type Tab = 'general' | 'coming_soon' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia';
+type Tab = 'general' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia' | 'maintenance';
 
 const COMMISSION_KEYS = [
   { key: 'commission_normal_sans_cpd', label: 'Normale sans CPD (part plateforme %)', row: 'Normale', col: 'Sans CPD' },
@@ -88,21 +88,6 @@ export default function AdminCMS() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('general');
   const [toast, setToast] = useState('');
-  const [showComingSoonPreview, setShowComingSoonPreview] = useState(false);
-
-  // Launch confirmation modal
-  const [showLaunchModal, setShowLaunchModal] = useState(false);
-  const [launchConfirmText, setLaunchConfirmText] = useState('');
-  const [launching, setLaunching] = useState(false);
-
-  // Waitlist stats
-  const [waitlistStats, setWaitlistStats] = useState<{
-    total_count: number;
-    by_country: { country_code: string; count: number }[];
-    by_day_30: { date: string; count: number }[];
-    recent_signups: { email: string; first_name: string | null; country_code: string | null; created_at: string }[];
-  } | null>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
 
   // Newsletter state
   const [nlChannel, setNlChannel] = useState<'email' | 'sms'>('email');
@@ -173,15 +158,6 @@ export default function AdminCMS() {
     }
   }
   useEffect(() => { load(); }, []);
-
-  function loadWaitlistStats() {
-    setLoadingStats(true);
-    const token = localStorage.getItem('omnia_session_token');
-    fetch(ENDPOINTS.waitlistStats, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setWaitlistStats(d); setLoadingStats(false); })
-      .catch(() => setLoadingStats(false));
-  }
 
   function set(key: string, value: string) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -331,37 +307,6 @@ export default function AdminCMS() {
     await save([{ key: 'category_multipliers', value: JSON.stringify(multipliers) }]);
   }
 
-  async function confirmLaunch() {
-    if (launchConfirmText !== 'LANCER') return;
-    setLaunching(true);
-    const token = localStorage.getItem('omnia_session_token');
-    const updates = Object.entries(settings)
-      .filter(([key]) => canCmsWrite(key))
-      .filter(([key, value]) => value !== initialSettings[key])
-      .map(([key, value]) => ({ key, value }));
-    // Ensure coming_soon_enabled is false
-    const idx = updates.findIndex(u => u.key === 'coming_soon_enabled');
-    if (idx >= 0) updates[idx].value = 'false';
-    else updates.push({ key: 'coming_soon_enabled', value: 'false' });
-
-    const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates }),
-    });
-    const d = await res.json();
-    setLaunching(false);
-    setShowLaunchModal(false);
-    setLaunchConfirmText('');
-    if (d.success) {
-      setSettings(prev => ({ ...prev, coming_soon_enabled: 'false' }));
-      setToast(d.launched ? 'Plateforme lancee ! Email Brevo envoye a la liste d\'attente.' : 'Parametre enregistre.');
-      setTimeout(() => setToast(''), 5000);
-    } else {
-      setToast(d.error ?? 'Erreur.');
-    }
-  }
-
   async function sendNewsletter() {
     if (!nlSubject.trim()) { setToast('Objet requis.'); return; }
     if (nlChannel === 'email' && !nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
@@ -394,13 +339,13 @@ export default function AdminCMS() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'general', label: 'Identité & Branding' },
-    { key: 'coming_soon', label: 'Lancement' },
     { key: 'landing', label: 'Pages publiques' },
     { key: 'partenaires', label: 'Partenaires' },
     { key: 'legal', label: 'Légal' },
     { key: 'avance', label: 'Règles métier' },
     { key: 'newsletter', label: 'Communication' },
     { key: 'ia', label: 'IA & Automatisation' },
+    { key: 'maintenance', label: 'Maintenance' },
   ];
 
   function Field({ label, k, type = 'text', placeholder = '' }: { label: string; k: string; type?: string; placeholder?: string }) {
@@ -448,7 +393,7 @@ export default function AdminCMS() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration CMS</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, lancement et règles métier de la plateforme</p>
+            <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, règles métier et maintenance de la plateforme</p>
             <p className="mt-1 text-xs text-gray-400">Jetons, retraits et paramètres financiers sont centralisés dans Configuration Fintech.</p>
           </div>
         </div>
@@ -589,223 +534,7 @@ export default function AdminCMS() {
           )}
 
           {/* COMING SOON */}
-          {tab === 'coming_soon' && (
-            <div className="space-y-4">
-             {/* Toggle card */}
-              <div className="flex items-center justify-between p-4 rounded-xl border-2 transition-colors"
-                style={{
-                  borderColor: settings.coming_soon_enabled === 'true' ? '#dc2626' : '#1E7A52',
-                  backgroundColor: settings.coming_soon_enabled === 'true' ? '#fef2f2' : '#f0fdf4',
-                }}>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: settings.coming_soon_enabled === 'true' ? '#dc2626' : '#1E7A52' }}>
-                    {settings.coming_soon_enabled === 'true' ? '🔴 Coming Soon — ACTIF' : '🟢 Landing Page — ACTIVE'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {settings.coming_soon_enabled === 'true'
-                      ? 'Le site affiche la page "Coming Soon" à tous les visiteurs.'
-                      : 'Le site affiche normalement la Landing Page.'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {settings.coming_soon_enabled !== 'true' && (
-                    <button
-                      onClick={async () => {
-                        if (!confirm('Repasser en mode Coming Soon ? La Landing Page ne sera plus accessible aux visiteurs.')) return;
-                        const token = localStorage.getItem('omnia_session_token');
-                        const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-                          method: 'POST',
-                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ updates: [{ key: 'coming_soon_enabled', value: 'true' }] }),
-                        });
-                        const d = await res.json();
-                       if (d.success) {
-                          set('coming_soon_enabled', 'true');
-                          setToast('Mode Coming Soon réactivé.');
-                          setTimeout(() => window.location.reload(), 1500);
-                        }
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg border font-medium"
-                      style={{ borderColor: '#dc2626', color: '#dc2626', backgroundColor: 'white' }}>
-                      Repasser en Coming Soon
-                    </button>
-                  )}
-                  {settings.coming_soon_enabled === 'true' && (
-                    <button
-                      onClick={() => setShowLaunchModal(true)}
-                      className="text-xs px-3 py-1.5 rounded-lg font-medium text-white"
-                      style={{ backgroundColor: '#1E7A52' }}>
-                      🚀 Lancer la plateforme
-                    </button>
-                  )}
-                  <div className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${settings.coming_soon_enabled === 'true' ? 'bg-red-500' : 'bg-green-500'}`}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.coming_soon_enabled === 'true' ? 'translate-x-0.5' : 'translate-x-6'}`} />
-                  </div>
-                </div>
-              </div>
-
-              {settings.coming_soon_enabled === 'true' && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-700">Le mode Coming Soon est actif. Cliquez sur le bouton ci-dessus pour lancer la plateforme.</p>
-                </div>
-              )}
-
-              <Field label="Titre de la page Coming Soon" k="coming_soon_title_fr" />
-              <Field label="Sous-titre" k="coming_soon_subtitle_fr" />
-              <Field label="Date de lancement" k="launch_date" type="date" />
-
-              {/* Waitlist stats */}
-              <div className="pt-2 border-t border-gray-100">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4" style={{ color: '#002050' }} />
-                    <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Statistiques liste d'attente</h3>
-                  </div>
-                  <button onClick={loadWaitlistStats} disabled={loadingStats}
-                    className="text-xs px-3 py-1.5 rounded-lg font-medium text-white disabled:opacity-60"
-                    style={{ backgroundColor: '#002050' }}>
-                    {loadingStats ? 'Chargement…' : 'Charger les stats'}
-                  </button>
-                </div>
-
-                {waitlistStats && (
-                  <div className="space-y-4">
-                    {/* Total */}
-                    <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-100"
-                      style={{ backgroundColor: '#F8F9FA' }}>
-                      <div className="w-10 h-10 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: 'rgba(0,32,80,0.08)' }}>
-                        <Users className="w-5 h-5" style={{ color: '#002050' }} />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold" style={{ color: '#002050' }}>
-                          {waitlistStats.total_count.toLocaleString('fr-FR')}
-                        </p>
-                        <p className="text-xs text-gray-500">inscrits au total</p>
-                      </div>
-                    </div>
-
-                    {/* By country */}
-                    {waitlistStats.by_country.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                          <p className="text-xs font-semibold text-gray-600">Par pays (top 10)</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          {waitlistStats.by_country.slice(0, 10).map(({ country_code, count }) => {
-                            const pct = Math.round((count / waitlistStats.total_count) * 100);
-                            return (
-                              <div key={country_code} className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500 w-8 font-mono">{country_code}</span>
-                                <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: '#002050' }} />
-                                </div>
-                                <span className="text-xs text-gray-500 w-12 text-right">{count.toLocaleString('fr-FR')}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recent signups */}
-                    {waitlistStats.recent_signups.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <TrendingUp className="w-3.5 h-3.5 text-gray-400" />
-                          <p className="text-xs font-semibold text-gray-600">Dernières inscriptions</p>
-                        </div>
-                        <div className="rounded-xl border border-gray-100 overflow-hidden">
-                          <table className="w-full text-xs">
-                            <thead style={{ backgroundColor: '#F8F9FA' }}>
-                              <tr>
-                                {['Email', 'Prénom', 'Pays', 'Date'].map(h => (
-                                  <th key={h} className="text-left px-3 py-2 text-gray-500 font-medium">{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {waitlistStats.recent_signups.map((r, i) => (
-                                <tr key={i} className="border-t border-gray-50">
-                                  <td className="px-3 py-2 text-gray-700 font-mono">{r.email}</td>
-                                  <td className="px-3 py-2 text-gray-600">{r.first_name ?? '—'}</td>
-                                  <td className="px-3 py-2 text-gray-500">{r.country_code ?? '—'}</td>
-                                  <td className="px-3 py-2 text-gray-400 whitespace-nowrap">
-                                    {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* --- Mode Maintenance --- */}
-              <div className="pt-4 border-t border-gray-100 space-y-4">
-                <h3 className="font-semibold" style={{ color: '#002050' }}>Mode Maintenance</h3>
-
-                {/* Toggle */}
-                <div className="flex items-center justify-between p-4 rounded-xl border-2 transition-colors"
-                  style={{
-                    borderColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#E4E7EC',
-                    backgroundColor: settings.maintenance_enabled === 'true' ? '#FFF7ED' : '#F9FAFB',
-                  }}>
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: settings.maintenance_enabled === 'true' ? '#F97316' : '#6B7280' }}>
-                      Mode Maintenance {settings.maintenance_enabled === 'true' ? '— ACTIF' : '— Inactif'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Affiche une page de maintenance à tous les visiteurs (sauf Super-admin)
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => set('maintenance_enabled', settings.maintenance_enabled === 'true' ? 'false' : 'true')}
-                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0`}
-                    style={{ backgroundColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#D1D5DB' }}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.maintenance_enabled === 'true' ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                  </button>
-                </div>
-
-                {/* Message */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Message affiché aux utilisateurs</label>
-                  <textarea
-                    value={settings.maintenance_message_fr ?? ''}
-                    onChange={e => set('maintenance_message_fr', e.target.value)}
-                    rows={3}
-                    placeholder="La plateforme est en maintenance. Retour prévu dans quelques heures."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-y"
-                  />
-                </div>
-
-                {/* End time */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Fin prévue des travaux (optionnel)</label>
-                  <input
-                    type="datetime-local"
-                    value={settings.maintenance_end_time ?? ''}
-                    onChange={e => set('maintenance_end_time', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  />
-                </div>
-
-                <button onClick={() => save()} disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-                  style={{ backgroundColor: '#F97316' }}>
-                  <Save className="w-4 h-4" />
-                  {saving ? 'Enregistrement…' : 'Enregistrer mode maintenance'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* LANDING PAGE */}
+                    {/* LANDING PAGE */}
           {tab === 'landing' && (
             <div className="space-y-5">
               <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
@@ -1375,7 +1104,94 @@ export default function AdminCMS() {
       </div>
 
       
-        {tab !== 'newsletter' && (
+        
+          {/* MAINTENANCE — toujours en dernier */}
+          {tab === 'maintenance' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-semibold" style={{ color: '#002050' }}>État de maintenance</h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Le Super-admin conserve toujours l’accès. Les visiteurs et utilisateurs concernés voient la page de maintenance.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-xl border-2"
+                style={{
+                  borderColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#E4E7EC',
+                  backgroundColor: settings.maintenance_enabled === 'true' ? '#FFF7ED' : '#F9FAFB',
+                }}>
+                <div>
+                  <p className="font-semibold text-sm" style={{color: settings.maintenance_enabled === 'true' ? '#F97316' : '#002050'}}>
+                    Maintenance globale {settings.maintenance_enabled === 'true' ? '— ACTIVE' : '— Inactive'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Bloque toute la plateforme hors Super-admin.</p>
+                </div>
+                <button type="button"
+                  onClick={() => set('maintenance_enabled', settings.maintenance_enabled === 'true' ? 'false' : 'true')}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{backgroundColor: settings.maintenance_enabled === 'true' ? '#F97316' : '#D1D5DB'}}>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.maintenance_enabled === 'true' ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Début programmé</label>
+                  <input type="datetime-local" value={settings.maintenance_start_time ?? ''}
+                    onChange={e => set('maintenance_start_time', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Fin prévue</label>
+                  <input type="datetime-local" value={settings.maintenance_end_time ?? ''}
+                    onChange={e => set('maintenance_end_time', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Message de maintenance</label>
+                <textarea value={settings.maintenance_message_fr ?? ''}
+                  onChange={e => set('maintenance_message_fr', e.target.value)}
+                  rows={3}
+                  placeholder="Une maintenance est en cours. Merci pour votre patience."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none resize-y" />
+              </div>
+
+              <div className="border-t border-gray-100 pt-5">
+                <h3 className="font-semibold" style={{color:'#002050'}}>Maintenance ciblée</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-4">
+                  Désactivez uniquement le module en intervention sans bloquer le reste de la plateforme.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    ['maintenance_module_omnia_live','Omnia Live'],
+                    ['maintenance_module_career','Omnia Career'],
+                    ['maintenance_module_talent','Talent Omnia'],
+                    ['maintenance_module_forum','Forum'],
+                    ['maintenance_module_payments','Paiements'],
+                    ['maintenance_module_formations','Formations'],
+                  ].map(([key,label]) => {
+                    const active=settings[key] === 'true';
+                    return (
+                      <div key={key} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+                        <span className="text-sm font-medium text-gray-700">{label}</span>
+                        <button type="button" onClick={() => set(key, active ? 'false':'true')}
+                          className="relative w-10 h-5 rounded-full"
+                          style={{backgroundColor:active?'#F97316':'#D1D5DB'}}>
+                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active?'translate-x-5':'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+
+            </div>
+          )}
+
+{tab !== 'newsletter' && (
           <div className="pt-5 flex justify-end">
             <button type="button" onClick={() => save()} disabled={saving}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
@@ -1386,53 +1202,6 @@ export default function AdminCMS() {
           </div>
         )}
 
-{/* Launch confirmation modal */}
-      {showLaunchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#fef2f2' }}>
-                <AlertTriangle className="w-5 h-5 text-red-500" />
-              </div>
-              <h2 className="text-lg font-bold" style={{ color: '#002050' }}>Confirmer le lancement</h2>
-            </div>
-            <p className="text-sm text-gray-600 mb-2">
-              Cette action va :
-            </p>
-            <ul className="text-sm text-gray-600 mb-5 space-y-1 list-disc list-inside">
-              <li>Désactiver le mode liste d'attente</li>
-              <li>Rendre la plateforme accessible à tous</li>
-              <li>Envoyer un email de lancement à toute la liste d'attente (liste Brevo #8)</li>
-            </ul>
-            <p className="text-sm font-semibold text-gray-700 mb-2">
-              Tapez <span className="font-mono text-red-600">LANCER</span> pour confirmer :
-            </p>
-            <input
-              type="text"
-              value={launchConfirmText}
-              onChange={e => setLaunchConfirmText(e.target.value)}
-              placeholder="LANCER"
-              className="w-full border-2 rounded-lg px-3 py-2 text-sm mb-5 focus:outline-none font-mono"
-              style={{ borderColor: launchConfirmText === 'LANCER' ? '#1E7A52' : '#e5e7eb' }}
-            />
-            <div className="flex gap-3">
-              <button onClick={() => { setShowLaunchModal(false); setLaunchConfirmText(''); }}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                Annuler
-              </button>
-              <button
-                onClick={confirmLaunch}
-                disabled={launchConfirmText !== 'LANCER' || launching}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
-                style={{ backgroundColor: '#1E7A52' }}>
-                {launching ? 'Lancement en cours…' : 'Lancer la plateforme'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminLayout>
   );
 }

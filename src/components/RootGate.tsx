@@ -1,37 +1,30 @@
 import { useSiteMode } from '../context/SiteModeContext';
-import { ComingSoon } from '../pages/ComingSoon';
 import { LandingPage } from '../pages/LandingPage';
 import { MaintenancePage } from '../pages/MaintenancePage';
 
-function getSuperAdminState(): { isSuperAdmin: boolean; modeLabel: string | null } {
+function getSuperAdminState(): { isSuperAdmin: boolean } {
   try {
     const stored = localStorage.getItem('omnia_user');
     const user = stored ? JSON.parse(stored) : null;
-    const isSuperAdmin = user?.roles?.includes('super_admin') ?? false;
-    return { isSuperAdmin, modeLabel: null };
+    return { isSuperAdmin: user?.roles?.includes('super_admin') ?? false };
   } catch {
-    return { isSuperAdmin: false, modeLabel: null };
+    return { isSuperAdmin: false };
   }
 }
 
-export function SuperAdminPreviewBadge({ mode }: { mode: 'coming_soon' | 'maintenance' }) {
-  const label = mode === 'coming_soon'
-    ? 'Le site est en mode Coming Soon pour le public'
-    : 'Le site est en Maintenance pour le public';
+export function SuperAdminPreviewBadge() {
   return (
     <div
       className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white"
       style={{ backgroundColor: '#F59E0B' }}>
       <span>🔧 Mode aperçu Super-admin —</span>
-      <span>{label}</span>
+      <span>La plateforme est en maintenance pour le public</span>
     </div>
   );
 }
 
 export function RootGate() {
-  const { comingSoon, loading, maintenanceEnabled, maintenanceMessage, maintenanceEndTime } =
-    useSiteMode();
-
+  const { loading, maintenanceActive, maintenanceMessage, maintenanceEndTime } = useSiteMode();
   const { isSuperAdmin } = getSuperAdminState();
 
   if (loading) {
@@ -47,11 +40,11 @@ export function RootGate() {
     );
   }
 
-  if (maintenanceEnabled) {
+  if (maintenanceActive) {
     if (isSuperAdmin) {
       return (
         <>
-          <SuperAdminPreviewBadge mode="maintenance" />
+          <SuperAdminPreviewBadge />
           <div style={{ paddingTop: '40px' }}><LandingPage /></div>
         </>
       );
@@ -62,18 +55,6 @@ export function RootGate() {
         maintenanceEndTime={maintenanceEndTime ?? undefined}
       />
     );
-  }
-
-  if (comingSoon) {
-    if (isSuperAdmin) {
-      return (
-        <>
-          <SuperAdminPreviewBadge mode="coming_soon" />
-          <div style={{ paddingTop: '40px' }}><LandingPage /></div>
-        </>
-      );
-    }
-    return <ComingSoon />;
   }
 
   return <LandingPage />;

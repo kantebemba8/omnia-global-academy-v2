@@ -1,6 +1,7 @@
 import { StudioEvaluations } from './pages/studio/StudioEvaluations';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { RootGate } from './components/RootGate';
+import { MaintenancePage } from './pages/MaintenancePage';
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 import { LandingPage } from './pages/LandingPage';
 import { APropos } from './pages/APropos';
@@ -211,14 +212,47 @@ import AdminProfile from './pages/admin/AdminProfile';
 import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
 function GuardedRoutes() {
-  const { comingSoon, loading } = useSiteMode();
+  const {
+    loading,
+    maintenanceActive,
+    maintenanceMessage,
+    maintenanceEndTime,
+    maintenanceModules,
+  } = useSiteMode();
+
   if (loading) return null;
+
   let isSuperAdmin = false;
   try {
     const stored = localStorage.getItem('omnia_user');
     isSuperAdmin = stored ? JSON.parse(stored)?.roles?.includes('super_admin') ?? false : false;
   } catch { /* ignore */ }
-  if (comingSoon && !isSuperAdmin) return <Navigate to="/" replace />;
+
+  if (isSuperAdmin) return <Outlet />;
+
+  const path = window.location.pathname;
+  const targetedMaintenance =
+    (maintenanceModules.omnia_live && path.startsWith('/omnia-live')) ||
+    (maintenanceModules.career && (path.startsWith('/career-studio') || path.startsWith('/omnia-career'))) ||
+    (maintenanceModules.talent && (path.startsWith('/talent') || path.startsWith('/talents'))) ||
+    (maintenanceModules.forum && path.startsWith('/forum')) ||
+    (maintenanceModules.payments && (path.includes('/paiement') || path.includes('/checkout') || path.includes('/payout'))) ||
+    (maintenanceModules.formations && (
+      path.startsWith('/catalogue') ||
+      path.startsWith('/cours') ||
+      path.includes('/formation') ||
+      path.includes('/studio')
+    ));
+
+  if (maintenanceActive || targetedMaintenance) {
+    return (
+      <MaintenancePage
+        maintenanceMessage={maintenanceMessage || 'Cette partie de la plateforme est temporairement indisponible pour maintenance.'}
+        maintenanceEndTime={maintenanceEndTime ?? undefined}
+      />
+    );
+  }
+
   return <Outlet />;
 }
 

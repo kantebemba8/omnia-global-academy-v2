@@ -3,38 +3,57 @@ import { ENDPOINTS } from '../lib/config';
 
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-interface SiteMode {
-  comingSoon: boolean;
-  loading: boolean;
-  launchDate: string | null;
-  waitlistCount: number;
-  maintenanceEnabled: boolean;
-  maintenanceMessage: string;
-  maintenanceEndTime: string | null;
+export interface MaintenanceModules {
+  omnia_live: boolean;
+  career: boolean;
+  talent: boolean;
+  forum: boolean;
+  payments: boolean;
+  formations: boolean;
 }
 
+interface SiteMode {
+  loading: boolean;
+  maintenanceActive: boolean;
+  maintenanceMessage: string;
+  maintenanceStartTime: string | null;
+  maintenanceEndTime: string | null;
+  maintenanceModules: MaintenanceModules;
+}
+
+const defaultModules: MaintenanceModules = {
+  omnia_live: false,
+  career: false,
+  talent: false,
+  forum: false,
+  payments: false,
+  formations: false,
+};
+
 const SiteModeContext = createContext<SiteMode>({
-  comingSoon: true,
   loading: true,
-  launchDate: null,
-  waitlistCount: 0,
-  maintenanceEnabled: false,
+  maintenanceActive: false,
   maintenanceMessage: '',
+  maintenanceStartTime: null,
   maintenanceEndTime: null,
+  maintenanceModules: defaultModules,
 });
 
 export function useSiteMode() {
   return useContext(SiteModeContext);
 }
 
+function asBool(value: unknown) {
+  return value === true || value === 'true';
+}
+
 export function SiteModeProvider({ children }: { children: ReactNode }) {
-  const [comingSoon, setComingSoon] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [launchDate, setLaunchDate] = useState<string | null>(null);
-  const [waitlistCount, setWaitlistCount] = useState(0);
-  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceActive, setMaintenanceActive] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
+  const [maintenanceStartTime, setMaintenanceStartTime] = useState<string | null>(null);
   const [maintenanceEndTime, setMaintenanceEndTime] = useState<string | null>(null);
+  const [maintenanceModules, setMaintenanceModules] = useState<MaintenanceModules>(defaultModules);
 
   async function fetchSiteMode() {
     try {
@@ -42,19 +61,30 @@ export function SiteModeProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${ANON_KEY}` },
       });
       const data = await r.json();
-      setComingSoon(data.coming_soon_enabled !== false);
-      setLaunchDate(data.launch_date ?? null);
-      setWaitlistCount(data.waitlist_count ?? 0);
-      setMaintenanceEnabled(data.maintenance_enabled === true || data.maintenance_enabled === 'true');
-      setMaintenanceMessage(data.maintenance_message_fr ?? '');
-      setMaintenanceEndTime(data.maintenance_end_time ?? null);
 
-      // Favicon dynamique
+      const start = data.maintenance_start_time ? new Date(data.maintenance_start_time).getTime() : null;
+      const end = data.maintenance_end_time ? new Date(data.maintenance_end_time).getTime() : null;
+      const now = Date.now();
+      const scheduledActive = !!start && now >= start && (!end || now < end);
+      const manuallyActive = asBool(data.maintenance_enabled);
+
+      setMaintenanceActive(manuallyActive || scheduledActive);
+      setMaintenanceMessage(data.maintenance_message_fr ?? '');
+      setMaintenanceStartTime(data.maintenance_start_time ?? null);
+      setMaintenanceEndTime(data.maintenance_end_time ?? null);
+      setMaintenanceModules({
+        omnia_live: asBool(data.maintenance_module_omnia_live),
+        career: asBool(data.maintenance_module_career),
+        talent: asBool(data.maintenance_module_talent),
+        forum: asBool(data.maintenance_module_forum),
+        payments: asBool(data.maintenance_module_payments),
+        formations: asBool(data.maintenance_module_formations),
+      });
+
       if (data.favicon_url) {
         const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
-        if (link) {
-          link.href = data.favicon_url;
-        } else {
+        if (link) link.href = data.favicon_url;
+        else {
           const newLink = document.createElement('link');
           newLink.rel = 'icon';
           newLink.href = data.favicon_url;
@@ -62,7 +92,7 @@ export function SiteModeProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {
-      // keep current state on error
+      // Conserver l'état courant en cas d'erreur réseau.
     } finally {
       setLoading(false);
     }
@@ -70,22 +100,19 @@ export function SiteModeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchSiteMode();
-    const interval = setInterval(fetchSiteMode, 5 * 60 * 1000);
+    const interval = setInterval(fetchSiteMode, 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <SiteModeContext.Provider
-      value={{
-        comingSoon,
-        loading,
-        launchDate,
-        waitlistCount,
-        maintenanceEnabled,
-        maintenanceMessage,
-        maintenanceEndTime,
-      }}
-    >
+    <SiteModeContext.Provider value={{
+      loading,
+      maintenanceActive,
+      maintenanceMessage,
+      maintenanceStartTime,
+      maintenanceEndTime,
+      maintenanceModules,
+    }}>
       {children}
     </SiteModeContext.Provider>
   );
