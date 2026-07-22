@@ -5,7 +5,7 @@ import { ENDPOINTS } from '../../lib/config';
 import {
   Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
   Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
-  Wallet, Briefcase, MessageSquare, Wrench, CircleAlert, CheckCircle2
+  Wallet, Briefcase, MessageSquare, Wrench, AlertCircle, CheckCircle2
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -239,7 +239,7 @@ export default function AdminDashboard() {
                   <button key={action.key} type="button" onClick={() => navigate(action.path)}
                     className="w-full flex items-center justify-between gap-4 py-3 border-b border-gray-100 text-left hover:bg-gray-50/70 px-1">
                     <div className="flex items-center gap-3 min-w-0">
-                      <CircleAlert size={17} style={{ color: action.priority === 'high' ? '#B42318' : '#BF8813' }} />
+                      <AlertCircle size={17} style={{ color: action.priority === 'high' ? '#B42318' : '#BF8813' }} />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-800">{action.label}</p>
                         {action.detail && <p className="text-xs text-gray-400 truncate">{action.detail}</p>}
