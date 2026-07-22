@@ -18,7 +18,7 @@ const ADMIN_NAV = [
   { path: '/admin/studio-validation',      label: 'Validation formations',  icon: Eye },
   { path: '/admin/course-health',          label: 'Santé des formations',    icon: Activity },
   { path: '/admin/team',                   label: 'Équipe & Modérateurs',   icon: Users },
-  { path: '/admin/cpd-credits',            label: 'Crédits Open CPD',       icon: Award },
+  { path: '/admin/cpd-credits',            label: 'Open CPD',       icon: Award },
   { path: '/admin/certificates',           label: 'Documents délivrés',   icon: Award },
   { path: '/admin/certificate-templates', label: 'Modèles', icon: FileText },
   { path: '/admin/certificate-settings',   label: 'Paramètres', icon: Settings },

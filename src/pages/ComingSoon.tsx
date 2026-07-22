@@ -1,3 +1,2 @@
-// Legacy compatibility only.
-// The global Coming Soon experience has been permanently removed.
+// Compatibilité héritée : le mode Coming Soon global est supprimé.
 export { LandingPage as ComingSoon } from './LandingPage';

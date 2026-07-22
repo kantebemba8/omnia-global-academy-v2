@@ -49,6 +49,7 @@ export default function AdminMesFormations() {
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
 
   const token = () => localStorage.getItem('omnia_session_token') || '';
 
@@ -74,7 +75,6 @@ export default function AdminMesFormations() {
   useEffect(() => { load(); }, []);
 
   async function deleteDraft(id: string, title: string) {
-    if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
     setDeletingId(id);
     try {
       const res = await fetch(API, {
@@ -310,7 +310,7 @@ export default function AdminMesFormations() {
                       {(f.studio_status === 'draft' || f.studio_status === 'brouillon') && (
                         <button
                           type="button"
-                          onClick={() => deleteDraft(f.id, f.title)}
+                          onClick={() => setDeleteTarget({ id: f.id, title: f.title })}
                           disabled={deletingId === f.id}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50"
                           style={{ borderColor: '#DC2626', color: '#DC2626' }}
@@ -340,6 +340,18 @@ export default function AdminMesFormations() {
           <p className="text-xs text-center pb-4" style={{ color: '#9CA3AF' }}>
             {filtered.length} formation{filtered.length > 1 ? 's' : ''} affichée{filtered.length > 1 ? 's' : ''} sur {formations.length} au total
           </p>
+        )}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 shadow-xl p-5">
+              <h3 className="text-lg font-black" style={{ color: '#002050' }}>Supprimer définitivement ce brouillon ?</h3>
+              <p className="text-sm text-gray-600 mt-2">« {deleteTarget.title} » sera supprimé de la plateforme.</p>
+              <div className="flex justify-end gap-3 mt-5">
+                <button type="button" onClick={() => setDeleteTarget(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold">Annuler</button>
+                <button type="button" disabled={deletingId === deleteTarget.id} onClick={async () => { const target=deleteTarget; setDeleteTarget(null); await deleteDraft(target.id,target.title); }} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold disabled:opacity-50">Supprimer définitivement</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </AdminLayout>

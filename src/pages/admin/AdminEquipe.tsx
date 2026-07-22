@@ -98,6 +98,7 @@ export default function AdminEquipe() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const token = () => localStorage.getItem('omnia_session_token') || '';
+  const authHeaders = (json = false) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), 'Authorization': `Bearer ${token()}`, 'x-omnia-session-token': token() });
 
   // ── Charger la liste des modérateurs ─────────────────────
   const fetchModerators = async () => {
@@ -105,7 +106,7 @@ export default function AdminEquipe() {
       setLoading(true);
       setError(null);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
-        headers: { 'Authorization': `Bearer ${token()}` }
+        headers: authHeaders()
       });
       if (!res.ok) { let detail=''; try { const j=await res.json(); detail=j.message||j.error||''; } catch {} throw new Error(detail ? `Chargement impossible : ${detail}` : 'Impossible de charger les modérateurs'); }
       const data = await res.json();
@@ -169,10 +170,10 @@ export default function AdminEquipe() {
       setSavingModeratorId(userId);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        headers: authHeaders(true),
         body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
       });
-      if (!res.ok) throw new Error('Échec de la sauvegarde');
+      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la sauvegarde'); }
       setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
       setSuccessMessage(`Permissions de ${moderators.find(m => m.user_id === userId)?.full_name} mises à jour`);
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -189,10 +190,10 @@ export default function AdminEquipe() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        headers: authHeaders(true),
         body: JSON.stringify({ moderator_id: userId, action: 'delete' })
       });
-      if (!res.ok) throw new Error('Échec de la suppression');
+      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la suppression'); }
       setModerators(prev => prev.filter(m => m.user_id !== userId));
       setLocalPermissions(prev => { const u = { ...prev }; delete u[userId]; return u; });
       setPendingDeleteId(null);
@@ -211,7 +212,7 @@ export default function AdminEquipe() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+        headers: authHeaders(true),
         body: JSON.stringify({
           full_name: newMod.full_name.trim(),
           email: newMod.email.trim(),
@@ -221,7 +222,7 @@ export default function AdminEquipe() {
       });
       const data = await res.json();
       if (data.error === 'EMAIL_TAKEN') { setError('Cet email est déjà utilisé.'); return; }
-      if (!res.ok) throw new Error('Échec de la création');
+      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la création'); }
       setSuccessMessage(`Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
       setTimeout(() => setSuccessMessage(null), 6000);
       setShowAddModal(false);

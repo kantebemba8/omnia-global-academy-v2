@@ -124,9 +124,9 @@ export default function AdminStructures() {
     const data = await res.json();
     if (data.success) {
       const labels: Record<string, string> = {
-        validate: '✅ Structure validée', reject: '❌ Structure refusée',
-        request_changes: '📝 Modification demandée', suspend: '⚠️ Structure suspendue',
-        archive: '📦 Structure archivée', restore: '✅ Structure restaurée',
+        validate: 'Structure validée', reject: 'Structure refusée',
+        request_changes: 'Modification demandée', suspend: 'Structure suspendue',
+        archive: 'Structure archivée', restore: 'Structure restaurée',
       };
       showToast(labels[decision] ?? 'Action effectuée');
       setDetail(null);
@@ -165,37 +165,19 @@ export default function AdminStructures() {
           </button>
         </div>
 
-        {/* Alertes en attente */}
+        {/* Actions en attente — résumé compact */}
         {showPending && (showPending.structures > 0 || showPending.codes > 0 || showPending.benefits > 0) && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-gray-200 py-3 text-sm">
             {showPending.structures > 0 && (
-              <button onClick={() => setStatusFilter('pending_validation')}
-                className="flex items-center gap-3 p-3 rounded-xl border-2 transition-all hover:shadow-sm"
-                style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
-                <Clock size={18} style={{ color: '#D97706' }} />
-                <div className="text-left">
-                  <p className="font-bold text-sm" style={{ color: '#92400E' }}>{showPending.structures} structure{showPending.structures > 1 ? 's' : ''}</p>
-                  <p className="text-xs" style={{ color: '#B45309' }}>En attente de validation</p>
-                </div>
+              <button onClick={() => setStatusFilter('pending_validation')} className="inline-flex items-center gap-2 font-semibold" style={{ color: '#92400E' }}>
+                <Clock size={15} /> {showPending.structures} structure{showPending.structures > 1 ? 's' : ''} à valider
               </button>
             )}
             {showPending.codes > 0 && (
-              <div className="flex items-center gap-3 p-3 rounded-xl border-2" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-                <QrCode size={18} style={{ color: '#3B82F6' }} />
-                <div>
-                  <p className="font-bold text-sm" style={{ color: '#1D4ED8' }}>{showPending.codes} code{showPending.codes > 1 ? 's' : ''}</p>
-                  <p className="text-xs" style={{ color: '#1E40AF' }}>Codes à valider</p>
-                </div>
-              </div>
+              <span className="inline-flex items-center gap-2 text-blue-700"><QrCode size={15} /> {showPending.codes} code{showPending.codes > 1 ? 's' : ''} à valider</span>
             )}
             {showPending.benefits > 0 && (
-              <div className="flex items-center gap-3 p-3 rounded-xl border-2" style={{ borderColor: '#A7F3D0', background: '#ECFDF5' }}>
-                <Gift size={18} style={{ color: '#10B981' }} />
-                <div>
-                  <p className="font-bold text-sm" style={{ color: '#065F46' }}>{showPending.benefits} avantage{showPending.benefits > 1 ? 's' : ''}</p>
-                  <p className="text-xs" style={{ color: '#047857' }}>Avantages à valider</p>
-                </div>
-              </div>
+              <span className="inline-flex items-center gap-2 text-emerald-700"><Gift size={15} /> {showPending.benefits} avantage{showPending.benefits > 1 ? 's' : ''} à valider</span>
             )}
           </div>
         )}
@@ -239,21 +221,19 @@ export default function AdminStructures() {
             <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
           </div>
         ) : structures.length === 0 ? (
-          <div className="bg-white rounded-2xl border-2 border-dashed p-16 text-center" style={{ borderColor: '#E4E7EC' }}>
+          <div className="border-y border-gray-200 py-14 text-center" style={{ borderColor: '#E4E7EC' }}>
             <Building2 size={40} className="mx-auto mb-3 opacity-10" style={{ color: '#002050' }} />
             <p className="font-bold" style={{ color: '#002050' }}>Aucune structure trouvée</p>
             <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>Modifiez vos filtres</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="border-t border-gray-200">
             {structures.map(s => {
               const sc = STATUS_CONFIG[s.status] ?? STATUS_CONFIG.draft;
               return (
-                <div key={s.id} className="bg-white rounded-2xl border p-5 hover:shadow-sm transition-all"
-                  style={{ borderColor: '#E4E7EC' }}>
+                <div key={s.id} className="py-4 border-b border-gray-100">
                   <div className="flex items-center gap-4 flex-wrap">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: '#EEF2FF' }}>
+                    <div className="w-9 h-9 flex items-center justify-center flex-shrink-0">
                       <Building2 size={22} style={{ color: '#002050' }} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -277,8 +257,8 @@ export default function AdminStructures() {
                       </div>
                     </div>
                     <button onClick={() => loadDetail(s)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0"
-                      style={{ background: '#002050' }}>
+                      className="flex items-center gap-2 px-3 py-2 text-sm font-bold flex-shrink-0"
+                      style={{ color: '#BF8813' }}>
                       <Eye size={14} /> Gérer
                     </button>
                   </div>
@@ -377,14 +357,14 @@ export default function AdminStructures() {
                       <a href={detail.structure.logo_url} target="_blank" rel="noreferrer"
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border"
                         style={{ borderColor: '#E4E7EC', color: '#374151' }}>
-                        🖼️ Voir le logo
+                        Voir le logo
                       </a>
                     )}
                     {detail.structure.justificatif_url && (
                       <a href={detail.structure.justificatif_url} target="_blank" rel="noreferrer"
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border"
                         style={{ borderColor: '#E4E7EC', color: '#374151' }}>
-                        📄 Document justificatif
+                        Document justificatif
                       </a>
                     )}
                   </div>

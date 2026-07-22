@@ -45,7 +45,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
   {
     id: 'certificates',
-    label: 'Certificats',
+    label: 'Certificats & attestations',
     icon: Award,
     items: [
       { path: '/admin/certificates', label: 'Documents délivrés', icon: Award },
