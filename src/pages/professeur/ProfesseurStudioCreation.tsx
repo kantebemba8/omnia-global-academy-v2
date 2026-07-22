@@ -2,11 +2,11 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import {
-import { CATEGORY_LABELS } from '../../lib/categories';
   ChevronRight, ChevronLeft, PlusCircle, Trash2, Wand2, Upload,
   AlertCircle, CheckCircle, Info, ChevronDown, ChevronUp, Loader2,
   BookOpen, FileText, Video, Headphones, Link2, Sparkles
 } from 'lucide-react';
+import { CATEGORY_LABELS } from '../../lib/categories';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Objective { id: string; text: string }
