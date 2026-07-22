@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Download, Calculator, CheckCircle2, RefreshCcw } from 'lucide-react';
-import { getApiBase } from '../../lib/config';
+import { ENDPOINTS } from '../../lib/config';
 
 type PricingCourse = {
   id:string; title:string; pricing_status:string; score_calcule:number;
@@ -19,14 +19,14 @@ export default function ProfesseurTarification(){
   async function load(){
     setLoading(true);
     try{
-      const r=await fetch(`${getApiBase()}/course-pricing-workflow`,{headers:{Authorization:`Bearer ${token()}`}});
+      const r=await fetch(ENDPOINTS.coursePricingWorkflow,{headers:{Authorization:`Bearer ${token()}`}});
       const d=await r.json(); setCourses(d.courses||[]);
     }finally{setLoading(false);}
   }
   useEffect(()=>{load();},[]);
 
   async function action(course_id:string,action:string){
-    await fetch(`${getApiBase()}/course-pricing-workflow`,{
+    await fetch(ENDPOINTS.coursePricingWorkflow,{
       method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},
       body:JSON.stringify({course_id,action,comment:comment[course_id]||undefined})
     });

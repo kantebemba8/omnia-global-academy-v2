@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { CheckCircle2 } from 'lucide-react';
-import { getApiBase } from '../../lib/config';
+import { ENDPOINTS } from '../../lib/config';
 
 type C={id:string;title:string;score_calcule:number;prix_provisoire_xof:number;desired_price_amount:number|null;pricing_status:string;pricing_snapshot:any};
 export default function AdminCoursePricing(){
  const [items,setItems]=useState<C[]>([]); const [comment,setComment]=useState<Record<string,string>>({});
  const token=()=>localStorage.getItem('omnia_session_token')||'';
- async function load(){const r=await fetch(`${getApiBase()}/course-pricing-workflow`,{headers:{Authorization:`Bearer ${token()}`}});const d=await r.json();setItems(d.courses||[]);}
+ async function load(){const r=await fetch(ENDPOINTS.coursePricingWorkflow,{headers:{Authorization:`Bearer ${token()}`}});const d=await r.json();setItems(d.courses||[]);}
  useEffect(()=>{load();},[]);
- async function decide(id:string,source:'automatic'|'professor'){await fetch(`${getApiBase()}/course-pricing-workflow`,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({course_id:id,action:'admin_decide',source,comment:comment[id]||undefined})});load();}
+ async function decide(id:string,source:'automatic'|'professor'){await fetch(ENDPOINTS.coursePricingWorkflow,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({course_id:id,action:'admin_decide',source,comment:comment[id]||undefined})});load();}
  return <AdminLayout><div className="max-w-6xl mx-auto p-6 space-y-5">
   <div><h1 className="text-2xl font-bold" style={{color:'#002050'}}>Validation tarifaire des formations</h1><p className="text-sm text-gray-500 mt-1">Comparez le prix automatique et le prix souhaité avant la validation pédagogique.</p></div>
   {items.length===0?<div className="rounded-xl border bg-white p-6 text-sm text-gray-400">Aucune proposition en attente.</div>:
