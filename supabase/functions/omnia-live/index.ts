@@ -4,6 +4,20 @@ import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from 
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
+/*
+  OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
+
+  Sensitive production integrations remain controlled by feature flags:
+  - fedapay_live_payments
+  - server_recording
+  - sms_notifications
+  - push_notifications
+
+  Structure-bound private-code membership validation still requires the
+  canonical Structure-membership table to be identified in the project schema.
+  This file deliberately does not guess a table name and risk unsafe access.
+*/
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
@@ -64,11 +78,32 @@ function isSuperAdmin(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return !!ctx?.roles.includes("super_admin");
 }
 
+async function featureFlagEnabled(
+  sb: ReturnType<typeof createClient>,
+  flagKey: string,
+  fallback = false,
+) {
+  const { data, error } = await sb
+    .from("live_feature_flags")
+    .select("enabled")
+    .eq("flag_key", flagKey)
+    .maybeSingle();
+
+  if (error) {
+    console.error("featureFlagEnabled", flagKey, error);
+    return fallback;
+  }
+
+  return data ? Boolean(data.enabled) : fallback;
+}
+
 function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return false;
 
   const allowed = new Set([
     "super_admin",
+    "organizer",
+    "organisateur",
     "professeur",
     "etablissement_directeur",
     "responsable_structure",
@@ -3151,6 +3186,11 @@ async function paymentConfirm(
 
   if (!body.order_id) return json({ error: "ORDER_ID_REQUIRED" }, 400);
 
+  const paymentsEnabled = await featureFlagEnabled(sb, "fedapay_live_payments", false);
+  if (!paymentsEnabled) {
+    return json({ error: "FEDAPAY_LIVE_PAYMENTS_DISABLED" }, 503);
+  }
+
   const { data: order } = await sb
     .from("live_orders")
     .select("*")
@@ -4001,9 +4041,29 @@ async function privateCodeRedeem(
   if(code.expires_at && new Date(code.expires_at)<=new Date()) return json({error:"ACCESS_CODE_EXPIRED"},410);
   if(code.max_uses!=null && Number(code.used_count)>=Number(code.max_uses)) return json({error:"ACCESS_CODE_LIMIT_REACHED"},409);
 
+  const grantSource = code.access_type==="structure" ? "structure" : "code";
+
+  const { data: existingGrant, error: existingGrantError } = await sb
+    .from("live_private_access_grants")
+    .select("*")
+    .eq("event_id", code.event_id)
+    .eq("user_id", ctx.userId)
+    .eq("source", grantSource)
+    .is("revoked_at", null)
+    .maybeSingle();
+
+  if (existingGrantError) throw existingGrantError;
+  if (existingGrant) {
+    return json({ success:true, grant:existingGrant, already_granted:true, event_id:code.event_id });
+  }
+
+  if (code.access_type === "structure" && !code.structure_id) {
+    return json({ error:"STRUCTURE_CODE_MISCONFIGURED" },409);
+  }
+
   const {data:grant,error}=await sb.from("live_private_access_grants").upsert({
     event_id:code.event_id,user_id:ctx.userId,access_code_id:code.id,
-    source:code.access_type==="structure"?"structure":"code",granted_at:new Date().toISOString(),
+    source:grantSource,granted_at:new Date().toISOString(),
     expires_at:code.expires_at||null
   },{onConflict:"event_id,user_id,source"}).select("*").single();
 
@@ -4013,7 +4073,7 @@ async function privateCodeRedeem(
     used_count:Number(code.used_count||0)+1
   }).eq("id",code.id);
 
-  return json({success:true,grant});
+  return json({success:true,grant,event_id:code.event_id});
 }
 
 async function structurePackCreate(
@@ -4092,6 +4152,22 @@ async function organizerProfileGet(
   const {data,error}=await sb.from("live_organizer_profiles").select("*").eq("user_id",userId).maybeSingle();
   if(error) throw error;
   return json({success:true,profile:data||null});
+}
+
+async function organizerProfileMe(
+  sb: ReturnType<typeof createClient>,
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+) {
+  if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
+
+  const { data, error } = await sb
+    .from("live_organizer_profiles")
+    .select("*")
+    .eq("user_id", ctx.userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return json({ success: true, profile: data || null });
 }
 
 async function organizerProfileRefreshStats(
@@ -4218,6 +4294,30 @@ async function fedapayPrepare(
   if (order.payment_status === "paid") {
     return json({ error: "ORDER_ALREADY_PAID" }, 409);
   }
+  if (!["pending","authorized","failed"].includes(String(order.payment_status || "pending"))) {
+    return json({ error: "ORDER_NOT_PAYABLE", status: order.payment_status }, 409);
+  }
+
+  if (order.provider_reference && order.payment_status !== "failed") {
+    return json({
+      error: "PAYMENT_ALREADY_PREPARED",
+      order_id: order.id,
+      provider_reference: order.provider_reference,
+    }, 409);
+  }
+
+  let callbackUrl = body.callback_url || Deno.env.get("FEDAPAY_CALLBACK_URL") || null;
+  if (callbackUrl) {
+    try {
+      const callback = new URL(callbackUrl);
+      const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
+      if (allowedOrigin && allowedOrigin !== "*" && callback.origin !== new URL(allowedOrigin).origin) {
+        return json({ error: "CALLBACK_URL_NOT_ALLOWED" }, 400);
+      }
+    } catch {
+      return json({ error: "INVALID_CALLBACK_URL" }, 400);
+    }
+  }
 
   const customerName = String(ctx.user.full_name || "").trim();
   const [firstname, ...rest] = customerName.split(/\s+/);
@@ -4227,10 +4327,7 @@ async function fedapayPrepare(
     description: `Omnia Live - ${order.live_events?.title || order.order_number}`,
     amount: Math.round(Number(order.amount)),
     currency: { iso: order.currency || "XOF" },
-    callback_url:
-      body.callback_url ||
-      Deno.env.get("FEDAPAY_CALLBACK_URL") ||
-      null,
+    callback_url: callbackUrl,
     custom_metadata: {
       omnia_order_id: order.id,
       omnia_order_number: order.order_number,
@@ -4299,10 +4396,13 @@ async function fedapayPrepare(
     }, 502);
   }
 
+  const paymentAttemptKey = order.payment_attempt_key || crypto.randomUUID();
+
   await sb
     .from("live_orders")
     .update({
       payment_provider: "fedapay",
+      payment_attempt_key: paymentAttemptKey,
       provider_reference: reference || null,
       payment_metadata: {
         ...(order.payment_metadata || {}),
@@ -6996,7 +7096,8 @@ async function payoutRequestCreate(
   const {data:ledger}=await sb.from("live_organizer_ledger").select("*")
     .eq("organizer_user_id",ctx.userId)
     .eq("currency",body.currency)
-    .in("status",["pending","available"]);
+    .eq("status","available")
+    .lte("available_at",new Date().toISOString());
 
   const available=(ledger??[]).reduce((a:any,x:any)=>a+Number(x.organizer_amount||0),0);
   const requested=Number(body.requested_amount);
@@ -7507,15 +7608,66 @@ async function securityPoliciesList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))
 async function securityPolicySave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.policy_key)return json({error:"POLICY_KEY_REQUIRED"},400);const {data,error}=await sb.from("live_security_policies").upsert({policy_key:b.policy_key,enabled:b.enabled!==false,config:b.config||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"policy_key"}).select("*").single();if(error)throw error;return json({success:true,policy:data});}
 async function featureFlagsList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const {data,error}=await sb.from("live_feature_flags").select("*").order("flag_key");if(error)throw error;return json({success:true,flags:data||[]});}
 async function featureFlagSave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.flag_key)return json({error:"FLAG_KEY_REQUIRED"},400);const {data,error}=await sb.from("live_feature_flags").upsert({flag_key:b.flag_key,enabled:Boolean(b.enabled),audience:b.audience||{roles:[],countries:[],structures:[]},config:b.config||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"flag_key"}).select("*").single();if(error)throw error;return json({success:true,flag:data});}
-async function auditLogWrite(sb:any,ctx:any,action:string,opts:any={}){try{await sb.from("live_audit_log").insert({actor_user_id:ctx?.userId||null,actor_role:ctx?.role||null,event_id:opts.event_id||null,entity_type:opts.entity_type||null,entity_id:opts.entity_id||null,action,result:opts.result||"success",metadata:opts.metadata||{}});}catch(e){console.error("audit write",e);} }
+async function auditLogWrite(sb:any,ctx:any,action:string,opts:any={}){try{await sb.from("live_audit_log").insert({actor_user_id:ctx?.userId||null,actor_role:Array.isArray(ctx?.roles)?(ctx.roles.includes("super_admin")?"super_admin":ctx.roles[0]||null):null,event_id:opts.event_id||null,entity_type:opts.entity_type||null,entity_id:opts.entity_id||null,action,result:opts.result||"success",metadata:opts.metadata||{}});}catch(e){console.error("audit write",e);} }
 async function auditLogList(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const url=new URL(req.url);const action=url.searchParams.get("action");let q=sb.from("live_audit_log").select("*").order("created_at",{ascending:false}).limit(1000);if(action)q=q.eq("action",action);const {data,error}=await q;if(error)throw error;return json({success:true,items:data||[]});}
-async function integrityChecksRun(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);await sb.from("live_integrity_checks").delete().eq("status","open");const checks:any[]=[];const tests=[
-  ["events_without_owner","live_events","owner_user_id"],
-  ["paid_orders_without_access","live_orders","access_granted_at"],
-  ["ready_media_without_storage","live_media","storage_key"]
-];
- for(const [key,table,column] of tests){try{let q=sb.from(table).select("id",{count:"exact",head:true}).is(column,null);if(key==="paid_orders_without_access")q=q.eq("payment_status","paid");if(key==="ready_media_without_storage")q=q.eq("processing_status","ready");const {count}=await q;if((count||0)>0){const {data}=await sb.from("live_integrity_checks").insert({check_key:key,severity:key==="paid_orders_without_access"?"critical":"warning",status:"open",details:{count}}).select("*").single();checks.push(data);}}catch(e){checks.push({check_key:key,severity:"error",status:"open",details:{error:e instanceof Error?e.message:"QUERY_FAILED"}});}}
- const summary={critical:checks.filter(x=>x.severity==="critical").length,error:checks.filter(x=>x.severity==="error").length,warning:checks.filter(x=>x.severity==="warning").length,resolved:0};return json({success:true,checks,summary});}
+async function integrityChecksRun(req:Request,sb:any,ctx:any){
+  if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);
+
+  const checks:any[]=[];
+  const tests=[
+    ["events_without_owner","live_events","owner_user_id","warning"],
+    ["paid_orders_without_access","live_orders","access_granted_at","critical"],
+    ["ready_media_without_storage","live_media","storage_key","warning"]
+  ];
+
+  for(const [key,table,column,severity] of tests){
+    try{
+      let q=sb.from(table).select("id",{count:"exact",head:true}).is(column,null);
+      if(key==="paid_orders_without_access")q=q.eq("payment_status","paid");
+      if(key==="ready_media_without_storage")q=q.eq("processing_status","ready");
+      const {count,error}=await q;
+      if(error)throw error;
+
+      const {data:existing}=await sb.from("live_integrity_checks")
+        .select("*").eq("check_key",key).eq("scope","platform").eq("status","open")
+        .is("entity_id",null).maybeSingle();
+
+      if((count||0)>0){
+        if(existing){
+          checks.push(existing);
+        }else{
+          const {data,error:insertError}=await sb.from("live_integrity_checks").insert({
+            check_key:key,scope:"platform",severity,status:"open",details:{count}
+          }).select("*").single();
+          if(insertError)throw insertError;
+          checks.push(data);
+        }
+      }else if(existing){
+        await sb.from("live_integrity_checks").update({
+          status:"resolved",resolved_at:new Date().toISOString(),resolved_by:ctx.userId
+        }).eq("id",existing.id);
+      }
+    }catch(e){
+      checks.push({
+        check_key:key,severity:"error",status:"open",
+        details:{error:e instanceof Error?e.message:"QUERY_FAILED"}
+      });
+    }
+  }
+
+  const {data:openRows}=await sb.from("live_integrity_checks")
+    .select("severity,status").eq("status","open");
+
+  const summary={
+    critical:(openRows||[]).filter((x:any)=>x.severity==="critical").length,
+    error:(openRows||[]).filter((x:any)=>x.severity==="error").length,
+    warning:(openRows||[]).filter((x:any)=>x.severity==="warning").length,
+    resolved:0
+  };
+
+  await auditLogWrite(sb,ctx,"integrity_checks_run",{metadata:{checks_returned:checks.length}});
+  return json({success:true,checks,summary});
+}
 async function integrityCheckResolve(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.check_id)return json({error:"CHECK_ID_REQUIRED"},400);const {data,error}=await sb.from("live_integrity_checks").update({status:b.status||"resolved",resolved_at:new Date().toISOString(),resolved_by:ctx.userId}).eq("id",b.check_id).select("*").single();if(error)throw error;return json({success:true,check:data});}
 async function systemStatus(sb:any){const services:any={database:{status:"ok"},r2:{status:Deno.env.get("R2_BUCKET_NAME")?"configured":"missing"},brevo:{status:Deno.env.get("BREVO_API_KEY")?"configured":"missing"},fedapay:{status:Deno.env.get("FEDAPAY_SECRET_KEY")?"configured":"disabled_or_missing"},media_worker:{status:Deno.env.get("MEDIA_WORKER_SECRET")?"configured":"missing"},recording:{status:Deno.env.get("LIVE_RECORDING_SECRET")?"configured":"disabled_or_missing"}};const ok=!Object.values(services).some((x:any)=>x.status==="missing");return json({success:true,ok,services});}
 
@@ -7957,6 +8109,9 @@ Deno.serve(async (req: Request) => {
       case "organizer_profile_get":
         return await organizerProfileGet(req, sb);
 
+      case "organizer_profile_me":
+        return await organizerProfileMe(sb, ctx);
+
       case "organizer_profile_refresh_stats":
         return await organizerProfileRefreshStats(req, sb, ctx);
 
@@ -8327,6 +8482,7 @@ Deno.serve(async (req: Request) => {
               "archive_create",
               "organizer_profile_upsert",
               "organizer_profile_get",
+              "organizer_profile_me",
               "organizer_profile_refresh_stats",
               "analytics_rebuild",
               "analytics_get",
