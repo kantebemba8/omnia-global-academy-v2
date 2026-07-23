@@ -58,6 +58,87 @@ export type CoachProfile = {
   badge_override?: string | null;
   level?: CoachingLevel | null;
   domains: CoachingDomain[];
+  offers?: CoachOffer[];
+};
+
+export type CoachOffer = {
+  id: string;
+  coach_id: string;
+  domain_id?: string | null;
+  supersedes_offer_id?: string | null;
+  offer_type: 'fixed' | 'custom';
+  title: string;
+  description: string;
+  duration_minutes?: number | null;
+  price_xof?: number | null;
+  hourly_price_xof?: number | null;
+  custom_min_minutes?: number | null;
+  custom_max_minutes?: number | null;
+  custom_step_minutes?: number | null;
+  session_modes: Array<'jitsi' | 'external'>;
+  status: 'pending' | 'active' | 'rejected' | 'inactive' | 'archived';
+  admin_message?: string | null;
+  domain?: Pick<CoachingDomain, 'id' | 'slug' | 'name'> | null;
+  coach?: { id: string; user_id: string; public_slug: string; professional_title: string; full_name: string } | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CoachAvailabilityRule = {
+  id: string;
+  coach_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  timezone: string;
+  valid_from: string;
+  valid_until?: string | null;
+  booking_notice_hours?: number | null;
+  maximum_sessions_per_day?: number | null;
+  buffer_before_minutes: number;
+  buffer_after_minutes: number;
+  is_active: boolean;
+};
+
+export type CoachAvailabilityException = {
+  id: string;
+  coach_id: string;
+  exception_type: 'blocked' | 'available';
+  starts_at: string;
+  ends_at: string;
+  reason?: string | null;
+};
+
+export type CoachingSlot = { slot_start: string; slot_end: string };
+
+export type CoachingSession = {
+  id: string;
+  learner_user_id: string;
+  coach_id: string;
+  offer_id?: string | null;
+  session_type: 'fixed' | 'custom';
+  status: string;
+  payment_status: string;
+  meeting_mode: 'jitsi' | 'external';
+  requested_start?: string | null;
+  requested_end?: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  duration_minutes: number;
+  hold_expires_at?: string | null;
+  learner_message?: string | null;
+  coach_response_message?: string | null;
+  price_total_xof: number;
+  commission_percent_snapshot: number;
+  commission_amount_xof: number;
+  coach_net_xof: number;
+  offer_title_snapshot: string;
+  coach_name_snapshot: string;
+  coach_timezone_snapshot: string;
+  created_at: string;
+  updated_at: string;
+  coach?: { id: string; public_slug: string; photo_url?: string | null; professional_title: string; full_name: string } | null;
+  learner?: { id: string; full_name?: string; email?: string } | null;
 };
 
 export type CoachApplication = {
@@ -108,6 +189,20 @@ const messages: Record<string, string> = {
   REVIEW_MESSAGE_REQUIRED: 'Un motif est requis pour cette décision.',
   SUSPENSION_REASON_REQUIRED: 'Le motif de suspension est requis.',
   COACH_NOT_FOUND: 'Ce profil coach est introuvable.',
+  OFFER_NOT_FOUND: 'Cette offre de coaching est introuvable.',
+  OFFER_INCOMPLETE: 'Complétez correctement les informations de l’offre.',
+  OFFER_PRICE_OUT_OF_RANGE: 'Le tarif doit respecter la fourchette autorisée pour votre niveau.',
+  OFFER_NOT_APPROVED: 'Cette offre doit d’abord être validée par le Super Admin.',
+  INVALID_SESSION_MODE: 'Ce format de rencontre n’est pas autorisé pour cette offre.',
+  INVALID_AVAILABILITY: 'Le créneau de disponibilité saisi est invalide.',
+  INVALID_AVAILABILITY_RANGE: 'La période demandée pour le calendrier est invalide.',
+  INVALID_DURATION: 'La durée choisie n’est pas autorisée pour cette offre.',
+  SLOT_UNAVAILABLE: 'Ce créneau vient d’être réservé ou n’est plus disponible.',
+  BOOKING_INCOMPLETE: 'Choisissez une offre, un créneau et un format de session.',
+  BOOKING_NOT_FOUND: 'Cette demande de coaching est introuvable.',
+  BOOKING_CANNOT_CANCEL: 'Cette réservation ne peut plus être annulée depuis cet écran.',
+  CANNOT_BOOK_SELF: 'Vous ne pouvez pas réserver une session avec votre propre profil coach.',
+  CANNOT_FAVORITE_SELF: 'Votre propre profil ne peut pas être ajouté aux favoris.',
 };
 
 export async function coachingRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
@@ -136,4 +231,11 @@ export async function fileToBase64(file: File): Promise<string> {
 export function formatXof(value?: number | null): string {
   if (value === null || value === undefined) return 'Sur demande';
   return `${new Intl.NumberFormat('fr-FR').format(value)} FCFA`;
+}
+
+export function formatCoachingDate(value?: string | null, options: Intl.DateTimeFormatOptions = {}): string {
+  if (!value) return 'À définir';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'À définir';
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short', ...options }).format(date);
 }

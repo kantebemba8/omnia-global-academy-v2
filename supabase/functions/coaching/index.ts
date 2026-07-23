@@ -162,16 +162,18 @@ async function publicProfile(sb: Supabase, identifier: string) {
     .maybeSingle();
   if (error) throw error;
   if (!profile) return null;
-  const [{ data: user }, { data: level }, domainsByCoach] = await Promise.all([
+  const [{ data: user }, { data: level }, domainsByCoach, offers] = await Promise.all([
     sb.from("users").select("id,full_name").eq("id", profile.user_id).maybeSingle(),
     profile.level_id ? sb.from("coaching_levels").select("id,slug,name,description,badge_label,badge_color,is_featured").eq("id", profile.level_id).maybeSingle() : Promise.resolve({ data: null }),
     domainMapForProfiles(sb, [String(profile.id)]),
+    activeOffers(sb, String(profile.id)),
   ]);
   return {
     ...profile,
     full_name: user?.full_name || "Coach Omnia",
     level: level || null,
     domains: domainsByCoach.get(String(profile.id)) || [],
+    offers,
   };
 }
 
@@ -598,17 +600,598 @@ async function upsertDomain(sb: Supabase, session: Session, body: Record<string,
   return data;
 }
 
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("fr-FR", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1 || value === "1") return true;
+  if (value === "false" || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function asIsoDate(value: unknown): string | null {
+  const text = asText(value, 40);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function asDateOnly(value: unknown): string | null {
+  const text = asText(value, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+function asTime(value: unknown): string | null {
+  const text = asText(value, 8);
+  return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(text) ? text.slice(0, 5) : null;
+}
+
+function toDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+async function ownCoachProfile(sb: Supabase, session: Session) {
+  const { data: profile, error } = await sb.from("coach_profiles").select("*").eq("user_id", session.userId).maybeSingle();
+  if (error) throw error;
+  if (!profile || !session.roles.includes("coach")) throw new Error("FORBIDDEN");
+  return profile;
+}
+
+async function activeOffers(sb: Supabase, coachId: string) {
+  const { data, error } = await sb
+    .from("coach_offers")
+    .select("*,domain:coaching_domains(id,slug,name)")
+    .eq("coach_id", coachId)
+    .eq("status", "active")
+    .order("offer_type")
+    .order("duration_minutes", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+async function allOwnOffers(sb: Supabase, coachId: string) {
+  const { data, error } = await sb
+    .from("coach_offers")
+    .select("*,domain:coaching_domains(id,slug,name)")
+    .eq("coach_id", coachId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+async function coachPriceLimits(sb: Supabase, profile: Record<string, unknown>) {
+  let level: Record<string, unknown> | null = null;
+  if (profile.level_id) {
+    const result = await sb.from("coaching_levels").select("*").eq("id", profile.level_id).maybeSingle();
+    if (result.error) throw result.error;
+    level = result.data;
+  }
+  return {
+    minimum: Number(profile.minimum_price_override_xof ?? level?.minimum_price_xof ?? 0),
+    maximum: profile.maximum_price_override_xof !== null && profile.maximum_price_override_xof !== undefined
+      ? Number(profile.maximum_price_override_xof)
+      : level?.maximum_price_xof !== null && level?.maximum_price_xof !== undefined
+        ? Number(level.maximum_price_xof)
+        : null,
+    commission: Number(profile.commission_override_percent ?? level?.commission_percent ?? 20),
+  };
+}
+
+function validateOfferPrice(price: number, limits: { minimum: number; maximum: number | null }) {
+  if (!Number.isFinite(price) || price < limits.minimum || (limits.maximum !== null && price > limits.maximum)) {
+    throw new Error("OFFER_PRICE_OUT_OF_RANGE");
+  }
+}
+
+async function saveCoachOffer(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  if (profile.status === "suspended" || profile.status === "archived") throw new Error("FORBIDDEN");
+  const offerType = asText(body.offer_type, 20) === "custom" ? "custom" : "fixed";
+  const title = asText(body.title, 160);
+  const description = asText(body.description, 2500);
+  const domainId = asNullableText(body.domain_id, 80);
+  const sessionModes = asStringArray(body.session_modes, 2, 20).filter((mode) => ["jitsi", "external"].includes(mode));
+  if (!title || !sessionModes.length) throw new Error("OFFER_INCOMPLETE");
+
+  if (domainId) {
+    const { data: link } = await sb.from("coach_profile_domains").select("domain_id").eq("coach_id", profile.id).eq("domain_id", domainId).maybeSingle();
+    if (!link) throw new Error("INVALID_DOMAIN");
+  }
+  const allowedModes = new Set(asStringArray(profile.preferred_session_modes, 2, 20));
+  if (sessionModes.some((mode) => !allowedModes.has(mode))) throw new Error("INVALID_SESSION_MODE");
+
+  const limits = await coachPriceLimits(sb, profile);
+  const payload: Record<string, unknown> = {
+    coach_id: profile.id,
+    domain_id: domainId,
+    offer_type: offerType,
+    title,
+    description,
+    session_modes: sessionModes,
+    status: "pending",
+    admin_message: null,
+    reviewed_by: null,
+    reviewed_at: null,
+  };
+
+  if (offerType === "fixed") {
+    const duration = asInteger(body.duration_minutes);
+    const price = asInteger(body.price_xof);
+    if (![30, 60, 90].includes(duration || 0) || price === null) throw new Error("OFFER_INCOMPLETE");
+    validateOfferPrice(price, limits);
+    Object.assign(payload, { duration_minutes: duration, price_xof: price, hourly_price_xof: null, custom_min_minutes: null, custom_max_minutes: null, custom_step_minutes: null });
+  } else {
+    const hourlyPrice = asInteger(body.hourly_price_xof);
+    const minMinutes = asInteger(body.custom_min_minutes);
+    const maxMinutes = asInteger(body.custom_max_minutes);
+    const stepMinutes = asInteger(body.custom_step_minutes);
+    if (hourlyPrice === null || minMinutes === null || maxMinutes === null || stepMinutes === null || minMinutes < 15 || maxMinutes < minMinutes || stepMinutes < 5 || stepMinutes > 60) throw new Error("OFFER_INCOMPLETE");
+    const minimumSessionPrice = Math.round(hourlyPrice * minMinutes / 60);
+    const maximumSessionPrice = Math.round(hourlyPrice * maxMinutes / 60);
+    if (minimumSessionPrice < limits.minimum || (limits.maximum !== null && maximumSessionPrice > limits.maximum)) throw new Error("OFFER_PRICE_OUT_OF_RANGE");
+    Object.assign(payload, { duration_minutes: null, price_xof: null, hourly_price_xof: hourlyPrice, custom_min_minutes: minMinutes, custom_max_minutes: maxMinutes, custom_step_minutes: stepMinutes });
+  }
+
+  const offerId = asNullableText(body.offer_id, 80);
+  if (offerId) {
+    const { data: existing, error } = await sb.from("coach_offers").select("*").eq("id", offerId).eq("coach_id", profile.id).maybeSingle();
+    if (error) throw error;
+    if (!existing) throw new Error("OFFER_NOT_FOUND");
+    if (existing.status === "pending" || existing.status === "rejected") {
+      const { data, error: updateError } = await sb.from("coach_offers").update(payload).eq("id", existing.id).select().single();
+      if (updateError) throw updateError;
+      return data;
+    }
+    payload.supersedes_offer_id = existing.id;
+  }
+  const { data, error } = await sb.from("coach_offers").insert(payload).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function toggleCoachOffer(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const offerId = asText(body.offer_id, 80);
+  const active = asBoolean(body.active);
+  const { data: offer, error } = await sb.from("coach_offers").select("*").eq("id", offerId).eq("coach_id", profile.id).maybeSingle();
+  if (error) throw error;
+  if (!offer) throw new Error("OFFER_NOT_FOUND");
+  if (!["active", "inactive"].includes(offer.status)) throw new Error("OFFER_NOT_APPROVED");
+  if (active) {
+    let query = sb.from("coach_offers").update({ status: "inactive" }).eq("coach_id", profile.id).eq("status", "active").eq("offer_type", offer.offer_type);
+    if (offer.offer_type === "fixed") query = query.eq("duration_minutes", offer.duration_minutes);
+    const { error: deactivateError } = await query;
+    if (deactivateError) throw deactivateError;
+  }
+  const { data, error: updateError } = await sb.from("coach_offers").update({ status: active ? "active" : "inactive" }).eq("id", offer.id).select().single();
+  if (updateError) throw updateError;
+  return data;
+}
+
+async function listCoachAvailability(sb: Supabase, session: Session) {
+  const profile = await ownCoachProfile(sb, session);
+  const [rules, exceptions, settings] = await Promise.all([
+    sb.from("coach_availability_rules").select("*").eq("coach_id", profile.id).order("day_of_week").order("start_time"),
+    sb.from("coach_availability_exceptions").select("*").eq("coach_id", profile.id).gte("ends_at", new Date(Date.now() - 30 * 86400000).toISOString()).order("starts_at"),
+    sb.from("coaching_settings").select("*").eq("id", 1).single(),
+  ]);
+  if (rules.error) throw rules.error;
+  if (exceptions.error) throw exceptions.error;
+  if (settings.error) throw settings.error;
+  return { profile, rules: rules.data || [], exceptions: exceptions.data || [], settings: settings.data };
+}
+
+async function saveAvailabilityRule(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const day = asInteger(body.day_of_week);
+  const startTime = asTime(body.start_time);
+  const endTime = asTime(body.end_time);
+  const timezone = asText(body.timezone, 80) || String(profile.timezone || "Africa/Bamako");
+  const validFrom = asDateOnly(body.valid_from) || toDateOnly(new Date());
+  const validUntil = asDateOnly(body.valid_until);
+  if (day === null || day > 6 || !startTime || !endTime || startTime >= endTime || !isValidTimeZone(timezone)) throw new Error("INVALID_AVAILABILITY");
+  const payload = {
+    coach_id: profile.id,
+    day_of_week: day,
+    start_time: startTime,
+    end_time: endTime,
+    timezone,
+    valid_from: validFrom,
+    valid_until: validUntil,
+    booking_notice_hours: asInteger(body.booking_notice_hours),
+    maximum_sessions_per_day: asInteger(body.maximum_sessions_per_day),
+    buffer_before_minutes: asInteger(body.buffer_before_minutes) || 0,
+    buffer_after_minutes: asInteger(body.buffer_after_minutes) || 0,
+    is_active: body.is_active === undefined ? true : asBoolean(body.is_active, true),
+  };
+  const id = asNullableText(body.id, 80);
+  const result = id
+    ? await sb.from("coach_availability_rules").update(payload).eq("id", id).eq("coach_id", profile.id).select().single()
+    : await sb.from("coach_availability_rules").insert(payload).select().single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function deleteAvailabilityRule(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const id = asText(body.id, 80);
+  if (!id) throw new Error("INVALID_AVAILABILITY");
+  const { error } = await sb.from("coach_availability_rules").delete().eq("id", id).eq("coach_id", profile.id);
+  if (error) throw error;
+}
+
+async function saveAvailabilityException(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const startsAt = asIsoDate(body.starts_at);
+  const endsAt = asIsoDate(body.ends_at);
+  const exceptionType = asText(body.exception_type, 20);
+  if (!startsAt || !endsAt || startsAt >= endsAt || !["blocked", "available"].includes(exceptionType)) throw new Error("INVALID_AVAILABILITY");
+  const payload = { coach_id: profile.id, exception_type: exceptionType, starts_at: startsAt, ends_at: endsAt, reason: asNullableText(body.reason, 500) };
+  const id = asNullableText(body.id, 80);
+  const result = id
+    ? await sb.from("coach_availability_exceptions").update(payload).eq("id", id).eq("coach_id", profile.id).select().single()
+    : await sb.from("coach_availability_exceptions").insert(payload).select().single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function deleteAvailabilityException(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const id = asText(body.id, 80);
+  if (!id) throw new Error("INVALID_AVAILABILITY");
+  const { error } = await sb.from("coach_availability_exceptions").delete().eq("id", id).eq("coach_id", profile.id);
+  if (error) throw error;
+}
+
+async function publicSlots(sb: Supabase, body: Record<string, unknown>) {
+  const coachIdentifier = asText(body.coach_id, 100);
+  const offerId = asText(body.offer_id, 80);
+  const fromDate = asDateOnly(body.from_date) || toDateOnly(new Date());
+  const toDate = asDateOnly(body.to_date) || toDateOnly(new Date(Date.now() + 30 * 86400000));
+  const fromTimestamp = Date.parse(`${fromDate}T00:00:00.000Z`);
+  const toTimestamp = Date.parse(`${toDate}T00:00:00.000Z`);
+  if (!coachIdentifier || !offerId || toDate < fromDate || !Number.isFinite(fromTimestamp) || !Number.isFinite(toTimestamp) || toTimestamp - fromTimestamp > 31 * 86400000) throw new Error("INVALID_AVAILABILITY_RANGE");
+  const { data: profile } = await sb.from("coach_profiles").select("id,status").eq(/^[0-9a-f-]{36}$/i.test(coachIdentifier) ? "id" : "public_slug", coachIdentifier).maybeSingle();
+  if (!profile || profile.status !== "active") throw new Error("COACH_NOT_FOUND");
+  const { data: offer, error: offerError } = await sb.from("coach_offers").select("*").eq("id", offerId).eq("coach_id", profile.id).eq("status", "active").maybeSingle();
+  if (offerError) throw offerError;
+  if (!offer) throw new Error("OFFER_NOT_FOUND");
+  const duration = offer.offer_type === "fixed" ? Number(offer.duration_minutes) : asInteger(body.duration_minutes);
+  if (!duration || duration < 15 || duration > 480) throw new Error("INVALID_DURATION");
+  if (offer.offer_type === "custom") {
+    if (duration < Number(offer.custom_min_minutes) || duration > Number(offer.custom_max_minutes) || (duration - Number(offer.custom_min_minutes)) % Number(offer.custom_step_minutes) !== 0) throw new Error("INVALID_DURATION");
+  }
+  const { data, error } = await sb.rpc("coaching_available_slots", { p_coach_id: profile.id, p_from_date: fromDate, p_to_date: toDate, p_duration_minutes: duration, p_limit: 300 });
+  if (error) throw error;
+  return { coach_id: profile.id, offer, duration_minutes: duration, slots: data || [] };
+}
+
+async function coachRequestSlots(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const sessionId = asText(body.session_id, 80);
+  const fromDate = asDateOnly(body.from_date) || toDateOnly(new Date());
+  const toDate = asDateOnly(body.to_date) || fromDate;
+  const fromTimestamp = Date.parse(`${fromDate}T00:00:00.000Z`);
+  const toTimestamp = Date.parse(`${toDate}T00:00:00.000Z`);
+  if (!sessionId || toDate < fromDate || !Number.isFinite(fromTimestamp) || !Number.isFinite(toTimestamp) || toTimestamp - fromTimestamp > 31 * 86400000) throw new Error("INVALID_AVAILABILITY_RANGE");
+  const { data: booking, error: bookingError } = await sb.from("coaching_sessions").select("id,coach_id,duration_minutes,status").eq("id", sessionId).eq("coach_id", profile.id).eq("status", "pending_coach").maybeSingle();
+  if (bookingError) throw bookingError;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  const { data, error } = await sb.rpc("coaching_available_slots", { p_coach_id: profile.id, p_from_date: fromDate, p_to_date: toDate, p_duration_minutes: Number(booking.duration_minutes), p_limit: 300 });
+  if (error) throw error;
+  return { duration_minutes: Number(booking.duration_minutes), slots: data || [] };
+}
+
+async function favoriteState(sb: Supabase, session: Session, coachId: string) {
+  const { data, error } = await sb.from("coach_favorites").select("coach_id").eq("user_id", session.userId).eq("coach_id", coachId).maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function toggleFavorite(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const coachId = asText(body.coach_id, 80);
+  const active = asBoolean(body.active, true);
+  const { data: coach } = await sb.from("coach_profiles").select("id,user_id,status").eq("id", coachId).maybeSingle();
+  if (!coach || !["active", "vacation"].includes(coach.status)) throw new Error("COACH_NOT_FOUND");
+  if (String(coach.user_id) === session.userId) throw new Error("CANNOT_FAVORITE_SELF");
+  if (active) {
+    const { error } = await sb.from("coach_favorites").upsert({ user_id: session.userId, coach_id: coachId }, { onConflict: "user_id,coach_id" });
+    if (error) throw error;
+  } else {
+    const { error } = await sb.from("coach_favorites").delete().eq("user_id", session.userId).eq("coach_id", coachId);
+    if (error) throw error;
+  }
+  return active;
+}
+
+async function expireBookingHolds(sb: Supabase, coachId?: string) {
+  let query = sb.from("coaching_sessions").update({ status: "expired" }).eq("status", "pending_payment").lt("hold_expires_at", new Date().toISOString());
+  if (coachId) query = query.eq("coach_id", coachId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function loadBookingContext(sb: Supabase, offerId: string) {
+  const { data: offer, error } = await sb.from("coach_offers").select("*").eq("id", offerId).eq("status", "active").maybeSingle();
+  if (error) throw error;
+  if (!offer) throw new Error("OFFER_NOT_FOUND");
+  const { data: profile, error: profileError } = await sb.from("coach_profiles").select("*").eq("id", offer.coach_id).eq("status", "active").maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) throw new Error("COACH_NOT_FOUND");
+  const [{ data: user }, limits, { data: settings }] = await Promise.all([
+    sb.from("users").select("id,full_name").eq("id", profile.user_id).maybeSingle(),
+    coachPriceLimits(sb, profile),
+    sb.from("coaching_settings").select("*").eq("id", 1).single(),
+  ]);
+  return { offer, profile, coachName: user?.full_name || "Coach Omnia", limits, settings };
+}
+
+async function ensureSlotAvailable(sb: Supabase, coachId: string, duration: number, startIso: string) {
+  const date = new Date(startIso);
+  const from = toDateOnly(new Date(date.getTime() - 86400000));
+  const to = toDateOnly(new Date(date.getTime() + 86400000));
+  const { data, error } = await sb.rpc("coaching_available_slots", { p_coach_id: coachId, p_from_date: from, p_to_date: to, p_duration_minutes: duration, p_limit: 500 });
+  if (error) throw error;
+  const target = date.getTime();
+  const slot = (data || []).find((item: { slot_start: string }) => Math.abs(new Date(item.slot_start).getTime() - target) < 1000);
+  if (!slot) throw new Error("SLOT_UNAVAILABLE");
+  return slot as { slot_start: string; slot_end: string };
+}
+
+async function createFixedBooking(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const offerId = asText(body.offer_id, 80);
+  const startIso = asIsoDate(body.slot_start);
+  const meetingMode = asText(body.meeting_mode, 20);
+  if (!offerId || !startIso || !["jitsi", "external"].includes(meetingMode)) throw new Error("BOOKING_INCOMPLETE");
+  const context = await loadBookingContext(sb, offerId);
+  if (context.offer.offer_type !== "fixed") throw new Error("INVALID_OFFER_TYPE");
+  if (String(context.profile.user_id) === session.userId) throw new Error("CANNOT_BOOK_SELF");
+  if (!asStringArray(context.offer.session_modes, 2, 20).includes(meetingMode)) throw new Error("INVALID_SESSION_MODE");
+  await expireBookingHolds(sb, String(context.profile.id));
+  const duration = Number(context.offer.duration_minutes);
+  const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
+  const price = Number(context.offer.price_xof);
+  const commissionAmount = Math.round(price * context.limits.commission / 100);
+  const holdExpiresAt = new Date(Date.now() + Number(context.settings?.slot_hold_minutes || 15) * 60000).toISOString();
+  const payload = {
+    learner_user_id: session.userId,
+    coach_id: context.profile.id,
+    offer_id: context.offer.id,
+    session_type: "fixed",
+    status: "pending_payment",
+    payment_status: "not_started",
+    meeting_mode: meetingMode,
+    requested_start: slot.slot_start,
+    requested_end: slot.slot_end,
+    scheduled_start: slot.slot_start,
+    scheduled_end: slot.slot_end,
+    duration_minutes: duration,
+    hold_expires_at: holdExpiresAt,
+    learner_message: asNullableText(body.learner_message, 1500),
+    price_total_xof: price,
+    commission_percent_snapshot: context.limits.commission,
+    commission_amount_xof: commissionAmount,
+    coach_net_xof: price - commissionAmount,
+    offer_title_snapshot: context.offer.title,
+    coach_name_snapshot: context.coachName,
+    coach_timezone_snapshot: context.profile.timezone,
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15) },
+  };
+  const { data, error } = await sb.from("coaching_sessions").insert(payload).select().single();
+  if (error) {
+    if ((error as { code?: string }).code === "23P01") throw new Error("SLOT_UNAVAILABLE");
+    throw error;
+  }
+  return data;
+}
+
+async function createCustomRequest(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const offerId = asText(body.offer_id, 80);
+  const startIso = asIsoDate(body.slot_start);
+  const meetingMode = asText(body.meeting_mode, 20);
+  const duration = asInteger(body.duration_minutes);
+  if (!offerId || !startIso || !duration || !["jitsi", "external"].includes(meetingMode)) throw new Error("BOOKING_INCOMPLETE");
+  const context = await loadBookingContext(sb, offerId);
+  if (context.offer.offer_type !== "custom") throw new Error("INVALID_OFFER_TYPE");
+  if (String(context.profile.user_id) === session.userId) throw new Error("CANNOT_BOOK_SELF");
+  if (!asStringArray(context.offer.session_modes, 2, 20).includes(meetingMode)) throw new Error("INVALID_SESSION_MODE");
+  if (duration < Number(context.offer.custom_min_minutes) || duration > Number(context.offer.custom_max_minutes) || (duration - Number(context.offer.custom_min_minutes)) % Number(context.offer.custom_step_minutes) !== 0) throw new Error("INVALID_DURATION");
+  const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
+  const price = Math.round(Number(context.offer.hourly_price_xof) * duration / 60);
+  const commissionAmount = Math.round(price * context.limits.commission / 100);
+  const { data, error } = await sb.from("coaching_sessions").insert({
+    learner_user_id: session.userId,
+    coach_id: context.profile.id,
+    offer_id: context.offer.id,
+    session_type: "custom",
+    status: "pending_coach",
+    payment_status: "not_started",
+    meeting_mode: meetingMode,
+    requested_start: slot.slot_start,
+    requested_end: slot.slot_end,
+    duration_minutes: duration,
+    learner_message: asNullableText(body.learner_message, 1500),
+    price_total_xof: price,
+    commission_percent_snapshot: context.limits.commission,
+    commission_amount_xof: commissionAmount,
+    coach_net_xof: price - commissionAmount,
+    offer_title_snapshot: context.offer.title,
+    coach_name_snapshot: context.coachName,
+    coach_timezone_snapshot: context.profile.timezone,
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3" },
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function coachingSessionsForUser(sb: Supabase, userId: string, coachId?: string) {
+  let query = sb.from("coaching_sessions").select("*").order("created_at", { ascending: false });
+  query = coachId ? query.eq("coach_id", coachId) : query.eq("learner_user_id", userId);
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = data || [];
+  const coachIds = [...new Set(rows.map((row: { coach_id: string }) => String(row.coach_id)))];
+  const { data: profiles } = coachIds.length ? await sb.from("coach_profiles").select("id,user_id,public_slug,photo_url,professional_title").in("id", coachIds) : { data: [] };
+  const userIds = (profiles || []).map((profile: { user_id: string }) => String(profile.user_id));
+  const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
+  const userMap = new Map((users || []).map((user: { id: string }) => [String(user.id), user]));
+  const profileMap = new Map((profiles || []).map((profile: { id: string; user_id: string }) => [String(profile.id), { ...profile, full_name: (userMap.get(String(profile.user_id)) as { full_name?: string } | undefined)?.full_name || "Coach Omnia" }]));
+  return rows.map((row: Record<string, unknown>) => ({ ...row, coach: profileMap.get(String(row.coach_id)) || null }));
+}
+
+async function learnerDashboard(sb: Supabase, session: Session) {
+  await expireBookingHolds(sb);
+  const [sessions, favorites] = await Promise.all([
+    coachingSessionsForUser(sb, session.userId),
+    sb.from("coach_favorites").select("coach_id,created_at").eq("user_id", session.userId).order("created_at", { ascending: false }),
+  ]);
+  if (favorites.error) throw favorites.error;
+  const favoriteIds = (favorites.data || []).map((row: { coach_id: string }) => String(row.coach_id));
+  const all = await publicCoaches(sb);
+  return { sessions, favorites: all.filter((coach: { id: string }) => favoriteIds.includes(String(coach.id))) };
+}
+
+async function coachSessions(sb: Supabase, session: Session) {
+  const profile = await ownCoachProfile(sb, session);
+  await expireBookingHolds(sb, String(profile.id));
+  const rows = await coachingSessionsForUser(sb, session.userId, String(profile.id));
+  const learnerIds = [...new Set(rows.map((row: Record<string, unknown>) => String(row.learner_user_id)))];
+  const { data: learners } = learnerIds.length ? await sb.from("users").select("id,full_name,email").in("id", learnerIds) : { data: [] };
+  const learnerMap = new Map((learners || []).map((learner: { id: string }) => [String(learner.id), learner]));
+  return rows.map((row: Record<string, unknown>) => ({ ...row, learner: learnerMap.get(String(row.learner_user_id)) || null }));
+}
+
+async function decideCustomRequest(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, session);
+  const sessionId = asText(body.session_id, 80);
+  const decision = asText(body.decision, 20);
+  const responseMessage = asNullableText(body.message, 1000);
+  const { data: booking, error } = await sb.from("coaching_sessions").select("*").eq("id", sessionId).eq("coach_id", profile.id).eq("status", "pending_coach").maybeSingle();
+  if (error) throw error;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  if (decision === "decline") {
+    const { data, error: updateError } = await sb.from("coaching_sessions").update({ status: "declined_by_coach", coach_response_message: responseMessage }).eq("id", booking.id).select().single();
+    if (updateError) throw updateError;
+    return data;
+  }
+  if (!["accept", "propose"].includes(decision)) throw new Error("INVALID_DECISION");
+  const startIso = decision === "propose" ? asIsoDate(body.slot_start) : booking.requested_start;
+  if (!startIso) throw new Error("BOOKING_INCOMPLETE");
+  await expireBookingHolds(sb, String(profile.id));
+  const slot = await ensureSlotAvailable(sb, String(profile.id), Number(booking.duration_minutes), String(startIso));
+  const { data: settings } = await sb.from("coaching_settings").select("slot_hold_minutes").eq("id", 1).single();
+  const holdExpiresAt = new Date(Date.now() + Number(settings?.slot_hold_minutes || 15) * 60000).toISOString();
+  const { data, error: updateError } = await sb.from("coaching_sessions").update({
+    status: "pending_payment",
+    requested_start: decision === "propose" ? slot.slot_start : booking.requested_start,
+    requested_end: decision === "propose" ? slot.slot_end : booking.requested_end,
+    scheduled_start: slot.slot_start,
+    scheduled_end: slot.slot_end,
+    hold_expires_at: holdExpiresAt,
+    coach_response_message: responseMessage,
+  }).eq("id", booking.id).select().single();
+  if (updateError) {
+    if ((updateError as { code?: string }).code === "23P01") throw new Error("SLOT_UNAVAILABLE");
+    throw updateError;
+  }
+  return data;
+}
+
+async function cancelPendingBooking(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const id = asText(body.session_id, 80);
+  const { data, error } = await sb.from("coaching_sessions").select("id,status,learner_user_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data || String(data.learner_user_id) !== session.userId) throw new Error("BOOKING_NOT_FOUND");
+  if (!["pending_coach", "pending_payment", "requested"].includes(data.status)) throw new Error("BOOKING_CANNOT_CANCEL");
+  const result = await sb.from("coaching_sessions").update({ status: "cancelled_by_learner", hold_expires_at: null }).eq("id", id).select().single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function adminOffers(sb: Supabase) {
+  const { data: offers, error } = await sb.from("coach_offers").select("*,domain:coaching_domains(id,name)").order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = offers || [];
+  const coachIds = [...new Set(rows.map((row: { coach_id: string }) => String(row.coach_id)))];
+  const { data: profiles } = coachIds.length ? await sb.from("coach_profiles").select("id,user_id,public_slug,professional_title").in("id", coachIds) : { data: [] };
+  const userIds = (profiles || []).map((profile: { user_id: string }) => String(profile.user_id));
+  const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
+  const userMap = new Map((users || []).map((user: { id: string }) => [String(user.id), user]));
+  const profileMap = new Map((profiles || []).map((profile: { id: string; user_id: string }) => [String(profile.id), { ...profile, full_name: (userMap.get(String(profile.user_id)) as { full_name?: string } | undefined)?.full_name || "Coach Omnia" }]));
+  return rows.map((offer: Record<string, unknown>) => ({ ...offer, coach: profileMap.get(String(offer.coach_id)) || null }));
+}
+
+async function reviewCoachOffer(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const offerId = asText(body.offer_id, 80);
+  const decision = asText(body.decision, 20);
+  const message = asNullableText(body.message, 1000);
+  if (!["approve", "reject"].includes(decision)) throw new Error("INVALID_DECISION");
+  if (decision === "reject" && !message) throw new Error("REVIEW_MESSAGE_REQUIRED");
+  const { data: offer, error } = await sb.from("coach_offers").select("*").eq("id", offerId).eq("status", "pending").maybeSingle();
+  if (error) throw error;
+  if (!offer) throw new Error("OFFER_NOT_FOUND");
+  if (decision === "reject") {
+    const result = await sb.from("coach_offers").update({ status: "rejected", admin_message: message, reviewed_by: session.userId, reviewed_at: new Date().toISOString() }).eq("id", offer.id).select().single();
+    if (result.error) throw result.error;
+    await audit(sb, session.userId, "coach_offer_rejected", "coach_offer", offer.id, offer, result.data, { message });
+    return result.data;
+  }
+
+  const { data: profile, error: profileError } = await sb.from("coach_profiles").select("*").eq("id", offer.coach_id).maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) throw new Error("COACH_NOT_FOUND");
+  const limits = await coachPriceLimits(sb, profile);
+  const pricePatch: Record<string, unknown> = {};
+  if (offer.offer_type === "fixed") {
+    const adjustedPrice = body.adjusted_price_xof === undefined || body.adjusted_price_xof === null || body.adjusted_price_xof === "" ? Number(offer.price_xof) : asInteger(body.adjusted_price_xof);
+    if (adjustedPrice === null) throw new Error("OFFER_INCOMPLETE");
+    validateOfferPrice(adjustedPrice, limits);
+    pricePatch.price_xof = adjustedPrice;
+  } else {
+    const adjustedHourlyPrice = body.adjusted_hourly_price_xof === undefined || body.adjusted_hourly_price_xof === null || body.adjusted_hourly_price_xof === "" ? Number(offer.hourly_price_xof) : asInteger(body.adjusted_hourly_price_xof);
+    if (adjustedHourlyPrice === null) throw new Error("OFFER_INCOMPLETE");
+    const minimumSessionPrice = Math.round(adjustedHourlyPrice * Number(offer.custom_min_minutes) / 60);
+    const maximumSessionPrice = Math.round(adjustedHourlyPrice * Number(offer.custom_max_minutes) / 60);
+    if (minimumSessionPrice < limits.minimum || (limits.maximum !== null && maximumSessionPrice > limits.maximum)) throw new Error("OFFER_PRICE_OUT_OF_RANGE");
+    pricePatch.hourly_price_xof = adjustedHourlyPrice;
+  }
+
+  const { data: finalOffer, error: activationError } = await sb.rpc("coaching_activate_offer", {
+    p_offer_id: offer.id,
+    p_admin_user_id: session.userId,
+    p_admin_message: message,
+    p_price_xof: offer.offer_type === "fixed" ? pricePatch.price_xof : null,
+    p_hourly_price_xof: offer.offer_type === "custom" ? pricePatch.hourly_price_xof : null,
+  });
+  if (activationError) throw activationError;
+  const priceAdjusted = offer.offer_type === "fixed"
+    ? Number(finalOffer.price_xof) !== Number(offer.price_xof)
+    : Number(finalOffer.hourly_price_xof) !== Number(offer.hourly_price_xof);
+  await audit(sb, session.userId, "coach_offer_approved", "coach_offer", offer.id, offer, finalOffer, { message, price_adjusted: priceAdjusted });
+  return finalOffer;
+}
+
 function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
   const badRequest = [
     "FILE_REQUIRED", "DOCUMENT_REQUIRED", "FILE_TYPE_NOT_ALLOWED", "FILE_TOO_LARGE", "INVALID_FILE", "APPLICATION_INCOMPLETE", "INVALID_URL",
     "INVALID_DOMAIN", "INVALID_REVIEW", "REVIEW_MESSAGE_REQUIRED", "LEVEL_REQUIRED", "LEVEL_NOT_FOUND", "INVALID_PRICE_RANGE",
     "APPLICATION_PRICE_OUT_OF_RANGE", "COACH_REQUIRED", "INVALID_STATUS", "SUSPENSION_REASON_REQUIRED", "LEVEL_NAME_REQUIRED", "DOMAIN_NAME_REQUIRED",
+    "OFFER_INCOMPLETE", "OFFER_PRICE_OUT_OF_RANGE", "INVALID_SESSION_MODE", "INVALID_AVAILABILITY", "INVALID_AVAILABILITY_RANGE",
+    "INVALID_DURATION", "BOOKING_INCOMPLETE", "INVALID_OFFER_TYPE", "CANNOT_BOOK_SELF", "CANNOT_FAVORITE_SELF", "INVALID_DECISION",
+    "BOOKING_CANNOT_CANCEL",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
   if (code === "FORBIDDEN") return json({ error: code }, 403);
-  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
-  if (code === "APPLICATION_ALREADY_ACTIVE") return json({ error: code }, 409);
+  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
+  if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED"].includes(code)) return json({ error: code }, 409);
   if (badRequest.includes(code)) return json({ error: code }, 400);
   console.error("[coaching]", error);
   return json({ error: "COACHING_ERROR", detail: code }, 500);
@@ -632,6 +1215,7 @@ Deno.serve(async (req: Request) => {
       const coach = await publicProfile(sb, identifier);
       return coach ? json({ success: true, coach }) : json({ error: "COACH_NOT_FOUND" }, 404);
     }
+    if (action === "public_availability") return json({ success: true, ...(await publicSlots(sb, body)) });
 
     const session = await authenticate(sb, req);
     if (!session) throw new Error("SESSION_INVALID");
@@ -650,11 +1234,38 @@ Deno.serve(async (req: Request) => {
       const applicationId = await submitApplication(sb, session, body);
       return json({ success: true, application_id: applicationId });
     }
-    if (action === "coach_dashboard") {
-      const { data: profile } = await sb.from("coach_profiles").select("*").eq("user_id", session.userId).maybeSingle();
-      if (!profile || !session.roles.includes("coach")) return json({ error: "FORBIDDEN" }, 403);
-      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug)), metrics: { upcoming_sessions: 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: 0 } });
+    if (action === "favorite_status") {
+      const coachId = asText(body.coach_id, 80);
+      return json({ success: true, favorite: await favoriteState(sb, session, coachId) });
     }
+    if (action === "favorite_toggle") return json({ success: true, favorite: await toggleFavorite(sb, session, body) });
+    if (action === "learner_coaching_dashboard") return json({ success: true, ...(await learnerDashboard(sb, session)) });
+    if (action === "booking_create_fixed") return json({ success: true, session: await createFixedBooking(sb, session, body) });
+    if (action === "booking_create_custom") return json({ success: true, session: await createCustomRequest(sb, session, body) });
+    if (action === "booking_cancel_pending") return json({ success: true, session: await cancelPendingBooking(sb, session, body) });
+    if (action === "coach_dashboard") {
+      const profile = await ownCoachProfile(sb, session);
+      await expireBookingHolds(sb, String(profile.id));
+      const now = new Date().toISOString();
+      const [upcoming, pendingCustom, offers, sessions] = await Promise.all([
+        sb.from("coaching_sessions").select("id", { count: "exact", head: true }).eq("coach_id", profile.id).in("status", ["pending_payment", "confirmed", "ready"]).gte("scheduled_start", now),
+        sb.from("coaching_sessions").select("id", { count: "exact", head: true }).eq("coach_id", profile.id).eq("status", "pending_coach"),
+        allOwnOffers(sb, String(profile.id)),
+        coachSessions(sb, session),
+      ]);
+      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug)), offers, recent_sessions: sessions.slice(0, 8), metrics: { upcoming_sessions: upcoming.count || 0, pending_custom_requests: pendingCustom.count || 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: 0 } });
+    }
+    if (action === "coach_offers") { const profile = await ownCoachProfile(sb, session); return json({ success: true, offers: await allOwnOffers(sb, String(profile.id)), domains: await getDomains(sb), profile, limits: await coachPriceLimits(sb, profile) }); }
+    if (action === "coach_offer_save") return json({ success: true, offer: await saveCoachOffer(sb, session, body) });
+    if (action === "coach_offer_toggle") return json({ success: true, offer: await toggleCoachOffer(sb, session, body) });
+    if (action === "coach_availability") return json({ success: true, ...(await listCoachAvailability(sb, session)) });
+    if (action === "coach_availability_rule_save") return json({ success: true, rule: await saveAvailabilityRule(sb, session, body) });
+    if (action === "coach_availability_rule_delete") { await deleteAvailabilityRule(sb, session, body); return json({ success: true }); }
+    if (action === "coach_availability_exception_save") return json({ success: true, exception: await saveAvailabilityException(sb, session, body) });
+    if (action === "coach_availability_exception_delete") { await deleteAvailabilityException(sb, session, body); return json({ success: true }); }
+    if (action === "coach_sessions") return json({ success: true, sessions: await coachSessions(sb, session) });
+    if (action === "coach_request_availability") return json({ success: true, ...(await coachRequestSlots(sb, session, body)) });
+    if (action === "coach_custom_request_decide") return json({ success: true, session: await decideCustomRequest(sb, session, body) });
 
     if (!isAdmin(session)) throw new Error("FORBIDDEN");
 
@@ -677,6 +1288,8 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_level_save") return json({ success: true, level: await upsertLevel(sb, session, body) });
     if (action === "admin_domains") return json({ success: true, domains: await getDomains(sb, true) });
     if (action === "admin_domain_save") return json({ success: true, domain: await upsertDomain(sb, session, body) });
+    if (action === "admin_offers") return json({ success: true, offers: await adminOffers(sb) });
+    if (action === "admin_offer_review") return json({ success: true, offer: await reviewCoachOffer(sb, session, body) });
 
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {

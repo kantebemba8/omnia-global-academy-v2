@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BadgeCheck, CalendarDays, Globe2, Languages, Linkedin, Star, Video } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, CalendarDays, Globe2, Heart, Languages, Linkedin, Star, Video } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import { CoachProfile, coachingRequest, formatXof } from '../../lib/coachingApi';
 
@@ -13,24 +13,51 @@ function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice
 export default function CoachingCoachProfile() {
   const { coachId = '' } = useParams();
   const navigate = useNavigate();
+  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
   const [coach, setCoach] = useState<CoachProfile | null>(null);
+  const [favorite, setFavorite] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    coachingRequest<{ success: true; coach: CoachProfile }>('public_profile', { coach_id: coachId }).then(data => setCoach(data.coach)).catch(e => setError(e instanceof Error ? e.message : 'Profil indisponible.')).finally(() => setLoading(false));
-  }, [coachId]);
+    coachingRequest<{ success: true; coach: CoachProfile }>('public_profile', { coach_id: coachId })
+      .then(async data => {
+        setCoach(data.coach);
+        if (loggedIn) {
+          try { const state = await coachingRequest<{ success: true; favorite: boolean }>('favorite_status', { coach_id: data.coach.id }); setFavorite(state.favorite); }
+          catch { /* Le profil public reste accessible même si l’état favori échoue. */ }
+        }
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Profil indisponible.'))
+      .finally(() => setLoading(false));
+  }, [coachId, loggedIn]);
+
+  async function toggleFavorite() {
+    if (!coach) return;
+    if (!loggedIn) { navigate(`/connexion?redirect=${encodeURIComponent(`/coaching/coachs/${coach.public_slug}`)}`); return; }
+    setFavoriteBusy(true); setNotice('');
+    try {
+      const next = !favorite;
+      await coachingRequest('favorite_toggle', { coach_id: coach.id, active: next });
+      setFavorite(next);
+      setNotice(next ? 'Coach ajouté à vos favoris.' : 'Coach retiré de vos favoris.');
+    } catch (e) { setNotice(e instanceof Error ? e.message : 'Modification impossible.'); }
+    finally { setFavoriteBusy(false); }
+  }
 
   if (loading) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="py-24 text-center text-sm text-slate-500">Chargement du profil…</div></div>;
   if (!coach || error) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="mx-auto max-w-3xl px-5 py-20 text-center"><h1 className="text-2xl font-semibold" style={{ color: BLUE }}>Profil introuvable</h1><p className="mt-3 text-slate-600">{error || 'Ce coach n’est pas disponible.'}</p><Link to="/coaching" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}><ArrowLeft size={16}/>Retour au catalogue</Link></div></div>;
+
+  const offers = coach.offers || [];
 
   return <div className="min-h-screen bg-[#F8FAFC]">
     <CoachingHeader/>
     <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
       <button onClick={() => navigate('/coaching')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft size={16}/>Retour au catalogue</button>
       {notice && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>}
-      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="space-y-6">
           <div className="rounded-2xl border bg-white p-6 md:p-8" style={{ borderColor: BORDER }}>
             <div className="flex flex-col gap-5 sm:flex-row">
@@ -41,6 +68,7 @@ export default function CoachingCoachProfile() {
                 <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500"><span className="inline-flex items-center gap-1.5"><Star size={16} color={GOLD} fill={coach.rating_count ? GOLD : 'none'}/>{Number(coach.average_rating || 0).toFixed(1)} · {coach.rating_count || 0} avis</span><span className="inline-flex items-center gap-1.5"><Globe2 size={16}/>{coach.country}</span><span className="inline-flex items-center gap-1.5"><Languages size={16}/>{coach.languages?.join(', ')}</span></div>
                 <div className="mt-4 flex flex-wrap gap-2">{coach.domains.map(domain => <span key={domain.id} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">{domain.name}</span>)}</div>
               </div>
+              <button disabled={favoriteBusy} onClick={toggleFavorite} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50" style={{ borderColor: favorite ? GOLD : BORDER, color: favorite ? GOLD : BLUE, background: favorite ? 'rgba(191,136,19,.08)' : 'white' }}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/>{favorite ? 'Enregistré' : 'Favori'}</button>
             </div>
           </div>
 
@@ -51,14 +79,10 @@ export default function CoachingCoachProfile() {
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-2xl border bg-white p-6 shadow-sm" style={{ borderColor: BORDER }}>
-            <h2 className="text-lg font-semibold" style={{ color: BLUE }}>Tarifs des sessions</h2>
-            <div className="mt-4 divide-y" style={{ borderColor: BORDER }}>
-              {[['30 minutes', coach.price_30_xof], ['60 minutes', coach.price_60_xof], ['90 minutes', coach.price_90_xof]].map(([label, price]) => <div key={String(label)} className="flex items-center justify-between py-3 text-sm"><span className="text-slate-600">{label}</span><strong style={{ color: BLUE }}>{formatXof(price as number | null)}</strong></div>)}
-              {coach.custom_duration_enabled && <div className="flex items-center justify-between py-3 text-sm"><span className="text-slate-600">Durée personnalisée</span><strong style={{ color: BLUE }}>{formatXof(coach.custom_hourly_price_xof)} / h</strong></div>}
-            </div>
-            <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600"><div className="flex items-center gap-2 font-semibold" style={{ color: BLUE }}><Video size={17} color={GOLD}/>Formats proposés</div><p className="mt-2">{coach.preferred_session_modes?.map(mode => mode === 'jitsi' ? 'Salle vidéo OGA' : 'Zoom / Meet').join(' · ')}</p></div>
-            <button onClick={() => setNotice('La réservation et le paiement seront activés dans le Grand module 2. Le profil public et la validation des coachs sont déjà opérationnels.')} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}><CalendarDays size={17}/>Réserver une session</button>
-            {coach.status === 'vacation' && <p className="mt-3 text-center text-xs font-medium text-amber-700">Ce coach est actuellement en mode vacances.</p>}
+            <h2 className="text-lg font-semibold" style={{ color: BLUE }}>Offres disponibles</h2>
+            <div className="mt-4 space-y-3">{offers.length ? offers.map(offer => <div key={offer.id} className="rounded-xl border p-4" style={{ borderColor: BORDER }}><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold" style={{ color: BLUE }}>{offer.title}</p><p className="mt-1 text-xs text-slate-500">{offer.offer_type === 'fixed' ? `${offer.duration_minutes} minutes` : `${offer.custom_min_minutes} à ${offer.custom_max_minutes} minutes`}</p></div><strong className="text-sm" style={{ color: GOLD }}>{offer.offer_type === 'fixed' ? formatXof(offer.price_xof) : `${formatXof(offer.hourly_price_xof)}/h`}</strong></div>{offer.description && <p className="mt-2 text-xs leading-5 text-slate-600">{offer.description}</p>}<div className="mt-3 flex items-center gap-2 text-xs text-slate-500"><Video size={14}/>{offer.session_modes.map(mode => mode === 'jitsi' ? 'Salle OGA' : 'Lien externe').join(' · ')}</div></div>) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Aucune offre active pour le moment.</p>}</div>
+            <Link to={`/coaching/coachs/${coach.public_slug}/reserver`} className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white ${offers.length ? '' : 'pointer-events-none opacity-50'}`} style={{ background: BLUE }}><CalendarDays size={17}/>Réserver une session</Link>
+            <p className="mt-3 text-center text-xs leading-5 text-slate-500">Les disponibilités affichées lors de la réservation tiennent compte du calendrier, des pauses et des créneaux déjà occupés.</p>
           </div>
         </aside>
       </div>

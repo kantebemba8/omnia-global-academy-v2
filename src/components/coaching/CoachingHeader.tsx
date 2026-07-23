@@ -13,6 +13,7 @@ export default function CoachingHeader() {
 
   const nav = [
     { path: '/coaching', label: 'Trouver un coach' },
+    ...(loggedIn ? [{ path: '/dashboard/coaching', label: 'Mes sessions' }] : []),
     { path: '/coaching/devenir-coach', label: 'Devenir coach' },
   ];
 
