@@ -1,13 +1,36 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
-import {
-  makeCorsHeaders,
-  getClientIP,
-  checkIPBlocklist,
-  checkRateLimit,
-  logSecurityEvent,
-} from "../_shared/security.ts";
+const SECURITY_HEADERS = {
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-demo-heartbeat-token",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+function makeCorsHeaders(origin?: string): Record<string, string> {
+  return { ...SECURITY_HEADERS, "Access-Control-Allow-Origin": origin ?? Deno.env.get("ALLOWED_ORIGIN") ?? "https://omniaglobalacademy.com" };
+}
+function getClientIP(req: Request): string {
+  return req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+}
+async function checkIPBlocklist(supabase: any, ip: string): Promise<boolean> {
+  const { data } = await supabase.from("ip_blocklist").select("blocked_until").eq("ip_address", ip).maybeSingle();
+  if (!data) return false;
+  if (!data.blocked_until) return true;
+  return new Date(data.blocked_until) > new Date();
+}
+async function checkRateLimit(supabase: any, key: string, maxRequests: number, windowSeconds: number): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  const { count } = await supabase.from("rate_limit_log").select("*", { count: "exact", head: true }).eq("rate_key", key).gte("created_at", windowStart);
+  if ((count ?? 0) >= maxRequests) return { allowed: false, retryAfter: windowSeconds };
+  await supabase.from("rate_limit_log").insert({ rate_key: key, created_at: new Date().toISOString() });
+  return { allowed: true };
+}
+async function logSecurityEvent(supabase: any, event: Record<string, unknown>): Promise<void> {
+  await supabase.from("security_audit_log").insert({ ...event, severity: event.severity ?? "info" });
+}
 
 const ROLE_REDIRECT: Record<string, string> = {
   super_admin: "/admin/dashboard",
@@ -18,6 +41,9 @@ const ROLE_REDIRECT: Record<string, string> = {
   etablissement_directeur: "/structure/dashboard",
   etablissement_enseignant: "/structure/dashboard",
   organizer: "/omnia-live/organisateur",
+  recruteur_independant: "/talent/recruteur/dashboard",
+  recruteur_structure: "/structure/recrutement/dashboard",
+  recruteur: "/talent/recruteur/dashboard",
   professeur: "/professeur/dashboard",
   apprenant: "/dashboard",
 };
@@ -27,7 +53,7 @@ function getRedirectUrl(roles: string[]): string {
     "super_admin", "moderateur", "responsable_structure",
     "gestionnaire_partenaire", "directeur",
     "etablissement_directeur", "etablissement_enseignant",
-    "organizer", "professeur", "apprenant",
+    "organizer", "recruteur_independant", "recruteur_structure", "recruteur", "professeur", "apprenant",
   ];
   for (const r of priority) {
     if (roles.includes(r)) return ROLE_REDIRECT[r];

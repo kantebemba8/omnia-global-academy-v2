@@ -1,7 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hashSync } from "npm:bcryptjs@2.4.3";
-import { corsHeaders } from "../_shared/cors.ts";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-demo-heartbeat-token",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
 
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -105,7 +111,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { role, email, phone_number, password, birth_date, country_code = "ML" } = body;
 
-    if (!["apprenant", "professeur", "organizer", "etablissement"].includes(role)) {
+    if (!["apprenant", "professeur", "organizer", "etablissement", "recruteur_independant"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -127,7 +133,7 @@ Deno.serve(async (req: Request) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!birth_date) {
+    if (role !== "recruteur_independant" && !birth_date) {
       return new Response(JSON.stringify({ success: false, message: "Date de naissance requise" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -159,6 +165,34 @@ Deno.serve(async (req: Request) => {
       fullName = body.full_name.trim();
       roleForDB = "professeur";
       profileData = { bio: body.bio?.trim() || null, expertise_domain: body.expertise_domain.trim(), cv_diploma_url: null };
+    } else if (role === "recruteur_independant") {
+      if (!body.full_name?.trim() || !body.company_name?.trim() || !body.job_title?.trim()) {
+        return new Response(JSON.stringify({ success: false, message: "Nom, entreprise et fonction sont requis" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const professionalEmail = String(body.professional_email || email || "").trim().toLowerCase();
+      if (professionalEmail !== String(email || "").trim().toLowerCase()) {
+        return new Response(JSON.stringify({ success: false, message: "L’email professionnel doit correspondre à l’email du compte" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      fullName = body.full_name.trim();
+      roleForDB = "recruteur_independant";
+      profileData = {
+        recruiter_type: "independent",
+        organization_id: null,
+        company_name: body.company_name.trim(),
+        job_title: body.job_title.trim(),
+        professional_email: professionalEmail,
+        phone: phone_number.trim(),
+        country: country_code || "ML",
+        linkedin_url: body.linkedin_url?.trim() || null,
+        website_url: body.website_url?.trim() || null,
+        status: "pending",
+        visibility: "private",
+        notifications_enabled: true,
+      };
     } else if (role === "organizer") {
       if (!body.full_name?.trim() || !body.display_name?.trim() || !body.experience_summary?.trim()) {
         return new Response(JSON.stringify({ success: false, message: "Nom, nom public et expérience sont requis" }), {
@@ -249,7 +283,7 @@ Deno.serve(async (req: Request) => {
         phone_number: sanitizedPhone,
         password_hash: passwordHash,
         full_name: fullName,
-        birth_date,
+        birth_date: birth_date || null,
         country_code: country_code || "ML",
         status: "en_attente_validation",
         allow_email: body.allow_email ?? true,
@@ -278,7 +312,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const rolesToInsert: { user_id: string; role: string }[] = [{ user_id: userId, role: roleForDB }];
-    if (roleForDB !== "apprenant") rolesToInsert.push({ user_id: userId, role: "apprenant" });
     const { error: rolesError } = await supabase.from("user_roles").insert(rolesToInsert);
     if (rolesError) throw rolesError;
 
@@ -286,9 +319,28 @@ Deno.serve(async (req: Request) => {
       const tableName =
         role === "professeur" ? "professeur_profiles" :
         role === "organizer" ? "live_organizer_applications" :
+        role === "recruteur_independant" ? "talent_recruiter_profiles" :
         "etablissement_profiles";
       const { error: profileError } = await supabase.from(tableName).insert({ user_id: userId, ...profileData });
       if (profileError) throw profileError;
+      if (role === "recruteur_independant") {
+        const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");
+        for (const admin of admins || []) {
+          await supabase.from("notification_queue").insert({
+            notification_type: "recruiter_application_submitted",
+            user_id: admin.user_id,
+            payload: { recruiter_user_id: userId },
+          }).catch(() => {});
+          await supabase.from("talent_notifications").insert({
+            user_id: admin.user_id,
+            notification_type: "recruiter_application_submitted",
+            title: "Nouvelle demande recruteur indépendant",
+            message: "Un compte recruteur indépendant attend votre validation.",
+            action_url: "/admin/talent",
+            payload: { recruiter_user_id: userId },
+          }).catch(() => {});
+        }
+      }
     }
 
     // Upload files to storage
@@ -319,7 +371,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Apprenant / Professeur: send OTP
+    // Rôles avec vérification téléphonique : envoi OTP
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const { error: otpError } = await supabase.from("otp_codes").insert({
