@@ -36,10 +36,6 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
   const withPreview = (path: string) => previewMode ? `${path}?preview=true` : path;
 
   function logout() {
-    if (previewMode) {
-      navigate('/admin/dashboard');
-      return;
-    }
     clearSession();
     navigate('/connexion');
   }
@@ -77,17 +73,20 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
       </nav>
 
       <div className="flex-shrink-0 border-t border-white/10 px-3 py-4">
-        {previewMode ? (
-          <button type="button" onClick={() => navigate('/admin/dashboard')} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm font-semibold" style={{ color: GOLD }}>
-            <ExternalLink size={18} /> Retour au Dashboard Super-admin
-          </button>
-        ) : (
-          <Link to="/" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold" style={{ color: GOLD }}>
-            <ExternalLink size={18} /> Retour à Omnia Global Academy
-          </Link>
-        )}
-        <button type="button" onClick={logout} className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-white/55 hover:text-white">
-          <LogOut size={18} /> {previewMode ? 'Quitter la prévisualisation' : 'Déconnexion'}
+        <Link
+          to="/talent"
+          onClick={() => setOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold"
+          style={{ color: GOLD }}
+        >
+          <ExternalLink size={18} /> Retour à Omnia Talent
+        </Link>
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-white hover:text-white"
+        >
+          <LogOut size={18} /> Déconnexion
         </button>
       </div>
     </aside>
