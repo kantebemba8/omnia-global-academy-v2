@@ -123,8 +123,8 @@ Deno.serve(async (req: Request) => {
     const { data: rolesData } = await supabase
       .from("user_roles").select("role").eq("user_id", user.id);
     const userRoles = (rolesData || []).map((r: { role: string }) => r.role);
-    const isProfOrEtab = userRoles.some((r: string) =>
-      ["professeur", "etablissement_directeur", "etablissement_enseignant"].includes(r)
+    const requiresManualValidation = userRoles.some((r: string) =>
+      ["professeur", "etablissement_directeur", "etablissement_enseignant", "recruteur_independant"].includes(r)
     );
 
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
     // ── INSCRIPTION ────────────────────────────────────────────────
     if (purpose === "inscription") {
-      if (!isProfOrEtab) {
+      if (!requiresManualValidation) {
         // Apprenant → activate
         await supabase.from("users").update({ status: "actif", updated_at: now }).eq("id", user.id);
 
@@ -160,8 +160,10 @@ Deno.serve(async (req: Request) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Professeur / Établissement → pending validation
-      const roleDisplay = userRoles.includes("professeur") ? "Professeur" : "Établissement";
+      // Professeur / Établissement / Recruteur indépendant → validation manuelle
+      const roleDisplay = userRoles.includes("professeur") ? "Professeur"
+        : userRoles.includes("recruteur_independant") ? "Recruteur indépendant"
+        : "Établissement";
       if (brevoApiKey) {
         try {
           await sendBrevoWelcome(
