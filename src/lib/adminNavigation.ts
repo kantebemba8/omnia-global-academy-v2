@@ -81,6 +81,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Briefcase,
     items: [
       { path: '/admin/career-studio', label: 'Gestion Omnia Career Studio', icon: Briefcase },
+      { path: '/admin/coaching', label: 'Gestion Omnia Coaching', icon: Users },
       { path: '/admin/talent', label: 'Supervision Omnia Talent', icon: Shield },
       { path: '/admin/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
     ],

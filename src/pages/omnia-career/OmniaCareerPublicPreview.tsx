@@ -7,7 +7,7 @@ const tools = [
   { title: 'Préparation entretien', text: 'Entraînez-vous aux questions RH et techniques.', icon: MessageSquare },
   { title: 'Suivi candidatures', text: 'Suivez vos candidatures, relances et réponses.', icon: Briefcase },
   { title: 'Profil carrière', text: 'Construisez un profil professionnel complet.', icon: User },
-  { title: 'Coaching carrière', text: 'Recevez des conseils et un plan d’action.', icon: Star },
+  { title: 'Conseils carrière', text: 'Analysez votre profil et améliorez votre stratégie.', icon: Star },
 ];
 
 export default function OmniaCareerPublicPreview() {
@@ -50,7 +50,7 @@ export default function OmniaCareerPublicPreview() {
               </Link>
             </div>
             <div className="mt-8 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">
-              {['CV moderne', 'Coaching IA', 'Suivi candidatures'].map((item) => (
+              {['CV moderne', 'Analyse du profil', 'Suivi candidatures'].map((item) => (
                 <div key={item} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm">
                   <CheckCircle2 className="h-4 w-4 text-green-600" /> {item}
                 </div>
@@ -82,7 +82,7 @@ export default function OmniaCareerPublicPreview() {
               </div>
               <div className="mt-5 rounded-2xl border border-[#bf8813]/25 bg-[#bf8813]/10 p-4">
                 <div className="text-sm font-semibold text-[#002050]">Accès réservé aux apprenants connectés</div>
-                <p className="mt-1 text-sm leading-6 text-slate-600">L’aperçu est public, mais CV Builder, lettres, entretiens, candidatures et coaching nécessitent un compte apprenant.</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">L’aperçu est public, mais CV Builder, lettres, entretiens et candidatures nécessitent un compte apprenant.</p>
               </div>
             </div>
           </div>

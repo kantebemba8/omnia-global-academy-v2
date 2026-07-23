@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Search,
   Settings,
-  Star,
   UserRound,
 } from 'lucide-react';
 
@@ -26,7 +25,6 @@ type CareerSection =
   | 'interview'
   | 'applications'
   | 'profile'
-  | 'coaching'
   | 'settings';
 
 type StoredUser = {
@@ -52,7 +50,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'interview', label: 'Préparation entretien', icon: MessageSquare },
   { key: 'applications', label: 'Suivi candidatures', icon: Briefcase },
   { key: 'profile', label: 'Profil carrière', icon: UserRound },
-  { key: 'coaching', label: 'Coaching carrière', icon: Star },
   { key: 'settings', label: 'Paramètres', icon: Settings },
 ];
 
@@ -63,7 +60,6 @@ const SECTION_TO_URL: Record<CareerSection, string> = {
   interview: '/dashboard/career-studio?section=interview',
   applications: '/dashboard/career-studio?section=applications',
   profile: '/dashboard/career-studio?section=profile',
-  coaching: '/dashboard/career-studio?section=coaching',
   settings: '/dashboard/career-studio?section=settings',
 };
 

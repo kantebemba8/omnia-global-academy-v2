@@ -12,7 +12,6 @@ import {
   ChevronsLeft,
   ClipboardList,
   Coins,
-  Crown,
   Download,
   Edit2,
   Eye,
@@ -40,7 +39,7 @@ import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '
 import { ENDPOINTS } from '../../lib/config';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
-import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedCoaching, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
+import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
 import SubspaceHamburgerLayout from '../../components/SubspaceHamburgerLayout';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -58,7 +57,6 @@ type ActiveView =
   | 'interview'
   | 'applications'
   | 'profile'
-  | 'coaching'
   | 'settings';
 
 type DocType = 'cv' | 'lm';
@@ -118,7 +116,6 @@ const navItems: { id: ActiveView; label: string; icon: typeof FileText }[] = [
   { id: 'interview', label: 'Préparation entretien', icon: MessageSquare },
   { id: 'applications', label: 'Suivi candidatures', icon: Briefcase },
   { id: 'profile', label: 'Profil carrière', icon: UserRound },
-  { id: 'coaching', label: 'Coaching carrière', icon: Star },
   { id: 'settings', label: 'Paramètres', icon: Settings },
 ];
 
@@ -294,18 +291,17 @@ export default function DashboardCareerStudio() {
       '/omnia-career/entretien': 'interview',
       '/omnia-career/candidatures': 'applications',
       '/omnia-career/profil': 'profile',
-      '/omnia-career/coaching': 'coaching',
       '/omnia-career/parametres': 'settings',
     };
     const section = searchParams.get('section') || 'dashboard';
-    const sectionMap: Record<string, ActiveView> = { dashboard:'dashboard', cv:'cv', builder:'cv', letters:'lm', lettre:'lm', lm:'lm', interview:'interview', entretien:'interview', applications:'applications', candidatures:'applications', profile:'profile', profil:'profile', coaching:'coaching', settings:'settings', parametres:'settings' };
+    const sectionMap: Record<string, ActiveView> = { dashboard:'dashboard', cv:'cv', builder:'cv', letters:'lm', lettre:'lm', lm:'lm', interview:'interview', entretien:'interview', applications:'applications', candidatures:'applications', profile:'profile', profil:'profile', settings:'settings', parametres:'settings' };
     setActiveView(pathMap[location.pathname] || sectionMap[section] || 'dashboard');
   }, [location.pathname, searchParams]);
 
   function goToView(view: ActiveView) {
     const routes: Record<ActiveView, string> = {
       dashboard: '/omnia-career', cv: '/omnia-career/cv-builder', lm: '/omnia-career/lettres', interview: '/omnia-career/entretien',
-      applications: '/omnia-career/candidatures', profile: '/omnia-career/profil', coaching: '/omnia-career/coaching', settings: '/omnia-career/parametres',
+      applications: '/omnia-career/candidatures', profile: '/omnia-career/profil', settings: '/omnia-career/parametres',
     };
     const currentJob = searchParams.get('job_id');
     const query = currentJob && (view === 'interview' || view === 'applications') ? `?job_id=${encodeURIComponent(currentJob)}` : '';
@@ -347,7 +343,7 @@ export default function DashboardCareerStudio() {
 
   const careerNavItems = navItems.map((item) => ({
     label: item.label,
-    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/omnia-career/profil', coaching:'/omnia-career/coaching', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
+    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/omnia-career/profil', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
     icon: item.icon,
     exact: item.id === 'dashboard',
   }));
@@ -373,7 +369,6 @@ export default function DashboardCareerStudio() {
           {activeView === 'interview' && <EnhancedInterview />}
           {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
           {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
-          {activeView === 'coaching' && <EnhancedCoaching />}
           {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}
         </main>
       </div>
@@ -590,11 +585,6 @@ function ProfileView({ displayName }: { displayName: string }) {
     finally{setSaving(false);}
   }
   return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Ce profil utilise les mêmes données que votre profil apprenant principal."/><div className="grid gap-5 xl:grid-cols-[320px_1fr]"><Card className="p-6"><div className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold text-white" style={{background:OMNIA_BLUE}}>{getInitials(profile.full_name,profile.email)}</div><h2 className="mt-4 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{profile.full_name||'Votre nom'}</h2><p className="text-sm" style={{color:MUTED}}>{profile.title||'Titre professionnel non renseigné'}</p></Card><Card className="p-6"><div className="grid gap-4 md:grid-cols-2"><EditableField label="Nom complet" value={profile.full_name} onChange={v=>setProfile({...profile,full_name:v})}/><EditableField label="E-mail" value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><EditableField label="Téléphone" value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/><EditableField label="Ville / Pays" value={profile.location} onChange={v=>setProfile({...profile,location:v})}/><EditableField label="Titre professionnel" value={profile.title} onChange={v=>setProfile({...profile,title:v})}/></div><label className="mt-4 block text-sm font-medium" style={{color:OMNIA_BLUE}}>Biographie<textarea value={profile.bio} onChange={e=>setProfile({...profile,bio:e.target.value})} className="mt-1 min-h-28 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}/></label>{message&&<p className="mt-3 text-sm" style={{color:message.includes('synchronisé')?'#15803d':'#b91c1c'}}>{message}</p>}<button onClick={save} disabled={saving} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:OMNIA_BLUE}}>{saving?'Synchronisation…':'Enregistrer et synchroniser'}</button></Card></div></div>;
-}
-
-function CoachingView() {
-  const [question,setQuestion]=useState(''); const [request,setRequest]=useState('');
-  return <div className="space-y-5"><PageHeader title="Coaching carrière" subtitle="Choisissez entre un accompagnement IA et une demande de coaching humain Premium."/><div className="grid gap-5 xl:grid-cols-2"><Card className="p-6"><SectionTitle title="Coaching IA"/><p className="text-sm" style={{color:MUTED}}>Décrivez votre objectif. Une réponse ne sera générée que si le service IA est configuré.</p><textarea value={question} onChange={e=>setQuestion(e.target.value)} className="mt-4 min-h-40 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Votre objectif ou difficulté..."/><button disabled={!question.trim()} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_BLUE}}>Lancer le coaching IA</button></Card><Card className="p-6"><div className="flex items-center justify-between"><SectionTitle title="Coaching humain Premium"/><Crown size={20} color={OMNIA_GOLD}/></div><p className="text-sm" style={{color:MUTED}}>Envoyez une demande à la plateforme. Le tarif et les disponibilités seront définis dans l’offre Premium.</p><textarea value={request} onChange={e=>setRequest(e.target.value)} className="mt-4 min-h-40 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Sujet de votre demande..."/><button disabled={!request.trim()} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-[#002050] disabled:opacity-40" style={{background:OMNIA_GOLD}}>Demander un coaching</button></Card></div></div>;
 }
 
 function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: number; user: any }) {

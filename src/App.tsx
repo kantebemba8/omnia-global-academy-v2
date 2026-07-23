@@ -125,7 +125,6 @@ import OmniaCareerLetters from './pages/omnia-career/OmniaCareerLetters';
 import OmniaCareerInterview from './pages/omnia-career/OmniaCareerInterview';
 import OmniaCareerApplications from './pages/omnia-career/OmniaCareerApplications';
 import OmniaCareerProfile from './pages/omnia-career/OmniaCareerProfile';
-import OmniaCareerCoaching from './pages/omnia-career/OmniaCareerCoaching';
 import OmniaCareerSettings from './pages/omnia-career/OmniaCareerSettings';
 import AdminOmniaCareerStudio from './pages/admin/AdminOmniaCareerStudio';
 import TalentDirectory from './pages/TalentDirectory';
@@ -137,6 +136,11 @@ import TalentAbout from './pages/talent/TalentAbout';
 import TalentOrganisations from './pages/talent/TalentOrganisations';
 import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
+import AdminCoaching from './pages/admin/AdminCoaching';
+import CoachingCatalogue from './pages/coaching/CoachingCatalogue';
+import CoachingCoachProfile from './pages/coaching/CoachingCoachProfile';
+import CoachApplication from './pages/coaching/CoachApplication';
+import CoachDashboard from './pages/coaching/CoachDashboard';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
 import OmniaLiveHome from './pages/omnia-live/OmniaLiveHome';
 import CatalogView from './pages/omnia-live/CatalogView';
@@ -322,6 +326,10 @@ export default function App() {
         <Route path="/" element={<RootGate />} />
         <Route path="/accueil" element={<LandingPage />} />
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
+          <Route path="/coaching" element={<CoachingCatalogue />} />
+          <Route path="/coaching/coachs/:coachId" element={<CoachingCoachProfile />} />
+          <Route path="/coaching/devenir-coach" element={<CoachApplication />} />
+          <Route path="/coach/dashboard" element={<CoachDashboard />} />
           <Route path="/talents" element={<TalentDirectory />} />
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
@@ -435,6 +443,11 @@ export default function App() {
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
         <Route path="/admin/profil" element={<AdminProfile />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
+        <Route path="/admin/coaching" element={<AdminCoaching />} />
+        <Route path="/admin/coaching/candidatures" element={<AdminCoaching />} />
+        <Route path="/admin/coaching/coachs" element={<AdminCoaching />} />
+        <Route path="/admin/coaching/niveaux" element={<AdminCoaching />} />
+        <Route path="/admin/coaching/domaines" element={<AdminCoaching />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />
@@ -574,7 +587,7 @@ export default function App() {
   <Route path="/omnia-career/entretien" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/candidatures" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/profil" element={<DashboardCareerStudio />} />
-  <Route path="/omnia-career/coaching" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/coaching" element={<Navigate to="/coaching" replace />} />
   <Route path="/omnia-career/parametres" element={<DashboardCareerStudio />} />
 </Route>
 

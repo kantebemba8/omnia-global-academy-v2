@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   Bell, Briefcase, ChevronDown, ChevronsLeft, Crown, FileText, LayoutDashboard,
-  Mail, MessageSquare, Search, Settings, Star, User,
+  Mail, MessageSquare, Search, Settings, User,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { getInitials } from '../utils/omniaCareerAccess';
@@ -23,7 +23,6 @@ const CAREER_NAV_ITEMS: NavItem[] = [
   { label: 'Préparation entretien', path: '/omnia-career/entretien', icon: MessageSquare },
   { label: 'Suivi candidatures', path: '/omnia-career/candidatures', icon: Briefcase },
   { label: 'Profil carrière', path: '/omnia-career/profil', icon: User },
-  { label: 'Coaching carrière', path: '/omnia-career/coaching', icon: Star },
   { label: 'Paramètres', path: '/omnia-career/parametres', icon: Settings },
 ];
 

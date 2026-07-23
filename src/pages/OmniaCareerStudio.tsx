@@ -9,7 +9,7 @@ const TOOLS = [
   { title: 'Préparation entretien', description: 'Préparez vos réponses et entraînez-vous avec des simulations.', icon: MessageSquare },
   { title: 'Suivi candidatures', description: 'Suivez vos candidatures, relances, entretiens et offres.', icon: Briefcase },
   { title: 'Profil carrière', description: 'Construisez un profil professionnel complet et visible.', icon: UserRound },
-  { title: 'Coaching carrière', description: 'Recevez des recommandations et un plan d’action personnalisé.', icon: Star },
+  { title: 'Analyse de profil', description: 'Évaluez et améliorez votre positionnement professionnel.', icon: Star },
 ];
 
 export default function OmniaCareerStudio() {
