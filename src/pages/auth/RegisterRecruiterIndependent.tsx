@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BriefcaseBusiness, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
+import {  Briefcase as BriefcaseBusiness, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
