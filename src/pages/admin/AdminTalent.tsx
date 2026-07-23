@@ -11,13 +11,33 @@ const BORDER = '#E4E7EC';
 
 type Status = 'all'|'pending'|'approved'|'rejected'|'suspended';
 
-function errorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string') return error;
+function errorMessage(error: unknown, fallback: string, depth = 0): string {
+  if (depth > 5) return fallback;
+  if (error instanceof Error) {
+    if (error.message && error.message.trim() && error.message.trim() !== '[object Object]') return error.message;
+    return errorMessage((error as Error & { cause?: unknown }).cause, fallback, depth + 1);
+  }
+  if (typeof error === 'string') {
+    const text = error.trim();
+    return text && text !== '[object Object]' && text !== '{}' ? text : fallback;
+  }
+  if (Array.isArray(error)) {
+    for (const item of error) {
+      const text = errorMessage(item, '', depth + 1);
+      if (text) return text;
+    }
+    return fallback;
+  }
   if (error && typeof error === 'object') {
     const value = error as Record<string, unknown>;
-    const message = value.message || value.error || value.details;
-    if (typeof message === 'string') return message;
+    const parts: string[] = [];
+    for (const key of ['message', 'error_description', 'error', 'details', 'hint', 'code']) {
+      const nested = value[key];
+      if (nested === undefined || nested === null) continue;
+      const text = errorMessage(nested, '', depth + 1);
+      if (text && !parts.includes(text)) parts.push(text);
+    }
+    if (parts.length) return parts.join(' — ');
   }
   return fallback;
 }
@@ -30,13 +50,28 @@ export default function AdminTalent() {
   const [busy, setBusy] = useState('');
   const [query, setQuery] = useState('');
   const [analytics,setAnalytics] = useState<TalentAnalytics|null>(null);
+  const [analyticsError,setAnalyticsError] = useState('');
   const [periodDays,setPeriodDays] = useState(30);
 
   async function load() {
-    setLoading(true); setError('');
-    try { const [supervision,stats]=await Promise.all([adminLoadTalentSupervision(status === 'all' ? undefined : status),loadTalentAnalytics('admin',periodDays)]); setData(supervision); setAnalytics(stats.analytics); }
-    catch (e) { setError(errorMessage(e, 'Supervision Omnia Talent indisponible.')); }
-    finally { setLoading(false); }
+    setLoading(true);
+    setError('');
+    setAnalyticsError('');
+    try {
+      const supervision = await adminLoadTalentSupervision(status === 'all' ? undefined : status);
+      setData(supervision);
+    } catch (e) {
+      setError(errorMessage(e, 'Supervision Omnia Talent indisponible.'));
+    }
+    try {
+      const stats = await loadTalentAnalytics('admin', periodDays);
+      setAnalytics(stats.analytics);
+    } catch (e) {
+      setAnalytics(null);
+      setAnalyticsError(errorMessage(e, 'Les statistiques Omnia Talent sont temporairement indisponibles.'));
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { load(); }, [status,periodDays]);
 
@@ -78,7 +113,7 @@ export default function AdminTalent() {
         </div>
         {loading ? <p className="p-6 text-sm text-gray-500">Chargement…</p> : recruiters.length === 0 ? <div className="p-12 text-center"><UsersRound className="mx-auto" color={GOLD}/><p className="mt-3 text-sm text-gray-500">Aucun recruteur dans cette catégorie.</p></div> : <div className="divide-y">{recruiters.map((r:any)=><div key={r.user_id} className="flex flex-wrap items-center gap-4 p-4"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{(r.users?.full_name||r.company_name||'RE').slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{r.users?.full_name||'Recruteur'}</p><p className="truncate text-xs text-gray-500">{r.job_title||'Fonction non renseignée'} · {r.company_name||'Entreprise non renseignée'}</p><p className="truncate text-xs text-gray-400">{r.professional_email||r.users?.email||''}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:'rgba(191,136,19,.12)',color:GOLD}}>{r.status}</span><div className="flex flex-wrap gap-2">{r.status!=='approved'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'approved')} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white">Valider</button>}{r.status!=='rejected'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'rejected')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Refuser</button>}{r.status!=='suspended'&&r.status==='approved'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'suspended')} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:BORDER,color:BLUE}}>Suspendre</button>}{r.status==='suspended'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'approved')} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{background:BLUE}}>Réactiver</button>}</div></div>)}</div>}
       </div>
-      <div className="mt-6"><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="admin"/></div>
+      <div className="mt-6">{analyticsError&&<div className="mb-3 border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-800">{analyticsError}</div>}<TalentAnalyticsPanel analytics={analytics} loading={loading} mode="admin"/></div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-2"><ShieldCheck color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Activités récentes</h2></div>{(data.activity||[]).length===0?<p className="mt-5 text-sm text-gray-500">Aucune activité enregistrée.</p>:<div className="mt-4 space-y-3">{(data.activity||[]).slice(0,12).map((a:any)=><div key={a.id} className="border-b pb-3 text-sm"><p className="font-medium" style={{color:BLUE}}>{a.action}</p><p className="text-xs text-gray-400">{new Date(a.created_at).toLocaleString('fr-FR')}</p></div>)}</div>}</section>
         <section className="rounded-xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-2"><Contact color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Contacts recruteur ↔ apprenant</h2></div>{(data.contacts||[]).length===0?<p className="mt-5 text-sm text-gray-500">Aucun contact enregistré.</p>:<div className="mt-4 space-y-3">{(data.contacts||[]).slice(0,12).map((c:any)=><div key={c.id} className="border-b pb-3 text-sm"><p className="font-medium" style={{color:BLUE}}>{c.subject||'Prise de contact'}</p><p className="text-xs text-gray-500">Statut : {c.status}</p><p className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString('fr-FR')}</p></div>)}</div>}</section>

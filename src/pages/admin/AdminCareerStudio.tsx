@@ -660,12 +660,12 @@ export default function AdminCareerStudio() {
           {!loading && subTab === 'dashboard' && (
             <div className="space-y-6">
               <div className="flex flex-wrap gap-x-7 gap-y-2 border-y py-3 text-sm" style={{ borderColor: BORDER }}>
-                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_cv}</strong> CV apprenants</span>
-                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_lm}</strong> LM apprenants</span>
-                <span><strong style={{color:OMNIA_BLUE}}>{stats.unique_creators}</strong> créateurs</span>
-                <span><strong style={{color:OMNIA_BLUE}}>{stats.active_users_30d}</strong> actifs sur 30 jours</span>
-                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_exports}</strong> exports</span>
-                <span><strong style={{color:OMNIA_GOLD}}>{stats.tokens_consumed}</strong> jetons consommés</span>
+                <Link to="/admin/career-studio/details/cv" className="font-medium hover:underline"><strong style={{color:OMNIA_BLUE}}>{stats.total_cv}</strong> CV apprenants</Link>
+                <Link to="/admin/career-studio/details/lm" className="font-medium hover:underline"><strong style={{color:OMNIA_BLUE}}>{stats.total_lm}</strong> LM apprenants</Link>
+                <Link to="/admin/career-studio/details/creators" className="font-medium hover:underline"><strong style={{color:OMNIA_BLUE}}>{stats.unique_creators}</strong> créateurs</Link>
+                <Link to="/admin/career-studio/details/active-30d" className="font-medium hover:underline"><strong style={{color:OMNIA_BLUE}}>{stats.active_users_30d}</strong> actifs sur 30 jours</Link>
+                <Link to="/admin/career-studio/details/exports" className="font-medium hover:underline"><strong style={{color:OMNIA_BLUE}}>{stats.total_exports}</strong> exports</Link>
+                <Link to="/admin/career-studio/details/tokens" className="font-medium hover:underline"><strong style={{color:OMNIA_GOLD}}>{stats.tokens_consumed}</strong> jetons consommés</Link>
               </div>
 
               <div className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">

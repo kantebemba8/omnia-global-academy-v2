@@ -60,6 +60,7 @@ import ModerateurUtilisateurs from './pages/moderateur/ModerateurUtilisateurs';
 import ModerateurForum from './pages/moderateur/ModerateurForum';
 import AdminForum from './pages/admin/AdminForum';
 import AdminCareerStudio from './pages/admin/AdminCareerStudio';
+import AdminCareerStudioDetail from './pages/admin/AdminCareerStudioDetail';
 import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminStudioValidation from './pages/admin/AdminStudioValidation';
 import AdminCoursePricing from './pages/admin/AdminCoursePricing';
@@ -432,6 +433,7 @@ export default function App() {
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
         <Route path="/admin/profil" element={<AdminProfile />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
+        <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />
         <Route path="/admin/omnia-live/validation" element={<AdminOmniaLiveValidation />} />

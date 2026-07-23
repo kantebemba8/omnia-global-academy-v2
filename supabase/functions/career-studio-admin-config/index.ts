@@ -74,6 +74,151 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "get_config");
 
+    if (action === "get_detail") {
+      const metric = String(body?.metric || "");
+      const allowedMetrics = ["cv", "lm", "creators", "active-30d", "exports", "tokens"];
+      if (!allowedMetrics.includes(metric)) {
+        return json({ error: "INVALID_METRIC", message: "Indicateur Career Studio invalide." }, 400);
+      }
+
+      const [documents, exportLogs, transactions, userRoles] = await Promise.all([
+        safeRows(sb, "career_documents", "id,user_id,title,doc_type,template_key,status,created_at,updated_at"),
+        safeRows(sb, "career_export_logs"),
+        safeRows(sb, "career_token_transactions"),
+        safeRows(sb, "user_roles", "user_id,role"),
+      ]);
+
+      const learnerIds = new Set(
+        userRoles.filter((row: any) => row.role === "apprenant").map((row: any) => String(row.user_id)),
+      );
+      const learnerDocuments = documents.filter((doc: any) => doc.user_id && learnerIds.has(String(doc.user_id)));
+      const documentMap = new Map(learnerDocuments.map((doc: any) => [String(doc.id), doc]));
+      const learnerTransactions = transactions.filter((tx: any) => tx.user_id && learnerIds.has(String(tx.user_id)));
+
+      const detailUserIds = new Set<string>();
+      for (const doc of learnerDocuments) if (doc.user_id) detailUserIds.add(String(doc.user_id));
+      for (const tx of learnerTransactions) if (tx.user_id) detailUserIds.add(String(tx.user_id));
+      for (const row of exportLogs) {
+        const linked = documentMap.get(String(row.document_id || row.career_document_id || ""));
+        const userId = row.user_id || linked?.user_id;
+        if (userId && learnerIds.has(String(userId))) detailUserIds.add(String(userId));
+      }
+
+      let users: any[] = [];
+      if (detailUserIds.size) {
+        const { data, error } = await sb.from("users").select("id,full_name").in("id", [...detailUserIds]);
+        if (error) throw error;
+        users = data || [];
+      }
+      const userMap = new Map(users.map((user: any) => [String(user.id), user.full_name || "Apprenant"]));
+      const nameFor = (userId: unknown) => userMap.get(String(userId || "")) || "Apprenant";
+
+      let rows: any[] = [];
+
+      if (metric === "cv" || metric === "lm") {
+        rows = learnerDocuments
+          .filter((doc: any) => doc.doc_type === metric)
+          .map((doc: any) => ({
+            id: doc.id,
+            user_name: nameFor(doc.user_id),
+            document_title: doc.title || (metric === "cv" ? "CV sans titre" : "Lettre sans titre"),
+            template_key: doc.template_key || "—",
+            status: doc.status || "brouillon",
+            created_at: doc.created_at,
+            updated_at: doc.updated_at,
+          }))
+          .sort((a: any, b: any) => dateValue(b.updated_at || b.created_at) - dateValue(a.updated_at || a.created_at));
+      }
+
+      if (metric === "creators") {
+        const grouped = new Map<string, any>();
+        for (const doc of learnerDocuments) {
+          const userId = String(doc.user_id);
+          const current = grouped.get(userId) || {
+            id: userId,
+            user_name: nameFor(userId),
+            cv_count: 0,
+            lm_count: 0,
+            total_documents: 0,
+            last_activity: null,
+          };
+          if (doc.doc_type === "cv") current.cv_count += 1;
+          if (doc.doc_type === "lm") current.lm_count += 1;
+          current.total_documents += 1;
+          const activity = doc.updated_at || doc.created_at;
+          if (dateValue(activity) > dateValue(current.last_activity)) current.last_activity = activity;
+          grouped.set(userId, current);
+        }
+        rows = [...grouped.values()].sort((a: any, b: any) => dateValue(b.last_activity) - dateValue(a.last_activity));
+      }
+
+      if (metric === "active-30d") {
+        const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const grouped = new Map<string, any>();
+        const ensure = (userId: string) => {
+          const current = grouped.get(userId) || {
+            id: userId,
+            user_name: nameFor(userId),
+            documents_count: 0,
+            transactions_count: 0,
+            last_activity: null,
+          };
+          grouped.set(userId, current);
+          return current;
+        };
+        for (const doc of learnerDocuments) {
+          const activity = doc.updated_at || doc.created_at;
+          if (dateValue(activity) < since) continue;
+          const current = ensure(String(doc.user_id));
+          current.documents_count += 1;
+          if (dateValue(activity) > dateValue(current.last_activity)) current.last_activity = activity;
+        }
+        for (const tx of learnerTransactions) {
+          if (dateValue(tx.created_at) < since) continue;
+          const current = ensure(String(tx.user_id));
+          current.transactions_count += 1;
+          if (dateValue(tx.created_at) > dateValue(current.last_activity)) current.last_activity = tx.created_at;
+        }
+        rows = [...grouped.values()].sort((a: any, b: any) => dateValue(b.last_activity) - dateValue(a.last_activity));
+      }
+
+      if (metric === "exports") {
+        rows = exportLogs
+          .map((row: any) => {
+            const documentId = row.document_id || row.career_document_id || null;
+            const document = documentId ? documentMap.get(String(documentId)) : null;
+            const userId = row.user_id || document?.user_id || null;
+            if (!userId || !learnerIds.has(String(userId))) return null;
+            return {
+              id: row.id,
+              user_name: nameFor(userId),
+              doc_type: row.doc_type || document?.doc_type || row.export_type || "document",
+              document_title: row.document_title || document?.title || "Document",
+              tokens_consumed: row.tokens_consumed ?? row.token_cost ?? null,
+              status: row.status || "success",
+              created_at: row.created_at,
+            };
+          })
+          .filter(Boolean)
+          .sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at));
+      }
+
+      if (metric === "tokens") {
+        rows = learnerTransactions
+          .filter((tx: any) => Number(tx.amount || 0) < 0)
+          .map((tx: any) => ({
+            id: tx.id,
+            user_name: nameFor(tx.user_id),
+            reason: tx.reason || tx.transaction_type || "Consommation de jetons",
+            tokens: Math.abs(Number(tx.amount || 0)),
+            created_at: tx.created_at,
+          }))
+          .sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at));
+      }
+
+      return json({ metric, total: rows.length, rows: rows.slice(0, 500) });
+    }
+
     if (action === "get_config") {
       const [rules, tokenConfig, packs, aiConfig, templates, questions, exportLogs, transactions, documents, orders, userRoles] = await Promise.all([
         safeRows(sb, "career_admin_rules"),

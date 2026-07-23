@@ -55,15 +55,6 @@ export default function AdminOmniaLiveOverview(){
   ];
 
   return <AdminOmniaLiveShell title="Omnia Live" subtitle="Gérez les événements, validations et opérations depuis un seul espace.">
-    <div className="mb-6 flex flex-wrap items-center justify-end gap-3">
-      <Link to="/omnia-live" className="rounded-xl border border-[#002050] px-5 py-3 font-bold text-[#002050] transition hover:bg-slate-50">
-        Voir Omnia Live
-      </Link>
-      <Link to="/admin/omnia-live/creer" className="rounded-xl bg-[#BF8813] px-5 py-3 font-bold text-white transition hover:opacity-90">
-        + Créer un Live
-      </Link>
-    </div>
-
     {error&&<div className="mb-5 rounded-xl bg-red-50 p-4 text-red-700">{error}</div>}
 
     <section className="border-b border-slate-200 pb-7">

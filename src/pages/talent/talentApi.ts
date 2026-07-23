@@ -3,15 +3,40 @@ import { getSessionToken } from '../../lib/session';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
-function apiErrorMessage(data: any, fallback: string) {
-  const candidate = data?.message ?? data?.error ?? data?.details;
-  if (typeof candidate === 'string' && candidate.trim()) return candidate;
-  if (candidate && typeof candidate === 'object') {
-    const nested = candidate.message ?? candidate.error ?? candidate.details;
-    if (typeof nested === 'string' && nested.trim()) return nested;
+function apiErrorMessage(value: unknown, fallback: string, depth = 0): string {
+  if (depth > 5) return fallback;
+  if (value instanceof Error) {
+    if (value.message && value.message.trim() && value.message.trim() !== '[object Object]') {
+      return value.message;
+    }
+    return apiErrorMessage((value as Error & { cause?: unknown }).cause, fallback, depth + 1);
+  }
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (text && text !== '[object Object]' && text !== '{}') return text;
+    return fallback;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const text = apiErrorMessage(item, '', depth + 1);
+      if (text) return text;
+    }
+    return fallback;
+  }
+  if (value && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    const parts: string[] = [];
+    for (const key of ['message', 'error_description', 'error', 'details', 'hint', 'code']) {
+      const nested = row[key];
+      if (nested === undefined || nested === null) continue;
+      const text = apiErrorMessage(nested, '', depth + 1);
+      if (text && !parts.includes(text)) parts.push(text);
+    }
+    if (parts.length) return parts.join(' — ');
   }
   return fallback;
 }
+
 
 export type PublicTalent = {
   id: string;
@@ -82,8 +107,15 @@ async function recruitmentRequest<T>(action: string, payload: Record<string, unk
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ action, scope, ...payload }),
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(apiErrorMessage(data, 'Opération Omnia Talent indisponible.'));
+  const raw = await response.text();
+  let data: any = {};
+  if (raw) {
+    try { data = JSON.parse(raw); }
+    catch { data = { message: raw }; }
+  }
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(data, `Opération Omnia Talent indisponible (${response.status}).`));
+  }
   return data as T;
 }
 
