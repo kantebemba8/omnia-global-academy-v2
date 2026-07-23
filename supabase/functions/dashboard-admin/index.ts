@@ -100,9 +100,10 @@ Deno.serve(async (req: Request) => {
       const roleGroups: Record<string, string[]> = {
         apprenant: ["apprenant"],
         professeur: ["professeur"],
-        structure: ["responsable_structure","gestionnaire_partenaire","etablissement_directeur","etablissement_enseignant","structure"],
+        structure: ["responsable_structure","gestionnaire_partenaire","etablissement_directeur","etablissement_enseignant","structure","recruteur_structure"],
         organisateur: ["organizer","organisateur"],
         moderateur: ["moderateur","moderator"],
+        recruteur_independant: ["recruteur_independant","recruteur"],
       };
       const keys = roleGroups[requestedRole] ?? [requestedRole];
       const { data: roleRows, error: roleError } = await sb
@@ -306,9 +307,10 @@ Deno.serve(async (req: Request) => {
     const roleGroups: Record<string, string[]> = {
       "Apprenants": ["apprenant"],
       "Professeurs": ["professeur"],
-      "Structures": ["responsable_structure", "gestionnaire_partenaire", "etablissement_directeur", "etablissement_enseignant", "structure"],
+      "Structures": ["responsable_structure", "gestionnaire_partenaire", "etablissement_directeur", "etablissement_enseignant", "structure", "recruteur_structure"],
       "Organisateurs": ["organizer", "organisateur"],
       "Modérateurs": ["moderateur", "moderator"],
+      "Recruteurs indépendants": ["recruteur_independant", "recruteur"],
     };
     const groupedKeys = new Set([...Object.values(roleGroups).flat(), "super_admin"]);
     const allUserIds = [...new Set((userRoles ?? []).map((r:any)=>r.user_id).filter(Boolean))];
@@ -325,6 +327,7 @@ Deno.serve(async (req: Request) => {
         : label === "Structures" ? "structure"
         : label === "Organisateurs" ? "organisateur"
         : label === "Modérateurs" ? "moderateur"
+        : label === "Recruteurs indépendants" ? "recruteur_independant"
         : keys[0];
       usersByRole.push({
         role: label,
