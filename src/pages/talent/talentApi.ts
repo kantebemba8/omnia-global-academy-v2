@@ -175,6 +175,15 @@ export async function loadRecruitmentTeam() {
 export async function updateRecruitmentPermissions(userId: string, permissions: Record<string, boolean>) {
   return recruitmentRequest<{ success: true }>('update_team_permissions', { user_id: userId, permissions }, 'structure');
 }
+export async function createStructureRecruiter(input: {
+  full_name: string; email: string; phone_number: string; country_code?: string;
+  job_title?: string; role_label?: string; permissions?: Record<string, boolean>;
+}) {
+  return recruitmentRequest<{ success: true; member: any; temporary_password: string; email_sent: boolean }>('create_structure_recruiter', input, 'structure');
+}
+export async function setStructureRecruiterStatus(userId: string, status: 'actif'|'suspendu'|'retire') {
+  return recruitmentRequest<{ success: true }>('set_structure_recruiter_status', { user_id: userId, status }, 'structure');
+}
 
 export type RecruiterStatus = {
   user_id: string;

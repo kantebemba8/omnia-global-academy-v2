@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Building2, ChevronRight, Radio } from 'lucide-react';
+import { BookOpen, GraduationCap, Building2, ChevronRight, Radio, UserRoundSearch } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 
 const roles = [
@@ -23,6 +23,13 @@ const roles = [
     title: 'Organisateur',
     description: "J’organise des Lives, conférences, masterclass et événements en ligne",
     path: '/inscription/organisateur',
+  },
+  {
+    key: 'recruteur_independant',
+    icon: UserRoundSearch,
+    title: 'Recruteur indépendant',
+    description: 'Je recrute avec un compte professionnel distinct',
+    path: '/inscription/recruteur',
   },
   {
     key: 'structure',

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { contactTalent, createRecruitmentInvite, loadPublicTalents, loadRecruitmentInvites, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, revokeRecruitmentInvite, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics } from '../talent/talentApi';
+import { contactTalent, createStructureRecruiter, loadPublicTalents, loadRecruitmentTeam, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, setStructureRecruiterStatus, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, updateRecruitmentPermissions } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 
 const BLUE = '#002050';
@@ -199,16 +199,89 @@ function ContactModal({talent,message,setMessage,busy,close,submit}:any){
 }
 
 function Team(){
-  const [invites,setInvites]=useState<any[]>([]);
-  const [email,setEmail]=useState('');
+  const permissionKeys = [
+    ['can_post_job','Publier des offres'],
+    ['can_search_talent','Rechercher des talents'],
+    ['can_contact_talent','Contacter les talents'],
+    ['can_manage_jobs','Gérer les offres'],
+    ['can_view_applications','Voir les candidatures'],
+    ['can_schedule_interview','Programmer les entretiens'],
+    ['can_manage_team','Gérer l’équipe recrutement'],
+  ] as const;
+  const defaultPermissions:Record<string,boolean> = {
+    can_post_job:true, can_search_talent:true, can_contact_talent:true,
+    can_manage_jobs:true, can_view_applications:true, can_schedule_interview:true,
+    can_manage_team:false,
+  };
+  const [members,setMembers]=useState<any[]>([]);
+  const [form,setForm]=useState({full_name:'',email:'',phone_number:'',country_code:'ML',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
+  const [permissions,setPermissions]=useState<Record<string,boolean>>(defaultPermissions);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
-  async function load(){ try{const r=await loadRecruitmentInvites();setInvites(r.invites||[])}catch(e){setError(e instanceof Error?e.message:'Invitations indisponibles.')} }
+  const [success,setSuccess]=useState<{email:string;password:string;emailSent:boolean}|null>(null);
+
+  async function load(){
+    try { const result=await loadRecruitmentTeam(); setMembers(result.members||[]); }
+    catch(e){ setError(e instanceof Error?e.message:'Équipe indisponible.'); }
+  }
   useEffect(()=>{load()},[]);
-  async function create(){setBusy(true);setError('');try{await createRecruitmentInvite({email:email.trim()||undefined,max_uses:1});setEmail('');await load()}catch(e){setError(e instanceof Error?e.message:'Création impossible.')}finally{setBusy(false)}}
-  async function revoke(id:string){setBusy(true);try{await revokeRecruitmentInvite(id);await load()}catch(e){setError(e instanceof Error?e.message:'Révocation impossible.')}finally{setBusy(false)}}
-  return <div className="space-y-5">
-    <section className="rounded-2xl border bg-white p-6" style={{borderColor:BORDER}}><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-base font-semibold" style={{color:BLUE}}>Inviter un recruteur</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Créez un code à usage limité. Le recruteur rejoindra directement le module Recrutement de votre Structure.</p></div><Link to="/structure/equipe" className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Gérer les membres<ArrowRight size={16}/></Link></div>{error&&<div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}<div className="mt-5 flex flex-col gap-3 sm:flex-row"><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email du recruteur (facultatif)" className="flex-1 rounded-xl border px-3 py-2.5 text-sm" style={{borderColor:BORDER}}/><button onClick={create} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>{busy?'Création…':'Créer un code'}</button></div></section>
-    <section className="rounded-2xl border bg-white" style={{borderColor:BORDER}}><div className="border-b p-4" style={{borderColor:BORDER}}><h2 className="font-semibold" style={{color:BLUE}}>Codes de recrutement</h2></div>{invites.length===0?<p className="p-6 text-sm" style={{color:MUTED}}>Aucun code créé.</p>:<div className="divide-y">{invites.map((i:any)=><div key={i.id} className="flex flex-wrap items-center gap-3 p-4"><div className="min-w-0 flex-1"><p className="font-mono text-sm font-semibold tracking-wider" style={{color:BLUE}}>{i.code}</p><p className="mt-1 text-xs" style={{color:MUTED}}>{i.email||'Tous les emails'} · {i.uses_count}/{i.max_uses} utilisation(s){i.expires_at?` · expire ${new Date(i.expires_at).toLocaleDateString('fr-FR')}`:''}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:i.revoked_at?'#FEE2E2':'#DCFCE7',color:i.revoked_at?'#B91C1C':'#166534'}}>{i.revoked_at?'Révoqué':'Actif'}</span>{!i.revoked_at&&<button onClick={()=>revoke(i.id)} disabled={busy} className="rounded-lg border px-3 py-2 text-xs font-semibold text-red-700">Révoquer</button>}</div>)}</div>}</section>
+
+  async function create(){
+    setBusy(true); setError(''); setSuccess(null);
+    try{
+      const result=await createStructureRecruiter({...form,permissions});
+      setSuccess({email:form.email,password:result.temporary_password,emailSent:result.email_sent});
+      setForm({full_name:'',email:'',phone_number:'',country_code:'ML',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
+      setPermissions(defaultPermissions);
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:'Création impossible.');}
+    finally{setBusy(false);}
+  }
+
+  async function changeStatus(userId:string,status:'actif'|'suspendu'|'retire'){
+    setBusy(true); setError('');
+    try{ await setStructureRecruiterStatus(userId,status); await load(); }
+    catch(e){ setError(e instanceof Error?e.message:'Modification impossible.'); }
+    finally{ setBusy(false); }
+  }
+
+  async function togglePermission(member:any,key:string){
+    const current = member.recruitment_permissions || {};
+    const next = {...current,[key]:!current[key]};
+    setBusy(true); setError('');
+    try{ await updateRecruitmentPermissions(member.user_id,next); await load(); }
+    catch(e){ setError(e instanceof Error?e.message:'Permission non enregistrée.'); }
+    finally{ setBusy(false); }
+  }
+
+  return <div className="space-y-8">
+    <section className="border-y py-6" style={{borderColor:BORDER}}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><h2 className="text-base font-semibold" style={{color:BLUE}}>Créer un recruteur interne</h2><p className="mt-1 max-w-2xl text-sm leading-6" style={{color:MUTED}}>Le compte est créé au nom de votre Structure. Les informations de l’organisation sont reprises automatiquement. Un mot de passe temporaire est généré et devra être modifié à la première connexion.</p></div>
+        <Link to="/structure/equipe" className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{borderColor:GOLD,color:BLUE}}>Équipe générale<ArrowRight size={16}/></Link>
+      </div>
+      {error&&<div className="mt-4 border-l-4 border-red-500 py-2 pl-3 text-sm text-red-700">{error}</div>}
+      {success&&<div className="mt-4 border-l-4 py-3 pl-3 text-sm" style={{borderColor:GOLD,color:BLUE}}><p className="font-semibold">Compte créé : {success.email}</p><p className="mt-1">Mot de passe temporaire : <span className="font-mono font-bold">{success.password}</span></p><p className="mt-1 text-xs text-gray-500">{success.emailSent?'Les accès ont aussi été envoyés par email.':'Brevo n’est pas configuré : transmettez ces accès de manière sécurisée.'}</p></div>}
+      <div className="mt-6 grid gap-5 md:grid-cols-2">
+        <FieldLine label="Nom complet" value={form.full_name} onChange={value=>setForm({...form,full_name:value})}/>
+        <FieldLine label="Email professionnel" value={form.email} onChange={value=>setForm({...form,email:value})} type="email"/>
+        <FieldLine label="Téléphone professionnel" value={form.phone_number} onChange={value=>setForm({...form,phone_number:value})}/>
+        <FieldLine label="Pays" value={form.country_code} onChange={value=>setForm({...form,country_code:value.toUpperCase()})}/>
+        <FieldLine label="Fonction" value={form.job_title} onChange={value=>setForm({...form,job_title:value})}/>
+        <label className="block"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>Rôle interne</span><select value={form.role_label} onChange={event=>setForm({...form,role_label:event.target.value})} className="h-11 w-full border-b bg-transparent px-1 text-sm" style={{borderColor:GOLD}}><option>Responsable recrutement</option><option>Recruteur Structure</option><option>Chargé de sourcing</option><option>Lecture seule</option></select></label>
+      </div>
+      <div className="mt-6"><p className="text-xs font-semibold uppercase tracking-wider" style={{color:BLUE}}>Permissions initiales</p><div className="mt-3 grid gap-x-8 md:grid-cols-2">{permissionKeys.map(([key,label])=><label key={key} className="flex items-center justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>{label}</span><input type="checkbox" checked={!!permissions[key]} onChange={()=>setPermissions({...permissions,[key]:!permissions[key]})}/></label>)}</div></div>
+      <div className="mt-6 flex justify-end"><button onClick={create} disabled={busy||!form.full_name.trim()||!form.email.trim()||!form.phone_number.trim()} className="border-b-2 px-2 py-2 text-sm font-semibold disabled:opacity-40" style={{borderColor:GOLD,color:BLUE}}>{busy?'Création…':'Créer le compte recruteur'}</button></div>
+    </section>
+
+    <section>
+      <div className="border-b pb-3" style={{borderColor:BORDER}}><h2 className="font-semibold" style={{color:BLUE}}>Équipe de recrutement</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les droits sont appliqués uniquement au recrutement de votre Structure.</p></div>
+      {members.length===0?<p className="py-8 text-sm" style={{color:MUTED}}>Aucun recruteur interne configuré.</p>:<div className="divide-y" style={{borderColor:BORDER}}>{members.map((member:any)=><div key={member.user_id} className="py-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-semibold" style={{color:BLUE}}>{member.users?.full_name||'Membre Structure'}</p><p className="mt-1 text-sm" style={{color:MUTED}}>{member.users?.email||'Email non affiché'} · {member.role_in_org||'Rôle interne'}</p><p className="mt-1 text-xs" style={{color:member.status==='actif'?'#15803D':'#B91C1C'}}>{member.is_primary?'Responsable principal':member.status==='actif'?'Actif':'Suspendu'}</p></div>{!member.is_primary&&<div className="flex gap-2">{member.status==='actif'?<button onClick={()=>changeStatus(member.user_id,'suspendu')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-amber-700">Suspendre</button>:<button onClick={()=>changeStatus(member.user_id,'actif')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-green-700">Réactiver</button>}<button onClick={()=>changeStatus(member.user_id,'retire')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-red-700">Retirer</button></div>}</div>{!member.is_primary&&<div className="mt-4 grid gap-x-8 md:grid-cols-2">{permissionKeys.map(([key,label])=><label key={key} className="flex items-center justify-between border-b py-2 text-xs" style={{borderColor:BORDER}}><span>{label}</span><input type="checkbox" checked={!!member.recruitment_permissions?.[key]} onChange={()=>togglePermission(member,key)} disabled={busy||member.status!=='actif'}/></label>)}</div>}</div>)}</div>}
+    </section>
   </div>;
 }
+
+function FieldLine({label,value,onChange,type='text'}:{label:string;value:string;onChange:(value:string)=>void;type?:string}){
+  return <label className="block"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>{label}</span><input type={type} value={value} onChange={event=>onChange(event.target.value)} className="h-11 w-full border-b bg-transparent px-1 text-sm outline-none" style={{borderColor:GOLD}}/></label>;
+}
+

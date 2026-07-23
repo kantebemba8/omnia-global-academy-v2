@@ -5,7 +5,7 @@ import { ENDPOINTS } from '../../lib/config';
 import {
   Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
   Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
-  Wallet, Briefcase, MessageSquare, Wrench, AlertCircle, CheckCircle2
+  Wallet, Briefcase, MessageSquare, Wrench, AlertCircle, CheckCircle2, UserRoundSearch
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -142,6 +142,7 @@ export default function AdminDashboard() {
     { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
     { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
     { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
+    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true' },
   ];
 
   return (

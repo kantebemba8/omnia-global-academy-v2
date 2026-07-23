@@ -31,6 +31,19 @@ const STRUCTURE_NAV: NavItem[] = [
   { path: '/structure/statistiques',        label: 'Statistiques',              icon: BarChart2 },
   { path: '/structure/notifications',       label: 'Notifications',             icon: Bell },
   { path: '/structure/parametres',          label: 'Paramètres',                icon: Settings },
+
+];
+
+const STRUCTURE_RECRUITER_NAV: NavItem[] = [
+  { path: '/structure/recrutement/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/structure/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
+  { path: '/structure/recrutement/talents', label: 'Recherche de talents', icon: Search },
+  { path: '/structure/recrutement/candidats', label: 'Candidats', icon: Users },
+  { path: '/structure/recrutement/favoris', label: 'Talents favoris', icon: Heart },
+  { path: '/structure/recrutement/entretiens', label: 'Entretiens', icon: CalendarDays },
+  { path: '/structure/recrutement/messages', label: 'Messages', icon: MessageSquare },
+  { path: '/structure/recrutement/statistiques', label: 'Statistiques', icon: BarChart2 },
+  { path: '/talent', label: 'Omnia Talent', icon: Search },
 ];
 
 function monogram(name: string): string {
@@ -43,7 +56,7 @@ interface Props { children: ReactNode; displayName?: string }
 export function StructureLayout({ children, displayName }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<{ full_name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ full_name: string; email: string; roles?: string[] } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const previewMode = new URLSearchParams(location.search).get('preview') === 'true' && (() => {
@@ -60,6 +73,9 @@ export function StructureLayout({ children, displayName }: Props) {
       if (stored) setUser(JSON.parse(stored));
     } catch { /* ignore */ }
   }, []);
+
+  const recruitmentOnly = !!user?.roles?.includes('recruteur_structure') && !user.roles.some(role => ['responsable_structure','gestionnaire_partenaire','directeur','etablissement_directeur','super_admin'].includes(role));
+  const visibleNav = recruitmentOnly ? STRUCTURE_RECRUITER_NAV : STRUCTURE_NAV;
 
   function handleLogout() {
     if (previewMode) { navigate('/admin/dashboard'); return; }
@@ -95,7 +111,7 @@ export function StructureLayout({ children, displayName }: Props) {
 
       {/* Navigation */}
       <nav className="sidebar-scrollbar flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
-        {STRUCTURE_NAV.map(item => {
+        {visibleNav.map(item => {
           const active = isActive(item);
           const Icon = item.icon;
           return (

@@ -17,6 +17,7 @@ import { SelectRole } from './pages/auth/SelectRole';
 import { RegisterApprenant } from './pages/auth/RegisterApprenant';
 import { RegisterProfesseur } from './pages/auth/RegisterProfesseur';
 import { RegisterOrganizer } from './pages/auth/RegisterOrganizer';
+import { RegisterRecruiterIndependent } from './pages/auth/RegisterRecruiterIndependent';
 import { RegisterEtablissement } from './pages/auth/RegisterEtablissement';
 import RegisterOrganisation from './pages/auth/RegisterOrganisation';
 import { RegisterStructure } from './pages/auth/RegisterStructure';
@@ -419,6 +420,7 @@ export default function App() {
         <Route path="/inscription/apprenant" element={<RegisterApprenant />} />
         <Route path="/inscription/professeur" element={<RegisterProfesseur />} />
           <Route path="/inscription/organisateur" element={<RegisterOrganizer />} />
+          <Route path="/inscription/recruteur" element={<RegisterRecruiterIndependent />} />
           <Route path="/inscription/structure" element={<RegisterStructure />} />
           <Route path="/inscription/organisation" element={<RegisterOrganisation />} />
         <Route path="/verifier-otp" element={<VerifyOTP />} />
