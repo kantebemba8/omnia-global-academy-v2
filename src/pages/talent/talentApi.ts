@@ -3,6 +3,16 @@ import { getSessionToken } from '../../lib/session';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
+function apiErrorMessage(data: any, fallback: string) {
+  const candidate = data?.message ?? data?.error ?? data?.details;
+  if (typeof candidate === 'string' && candidate.trim()) return candidate;
+  if (candidate && typeof candidate === 'object') {
+    const nested = candidate.message ?? candidate.error ?? candidate.details;
+    if (typeof nested === 'string' && nested.trim()) return nested;
+  }
+  return fallback;
+}
+
 export type PublicTalent = {
   id: string;
   full_name: string;
@@ -73,7 +83,7 @@ async function recruitmentRequest<T>(action: string, payload: Record<string, unk
     body: JSON.stringify({ action, scope, ...payload }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || 'Opération Talent indisponible.');
+  if (!response.ok) throw new Error(apiErrorMessage(data, 'Opération Omnia Talent indisponible.'));
   return data as T;
 }
 
@@ -85,14 +95,14 @@ export async function loadPublicTalents(): Promise<PublicTalent[]> {
     body: JSON.stringify({ action: 'public_list' }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || 'Impossible de charger les profils publics.');
+  if (!response.ok) throw new Error(apiErrorMessage(data, 'Impossible de charger les profils publics.'));
   return data.profiles || [];
 }
 
 export async function loadPublicJobs(): Promise<PublicJob[]> {
   const response = await fetch(ENDPOINTS.jobsList, { headers: { 'Content-Type': 'application/json' } });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || 'Impossible de charger les offres.');
+  if (!response.ok) throw new Error(apiErrorMessage(data, 'Impossible de charger les offres.'));
   return data.jobs || data.offers || [];
 }
 

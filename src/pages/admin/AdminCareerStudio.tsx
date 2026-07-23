@@ -112,9 +112,25 @@ type InterviewQuestion = {
 };
 
 type AdminStats = {
-  total_cv: number; total_lm: number; completed_cv: number; completed_lm: number; unique_creators: number;
-  total_exports: number; cv_exports: number; lm_exports: number; tokens_consumed: number; tokens_credited: number;
-  paid_token_orders: number; token_revenue_xof: number; active_templates: number; active_packs: number; active_questions: number;
+  total_cv: number;
+  total_lm: number;
+  unique_creators: number;
+  active_users_30d: number;
+  total_exports: number;
+  export_success: number;
+  export_failed: number;
+  tokens_consumed: number;
+  tokens_credited: number;
+  tokens_sold: number;
+  token_sales_count: number;
+  token_revenue_xof: number;
+  ai_actions: number;
+  active_templates: number;
+  active_cv_templates: number;
+  active_lm_templates: number;
+  active_packs: number;
+  active_questions: number;
+  top_templates: Array<{ template_key: string; name_fr: string; template_type: string; usage_count: number }>;
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -258,7 +274,7 @@ export default function AdminCareerStudio() {
   const [lmTemplates, setLmTemplates] = useState<Template[]>([]);
   const [showTemplateCreator, setShowTemplateCreator] = useState(false);
   const [customTemplate, setCustomTemplate] = useState({ template_key: '', name_fr: '', description_fr: '', thumbnail_url: '', variant: 'split', primary: '#002050', accent: '#bf8813', sidebar: '#eef3f8', is_free: true, is_ats_compatible: true });
-  const [stats, setStats] = useState<AdminStats>({ total_cv:0,total_lm:0,completed_cv:0,completed_lm:0,unique_creators:0,total_exports:0,cv_exports:0,lm_exports:0,tokens_consumed:0,tokens_credited:0,paid_token_orders:0,token_revenue_xof:0,active_templates:0,active_packs:0,active_questions:0 });
+  const [stats, setStats] = useState<AdminStats>({ total_cv: 0, total_lm: 0, unique_creators: 0, active_users_30d: 0, total_exports: 0, export_success: 0, export_failed: 0, tokens_consumed: 0, tokens_credited: 0, tokens_sold: 0, token_sales_count: 0, token_revenue_xof: 0, ai_actions: 0, active_templates: 0, active_cv_templates: 0, active_lm_templates: 0, active_packs: 0, active_questions: 0, top_templates: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -338,7 +354,7 @@ export default function AdminCareerStudio() {
     setSaving(true);
     try {
       const data = await postAdmin<{ success: boolean; updated: number }>({ action: 'save_rules', rules });
-      showToast(`✅ ${data.updated} règle(s) sauvegardée(s)`);
+      showToast(`${data.updated} règle(s) sauvegardée(s)`);
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur de sauvegarde', 'error');
@@ -351,7 +367,7 @@ export default function AdminCareerStudio() {
     setSaving(true);
     try {
       const data = await postTokenManager<{ success: boolean; updated: number }>({ action: 'update_config', configs: tokenConfig });
-      showToast(`✅ ${data.updated} coût(s) sauvegardé(s)`);
+      showToast(`${data.updated} coût(s) sauvegardé(s)`);
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur de sauvegarde', 'error');
@@ -363,8 +379,8 @@ export default function AdminCareerStudio() {
   async function saveTokenPack(pack: TokenPack) {
     setSaving(true);
     try {
-      await postTokenManager({ action: 'update_pack', pack_id: pack.id, pack_key: pack.pack_key, name_fr: pack.name_fr, tokens: pack.tokens, price_xof: pack.price_xof, is_active: pack.is_active, is_popular: pack.is_popular, bonus_tokens: pack.bonus_tokens, display_order: pack.display_order });
-      showToast('✅ Pack sauvegardé');
+      await postTokenManager({ action: 'update_pack', pack_id: pack.id, pack_key: pack.pack_key, name_fr: pack.name_fr, description_fr: pack.description_fr, tokens: pack.tokens, price_xof: pack.price_xof, price_eur: pack.price_eur, currency_code: pack.currency_code || 'XOF', is_active: pack.is_active, is_popular: pack.is_popular, bonus_tokens: pack.bonus_tokens, display_order: pack.display_order });
+      showToast('Pack sauvegardé');
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur pack', 'error');
@@ -377,7 +393,7 @@ export default function AdminCareerStudio() {
     setSaving(true);
     try {
       const data = await postAdmin<{ success: boolean; updated: number }>({ action: 'save_ai_config', configs: aiConfig });
-      showToast(`✅ ${data.updated} paramètre(s) IA sauvegardé(s)`);
+      showToast(`${data.updated} paramètre(s) IA sauvegardé(s)`);
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur IA', 'error');
@@ -390,7 +406,7 @@ export default function AdminCareerStudio() {
     setSaving(true);
     try {
       await postAdmin({ action: 'save_template', template });
-      showToast('✅ Modèle sauvegardé');
+      showToast('Modèle sauvegardé');
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur modèle', 'error');
@@ -399,6 +415,23 @@ export default function AdminCareerStudio() {
     }
   }
 
+
+  async function uploadTemplateThumbnail(file: File) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const result = await postTemplateManager<{ success: boolean; url: string }>({
+      action: 'upload_thumbnail',
+      filename: file.name,
+      mime: file.type || 'image/png',
+      data_url: dataUrl,
+    });
+    setCustomTemplate((prev) => ({ ...prev, thumbnail_url: result.url }));
+    showToast('Image du modèle téléversée. Elle sera utilisée comme aperçu du modèle éditable.');
+  }
 
   async function createCompatibleTemplate(type: 'cv' | 'lm') {
     if (!customTemplate.template_key.trim() || !customTemplate.name_fr.trim()) {
@@ -432,7 +465,7 @@ export default function AdminCareerStudio() {
       setter(prev => [...prev.filter(t => t.template_key !== data.template.template_key), data.template].sort((a,b) => a.display_order-b.display_order));
       setShowTemplateCreator(false);
       setCustomTemplate({ template_key: '', name_fr: '', description_fr: '', thumbnail_url: '', variant: 'split', primary: '#002050', accent: '#bf8813', sidebar: '#eef3f8', is_free: true, is_ats_compatible: true });
-      showToast('✅ Template compatible ajouté. Il sera visible par les apprenants après actualisation.');
+      showToast('Modèle ajouté. Il est disponible pour les apprenants après actualisation.');
     } catch (err) {
       showToast((err as Error).message || 'Erreur template', 'error');
     } finally { setSaving(false); }
@@ -443,9 +476,11 @@ export default function AdminCareerStudio() {
     if (!questionForm.question.trim()) { showToast('Veuillez saisir une question.', 'error'); return; }
     try {
       const data = await postAdmin<{question: InterviewQuestion}>({ action:'question_create', question:{...questionForm, question:questionForm.question.trim()} });
-      setQuestionBank(prev => [data.question, ...prev]);
+      setQuestionBank(prev => [data.question, ...prev.filter(q => q.id !== data.question.id)]);
       setQuestionForm({ category:'rh', sector:'', level:'Débutant', question:'', expected_answer:'', keywords:'', is_active:true, source:'super_admin' });
-      showToast('✅ Question enregistrée et synchronisée.');
+      showToast('Question enregistrée et synchronisée.');
+      const refreshed = await postAdmin<{ questions?: InterviewQuestion[] }>({ action: 'get_config' });
+      if (refreshed.questions) setQuestionBank(refreshed.questions);
     } catch(e) { showToast((e as Error).message || 'Erreur question','error'); }
   }
   async function toggleInterviewQuestion(id: string) {
@@ -624,21 +659,42 @@ export default function AdminCareerStudio() {
 
           {!loading && subTab === 'dashboard' && (
             <div className="space-y-6">
-              <div className="rounded-2xl border bg-white" style={{borderColor:BORDER}}>
-                <div className="grid gap-0 md:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    ['Documents créés', stats.total_cv + stats.total_lm, `${stats.total_cv} CV · ${stats.total_lm} LM`],
-                    ['Documents finalisés', stats.completed_cv + stats.completed_lm, `${stats.completed_cv} CV · ${stats.completed_lm} LM`],
-                    ['Créateurs uniques', stats.unique_creators, 'Apprenants ayant créé au moins un document'],
-                    ['Exports PDF', stats.total_exports, `${stats.cv_exports} CV · ${stats.lm_exports} LM`],
-                    ['Jetons consommés', stats.tokens_consumed, `${stats.tokens_credited} jetons crédités`],
-                    ['Achats de jetons payés', stats.paid_token_orders, `${Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')} XOF encaissés`],
-                    ['Modèles actifs', stats.active_templates, `${cvTemplates.filter(t=>t.is_active).length} CV · ${lmTemplates.filter(t=>t.is_active).length} LM`],
-                    ['Questions actives', stats.active_questions, `${stats.active_packs} pack(s) de jetons actif(s)`],
-                  ].map(([label,value,detail],i)=><div key={String(label)} className="border-b p-5 md:border-r xl:[&:nth-child(4n)]:border-r-0" style={{borderColor:BORDER}}><p className="text-sm font-medium" style={{color:MUTED}}>{label}</p><p className="mt-2 text-2xl font-semibold" style={{color:OMNIA_BLUE}}>{value}</p><p className="mt-1 text-xs" style={{color:MUTED}}>{detail}</p></div>)}
-                </div>
+              <div className="flex flex-wrap gap-x-7 gap-y-2 border-y py-3 text-sm" style={{ borderColor: BORDER }}>
+                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_cv}</strong> CV apprenants</span>
+                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_lm}</strong> LM apprenants</span>
+                <span><strong style={{color:OMNIA_BLUE}}>{stats.unique_creators}</strong> créateurs</span>
+                <span><strong style={{color:OMNIA_BLUE}}>{stats.active_users_30d}</strong> actifs sur 30 jours</span>
+                <span><strong style={{color:OMNIA_BLUE}}>{stats.total_exports}</strong> exports</span>
+                <span><strong style={{color:OMNIA_GOLD}}>{stats.tokens_consumed}</strong> jetons consommés</span>
               </div>
-              <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Activité récente</h2><div className="mt-4 space-y-3">{tokenTransactions.slice(0,6).map((t:any)=><div key={t.id} className="flex items-center justify-between border-b pb-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{t.reason||t.transaction_type||'Mouvement de jetons'}</span><strong style={{color:Number(t.amount)<0?'#B91C1C':'#15803D'}}>{Number(t.amount)>0?'+':''}{t.amount||0}</strong></div>)}{tokenTransactions.length===0&&<p className="text-sm" style={{color:MUTED}}>Aucune activité enregistrée.</p>}</div></div><div className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>État opérationnel</h2><div className="mt-4 space-y-3 text-sm" style={{color:MUTED}}><p>{tokenPacks.filter(p=>p.is_active).length} pack(s) de jetons proposé(s)</p><p>{questionBank.filter(q=>q.is_active).length} question(s) active(s)</p><p>{exportLogs.length} export(s) récent(s) chargé(s)</p><p>{cvTemplates.filter(t=>t.is_active).length} modèles CV et {lmTemplates.filter(t=>t.is_active).length} modèles LM actifs</p></div></div></div>
+
+              <div className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
+                <section className="border-t" style={{borderColor:BORDER}}>
+                  <div className="flex items-center justify-between border-b py-3" style={{borderColor:BORDER}}>
+                    <h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Activité réelle Career Studio</h2>
+                    <button onClick={()=>setSubTab('stats')} className="text-xs font-semibold" style={{color:OMNIA_GOLD}}>Voir les statistiques</button>
+                  </div>
+                  {tokenTransactions.slice(0,8).map((tx:any)=><div key={tx.id} className="flex items-center justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><div><p className="font-medium" style={{color:OMNIA_BLUE}}>{tx.reason||tx.transaction_type||'Mouvement de jetons'}</p><p className="text-xs" style={{color:MUTED}}>{tx.created_at?new Date(tx.created_at).toLocaleString('fr-FR'):'—'}</p></div><strong style={{color:Number(tx.amount)<0?'#B91C1C':'#15803D'}}>{Number(tx.amount)>0?'+':''}{Number(tx.amount||0)}</strong></div>)}
+                  {tokenTransactions.length===0&&<p className="py-6 text-sm" style={{color:MUTED}}>Aucune activité Career enregistrée.</p>}
+                </section>
+
+                <section className="border-t" style={{borderColor:BORDER}}>
+                  <h2 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>État opérationnel</h2>
+                  {[
+                    ['Packs de jetons actifs', stats.active_packs],
+                    ['Questions entretien actives', stats.active_questions],
+                    ['Modèles CV actifs', stats.active_cv_templates],
+                    ['Modèles LM actifs', stats.active_lm_templates],
+                    ['Exports réussis', stats.export_success],
+                    ['Exports échoués', stats.export_failed],
+                  ].map(([label,value])=><div key={String(label)} className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{label}</span><strong style={{color:OMNIA_BLUE}}>{value}</strong></div>)}
+                </section>
+              </div>
+
+              <div className="border-t pt-4" style={{borderColor:BORDER}}>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Vente de jetons</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les packs configurés dans Jetons & Packs sont la source unique affichée aux apprenants.</p></div><button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Gérer les jetons & packs</button></div>
+                <div className="mt-4 flex flex-wrap gap-x-7 gap-y-2 text-sm"><span><strong>{stats.token_sales_count}</strong> achat(s) confirmé(s)</span><span><strong>{stats.tokens_sold}</strong> jetons vendus/crédités par packs</span><span><strong>{Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')} XOF</strong> de chiffre d’affaires</span></div>
+              </div>
             </div>
           )}
 
@@ -653,6 +709,14 @@ export default function AdminCareerStudio() {
                   <Save size={15} /> Sauvegarder
                 </button>
               </div>
+              <section className="border-y py-4" style={{borderColor:BORDER}}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Jetons & vente — source synchronisée</h3><p className="mt-1 text-sm" style={{color:MUTED}}>Les coûts ci-dessous et les packs vendus sont ceux utilisés par l’espace apprenant. La modification détaillée reste centralisée dans Jetons & Packs pour éviter les doublons.</p></div>
+                  <button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Ouvrir Jetons & Packs</button>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{tokenConfig.map(cfg=><div key={cfg.config_key} className="flex justify-between border-b py-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{cfg.description_fr||cfg.config_key}</span><strong style={{color:OMNIA_BLUE}}>{cfg.config_value} {cfg.value_unit||'jeton(s)'}</strong></div>)}</div>
+                <div className="mt-4 flex flex-wrap gap-4 text-sm">{tokenPacks.filter(p=>p.is_active).map(pack=><span key={pack.pack_key}><strong style={{color:OMNIA_BLUE}}>{pack.name_fr}</strong> · {pack.tokens+(pack.bonus_tokens||0)} jetons · {Number(pack.price_xof||0).toLocaleString('fr-FR')} XOF</span>)}</div>
+              </section>
               {Object.entries(groupedRules).map(([group, items]) => (
                 <section key={group} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                   <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>{GROUP_LABELS[group] || group}</h3>
@@ -768,9 +832,15 @@ export default function AdminCareerStudio() {
                         <option value="split">Deux colonnes</option><option value="band">Bandeau supérieur</option><option value="minimal">Minimal ATS</option><option value="timeline">Chronologie</option><option value="cards">Blocs</option><option value="executive">Executive</option><option value="creative">Créatif</option><option value="tech">Tech sombre</option><option value="academic">Académique</option><option value="hospitality">Hospitality</option><option value="qhse">QHSE</option><option value="compact">Compact</option>
                       </select>
                     </label>
-                    <label className="text-xs font-semibold" style={{ color: MUTED }}>URL miniature (optionnelle)
-                      <input value={customTemplate.thumbnail_url} onChange={e=>setCustomTemplate(v=>({...v,thumbnail_url:e.target.value}))} placeholder="https://.../apercu.webp" className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
-                    </label>
+                    <div>
+                      <label className="text-xs font-semibold" style={{ color: MUTED }}>Image d’aperçu du modèle</label>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <label className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}>Joindre une image<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{setSaving(true);await uploadTemplateThumbnail(file);}catch(err){showToast((err as Error).message||'Téléversement impossible','error')}finally{setSaving(false)}}}/></label>
+                        <input value={customTemplate.thumbnail_url} onChange={e=>setCustomTemplate(v=>({...v,thumbnail_url:e.target.value}))} placeholder="ou URL d’image" className="min-w-[220px] flex-1 rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+                      </div>
+                      {customTemplate.thumbnail_url&&<img src={customTemplate.thumbnail_url} alt="Aperçu modèle" className="mt-3 h-28 max-w-full rounded-lg border object-contain p-2" style={{borderColor:BORDER}}/>}
+                      <p className="mt-2 text-xs" style={{color:MUTED}}>L’image sert d’aperçu. Le modèle reste entièrement éditable grâce à la mise en page Omnia sélectionnée ci-dessus.</p>
+                    </div>
                     <div className="flex flex-wrap gap-4 md:col-span-2">
                       {[['primary','Couleur principale'],['accent','Accent'],['sidebar','Colonne']].map(([key,label])=><label key={key} className="text-xs font-semibold" style={{color:MUTED}}>{label}<input type="color" value={(customTemplate as any)[key]} onChange={e=>setCustomTemplate(v=>({...v,[key]:e.target.value}))} className="ml-2 h-9 w-12 rounded border align-middle" style={{borderColor:BORDER}}/></label>)}
                       <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={customTemplate.is_free} onChange={e=>setCustomTemplate(v=>({...v,is_free:e.target.checked}))}/> Gratuit</label>
@@ -792,6 +862,9 @@ export default function AdminCareerStudio() {
                   <p className="mt-1 text-sm" style={{ color: MUTED }}>Activez l’IA, ajustez les limites et les coûts liés aux suggestions CV/LM.</p>
                 </div>
                 <button onClick={saveAiConfig} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}><Save size={15} /> Sauvegarder</button>
+              </div>
+              <div className="border-y py-4 text-sm" style={{borderColor:BORDER,color:MUTED}}>
+                <p><strong style={{color:OMNIA_BLUE}}>Fonctionnement :</strong> l’IA assiste la rédaction, l’adaptation à une offre, l’analyse ATS, la traduction et la reformulation. Les interrupteurs activent chaque capacité ; les limites quotidiennes/mensuelles protègent les coûts ; les coûts en jetons restent définis dans Jetons & Packs. Désactiver une capacité ici doit la rendre indisponible côté apprenant.</p>
               </div>
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -917,21 +990,21 @@ export default function AdminCareerStudio() {
             </div>
           )}
 
-          {!loading && subTab === 'exports' && (<div className="rounded-2xl border bg-white overflow-hidden" style={{borderColor:BORDER}}><div className="p-5 border-b" style={{borderColor:BORDER}}><h2 className="text-xl font-semibold" style={{color:OMNIA_BLUE}}>Exports CV & lettres de motivation</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Journal réel des exports enregistrés par la plateforme.</p></div><div className="divide-y">{exportLogs.map((e:any)=><div key={e.id} className="grid grid-cols-4 gap-3 px-5 py-3 text-sm"><span>{e.doc_type?.toUpperCase()||e.export_type||'Document'}</span><span className="truncate">{e.document_id||e.career_document_id||'—'}</span><span>{e.tokens_consumed??e.token_cost??'—'} jeton(s)</span><span>{e.created_at?new Date(e.created_at).toLocaleString('fr-FR'):'—'}</span></div>)}{exportLogs.length===0&&<div className="p-8 text-center text-sm" style={{color:MUTED}}>Aucun export enregistré.</div>}</div></div>)}
+          {!loading && subTab === 'exports' && (<div className="overflow-hidden border-y bg-white" style={{borderColor:BORDER}}><div className="border-b py-5" style={{borderColor:BORDER}}><h2 className="text-xl font-semibold" style={{color:OMNIA_BLUE}}>Exports CV & lettres de motivation</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Uniquement les CV et LM réellement exportés par les apprenants.</p></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-xs" style={{borderColor:BORDER,color:MUTED}}><th className="py-3 pr-4">Apprenant</th><th className="py-3 pr-4">Type</th><th className="py-3 pr-4">Document</th><th className="py-3 pr-4">Jetons</th><th className="py-3 pr-4">Statut</th><th className="py-3">Date</th></tr></thead><tbody>{exportLogs.map((e:any)=><tr key={e.id} className="border-b" style={{borderColor:BORDER}}><td className="py-3 pr-4"><p className="font-medium" style={{color:OMNIA_BLUE}}>{e.user_name||'—'}</p><p className="text-xs" style={{color:MUTED}}>{e.user_email||''}</p></td><td className="py-3 pr-4 uppercase">{e.doc_type||e.export_type||'Document'}</td><td className="py-3 pr-4">{e.document_title||e.document_id||e.career_document_id||'—'}</td><td className="py-3 pr-4">{e.tokens_consumed??e.token_cost??'—'}</td><td className="py-3 pr-4">{e.status||'Réussi'}</td><td className="py-3">{e.created_at?new Date(e.created_at).toLocaleString('fr-FR'):'—'}</td></tr>)}{exportLogs.length===0&&<tr><td colSpan={6} className="py-8 text-center" style={{color:MUTED}}>Aucun export apprenant enregistré.</td></tr>}</tbody></table></div></div>)}
 
           {!loading && subTab === 'stats' && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
-                <h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Modèles CV actifs</h2>
-                <div className="mt-4 space-y-2">
-                  {cvTemplates.filter((t) => t.is_active).slice(0, 10).map((t) => <p key={t.template_key} className="text-sm" style={{ color: MUTED }}>{t.display_order}. {t.name_fr}</p>)}
-                </div>
+            <div className="space-y-6">
+              <div><h2 className="text-xl font-semibold" style={{color:OMNIA_BLUE}}>Statistiques réelles Omnia Career Studio</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Ces données proviennent des documents, exports, transactions de jetons, commandes payées et modèles réellement utilisés.</p></div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ['CV créés par apprenants',stats.total_cv],['LM créées par apprenants',stats.total_lm],['Créateurs uniques',stats.unique_creators],['Actifs 30 jours',stats.active_users_30d],
+                  ['Exports réussis',stats.export_success],['Exports échoués',stats.export_failed],['Actions IA identifiées',stats.ai_actions],['Questions actives',stats.active_questions],
+                  ['Jetons consommés',stats.tokens_consumed],['Jetons crédités',stats.tokens_credited],['Achats de packs',stats.token_sales_count],['CA jetons XOF',Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')],
+                ].map(([label,value])=><div key={String(label)} className="border-b py-3"><p className="text-xs" style={{color:MUTED}}>{label}</p><p className="mt-1 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{value}</p></div>)}
               </div>
-              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
-                <h2 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Modèles LM actifs</h2>
-                <div className="mt-4 space-y-2">
-                  {lmTemplates.filter((t) => t.is_active).slice(0, 10).map((t) => <p key={t.template_key} className="text-sm" style={{ color: MUTED }}>{t.display_order}. {t.name_fr}</p>)}
-                </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <section className="border-t" style={{borderColor:BORDER}}><h3 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>Modèles les plus utilisés</h3>{stats.top_templates?.length?stats.top_templates.map(item=><div key={item.template_key} className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>{item.name_fr}<span className="ml-2 text-xs uppercase" style={{color:MUTED}}>{item.template_type}</span></span><strong>{item.usage_count}</strong></div>):<p className="py-6 text-sm" style={{color:MUTED}}>Aucune utilisation de modèle enregistrée.</p>}</section>
+                <section className="border-t" style={{borderColor:BORDER}}><h3 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>Synthèse des modèles disponibles</h3><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>CV actifs</span><strong>{stats.active_cv_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>LM actifs</span><strong>{stats.active_lm_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>Packs actifs</span><strong>{stats.active_packs}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>Jetons vendus via packs</span><strong>{stats.tokens_sold}</strong></div></section>
               </div>
             </div>
           )}

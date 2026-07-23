@@ -101,6 +101,12 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
             <button type="button" onClick={() => navigate('/omnia-live')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Live">
               <span>Omnia </span><span style={{ color: GOLD }}>Live</span>
             </button>
+          ) : title === 'Omnia Talent' ? (
+            <button type="button" onClick={() => navigate('/talent')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Talent">
+              <span>Omnia </span><span style={{ color: GOLD }}>Talent</span>
+            </button>
+          ) : title === 'Omnia Career Studio' ? (
+            <div className="truncate text-lg font-bold md:text-xl"><span>Omnia </span><span style={{ color: GOLD }}>Career Studio</span></div>
           ) : (
             <div className="truncate text-lg font-bold md:text-xl">{title}</div>
           )}

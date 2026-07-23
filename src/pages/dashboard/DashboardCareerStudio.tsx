@@ -36,7 +36,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
-import { getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
+import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { ENDPOINTS } from '../../lib/config';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
@@ -265,8 +265,11 @@ export default function DashboardCareerStudio() {
       ].sort((a, b) => new Date(b.updated_at || b.created_at || '').getTime() - new Date(a.updated_at || a.created_at || '').getTime());
 
       setDocuments(loadedDocs);
-      setCvTemplates(((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : fallbackCvTemplates);
-      setLmTemplates(((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : fallbackLmTemplates);
+      const loadedCvTemplates = (((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : fallbackCvTemplates) as Template[];
+      const loadedLmTemplates = (((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : fallbackLmTemplates) as Template[];
+      setCvTemplates(loadedCvTemplates);
+      setLmTemplates(loadedLmTemplates);
+      cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
       setPacks((cvPayload?.packs || lmPayload?.packs || []) as TokenPack[]);
       setTokens(cvPayload?.user?.cv_tokens ?? lmPayload?.user?.cv_tokens ?? 0);
     } catch {
