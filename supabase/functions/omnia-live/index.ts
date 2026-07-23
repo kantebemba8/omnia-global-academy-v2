@@ -7133,10 +7133,19 @@ async function payoutAdminRequests(
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
+  // Ne pas embarquer users directement : plusieurs clés étrangères peuvent rendre
+  // la relation ambiguë (PGRST201). On hydrate explicitement les organisateurs.
   const {data,error}=await sb.from("live_payout_requests")
-    .select("*,users(full_name,email)").order("created_at",{ascending:false});
+    .select("*").order("created_at",{ascending:false});
   if(error) throw error;
-  return json({success:true,requests:data??[]});
+  const requests=data??[];
+  const userMap=await hydrateUserMap(sb,requests.map((x:any)=>x.organizer_user_id));
+  return json({success:true,requests:requests.map((x:any)=>({
+    ...x,
+    users:userMap.get(x.organizer_user_id)||null,
+    organizer_name:userMap.get(x.organizer_user_id)?.full_name||null,
+    organizer_email:userMap.get(x.organizer_user_id)?.email||null,
+  }))});
 }
 
 async function payoutAdminDecision(
@@ -7344,10 +7353,22 @@ async function documentRequestCreate(req:Request,sb:any,ctx:any){
 async function documentAdminRequests(req:Request,sb:any,ctx:any){
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
   const status=new URL(req.url).searchParams.get("status");
-  let q=sb.from("live_document_issuance_requests").select("*,live_events(title),users(full_name,email)").order("created_at",{ascending:false});
+  // Chargement séparé des utilisateurs et événements afin d’éviter les embeds
+  // ambigus lorsque la table comporte plusieurs relations vers users.
+  let q=sb.from("live_document_issuance_requests").select("*").order("created_at",{ascending:false});
   if(status) q=q.eq("status",status);
   const {data,error}=await q;if(error) throw error;
-  return json({success:true,requests:data||[]});
+  const requests=data||[];
+  const userMap=await hydrateUserMap(sb,requests.map((x:any)=>x.user_id));
+  const eventMap=await hydrateEventMap(sb,requests.map((x:any)=>x.event_id));
+  return json({success:true,requests:requests.map((x:any)=>({
+    ...x,
+    users:userMap.get(x.user_id)||null,
+    live_events:eventMap.get(x.event_id)||null,
+    participant_name:userMap.get(x.user_id)?.full_name||null,
+    participant_email:userMap.get(x.user_id)?.email||null,
+    event_title:eventMap.get(x.event_id)?.title||null,
+  }))});
 }
 
 async function documentIssueG(req:Request,sb:any,ctx:any){
@@ -7595,7 +7616,43 @@ async function analyticsPlatformOverview(sb:any,ctx:any){if(!ctx||!isSuperAdmin(
 async function analyticsStructureOverview(sb:any,ctx:any){if(!ctx)return json({error:"AUTH_REQUIRED"},401);return json({success:true,members:0,events:0,registrations:0,attendance_rate:0,documents:0,revenue:0,replay_views:0,learning_hours:0,note:"Structure linkage resolved by final project schema."});}
 
 async function reportDefinitionsList(sb:any,ctx:any){if(!ctx)return json({error:"AUTH_REQUIRED"},401);const {data,error}=await sb.from("live_report_definitions").select("*").eq("status","active").order("name");if(error)throw error;return json({success:true,reports:data||[]});}
-async function reportExportRequest(req:Request,sb:any,ctx:any){if(!ctx)return json({error:"AUTH_REQUIRED"},401);const b=await req.json().catch(()=>({}));if(!b.report_key||!["csv","xlsx","pdf"].includes(b.format))return json({error:"INVALID_PARAMS"},400);const {data:def}=await sb.from("live_report_definitions").select("*").eq("report_key",b.report_key).maybeSingle();if(!def)return json({error:"REPORT_NOT_FOUND"},404);const {data,error}=await sb.from("live_report_exports").insert({report_definition_id:def.id,requested_by:ctx.userId,event_id:b.event_id||null,organizer_user_id:def.audience==="organizer"?ctx.userId:null,format:b.format,filters:b.filters||{},status:"queued",file_name:`${b.report_key}-${Date.now()}.${b.format}`}).select("*").single();if(error)throw error;return json({success:true,export:data},201);}
+function reportCell(v:any){return String(v??"").replaceAll(";",",").replaceAll("\n"," ");}
+async function buildReportPayload(sb:any,ctx:any,def:any,format:string){
+  const overview=await analyticsPlatformOverview(sb,ctx);
+  const raw=await overview.clone().json().catch(()=>({}));
+  const rows=[
+    ["Indicateur","Valeur"],
+    ["Événements",raw.total_events||0],
+    ["Inscriptions",raw.registrations||0],
+    ["Participants uniques",raw.unique_attendees||0],
+    ["Chiffre d’affaires brut",raw.gross_revenue||0],
+    ["Revenu OGA",raw.oga_revenue||0],
+    ["Part organisateurs",raw.organizer_revenue||0],
+    ["Remboursements",raw.refunds||0],
+    ["Replays vus",raw.replay_views||0],
+    ["Documents émis",raw.documents_issued||0],
+    ["Note moyenne",raw.average_rating||0],
+  ];
+  const title=def?.name||"Rapport Omnia Live";
+  if(format==="pdf"){
+    const body=rows.slice(1).map(r=>`<tr><td>${reportCell(r[0])}</td><td>${reportCell(r[1])}</td></tr>`).join("");
+    return {mime_type:"text/html;charset=utf-8",content_text:`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;padding:36px;color:#002050}h1{font-size:24px}table{width:100%;border-collapse:collapse;margin-top:24px}td,th{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f5f5f5}</style></head><body><h1>${title}</h1><p>Généré le ${new Date().toLocaleString("fr-FR")}</p><table><thead><tr><th>Indicateur</th><th>Valeur</th></tr></thead><tbody>${body}</tbody></table></body></html>`};
+  }
+  const separator=format==="xlsx"?"\t":";";
+  const content=rows.map(r=>r.map(reportCell).join(separator)).join("\n");
+  return {mime_type:format==="xlsx"?"application/vnd.ms-excel;charset=utf-8":"text/csv;charset=utf-8",content_text:"\ufeff"+content};
+}
+async function reportExportRequest(req:Request,sb:any,ctx:any){
+  if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);
+  const b=await req.json().catch(()=>({}));
+  if(!b.report_key||!["csv","xlsx","pdf"].includes(b.format))return json({error:"INVALID_PARAMS"},400);
+  const {data:def,error:defError}=await sb.from("live_report_definitions").select("*").eq("report_key",b.report_key).maybeSingle();
+  if(defError)throw defError;if(!def)return json({error:"REPORT_NOT_FOUND"},404);
+  const payload=await buildReportPayload(sb,ctx,def,b.format);
+  const ext=b.format==="xlsx"?"xls":b.format;
+  const {data,error}=await sb.from("live_report_exports").insert({report_definition_id:def.id,requested_by:ctx.userId,event_id:b.event_id||null,organizer_user_id:null,format:b.format,filters:b.filters||{},status:"ready",file_name:`${b.report_key}-${Date.now()}.${ext}`,mime_type:payload.mime_type,content_text:payload.content_text,completed_at:new Date().toISOString()}).select("*").single();
+  if(error)throw error;return json({success:true,export:data},201);
+}
 async function reportExportsList(sb:any,ctx:any){if(!ctx)return json({error:"AUTH_REQUIRED"},401);let q=sb.from("live_report_exports").select("*").order("created_at",{ascending:false}).limit(200);if(!isSuperAdmin(ctx))q=q.eq("requested_by",ctx.userId);const {data,error}=await q;if(error)throw error;return json({success:true,exports:data||[]});}
 async function reportExportProcess(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));const limit=Math.min(50,Number(b.limit||10));const {data:rows,error}=await sb.from("live_report_exports").select("*,live_report_definitions(*)").eq("status","queued").limit(limit);if(error)throw error;for(const x of rows||[]){await sb.from("live_report_exports").update({status:"processing"}).eq("id",x.id);await sb.from("live_report_exports").update({status:"failed",error_message:"EXPORT_WORKER_REQUIRED_FOR_BINARY_FORMAT",completed_at:new Date().toISOString()}).eq("id",x.id);}return json({success:true,processed:(rows||[]).length,note:"CSV/XLSX/PDF binary generation is delegated to the report worker."});}
 

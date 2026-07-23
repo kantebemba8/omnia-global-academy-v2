@@ -42,6 +42,11 @@ export async function liveApi(
     },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || data?.error || 'Erreur Omnia Live');
+  if (!res.ok) {
+    const values = [data?.message, data?.error_description, data?.error, data?.details, data?.hint, data?.code]
+      .filter((value) => typeof value === 'string' && value.trim() && value.trim() !== '[object Object]');
+    const message = values.length ? Array.from(new Set(values)).join(' — ') : 'Erreur Omnia Live';
+    throw new Error(message);
+  }
   return data;
 }

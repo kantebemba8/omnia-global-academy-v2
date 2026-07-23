@@ -51,7 +51,7 @@ function notificationCopy(type: string) {
     talent_recruiter_contact: ["Nouveau contact recruteur", "Un recruteur souhaite échanger avec vous.", "/dashboard/career-studio?section=profile"],
     talent_contact_admin_alert: ["Contact Talent enregistré", "Une prise de contact recruteur ↔ apprenant a été enregistrée.", "/admin/talent"],
     talent_interview_requested: ["Nouvel entretien proposé", "Une demande d'entretien vous a été envoyée.", "/dashboard/career-studio?section=interview"],
-    talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Omnia Talent.", "/dashboard/career-studio"],
+    talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Talent Omnia.", "/dashboard/career-studio"],
     recruiter_application_submitted: ["Nouvelle demande recruteur", "Un compte recruteur attend votre validation.", "/admin/talent"],
     recruiter_status_changed: ["Statut recruteur mis à jour", "Le statut de votre compte recruteur a changé.", "/talent/recruteurs"],
     recruiter_joined_structure: ["Recruteur rattaché", "Un recruteur a rejoint votre équipe recrutement.", "/structure/recrutement/equipe"],
@@ -324,7 +324,7 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_talent_supervision" || action === "admin_update_recruiter_status") {
       if (!hasRole(session, "super_admin")) return json({ error: "FORBIDDEN" }, 403);
       if (action === "admin_talent_supervision") {
-        let rq = sb.from("talent_recruiter_profiles").select("*,users(full_name,email)");
+        let rq = sb.from("talent_recruiter_profiles").select("*");
         if (body.status) rq = rq.eq("status", String(body.status));
         const [recruitersResult, contactsResult, activityResult] = await Promise.all([
           rq.order("created_at", { ascending: false }),
@@ -332,7 +332,15 @@ Deno.serve(async (req: Request) => {
           sb.from("talent_activity_log").select("*").order("created_at", { ascending: false }).limit(150),
         ]);
         if (recruitersResult.error) throw recruitersResult.error;
-        const recruiters = recruitersResult.data || [];
+        const baseRecruiters = recruitersResult.data || [];
+        const userIds = [...new Set(baseRecruiters.map((r:any)=>r.user_id).filter(Boolean))];
+        let usersById:any = {};
+        if(userIds.length){
+          const {data:userRows,error:userError}=await sb.from("users").select("id,full_name,email").in("id",userIds);
+          if(userError) throw userError;
+          usersById=Object.fromEntries((userRows||[]).map((u:any)=>[u.id,u]));
+        }
+        const recruiters = baseRecruiters.map((r:any)=>({...r,users:usersById[r.user_id]||null}));
         return json({ success: true, recruiters, contacts: contactsResult.data || [], activity: activityResult.data || [], metrics: {
           pending: recruiters.filter((r: any) => r.status === "pending").length,
           approved: recruiters.filter((r: any) => r.status === "approved").length,

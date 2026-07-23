@@ -1,81 +1,30 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {liveApi} from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 import {omniaDialog} from '../../../lib/omniaDialog';
 import {liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
 const CHANNEL_LABELS:any={multi:'Notifications + e-mail',in_app:'Notification Omnia',email:'E-mail',sms:'SMS',push:'Push'};
+const LANG_LABELS:any={fr:'Français',en:'English'};
+const EMPTY={id:'',template_key:'',name:'',category:'registration',channel:'email',subject_template:'',body_template:'',variables:[],status:'active',language:'fr'};
 
 export default function AdminOmniaLiveCommunications(){
  const [templates,setTemplates]=useState<any[]>([]),[campaigns,setCampaigns]=useState<any[]>([]),[jobs,setJobs]=useState<any[]>([]),[msg,setMsg]=useState('');
- const load=async()=>{
-  try{
-   const [t,c,j]=await Promise.all([liveApi('notification_templates_list'),liveApi('admin_communication_campaigns'),liveApi('notification_jobs_list')]);
-   setTemplates(t.templates||[]);setCampaigns(c.campaigns||[]);setJobs(j.jobs||[]);
-  }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
- };
+ const [editing,setEditing]=useState<any|null>(null),[saving,setSaving]=useState(false),[language,setLanguage]=useState('all');
+ const load=async()=>{try{const [t,c,j]=await Promise.all([liveApi('notification_templates_list'),liveApi('admin_communication_campaigns'),liveApi('notification_jobs_list')]);setTemplates(t.templates||[]);setCampaigns(c.campaigns||[]);setJobs(j.jobs||[])}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}};
  useEffect(()=>{load()},[]);
+ const shownTemplates=useMemo(()=>language==='all'?templates:templates.filter(t=>(t.language||'fr')===language),[templates,language]);
 
- async function decide(id:string,status:string){
-  const r=await omniaDialog({
-   title:status==='approved'?'Approuver la campagne':'Annuler la campagne',
-   message:status==='approved'?'La campagne pourra entrer dans la file d’envoi selon sa programmation.':'Cette campagne ne sera pas envoyée.',
-   confirmLabel:'Confirmer',
-   danger:status==='cancelled'
-  });
-  if(!r.confirmed)return;
-  try{await liveApi('admin_communication_campaign_decision',{method:'POST',body:JSON.stringify({campaign_id:id,status})});await load()}
-  catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
- }
+ async function decide(id:string,status:string){const r=await omniaDialog({title:status==='approved'?'Approuver la campagne':'Annuler la campagne',message:status==='approved'?'La campagne pourra entrer dans la file d’envoi selon sa programmation.':'Cette campagne ne sera pas envoyée.',confirmLabel:'Confirmer',danger:status==='cancelled'});if(!r.confirmed)return;try{await liveApi('admin_communication_campaign_decision',{method:'POST',body:JSON.stringify({campaign_id:id,status})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function dispatch(){const r=await omniaDialog({title:'Exécuter les envois dus',message:'Seuls les envois arrivés à échéance et autorisés seront traités.',confirmLabel:'Exécuter'});if(!r.confirmed)return;try{const x=await liveApi('notification_dispatch_due',{method:'POST',body:JSON.stringify({limit:200})});setMsg(`Envois traités : ${x.processed||0}`);await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function saveTemplate(){if(!editing)return;setSaving(true);setMsg('');try{await liveApi('notification_template_save',{method:'POST',body:JSON.stringify({...editing,template_key:editing.template_key||`${editing.category}_${editing.channel}_${editing.language}_${Date.now()}`,variables:Array.isArray(editing.variables)?editing.variables:[]})});setEditing(null);setMsg('Modèle enregistré.');await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}finally{setSaving(false)}}
 
- async function dispatch(){
-  const r=await omniaDialog({
-   title:'Exécuter les envois dus',
-   message:'Seuls les jobs arrivés à échéance et autorisés par les préférences/canaux actifs doivent être traités.',
-   confirmLabel:'Exécuter'
-  });
-  if(!r.confirmed)return;
-  try{
-   const x=await liveApi('notification_dispatch_due',{method:'POST',body:JSON.stringify({limit:200})});
-   setMsg(`Jobs traités : ${x.processed||0}`);
-   await load();
-  }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
- }
-
- return <AdminOmniaLiveShell title="Notifications & Communication" subtitle="Supervisez les modèles, campagnes et files d’envoi Omnia Live.">
-  <div className="mb-5 flex justify-end"><button onClick={dispatch} className="rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-bold text-white">Exécuter les envois dus</button></div>
-  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
-
-  <section className="border-b border-slate-200 pb-7">
-   <h2 className="mb-4 text-lg font-bold text-[#002050]">Campagnes</h2>
-   {campaigns.length?<div className="overflow-x-auto"><div className="min-w-[880px]">
-    <div className="grid grid-cols-[1.4fr_.8fr_.8fr_1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Campagne</div><div>Canal</div><div>Statut</div><div className="text-right">Actions</div></div>
-    {campaigns.map(c=><div key={c.id} className="grid grid-cols-[1.4fr_.8fr_.8fr_1fr] items-center border-b border-slate-200 py-4 text-sm">
-     <div className="font-semibold text-[#002050]">{c.name}</div>
-     <div>{CHANNEL_LABELS[c.channel]||c.channel}</div>
-     <div>{liveStatusLabel(c.status)}</div>
-     <div className="flex justify-end gap-3">
-      {c.status==='scheduled'&&<button onClick={()=>decide(c.id,'approved')} className="font-semibold text-emerald-700">Approuver</button>}
-      {!['sent','cancelled'].includes(c.status)&&<button onClick={()=>decide(c.id,'cancelled')} className="font-semibold text-red-700">Annuler</button>}
-     </div>
-    </div>)}
-   </div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucune campagne.</div>}
-  </section>
-
-  <section className="border-b border-slate-200 py-7">
-   <h2 className="mb-4 text-lg font-bold text-[#002050]">Modèles de notification</h2>
-   {templates.length?<div className="overflow-x-auto"><div className="min-w-[760px]">
-    <div className="grid grid-cols-[1.4fr_.8fr_.8fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Modèle</div><div>Canal</div><div>Statut</div></div>
-    {templates.map(t=><div key={t.id} className="grid grid-cols-[1.4fr_.8fr_.8fr] border-b border-slate-200 py-4 text-sm"><div><div className="font-semibold text-[#002050]">{t.name}</div><div className="mt-1 text-xs text-slate-400">{String(t.category||'').replaceAll('_',' ')}</div></div><div>{CHANNEL_LABELS[t.channel]||t.channel}</div><div>{liveStatusLabel(t.status)}</div></div>)}
-   </div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucun modèle.</div>}
-  </section>
-
-  <section className="py-7">
-   <h2 className="mb-4 text-lg font-bold text-[#002050]">File d’envoi</h2>
-   {jobs.length?<div className="overflow-x-auto"><div className="min-w-[860px]">
-    <div className="grid grid-cols-[1.2fr_.8fr_.8fr_1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Notification</div><div>Canal</div><div>Statut</div><div>Programmée</div></div>
-    {jobs.slice(0,200).map(j=><div key={j.id} className="grid grid-cols-[1.2fr_.8fr_.8fr_1fr] border-b border-slate-200 py-4 text-sm"><div>{String(j.notification_type||'').replaceAll('_',' ')}</div><div>{CHANNEL_LABELS[j.channel]||j.channel}</div><div>{liveStatusLabel(j.status)}{j.last_error&&<div className="mt-1 text-xs text-red-600">{j.last_error}</div>}</div><div>{j.scheduled_at?new Date(j.scheduled_at).toLocaleString('fr-FR'):'—'}</div></div>)}
-   </div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucun job de notification.</div>}
-  </section>
+ return <AdminOmniaLiveShell title="Communication" subtitle="Modifiez les modèles en français ou en anglais, contrôlez les campagnes et la file d’envoi.">
+  <div className="mb-5 flex flex-wrap justify-end gap-2"><button onClick={()=>setEditing({...EMPTY})} className="rounded-lg border px-4 py-2.5 text-sm font-bold text-[#002050]">Nouveau modèle</button><button onClick={dispatch} className="rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-bold text-white">Exécuter les envois dus</button></div>
+  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm break-words">{msg}</div>}
+  <section className="border-b border-slate-200 pb-7"><h2 className="mb-4 text-lg font-bold text-[#002050]">Campagnes</h2>{campaigns.length?<div className="overflow-x-auto"><div className="min-w-[880px]"><div className="grid grid-cols-[1.4fr_.8fr_.8fr_1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Campagne</div><div>Canal</div><div>Statut</div><div className="text-right">Actions</div></div>{campaigns.map(c=><div key={c.id} className="grid grid-cols-[1.4fr_.8fr_.8fr_1fr] items-center border-b border-slate-200 py-4 text-sm"><div className="font-semibold text-[#002050]">{c.name}</div><div>{CHANNEL_LABELS[c.channel]||c.channel}</div><div>{liveStatusLabel(c.status)}</div><div className="flex justify-end gap-3">{c.status==='scheduled'&&<button onClick={()=>decide(c.id,'approved')} className="font-semibold text-emerald-700">Approuver</button>}{!['sent','cancelled'].includes(c.status)&&<button onClick={()=>decide(c.id,'cancelled')} className="font-semibold text-red-700">Annuler</button>}</div></div>)}</div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucune campagne.</div>}</section>
+  <section className="border-b border-slate-200 py-7"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold text-[#002050]">Modèles de notification</h2><select value={language} onChange={e=>setLanguage(e.target.value)} className="rounded-lg border px-3 py-2 text-sm"><option value="all">Toutes les langues</option><option value="fr">Français</option><option value="en">English</option></select></div>{shownTemplates.length?<div className="overflow-x-auto"><div className="min-w-[900px]"><div className="grid grid-cols-[1.3fr_.7fr_.6fr_.6fr_.5fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Modèle</div><div>Canal</div><div>Langue</div><div>Statut</div><div className="text-right">Action</div></div>{shownTemplates.map(t=><div key={t.id} className="grid grid-cols-[1.3fr_.7fr_.6fr_.6fr_.5fr] items-center border-b border-slate-200 py-4 text-sm"><div><div className="font-semibold text-[#002050]">{t.name}</div><div className="mt-1 text-xs text-slate-400">{String(t.category||'').replaceAll('_',' ')}</div></div><div>{CHANNEL_LABELS[t.channel]||t.channel}</div><div>{LANG_LABELS[t.language||'fr']||t.language}</div><div>{liveStatusLabel(t.status)}</div><div className="text-right"><button onClick={()=>setEditing({...t,language:t.language||'fr'})} className="font-semibold text-[#002050]">Modifier</button></div></div>)}</div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucun modèle.</div>}</section>
+  <section className="py-7"><h2 className="mb-4 text-lg font-bold text-[#002050]">File d’envoi</h2>{jobs.length?<div className="overflow-x-auto"><div className="min-w-[860px]"><div className="grid grid-cols-[1.2fr_.8fr_.8fr_1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Notification</div><div>Canal</div><div>Statut</div><div>Programmée</div></div>{jobs.slice(0,200).map(j=><div key={j.id} className="grid grid-cols-[1.2fr_.8fr_.8fr_1fr] border-b border-slate-200 py-4 text-sm"><div>{String(j.notification_type||'').replaceAll('_',' ')}</div><div>{CHANNEL_LABELS[j.channel]||j.channel}</div><div>{liveStatusLabel(j.status)}{j.last_error&&<div className="mt-1 max-w-xl break-words text-xs text-red-600">{j.last_error}</div>}</div><div>{j.scheduled_at?new Date(j.scheduled_at).toLocaleString('fr-FR'):'—'}</div></div>)}</div></div>:<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucun envoi en attente.</div>}</section>
+  {editing&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h3 className="text-xl font-bold text-[#002050]">{editing.id?'Modifier le modèle':'Nouveau modèle'}</h3><button onClick={()=>setEditing(null)} className="text-2xl">×</button></div><div className="grid gap-4 md:grid-cols-2"><label className="text-sm">Nom<input value={editing.name||''} onChange={e=>setEditing({...editing,name:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="text-sm">Langue<select value={editing.language||'fr'} onChange={e=>setEditing({...editing,language:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="fr">Français</option><option value="en">English</option></select></label><label className="text-sm">Catégorie<input value={editing.category||''} onChange={e=>setEditing({...editing,category:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="text-sm">Canal<select value={editing.channel||'email'} onChange={e=>setEditing({...editing,channel:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="email">E-mail</option><option value="in_app">Notification Omnia</option><option value="push">Push</option><option value="sms">SMS</option></select></label><label className="text-sm md:col-span-2">Objet<input value={editing.subject_template||''} onChange={e=>setEditing({...editing,subject_template:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="text-sm md:col-span-2">Message<textarea rows={8} value={editing.body_template||''} onChange={e=>setEditing({...editing,body_template:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="text-sm">Statut<select value={editing.status||'active'} onChange={e=>setEditing({...editing,status:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="active">Actif</option><option value="inactive">Inactif</option></select></label></div><div className="mt-6 flex justify-end gap-3"><button onClick={()=>setEditing(null)} className="rounded-lg border px-4 py-2">Annuler</button><button disabled={saving||!editing.name||!editing.body_template} onClick={saveTemplate} className="rounded-lg bg-[#002050] px-4 py-2 font-semibold text-white disabled:opacity-50">{saving?'Enregistrement…':'Enregistrer'}</button></div></div></div>}
  </AdminOmniaLiveShell>
 }
