@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { hashSync } from "npm:bcryptjs@2.4.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,7 +9,33 @@ const corsHeaders = {
 };
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-type Session = { userId: string; roles: string[]; organizationId: string | null; isPrimaryManager: boolean; permissions: Record<string, boolean> };
+function temporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#";
+  let value = "";
+  const bytes = crypto.getRandomValues(new Uint8Array(14));
+  for (const byte of bytes) value += alphabet[byte % alphabet.length];
+  return value;
+}
+
+async function sendStructureRecruiterAccess(email: string, fullName: string, password: string) {
+  const key = Deno.env.get("BREVO_API_KEY") || "";
+  if (!key) return false;
+  const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sender: { name: "Omnia Global Academy", email: Deno.env.get("BREVO_SENDER_EMAIL") || "support@omniaglobalacademy.com" },
+      to: [{ email, name: fullName }],
+      subject: "Votre accès recruteur Structure — Omnia Talent",
+      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#002050">Omnia <span style="color:#BF8813">Talent</span></h2><p>Bonjour ${fullName},</p><p>Votre Structure vous a créé un accès professionnel de recrutement.</p><p><strong>Identifiant :</strong> ${email}<br><strong>Mot de passe temporaire :</strong> ${password}</p><p>Vous devrez modifier ce mot de passe lors de votre première connexion.</p><p><a href="${appUrl}/connexion">Se connecter</a></p></div>`,
+    }),
+  }).catch(() => null);
+  return !!response?.ok;
+}
+
+type RecruiterProfile = { recruiter_type: "independent" | "structure"; organization_id: string | null; status: "pending" | "approved" | "rejected" | "suspended" };
+type Session = { userId: string; roles: string[]; organizationId: string | null; isPrimaryManager: boolean; permissions: Record<string, boolean>; recruiterProfile: RecruiterProfile | null };
 
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
@@ -16,22 +43,48 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
   const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!session) return null;
   const userId = String(session.user_id);
-  const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", userId);
-  const { data: manager } = await sb.from("partner_managers").select("organization_id,is_primary,permissions,status").eq("user_id", userId).eq("status", "actif").maybeSingle();
+  const [{ data: roles }, { data: manager }, { data: recruiter }] = await Promise.all([
+    sb.from("user_roles").select("role").eq("user_id", userId),
+    sb.from("partner_managers").select("organization_id,is_primary,permissions,status").eq("user_id", userId).eq("status", "actif").maybeSingle(),
+    sb.from("talent_recruiter_profiles").select("recruiter_type,organization_id,status").eq("user_id", userId).maybeSingle(),
+  ]);
   const organizationId = manager?.organization_id ? String(manager.organization_id) : null;
   let permissions: Record<string, boolean> = (manager?.permissions as Record<string, boolean>) || {};
   if (organizationId) {
     const { data: explicit } = await sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId).eq("user_id", userId).maybeSingle();
     if (explicit) permissions = { ...permissions, ...explicit };
   }
-  return { userId, roles: (roles || []).map((r: any) => String(r.role)), organizationId, isPrimaryManager: !!manager?.is_primary, permissions };
+  const recruiterProfile: RecruiterProfile | null = recruiter ? {
+    recruiter_type: recruiter.recruiter_type === "structure" ? "structure" : "independent",
+    organization_id: recruiter.organization_id ? String(recruiter.organization_id) : null,
+    status: recruiter.status,
+  } : null;
+  return { userId, roles: (roles || []).map((r: any) => String(r.role)), organizationId, isPrimaryManager: !!manager?.is_primary, permissions, recruiterProfile };
 }
 
 function hasRole(s: Session, ...roles: string[]) { return roles.some(r => s.roles.includes(r)); }
-function canUseRecruiter(s: Session) { return hasRole(s, "recruteur", "super_admin") || !!s.organizationId; }
+function isIndependentRecruiter(s: Session) {
+  return hasRole(s, "recruteur_independant", "recruteur")
+    && s.recruiterProfile?.recruiter_type === "independent"
+    && s.recruiterProfile.status === "approved";
+}
+function canUseRecruiter(s: Session) {
+  if (hasRole(s, "super_admin")) return true;
+  const hasStructureRecruitmentPermission = [
+    "can_post_job",
+    "can_search_talent",
+    "can_contact_talent",
+    "can_manage_jobs",
+    "can_view_applications",
+    "can_schedule_interview",
+    "can_manage_team",
+  ].some((key) => s.permissions[key] === true);
+  if (s.organizationId && (s.isPrimaryManager || hasStructureRecruitmentPermission || s.recruiterProfile?.status === "approved")) return true;
+  return isIndependentRecruiter(s);
+}
 function can(s: Session, permission: string) {
   if (hasRole(s, "super_admin") || s.isPrimaryManager) return true;
-  if (hasRole(s, "recruteur") && ["can_search_talent","can_contact_talent","can_schedule_interview","can_post_job","can_manage_jobs"].includes(permission)) return true;
+  if (isIndependentRecruiter(s) && ["can_search_talent","can_contact_talent","can_schedule_interview","can_post_job","can_manage_jobs","can_view_applications"].includes(permission)) return true;
   return s.permissions[permission] === true;
 }
 function scopeOrg(s: Session, scope: string) { return scope === "structure" ? s.organizationId : null; }
@@ -51,7 +104,7 @@ function notificationCopy(type: string) {
     talent_recruiter_contact: ["Nouveau contact recruteur", "Un recruteur souhaite échanger avec vous.", "/dashboard/career-studio?section=profile"],
     talent_contact_admin_alert: ["Contact Talent enregistré", "Une prise de contact recruteur ↔ apprenant a été enregistrée.", "/admin/talent"],
     talent_interview_requested: ["Nouvel entretien proposé", "Une demande d'entretien vous a été envoyée.", "/dashboard/career-studio?section=interview"],
-    talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Talent Omnia.", "/dashboard/career-studio"],
+    talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Omnia Talent.", "/dashboard/career-studio"],
     recruiter_application_submitted: ["Nouvelle demande recruteur", "Un compte recruteur attend votre validation.", "/admin/talent"],
     recruiter_status_changed: ["Statut recruteur mis à jour", "Le statut de votre compte recruteur a changé.", "/talent/recruteurs"],
     recruiter_joined_structure: ["Recruteur rattaché", "Un recruteur a rejoint votre équipe recrutement.", "/structure/recrutement/equipe"],
@@ -251,35 +304,16 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "submit_recruiter_application") {
-      const recruiterType = body.recruiter_type === "structure" ? "structure" : "independent";
-      const professionalEmail = String(body.professional_email || "").trim();
-      const companyName = String(body.company_name || "").trim();
-      const jobTitle = String(body.job_title || "").trim();
-      if (!professionalEmail || !companyName || !jobTitle) return json({ error: "REQUIRED_FIELDS" }, 400);
-      const row = {
-        user_id: session.userId,
-        recruiter_type: recruiterType,
-        organization_id: recruiterType === "structure" ? session.organizationId : null,
-        company_name: companyName,
-        job_title: jobTitle,
-        professional_email: professionalEmail,
-        phone: body.phone || null,
-        country: body.country || null,
-        linkedin_url: body.linkedin_url || null,
-        website_url: body.website_url || null,
-        status: "pending",
-        rejection_reason: null,
-        updated_at: new Date().toISOString(),
-      };
-      const { data, error } = await sb.from("talent_recruiter_profiles").upsert(row, { onConflict: "user_id" }).select().single();
-      if (error) throw error;
-      const { data: admins } = await sb.from("user_roles").select("user_id").eq("role", "super_admin");
-      for (const admin of admins || []) await queueNotification(sb, String(admin.user_id), "recruiter_application_submitted", { recruiter_user_id: session.userId });
-      await logActivity(sb, session, null, null, "recruiter_application_submitted", "user", session.userId, { recruiter_type: recruiterType });
-      return json({ success: true, profile: data });
+      return json({
+        error: "DEDICATED_RECRUITER_ACCOUNT_REQUIRED",
+        message: "Créez un compte recruteur indépendant distinct depuis /inscription/recruteur.",
+      }, 409);
     }
 
     if (action === "join_structure_by_code") {
+      if (hasRole(session, "apprenant")) {
+        return json({ error: "PROFESSIONAL_ACCOUNT_REQUIRED", message: "Un compte apprenant ne peut pas devenir recruteur Structure." }, 403);
+      }
       const code = String(body.code || "").trim().toUpperCase();
       if (!code) return json({ error: "CODE_REQUIRED" }, 400);
       const { data: invite, error: inviteError } = await sb.from("talent_recruitment_invites").select("*").eq("code", code).is("revoked_at", null).maybeSingle();
@@ -292,6 +326,7 @@ Deno.serve(async (req: Request) => {
       await sb.from("talent_recruitment_invites").update({ uses_count: Number(invite.uses_count || 0) + 1 }).eq("id", invite.id);
       const { data: profile, error } = await sb.from("talent_recruiter_profiles").upsert({ user_id: session.userId, recruiter_type: "structure", organization_id: invite.organization_id, status: "approved", validated_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "user_id" }).select().single();
       if (error) throw error;
+      await sb.from("user_roles").delete().eq("user_id", session.userId).in("role", ["recruteur_independant", "recruteur"]);
       const { data: managers } = await sb.from("partner_managers").select("user_id").eq("organization_id", invite.organization_id).eq("is_primary", true).eq("status", "actif");
       for (const manager of managers || []) await queueNotification(sb, String(manager.user_id), "recruiter_joined_structure", { recruiter_user_id: session.userId, organization_id: invite.organization_id });
       return json({ success: true, profile });
@@ -351,13 +386,36 @@ Deno.serve(async (req: Request) => {
       const targetUserId = String(body.user_id || "");
       const status = String(body.status || "");
       if (!targetUserId || !["pending","approved","rejected","suspended"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
+      const [{ data: currentProfile }, { data: targetRoles }] = await Promise.all([
+        sb.from("talent_recruiter_profiles").select("recruiter_type,status").eq("user_id", targetUserId).maybeSingle(),
+        sb.from("user_roles").select("role").eq("user_id", targetUserId),
+      ]);
+      const targetRoleNames = (targetRoles || []).map((row: any) => String(row.role));
+      if (status === "approved" && currentProfile?.recruiter_type === "independent" && targetRoleNames.includes("apprenant") && !targetRoleNames.includes("recruteur_independant")) {
+        return json({ error: "PROFESSIONAL_ACCOUNT_REQUIRED", message: "Cette demande provient d’un compte apprenant. Le candidat doit créer un compte recruteur professionnel distinct." }, 409);
+      }
       const patch: Record<string, unknown> = { status, rejection_reason: body.reason || null, updated_at: new Date().toISOString(), validated_by: session.userId };
       if (status === "approved") patch.validated_at = new Date().toISOString();
       if (status === "suspended") patch.suspended_at = new Date().toISOString();
       const { data, error } = await sb.from("talent_recruiter_profiles").update(patch).eq("user_id", targetUserId).select().single();
       if (error) throw error;
-      if (status === "approved") await sb.from("user_roles").upsert({ user_id: targetUserId, role: "recruteur" }, { onConflict: "user_id,role" });
-      if (["rejected","suspended"].includes(status)) await sb.from("user_roles").delete().eq("user_id", targetUserId).eq("role", "recruteur");
+      if (status === "approved" && data.recruiter_type === "independent") {
+        await sb.from("user_roles").upsert({ user_id: targetUserId, role: "recruteur_independant" }, { onConflict: "user_id,role" });
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["apprenant", "recruteur"]);
+        await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      } else if (status === "approved") {
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
+        await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      }
+      if (status === "pending") await sb.from("users").update({ status: "en_attente_validation", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      if (status === "rejected") {
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
+        await sb.from("users").update({ status: "inactif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      }
+      if (status === "suspended") {
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
+        await sb.from("users").update({ status: "suspendu", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      }
       await queueNotification(sb, targetUserId, "recruiter_status_changed", { status, reason: body.reason || null });
       await logActivity(sb, session, null, targetUserId, "recruiter_status_changed", "user", targetUserId, { status, reason: body.reason || null });
       return json({ success: true, profile: data });
@@ -385,6 +443,123 @@ Deno.serve(async (req: Request) => {
       if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
       const { error } = await sb.from("talent_recruitment_invites").update({ revoked_at: new Date().toISOString() }).eq("id", String(body.invite_id || "")).eq("organization_id", organizationId);
       if (error) throw error;
+      return json({ success: true });
+    }
+
+    if (action === "create_structure_recruiter") {
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const fullName = String(body.full_name || "").trim();
+      const email = String(body.email || "").trim().toLowerCase();
+      const phone = String(body.phone_number || "").trim();
+      const jobTitle = String(body.job_title || "Recruteur Structure").trim();
+      const roleLabel = String(body.role_label || "Recruteur Structure").trim();
+      const country = String(body.country_code || "ML").trim().toUpperCase();
+      if (fullName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.length < 8) {
+        return json({ error: "INVALID_RECRUITER", message: "Nom, email professionnel et téléphone valides sont requis." }, 400);
+      }
+      const [{ data: existingEmail }, { data: existingPhone }] = await Promise.all([
+        sb.from("users").select("id").eq("email", email).maybeSingle(),
+        sb.from("users").select("id").eq("phone_number", phone).maybeSingle(),
+      ]);
+      if (existingEmail || existingPhone) {
+        return json({ error: "ACCOUNT_ALREADY_EXISTS", message: "Cet email ou ce téléphone appartient déjà à un compte. Utilisez une nouvelle adresse professionnelle." }, 409);
+      }
+      const password = temporaryPassword();
+      const { data: user, error: userError } = await sb.from("users").insert({
+        full_name: fullName,
+        email,
+        phone_number: phone,
+        password_hash: hashSync(password, 12),
+        birth_date: null,
+        country_code: country || "ML",
+        email_status: "valide",
+        status: "actif",
+        force_password_change: true,
+        allow_email: true,
+        allow_sms: true,
+        allow_push: false,
+        subscribe_newsletter: false,
+      }).select("id,full_name,email,created_at").single();
+      if (userError) throw userError;
+      const permissions = {
+        can_post_job: body.permissions?.can_post_job !== false,
+        can_search_talent: body.permissions?.can_search_talent !== false,
+        can_contact_talent: body.permissions?.can_contact_talent !== false,
+        can_manage_jobs: body.permissions?.can_manage_jobs !== false,
+        can_view_applications: body.permissions?.can_view_applications !== false,
+        can_schedule_interview: body.permissions?.can_schedule_interview !== false,
+        can_manage_team: body.permissions?.can_manage_team === true,
+      };
+      try {
+        const now = new Date().toISOString();
+        await sb.from("user_roles").insert({ user_id: user.id, role: "recruteur_structure", granted_by: session.userId });
+        const { error: managerError } = await sb.from("partner_managers").insert({
+          organization_id: organizationId,
+          user_id: user.id,
+          role_in_org: roleLabel,
+          is_primary: false,
+          status: "actif",
+          permissions,
+        });
+        if (managerError) throw managerError;
+        const { error: permissionError } = await sb.from("talent_structure_permissions").insert({
+          organization_id: organizationId,
+          user_id: user.id,
+          ...permissions,
+          updated_at: now,
+        });
+        if (permissionError) throw permissionError;
+        const { error: profileError } = await sb.from("talent_recruiter_profiles").insert({
+          user_id: user.id,
+          recruiter_type: "structure",
+          organization_id: organizationId,
+          job_title: jobTitle,
+          professional_email: email,
+          phone,
+          country,
+          status: "approved",
+          visibility: "private",
+          notifications_enabled: true,
+          validated_by: session.userId,
+          validated_at: now,
+          updated_at: now,
+        });
+        if (profileError) throw profileError;
+      } catch (error) {
+        await sb.from("users").delete().eq("id", user.id).catch(() => {});
+        throw error;
+      }
+      const emailSent = await sendStructureRecruiterAccess(email, fullName, password);
+      await logActivity(sb, session, organizationId, user.id, "structure_recruiter_created", "user", user.id, { role_label: roleLabel, email_sent: emailSent });
+      return json({
+        success: true,
+        member: { ...user, role_in_org: roleLabel, is_primary: false, status: "actif", recruitment_permissions: permissions },
+        temporary_password: password,
+        email_sent: emailSent,
+      });
+    }
+
+    if (action === "set_structure_recruiter_status") {
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const targetUserId = String(body.user_id || "");
+      const status = String(body.status || "");
+      if (!targetUserId || !["actif", "suspendu", "retire"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
+      const { data: member } = await sb.from("partner_managers").select("user_id,is_primary").eq("organization_id", organizationId).eq("user_id", targetUserId).maybeSingle();
+      if (!member || member.is_primary) return json({ error: "MEMBER_NOT_EDITABLE" }, 403);
+      if (status === "retire") {
+        await sb.from("partner_managers").delete().eq("organization_id", organizationId).eq("user_id", targetUserId);
+        await sb.from("talent_structure_permissions").delete().eq("organization_id", organizationId).eq("user_id", targetUserId);
+        await sb.from("talent_recruiter_profiles").update({ status: "suspended", suspended_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", targetUserId).eq("organization_id", organizationId);
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).eq("role", "recruteur_structure");
+        await sb.from("users").update({ status: "inactif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      } else {
+        const managerStatus = status === "actif" ? "actif" : "suspendu";
+        const profileStatus = status === "actif" ? "approved" : "suspended";
+        await sb.from("partner_managers").update({ status: managerStatus }).eq("organization_id", organizationId).eq("user_id", targetUserId);
+        await sb.from("talent_recruiter_profiles").update({ status: profileStatus, suspended_at: status === "actif" ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", targetUserId).eq("organization_id", organizationId);
+        await sb.from("users").update({ status: status === "actif" ? "actif" : "suspendu", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+      }
+      await logActivity(sb, session, organizationId, targetUserId, "structure_recruiter_status_changed", "user", targetUserId, { status });
       return json({ success: true });
     }
 
@@ -508,11 +683,20 @@ Deno.serve(async (req: Request) => {
 
     if (action === "list_team_permissions") {
       if (!organizationId) return json({ error: "NO_STRUCTURE" }, 403);
-      const { data: members, error } = await sb.from("partner_managers").select("user_id,role_in_org,is_primary,status,users(full_name,email)").eq("organization_id", organizationId).eq("status", "actif");
+      const { data: members, error } = await sb.from("partner_managers").select("user_id,role_in_org,is_primary,status").eq("organization_id", organizationId).order("is_primary", { ascending: false });
       if (error) throw error;
-      const { data: permissions } = await sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId);
-      const byUser = new Map((permissions || []).map((p: any) => [String(p.user_id), p]));
-      return json({ success: true, members: (members || []).map((m: any) => ({ ...m, recruitment_permissions: byUser.get(String(m.user_id)) || null })) });
+      const userIds = (members || []).map((member: any) => member.user_id).filter(Boolean);
+      const [{ data: permissions }, { data: users }] = await Promise.all([
+        sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId),
+        userIds.length ? sb.from("users").select("id,full_name,email,created_at").in("id", userIds) : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const byUser = new Map((permissions || []).map((permission: any) => [String(permission.user_id), permission]));
+      const usersById = new Map((users || []).map((user: any) => [String(user.id), user]));
+      return json({ success: true, members: (members || []).map((member: any) => ({
+        ...member,
+        users: usersById.get(String(member.user_id)) || null,
+        recruitment_permissions: byUser.get(String(member.user_id)) || null,
+      })) });
     }
 
     if (action === "update_team_permissions") {
