@@ -911,10 +911,8 @@ async function toggleFavorite(sb: Supabase, session: Session, body: Record<strin
   return active;
 }
 
-async function expireBookingHolds(sb: Supabase, coachId?: string) {
-  let query = sb.from("coaching_sessions").update({ status: "expired" }).eq("status", "pending_payment").lt("hold_expires_at", new Date().toISOString());
-  if (coachId) query = query.eq("coach_id", coachId);
-  const { error } = await query;
+async function expireBookingHolds(sb: Supabase, _coachId?: string) {
+  const { error } = await sb.rpc("coaching_expire_payment_holds");
   if (error) throw error;
 }
 
@@ -1028,6 +1026,14 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
     policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3" },
   }).select().single();
   if (error) throw error;
+  await invokeNotification("coaching_custom_request_received", {
+    userId: context.profile.user_id,
+    learner_name: session.fullName || "Un apprenant",
+    offer_title: context.offer.title,
+    scheduled_start: slot.slot_start,
+    duration_minutes: duration,
+    action_url: "/coach/sessions",
+  });
   return data;
 }
 
@@ -1055,7 +1061,11 @@ async function learnerDashboard(sb: Supabase, session: Session) {
   if (favorites.error) throw favorites.error;
   const favoriteIds = (favorites.data || []).map((row: { coach_id: string }) => String(row.coach_id));
   const all = await publicCoaches(sb);
-  return { sessions, favorites: all.filter((coach: { id: string }) => favoriteIds.includes(String(coach.id))) };
+  const finance = await financeForSessions(sb, sessions.map((row: Record<string, unknown>) => String(row.id)));
+  return {
+    sessions: sessions.map((row: Record<string, unknown>) => ({ ...row, ...(finance.get(String(row.id)) || {}) })),
+    favorites: all.filter((coach: { id: string }) => favoriteIds.includes(String(coach.id))),
+  };
 }
 
 async function coachSessions(sb: Supabase, session: Session) {
@@ -1065,7 +1075,8 @@ async function coachSessions(sb: Supabase, session: Session) {
   const learnerIds = [...new Set(rows.map((row: Record<string, unknown>) => String(row.learner_user_id)))];
   const { data: learners } = learnerIds.length ? await sb.from("users").select("id,full_name,email").in("id", learnerIds) : { data: [] };
   const learnerMap = new Map((learners || []).map((learner: { id: string }) => [String(learner.id), learner]));
-  return rows.map((row: Record<string, unknown>) => ({ ...row, learner: learnerMap.get(String(row.learner_user_id)) || null }));
+  const finance = await financeForSessions(sb, rows.map((row: Record<string, unknown>) => String(row.id)));
+  return rows.map((row: Record<string, unknown>) => ({ ...row, learner: learnerMap.get(String(row.learner_user_id)) || null, ...(finance.get(String(row.id)) || {}) }));
 }
 
 async function decideCustomRequest(sb: Supabase, session: Session, body: Record<string, unknown>) {
@@ -1079,6 +1090,13 @@ async function decideCustomRequest(sb: Supabase, session: Session, body: Record<
   if (decision === "decline") {
     const { data, error: updateError } = await sb.from("coaching_sessions").update({ status: "declined_by_coach", coach_response_message: responseMessage }).eq("id", booking.id).select().single();
     if (updateError) throw updateError;
+    await invokeNotification("coaching_custom_request_declined", {
+      userId: booking.learner_user_id,
+      offer_title: booking.offer_title_snapshot,
+      coach_name: booking.coach_name_snapshot,
+      reason: responseMessage || "La demande n’a pas été acceptée.",
+      action_url: "/dashboard/coaching",
+    });
     return data;
   }
   if (!["accept", "propose"].includes(decision)) throw new Error("INVALID_DECISION");
@@ -1101,6 +1119,14 @@ async function decideCustomRequest(sb: Supabase, session: Session, body: Record<
     if ((updateError as { code?: string }).code === "23P01") throw new Error("SLOT_UNAVAILABLE");
     throw updateError;
   }
+  await invokeNotification("coaching_custom_request_accepted", {
+    userId: booking.learner_user_id,
+    offer_title: booking.offer_title_snapshot,
+    coach_name: booking.coach_name_snapshot,
+    scheduled_start: data.scheduled_start,
+    duration_minutes: data.duration_minutes,
+    action_url: `/coaching/paiement/${booking.id}`,
+  });
   return data;
 }
 
@@ -1178,6 +1204,310 @@ async function reviewCoachOffer(sb: Supabase, session: Session, body: Record<str
   return finalOffer;
 }
 
+
+
+async function sha256Hex(value: string): Promise<string> {
+  const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function coachingOrderNumber(): string {
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+  return `COACH-${stamp}-${suffix}`;
+}
+
+async function invokeNotification(type: string, payload: Record<string, unknown>) {
+  const url = Deno.env.get("SUPABASE_URL") || "";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return;
+  await fetch(`${url}/functions/v1/notify-dispatch`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ type, payload }),
+  }).catch(() => undefined);
+}
+
+async function financeForSessions(sb: Supabase, sessionIds: string[]) {
+  const result = new Map<string, Record<string, unknown>>();
+  if (!sessionIds.length) return result;
+  const [{ data: orders }, { data: invoices }, { data: refunds }] = await Promise.all([
+    sb.from("coaching_payment_orders").select("*").in("session_id", sessionIds),
+    sb.from("coaching_invoices").select("id,invoice_number,order_id,session_id,issued_at,amount_xof,currency,pdf_storage_path").in("session_id", sessionIds),
+    sb.from("coaching_refund_requests").select("*").in("session_id", sessionIds).order("created_at", { ascending: false }),
+  ]);
+  const invoicesBySession = new Map((invoices || []).map((row: Record<string, unknown>) => [String(row.session_id), row]));
+  const refundsBySession = new Map<string, Record<string, unknown>>();
+  for (const row of refunds || []) if (!refundsBySession.has(String(row.session_id))) refundsBySession.set(String(row.session_id), row as Record<string, unknown>);
+  for (const order of orders || []) {
+    const sid = String(order.session_id);
+    result.set(sid, { order, invoice: invoicesBySession.get(sid) || null, refund: refundsBySession.get(sid) || null });
+  }
+  for (const sid of sessionIds) if (!result.has(sid)) result.set(sid, { order: null, invoice: invoicesBySession.get(sid) || null, refund: refundsBySession.get(sid) || null });
+  return result;
+}
+
+async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const { data: booking, error } = await sb.from("coaching_sessions").select("*").eq("id", sessionId).eq("learner_user_id", session.userId).maybeSingle();
+  if (error) throw error;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  if (booking.status !== "pending_payment") throw new Error("PAYMENT_NOT_ALLOWED");
+  if (!booking.scheduled_start || !booking.scheduled_end) throw new Error("BOOKING_INCOMPLETE");
+  if (booking.hold_expires_at && new Date(booking.hold_expires_at).getTime() <= Date.now()) throw new Error("PAYMENT_HOLD_EXPIRED");
+
+  const { data: existing } = await sb.from("coaching_payment_orders").select("*").eq("session_id", booking.id).maybeSingle();
+  if (existing?.payment_status === "paid") return { order: existing, already_paid: true, payment_url: null };
+
+  const [{ data: user }, { data: coachProfile }] = await Promise.all([
+    sb.from("users").select("id,full_name,email,phone_number,country_code,status").eq("id", session.userId).maybeSingle(),
+    sb.from("coach_profiles").select("id,user_id").eq("id", booking.coach_id).maybeSingle(),
+  ]);
+  if (!user || user.status !== "actif") throw new Error("SESSION_INVALID");
+  if (!coachProfile) throw new Error("COACH_NOT_FOUND");
+
+  const settingsResult = await sb.from("coaching_settings").select("*").eq("id", 1).single();
+  if (settingsResult.error) throw settingsResult.error;
+  const settings = settingsResult.data;
+  const policySnapshot = {
+    cancellation_full_refund_hours: Number(settings.cancellation_full_refund_hours || 24),
+    cancellation_partial_refund_hours: Number(settings.cancellation_partial_refund_hours || 6),
+    cancellation_partial_refund_percent: Number(settings.cancellation_partial_refund_percent || 50),
+    dispute_window_hours: Number(settings.dispute_window_hours || 48),
+  };
+
+  const orderNumber = existing?.order_number || coachingOrderNumber();
+  const idempotencyKey = existing?.idempotency_key || await sha256Hex(`${session.userId}:${booking.id}:${orderNumber}`);
+  const orderPayload = {
+    order_number: orderNumber,
+    session_id: booking.id,
+    user_id: session.userId,
+    coach_id: booking.coach_id,
+    amount_xof: Number(booking.price_total_xof),
+    currency: "XOF",
+    payment_status: "pending",
+    payment_provider: "fedapay",
+    idempotency_key: idempotencyKey,
+    commission_percent_snapshot: Number(booking.commission_percent_snapshot),
+    commission_amount_xof: Number(booking.commission_amount_xof),
+    coach_net_xof: Number(booking.coach_net_xof),
+    offer_title_snapshot: String(booking.offer_title_snapshot),
+    coach_name_snapshot: String(booking.coach_name_snapshot),
+    session_start_snapshot: booking.scheduled_start,
+    session_end_snapshot: booking.scheduled_end,
+    policy_snapshot: policySnapshot,
+  };
+  const orderResult = existing
+    ? await sb.from("coaching_payment_orders").update(orderPayload).eq("id", existing.id).select().single()
+    : await sb.from("coaching_payment_orders").insert(orderPayload).select().single();
+  if (orderResult.error) throw orderResult.error;
+  const order = orderResult.data;
+  await sb.from("coaching_sessions").update({ payment_order_id: order.id, payment_status: "pending", policy_snapshot: policySnapshot }).eq("id", booking.id);
+
+  const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+  if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
+  const apiBase = (Deno.env.get("FEDAPAY_API_BASE") || "https://api.fedapay.com/v1").replace(/\/$/, "");
+  const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const names = String(user.full_name || "").trim().split(/\s+/);
+  const firstname = names.shift() || String(user.email).split("@")[0];
+  const lastname = names.join(" ") || "-";
+  const metadata = { resource_type: "coaching_session", coaching_order_id: order.id, session_id: booking.id, user_id: session.userId, coach_id: booking.coach_id };
+  const providerMerchantReference = `${order.order_number}-${Date.now().toString().slice(-6)}`;
+
+  const transactionResponse = await fetch(`${apiBase}/transactions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${fedaKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      description: `Coaching OGA — ${booking.offer_title_snapshot}`,
+      amount: Number(booking.price_total_xof),
+      currency: { iso: "XOF" },
+      callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`,
+      return_url: `${appUrl}/coaching/paiement/${booking.id}?retour=fedapay`,
+      cancel_url: `${appUrl}/coaching/paiement/${booking.id}?annule=1`,
+      merchant_reference: providerMerchantReference,
+      custom_metadata: metadata,
+      metadata,
+      customer: {
+        email: user.email,
+        firstname,
+        lastname,
+        ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}),
+      },
+    }),
+  });
+  if (!transactionResponse.ok) {
+    const detail = await transactionResponse.text().catch(() => "");
+    await sb.from("coaching_payment_orders").update({ payment_status: "failed", failed_at: new Date().toISOString(), provider_metadata: { initialization_error: detail.slice(0, 1000) } }).eq("id", order.id);
+    await sb.from("coaching_sessions").update({ payment_status: "failed" }).eq("id", booking.id);
+    throw new Error("PAYMENT_INIT_FAILED");
+  }
+  const transactionData = await transactionResponse.json();
+  const transaction = transactionData.v1Transaction || transactionData.transaction || transactionData;
+  const providerId = transaction?.id ? String(transaction.id) : "";
+  if (!providerId) throw new Error("PAYMENT_INIT_FAILED");
+  const tokenResponse = await fetch(`${apiBase}/transactions/${providerId}/token`, { method: "POST", headers: { Authorization: `Bearer ${fedaKey}`, "Content-Type": "application/json" } });
+  if (!tokenResponse.ok) throw new Error("PAYMENT_LINK_FAILED");
+  const tokenData = await tokenResponse.json();
+  const paymentUrl = String(tokenData.url || tokenData.token_url || "");
+  if (!paymentUrl) throw new Error("PAYMENT_LINK_FAILED");
+  await sb.from("coaching_payment_orders").update({ provider_transaction_id: providerId, provider_reference: transaction?.reference || providerMerchantReference, provider_metadata: transactionData }).eq("id", order.id);
+  return { order: { ...order, provider_transaction_id: providerId }, payment_url: paymentUrl, already_paid: false };
+}
+
+async function coachingPaymentStatus(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const { data: booking, error } = await sb.from("coaching_sessions").select("*").eq("id", sessionId).maybeSingle();
+  if (error) throw error;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  const profile = await sb.from("coach_profiles").select("user_id").eq("id", booking.coach_id).maybeSingle();
+  if (String(booking.learner_user_id) !== session.userId && String(profile.data?.user_id || "") !== session.userId && !isAdmin(session)) throw new Error("FORBIDDEN");
+  const finance = await financeForSessions(sb, [sessionId]);
+  return { session: booking, ...(finance.get(sessionId) || { order: null, invoice: null, refund: null }) };
+}
+
+async function coachingInvoiceUrl(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const invoiceId = asText(body.invoice_id, 80);
+  const { data: invoice, error } = await sb.from("coaching_invoices").select("*").eq("id", invoiceId).maybeSingle();
+  if (error) throw error;
+  if (!invoice) throw new Error("INVOICE_NOT_FOUND");
+  const profile = await sb.from("coach_profiles").select("user_id").eq("id", invoice.coach_id).maybeSingle();
+  if (String(invoice.user_id) !== session.userId && String(profile.data?.user_id || "") !== session.userId && !isAdmin(session)) throw new Error("FORBIDDEN");
+  const { data, error: signedError } = await sb.storage.from("coaching-invoices").createSignedUrl(String(invoice.pdf_storage_path), 600);
+  if (signedError || !data?.signedUrl) throw signedError || new Error("INVOICE_UNAVAILABLE");
+  return { invoice, signed_url: data.signedUrl };
+}
+
+function refundAmountForLearner(booking: Record<string, unknown>, order: Record<string, unknown>) {
+  const start = new Date(String(booking.scheduled_start)).getTime();
+  const hours = Math.max(0, (start - Date.now()) / 3600000);
+  const policy = (order.policy_snapshot || {}) as Record<string, unknown>;
+  const fullHours = Number(policy.cancellation_full_refund_hours ?? 24);
+  const partialHours = Number(policy.cancellation_partial_refund_hours ?? 6);
+  const partialPercent = Number(policy.cancellation_partial_refund_percent ?? 50);
+  if (hours >= fullHours) return { amount: Number(order.amount_xof), percent: 100, hours_before: hours };
+  if (hours >= partialHours) return { amount: Math.round(Number(order.amount_xof) * partialPercent / 100), percent: partialPercent, hours_before: hours };
+  return { amount: 0, percent: 0, hours_before: hours };
+}
+
+async function cancelPaidCoaching(sb: Supabase, session: Session, body: Record<string, unknown>, actor: "learner" | "coach") {
+  const sessionId = asText(body.session_id, 80);
+  const reasonCode = asText(body.reason_code, 80) || `${actor}_cancellation`;
+  const reasonDetails = asNullableText(body.reason_details, 1500);
+  const { data: booking, error } = await sb.from("coaching_sessions").select("*").eq("id", sessionId).maybeSingle();
+  if (error) throw error;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  const { data: coachProfile } = await sb.from("coach_profiles").select("user_id").eq("id", booking.coach_id).maybeSingle();
+  if (actor === "learner" && String(booking.learner_user_id) !== session.userId) throw new Error("FORBIDDEN");
+  if (actor === "coach" && String(coachProfile?.user_id || "") !== session.userId) throw new Error("FORBIDDEN");
+  if (!['confirmed','ready'].includes(String(booking.status))) throw new Error("BOOKING_CANNOT_CANCEL");
+  const { data: order } = await sb.from("coaching_payment_orders").select("*").eq("session_id", sessionId).eq("payment_status", "paid").maybeSingle();
+  if (!order) throw new Error("COACHING_ORDER_NOT_FOUND");
+  const existing = await sb.from("coaching_refund_requests").select("*").eq("session_id", sessionId).in("status", ["pending","under_review","approved","partially_approved"]).maybeSingle();
+  if (existing.data) return existing.data;
+  const calculation = actor === "coach" ? { amount: Number(order.amount_xof), percent: 100, hours_before: null } : refundAmountForLearner(booking, order);
+  const status = calculation.amount > 0 ? "approved" : "processed";
+  const { data: refund, error: refundError } = await sb.from("coaching_refund_requests").insert({
+    order_id: order.id, session_id: booking.id, user_id: booking.learner_user_id, coach_id: booking.coach_id,
+    initiated_by: actor, requested_amount_xof: calculation.amount, approved_amount_xof: calculation.amount,
+    reason_code: reasonCode, reason_details: reasonDetails, status,
+    policy_snapshot: { ...(order.policy_snapshot || {}), calculation },
+    decision_reason: actor === "coach" ? "Annulation par le coach : remboursement total." : calculation.amount > 0 ? `Remboursement calculé à ${calculation.percent}%.` : "Annulation hors délai remboursable.",
+    decided_by: actor === "coach" ? session.userId : null, decided_at: new Date().toISOString(), processed_at: calculation.amount === 0 ? new Date().toISOString() : null,
+  }).select().single();
+  if (refundError) throw refundError;
+  await sb.from("coaching_sessions").update({ status: actor === "coach" ? "cancelled_by_coach" : "cancelled_by_learner", hold_expires_at: null }).eq("id", booking.id);
+  await sb.from("coaching_notification_jobs").update({ status: "cancelled" }).eq("session_id", booking.id).in("status", ["pending","failed"]);
+  await invokeNotification("coaching_cancelled", { userId: booking.learner_user_id, session_id: booking.id, coach_name: booking.coach_name_snapshot, offer_title: booking.offer_title_snapshot, scheduled_start: booking.scheduled_start, cancelled_by: actor, refund_amount_xof: calculation.amount, action_url: "/dashboard/coaching" });
+  if (coachProfile?.user_id) await invokeNotification("coaching_cancelled", { userId: coachProfile.user_id, session_id: booking.id, coach_name: booking.coach_name_snapshot, offer_title: booking.offer_title_snapshot, scheduled_start: booking.scheduled_start, cancelled_by: actor, refund_amount_xof: calculation.amount, action_url: "/coach/sessions" });
+  return refund;
+}
+
+async function adminCoachingFinance(sb: Supabase) {
+  const [{ data: orders }, { data: refunds }, { data: sessions }, { data: invoices }, { data: settings }] = await Promise.all([
+    sb.from("coaching_payment_orders").select("*").order("created_at", { ascending: false }).limit(300),
+    sb.from("coaching_refund_requests").select("*").order("created_at", { ascending: false }).limit(300),
+    sb.from("coaching_sessions").select("id,learner_user_id,coach_id,offer_title_snapshot,coach_name_snapshot,scheduled_start,status,payment_status").order("created_at", { ascending: false }).limit(300),
+    sb.from("coaching_invoices").select("id,invoice_number,order_id,session_id,issued_at,amount_xof").order("issued_at", { ascending: false }).limit(300),
+    sb.from("coaching_settings").select("*").eq("id", 1).single(),
+  ]);
+  const sessionMap = new Map((sessions || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+  const invoiceMap = new Map((invoices || []).map((row: Record<string, unknown>) => [String(row.order_id), row]));
+  const orderRows = (orders || []).map((order: Record<string, unknown>) => ({ ...order, session: sessionMap.get(String(order.session_id)) || null, invoice: invoiceMap.get(String(order.id)) || null }));
+  const refundRows = (refunds || []).map((refund: Record<string, unknown>) => ({ ...refund, session: sessionMap.get(String(refund.session_id)) || null }));
+  return { orders: orderRows, refunds: refundRows, settings, metrics: {
+    paid_xof: orderRows.filter((row: Record<string, unknown>) => ["paid","partially_refunded","refunded"].includes(String(row.payment_status))).reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.amount_xof || 0), 0),
+    commission_xof: orderRows.filter((row: Record<string, unknown>) => String(row.payment_status) === "paid").reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.commission_amount_xof || 0), 0),
+    pending_orders: orderRows.filter((row: Record<string, unknown>) => String(row.payment_status) === "pending").length,
+    pending_refunds: refundRows.filter((row: Record<string, unknown>) => ["pending","under_review","approved","partially_approved"].includes(String(row.status))).length,
+  } };
+}
+
+
+async function adminFinanceSettingsSave(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const fullHours = asInteger(body.cancellation_full_refund_hours);
+  const partialHours = asInteger(body.cancellation_partial_refund_hours);
+  const partialPercent = asInteger(body.cancellation_partial_refund_percent);
+  const disputeHours = asInteger(body.dispute_window_hours);
+  const reminderHours = asInteger(body.reminder_day_before_hours);
+  const reminderMinutes = asInteger(body.reminder_minutes_before);
+  if (fullHours === null || partialHours === null || partialPercent === null || disputeHours === null || reminderHours === null || reminderMinutes === null || partialHours > fullHours || partialPercent > 100 || reminderHours < 1 || reminderMinutes < 5) throw new Error("INVALID_FINANCE_SETTINGS");
+  const before = await sb.from("coaching_settings").select("*").eq("id", 1).single();
+  const result = await sb.from("coaching_settings").update({
+    cancellation_full_refund_hours: fullHours,
+    cancellation_partial_refund_hours: partialHours,
+    cancellation_partial_refund_percent: partialPercent,
+    dispute_window_hours: disputeHours,
+    reminder_day_before_hours: reminderHours,
+    reminder_minutes_before: reminderMinutes,
+  }).eq("id", 1).select().single();
+  if (result.error) throw result.error;
+  await audit(sb, session.userId, "coaching_finance_settings_updated", "coaching_settings", "1", before.data || {}, result.data || {}, {});
+  return result.data;
+}
+
+async function adminRefundDecision(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const refundId = asText(body.refund_id, 80);
+  const decision = asText(body.decision, 30);
+  const reason = asNullableText(body.reason, 1200);
+  const amount = asInteger(body.approved_amount_xof);
+  const { data: refund, error } = await sb.from("coaching_refund_requests").select("*,order:coaching_payment_orders(*)").eq("id", refundId).maybeSingle();
+  if (error) throw error;
+  if (!refund) throw new Error("REFUND_NOT_FOUND");
+  if (decision === "reject") {
+    if (!reason) throw new Error("REVIEW_MESSAGE_REQUIRED");
+    const result = await sb.from("coaching_refund_requests").update({ status: "rejected", approved_amount_xof: 0, decision_reason: reason, decided_by: session.userId, decided_at: new Date().toISOString() }).eq("id", refund.id).select().single();
+    if (result.error) throw result.error;
+    await invokeNotification("coaching_refund_update", { userId: refund.user_id, status: "rejected", amount_xof: 0, reason, session_id: refund.session_id, action_url: "/dashboard/coaching" });
+    return result.data;
+  }
+  if (decision !== "approve" || amount === null || amount < 0 || amount > Number(refund.order?.amount_xof || 0)) throw new Error("INVALID_REFUND_AMOUNT");
+  const status = amount === Number(refund.order.amount_xof) ? "approved" : "partially_approved";
+  const result = await sb.from("coaching_refund_requests").update({ status, approved_amount_xof: amount, decision_reason: reason, decided_by: session.userId, decided_at: new Date().toISOString() }).eq("id", refund.id).select().single();
+  if (result.error) throw result.error;
+  await invokeNotification("coaching_refund_update", { userId: refund.user_id, status, amount_xof: amount, reason, session_id: refund.session_id, action_url: "/dashboard/coaching" });
+  return result.data;
+}
+
+async function adminRefundProcessed(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const refundId = asText(body.refund_id, 80);
+  const providerReference = asText(body.provider_reference, 200);
+  if (!providerReference) throw new Error("PROVIDER_REFERENCE_REQUIRED");
+  const { data: refund, error } = await sb.from("coaching_refund_requests").select("*,order:coaching_payment_orders(*)").eq("id", refundId).maybeSingle();
+  if (error) throw error;
+  if (!refund) throw new Error("REFUND_NOT_FOUND");
+  if (!["approved","partially_approved"].includes(String(refund.status))) throw new Error("REFUND_NOT_APPROVED");
+  const amount = Number(refund.approved_amount_xof || 0);
+  const full = amount >= Number(refund.order?.amount_xof || 0);
+  const now = new Date().toISOString();
+  const result = await sb.from("coaching_refund_requests").update({ status: "processed", provider_refund_reference: providerReference, processed_at: now, decided_by: session.userId }).eq("id", refund.id).select().single();
+  if (result.error) throw result.error;
+  await sb.from("coaching_payment_orders").update({ payment_status: full ? "refunded" : "partially_refunded" }).eq("id", refund.order_id);
+  await sb.from("coaching_sessions").update({ payment_status: full ? "refunded" : "partially_refunded", status: full ? "refunded" : "partially_refunded" }).eq("id", refund.session_id);
+  await invokeNotification("coaching_refund_update", { userId: refund.user_id, status: "processed", amount_xof: amount, session_id: refund.session_id, action_url: "/dashboard/coaching" });
+  return result.data;
+}
+
 function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
   const badRequest = [
@@ -1186,11 +1516,13 @@ function errorResponse(error: unknown) {
     "APPLICATION_PRICE_OUT_OF_RANGE", "COACH_REQUIRED", "INVALID_STATUS", "SUSPENSION_REASON_REQUIRED", "LEVEL_NAME_REQUIRED", "DOMAIN_NAME_REQUIRED",
     "OFFER_INCOMPLETE", "OFFER_PRICE_OUT_OF_RANGE", "INVALID_SESSION_MODE", "INVALID_AVAILABILITY", "INVALID_AVAILABILITY_RANGE",
     "INVALID_DURATION", "BOOKING_INCOMPLETE", "INVALID_OFFER_TYPE", "CANNOT_BOOK_SELF", "CANNOT_FAVORITE_SELF", "INVALID_DECISION",
-    "BOOKING_CANNOT_CANCEL",
+    "BOOKING_CANNOT_CANCEL", "PAYMENT_NOT_ALLOWED", "PAYMENT_HOLD_EXPIRED", "PAYMENT_CONFIGURATION_MISSING", "PAYMENT_INIT_FAILED", "PAYMENT_LINK_FAILED",
+    "INVALID_REFUND_AMOUNT", "PROVIDER_REFERENCE_REQUIRED", "REFUND_NOT_APPROVED", "INVALID_FINANCE_SETTINGS",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
   if (code === "FORBIDDEN") return json({ error: code }, 403);
-  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
+  if (code === "INVOICE_UNAVAILABLE") return json({ error: code }, 503);
+  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
   if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED"].includes(code)) return json({ error: code }, 409);
   if (badRequest.includes(code)) return json({ error: code }, 400);
   console.error("[coaching]", error);
@@ -1243,6 +1575,10 @@ Deno.serve(async (req: Request) => {
     if (action === "booking_create_fixed") return json({ success: true, session: await createFixedBooking(sb, session, body) });
     if (action === "booking_create_custom") return json({ success: true, session: await createCustomRequest(sb, session, body) });
     if (action === "booking_cancel_pending") return json({ success: true, session: await cancelPendingBooking(sb, session, body) });
+    if (action === "payment_checkout") return json({ success: true, ...(await coachingPaymentCheckout(sb, session, body)) });
+    if (action === "payment_status") return json({ success: true, ...(await coachingPaymentStatus(sb, session, body)) });
+    if (action === "invoice_signed_url") return json({ success: true, ...(await coachingInvoiceUrl(sb, session, body)) });
+    if (action === "learner_cancel_paid") return json({ success: true, refund: await cancelPaidCoaching(sb, session, body, "learner") });
     if (action === "coach_dashboard") {
       const profile = await ownCoachProfile(sb, session);
       await expireBookingHolds(sb, String(profile.id));
@@ -1266,6 +1602,7 @@ Deno.serve(async (req: Request) => {
     if (action === "coach_sessions") return json({ success: true, sessions: await coachSessions(sb, session) });
     if (action === "coach_request_availability") return json({ success: true, ...(await coachRequestSlots(sb, session, body)) });
     if (action === "coach_custom_request_decide") return json({ success: true, session: await decideCustomRequest(sb, session, body) });
+    if (action === "coach_cancel_paid") return json({ success: true, refund: await cancelPaidCoaching(sb, session, body, "coach") });
 
     if (!isAdmin(session)) throw new Error("FORBIDDEN");
 
@@ -1290,6 +1627,10 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_domain_save") return json({ success: true, domain: await upsertDomain(sb, session, body) });
     if (action === "admin_offers") return json({ success: true, offers: await adminOffers(sb) });
     if (action === "admin_offer_review") return json({ success: true, offer: await reviewCoachOffer(sb, session, body) });
+    if (action === "admin_finance") return json({ success: true, ...(await adminCoachingFinance(sb)) });
+    if (action === "admin_refund_decide") return json({ success: true, refund: await adminRefundDecision(sb, session, body) });
+    if (action === "admin_refund_processed") return json({ success: true, refund: await adminRefundProcessed(sb, session, body) });
+    if (action === "admin_finance_settings_save") return json({ success: true, settings: await adminFinanceSettingsSave(sb, session, body) });
 
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {

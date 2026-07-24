@@ -391,6 +391,204 @@ COMPLETION_PERCENT: payload.completion_percent ?? 0,
         break;
       }
 
+      case "coaching_custom_request_received": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "à confirmer";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Demande de coaching personnalisée",
+            STATUT: "Nouvelle demande personnalisée",
+            MESSAGE_SPECIFIQUE: `${payload.learner_name || "Un apprenant"} propose une session le ${when}.`,
+            COMMENTAIRE: `Durée : ${payload.duration_minutes || "—"} minutes`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/sessions"}`,
+          } },
+          smsMessage: `Omnia Coaching : nouvelle demande personnalisée pour le ${when}.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_custom_request_accepted": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "à confirmer";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching personnalisée",
+            STATUT: "Demande acceptée — paiement requis",
+            MESSAGE_SPECIFIQUE: `${payload.coach_name || "Votre coach"} a accepté votre demande pour le ${when}.`,
+            COMMENTAIRE: `Durée : ${payload.duration_minutes || "—"} minutes. Finalisez le paiement avant l’expiration du créneau.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : votre demande est acceptée. Finalisez le paiement dans votre espace.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_custom_request_declined": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Demande de coaching personnalisée",
+            STATUT: "Demande non acceptée",
+            MESSAGE_SPECIFIQUE: `${payload.coach_name || "Le coach"} n’a pas accepté cette demande.`,
+            COMMENTAIRE: payload.reason as string || "",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : votre demande personnalisée n’a pas été acceptée.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_booking_confirmed": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "à confirmer";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Réservation confirmée",
+            MESSAGE_SPECIFIQUE: `Votre session avec ${payload.coach_name || "votre coach"} est confirmée pour le ${when}.`,
+            COMMENTAIRE: `Durée : ${payload.duration_minutes || "—"} minutes — Montant : ${payload.amount_xof || 0} XOF`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : réservation confirmée avec ${payload.coach_name || "votre coach"} le ${when}.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_new_booking": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "à confirmer";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Nouvelle réservation",
+            MESSAGE_SPECIFIQUE: `${payload.learner_name || "Un apprenant"} a réservé une session le ${when}.`,
+            COMMENTAIRE: `Durée : ${payload.duration_minutes || "—"} minutes`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/sessions"}`,
+          } },
+          smsMessage: `Omnia Coaching : nouvelle réservation le ${when}. Consultez votre espace coach.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_payment_failed": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Paiement de coaching",
+            STATUT: "Paiement non abouti",
+            MESSAGE_SPECIFIQUE: "Le paiement de votre session n’a pas été confirmé. Vous pouvez réessayer tant que le créneau reste disponible.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : votre paiement n’a pas été confirmé. Consultez votre espace pour réessayer.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_payment_issue": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Paiement de coaching",
+            STATUT: "Paiement reçu après expiration du créneau",
+            MESSAGE_SPECIFIQUE: "Votre paiement a été reçu, mais le créneau n’était plus sécurisé. L’équipe Omnia Coaching va vérifier la situation et organiser la confirmation ou le remboursement.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : paiement reçu après expiration du créneau. Notre équipe vérifie la situation.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_reminder": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "prochainement";
+        const soon = payload.reminder_type === "reminder_soon";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: soon ? "Session imminente" : "Rappel de session",
+            MESSAGE_SPECIFIQUE: `Votre session de coaching est prévue le ${when}.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : rappel, votre session est prévue le ${when}.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_session_started": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "La session commence",
+            MESSAGE_SPECIFIQUE: "Votre session de coaching commence maintenant. Rejoignez votre espace Omnia Coaching.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : votre session commence maintenant.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_cancelled": {
+        const actor = payload.cancelled_by === "coach" ? "le coach" : "l’apprenant";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Session annulée",
+            MESSAGE_SPECIFIQUE: `La session a été annulée par ${actor}.`,
+            COMMENTAIRE: `Montant remboursable calculé : ${payload.refund_amount_xof || 0} XOF.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : session annulée par ${actor}. Consultez votre espace pour le remboursement.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_refund_update": {
+        const status = String(payload.status || "mis à jour").replace(/_/g, " ");
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Remboursement coaching",
+            STATUT: status,
+            MESSAGE_SPECIFIQUE: `Votre remboursement de ${payload.amount_xof || 0} XOF a été ${status}.`,
+            COMMENTAIRE: payload.reason as string || "",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : remboursement ${status} — ${payload.amount_xof || 0} XOF.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_invoice_available": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 8, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            MONTANT_XOF: payload.amount_xof as number || 0,
+            COMMISSION_XOF: 0,
+            ACHETEUR_PAYS: "",
+            SOLDE_TOTAL_XOF: 0,
+            FACTURE_NUM: payload.invoice_number as string,
+            FACTURE_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : votre facture ${payload.invoice_number} est disponible dans votre espace.`,
+          sb,
+        });
+        break;
+      }
+
       default:
         return json({ error: "UNKNOWN_TYPE", type }, 400);
     }

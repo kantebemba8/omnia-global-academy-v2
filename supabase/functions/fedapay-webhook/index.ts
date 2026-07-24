@@ -204,6 +204,96 @@ async function processApprovedPayment(sb: ReturnType<typeof createClient>, order
   }
 }
 
+
+async function postInternal(path: string, body: Record<string, unknown>) {
+  const url = Deno.env.get("SUPABASE_URL") || "";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return null;
+  const response = await fetch(`${url}/functions/v1/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response;
+}
+
+async function processCoachingWebhook(
+  sb: ReturnType<typeof createClient>,
+  event: Record<string, unknown>,
+  eventName: string,
+  txn: Record<string, unknown>,
+  fedapayId: string,
+): Promise<boolean> {
+  const metadata = (txn.custom_metadata || txn.metadata || {}) as Record<string, unknown>;
+  let order: Record<string, unknown> | null = null;
+  if (metadata.coaching_order_id) {
+    const result = await sb.from("coaching_payment_orders").select("*").eq("id", metadata.coaching_order_id).maybeSingle();
+    order = result.data;
+  }
+  if (!order && fedapayId) {
+    const result = await sb.from("coaching_payment_orders").select("*").eq("provider_transaction_id", fedapayId).maybeSingle();
+    order = result.data;
+  }
+  if (!order && metadata.resource_type !== "coaching_session") return false;
+  if (!order) return true;
+
+  const providerEventId = String(event.id || `${eventName}:${fedapayId}:${String(txn.updated_at || txn.status || "event")}`);
+  const eventInsert = await sb.from("coaching_payment_events").insert({
+    provider_event_id: providerEventId,
+    event_type: eventName || String(txn.status || "unknown"),
+    provider_transaction_id: fedapayId || null,
+    order_id: order.id,
+    session_id: order.session_id,
+    payload: event,
+    processing_status: "received",
+  }).select("id").maybeSingle();
+  if (eventInsert.error && eventInsert.error.code === "23505") return true;
+  const paymentEventId = eventInsert.data?.id;
+
+  try {
+    const approved = eventName === "transaction.approved" || txn.status === "approved";
+    const failed = ["transaction.declined", "transaction.canceled", "transaction.cancelled"].includes(eventName) || ["declined", "canceled", "cancelled"].includes(String(txn.status));
+    if (approved) {
+      const { data: confirmation, error } = await sb.rpc("coaching_confirm_payment", {
+        p_order_id: order.id,
+        p_provider_transaction_id: fedapayId,
+        p_provider_reference: txn.reference ? String(txn.reference) : null,
+        p_provider_metadata: txn,
+      });
+      if (error) throw error;
+
+      const [{ data: coachingSession }, { data: learner }, { data: coachProfile }] = await Promise.all([
+        sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
+        sb.from("users").select("id,full_name,email").eq("id", order.user_id).maybeSingle(),
+        sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle(),
+      ]);
+      const late = Boolean((confirmation as Record<string, unknown> | null)?.late_payment);
+      if (late) {
+        await postInternal("notify-dispatch", { type: "coaching_payment_issue", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: "/dashboard/coaching" } });
+      } else if (coachingSession) {
+        await Promise.all([
+          postInternal("invoice-generate", { coaching_order_id: order.id }),
+          postInternal("notify-dispatch", { type: "coaching_booking_confirmed", payload: { userId: order.user_id, session_id: coachingSession.id, coach_name: coachingSession.coach_name_snapshot, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/dashboard/coaching" } }),
+          coachProfile?.user_id ? postInternal("notify-dispatch", { type: "coaching_new_booking", payload: { userId: coachProfile.user_id, learner_name: learner?.full_name || learner?.email || "Apprenant", session_id: coachingSession.id, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/coach/sessions" } }) : Promise.resolve(null),
+        ]);
+      }
+    } else if (failed) {
+      const { error } = await sb.rpc("coaching_mark_payment_failed", {
+        p_order_id: order.id,
+        p_provider_transaction_id: fedapayId || null,
+        p_provider_metadata: txn,
+      });
+      if (error) throw error;
+      await postInternal("notify-dispatch", { type: "coaching_payment_failed", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: `/coaching/paiement/${order.session_id}` } });
+    }
+    if (paymentEventId) await sb.from("coaching_payment_events").update({ processing_status: approved || failed ? "processed" : "ignored", processed_at: new Date().toISOString() }).eq("id", paymentEventId);
+  } catch (error) {
+    if (paymentEventId) await sb.from("coaching_payment_events").update({ processing_status: "failed", processing_error: String(error instanceof Error ? error.message : error).slice(0, 1500), processed_at: new Date().toISOString() }).eq("id", paymentEventId);
+    throw error;
+  }
+  return true;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -226,7 +316,12 @@ Deno.serve(async (req: Request) => {
     const eventName: string = event.name ?? "";
     const txn = event.data ?? {};
     const fedapayId = String(txn.id ?? "");
-    const metadata = txn.metadata ?? {};
+
+    if (await processCoachingWebhook(sb, event, eventName, txn, fedapayId)) {
+      return new Response(JSON.stringify({ received: true, resource: "coaching" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const metadata = txn.custom_metadata ?? txn.metadata ?? {};
 
     // Resolve order: try metadata first, then by fedapay transaction id
     let order: Record<string, unknown> | null = null;

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -118,6 +119,186 @@ function buildInvoiceHtml(order: Record<string, unknown>, course: Record<string,
 </html>`;
 }
 
+
+function cleanPdfText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[’‘]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/œ/g, "oe")
+    .replace(/Œ/g, "OE")
+    .replace(/…/g, "...")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "?")
+    .replace(/[\u0000-\u001f]/g, " ")
+    .slice(0, 160);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function buildCoachingPdf(data: {
+  invoiceNumber: string;
+  orderNumber: string;
+  buyerName: string;
+  buyerEmail: string;
+  coachName: string;
+  offerTitle: string;
+  sessionStart: string;
+  durationMinutes: number;
+  amountXof: number;
+  providerTransactionId?: string | null;
+}) {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595.28, 841.89]);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const blue = rgb(0, 32 / 255, 80 / 255);
+  const gold = rgb(191 / 255, 136 / 255, 19 / 255);
+  const dark = rgb(0.18, 0.2, 0.24);
+  const muted = rgb(0.42, 0.45, 0.5);
+  const x = 55;
+  let y = 780;
+
+  page.drawText("OMNIA", { x, y, size: 23, font: bold, color: blue });
+  page.drawText("GLOBAL ACADEMY", { x: x + 82, y, size: 23, font: bold, color: gold });
+  page.drawText("FACTURE COACHING", { x: 355, y, size: 18, font: bold, color: blue });
+  y -= 28;
+  page.drawText(`No ${cleanPdfText(data.invoiceNumber)}`, { x: 355, y, size: 10, font: regular, color: muted });
+  y -= 15;
+  page.drawText(`Commande ${cleanPdfText(data.orderNumber)}`, { x: 355, y, size: 10, font: regular, color: muted });
+  y = 700;
+  page.drawRectangle({ x, y: y - 4, width: 485, height: 2, color: gold });
+  y -= 35;
+  page.drawText("EMETTEUR", { x, y, size: 9, font: bold, color: gold });
+  page.drawText("ACHETEUR", { x: 310, y, size: 9, font: bold, color: gold });
+  y -= 20;
+  page.drawText("Omnia Global Academy", { x, y, size: 12, font: bold, color: blue });
+  page.drawText(cleanPdfText(data.buyerName), { x: 310, y, size: 12, font: bold, color: blue });
+  y -= 17;
+  page.drawText("Bamako, Mali", { x, y, size: 10, font: regular, color: dark });
+  page.drawText(cleanPdfText(data.buyerEmail), { x: 310, y, size: 10, font: regular, color: dark });
+  y -= 17;
+  page.drawText("contact@omniaglobalacademy.com", { x, y, size: 10, font: regular, color: dark });
+
+  y = 575;
+  page.drawRectangle({ x, y, width: 485, height: 34, color: blue });
+  page.drawText("DETAIL DE LA SESSION", { x: x + 14, y: y + 12, size: 11, font: bold, color: rgb(1, 1, 1) });
+  y -= 30;
+  const rows: Array<[string, string]> = [
+    ["Service", data.offerTitle],
+    ["Coach", data.coachName],
+    ["Date et heure", new Date(data.sessionStart).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })],
+    ["Duree", `${data.durationMinutes} minutes`],
+    ["Paiement", "FedaPay"],
+    ["Reference transaction", data.providerTransactionId || "-"],
+  ];
+  for (const [label, value] of rows) {
+    page.drawText(cleanPdfText(label), { x: x + 14, y, size: 10, font: bold, color: blue });
+    page.drawText(cleanPdfText(value), { x: x + 190, y, size: 10, font: regular, color: dark });
+    y -= 28;
+  }
+  y -= 8;
+  page.drawRectangle({ x: 310, y: y - 12, width: 230, height: 48, color: rgb(0.96, 0.97, 0.98) });
+  page.drawText("TOTAL PAYE", { x: 325, y: y + 7, size: 12, font: bold, color: blue });
+  page.drawText(`${new Intl.NumberFormat("fr-FR").format(data.amountXof)} XOF`, { x: 430, y: y + 7, size: 13, font: bold, color: gold });
+  page.drawText("Document genere automatiquement. Conservez-le comme justificatif de paiement.", { x, y: 80, size: 9, font: regular, color: muted });
+  page.drawText("Omnia Global Academy - omniaglobalacademy.com", { x, y: 62, size: 9, font: bold, color: blue });
+  return pdf.save();
+}
+
+async function notifyCoachingInvoice(userId: string, invoiceNumber: string, offerTitle: string, amountXof: number) {
+  const url = Deno.env.get("SUPABASE_URL") || "";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return;
+  await fetch(`${url}/functions/v1/notify-dispatch`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "coaching_invoice_available",
+      payload: { userId, invoice_number: invoiceNumber, offer_title: offerTitle, amount_xof: amountXof, action_url: "/dashboard/coaching" },
+    }),
+  }).catch(() => undefined);
+}
+
+async function generateCoachingInvoice(sb: ReturnType<typeof createClient>, coachingOrderId: string) {
+  const { data: order, error } = await sb.from("coaching_payment_orders").select("*").eq("id", coachingOrderId).maybeSingle();
+  if (error) throw error;
+  if (!order || !["paid", "partially_refunded", "refunded"].includes(String(order.payment_status))) {
+    return new Response(JSON.stringify({ error: "COACHING_ORDER_NOT_PAID" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  const existing = await sb.from("coaching_invoices").select("id,invoice_number").eq("order_id", order.id).maybeSingle();
+  if (existing.data) {
+    return new Response(JSON.stringify({ success: true, invoice_id: existing.data.id, invoice_number: existing.data.invoice_number }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  const [{ data: coachingSession }, { data: buyer }, { data: coachProfile }] = await Promise.all([
+    sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
+    sb.from("users").select("id,full_name,email").eq("id", order.user_id).maybeSingle(),
+    sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle(),
+  ]);
+  if (!coachingSession || !buyer || !coachProfile) {
+    return new Response(JSON.stringify({ error: "COACHING_INVOICE_DATA_MISSING" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  const coachUser = await sb.from("users").select("full_name").eq("id", coachProfile.user_id).maybeSingle();
+  const year = new Date().getFullYear();
+  const invoiceNumber = `OGA-COACH-${year}-${String(order.order_number).split("-").slice(-1)[0]}`;
+  const coachName = String(coachUser.data?.full_name || order.coach_name_snapshot);
+  const pdfBytes = await buildCoachingPdf({
+    invoiceNumber,
+    orderNumber: String(order.order_number),
+    buyerName: String(buyer.full_name || buyer.email),
+    buyerEmail: String(buyer.email),
+    coachName,
+    offerTitle: String(order.offer_title_snapshot),
+    sessionStart: String(order.session_start_snapshot),
+    durationMinutes: Number(coachingSession.duration_minutes),
+    amountXof: Number(order.amount_xof),
+    providerTransactionId: order.provider_transaction_id,
+  });
+  const checksum = await sha256Hex(pdfBytes);
+  const storagePath = `${order.user_id}/${year}/${invoiceNumber}.pdf`;
+  const upload = await sb.storage.from("coaching-invoices").upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });
+  if (upload.error && !String(upload.error.message).toLowerCase().includes("already exists")) throw upload.error;
+
+  const invoiceInsert = await sb.from("coaching_invoices").insert({
+    invoice_number: invoiceNumber,
+    order_id: order.id,
+    session_id: order.session_id,
+    user_id: order.user_id,
+    coach_id: order.coach_id,
+    amount_xof: order.amount_xof,
+    currency: order.currency,
+    buyer_name: buyer.full_name || buyer.email,
+    buyer_email: buyer.email,
+    coach_name: coachName,
+    offer_title: order.offer_title_snapshot,
+    session_start: order.session_start_snapshot,
+    duration_minutes: coachingSession.duration_minutes,
+    invoice_snapshot: {
+      order_number: order.order_number,
+      provider_transaction_id: order.provider_transaction_id,
+      coach_name: coachName,
+      offer_title: order.offer_title_snapshot,
+      session_start: order.session_start_snapshot,
+      session_end: order.session_end_snapshot,
+      amount_xof: order.amount_xof,
+      currency: order.currency,
+    },
+    pdf_storage_path: storagePath,
+    checksum_sha256: checksum,
+  }).select("id,invoice_number").single();
+  if (invoiceInsert.error) {
+    const retry = await sb.from("coaching_invoices").select("id,invoice_number").eq("order_id", order.id).maybeSingle();
+    if (!retry.data) throw invoiceInsert.error;
+    return new Response(JSON.stringify({ success: true, invoice_id: retry.data.id, invoice_number: retry.data.invoice_number }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  await notifyCoachingInvoice(String(order.user_id), invoiceNumber, String(order.offer_title_snapshot), Number(order.amount_xof));
+  return new Response(JSON.stringify({ success: true, invoice_id: invoiceInsert.data.id, invoice_number: invoiceNumber }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -125,6 +306,9 @@ Deno.serve(async (req: Request) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const body = await req.json();
+    if (body.coaching_order_id) {
+      return await generateCoachingInvoice(sb, String(body.coaching_order_id));
+    }
     const { order_id } = body;
     if (!order_id) return new Response(JSON.stringify({ error: "MISSING_ORDER_ID" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
