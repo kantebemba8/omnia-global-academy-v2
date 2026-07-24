@@ -13,6 +13,7 @@ const ROLE_SPACE_PREFIXES = [
   '/moderator',
   '/partner',
   '/talent',
+  '/coach',
 ];
 
 function isStoredSuperAdmin(): boolean {

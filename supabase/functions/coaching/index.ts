@@ -91,6 +91,39 @@ function isAdmin(session: Session | null): session is Session {
   return !!session?.roles.includes("super_admin");
 }
 
+const COACH_PREVIEW_EMAIL = "coach.test@omniaglobalacademy.com";
+const COACH_PREVIEW_READ_ACTIONS = new Set([
+  "coach_dashboard",
+  "coach_offers",
+  "coach_availability",
+  "coach_sessions",
+  "coach_request_availability",
+  "coach_ratings",
+  "coach_revenue",
+  "coach_advanced_products",
+  "session_follow_up",
+  "session_room_access",
+  "recording_status",
+]);
+
+async function coachPreviewSession(sb: Supabase): Promise<Session> {
+  const { data: user, error } = await sb
+    .from("users")
+    .select("id")
+    .ilike("email", COACH_PREVIEW_EMAIL)
+    .maybeSingle();
+  if (error) throw error;
+  if (!user?.id) throw new Error("COACH_PREVIEW_ACCOUNT_MISSING");
+  const { data: profile, error: profileError } = await sb
+    .from("coach_profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile?.id) throw new Error("COACH_PREVIEW_ACCOUNT_MISSING");
+  return { userId: String(user.id), roles: ["coach"] };
+}
+
 async function getLevels(sb: Supabase, includeInactive = false) {
   let query = sb.from("coaching_levels").select("*").order("catalogue_priority", { ascending: false }).order("name");
   if (!includeInactive) query = query.eq("is_active", true);
@@ -153,13 +186,13 @@ async function publicCoaches(sb: Supabase) {
   }));
 }
 
-async function publicProfile(sb: Supabase, identifier: string) {
-  const { data: profile, error } = await sb
+async function publicProfile(sb: Supabase, identifier: string, includeInactive = false) {
+  let query = sb
     .from("coach_profiles")
     .select("*")
-    .eq(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier) ? "id" : "public_slug", identifier)
-    .eq("status", "active")
-    .maybeSingle();
+    .eq(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier) ? "id" : "public_slug", identifier);
+  if (!includeInactive) query = query.eq("status", "active");
+  const { data: profile, error } = await query.maybeSingle();
   if (error) throw error;
   if (!profile) return null;
   const [{ data: user }, { data: level }, domainsByCoach, offers, ratings] = await Promise.all([
@@ -1564,7 +1597,8 @@ function errorResponse(error: unknown) {
     "ACTION_PLAN_INCOMPLETE", "ACTION_ITEM_INCOMPLETE", "INVALID_RECORDING_CONSENT", "RECORDING_STORAGE_KEY_REQUIRED", "INVALID_ADVANCED_SETTINGS",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
-  if (code === "FORBIDDEN") return json({ error: code }, 403);
+  if (["FORBIDDEN", "PREVIEW_READ_ONLY"].includes(code)) return json({ error: code }, 403);
+  if (code === "COACH_PREVIEW_ACCOUNT_MISSING") return json({ error: code }, 409);
   if (["INVOICE_UNAVAILABLE", "RECORDING_STORAGE_NOT_CONFIGURED", "RECORDING_PROVIDER_FAILED"].includes(code)) return json({ error: code }, 503);
   if (code === "INVALID_RECORDING_SECRET") return json({ error: code }, 401);
   if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND", "PACKAGE_NOT_FOUND", "SUBSCRIPTION_PLAN_NOT_FOUND", "GROUP_NOT_FOUND", "GROUP_REGISTRATION_NOT_FOUND", "ACTION_PLAN_NOT_FOUND", "RECORDING_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
@@ -2958,8 +2992,14 @@ Deno.serve(async (req: Request) => {
     if (action === "public_advanced_catalogue") return json({ success: true, ...(await publicAdvancedCatalogue(sb)) });
     if (action === "recording_provider_callback") return json({ success: true, recording: await recordingProviderCallback(sb, req, body) });
 
-    const session = await authenticate(sb, req);
+    let session = await authenticate(sb, req);
     if (!session) throw new Error("SESSION_INVALID");
+
+    const previewMode = asBoolean(body.preview_mode) && isAdmin(session);
+    if (previewMode) {
+      if (!COACH_PREVIEW_READ_ACTIONS.has(action)) throw new Error("PREVIEW_READ_ONLY");
+      session = await coachPreviewSession(sb);
+    }
 
     if (action === "upload_asset") return json({ success: true, asset: await uploadAsset(sb, session, body) });
     if (action === "self_status") {
@@ -2968,7 +3008,7 @@ Deno.serve(async (req: Request) => {
         sb.from("coach_profiles").select("*").eq("user_id", session.userId).maybeSingle(),
       ]);
       let enrichedProfile: unknown = null;
-      if (profile.data) enrichedProfile = await publicProfile(sb, String(profile.data.public_slug));
+      if (profile.data) enrichedProfile = await publicProfile(sb, String(profile.data.public_slug), true);
       return json({ success: true, application: applications[0] || null, profile: enrichedProfile, roles: session.roles });
     }
     if (action === "submit_application") {
@@ -3040,7 +3080,7 @@ Deno.serve(async (req: Request) => {
         coachSessions(sb, session),
       ]);
       const revenue = await coachRevenueDashboard(sb, session);
-      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug)), offers, recent_sessions: sessions.slice(0, 8), metrics: { upcoming_sessions: upcoming.count || 0, pending_custom_requests: pendingCustom.count || 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: Number(revenue.wallet.balance_xof || 0) - Number(revenue.wallet.reserved_xof || 0) } });
+      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug), true), offers, recent_sessions: sessions.slice(0, 8), metrics: { upcoming_sessions: upcoming.count || 0, pending_custom_requests: pendingCustom.count || 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: Number(revenue.wallet.balance_xof || 0) - Number(revenue.wallet.reserved_xof || 0) } });
     }
     if (action === "coach_offers") { const profile = await ownCoachProfile(sb, session); return json({ success: true, offers: await allOwnOffers(sb, String(profile.id)), domains: await getDomains(sb), profile, limits: await coachPriceLimits(sb, profile) }); }
     if (action === "coach_offer_save") return json({ success: true, offer: await saveCoachOffer(sb, session, body) });

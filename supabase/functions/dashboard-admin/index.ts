@@ -104,6 +104,7 @@ Deno.serve(async (req: Request) => {
         organisateur: ["organizer","organisateur"],
         moderateur: ["moderateur","moderator"],
         recruteur_independant: ["recruteur_independant","recruteur"],
+        coach: ["coach"],
       };
       const keys = roleGroups[requestedRole] ?? [requestedRole];
       const { data: roleRows, error: roleError } = await sb
@@ -311,6 +312,7 @@ Deno.serve(async (req: Request) => {
       "Organisateurs": ["organizer", "organisateur"],
       "Modérateurs": ["moderateur", "moderator"],
       "Recruteurs indépendants": ["recruteur_independant", "recruteur"],
+      "Coachs": ["coach"],
     };
     const groupedKeys = new Set([...Object.values(roleGroups).flat(), "super_admin"]);
     const allUserIds = [...new Set((userRoles ?? []).map((r:any)=>r.user_id).filter(Boolean))];
@@ -328,6 +330,7 @@ Deno.serve(async (req: Request) => {
         : label === "Organisateurs" ? "organisateur"
         : label === "Modérateurs" ? "moderateur"
         : label === "Recruteurs indépendants" ? "recruteur_independant"
+        : label === "Coachs" ? "coach"
         : keys[0];
       usersByRole.push({
         role: label,

@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, LayoutDashboard, LogIn, UserRoundCheck } from 'lucide-react';
+import { isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -10,18 +11,24 @@ export default function CoachingHeader() {
   let user: { roles?: string[] } | null = null;
   try { user = JSON.parse(localStorage.getItem('omnia_user') || 'null'); } catch { user = null; }
   const isCoach = user?.roles?.includes('coach') ?? false;
+  const previewMode = isCoachPreviewMode();
 
-  const nav = [
-    { path: '/coaching', label: 'Trouver un coach' },
-    { path: '/coaching/solutions', label: 'Packs et groupes' },
-    ...(loggedIn ? [{ path: '/dashboard/coaching', label: 'Mes sessions' }] : []),
-    { path: '/coaching/devenir-coach', label: 'Devenir coach' },
-  ];
+  const nav = previewMode
+    ? [
+        { path: '/coach/dashboard', label: 'Vue d’ensemble' },
+        { path: '/coach/sessions', label: 'Mes sessions coach' },
+      ]
+    : [
+        { path: '/coaching', label: 'Trouver un coach' },
+        { path: '/coaching/solutions', label: 'Packs et groupes' },
+        ...(loggedIn ? [{ path: '/dashboard/coaching', label: 'Mes sessions' }] : []),
+        { path: '/coaching/devenir-coach', label: 'Devenir coach' },
+      ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex min-h-[72px] max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
-        <Link to="/coaching" className="flex items-center gap-3">
+        <Link to={previewMode ? withCoachPreview('/coach/dashboard') : '/coaching'} className="flex items-center gap-3">
           <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl object-contain" />
           <div>
             <div className="text-lg font-semibold leading-none" style={{ color: BLUE }}>Omnia <span style={{ color: GOLD }}>Coaching</span></div>
@@ -31,14 +38,14 @@ export default function CoachingHeader() {
         <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto md:order-2 md:w-auto">
           {nav.map(item => {
             const active = location.pathname === item.path;
-            return <Link key={item.path} to={item.path} className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold" style={{ color: active ? GOLD : BLUE, background: active ? 'rgba(191,136,19,.10)' : 'transparent' }}>{item.label}</Link>;
+            return <Link key={item.path} to={previewMode && item.path.startsWith('/coach') ? withCoachPreview(item.path) : item.path} className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold" style={{ color: active ? GOLD : BLUE, background: active ? 'rgba(191,136,19,.10)' : 'transparent' }}>{item.label}</Link>;
           })}
         </nav>
         <div className="order-2 flex items-center gap-2 md:order-3">
-          {isCoach && <Link to="/coach/dashboard" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}><LayoutDashboard size={16}/>Espace coach</Link>}
+          {(isCoach || previewMode) && <Link to={withCoachPreview('/coach/dashboard')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}><LayoutDashboard size={16}/>Espace coach</Link>}
           {!loggedIn && <Link to={`/connexion?redirect=${encodeURIComponent(location.pathname)}`} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><LogIn size={16}/>Connexion</Link>}
-          {loggedIn && !isCoach && <Link to="/coaching/devenir-coach" className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white sm:inline-flex" style={{ background: BLUE }}><UserRoundCheck size={16}/>Candidater</Link>}
-          <Link to="/accueil" className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 lg:inline-flex"><ArrowLeft size={15}/>OGA</Link>
+          {loggedIn && !isCoach && !previewMode && <Link to="/coaching/devenir-coach" className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white sm:inline-flex" style={{ background: BLUE }}><UserRoundCheck size={16}/>Candidater</Link>}
+          {!previewMode && <Link to="/accueil" className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 lg:inline-flex"><ArrowLeft size={15}/>OGA</Link>}
         </div>
       </div>
     </header>

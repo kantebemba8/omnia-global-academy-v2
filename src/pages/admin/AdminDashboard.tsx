@@ -139,6 +139,7 @@ export default function AdminDashboard() {
   const previewSpaces = [
     { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
     { label: 'Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
+    { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true' },
     { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
     { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
     { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },

@@ -35,5 +35,6 @@ export function redirectByRoles(roles: string[], redirectUrl?: string): void {
   if (roles.includes('recruteur_independant') || roles.includes('recruteur')) { window.location.href = '/talent/recruteur/dashboard'; return; }
   if (roles.includes('recruteur_structure')) { window.location.href = '/structure/recrutement/dashboard'; return; }
   if (roles.includes('professeur')) { window.location.href = '/professeur/dashboard'; return; }
+  if (roles.includes('coach')) { window.location.href = '/coach/dashboard'; return; }
   window.location.href = '/dashboard';
 }

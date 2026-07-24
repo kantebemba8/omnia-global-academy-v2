@@ -3,6 +3,39 @@ import { edgeAuthHeaders } from './edgeAuth';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const ENDPOINT = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/coaching` : '/api/coaching';
 
+const COACH_PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
+const COACH_PREVIEW_READ_ACTIONS = new Set([
+  'coach_dashboard',
+  'coach_offers',
+  'coach_availability',
+  'coach_sessions',
+  'coach_request_availability',
+  'coach_ratings',
+  'coach_revenue',
+  'coach_advanced_products',
+  'session_follow_up',
+  'session_room_access',
+  'recording_status',
+]);
+
+export function isCoachPreviewMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  const queryPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
+  const storedPreview = sessionStorage.getItem(COACH_PREVIEW_SESSION_KEY) === 'true';
+  let isSuperAdmin = false;
+  try {
+    isSuperAdmin = JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false;
+  } catch { /* ignore invalid local storage */ }
+  return isSuperAdmin && window.location.pathname.startsWith('/coach') && (queryPreview || storedPreview);
+}
+
+export function withCoachPreview(path: string): string {
+  if (!isCoachPreviewMode()) return path;
+  const [base, hash = ''] = path.split('#', 2);
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}preview=true${hash ? `#${hash}` : ''}`;
+}
+
 export type CoachingDomain = {
   id: string;
   slug: string;
@@ -611,13 +644,19 @@ const messages: Record<string, string> = {
   RECORDING_STORAGE_NOT_CONFIGURED: 'Le stockage privé des enregistrements n’est pas configuré.',
   ACTIVE_RECORDING_NOT_FOUND: 'Aucun enregistrement actif n’a été trouvé.',
   INVALID_ADVANCED_SETTINGS: 'Les paramètres avancés saisis sont invalides.',
+  PREVIEW_READ_ONLY: 'La prévisualisation Coach est en lecture seule. Quittez-la pour effectuer cette action.',
+  COACH_PREVIEW_ACCOUNT_MISSING: 'Le compte coach de test n’est pas encore installé. Exécutez la migration SQL 105.',
 };
 
 export async function coachingRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  const previewMode = isCoachPreviewMode();
+  if (previewMode && !COACH_PREVIEW_READ_ACTIONS.has(action)) {
+    throw new Error(messages.PREVIEW_READ_ONLY);
+  }
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: edgeAuthHeaders(),
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, ...payload, ...(previewMode ? { preview_mode: true } : {}) }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {
