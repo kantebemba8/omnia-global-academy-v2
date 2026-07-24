@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Clock3, CreditCard, Download, Loader2, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock3, CreditCard, Download, Loader2, RefreshCw, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import { CoachingInvoice, CoachingPaymentOrder, CoachingRefund, CoachingSession, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
@@ -100,7 +100,7 @@ export default function CoachingPayment() {
             <p className="mt-3 leading-7 text-slate-600">Le paiement s’effectue sur l’interface sécurisée FedaPay. Aucune donnée de paiement n’est saisie directement dans OGA.</p>
           </>}
 
-          {cancelled && !paid && <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><TriangleAlert size={19} className="shrink-0"/><p>Le paiement a été annulé. Aucun montant n’a été débité. Vous pouvez réessayer tant que le créneau reste réservé.</p></div>}
+          {cancelled && !paid && <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertTriangle size={19} className="shrink-0"/><p>Le paiement a été annulé. Aucun montant n’a été débité. Vous pouvez réessayer tant que le créneau reste réservé.</p></div>}
           {polling && !paid && <div className="mt-5 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm" style={{ color: BLUE }}><Loader2 size={18} className="animate-spin"/>Vérification de la confirmation FedaPay…</div>}
           {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 

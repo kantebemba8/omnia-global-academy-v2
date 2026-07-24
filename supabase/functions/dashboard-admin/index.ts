@@ -344,7 +344,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const dynamicRoles = [...new Set((userRoles ?? []).map((r:any)=>r.role).filter((role:string)=>role && !groupedKeys.has(role)))];
+    const dynamicRoles: string[] = [...new Set<string>((userRoles ?? []).map((r:any)=>String(r.role || "")).filter((role:string)=>role && !groupedKeys.has(role)))];
     for (const roleKey of dynamicRoles) {
       const ids = [...new Set((userRoles ?? []).filter((r:any)=>r.role===roleKey).map((r:any)=>r.user_id).filter(Boolean))];
       usersByRole.push({

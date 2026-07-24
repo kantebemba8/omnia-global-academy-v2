@@ -33,6 +33,55 @@ async function dispatch(type: string, payload: Record<string, unknown>) {
   if (!response.ok) throw new Error(`NOTIFY_${response.status}:${await response.text()}`);
 }
 
+function awsUriEncode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function hmacSha256(key: Uint8Array, value: string): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(value));
+  return new Uint8Array(signature);
+}
+
+async function createR2SignedDeleteUrl(options: { endpoint: string; accessKey: string; secretKey: string; bucket: string; objectKey: string }): Promise<string> {
+  const endpointUrl = new URL(options.endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/auto/s3/aws4_request`;
+  const baseSegments = endpointUrl.pathname.split("/").filter(Boolean).map((segment) => awsUriEncode(decodeURIComponent(segment)));
+  const objectSegments = options.objectKey.split("/").filter(Boolean).map((segment) => awsUriEncode(segment));
+  const canonicalUri = `/${[...baseSegments, awsUriEncode(options.bucket), ...objectSegments].join("/")}`;
+  const entries: Array<[string, string]> = [
+    ["X-Amz-Algorithm", "AWS4-HMAC-SHA256"],
+    ["X-Amz-Credential", `${options.accessKey}/${scope}`],
+    ["X-Amz-Date", amzDate],
+    ["X-Amz-Expires", "300"],
+    ["X-Amz-SignedHeaders", "host"],
+  ];
+  entries.sort(([left], [right]) => awsUriEncode(left) < awsUriEncode(right) ? -1 : awsUriEncode(left) > awsUriEncode(right) ? 1 : 0);
+  const canonicalQuery = entries.map(([key, value]) => `${awsUriEncode(key)}=${awsUriEncode(value)}`).join("&");
+  const canonicalHeaders = `host:${endpointUrl.host.toLowerCase()}\n`;
+  const canonicalRequest = ["DELETE", canonicalUri, canonicalQuery, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonicalRequest)].join("\n");
+  const encoder = new TextEncoder();
+  const dateKey = await hmacSha256(encoder.encode(`AWS4${options.secretKey}`), dateStamp);
+  const regionKey = await hmacSha256(dateKey, "auto");
+  const serviceKey = await hmacSha256(regionKey, "s3");
+  const signingKey = await hmacSha256(serviceKey, "aws4_request");
+  const signature = bytesToHex(await hmacSha256(signingKey, stringToSign));
+  return `${endpointUrl.origin}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
 async function cleanupExpiredRecordings(sb: Supabase) {
   const { data: recordings, error } = await sb.from("coaching_recordings")
     .select("id,storage_key")
@@ -49,13 +98,13 @@ async function cleanupExpiredRecordings(sb: Supabase) {
   const bucket = Deno.env.get("R2_BUCKET_NAME") || "";
   if (!endpoint || !accessKey || !secretKey || !bucket) return { found: recordings?.length || 0, deleted: 0, skipped: recordings?.length || 0, failed: 0 };
 
-  const { S3Client, DeleteObjectCommand } = await import("npm:@aws-sdk/client-s3@3.637.0");
-  const client = new S3Client({ region: "auto", endpoint, credentials: { accessKeyId: accessKey, secretAccessKey: secretKey } });
   let deleted = 0;
   let failed = 0;
   for (const recording of recordings || []) {
     try {
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: String(recording.storage_key) }));
+      const signedUrl = await createR2SignedDeleteUrl({ endpoint, accessKey, secretKey, bucket, objectKey: String(recording.storage_key) });
+      const response = await fetch(signedUrl, { method: "DELETE" });
+      if (!response.ok && response.status !== 404) throw new Error(`R2_DELETE_${response.status}:${(await response.text().catch(() => "")).slice(0, 500)}`);
       const update = await sb.from("coaching_recordings").update({ status: "deleted", storage_key: null, deleted_at: new Date().toISOString() }).eq("id", recording.id).eq("status", "ready");
       if (update.error) throw update.error;
       deleted += 1;

@@ -87,7 +87,7 @@ async function authenticate(sb: Supabase, req: Request): Promise<Session | null>
   return { userId, roles: (roles || []).map((row: { role: string }) => String(row.role)) };
 }
 
-function isAdmin(session: Session | null): session is Session {
+function isAdmin(session: Session | null): boolean {
   return !!session?.roles.includes("super_admin");
 }
 
@@ -159,7 +159,40 @@ async function domainMapForProfiles(sb: Supabase, coachIds: string[]) {
   return result;
 }
 
-async function publicCoaches(sb: Supabase) {
+function omitPublicFields(row: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...row };
+  for (const field of fields) delete result[field];
+  return result;
+}
+
+function sanitizePublicOffer(row: Record<string, unknown>): Record<string, unknown> {
+  return omitPublicFields(row, ["admin_message", "reviewed_by", "reviewed_at", "supersedes_offer_id", "created_at", "updated_at"]);
+}
+
+function sanitizePublicPackage(row: Record<string, unknown>): Record<string, unknown> {
+  const result = omitPublicFields(row, ["admin_message", "reviewed_by", "reviewed_at", "created_at", "updated_at"]);
+  if (result.coach && typeof result.coach === "object") result.coach = omitPublicFields(result.coach as Record<string, unknown>, ["user_id"]);
+  return result;
+}
+
+function sanitizePublicGroup(row: Record<string, unknown>): Record<string, unknown> {
+  const result = omitPublicFields(row, [
+    "external_meeting_url", "room_slug", "registrations", "admin_message", "reviewed_by", "reviewed_at",
+    "actual_started_at", "actual_ended_at", "created_at", "updated_at",
+  ]);
+  if (result.coach && typeof result.coach === "object") result.coach = omitPublicFields(result.coach as Record<string, unknown>, ["user_id"]);
+  return result;
+}
+
+function sanitizePublicCoach(row: Record<string, unknown>): Record<string, unknown> {
+  return omitPublicFields(row, [
+    "user_id", "application_id", "commission_override_percent", "minimum_price_override_xof",
+    "maximum_price_override_xof", "approved_by", "approved_at", "suspended_by", "suspended_at",
+    "suspension_reason", "created_at", "updated_at",
+  ]);
+}
+
+async function publicCoaches(sb: Supabase, includeInternal = false) {
   const { data: profiles, error } = await sb
     .from("coach_profiles")
     .select("*")
@@ -178,12 +211,13 @@ async function publicCoaches(sb: Supabase) {
   ]);
   const userById = new Map((users || []).map((user: { id: string }) => [String(user.id), user]));
   const levelById = new Map((levels || []).map((level: { id: string }) => [String(level.id), level]));
-  return rows.map((profile: Record<string, unknown>) => ({
+  const mapped = rows.map((profile: Record<string, unknown>) => ({
     ...profile,
     full_name: (userById.get(String(profile.user_id)) as { full_name?: string } | undefined)?.full_name || "Coach Omnia",
     level: profile.level_id ? levelById.get(String(profile.level_id)) || null : null,
     domains: domainsByCoach.get(String(profile.id)) || [],
   }));
+  return includeInternal ? mapped : mapped.map((profile) => sanitizePublicCoach(profile));
 }
 
 async function publicProfile(sb: Supabase, identifier: string, includeInactive = false) {
@@ -206,16 +240,17 @@ async function publicProfile(sb: Supabase, identifier: string, includeInactive =
     sb.from("coaching_packages").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).eq("status", "active").order("created_at", { ascending: false }),
     sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).in("status", ["active", "full"]).gt("scheduled_start", new Date().toISOString()).order("scheduled_start"),
   ]);
-  return {
+  const enriched = {
     ...profile,
     full_name: user?.full_name || "Coach Omnia",
     level: level || null,
     domains: domainsByCoach.get(String(profile.id)) || [],
-    offers,
+    offers: includeInactive ? offers : (offers || []).map((offer: Record<string, unknown>) => sanitizePublicOffer(offer)),
     ratings,
-    packages: packages || [],
-    groups: groups || [],
+    packages: includeInactive ? (packages || []) : (packages || []).map((item: Record<string, unknown>) => sanitizePublicPackage(item)),
+    groups: includeInactive ? (groups || []) : (groups || []).map((item: Record<string, unknown>) => sanitizePublicGroup(item)),
   };
+  return includeInactive ? enriched : sanitizePublicCoach(enriched);
 }
 
 async function allCoaches(sb: Supabase) {
@@ -1947,7 +1982,7 @@ async function adminCoachingSessions(sb: Supabase) {
   const profileUserIds = (profiles || []).map((row: { user_id: string }) => String(row.user_id));
   const { data: coachUsers } = profileUserIds.length ? await sb.from("users").select("id,full_name,email").in("id", profileUserIds) : { data: [] };
   const coachUserMap = new Map((coachUsers || []).map((row: { id: string }) => [String(row.id), row]));
-  const coachMap = new Map((profiles || []).map((row: { id: string; user_id: string }) => [String(row.id), { ...row, ...(coachUserMap.get(String(row.user_id)) || {}) }]));
+  const coachMap = new Map((profiles || []).map((row: { id: string; user_id: string }) => [String(row.id), { ...row, ...((coachUserMap.get(String(row.user_id)) || {}) as Record<string, unknown>) }]));
   const learnerMap = new Map((users || []).map((row: { id: string }) => [String(row.id), row]));
   const roomMap = new Map((rooms || []).map((row: { session_id: string }) => [String(row.session_id), row]));
   return rows.map((row: Record<string, unknown>) => ({ ...row, coach: coachMap.get(String(row.coach_id)) || null, learner: learnerMap.get(String(row.learner_user_id)) || null, room: roomMap.get(String(row.id)) || null }));
@@ -2377,7 +2412,7 @@ async function adminCoachingRatings(sb: Supabase) {
   const coachUsers = [...new Set((coaches || []).map((row: Record<string, unknown>) => String(row.user_id)))];
   const { data: coachUserRows } = coachUsers.length ? await sb.from("users").select("id,full_name,email").in("id", coachUsers) : { data: [] };
   const coachUserMap = new Map((coachUserRows || []).map((row: Record<string, unknown>) => [String(row.id), row]));
-  const coachMap = new Map((coaches || []).map((row: Record<string, unknown>) => [String(row.id), { ...row, ...(coachUserMap.get(String(row.user_id)) || {}) }]));
+  const coachMap = new Map((coaches || []).map((row: Record<string, unknown>) => [String(row.id), { ...row, ...((coachUserMap.get(String(row.user_id)) || {}) as Record<string, unknown>) }]));
   const learnerMap = new Map((learners || []).map((row: Record<string, unknown>) => [String(row.id), row]));
   return (ratings || []).map((row: Record<string, unknown>) => ({ ...row, coach: coachMap.get(String(row.coach_id)) || null, learner: learnerMap.get(String(row.learner_user_id)) || null }));
 }
@@ -2548,7 +2583,7 @@ async function coachingRecommendations(sb: Supabase, actor: Session) {
   const preferences = await learnerPreferences(sb, actor) as Record<string, unknown>;
   const [{ data: enrollments }, coaches, subscription] = await Promise.all([
     sb.from("user_enrollments").select("course_id,courses(category,title)").eq("user_id", actor.userId),
-    publicCoaches(sb),
+    publicCoaches(sb, true),
     activeSubscriptionForUser(sb, actor.userId),
   ]);
   const coachRows = coaches as Array<Record<string, unknown>>;
@@ -2604,7 +2639,7 @@ async function coachingRecommendations(sb: Supabase, actor: Session) {
     score += Math.round((rating / 5) * Number(weights.rating || 15));
     if (rating >= 4.5 && Number(coach.rating_count || 0) >= 3) reasons.push("Très bien évalué");
     return { coach: { ...coach, offers }, score: Math.min(100, Math.round(score)), reasons: [...new Set(reasons)].slice(0, 4), minimum_price_xof: minPrice };
-  }).sort((a, b) => b.score - a.score || Number(b.coach.average_rating || 0) - Number(a.coach.average_rating || 0)).slice(0, 12);
+  }).sort((a, b) => b.score - a.score || Number((b.coach as Record<string, unknown>).average_rating || 0) - Number((a.coach as Record<string, unknown>).average_rating || 0)).slice(0, 12);
   return { preferences, recommendations: rows, source_categories: courseCategories.slice(0, 12), subscription };
 }
 
@@ -2624,9 +2659,12 @@ async function publicAdvancedCatalogue(sb: Supabase) {
     return { ...row, coach: { ...coach, full_name: names.get(String(coach.user_id)) || "Coach Omnia" } };
   };
   return {
-    packages: (packages || []).map(enrich),
-    subscription_plans: plans || [],
-    groups: (groups || []).map((row: Record<string, unknown>) => ({ ...enrich(row), confirmed_count: ((row.registrations || []) as Array<Record<string, unknown>>).filter((r) => ["confirmed", "attended"].includes(String(r.status))).length })),
+    packages: (packages || []).map((row: Record<string, unknown>) => sanitizePublicPackage(enrich(row))),
+    subscription_plans: (plans || []).map((row: Record<string, unknown>) => omitPublicFields(row, ["created_at", "updated_at"])),
+    groups: (groups || []).map((row: Record<string, unknown>) => sanitizePublicGroup({
+      ...enrich(row),
+      confirmed_count: ((row.registrations || []) as Array<Record<string, unknown>>).filter((r) => ["confirmed", "attended"].includes(String(r.status))).length,
+    })),
     domains,
   };
 }
@@ -2851,11 +2889,15 @@ async function packageBookingCreate(sb: Supabase, actor: Session, body: Record<s
   const inserted=await sb.from("coaching_sessions").insert({learner_user_id:actor.userId,coach_id:context.profile.id,offer_id:context.offer.id,session_type:"fixed",status:"confirmed",payment_status:"paid",meeting_mode:meetingMode,requested_start:slot.slot_start,requested_end:slot.slot_end,scheduled_start:slot.slot_start,scheduled_end:slot.slot_end,duration_minutes:Number(pkg.session_duration_minutes),hold_expires_at:null,learner_message:asNullableText(body.learner_message,1500),price_total_xof:0,commission_percent_snapshot:0,commission_amount_xof:0,coach_net_xof:0,offer_title_snapshot:context.offer.title,coach_name_snapshot:context.coachName,coach_timezone_snapshot:context.profile.timezone,policy_snapshot:{source:"coaching_package",purchase_id:purchase.id},funding_source:"package",funding_reference_id:purchase.id,original_price_xof:perSession,discount_xof:perSession}).select("*").single();
   if(inserted.error){await sb.from("coaching_package_purchases").update({sessions_remaining:purchase.sessions_remaining,status:"active"}).eq("id",purchase.id); if(String(inserted.error.code)==="23P01") throw new Error("SLOT_UNAVAILABLE"); throw inserted.error;}
   await sb.from("coaching_package_redemptions").insert({purchase_id:purchase.id,session_id:inserted.data.id});
-  const settings=await financeSettings(sb); const startMs=new Date(String(inserted.data.scheduled_start)).getTime();
+  const settings=await advancedSettings(sb); const startMs=new Date(String(inserted.data.scheduled_start)).getTime();
   const reminderOffsets=[Number(settings.reminder_day_before_hours||24)*60,Number(settings.reminder_minutes_before||30)].filter((value)=>value>0);
   const jobs=[] as Array<Record<string,unknown>>;
-  for(const minutes of reminderOffsets){const scheduledFor=new Date(startMs-minutes*60000);if(scheduledFor.getTime()>Date.now())for(const recipient of [actor.userId,String(context.profile.user_id)])jobs.push({session_id:inserted.data.id,user_id:recipient,event_type:minutes>=60?"coaching_reminder_day_before":"coaching_reminder_soon",scheduled_for:scheduledFor.toISOString(),payload:{session_id:inserted.data.id,offer_title:context.offer.title,coach_name:context.coachName,scheduled_start:inserted.data.scheduled_start,action_url:recipient===actor.userId?"/dashboard/coaching":"/coach/sessions"}});}
-  if(jobs.length) await sb.from("coaching_notification_jobs").insert(jobs);
+  const recipients=[{userId:actor.userId,audience:"learner"},{userId:String(context.profile.user_id),audience:"coach"}];
+  for(const minutes of reminderOffsets){
+    const scheduledFor=new Date(startMs-minutes*60000);
+    if(scheduledFor.getTime()>Date.now()) for(const recipient of recipients) jobs.push({session_id:inserted.data.id,user_id:recipient.userId,audience:recipient.audience,event_type:minutes>=60?"reminder_day_before":"reminder_soon",scheduled_for:scheduledFor.toISOString()});
+  }
+  if(jobs.length){const {error:jobsError}=await sb.from("coaching_notification_jobs").insert(jobs);if(jobsError) throw jobsError;}
   await invokeNotification("coaching_booking_confirmed",{userId:actor.userId,session_id:inserted.data.id,offer_title:context.offer.title,coach_name:context.coachName,scheduled_start:inserted.data.scheduled_start,action_url:"/dashboard/coaching"});
   await invokeNotification("coaching_new_booking",{userId:String(context.profile.user_id),session_id:inserted.data.id,offer_title:context.offer.title,scheduled_start:inserted.data.scheduled_start,action_url:"/coach/sessions"});
   return inserted.data;
@@ -2942,13 +2984,68 @@ async function recordingProviderCallback(sb: Supabase, req: Request, body: Recor
   return data;
 }
 
+function awsUriEncode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hmacSha256(key: Uint8Array, value: string): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(value));
+  return new Uint8Array(signature);
+}
+
+async function createR2SignedGetUrl(options: {
+  endpoint: string;
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+  objectKey: string;
+  fileName: string;
+  expiresInSeconds?: number;
+}): Promise<string> {
+  const endpointUrl = new URL(options.endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const region = "auto";
+  const service = "s3";
+  const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const baseSegments = endpointUrl.pathname.split("/").filter(Boolean).map((segment) => awsUriEncode(decodeURIComponent(segment)));
+  const objectSegments = options.objectKey.split("/").filter(Boolean).map((segment) => awsUriEncode(segment));
+  const canonicalUri = `/${[...baseSegments, awsUriEncode(options.bucket), ...objectSegments].join("/")}`;
+  const safeFileName = options.fileName.replace(/["\\\r\n]/g, "");
+  const queryEntries: Array<[string, string]> = [
+    ["X-Amz-Algorithm", "AWS4-HMAC-SHA256"],
+    ["X-Amz-Credential", `${options.accessKey}/${scope}`],
+    ["X-Amz-Date", amzDate],
+    ["X-Amz-Expires", String(Math.min(3600, Math.max(1, options.expiresInSeconds || 600)))],
+    ["X-Amz-SignedHeaders", "host"],
+    ["response-content-disposition", `inline; filename=\"${safeFileName}\"`],
+  ];
+  queryEntries.sort(([left], [right]) => awsUriEncode(left) < awsUriEncode(right) ? -1 : awsUriEncode(left) > awsUriEncode(right) ? 1 : 0);
+  const canonicalQuery = queryEntries.map(([key, value]) => `${awsUriEncode(key)}=${awsUriEncode(value)}`).join("&");
+  const canonicalHeaders = `host:${endpointUrl.host.toLowerCase()}\n`;
+  const canonicalRequest = ["GET", canonicalUri, canonicalQuery, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonicalRequest)].join("\n");
+  const encoder = new TextEncoder();
+  const dateKey = await hmacSha256(encoder.encode(`AWS4${options.secretKey}`), dateStamp);
+  const regionKey = await hmacSha256(dateKey, region);
+  const serviceKey = await hmacSha256(regionKey, service);
+  const signingKey = await hmacSha256(serviceKey, "aws4_request");
+  const signature = bytesToHex(await hmacSha256(signingKey, stringToSign));
+  return `${endpointUrl.origin}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
 async function recordingSignedUrl(sb: Supabase, actor: Session, body: Record<string, unknown>) {
   const recordingId=asText(body.recording_id,80); const {data:recording}=await sb.from("coaching_recordings").select("*").eq("id",recordingId).maybeSingle(); if(!recording||recording.status!=="ready"||!recording.storage_key) throw new Error("RECORDING_NOT_FOUND");
   await coachingSessionAccess(sb,actor,String(recording.session_id));
   const endpoint=Deno.env.get("R2_ENDPOINT")||""; const accessKey=Deno.env.get("R2_ACCESS_KEY_ID")||Deno.env.get("R2_ACCESS_KEY")||""; const secretKey=Deno.env.get("R2_SECRET_ACCESS_KEY")||Deno.env.get("R2_SECRET_KEY")||""; const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
   if(!endpoint||!accessKey||!secretKey||!bucket) throw new Error("RECORDING_STORAGE_NOT_CONFIGURED");
-  const [{S3Client,GetObjectCommand},{getSignedUrl}]=await Promise.all([import("npm:@aws-sdk/client-s3@3.637.0"),import("npm:@aws-sdk/s3-request-presigner@3.637.0")]);
-  const client=new S3Client({region:"auto",endpoint,credentials:{accessKeyId:accessKey,secretAccessKey:secretKey}}); const signedUrl=await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:String(recording.storage_key),ResponseContentDisposition:`inline; filename=\"${String(recording.file_name||"coaching.mp4").replace(/[\"\\]/g,"")}\"`}),{expiresIn:600});
+  const signedUrl=await createR2SignedGetUrl({endpoint,accessKey,secretKey,bucket,objectKey:String(recording.storage_key),fileName:String(recording.file_name||"coaching.mp4"),expiresInSeconds:600});
   return {recording,signed_url:signedUrl};
 }
 
