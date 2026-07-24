@@ -1,15 +1,42 @@
-import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, LayoutDashboard, LogIn, UserRoundCheck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  CalendarDays,
+  ChevronDown,
+  Compass,
+  Home,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Menu,
+  Package,
+  UserRound,
+  UserRoundCheck,
+} from 'lucide-react';
 import { isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 
-type StoredUser = { roles?: string[] };
+type StoredUser = {
+  full_name?: string;
+  name?: string;
+  email?: string;
+  roles?: string[];
+};
+
+type NavItem = {
+  path: string;
+  label: string;
+  icon: typeof Home;
+  exact?: boolean;
+};
 
 function dashboardPathForRoles(roles: string[]): string {
   if (roles.includes('super_admin')) return '/admin/dashboard';
   if (roles.includes('coach')) return '/coach/dashboard';
+  if (roles.includes('coach')) return '/coaching/devenir-coach';
   if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/dashboard';
   if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/dashboard';
   if (roles.includes('recruteur_structure')) return '/structure/recrutement/dashboard';
@@ -19,96 +46,209 @@ function dashboardPathForRoles(roles: string[]): string {
   return '/dashboard';
 }
 
+function profilePathForRoles(roles: string[]): string {
+  if (roles.includes('super_admin')) return '/admin/profil';
+  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/profil';
+  if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/profil';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/profile';
+  return '/dashboard/profil';
+}
+
+function initials(user: StoredUser | null) {
+  const source = user?.full_name || user?.name || user?.email || 'Omnia';
+  const parts = source.trim().split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : source.slice(0, 2).toUpperCase();
+}
+
+function canStartCoachApplication(roles: string[]) {
+  return roles.some(role => [
+    'professeur',
+    'formateur',
+    'responsable_structure',
+    'structure_admin',
+    'directeur',
+    'gestionnaire_partenaire',
+  ].includes(role));
+}
+
 export default function CoachingHeader() {
   const location = useLocation();
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
-  let user: StoredUser | null = null;
-  try { user = JSON.parse(localStorage.getItem('omnia_user') || 'null') as StoredUser | null; } catch { user = null; }
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const user = useMemo<StoredUser | null>(() => {
+    try {
+      const raw = localStorage.getItem('omnia_user');
+      return raw ? JSON.parse(raw) as StoredUser : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const roles = user?.roles || [];
+  const loggedIn = Boolean(localStorage.getItem('omnia_session_token')) && Boolean(user);
   const isCoach = roles.includes('coach');
   const previewMode = isCoachPreviewMode();
   const isCoachWorkspace = location.pathname.startsWith('/coach/');
   const isCoachingLanding = location.pathname === '/coaching';
   const dashboardPath = dashboardPathForRoles(roles);
+  const profilePath = profilePathForRoles(roles);
+  const coachSpaceTarget = loggedIn ? (isCoach ? withCoachPreview('/coach/dashboard') : dashboardPath) : '/connexion?redirect=%2Fcoach%2Fdashboard';
 
-  const nav = isCoachWorkspace
-    ? []
-    : [
-        { path: '/coaching', label: 'Trouver un coach' },
-        { path: '/coaching/solutions', label: 'Packs et groupes' },
-        ...(loggedIn ? [{ path: '/dashboard/coaching', label: 'Mes sessions' }] : []),
-        { path: '/coaching/devenir-coach', label: 'Devenir coach' },
-      ];
+  const navItems = useMemo<NavItem[]>(() => {
+    const items: NavItem[] = [
+      { path: '/coaching', label: 'Trouver un coach', icon: Compass, exact: true },
+      { path: '/coaching/solutions', label: 'Packs et groupes', icon: Package },
+    ];
+    if (loggedIn) items.push({ path: '/dashboard/coaching', label: 'Mes sessions', icon: CalendarDays });
+    if (isCoach || previewMode) items.push({ path: '/coach/dashboard', label: 'Espace coach', icon: LayoutDashboard });
+    if (!isCoach && canStartCoachApplication(roles)) items.push({ path: '/coaching/devenir-coach', label: 'Devenir coach', icon: UserRoundCheck });
+    return items;
+  }, [isCoach, loggedIn, previewMode, roles]);
 
-  const coachSpaceTarget = loggedIn ? dashboardPath : '/connexion';
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        setProfileOpen(false);
+      }
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+    setProfileOpen(false);
+  }, [location.pathname, location.search]);
+
+  function logout() {
+    localStorage.removeItem('omnia_user');
+    localStorage.removeItem('omnia_session_token');
+    localStorage.removeItem('omnia_access_token');
+    localStorage.removeItem('access_token');
+    navigate('/connexion');
+  }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex min-h-[72px] max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
-        <Link to={isCoachWorkspace ? '/coaching' : previewMode ? withCoachPreview('/coach/dashboard') : '/coaching'} className="flex items-center gap-3">
-          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl object-contain" />
-          <div>
-            <div className="text-lg font-semibold leading-none" style={{ color: BLUE }}>Omnia <span style={{ color: GOLD }}>Coaching</span></div>
-            <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Accompagnement 1-on-1</div>
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex min-h-[72px] max-w-7xl items-center gap-3 px-4 py-3 md:px-6">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(open => !open)}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
+          style={{ color: menuOpen ? GOLD : BLUE }}
+          aria-label={menuOpen ? 'Fermer le menu Omnia Coaching' : 'Ouvrir le menu Omnia Coaching'}
+          aria-expanded={menuOpen}
+        >
+          <Menu size={23} />
+        </button>
+
+        <Link to="/coaching" className="flex min-w-0 flex-1 items-center gap-3">
+          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-10 w-10 flex-shrink-0 rounded-xl object-contain" />
+          <div className="min-w-0">
+            <div className="truncate text-lg font-bold leading-none md:text-xl" style={{ color: BLUE }}>
+              Omnia <span style={{ color: GOLD }}>Coaching</span>
+            </div>
+            <div className="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:block">Accompagnement 1-on-1</div>
           </div>
         </Link>
 
-        {nav.length > 0 && (
-          <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto md:order-2 md:w-auto">
-            {nav.map(item => {
-              const active = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold"
-                  style={{ color: active ? GOLD : BLUE, background: active ? 'rgba(191,136,19,.10)' : 'transparent' }}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        )}
-
-        <div className="order-2 flex items-center gap-2 md:order-3">
+        <div className="flex flex-shrink-0 items-center gap-2">
           {isCoachWorkspace && (
-            <Link to="/coaching" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
-              <ExternalLink size={16}/>
-              Voir Omnia Coaching
+            <Link to="/coaching" className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50 md:inline-flex" style={{ color: BLUE }}>
+              <Home size={16} /> Voir Omnia Coaching
             </Link>
           )}
 
           {isCoachingLanding && (
-            <Link to={coachSpaceTarget} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
-              {loggedIn ? <LayoutDashboard size={16}/> : <LogIn size={16}/>}
-              Espace coach
+            <Link to={coachSpaceTarget} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
+              {loggedIn ? <LayoutDashboard size={16} /> : <LogIn size={16} />}
+              <span className="hidden sm:inline">Espace coach</span>
             </Link>
           )}
 
-          {!loggedIn && !isCoachingLanding && !isCoachWorkspace && (
-            <Link to={`/connexion?redirect=${encodeURIComponent(location.pathname)}`} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>
-              <LogIn size={16}/>
-              Connexion
+          {!loggedIn && !isCoachingLanding ? (
+            <Link to={`/connexion?redirect=${encodeURIComponent(location.pathname + location.search)}`} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>
+              <LogIn size={16} /> Connexion
             </Link>
-          )}
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(open => !open)}
+                className="flex items-center gap-1 rounded-xl px-1.5 py-1 transition hover:bg-slate-100"
+                aria-label="Ouvrir le menu du profil"
+                aria-expanded={profileOpen}
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                <ChevronDown size={15} className="text-slate-400" />
+              </button>
 
-          {loggedIn && !isCoach && !previewMode && !isCoachWorkspace && (
-            <Link to="/coaching/devenir-coach" className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white sm:inline-flex" style={{ background: BLUE }}>
-              <UserRoundCheck size={16}/>
-              Candidater
-            </Link>
-          )}
-
-          {!previewMode && !isCoachWorkspace && (
-            <Link to="/accueil" className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 lg:inline-flex">
-              <ArrowLeft size={15}/>
-              OGA
-            </Link>
+              {profileOpen && (
+                <>
+                  <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu du profil" />
+                  <div className="absolute right-0 top-12 z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
+                    <button onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <UserRound size={17} /> Mon profil
+                    </button>
+                    <button onClick={() => navigate('/dashboard/coaching')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <CalendarDays size={17} /> Mes sessions coaching
+                    </button>
+                    {isCoachingLanding && (isCoach || previewMode) && (
+                      <button onClick={() => navigate(withCoachPreview('/coach/dashboard'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                        <LayoutDashboard size={17} /> Espace coach
+                      </button>
+                    )}
+                    <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <ArrowLeft size={17} /> Retour au Dashboard
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50">
+                      <LogOut size={17} /> Se déconnecter
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-[60]">
+          <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setMenuOpen(false)} aria-label="Fermer le menu" />
+          <aside className="absolute left-3 top-[84px] max-h-[calc(100vh-100px)] w-[292px] max-w-[88vw] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
+              <img src="/omnia-sidebar-logo.png" alt="Omnia Coaching" className="h-12 w-12 rounded-xl object-contain" />
+              <div className="min-w-0">
+                <div className="truncate text-base font-bold" style={{ color: BLUE }}>Omnia <span style={{ color: GOLD }}>Coaching</span></div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Accompagnement 1-on-1</div>
+              </div>
+            </div>
+            <nav className="space-y-1 px-3 py-4">
+              {navItems.map(item => {
+                const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
+                const Icon = item.icon;
+                const path = previewMode && item.path.startsWith('/coach') ? withCoachPreview(item.path) : item.path;
+                return (
+                  <Link key={item.path} to={path} className="relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: active ? BLUE : '#526074', background: active ? 'rgba(191,136,19,.08)' : undefined }}>
+                    {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full" style={{ background: GOLD }} />}
+                    <Icon size={18} style={{ color: active ? GOLD : '#64748B' }} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="border-t border-slate-100 px-3 py-4">
+              <button type="button" onClick={() => navigate(loggedIn ? dashboardPath : '/accueil')} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
+                {loggedIn ? <ArrowLeft size={18} /> : <Home size={18} />}
+                {loggedIn ? 'Retour au Dashboard' : 'Retour à Omnia Global Academy'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
     </header>
   );
 }

@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, Edit3, Loader2, Plus, Power, RefreshCw, Settings2, Video, X } from 'lucide-react';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
-import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
+import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { CoachOffer, CoachProfile, CoachingDomain, coachingRequest, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -94,10 +93,8 @@ export default function CoachOffers() {
 
   const activeCount = useMemo(() => data?.offers.filter(item => item.status === 'active').length || 0, [data]);
 
-  return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader />
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <CoachWorkspaceNav />
+  return <CoachWorkspaceLayout>
+    <div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Espace coach</span>
@@ -147,8 +144,8 @@ export default function CoachOffers() {
       </section> : <div className="mt-6 rounded-2xl border bg-white py-16 text-center" style={{ borderColor: BORDER }}><Settings2 className="mx-auto" color={GOLD}/><h2 className="mt-4 font-semibold" style={{ color: BLUE }}>Aucune offre configurée</h2><p className="mt-2 text-sm text-slate-500">Créez votre première offre pour pouvoir recevoir des réservations.</p></div>}
 
       {editing && data && <OfferModal form={editing} domains={data.domains} profile={data.profile} limits={data.limits} onClose={() => setEditing(null)} onDone={async message => { setEditing(null); setNotice(message); await load(); }} />}
-    </main>
-  </div>;
+    </div>
+  </CoachWorkspaceLayout>;
 }
 
 function OfferModal({ form: initial, domains, profile, limits, onClose, onDone }: { form: OfferForm; domains: CoachingDomain[]; profile: CoachProfile; limits: OffersData['limits']; onClose: () => void; onDone: (message: string) => void }) {

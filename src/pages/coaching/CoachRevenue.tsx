@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CircleDollarSign, Clock3, LockKeyhole, RefreshCw, WalletCards, X } from 'lucide-react';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
-import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
+import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { CoachingAdvancedEarning, CoachingEarning, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -36,10 +35,8 @@ export default function CoachRevenue() {
   const available = Math.max(0, Number(data?.wallet.balance_xof || 0) - Number(data?.wallet.reserved_xof || 0));
   const minimum = Number(data?.settings.payout_minimum_xof || 5000);
 
-  return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader />
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <CoachWorkspaceNav />
+  return <CoachWorkspaceLayout>
+    <div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div><span className="text-xs font-semibold uppercase tracking-[.15em]" style={{ color: GOLD }}>Espace coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Mes revenus</h1><p className="mt-2 text-sm text-slate-600">Sessions, packs et groupes sont crédités dans le même portefeuille OGA après leur délai de libération.</p></div>
         <div className="flex gap-2"><button onClick={load} className="rounded-xl border bg-white p-3" style={{ borderColor: BORDER }}><RefreshCw size={17}/></button><button disabled={available < minimum} onClick={() => setOpen(true)} className="rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}>Demander un retrait</button></div>
@@ -58,8 +55,8 @@ export default function CoachRevenue() {
         <section className="mt-6 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Historique des retraits</h2><div className="mt-4 divide-y">{data?.payouts.length ? data.payouts.map(payout => <div key={payout.id} className="flex flex-wrap justify-between gap-3 py-3 text-sm"><div><strong>{formatXof(payout.amount_xof)}</strong><p className="text-xs text-slate-500">{String(payout.channel).replace(/_/g, ' ')} · {formatCoachingDate(payout.requested_at)}</p></div><Status value={payout.status}/></div>) : <p className="py-8 text-center text-sm text-slate-500">Aucun retrait demandé.</p>}</div></section>
       </>}
       {open && data && <Payout available={available} minimum={minimum} onClose={() => setOpen(false)} onDone={async () => { setOpen(false); setNotice('Votre demande de retrait a été transmise.'); await load(); }}/>} 
-    </main>
-  </div>;
+    </div>
+  </CoachWorkspaceLayout>;
 }
 
 function SessionEarnings({ rows }: { rows: CoachingEarning[] }) {

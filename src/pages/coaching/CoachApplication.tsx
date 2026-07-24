@@ -9,7 +9,7 @@ const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
 type Bootstrap = { success: true; domains: CoachingDomain[]; levels: CoachingLevel[] };
-type SelfStatus = { success: true; application: CoachApplicationType | null; profile: CoachProfile | null; roles: string[] };
+type SelfStatus = { success: true; application: CoachApplicationType | null; profile: CoachProfile | null; roles: string[]; eligibility: { eligible: boolean; source: string; organization_id?: string | null; message: string } };
 type UploadedAsset = { path: string; public_url?: string | null; size_bytes: number; file_name: string; mime_type: string };
 
 type FormState = {
@@ -55,7 +55,8 @@ export default function CoachApplication() {
     }).catch(e => setError(e instanceof Error ? e.message : 'Impossible de charger votre candidature.')).finally(() => setLoading(false));
   }, [loggedIn]);
 
-  const canEdit = !self?.application || ['changes_requested', 'rejected', 'draft'].includes(self.application.status);
+  const eligible = self?.eligibility?.eligible ?? false;
+  const canEdit = eligible && (!self?.application || ['changes_requested', 'rejected', 'draft'].includes(self.application.status));
   const selectedDomains = useMemo(() => new Set(form.domain_ids), [form.domain_ids]);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -94,8 +95,9 @@ export default function CoachApplication() {
     finally { setBusy(false); }
   }
 
-  if (!loggedIn) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-2xl px-5 py-20 text-center"><UserRoundCheck className="mx-auto h-12 w-12" color={GOLD}/><h1 className="mt-5 text-3xl font-semibold" style={{ color: BLUE }}>Devenir coach sur OGA</h1><p className="mt-4 leading-7 text-slate-600">Créez ou utilisez votre compte OGA avant de soumettre votre candidature. Votre rôle actuel sera conservé si vous êtes validé comme coach.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><Link to="/connexion?redirect=/coaching/devenir-coach" className="rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>Se connecter</Link><Link to="/inscription" className="rounded-xl border px-5 py-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Créer un compte</Link></div></main></div>;
+  if (!loggedIn) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-2xl px-5 py-20 text-center"><UserRoundCheck className="mx-auto h-12 w-12" color={GOLD}/><h1 className="mt-5 text-3xl font-semibold" style={{ color: BLUE }}>Devenir coach sur OGA</h1><p className="mt-4 leading-7 text-slate-600">Connectez-vous avec un compte professeur/formateur OGA ou un compte préalablement désigné par une Structure. Un compte apprenant seul ne peut pas candidater comme coach.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><Link to="/connexion?redirect=/coaching/devenir-coach" className="rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>Se connecter</Link><Link to="/inscription" className="rounded-xl border px-5 py-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Créer un compte</Link></div></main></div>;
   if (loading) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="py-24 text-center text-sm text-slate-500">Chargement de votre espace…</div></div>;
+  if (!eligible && !self?.profile) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-3xl px-5 py-20"><div className="rounded-2xl border bg-white p-8 text-center" style={{ borderColor: BORDER }}><AlertCircle className="mx-auto h-11 w-11" color={GOLD}/><h1 className="mt-5 text-2xl font-semibold" style={{ color: BLUE }}>Candidature coach non disponible pour ce compte</h1><p className="mx-auto mt-3 max-w-2xl leading-7 text-slate-600">{self?.eligibility?.message || 'Un compte apprenant ne peut pas devenir coach directement.'}</p><p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-500">Les professeurs et formateurs OGA peuvent candidater. Une Structure peut également désigner l’un de ses membres, qui restera ensuite soumis à la validation du Super Admin.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><Link to="/dashboard" className="rounded-xl border px-5 py-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Retour au Dashboard</Link><Link to="/coaching" className="rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>Voir Omnia Coaching</Link></div></div></main></div>;
 
   return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-5xl px-4 py-8 md:px-6">
     <div><span className="text-sm font-semibold uppercase tracking-[.12em]" style={{ color: GOLD }}>Candidature coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Proposer vos compétences sur Omnia Coaching</h1><p className="mt-3 max-w-3xl leading-7 text-slate-600">Le Super Admin vérifie le profil, les domaines, les justificatifs, les tarifs, le niveau et la commission avant toute publication.</p></div>

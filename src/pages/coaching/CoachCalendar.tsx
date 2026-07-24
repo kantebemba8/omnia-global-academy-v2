@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Ban, CalendarDays, CheckCircle2, Clock3, Edit3, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
-import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
+import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { CoachAvailabilityException, CoachAvailabilityRule, CoachProfile, coachingRequest, formatCoachingDate } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -100,10 +99,8 @@ export default function CoachCalendar() {
     return map;
   }, [data]);
 
-  return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader />
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <CoachWorkspaceNav />
+  return <CoachWorkspaceLayout>
+    <div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div><span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Espace coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Mon calendrier</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Définissez vos disponibilités récurrentes, bloquez vos absences et ouvrez des créneaux exceptionnels. Les heures sont enregistrées avec votre fuseau horaire.</p></div>
         <button onClick={load} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={16}/>Actualiser</button>
@@ -134,8 +131,8 @@ export default function CoachCalendar() {
       {editingRule && <RuleModal form={editingRule} onClose={() => setEditingRule(null)} onDone={async message => { setEditingRule(null); setNotice(message); await load(); }} />}
       {editingException && <ExceptionModal form={editingException} onClose={() => setEditingException(null)} onDone={async message => { setEditingException(null); setNotice(message); await load(); }} />}
       {pendingDelete && <ConfirmDelete type={pendingDelete.type} busy={busyId === pendingDelete.id} onClose={() => setPendingDelete(null)} onConfirm={async () => { const item = pendingDelete; if (item.type === 'rule') await removeRule(item.id); else await removeException(item.id); setPendingDelete(null); }} />}
-    </main>
-  </div>;
+    </div>
+  </CoachWorkspaceLayout>;
 }
 
 function RuleModal({ form: initial, onClose, onDone }: { form: RuleForm; onClose: () => void; onDone: (message: string) => void }) {

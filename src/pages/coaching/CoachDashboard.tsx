@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, CircleDollarSign, Package, Star } from 'lucide-react';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
-import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
+import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { CoachProfile, CoachingSession, coachingRequest, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -38,10 +37,8 @@ export default function CoachDashboard() {
     ['Demandes personnalisées', data?.metrics.pending_custom_requests || 0, Package],
   ] as const;
 
-  return <div className="min-h-screen bg-slate-50">
-    <CoachingHeader />
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <CoachWorkspaceNav />
+  return <CoachWorkspaceLayout>
+    <div>
       <p className="text-xs font-semibold uppercase tracking-[.18em]" style={{ color: GOLD }}>Espace coach</p>
       <h1 className="mt-2 text-3xl font-bold" style={{ color: BLUE }}>Bonjour {data?.profile?.full_name || 'Coach'}</h1>
       {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
@@ -69,8 +66,8 @@ export default function CoachDashboard() {
           </div>)}
         </div> : <p className="mt-4 text-sm text-slate-500">Aucune activité récente.</p>}
       </section>
-    </main>
-  </div>;
+    </div>
+  </CoachWorkspaceLayout>;
 }
 
 function Card({ to, title, text }: { to: string; title: string; text: string }) {

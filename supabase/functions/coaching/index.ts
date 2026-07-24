@@ -91,6 +91,125 @@ function isAdmin(session: Session | null): boolean {
   return !!session?.roles.includes("super_admin");
 }
 
+const DIRECT_COACH_ELIGIBILITY_ROLES = new Set(["professeur", "formateur"]);
+const STRUCTURE_MANAGER_ROLES = new Set(["gestionnaire_partenaire", "responsable_structure", "structure_admin", "directeur", "etablissement_directeur"]);
+
+type CoachEligibility = {
+  eligible: boolean;
+  source: "existing_coach" | "professor" | "structure_designation" | "none";
+  organization_id?: string | null;
+  message: string;
+};
+
+async function coachEligibility(sb: Supabase, session: Session): Promise<CoachEligibility> {
+  if (session.roles.includes("coach")) {
+    return { eligible: true, source: "existing_coach", message: "Votre profil coach est déjà actif ou en cours de gestion." };
+  }
+  if (session.roles.some(role => DIRECT_COACH_ELIGIBILITY_ROLES.has(role))) {
+    return { eligible: true, source: "professor", message: "Les professeurs et formateurs OGA peuvent déposer une candidature coach." };
+  }
+  const { data: designation, error } = await sb
+    .from("structure_coach_designations")
+    .select("organization_id")
+    .eq("user_id", session.userId)
+    .eq("status", "active")
+    .order("designated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (designation?.organization_id) {
+    return {
+      eligible: true,
+      source: "structure_designation",
+      organization_id: String(designation.organization_id),
+      message: "Votre Structure vous a désigné pour déposer une candidature coach.",
+    };
+  }
+  return {
+    eligible: false,
+    source: "none",
+    message: "Un compte apprenant ne peut pas devenir coach directement. Vous devez être professeur/formateur OGA ou être désigné par une Structure.",
+  };
+}
+
+async function structureManagerOrganization(sb: Supabase, session: Session, requestedOrganizationId: string): Promise<string> {
+  if (isAdmin(session)) {
+    if (!requestedOrganizationId) throw new Error("ORGANIZATION_REQUIRED");
+    return requestedOrganizationId;
+  }
+  if (!session.roles.some(role => STRUCTURE_MANAGER_ROLES.has(role))) throw new Error("FORBIDDEN");
+  let query = sb
+    .from("partner_managers")
+    .select("organization_id,is_primary,status,permissions")
+    .eq("user_id", session.userId)
+    .in("status", ["actif", "active"]);
+  if (requestedOrganizationId) query = query.eq("organization_id", requestedOrganizationId);
+  const { data: manager, error } = await query.limit(1).maybeSingle();
+  if (error) throw error;
+  if (!manager?.organization_id) throw new Error("STRUCTURE_MANAGER_REQUIRED");
+  return String(manager.organization_id);
+}
+
+async function isLinkedStructureMember(sb: Supabase, organizationId: string, userId: string): Promise<boolean> {
+  const [manager, member] = await Promise.all([
+    sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("user_id", userId).in("status", ["actif", "active"]).limit(1).maybeSingle(),
+    sb.from("partner_code_users").select("user_id").eq("organization_id", organizationId).eq("user_id", userId).limit(1).maybeSingle(),
+  ]);
+  return Boolean(manager.data?.user_id || member.data?.user_id);
+}
+
+async function structureCoachDesignations(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const organizationId = await structureManagerOrganization(sb, session, asText(body.organization_id, 80));
+  const { data, error } = await sb
+    .from("structure_coach_designations")
+    .select("id,organization_id,user_id,status,designated_at,revoked_at,users(full_name,email)")
+    .eq("organization_id", organizationId)
+    .order("designated_at", { ascending: false });
+  if (error) throw error;
+  return { organization_id: organizationId, designations: data || [] };
+}
+
+async function structureCoachDesignate(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const organizationId = await structureManagerOrganization(sb, session, asText(body.organization_id, 80));
+  const email = asText(body.email, 255).toLowerCase();
+  const active = body.active !== false;
+  if (!email) throw new Error("EMAIL_REQUIRED");
+  const { data: user, error: userError } = await sb.from("users").select("id,email,full_name").ilike("email", email).maybeSingle();
+  if (userError) throw userError;
+  if (!user?.id) throw new Error("USER_NOT_FOUND");
+  const linked = String(user.id) === session.userId || await isLinkedStructureMember(sb, organizationId, String(user.id));
+  if (!linked && !isAdmin(session)) throw new Error("STRUCTURE_MEMBER_REQUIRED");
+
+  const payload = active
+    ? {
+        organization_id: organizationId,
+        user_id: user.id,
+        status: "active",
+        designated_by: session.userId,
+        designated_at: new Date().toISOString(),
+        revoked_by: null,
+        revoked_at: null,
+        updated_at: new Date().toISOString(),
+      }
+    : {
+        organization_id: organizationId,
+        user_id: user.id,
+        status: "revoked",
+        designated_by: session.userId,
+        revoked_by: session.userId,
+        revoked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+  const { data, error } = await sb
+    .from("structure_coach_designations")
+    .upsert(payload, { onConflict: "organization_id,user_id" })
+    .select("id,organization_id,user_id,status,designated_at,revoked_at")
+    .single();
+  if (error) throw error;
+  await audit(sb, session.userId, active ? "structure_coach_designated" : "structure_coach_designation_revoked", "structure_coach_designation", String(data.id), null, { ...data, target_email: email });
+  return { designation: data, user: { id: user.id, email: user.email, full_name: user.full_name } };
+}
+
 const COACH_PREVIEW_EMAIL = "coach.test@omniaglobalacademy.com";
 const COACH_PREVIEW_READ_ACTIONS = new Set([
   "coach_dashboard",
@@ -368,6 +487,8 @@ async function uploadAsset(sb: Supabase, session: Session, body: Record<string, 
 }
 
 async function submitApplication(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const eligibility = await coachEligibility(sb, session);
+  if (!eligibility.eligible) throw new Error("COACH_ELIGIBILITY_REQUIRED");
   const fullName = asText(body.full_name, 180);
   const professionalTitle = asText(body.professional_title, 180);
   const country = asText(body.country, 100);
@@ -494,6 +615,13 @@ async function reviewApplication(sb: Supabase, session: Session, body: Record<st
   const { data: application, error } = await sb.from("coach_applications").select("*").eq("id", applicationId).maybeSingle();
   if (error) throw error;
   if (!application) throw new Error("APPLICATION_NOT_FOUND");
+
+  if (decision === "approve") {
+    const { data: applicantRoles, error: applicantRolesError } = await sb.from("user_roles").select("role").eq("user_id", application.user_id);
+    if (applicantRolesError) throw applicantRolesError;
+    const eligibility = await coachEligibility(sb, { userId: String(application.user_id), roles: (applicantRoles || []).map((row: { role: string }) => String(row.role)) });
+    if (!eligibility.eligible) throw new Error("COACH_ELIGIBILITY_REQUIRED");
+  }
 
   if (decision === "changes_requested" || decision === "reject") {
     const message = asText(body.message, 3000);
@@ -1630,13 +1758,14 @@ function errorResponse(error: unknown) {
     "INVALID_MEETING_URL", "INVALID_PRESENCE_ACTION", "INVALID_SESSION_SETTINGS", "SESSION_CANNOT_CLOSE",
     "PACKAGE_INCOMPLETE", "PACKAGE_PRICE_OUT_OF_RANGE", "GROUP_INCOMPLETE", "SUBSCRIPTION_PLAN_INCOMPLETE", "ADVANCED_PRODUCT_REQUIRED",
     "ACTION_PLAN_INCOMPLETE", "ACTION_ITEM_INCOMPLETE", "INVALID_RECORDING_CONSENT", "RECORDING_STORAGE_KEY_REQUIRED", "INVALID_ADVANCED_SETTINGS",
+    "EMAIL_REQUIRED", "ORGANIZATION_REQUIRED",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
-  if (["FORBIDDEN", "PREVIEW_READ_ONLY"].includes(code)) return json({ error: code }, 403);
+  if (["FORBIDDEN", "PREVIEW_READ_ONLY", "COACH_ELIGIBILITY_REQUIRED", "STRUCTURE_MANAGER_REQUIRED", "STRUCTURE_MEMBER_REQUIRED"].includes(code)) return json({ error: code }, 403);
   if (code === "COACH_PREVIEW_ACCOUNT_MISSING") return json({ error: code }, 409);
   if (["INVOICE_UNAVAILABLE", "RECORDING_STORAGE_NOT_CONFIGURED", "RECORDING_PROVIDER_FAILED"].includes(code)) return json({ error: code }, 503);
   if (code === "INVALID_RECORDING_SECRET") return json({ error: code }, 401);
-  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND", "PACKAGE_NOT_FOUND", "SUBSCRIPTION_PLAN_NOT_FOUND", "GROUP_NOT_FOUND", "GROUP_REGISTRATION_NOT_FOUND", "ACTION_PLAN_NOT_FOUND", "RECORDING_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
+  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND", "PACKAGE_NOT_FOUND", "SUBSCRIPTION_PLAN_NOT_FOUND", "GROUP_NOT_FOUND", "GROUP_REGISTRATION_NOT_FOUND", "ACTION_PLAN_NOT_FOUND", "RECORDING_NOT_FOUND", "USER_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
   if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED", "SESSION_TOO_EARLY", "SESSION_OUTSIDE_ACCESS_WINDOW", "SESSION_ROOM_CLOSED", "SESSION_ROOM_UNAVAILABLE", "GROUP_FULL", "GROUP_ALREADY_REGISTERED", "GROUP_NOT_AVAILABLE", "PACKAGE_CREDIT_UNAVAILABLE", "PACKAGE_OFFER_MISMATCH", "RECORDING_CONSENT_REQUIRED", "RECORDING_DISABLED", "ACTIVE_RECORDING_NOT_FOUND", "GROUP_CANNOT_EDIT", "SUBSCRIPTION_ALREADY_ACTIVE"].includes(code)) return json({ error: code }, 409);
   if (["SESSION_ROOM_NOT_FOUND", "SESSION_MEMBER_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
   if (badRequest.includes(code)) return json({ error: code }, 400);
@@ -3106,12 +3235,14 @@ Deno.serve(async (req: Request) => {
       ]);
       let enrichedProfile: unknown = null;
       if (profile.data) enrichedProfile = await publicProfile(sb, String(profile.data.public_slug), true);
-      return json({ success: true, application: applications[0] || null, profile: enrichedProfile, roles: session.roles });
+      return json({ success: true, application: applications[0] || null, profile: enrichedProfile, roles: session.roles, eligibility: await coachEligibility(sb, session) });
     }
     if (action === "submit_application") {
       const applicationId = await submitApplication(sb, session, body);
       return json({ success: true, application_id: applicationId });
     }
+    if (action === "structure_coach_designations") return json({ success: true, ...(await structureCoachDesignations(sb, session, body)) });
+    if (action === "structure_coach_designate") return json({ success: true, ...(await structureCoachDesignate(sb, session, body)) });
     if (action === "favorite_status") {
       const coachId = asText(body.coach_id, 80);
       return json({ success: true, favorite: await favoriteState(sb, session, coachId) });

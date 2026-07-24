@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Clock3, MessageSquareText, RefreshCw, Star, UserRound, Video, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
-import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
+import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { CoachingSession, CoachingSlot, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -41,10 +40,8 @@ export default function CoachSessions() {
     });
   }, [sessions, filter]);
 
-  return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader />
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <CoachWorkspaceNav />
+  return <CoachWorkspaceLayout>
+    <div>
       <header className="flex flex-wrap items-start justify-between gap-4"><div><span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Espace coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Mes sessions</h1><p className="mt-2 text-sm text-slate-600">Gérez les demandes personnalisées et consultez les pré-réservations en attente de paiement.</p></div><button onClick={load} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={16}/>Actualiser</button></header>
       {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {notice && <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">{notice}</div>}
@@ -58,8 +55,8 @@ export default function CoachSessions() {
       </article>)}</section> : <div className="mt-6 rounded-2xl border bg-white py-16 text-center" style={{ borderColor: BORDER }}><UserRound className="mx-auto" color={GOLD}/><p className="mt-3 text-sm text-slate-500">Aucune session dans cette catégorie.</p></div>}
       {decision && <DecisionModal session={decision} onClose={() => setDecision(null)} onDone={async message => { setDecision(null); setNotice(message); await load(); }} />}
       {cancelSession && <CoachCancelModal session={cancelSession} onClose={() => setCancelSession(null)} onDone={async () => { setCancelSession(null); setNotice('La session a été annulée. Un remboursement total attend le traitement administratif.'); await load(); }} />}
-    </main>
-  </div>;
+    </div>
+  </CoachWorkspaceLayout>;
 }
 
 function DecisionModal({ session, onClose, onDone }: { session: CoachingSession; onClose: () => void; onDone: (message: string) => void }) {
