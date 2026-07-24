@@ -589,6 +589,183 @@ COMPLETION_PERCENT: payload.completion_percent ?? 0,
         break;
       }
 
+
+      case "coaching_external_link_ready": {
+        const when = payload.scheduled_start ? new Date(String(payload.scheduled_start)).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "prochainement";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Lien de session disponible",
+            MESSAGE_SPECIFIQUE: `Le lien externe de votre session avec ${payload.coach_name || "votre coach"} est prêt pour le ${when}.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : le lien de votre session du ${when} est disponible dans votre espace.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_session_closed": {
+        const status = String(payload.status || "completed");
+        const isNoShowCoach = status === "no_show_coach";
+        const isNoShowLearner = status === "no_show_learner";
+        const label = isNoShowCoach ? "Absence du coach constatée" : isNoShowLearner ? "Absence de l’apprenant constatée" : "Session terminée";
+        const message = isNoShowCoach
+          ? "Aucune présence du coach n’a été enregistrée. Une demande de remboursement total a été créée automatiquement."
+          : isNoShowLearner
+            ? "Aucune présence de l’apprenant n’a été enregistrée pendant la session."
+            : "La session est terminée. Le compte rendu de présence est disponible dans Omnia Coaching.";
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: label,
+            MESSAGE_SPECIFIQUE: message,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: `Omnia Coaching : ${label}. Consultez votre espace pour les détails.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_rating_invitation": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Votre avis compte",
+            MESSAGE_SPECIFIQUE: `Votre session avec ${payload.coach_name || "votre coach"} est terminée. Partagez votre expérience vérifiée.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : votre session est terminée. Vous pouvez maintenant laisser un avis vérifié.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_rating_received": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Nouvel avis reçu",
+            MESSAGE_SPECIFIQUE: `Une session vérifiée a reçu la note de ${payload.rating || "—"}/5.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/avis"}`,
+          } },
+          smsMessage: `Omnia Coaching : nouvel avis reçu (${payload.rating || "—"}/5).`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_rating_response": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Avis Omnia Coaching",
+            STATUT: "Réponse du coach",
+            MESSAGE_SPECIFIQUE: "Le coach a répondu à votre avis vérifié.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : le coach a répondu à votre avis.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_rating_warning": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Qualité de votre activité de coaching",
+            STATUT: "Avertissement qualité",
+            MESSAGE_SPECIFIQUE: `Votre note moyenne est de ${payload.average_rating || 0}/5 sur ${payload.rating_count || 0} avis. Consultez les retours et améliorez votre accompagnement.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/avis"}`,
+          } },
+          smsMessage: `Omnia Coaching : avertissement qualité, note moyenne ${payload.average_rating || 0}/5.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_rating_suspension": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Qualité de votre activité de coaching",
+            STATUT: "Profil coaching suspendu",
+            MESSAGE_SPECIFIQUE: `Votre profil coaching a été suspendu après le contrôle automatique de la note moyenne (${payload.average_rating || 0}/5 sur ${payload.rating_count || 0} avis). Le Super Admin peut examiner votre situation.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/avis"}`,
+          } },
+          smsMessage: "Omnia Coaching : votre profil coach a été suspendu après contrôle qualité.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_dispute_opened": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Litige ouvert",
+            MESSAGE_SPECIFIQUE: "Un litige a été ouvert concernant cette session. Les revenus associés restent bloqués pendant l’examen.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : un litige a été ouvert concernant une session.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_dispute_message": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Litige Omnia Coaching",
+            STATUT: "Nouveau message",
+            MESSAGE_SPECIFIQUE: "Un nouveau message a été ajouté au dossier de litige.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : nouveau message dans votre dossier de litige.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_dispute_resolved": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Litige Omnia Coaching",
+            STATUT: "Décision administrative",
+            MESSAGE_SPECIFIQUE: payload.reason as string || "Le dossier a été traité par le Super Admin.",
+            COMMENTAIRE: `Décision : ${String(payload.decision || "résolue").replace(/_/g, " ")}`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : une décision a été prise concernant votre litige.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_revenue_available": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Revenu Omnia Coaching",
+            STATUT: "Revenu disponible",
+            MESSAGE_SPECIFIQUE: `${payload.amount_xof || 0} XOF ont été libérés dans votre portefeuille après le délai de contestation.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/revenus"}`,
+          } },
+          smsMessage: `Omnia Coaching : ${payload.amount_xof || 0} XOF sont disponibles dans votre portefeuille.`,
+          sb,
+        });
+        break;
+      }
+
       default:
         return json({ error: "UNKNOWN_TYPE", type }, 400);
     }

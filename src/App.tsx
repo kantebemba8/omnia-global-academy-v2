@@ -138,15 +138,25 @@ import TalentProfilePublic from './pages/talent/TalentProfilePublic';
 import AdminTalent from './pages/admin/AdminTalent';
 import AdminCoaching from './pages/admin/AdminCoaching';
 import AdminCoachingOffers from './pages/admin/AdminCoachingOffers';
+import AdminCoachingFinance from './pages/admin/AdminCoachingFinance';
+import AdminCoachingSessions from './pages/admin/AdminCoachingSessions';
+import AdminCoachingDisputes from './pages/admin/AdminCoachingDisputes';
+import AdminCoachingRatings from './pages/admin/AdminCoachingRatings';
+import AdminCoachingRevenue from './pages/admin/AdminCoachingRevenue';
 import CoachingCatalogue from './pages/coaching/CoachingCatalogue';
 import CoachingCoachProfile from './pages/coaching/CoachingCoachProfile';
 import CoachingBooking from './pages/coaching/CoachingBooking';
+import CoachingPayment from './pages/coaching/CoachingPayment';
 import CoachApplication from './pages/coaching/CoachApplication';
 import CoachDashboard from './pages/coaching/CoachDashboard';
 import CoachOffers from './pages/coaching/CoachOffers';
 import CoachCalendar from './pages/coaching/CoachCalendar';
 import CoachSessions from './pages/coaching/CoachSessions';
 import LearnerCoachingDashboard from './pages/coaching/LearnerCoachingDashboard';
+import CoachingSessionRoom from './pages/coaching/CoachingSessionRoom';
+import CoachingSessionFollowUp from './pages/coaching/CoachingSessionFollowUp';
+import CoachReviews from './pages/coaching/CoachReviews';
+import CoachRevenue from './pages/coaching/CoachRevenue';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
 import OmniaLiveHome from './pages/omnia-live/OmniaLiveHome';
 import CatalogView from './pages/omnia-live/CatalogView';
@@ -335,12 +345,18 @@ export default function App() {
           <Route path="/coaching" element={<CoachingCatalogue />} />
           <Route path="/coaching/coachs/:coachId" element={<CoachingCoachProfile />} />
           <Route path="/coaching/coachs/:coachId/reserver" element={<CoachingBooking />} />
+          <Route path="/coaching/paiement/:sessionId" element={<CoachingPayment />} />
           <Route path="/coaching/devenir-coach" element={<CoachApplication />} />
           <Route path="/dashboard/coaching" element={<LearnerCoachingDashboard />} />
+          <Route path="/coaching/sessions/:sessionId/room" element={<CoachingSessionRoom />} />
+          <Route path="/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
+          <Route path="/dashboard/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
           <Route path="/coach/dashboard" element={<CoachDashboard />} />
           <Route path="/coach/offres" element={<CoachOffers />} />
           <Route path="/coach/calendrier" element={<CoachCalendar />} />
           <Route path="/coach/sessions" element={<CoachSessions />} />
+          <Route path="/coach/avis" element={<CoachReviews />} />
+          <Route path="/coach/revenus" element={<CoachRevenue />} />
           <Route path="/talents" element={<TalentDirectory />} />
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
@@ -460,6 +476,11 @@ export default function App() {
         <Route path="/admin/coaching/niveaux" element={<AdminCoaching />} />
         <Route path="/admin/coaching/domaines" element={<AdminCoaching />} />
         <Route path="/admin/coaching/offres" element={<AdminCoachingOffers />} />
+        <Route path="/admin/coaching/finance" element={<AdminCoachingFinance />} />
+        <Route path="/admin/coaching/sessions" element={<AdminCoachingSessions />} />
+        <Route path="/admin/coaching/litiges" element={<AdminCoachingDisputes />} />
+        <Route path="/admin/coaching/avis" element={<AdminCoachingRatings />} />
+        <Route path="/admin/coaching/revenus" element={<AdminCoachingRevenue />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />

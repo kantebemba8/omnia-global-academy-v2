@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Check, Clock3, MessageSquareText, RefreshCw, UserRound, X } from 'lucide-react';
+import { CalendarClock, Check, Clock3, MessageSquareText, RefreshCw, Star, UserRound, Video, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
 import { CoachingSession, CoachingSlot, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
@@ -10,7 +11,7 @@ const BORDER = '#E4E7EC';
 
 type Filter = 'all' | 'pending' | 'upcoming' | 'past';
 const statusLabels: Record<string, string> = {
-  pending_coach: 'Réponse du coach attendue', pending_payment: 'Paiement attendu', confirmed: 'Confirmée', ready: 'Bientôt disponible', in_progress: 'En cours', completed: 'Terminée', cancelled_by_learner: 'Annulée par l’apprenant', cancelled_by_coach: 'Annulée par le coach', declined_by_coach: 'Refusée', expired: 'Expirée',
+  pending_coach: 'Réponse du coach attendue', pending_payment: 'Paiement attendu', confirmed: 'Confirmée et payée', ready: 'Bientôt disponible', in_progress: 'En cours', completed: 'Terminée', cancelled_by_learner: 'Annulée par l’apprenant', cancelled_by_coach: 'Annulée par le coach', declined_by_coach: 'Refusée', expired: 'Expirée', disputed: 'Vérification administrative', partially_refunded: 'Remboursement partiel', refunded: 'Remboursée', no_show_learner: 'Absence apprenant', no_show_coach: 'Absence coach',
 };
 
 export default function CoachSessions() {
@@ -20,6 +21,7 @@ export default function CoachSessions() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [decision, setDecision] = useState<CoachingSession | null>(null);
+  const [cancelSession, setCancelSession] = useState<CoachingSession | null>(null);
 
   async function load() {
     setLoading(true); setError('');
@@ -33,8 +35,8 @@ export default function CoachSessions() {
     const now = Date.now();
     return sessions.filter(item => {
       if (filter === 'pending') return ['pending_coach', 'pending_payment'].includes(item.status);
-      if (filter === 'upcoming') return Boolean(item.scheduled_start && new Date(item.scheduled_start).getTime() >= now && ['pending_payment', 'confirmed', 'ready'].includes(item.status));
-      if (filter === 'past') return ['completed', 'cancelled_by_learner', 'cancelled_by_coach', 'declined_by_coach', 'expired'].includes(item.status) || Boolean(item.scheduled_end && new Date(item.scheduled_end).getTime() < now);
+      if (filter === 'upcoming') return item.status === 'in_progress' || Boolean(item.scheduled_start && new Date(item.scheduled_start).getTime() >= now && ['pending_payment', 'confirmed', 'ready'].includes(item.status));
+      if (filter === 'past') return ['completed', 'cancelled_by_learner', 'cancelled_by_coach', 'declined_by_coach', 'expired', 'disputed', 'partially_refunded', 'refunded', 'no_show_learner', 'no_show_coach'].includes(item.status) || Boolean(item.scheduled_end && new Date(item.scheduled_end).getTime() < now);
       return true;
     });
   }, [sessions, filter]);
@@ -50,11 +52,12 @@ export default function CoachSessions() {
 
       {loading ? <div className="py-20 text-center text-sm text-slate-500">Chargement des sessions…</div> : displayed.length ? <section className="mt-5 space-y-4">{displayed.map(session => <article key={session.id} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold" style={{ color: BLUE }}>{session.offer_title_snapshot}</h2><Status value={session.status}/><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{session.duration_minutes} min</span></div><p className="mt-2 text-sm text-slate-600">Apprenant : <strong>{session.learner?.full_name || 'Utilisateur OGA'}</strong></p><div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500"><span className="inline-flex items-center gap-1.5"><CalendarClock size={15}/>{formatCoachingDate(session.scheduled_start || session.requested_start)}</span><span className="inline-flex items-center gap-1.5"><Clock3 size={15}/>{formatXof(session.price_total_xof)}</span><span>{session.meeting_mode === 'jitsi' ? 'Salle intégrée OGA' : 'Lien externe'}</span></div>{session.learner_message && <div className="mt-4 flex gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><MessageSquareText className="shrink-0" size={17}/><p>{session.learner_message}</p></div>}{session.coach_response_message && <p className="mt-3 text-sm text-slate-500">Votre réponse : {session.coach_response_message}</p>}</div>
-          {session.status === 'pending_coach' && <button onClick={() => setDecision(session)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Répondre</button>}
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold" style={{ color: BLUE }}>{session.offer_title_snapshot}</h2><Status value={session.status}/><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{session.duration_minutes} min</span></div><p className="mt-2 text-sm text-slate-600">Apprenant : <strong>{session.learner?.full_name || 'Utilisateur OGA'}</strong></p><div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500"><span className="inline-flex items-center gap-1.5"><CalendarClock size={15}/>{formatCoachingDate(session.scheduled_start || session.requested_start)}</span><span className="inline-flex items-center gap-1.5"><Clock3 size={15}/>{formatXof(session.price_total_xof)}</span><span>{session.meeting_mode === 'jitsi' ? 'Salle intégrée OGA' : 'Lien externe'}</span></div>{session.learner_message && <div className="mt-4 flex gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><MessageSquareText className="shrink-0" size={17}/><p>{session.learner_message}</p></div>}{session.coach_response_message && <p className="mt-3 text-sm text-slate-500">Votre réponse : {session.coach_response_message}</p>}{session.refund && <p className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Remboursement : {session.refund.status.replace(/_/g, ' ')} — {formatXof(session.refund.approved_amount_xof ?? session.refund.requested_amount_xof)}</p>}</div>
+          <div className="flex flex-wrap gap-2">{['confirmed', 'ready', 'in_progress'].includes(session.status) && session.payment_status === 'paid' && <Link to={`/coaching/sessions/${session.id}/room`} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: GOLD }}><Video size={15}/>Ouvrir la session</Link>}{['completed','no_show_learner','no_show_coach','disputed','partially_refunded','refunded'].includes(session.status) && <Link to={`/coaching/sessions/${session.id}/suivi`} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Star size={15}/>Suivi et avis</Link>}{session.status === 'pending_coach' && <button onClick={() => setDecision(session)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Répondre</button>}{['confirmed', 'ready'].includes(session.status) && session.payment_status === 'paid' && !session.refund && <button onClick={() => setCancelSession(session)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold text-red-600" style={{ borderColor: BORDER }}>Annuler la session</button>}</div>
         </div>
       </article>)}</section> : <div className="mt-6 rounded-2xl border bg-white py-16 text-center" style={{ borderColor: BORDER }}><UserRound className="mx-auto" color={GOLD}/><p className="mt-3 text-sm text-slate-500">Aucune session dans cette catégorie.</p></div>}
       {decision && <DecisionModal session={decision} onClose={() => setDecision(null)} onDone={async message => { setDecision(null); setNotice(message); await load(); }} />}
+      {cancelSession && <CoachCancelModal session={cancelSession} onClose={() => setCancelSession(null)} onDone={async () => { setCancelSession(null); setNotice('La session a été annulée. Un remboursement total attend le traitement administratif.'); await load(); }} />}
     </main>
   </div>;
 }
@@ -97,4 +100,20 @@ function DecisionModal({ session, onClose, onDone }: { session: CoachingSession;
   </div></div>;
 }
 
-function Status({ value }: { value: string }) { const danger = ['declined_by_coach', 'cancelled_by_learner', 'cancelled_by_coach', 'expired'].includes(value); const warning = ['pending_coach', 'pending_payment'].includes(value); return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: danger ? '#FEF2F2' : warning ? '#FFF7E6' : '#ECFDF3', color: danger ? '#B42318' : warning ? '#9A6700' : '#027A48' }}>{statusLabels[value] || value}</span>; }
+function CoachCancelModal({ session, onClose, onDone }: { session: CoachingSession; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('indisponibilite_coach');
+  const [details, setDetails] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit() {
+    setBusy(true); setError('');
+    try {
+      await coachingRequest('coach_cancel_paid', { session_id: session.id, reason_code: reason, reason_details: details });
+      onDone();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Annulation impossible.'); }
+    finally { setBusy(false); }
+  }
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Annuler la session payée</h2><button onClick={onClose} className="p-2"><X size={18}/></button></div><p className="mt-3 text-sm leading-6 text-slate-600">Une annulation par le coach déclenche un remboursement total de {formatXof(session.price_total_xof)} pour l’apprenant.</p><label className="mt-4 block text-sm font-medium text-slate-700">Motif<select value={reason} onChange={e => setReason(e.target.value)} className="mt-1 h-11 w-full rounded-xl border px-3" style={{ borderColor: BORDER }}><option value="indisponibilite_coach">Indisponibilité du coach</option><option value="urgence">Urgence</option><option value="probleme_technique">Problème technique</option><option value="autre">Autre</option></select></label><label className="mt-3 block text-sm font-medium text-slate-700">Précisions<textarea value={details} onChange={e => setDetails(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border p-3" style={{ borderColor: BORDER }}/></label>{error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: BORDER }}>Conserver</button><button disabled={busy} onClick={submit} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmer l’annulation</button></div></div></div>;
+}
+
+function Status({ value }: { value: string }) { const danger = ['declined_by_coach', 'cancelled_by_learner', 'cancelled_by_coach', 'expired', 'disputed'].includes(value); const warning = ['pending_coach', 'pending_payment'].includes(value); return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: danger ? '#FEF2F2' : warning ? '#FFF7E6' : '#ECFDF3', color: danger ? '#B42318' : warning ? '#9A6700' : '#027A48' }}>{statusLabels[value] || value}</span>; }

@@ -162,11 +162,12 @@ async function publicProfile(sb: Supabase, identifier: string) {
     .maybeSingle();
   if (error) throw error;
   if (!profile) return null;
-  const [{ data: user }, { data: level }, domainsByCoach, offers] = await Promise.all([
+  const [{ data: user }, { data: level }, domainsByCoach, offers, ratings] = await Promise.all([
     sb.from("users").select("id,full_name").eq("id", profile.user_id).maybeSingle(),
     profile.level_id ? sb.from("coaching_levels").select("id,slug,name,description,badge_label,badge_color,is_featured").eq("id", profile.level_id).maybeSingle() : Promise.resolve({ data: null }),
     domainMapForProfiles(sb, [String(profile.id)]),
     activeOffers(sb, String(profile.id)),
+    publicCoachRatings(sb, String(profile.id)),
   ]);
   return {
     ...profile,
@@ -174,6 +175,7 @@ async function publicProfile(sb: Supabase, identifier: string) {
     level: level || null,
     domains: domainsByCoach.get(String(profile.id)) || [],
     offers,
+    ratings,
   };
 }
 
@@ -1049,7 +1051,7 @@ async function coachingSessionsForUser(sb: Supabase, userId: string, coachId?: s
   const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
   const userMap = new Map((users || []).map((user: { id: string }) => [String(user.id), user]));
   const profileMap = new Map((profiles || []).map((profile: { id: string; user_id: string }) => [String(profile.id), { ...profile, full_name: (userMap.get(String(profile.user_id)) as { full_name?: string } | undefined)?.full_name || "Coach Omnia" }]));
-  return rows.map((row: Record<string, unknown>) => ({ ...row, coach: profileMap.get(String(row.coach_id)) || null }));
+  return rows.map((row: Record<string, unknown>) => { const { external_meeting_url: _privateExternalLink, ...safeRow } = row; return { ...safeRow, coach: profileMap.get(String(row.coach_id)) || null }; });
 }
 
 async function learnerDashboard(sb: Supabase, session: Session) {
@@ -1518,16 +1520,851 @@ function errorResponse(error: unknown) {
     "INVALID_DURATION", "BOOKING_INCOMPLETE", "INVALID_OFFER_TYPE", "CANNOT_BOOK_SELF", "CANNOT_FAVORITE_SELF", "INVALID_DECISION",
     "BOOKING_CANNOT_CANCEL", "PAYMENT_NOT_ALLOWED", "PAYMENT_HOLD_EXPIRED", "PAYMENT_CONFIGURATION_MISSING", "PAYMENT_INIT_FAILED", "PAYMENT_LINK_FAILED",
     "INVALID_REFUND_AMOUNT", "PROVIDER_REFERENCE_REQUIRED", "REFUND_NOT_APPROVED", "INVALID_FINANCE_SETTINGS",
+    "INVALID_MEETING_URL", "INVALID_PRESENCE_ACTION", "INVALID_SESSION_SETTINGS", "SESSION_CANNOT_CLOSE",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
   if (code === "FORBIDDEN") return json({ error: code }, 403);
   if (code === "INVOICE_UNAVAILABLE") return json({ error: code }, 503);
   if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
-  if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED"].includes(code)) return json({ error: code }, 409);
+  if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED", "SESSION_TOO_EARLY", "SESSION_OUTSIDE_ACCESS_WINDOW", "SESSION_ROOM_CLOSED", "SESSION_ROOM_UNAVAILABLE"].includes(code)) return json({ error: code }, 409);
+  if (["SESSION_ROOM_NOT_FOUND", "SESSION_MEMBER_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
   if (badRequest.includes(code)) return json({ error: code }, 400);
   console.error("[coaching]", error);
   return json({ error: "COACHING_ERROR", detail: code }, 500);
 }
+
+type CoachingParticipantRole = "coach" | "learner" | "admin_supervisor";
+
+type CoachingSessionAccess = {
+  booking: Record<string, unknown>;
+  coachProfile: Record<string, unknown>;
+  role: CoachingParticipantRole;
+};
+
+async function coachingRoomSettings(sb: Supabase) {
+  const { data, error } = await sb.from("coaching_settings").select("*").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return {
+    room_access_before_minutes: Number(data?.room_access_before_minutes ?? 30),
+    room_access_after_minutes: Number(data?.room_access_after_minutes ?? 30),
+    external_link_reveal_before_minutes: Number(data?.external_link_reveal_before_minutes ?? 30),
+    no_show_grace_minutes: Number(data?.no_show_grace_minutes ?? 15),
+    auto_complete_after_minutes: Number(data?.auto_complete_after_minutes ?? 30),
+  };
+}
+
+async function coachingSessionAccess(sb: Supabase, actor: Session, sessionId: string): Promise<CoachingSessionAccess> {
+  const { data: booking, error } = await sb.from("coaching_sessions").select("*").eq("id", sessionId).maybeSingle();
+  if (error) throw error;
+  if (!booking) throw new Error("BOOKING_NOT_FOUND");
+  const { data: coachProfile, error: coachError } = await sb.from("coach_profiles").select("id,user_id,public_slug,status").eq("id", booking.coach_id).maybeSingle();
+  if (coachError) throw coachError;
+  if (!coachProfile) throw new Error("COACH_NOT_FOUND");
+  if (isAdmin(actor)) return { booking, coachProfile, role: "admin_supervisor" };
+  if (String(booking.learner_user_id) === actor.userId) return { booking, coachProfile, role: "learner" };
+  if (String(coachProfile.user_id) === actor.userId && actor.roles.includes("coach")) return { booking, coachProfile, role: "coach" };
+  throw new Error("FORBIDDEN");
+}
+
+function coachingAccessWindow(booking: Record<string, unknown>, settings: Awaited<ReturnType<typeof coachingRoomSettings>>) {
+  if (!booking.scheduled_start || !booking.scheduled_end) throw new Error("BOOKING_INCOMPLETE");
+  const start = new Date(String(booking.scheduled_start));
+  const end = new Date(String(booking.scheduled_end));
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error("BOOKING_INCOMPLETE");
+  return {
+    opensAt: new Date(start.getTime() - settings.room_access_before_minutes * 60000),
+    closesAt: new Date(end.getTime() + settings.room_access_after_minutes * 60000),
+    externalRevealsAt: new Date(start.getTime() - settings.external_link_reveal_before_minutes * 60000),
+  };
+}
+
+function coachingRoomSlug(sessionId: string) {
+  return `oga-coaching-${sessionId.slice(0, 8)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 18)}`;
+}
+
+async function ensureCoachingRoom(sb: Supabase, access: CoachingSessionAccess, actorUserId: string) {
+  if (String(access.booking.meeting_mode) !== "jitsi") throw new Error("INVALID_SESSION_MODE");
+  const { data: existing, error: existingError } = await sb.from("coaching_rooms").select("*").eq("session_id", access.booking.id).maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing;
+  const roomSlug = coachingRoomSlug(String(access.booking.id));
+  const provider = (Deno.env.get("LIVE_VIDEO_PROVIDER") || "jitsi_embed").toLowerCase();
+  const embedBase = (Deno.env.get("LIVE_VIDEO_EMBED_BASE_URL") || "https://meet.jit.si").replace(/\/+$/, "");
+  const roomUrl = `${embedBase}/${encodeURIComponent(roomSlug)}`;
+  const { data: created, error } = await sb.from("coaching_rooms").insert({
+    session_id: access.booking.id,
+    provider,
+    provider_room_id: roomSlug,
+    room_slug: roomSlug,
+    status: "ready",
+    provider_join_url: roomUrl,
+    provider_host_url: roomUrl,
+    created_by: actorUserId,
+  }).select("*").single();
+  if (error) {
+    const { data: concurrent } = await sb.from("coaching_rooms").select("*").eq("session_id", access.booking.id).maybeSingle();
+    if (concurrent) return concurrent;
+    throw error;
+  }
+  await sb.from("coaching_session_actions").insert({ session_id: access.booking.id, room_id: created.id, actor_user_id: actorUserId, action: "room_created" });
+  return created;
+}
+
+async function coachingAttendance(sb: Supabase, sessionId: string) {
+  const { data, error } = await sb.rpc("coaching_attendance_summary", { p_session_id: sessionId });
+  if (error) throw error;
+  return (data || []).map((row: Record<string, unknown>) => ({
+    ...row,
+    duration_seconds: Number(row.duration_seconds || 0),
+  }));
+}
+
+async function sessionRoomAccess(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  if (!sessionId) throw new Error("BOOKING_NOT_FOUND");
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  const settings = await coachingRoomSettings(sb);
+  const window = coachingAccessWindow(access.booking, settings);
+  const now = new Date();
+  const isSupervisor = access.role === "admin_supervisor";
+  const status = String(access.booking.status);
+  const allowedStatus = ["confirmed", "ready", "in_progress", "completed", "no_show_learner", "no_show_coach"].includes(status);
+  if (!allowedStatus || String(access.booking.payment_status) !== "paid") throw new Error("SESSION_ROOM_UNAVAILABLE");
+
+  if (access.role === "learner" && now < window.opensAt) {
+    return { session: { ...access.booking, external_meeting_url: undefined }, role: access.role, access_status: "too_early", opens_at: window.opensAt.toISOString(), closes_at: window.closesAt.toISOString(), room: null, attendance: [] };
+  }
+
+  let room: Record<string, unknown> | null = null;
+  if (String(access.booking.meeting_mode) === "jitsi") {
+    if (["completed", "no_show_learner", "no_show_coach"].includes(status)) {
+      const existingRoom = await sb.from("coaching_rooms").select("*").eq("session_id", access.booking.id).maybeSingle();
+      if (existingRoom.error) throw existingRoom.error;
+      room = existingRoom.data || null;
+    } else {
+      if (!isSupervisor && now < window.opensAt) {
+        return { session: { ...access.booking, external_meeting_url: undefined }, role: access.role, access_status: "too_early", opens_at: window.opensAt.toISOString(), closes_at: window.closesAt.toISOString(), room: null, attendance: [] };
+      }
+      room = await ensureCoachingRoom(sb, access, actor.userId);
+      if (["ready"].includes(String(room.status)) && now >= window.opensAt && now <= window.closesAt) {
+        const result = await sb.from("coaching_rooms").update({ status: "open" }).eq("id", room.id).select("*").single();
+        if (result.error) throw result.error;
+        room = result.data;
+      }
+    }
+  }
+
+  const externalVisible = isSupervisor || access.role === "coach" || now >= window.externalRevealsAt;
+  const sanitized = { ...access.booking, external_meeting_url: externalVisible ? access.booking.external_meeting_url : undefined };
+  return {
+    session: sanitized,
+    role: access.role,
+    access_status: !isSupervisor && now > window.closesAt ? "closed" : "available",
+    opens_at: window.opensAt.toISOString(),
+    closes_at: window.closesAt.toISOString(),
+    room,
+    attendance: await coachingAttendance(sb, sessionId),
+    external_link_visible: externalVisible,
+  };
+}
+
+async function coachingRoomStart(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (!(["coach", "admin_supervisor"] as CoachingParticipantRole[]).includes(access.role)) throw new Error("FORBIDDEN");
+  if (!["confirmed", "ready", "in_progress"].includes(String(access.booking.status)) || String(access.booking.payment_status) !== "paid") throw new Error("SESSION_ROOM_UNAVAILABLE");
+  const settings = await coachingRoomSettings(sb);
+  const window = coachingAccessWindow(access.booking, settings);
+  const now = new Date();
+  if (access.role !== "admin_supervisor" && (now < window.opensAt || now > window.closesAt)) throw new Error("SESSION_OUTSIDE_ACCESS_WINDOW");
+  let room: Record<string, unknown> | null = null;
+  if (String(access.booking.meeting_mode) === "jitsi") {
+    room = await ensureCoachingRoom(sb, access, actor.userId);
+    const result = await sb.from("coaching_rooms").update({ status: "live", starts_at: room.starts_at || now.toISOString() }).eq("id", room.id).select("*").single();
+    if (result.error) throw result.error;
+    room = result.data;
+  }
+  const update = await sb.from("coaching_sessions").update({ status: "in_progress", actual_started_at: access.booking.actual_started_at || now.toISOString() }).eq("id", sessionId).select("*").single();
+  if (update.error) throw update.error;
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room?.id || null, actor_user_id: actor.userId, action: "session_started", metadata: { meeting_mode: access.booking.meeting_mode } });
+  return { session: { ...update.data, external_meeting_url: access.role === "learner" ? undefined : update.data.external_meeting_url }, room };
+}
+
+async function coachingRoomJoin(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (String(access.booking.meeting_mode) !== "jitsi") throw new Error("INVALID_SESSION_MODE");
+  if (!["confirmed", "ready", "in_progress"].includes(String(access.booking.status)) || String(access.booking.payment_status) !== "paid") throw new Error("SESSION_ROOM_UNAVAILABLE");
+  const settings = await coachingRoomSettings(sb);
+  const window = coachingAccessWindow(access.booking, settings);
+  const now = new Date();
+  if (access.role !== "admin_supervisor" && (now < window.opensAt || now > window.closesAt)) throw new Error(now < window.opensAt ? "SESSION_TOO_EARLY" : "SESSION_ROOM_CLOSED");
+  const room = await ensureCoachingRoom(sb, access, actor.userId);
+  if (String(room.status) === "ended" && access.role !== "admin_supervisor") throw new Error("SESSION_ROOM_CLOSED");
+  if (String(room.status) === "ready") await sb.from("coaching_rooms").update({ status: "open" }).eq("id", room.id);
+  const nowIso = now.toISOString();
+  const memberResult = await sb.from("coaching_room_members").upsert({
+    room_id: room.id,
+    session_id: sessionId,
+    user_id: actor.userId,
+    room_role: access.role,
+    access_status: "admitted",
+    joined_at: nowIso,
+    left_at: null,
+    last_seen_at: nowIso,
+  }, { onConflict: "room_id,user_id" }).select("*").single();
+  if (memberResult.error) throw memberResult.error;
+  const { data: openSegment } = await sb.from("coaching_attendance_segments").select("id").eq("session_id", sessionId).eq("user_id", actor.userId).is("left_at", null).maybeSingle();
+  if (!openSegment) {
+    const segment = await sb.from("coaching_attendance_segments").insert({ session_id: sessionId, room_id: room.id, user_id: actor.userId, participant_role: access.role, source: "jitsi", joined_at: nowIso }).select("id").single();
+    if (segment.error) throw segment.error;
+  }
+  const sessionPatch: Record<string, unknown> = {};
+  if (access.role === "coach" && !access.booking.coach_joined_at) sessionPatch.coach_joined_at = nowIso;
+  if (access.role === "learner" && !access.booking.learner_joined_at) sessionPatch.learner_joined_at = nowIso;
+  if (access.role === "coach" && ["confirmed", "ready"].includes(String(access.booking.status))) {
+    sessionPatch.status = "in_progress";
+    sessionPatch.actual_started_at = access.booking.actual_started_at || nowIso;
+    await sb.from("coaching_rooms").update({ status: "live", starts_at: room.starts_at || nowIso }).eq("id", room.id);
+  }
+  if (Object.keys(sessionPatch).length) await sb.from("coaching_sessions").update(sessionPatch).eq("id", sessionId);
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room.id, actor_user_id: actor.userId, action: "participant_joined", metadata: { role: access.role, source: "jitsi" } });
+  return { room, member: memberResult.data, role: access.role, join_url: access.role === "coach" || access.role === "admin_supervisor" ? room.provider_host_url : room.provider_join_url };
+}
+
+async function coachingRoomHeartbeat(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  const { data: room } = await sb.from("coaching_rooms").select("id,status").eq("session_id", sessionId).maybeSingle();
+  if (!room) throw new Error("SESSION_ROOM_NOT_FOUND");
+  const now = new Date().toISOString();
+  const result = await sb.from("coaching_room_members").update({ last_seen_at: now }).eq("room_id", room.id).eq("user_id", actor.userId).select("id,access_status").maybeSingle();
+  if (result.error) throw result.error;
+  if (!result.data) throw new Error("SESSION_MEMBER_NOT_FOUND");
+  return { role: access.role, room_status: room.status, access_status: result.data.access_status, server_time: now };
+}
+
+async function coachingRoomLeave(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  await coachingSessionAccess(sb, actor, sessionId);
+  const now = new Date().toISOString();
+  const { data: room } = await sb.from("coaching_rooms").select("id").eq("session_id", sessionId).maybeSingle();
+  if (room) await sb.from("coaching_room_members").update({ access_status: "left", left_at: now, last_seen_at: now }).eq("room_id", room.id).eq("user_id", actor.userId);
+  const { error } = await sb.rpc("coaching_close_open_attendance", { p_session_id: sessionId, p_user_id: actor.userId, p_left_at: now });
+  if (error) throw error;
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room?.id || null, actor_user_id: actor.userId, action: "participant_left" });
+  return { left_at: now };
+}
+
+async function createNoShowRefund(sb: Supabase, booking: Record<string, unknown>, reasonDetails: string) {
+  const { data: order } = await sb.from("coaching_payment_orders").select("*").eq("session_id", booking.id).eq("payment_status", "paid").maybeSingle();
+  if (!order) return null;
+  const { data: existing } = await sb.from("coaching_refund_requests").select("*").eq("session_id", booking.id).in("status", ["pending", "under_review", "approved", "partially_approved"]).maybeSingle();
+  if (existing) return existing;
+  const result = await sb.from("coaching_refund_requests").insert({
+    order_id: order.id,
+    session_id: booking.id,
+    user_id: booking.learner_user_id,
+    coach_id: booking.coach_id,
+    initiated_by: "system",
+    requested_amount_xof: Number(order.amount_xof || 0),
+    reason_code: "no_show_coach",
+    reason_details: reasonDetails,
+    status: "pending",
+    policy_snapshot: order.policy_snapshot || booking.policy_snapshot || {},
+  }).select("*").single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function finalizeCoachingSession(sb: Supabase, actor: Session, access: CoachingSessionAccess, source: "coach" | "admin" | "system") {
+  const sessionId = String(access.booking.id);
+  const now = new Date().toISOString();
+  const { error: closeError } = await sb.rpc("coaching_close_open_attendance", { p_session_id: sessionId, p_user_id: null, p_left_at: now });
+  if (closeError) throw closeError;
+  const summary = await coachingAttendance(sb, sessionId);
+  const coachSeconds = Number(summary.find((row: Record<string, unknown>) => row.participant_role === "coach")?.duration_seconds || 0);
+  const learnerSeconds = Number(summary.find((row: Record<string, unknown>) => row.participant_role === "learner")?.duration_seconds || 0);
+  let status = "completed";
+  if (coachSeconds <= 0) status = "no_show_coach";
+  else if (learnerSeconds <= 0) status = "no_show_learner";
+  const result = await sb.from("coaching_sessions").update({ status, actual_ended_at: now, completion_source: source, no_show_marked_at: status.startsWith("no_show") ? now : null }).eq("id", sessionId).select("*").single();
+  if (result.error) throw result.error;
+  const { data: room } = await sb.from("coaching_rooms").select("*").eq("session_id", sessionId).maybeSingle();
+  if (room) {
+    await sb.from("coaching_rooms").update({ status: "ended", ends_at: now }).eq("id", room.id);
+    await sb.from("coaching_room_members").update({ access_status: "left", left_at: now, last_seen_at: now }).eq("room_id", room.id).eq("access_status", "admitted");
+  }
+  let refund = null;
+  if (status === "no_show_coach") refund = await createNoShowRefund(sb, result.data, "Le coach n’a enregistré aucune présence pendant la session.");
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room?.id || null, actor_user_id: source === "system" ? null : actor.userId, action: "session_closed", metadata: { status, source, coach_duration_seconds: coachSeconds, learner_duration_seconds: learnerSeconds } });
+  await invokeNotification("coaching_session_closed", { userId: result.data.learner_user_id, status, offer_title: result.data.offer_title_snapshot, coach_name: result.data.coach_name_snapshot, session_id: sessionId, action_url: "/dashboard/coaching" });
+  if (access.coachProfile.user_id) await invokeNotification("coaching_session_closed", { userId: access.coachProfile.user_id, status, offer_title: result.data.offer_title_snapshot, coach_name: result.data.coach_name_snapshot, session_id: sessionId, action_url: "/coach/sessions" });
+  return { session: result.data, attendance: summary, refund };
+}
+
+async function coachingRoomEnd(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (!(["coach", "admin_supervisor"] as CoachingParticipantRole[]).includes(access.role)) throw new Error("FORBIDDEN");
+  if (!["confirmed", "ready", "in_progress"].includes(String(access.booking.status))) throw new Error("SESSION_CANNOT_CLOSE");
+  return finalizeCoachingSession(sb, actor, access, access.role === "admin_supervisor" ? "admin" : "coach");
+}
+
+async function saveExternalMeetingLink(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const meetingUrl = asText(body.meeting_url, 1000);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (!(["coach", "admin_supervisor"] as CoachingParticipantRole[]).includes(access.role)) throw new Error("FORBIDDEN");
+  if (String(access.booking.meeting_mode) !== "external") throw new Error("INVALID_SESSION_MODE");
+  if (!meetingUrl || !isHttpUrl(meetingUrl)) throw new Error("INVALID_MEETING_URL");
+  if (!["confirmed", "ready", "in_progress"].includes(String(access.booking.status))) throw new Error("SESSION_ROOM_UNAVAILABLE");
+  const result = await sb.from("coaching_sessions").update({ external_meeting_url: meetingUrl, external_link_updated_at: new Date().toISOString(), external_link_updated_by: actor.userId }).eq("id", sessionId).select("*").single();
+  if (result.error) throw result.error;
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, actor_user_id: actor.userId, action: "external_link_updated", metadata: { hostname: new URL(meetingUrl).hostname } });
+  await invokeNotification("coaching_external_link_ready", { userId: result.data.learner_user_id, offer_title: result.data.offer_title_snapshot, coach_name: result.data.coach_name_snapshot, scheduled_start: result.data.scheduled_start, session_id: sessionId, action_url: `/coaching/sessions/${sessionId}/room` });
+  return { ...result.data, external_meeting_url: meetingUrl };
+}
+
+async function externalPresenceMark(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const presenceAction = asText(body.presence_action, 20);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (String(access.booking.meeting_mode) !== "external") throw new Error("INVALID_SESSION_MODE");
+  if (!(["coach", "learner"] as CoachingParticipantRole[]).includes(access.role)) throw new Error("FORBIDDEN");
+  if (!["join", "leave"].includes(presenceAction)) throw new Error("INVALID_PRESENCE_ACTION");
+  const settings = await coachingRoomSettings(sb);
+  const window = coachingAccessWindow(access.booking, settings);
+  const now = new Date();
+  if (now < window.opensAt || now > window.closesAt) throw new Error(now < window.opensAt ? "SESSION_TOO_EARLY" : "SESSION_ROOM_CLOSED");
+  const nowIso = now.toISOString();
+  if (presenceAction === "join") {
+    const { data: open } = await sb.from("coaching_attendance_segments").select("id").eq("session_id", sessionId).eq("user_id", actor.userId).is("left_at", null).maybeSingle();
+    if (!open) {
+      const segment = await sb.from("coaching_attendance_segments").insert({ session_id: sessionId, room_id: null, user_id: actor.userId, participant_role: access.role, source: "external", joined_at: nowIso }).select("id").single();
+      if (segment.error) throw segment.error;
+    }
+    const patch: Record<string, unknown> = {};
+    if (access.role === "coach" && !access.booking.coach_joined_at) patch.coach_joined_at = nowIso;
+    if (access.role === "learner" && !access.booking.learner_joined_at) patch.learner_joined_at = nowIso;
+    if (access.role === "coach" && ["confirmed", "ready"].includes(String(access.booking.status))) { patch.status = "in_progress"; patch.actual_started_at = access.booking.actual_started_at || nowIso; }
+    if (Object.keys(patch).length) await sb.from("coaching_sessions").update(patch).eq("id", sessionId);
+  } else {
+    const { error } = await sb.rpc("coaching_close_open_attendance", { p_session_id: sessionId, p_user_id: actor.userId, p_left_at: nowIso });
+    if (error) throw error;
+  }
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, actor_user_id: actor.userId, action: presenceAction === "join" ? "external_participant_joined" : "external_participant_left", metadata: { role: access.role } });
+  return { presence_action: presenceAction, marked_at: nowIso, attendance: await coachingAttendance(sb, sessionId) };
+}
+
+async function adminCoachingSessions(sb: Supabase) {
+  const { data: sessions, error } = await sb.from("coaching_sessions").select("*").order("scheduled_start", { ascending: false, nullsFirst: false }).limit(500);
+  if (error) throw error;
+  const rows = sessions || [];
+  const coachIds = [...new Set(rows.map((row: Record<string, unknown>) => String(row.coach_id)))];
+  const learnerIds = [...new Set(rows.map((row: Record<string, unknown>) => String(row.learner_user_id)))];
+  const [{ data: profiles }, { data: users }, { data: rooms }] = await Promise.all([
+    coachIds.length ? sb.from("coach_profiles").select("id,user_id,public_slug").in("id", coachIds) : Promise.resolve({ data: [] }),
+    learnerIds.length ? sb.from("users").select("id,full_name,email").in("id", learnerIds) : Promise.resolve({ data: [] }),
+    rows.length ? sb.from("coaching_rooms").select("*").in("session_id", rows.map((row: Record<string, unknown>) => String(row.id))) : Promise.resolve({ data: [] }),
+  ]);
+  const profileUserIds = (profiles || []).map((row: { user_id: string }) => String(row.user_id));
+  const { data: coachUsers } = profileUserIds.length ? await sb.from("users").select("id,full_name,email").in("id", profileUserIds) : { data: [] };
+  const coachUserMap = new Map((coachUsers || []).map((row: { id: string }) => [String(row.id), row]));
+  const coachMap = new Map((profiles || []).map((row: { id: string; user_id: string }) => [String(row.id), { ...row, ...(coachUserMap.get(String(row.user_id)) || {}) }]));
+  const learnerMap = new Map((users || []).map((row: { id: string }) => [String(row.id), row]));
+  const roomMap = new Map((rooms || []).map((row: { session_id: string }) => [String(row.session_id), row]));
+  return rows.map((row: Record<string, unknown>) => ({ ...row, coach: coachMap.get(String(row.coach_id)) || null, learner: learnerMap.get(String(row.learner_user_id)) || null, room: roomMap.get(String(row.id)) || null }));
+}
+
+async function adminSessionSettingsSave(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const fields = ["room_access_before_minutes", "room_access_after_minutes", "external_link_reveal_before_minutes", "no_show_grace_minutes", "auto_complete_after_minutes"] as const;
+  const patch: Record<string, number> = {};
+  for (const field of fields) {
+    const value = asInteger(body[field]);
+    if (value === null) throw new Error("INVALID_SESSION_SETTINGS");
+    patch[field] = value;
+  }
+  const result = await sb.from("coaching_settings").update(patch).eq("id", 1).select("*").single();
+  if (result.error) throw result.error;
+  await audit(sb, actor.userId, "coaching_session_settings_updated", "coaching_settings", "global", null, result.data);
+  return result.data;
+}
+
+
+
+type CoachingDisputeRole = "learner" | "coach" | "admin";
+
+async function performanceSettings(sb: Supabase) {
+  const { data, error } = await sb.from("coaching_settings").select("*").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return {
+    rating_window_days: Number(data?.rating_window_days ?? 30),
+    rating_invitation_delay_minutes: Number(data?.rating_invitation_delay_minutes ?? 5),
+    warning_rating_threshold: Number(data?.warning_rating_threshold ?? 3.5),
+    warning_minimum_reviews: Number(data?.warning_minimum_reviews ?? 5),
+    suspension_rating_threshold: Number(data?.suspension_rating_threshold ?? 2.5),
+    suspension_minimum_reviews: Number(data?.suspension_minimum_reviews ?? 10),
+    automatic_rating_suspension_enabled: Boolean(data?.automatic_rating_suspension_enabled ?? false),
+    dispute_window_hours: Number(data?.dispute_window_hours ?? 48),
+  };
+}
+
+function ratingValue(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5) throw new Error("INVALID_RATING");
+  return parsed;
+}
+
+function privateDisplayName(value: unknown): string {
+  const parts = asText(value, 180).split(/\s+/).filter(Boolean);
+  if (!parts.length) return "Apprenant OGA";
+  return parts.length === 1 ? parts[0] : `${parts[0]} ${parts[1][0].toUpperCase()}.`;
+}
+
+async function publicCoachRatings(sb: Supabase, coachId: string, limit = 30) {
+  const { data: ratings, error } = await sb.from("coaching_ratings")
+    .select("id,session_id,learner_user_id,overall_rating,communication_rating,expertise_rating,usefulness_rating,comment,would_recommend,coach_response,coach_responded_at,created_at")
+    .eq("coach_id", coachId).eq("moderation_status", "published")
+    .order("created_at", { ascending: false }).limit(limit);
+  if (error) throw error;
+  const userIds = [...new Set((ratings || []).map((row: Record<string, unknown>) => String(row.learner_user_id)))];
+  const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
+  const byId = new Map((users || []).map((user: Record<string, unknown>) => [String(user.id), privateDisplayName(user.full_name)]));
+  return (ratings || []).map((row: Record<string, unknown>) => ({
+    id: row.id,
+    session_id: row.session_id,
+    learner_name: byId.get(String(row.learner_user_id)) || "Apprenant OGA",
+    overall_rating: Number(row.overall_rating),
+    communication_rating: Number(row.communication_rating),
+    expertise_rating: Number(row.expertise_rating),
+    usefulness_rating: Number(row.usefulness_rating),
+    comment: row.comment,
+    would_recommend: row.would_recommend,
+    coach_response: row.coach_response,
+    coach_responded_at: row.coach_responded_at,
+    created_at: row.created_at,
+    verified_session: true,
+  }));
+}
+
+async function followUpAccess(sb: Supabase, actor: Session, sessionId: string) {
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  const { data: order } = await sb.from("coaching_payment_orders").select("*").eq("session_id", sessionId).maybeSingle();
+  const [{ data: rating }, { data: feedback }, { data: dispute }] = await Promise.all([
+    sb.from("coaching_ratings").select("*").eq("session_id", sessionId).maybeSingle(),
+    sb.from("coaching_learner_feedback").select("*").eq("session_id", sessionId).maybeSingle(),
+    sb.from("coaching_disputes").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const settings = await performanceSettings(sb);
+  const endedAt = new Date(String(access.booking.actual_ended_at || access.booking.scheduled_end || access.booking.updated_at));
+  const ratingDeadline = new Date(endedAt.getTime() + settings.rating_window_days * 86400000);
+  const disputeDeadline = new Date(endedAt.getTime() + settings.dispute_window_hours * 3600000);
+  return {
+    ...access,
+    order: order || null,
+    rating: rating || null,
+    learner_feedback: access.role === "coach" || access.role === "admin_supervisor" ? feedback || null : null,
+    dispute: dispute || null,
+    rating_deadline: ratingDeadline.toISOString(),
+    dispute_deadline: disputeDeadline.toISOString(),
+    can_rate: access.role === "learner" && String(access.booking.status) === "completed" && !rating && Date.now() <= ratingDeadline.getTime(),
+    can_open_dispute: access.role !== "admin_supervisor" && ["completed", "no_show_learner", "no_show_coach"].includes(String(access.booking.status)) && String(access.booking.payment_status) === "paid" && !dispute && Date.now() <= disputeDeadline.getTime(),
+  };
+}
+
+async function submitLearnerRating(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const follow = await followUpAccess(sb, actor, sessionId);
+  if (follow.role !== "learner") throw new Error("FORBIDDEN");
+  if (!follow.can_rate) throw new Error(follow.rating ? "RATING_ALREADY_SUBMITTED" : "RATING_WINDOW_CLOSED");
+  const { data: profileBefore } = await sb.from("coach_profiles").select("status").eq("id", follow.booking.coach_id).maybeSingle();
+  const payload = {
+    session_id: sessionId,
+    learner_user_id: actor.userId,
+    coach_id: follow.booking.coach_id,
+    overall_rating: ratingValue(body.overall_rating),
+    communication_rating: ratingValue(body.communication_rating),
+    expertise_rating: ratingValue(body.expertise_rating),
+    usefulness_rating: ratingValue(body.usefulness_rating),
+    comment: asNullableText(body.comment, 3000),
+    would_recommend: asBoolean(body.would_recommend),
+  };
+  const { data, error } = await sb.from("coaching_ratings").insert(payload).select("*").single();
+  if (error) {
+    if (String(error.code) === "23505") throw new Error("RATING_ALREADY_SUBMITTED");
+    throw error;
+  }
+  const coachUserId = String(follow.coachProfile.user_id);
+  await invokeNotification("coaching_rating_received", {
+    userId: coachUserId,
+    learner_name: "Un apprenant",
+    offer_title: follow.booking.offer_title_snapshot,
+    rating: payload.overall_rating,
+    session_id: sessionId,
+    action_url: "/coach/avis",
+  });
+  const settings = await performanceSettings(sb);
+  const { data: profile } = await sb.from("coach_profiles").select("average_rating,rating_count,status").eq("id", follow.booking.coach_id).maybeSingle();
+  if (profile && String(profileBefore?.status) !== "suspended" && String(profile.status) === "suspended") {
+    await invokeNotification("coaching_rating_suspension", {
+      userId: coachUserId,
+      average_rating: profile.average_rating,
+      rating_count: profile.rating_count,
+      action_url: "/coach/avis",
+    });
+  } else if (profile && Number(profile.rating_count) >= settings.warning_minimum_reviews && Number(profile.average_rating) < settings.warning_rating_threshold) {
+    await invokeNotification("coaching_rating_warning", {
+      userId: coachUserId,
+      average_rating: profile.average_rating,
+      rating_count: profile.rating_count,
+      action_url: "/coach/avis",
+    });
+  }
+  return data;
+}
+
+async function coachRatingsDashboard(sb: Supabase, actor: Session) {
+  const profile = await ownCoachProfile(sb, actor);
+  const { data: ratings, error } = await sb.from("coaching_ratings").select("*").eq("coach_id", profile.id).order("created_at", { ascending: false });
+  if (error) throw error;
+  const userIds = [...new Set((ratings || []).map((row: Record<string, unknown>) => String(row.learner_user_id)))];
+  const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
+  const userById = new Map((users || []).map((row: Record<string, unknown>) => [String(row.id), privateDisplayName(row.full_name)]));
+  return {
+    profile,
+    ratings: (ratings || []).map((row: Record<string, unknown>) => ({ ...row, learner_name: userById.get(String(row.learner_user_id)) || "Apprenant OGA" })),
+    metrics: {
+      average_rating: Number(profile.average_rating || 0),
+      rating_count: Number(profile.rating_count || 0),
+      recommendation_percent: (() => { const published = (ratings || []).filter((row: Record<string, unknown>) => row.moderation_status === "published"); return published.length ? Math.round((published.filter((row: Record<string, unknown>) => row.would_recommend === true).length / published.length) * 100) : 0; })(),
+    },
+  };
+}
+
+async function coachReplyToRating(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, actor);
+  const ratingId = asText(body.rating_id, 80);
+  const response = asText(body.response, 1500);
+  if (!ratingId || !response) throw new Error("RATING_RESPONSE_REQUIRED");
+  const { data: rating, error } = await sb.from("coaching_ratings").select("*").eq("id", ratingId).eq("coach_id", profile.id).maybeSingle();
+  if (error) throw error;
+  if (!rating) throw new Error("RATING_NOT_FOUND");
+  if (String(rating.moderation_status) !== "published") throw new Error("RATING_NOT_PUBLISHED");
+  const result = await sb.from("coaching_ratings").update({ coach_response: response, coach_responded_at: new Date().toISOString() }).eq("id", ratingId).select("*").single();
+  if (result.error) throw result.error;
+  await invokeNotification("coaching_rating_response", { userId: rating.learner_user_id, coach_name: profile.professional_title, action_url: "/dashboard/coaching" });
+  return result.data;
+}
+
+async function submitCoachLearnerFeedback(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const access = await coachingSessionAccess(sb, actor, sessionId);
+  if (access.role !== "coach") throw new Error("FORBIDDEN");
+  if (!["completed", "no_show_learner"].includes(String(access.booking.status))) throw new Error("SESSION_NOT_FINISHED");
+  const payload = {
+    session_id: sessionId,
+    coach_id: access.booking.coach_id,
+    learner_user_id: access.booking.learner_user_id,
+    punctuality_rating: ratingValue(body.punctuality_rating),
+    preparation_rating: ratingValue(body.preparation_rating),
+    exchange_quality_rating: ratingValue(body.exchange_quality_rating),
+    internal_comment: asNullableText(body.internal_comment, 2500),
+  };
+  const { data, error } = await sb.from("coaching_learner_feedback").upsert(payload, { onConflict: "session_id" }).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+function validateDisputeAttachments(value: unknown, ownerUserId?: string) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 8).map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const storagePath = asText(row.storage_path, 500);
+    if (!storagePath || (ownerUserId && !storagePath.startsWith(`${ownerUserId}/`))) return null;
+    return { storage_path: storagePath, file_name: asText(row.file_name, 180), mime_type: asText(row.mime_type, 120), size_bytes: asInteger(row.size_bytes) };
+  }).filter(Boolean);
+}
+
+async function signDisputeAttachments(sb: Supabase, value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const result = [];
+  for (const item of value) {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const path = asText(row.storage_path, 500);
+    if (!path) continue;
+    const signed = await sb.storage.from("coaching-private").createSignedUrl(path, 3600);
+    result.push({ ...row, signed_url: signed.data?.signedUrl || null });
+  }
+  return result;
+}
+
+async function enrichDispute(sb: Supabase, dispute: Record<string, unknown>, admin = false) {
+  const [{ data: coachingSession }, { data: coach }, { data: learner }, { data: messages }] = await Promise.all([
+    sb.from("coaching_sessions").select("*").eq("id", dispute.session_id).maybeSingle(),
+    sb.from("coach_profiles").select("id,user_id,public_slug,professional_title").eq("id", dispute.coach_id).maybeSingle(),
+    sb.from("users").select("id,full_name,email").eq("id", dispute.learner_user_id).maybeSingle(),
+    sb.from("coaching_dispute_messages").select("*").eq("dispute_id", dispute.id).order("created_at"),
+  ]);
+  const coachUser = coach?.user_id ? await sb.from("users").select("id,full_name,email").eq("id", coach.user_id).maybeSingle() : { data: null };
+  const visibleMessages = await Promise.all((messages || []).filter((message: Record<string, unknown>) => admin || message.visibility === "participants").map(async (message: Record<string, unknown>) => ({ ...message, attachments: await signDisputeAttachments(sb, message.attachments) })));
+  return { ...dispute, session: coachingSession || null, coach: coach ? { ...coach, full_name: coachUser.data?.full_name || "Coach Omnia", email: admin ? coachUser.data?.email : undefined } : null, learner: learner ? { ...learner, email: admin ? learner.email : undefined } : null, messages: visibleMessages };
+}
+
+async function openCoachingDispute(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId = asText(body.session_id, 80);
+  const follow = await followUpAccess(sb, actor, sessionId);
+  if (!follow.can_open_dispute) throw new Error(follow.dispute ? "DISPUTE_ALREADY_OPEN" : "DISPUTE_WINDOW_CLOSED");
+  const category = asText(body.category, 80);
+  const allowed = ["session_not_held", "technical_problem", "service_quality", "inappropriate_behavior", "payment_refund", "attendance_disagreement", "other"];
+  if (!allowed.includes(category)) throw new Error("INVALID_DISPUTE_CATEGORY");
+  const description = asText(body.description, 5000);
+  if (description.length < 20) throw new Error("DISPUTE_DESCRIPTION_REQUIRED");
+  const role: CoachingDisputeRole = follow.role === "learner" ? "learner" : "coach";
+  const { data: dispute, error } = await sb.from("coaching_disputes").insert({
+    session_id: sessionId,
+    order_id: follow.order?.id || null,
+    coach_id: follow.booking.coach_id,
+    learner_user_id: follow.booking.learner_user_id,
+    opened_by_user_id: actor.userId,
+    opened_by_role: role,
+    category,
+    description,
+    requested_resolution: asNullableText(body.requested_resolution, 40),
+    previous_session_status: follow.booking.status,
+    priority: category === "inappropriate_behavior" || category === "session_not_held" ? "high" : "normal",
+  }).select("*").single();
+  if (error) {
+    if (String(error.code) === "23505") throw new Error("DISPUTE_ALREADY_OPEN");
+    throw error;
+  }
+  const attachments = validateDisputeAttachments(body.attachments, actor.userId);
+  const messageResult = await sb.from("coaching_dispute_messages").insert({ dispute_id: dispute.id, author_user_id: actor.userId, author_role: role, message: description, attachments }).select("*").single();
+  if (messageResult.error) throw messageResult.error;
+  await sb.from("coaching_sessions").update({ status: "disputed" }).eq("id", sessionId);
+  const recipient = role === "learner" ? follow.coachProfile.user_id : follow.booking.learner_user_id;
+  await invokeNotification("coaching_dispute_opened", { userId: recipient, offer_title: follow.booking.offer_title_snapshot, session_id: sessionId, action_url: role === "learner" ? "/coach/sessions" : "/dashboard/coaching" });
+  await audit(sb, actor.userId, "coaching_dispute_opened", "coaching_dispute", String(dispute.id), null, dispute);
+  return await enrichDispute(sb, dispute);
+}
+
+async function myCoachingDisputes(sb: Supabase, actor: Session) {
+  const profileResult = actor.roles.includes("coach") ? await sb.from("coach_profiles").select("id").eq("user_id", actor.userId).maybeSingle() : { data: null };
+  let query = sb.from("coaching_disputes").select("*").order("created_at", { ascending: false });
+  if (profileResult.data?.id) query = query.or(`learner_user_id.eq.${actor.userId},coach_id.eq.${profileResult.data.id}`);
+  else query = query.eq("learner_user_id", actor.userId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return await Promise.all((data || []).map((row: Record<string, unknown>) => enrichDispute(sb, row)));
+}
+
+async function addCoachingDisputeMessage(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const disputeId = asText(body.dispute_id, 80);
+  const message = asText(body.message, 4000);
+  if (!message) throw new Error("DISPUTE_MESSAGE_REQUIRED");
+  const { data: dispute, error } = await sb.from("coaching_disputes").select("*").eq("id", disputeId).maybeSingle();
+  if (error) throw error;
+  if (!dispute) throw new Error("DISPUTE_NOT_FOUND");
+  let role: CoachingDisputeRole;
+  if (isAdmin(actor)) role = "admin";
+  else if (String(dispute.learner_user_id) === actor.userId) role = "learner";
+  else {
+    const profile = await ownCoachProfile(sb, actor);
+    if (String(dispute.coach_id) !== String(profile.id)) throw new Error("FORBIDDEN");
+    role = "coach";
+  }
+  if (["resolved", "rejected", "closed"].includes(String(dispute.status)) && role !== "admin") throw new Error("DISPUTE_CLOSED");
+  const visibility = role === "admin" && body.admin_only === true ? "admin_only" : "participants";
+  const result = await sb.from("coaching_dispute_messages").insert({ dispute_id: disputeId, author_user_id: actor.userId, author_role: role, visibility, message, attachments: validateDisputeAttachments(body.attachments, actor.userId) }).select("*").single();
+  if (result.error) throw result.error;
+  if (visibility === "participants") {
+    const recipientIds = role === "learner"
+      ? [(await sb.from("coach_profiles").select("user_id").eq("id", dispute.coach_id).maybeSingle()).data?.user_id]
+      : role === "coach" ? [dispute.learner_user_id] : [dispute.learner_user_id, (await sb.from("coach_profiles").select("user_id").eq("id", dispute.coach_id).maybeSingle()).data?.user_id];
+    for (const userId of recipientIds.filter(Boolean)) await invokeNotification("coaching_dispute_message", { userId, dispute_id: disputeId, action_url: role === "coach" ? "/dashboard/coaching" : "/coach/sessions" });
+  }
+  return { ...result.data, attachments: await signDisputeAttachments(sb, result.data.attachments) };
+}
+
+async function coachRevenueDashboard(sb: Supabase, actor: Session) {
+  const profile = await ownCoachProfile(sb, actor);
+  const [{ data: earnings, error: earningError }, { data: wallet }, { data: payouts }, { data: settings }] = await Promise.all([
+    sb.from("coaching_earnings").select("*,session:coaching_sessions(id,offer_title_snapshot,scheduled_start,status),order:coaching_payment_orders(id,order_number,payment_status)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
+    sb.from("wallets").select("*").eq("user_id", actor.userId).maybeSingle(),
+    sb.from("payout_requests").select("id,amount_xof,channel,status,requested_at,processed_at,paid_at,provider_reference,admin_note").eq("user_id", actor.userId).order("requested_at", { ascending: false }).limit(100),
+    sb.from("site_settings").select("key,value").in("key", ["payout_minimum_xof", "payout_delay_label", "canal_mobile_money", "canal_virement_uemoa", "canal_swift"]),
+  ]);
+  if (earningError) throw earningError;
+  const cfg: Record<string, unknown> = {};
+  for (const row of settings || []) cfg[String(row.key)] = row.value;
+  const rows = earnings || [];
+  const sum = (status: string) => rows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0);
+  return {
+    profile,
+    earnings: rows,
+    wallet: wallet || { balance_xof: 0, reserved_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
+    payouts: payouts || [],
+    settings: cfg,
+    metrics: { locked_xof: sum("locked"), frozen_xof: sum("frozen"), available_earnings_xof: sum("available"), lifetime_net_xof: rows.reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) },
+  };
+}
+
+async function coachCreatePayout(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  await ownCoachProfile(sb, actor);
+  const amount = asInteger(body.amount_xof);
+  const channel = asText(body.channel, 30);
+  if (!amount || !["mobile_money", "bank_transfer", "swift"].includes(channel)) throw new Error("INVALID_PAYOUT");
+  const { data: settings } = await sb.from("site_settings").select("key,value").in("key", ["payout_minimum_xof", "canal_mobile_money", "canal_virement_uemoa", "canal_swift"]);
+  const cfg = new Map((settings || []).map((row: Record<string, unknown>) => [String(row.key), row.value]));
+  const minimum = Number(cfg.get("payout_minimum_xof") || 5000);
+  if (amount < minimum) throw new Error("PAYOUT_AMOUNT_TOO_LOW");
+  if (channel === "mobile_money" && (!asText(body.mm_operator, 50) || !asText(body.mm_phone, 50))) throw new Error("PAYOUT_DETAILS_REQUIRED");
+  if (["bank_transfer", "swift"].includes(channel) && (!asText(body.bank_name, 180) || !asText(body.account_holder, 180) || !asText(body.account_number, 80))) throw new Error("PAYOUT_DETAILS_REQUIRED");
+  if (channel === "swift" && !asText(body.swift, 30)) throw new Error("PAYOUT_DETAILS_REQUIRED");
+  const { data: id, error } = await sb.rpc("finance_create_payout_request", {
+    p_user_id: actor.userId, p_amount_xof: amount, p_channel: channel,
+    p_mm_operator: asNullableText(body.mm_operator, 50), p_mm_phone: asNullableText(body.mm_phone, 50),
+    p_bank_name: asNullableText(body.bank_name, 180), p_account_holder: asNullableText(body.account_holder, 180),
+    p_bank_code: asNullableText(body.bank_code, 30), p_branch_code: asNullableText(body.branch_code, 30),
+    p_account_number: asNullableText(body.account_number, 80), p_rib_key: asNullableText(body.rib_key, 20),
+    p_iban: asNullableText(body.iban, 80), p_swift: asNullableText(body.swift, 30),
+  });
+  if (error) {
+    if (String(error.message).includes("INSUFFICIENT_AVAILABLE_BALANCE")) throw new Error("PAYOUT_INSUFFICIENT_BALANCE");
+    throw error;
+  }
+  const payout = await sb.from("payout_requests").select("id,amount_xof,channel,status,requested_at").eq("id", id).single();
+  if (payout.error) throw payout.error;
+  return payout.data;
+}
+
+async function adminCoachingDisputes(sb: Supabase) {
+  const { data, error } = await sb.from("coaching_disputes").select("*").order("created_at", { ascending: false }).limit(300);
+  if (error) throw error;
+  return await Promise.all((data || []).map((row: Record<string, unknown>) => enrichDispute(sb, row, true)));
+}
+
+async function adminDecideCoachingDispute(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const disputeId = asText(body.dispute_id, 80);
+  const decision = asText(body.decision, 40);
+  const reason = asText(body.reason, 3000);
+  const allowed = ["refund_full", "refund_partial", "no_refund", "warning", "suspend_coach", "reject"];
+  if (!allowed.includes(decision) || !reason) throw new Error("DISPUTE_DECISION_REQUIRED");
+  const { data: dispute, error } = await sb.from("coaching_disputes").select("*").eq("id", disputeId).maybeSingle();
+  if (error) throw error;
+  if (!dispute) throw new Error("DISPUTE_NOT_FOUND");
+  if (["resolved", "rejected", "closed"].includes(String(dispute.status))) throw new Error("DISPUTE_CLOSED");
+  const { data: order } = dispute.order_id ? await sb.from("coaching_payment_orders").select("*").eq("id", dispute.order_id).maybeSingle() : { data: null };
+  let approvedRefund: number | null = null;
+  if (decision === "refund_full") approvedRefund = Number(order?.amount_xof || 0);
+  if (decision === "refund_partial") {
+    approvedRefund = asInteger(body.approved_refund_xof);
+    if (approvedRefund === null || approvedRefund <= 0 || approvedRefund > Number(order?.amount_xof || 0)) throw new Error("INVALID_REFUND_AMOUNT");
+  }
+  if (approvedRefund !== null && order) {
+    const { data: existing } = await sb.from("coaching_refund_requests").select("*").eq("session_id", dispute.session_id).in("status", ["pending", "under_review", "approved", "partially_approved"]).maybeSingle();
+    const refundPayload = { approved_amount_xof: approvedRefund, requested_amount_xof: approvedRefund, status: approvedRefund >= Number(order.amount_xof) ? "approved" : "partially_approved", decision_reason: reason, decided_by: actor.userId, decided_at: new Date().toISOString() };
+    if (existing) {
+      const update = await sb.from("coaching_refund_requests").update(refundPayload).eq("id", existing.id);
+      if (update.error) throw update.error;
+    } else {
+      const insert = await sb.from("coaching_refund_requests").insert({ order_id: order.id, session_id: dispute.session_id, user_id: dispute.learner_user_id, coach_id: dispute.coach_id, initiated_by: "admin", reason_code: "dispute_decision", reason_details: reason, policy_snapshot: order.policy_snapshot || {}, ...refundPayload });
+      if (insert.error) throw insert.error;
+    }
+  }
+  if (decision === "suspend_coach") {
+    await sb.from("coach_profiles").update({ status: "suspended", suspended_by: actor.userId, suspended_at: new Date().toISOString(), suspension_reason: reason }).eq("id", dispute.coach_id);
+  }
+  const finalStatus = decision === "reject" ? "rejected" : "resolved";
+  const result = await sb.from("coaching_disputes").update({ status: finalStatus, decision_code: decision, decision_reason: reason, approved_refund_xof: approvedRefund, decided_by: actor.userId, decided_at: new Date().toISOString(), closed_at: new Date().toISOString() }).eq("id", disputeId).select("*").single();
+  if (result.error) throw result.error;
+  if (approvedRefund === null) await sb.from("coaching_sessions").update({ status: dispute.previous_session_status }).eq("id", dispute.session_id).eq("status", "disputed");
+  await sb.from("coaching_dispute_messages").insert({ dispute_id: disputeId, author_user_id: actor.userId, author_role: "admin", message: `Décision administrative : ${reason}`, visibility: "participants" });
+  const coachUser = await sb.from("coach_profiles").select("user_id").eq("id", dispute.coach_id).maybeSingle();
+  for (const userId of [dispute.learner_user_id, coachUser.data?.user_id].filter(Boolean)) await invokeNotification("coaching_dispute_resolved", { userId, decision, reason, dispute_id: disputeId, action_url: userId === dispute.learner_user_id ? "/dashboard/coaching" : "/coach/sessions" });
+  await audit(sb, actor.userId, "coaching_dispute_resolved", "coaching_dispute", disputeId, dispute, result.data);
+  return await enrichDispute(sb, result.data, true);
+}
+
+async function adminCoachingRatings(sb: Supabase) {
+  const { data: ratings, error } = await sb.from("coaching_ratings").select("*").order("created_at", { ascending: false }).limit(300);
+  if (error) throw error;
+  const coachIds = [...new Set((ratings || []).map((row: Record<string, unknown>) => String(row.coach_id)))];
+  const learnerIds = [...new Set((ratings || []).map((row: Record<string, unknown>) => String(row.learner_user_id)))];
+  const [{ data: coaches }, { data: learners }] = await Promise.all([
+    coachIds.length ? sb.from("coach_profiles").select("id,user_id,professional_title").in("id", coachIds) : Promise.resolve({ data: [] }),
+    learnerIds.length ? sb.from("users").select("id,full_name,email").in("id", learnerIds) : Promise.resolve({ data: [] }),
+  ]);
+  const coachUsers = [...new Set((coaches || []).map((row: Record<string, unknown>) => String(row.user_id)))];
+  const { data: coachUserRows } = coachUsers.length ? await sb.from("users").select("id,full_name,email").in("id", coachUsers) : { data: [] };
+  const coachUserMap = new Map((coachUserRows || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+  const coachMap = new Map((coaches || []).map((row: Record<string, unknown>) => [String(row.id), { ...row, ...(coachUserMap.get(String(row.user_id)) || {}) }]));
+  const learnerMap = new Map((learners || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+  return (ratings || []).map((row: Record<string, unknown>) => ({ ...row, coach: coachMap.get(String(row.coach_id)) || null, learner: learnerMap.get(String(row.learner_user_id)) || null }));
+}
+
+async function adminModerateCoachingRating(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const ratingId = asText(body.rating_id, 80);
+  const status = asText(body.status, 20);
+  const reason = asText(body.reason, 1500);
+  if (!["published", "hidden", "removed"].includes(status)) throw new Error("INVALID_RATING_STATUS");
+  if (status !== "published" && !reason) throw new Error("RATING_MODERATION_REASON_REQUIRED");
+  const current = await sb.from("coaching_ratings").select("*").eq("id", ratingId).maybeSingle();
+  if (current.error) throw current.error;
+  if (!current.data) throw new Error("RATING_NOT_FOUND");
+  const result = await sb.from("coaching_ratings").update({ moderation_status: status, moderation_reason: status === "published" ? null : reason, moderated_by: actor.userId, moderated_at: new Date().toISOString() }).eq("id", ratingId).select("*").single();
+  if (result.error) throw result.error;
+  await audit(sb, actor.userId, "coaching_rating_moderated", "coaching_rating", ratingId, current.data, result.data);
+  return result.data;
+}
+
+async function adminCoachingRevenue(sb: Supabase) {
+  const [{ data: earnings, error }, { data: wallets }, { data: payouts }] = await Promise.all([
+    sb.from("coaching_earnings").select("*,session:coaching_sessions(id,offer_title_snapshot,coach_name_snapshot,scheduled_start,status),order:coaching_payment_orders(id,order_number,payment_status)").order("created_at", { ascending: false }).limit(500),
+    sb.from("wallets").select("id,user_id,balance_xof,reserved_xof,total_earned_xof,total_withdrawn_xof"),
+    sb.from("payout_requests").select("id,user_id,amount_xof,status,requested_at,paid_at,channel").order("requested_at", { ascending: false }).limit(300),
+  ]);
+  if (error) throw error;
+  const coachUserIds = [...new Set((earnings || []).map((row: Record<string, unknown>) => String(row.coach_user_id)))];
+  const { data: users } = coachUserIds.length ? await sb.from("users").select("id,full_name,email").in("id", coachUserIds) : { data: [] };
+  const byId = new Map((users || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+  const rows = (earnings || []).map((row: Record<string, unknown>) => ({ ...row, coach_user: byId.get(String(row.coach_user_id)) || null }));
+  const net = (row: Record<string, unknown>) => Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0));
+  return {
+    earnings: rows,
+    wallets: wallets || [],
+    payouts: (payouts || []).filter((row: Record<string, unknown>) => coachUserIds.includes(String(row.user_id))),
+    metrics: {
+      locked_xof: rows.filter((r: Record<string, unknown>) => r.status === "locked").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      frozen_xof: rows.filter((r: Record<string, unknown>) => r.status === "frozen").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      credited_xof: rows.filter((r: Record<string, unknown>) => r.status === "available").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      commission_xof: rows.reduce((s: number, r: Record<string, unknown>) => {
+        const gross = Math.max(0, Number(r.gross_amount_xof || 0) - Number(r.refunded_gross_xof || 0));
+        const coachNet = Math.max(0, Number(r.net_amount_xof || 0) - Number(r.refunded_net_xof || 0));
+        return s + Math.max(0, gross - coachNet);
+      }, 0),
+    },
+  };
+}
+
+async function adminSavePerformanceSettings(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const payload = {
+    rating_window_days: asInteger(body.rating_window_days),
+    rating_invitation_delay_minutes: asInteger(body.rating_invitation_delay_minutes),
+    warning_rating_threshold: Number(body.warning_rating_threshold),
+    warning_minimum_reviews: asInteger(body.warning_minimum_reviews),
+    suspension_rating_threshold: Number(body.suspension_rating_threshold),
+    suspension_minimum_reviews: asInteger(body.suspension_minimum_reviews),
+    automatic_rating_suspension_enabled: asBoolean(body.automatic_rating_suspension_enabled),
+  };
+  if (!payload.rating_window_days || payload.rating_invitation_delay_minutes === null || !payload.warning_minimum_reviews || !payload.suspension_minimum_reviews || !Number.isFinite(payload.warning_rating_threshold) || payload.warning_rating_threshold < 0 || payload.warning_rating_threshold > 5 || !Number.isFinite(payload.suspension_rating_threshold) || payload.suspension_rating_threshold < 0 || payload.suspension_rating_threshold > 5) throw new Error("INVALID_PERFORMANCE_SETTINGS");
+  const before = await performanceSettings(sb);
+  const result = await sb.from("coaching_settings").update(payload).eq("id", 1).select("*").single();
+  if (result.error) throw result.error;
+  await audit(sb, actor.userId, "coaching_performance_settings_updated", "coaching_settings", null, before, payload);
+  return await performanceSettings(sb);
+}
+
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -1579,6 +2416,24 @@ Deno.serve(async (req: Request) => {
     if (action === "payment_status") return json({ success: true, ...(await coachingPaymentStatus(sb, session, body)) });
     if (action === "invoice_signed_url") return json({ success: true, ...(await coachingInvoiceUrl(sb, session, body)) });
     if (action === "learner_cancel_paid") return json({ success: true, refund: await cancelPaidCoaching(sb, session, body, "learner") });
+    if (action === "session_room_access") return json({ success: true, ...(await sessionRoomAccess(sb, session, body)) });
+    if (action === "session_room_start") return json({ success: true, ...(await coachingRoomStart(sb, session, body)) });
+    if (action === "session_room_join") return json({ success: true, ...(await coachingRoomJoin(sb, session, body)) });
+    if (action === "session_room_heartbeat") return json({ success: true, ...(await coachingRoomHeartbeat(sb, session, body)) });
+    if (action === "session_room_leave") return json({ success: true, ...(await coachingRoomLeave(sb, session, body)) });
+    if (action === "session_room_end") return json({ success: true, ...(await coachingRoomEnd(sb, session, body)) });
+    if (action === "session_external_link_save") return json({ success: true, session: await saveExternalMeetingLink(sb, session, body) });
+    if (action === "session_external_presence") return json({ success: true, ...(await externalPresenceMark(sb, session, body)) });
+    if (action === "session_follow_up") return json({ success: true, ...(await followUpAccess(sb, session, asText(body.session_id, 80))) });
+    if (action === "learner_rating_submit") return json({ success: true, rating: await submitLearnerRating(sb, session, body) });
+    if (action === "coach_ratings") return json({ success: true, ...(await coachRatingsDashboard(sb, session)) });
+    if (action === "coach_rating_reply") return json({ success: true, rating: await coachReplyToRating(sb, session, body) });
+    if (action === "coach_learner_feedback_submit") return json({ success: true, feedback: await submitCoachLearnerFeedback(sb, session, body) });
+    if (action === "dispute_open") return json({ success: true, dispute: await openCoachingDispute(sb, session, body) });
+    if (action === "disputes_mine") return json({ success: true, disputes: await myCoachingDisputes(sb, session) });
+    if (action === "dispute_message_add") return json({ success: true, message: await addCoachingDisputeMessage(sb, session, body) });
+    if (action === "coach_revenue") return json({ success: true, ...(await coachRevenueDashboard(sb, session)) });
+    if (action === "coach_payout_request") return json({ success: true, payout: await coachCreatePayout(sb, session, body) });
     if (action === "coach_dashboard") {
       const profile = await ownCoachProfile(sb, session);
       await expireBookingHolds(sb, String(profile.id));
@@ -1589,7 +2444,8 @@ Deno.serve(async (req: Request) => {
         allOwnOffers(sb, String(profile.id)),
         coachSessions(sb, session),
       ]);
-      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug)), offers, recent_sessions: sessions.slice(0, 8), metrics: { upcoming_sessions: upcoming.count || 0, pending_custom_requests: pendingCustom.count || 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: 0 } });
+      const revenue = await coachRevenueDashboard(sb, session);
+      return json({ success: true, profile: await publicProfile(sb, String(profile.public_slug)), offers, recent_sessions: sessions.slice(0, 8), metrics: { upcoming_sessions: upcoming.count || 0, pending_custom_requests: pendingCustom.count || 0, completed_sessions: Number(profile.completed_sessions_count || 0), average_rating: Number(profile.average_rating || 0), available_revenue_xof: Number(revenue.wallet.balance_xof || 0) - Number(revenue.wallet.reserved_xof || 0) } });
     }
     if (action === "coach_offers") { const profile = await ownCoachProfile(sb, session); return json({ success: true, offers: await allOwnOffers(sb, String(profile.id)), domains: await getDomains(sb), profile, limits: await coachPriceLimits(sb, profile) }); }
     if (action === "coach_offer_save") return json({ success: true, offer: await saveCoachOffer(sb, session, body) });
@@ -1631,6 +2487,15 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_refund_decide") return json({ success: true, refund: await adminRefundDecision(sb, session, body) });
     if (action === "admin_refund_processed") return json({ success: true, refund: await adminRefundProcessed(sb, session, body) });
     if (action === "admin_finance_settings_save") return json({ success: true, settings: await adminFinanceSettingsSave(sb, session, body) });
+    if (action === "admin_sessions") return json({ success: true, sessions: await adminCoachingSessions(sb), settings: await coachingRoomSettings(sb) });
+    if (action === "admin_session_settings_save") return json({ success: true, settings: await adminSessionSettingsSave(sb, session, body) });
+    if (action === "admin_disputes") return json({ success: true, disputes: await adminCoachingDisputes(sb) });
+    if (action === "admin_dispute_decide") return json({ success: true, dispute: await adminDecideCoachingDispute(sb, session, body) });
+    if (action === "admin_dispute_message_add") return json({ success: true, message: await addCoachingDisputeMessage(sb, session, body) });
+    if (action === "admin_ratings") return json({ success: true, ratings: await adminCoachingRatings(sb), settings: await performanceSettings(sb) });
+    if (action === "admin_rating_moderate") return json({ success: true, rating: await adminModerateCoachingRating(sb, session, body) });
+    if (action === "admin_revenue") return json({ success: true, ...(await adminCoachingRevenue(sb)) });
+    if (action === "admin_performance_settings_save") return json({ success: true, settings: await adminSavePerformanceSettings(sb, session, body) });
 
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {

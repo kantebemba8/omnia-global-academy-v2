@@ -47,6 +47,7 @@ async function requireSuperAdmin(sb: any, req: Request): Promise<string | null> 
 }
 
 function roleLabel(roles: string[]): string {
+  if (roles.includes("coach")) return "Coach Omnia";
   if (roles.includes("professeur")) return "Professeur";
 
   if (
