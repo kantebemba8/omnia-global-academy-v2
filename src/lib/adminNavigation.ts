@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Search, Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap
+  Search, Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap, ExternalLink
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -81,9 +81,28 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Briefcase,
     items: [
       { path: '/admin/career-studio', label: 'Gestion Omnia Career Studio', icon: Briefcase },
-      { path: '/admin/coaching', label: 'Gestion Omnia Coaching', icon: Users },
       { path: '/admin/talent', label: 'Supervision Omnia Talent', icon: Shield },
       { path: '/admin/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
+    ],
+  },
+  {
+    id: 'coaching',
+    label: 'Omnia Coaching',
+    icon: Users,
+    items: [
+      { path: '/admin/coaching', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
+      { path: '/admin/coaching/candidatures', label: 'Candidatures coach', icon: Users },
+      { path: '/admin/coaching/coachs', label: 'Coachs', icon: Users },
+      { path: '/admin/coaching/offres', label: 'Offres', icon: Tag },
+      { path: '/admin/coaching/sessions', label: 'Sessions', icon: Activity },
+      { path: '/admin/coaching/finance', label: 'Finance & remboursements', icon: CreditCard },
+      { path: '/admin/coaching/revenus', label: 'Revenus coachs', icon: Wallet },
+      { path: '/admin/coaching/avis', label: 'Avis', icon: MessageSquare },
+      { path: '/admin/coaching/litiges', label: 'Litiges', icon: Shield },
+      { path: '/admin/coaching/niveaux', label: 'Niveaux', icon: Award },
+      { path: '/admin/coaching/domaines', label: 'Domaines', icon: Layers3 },
+      { path: '/admin/coaching/avance', label: 'Packs & groupes', icon: Gift },
+      { path: '/coaching', label: 'Voir Omnia Coaching', icon: ExternalLink },
     ],
   },
   {

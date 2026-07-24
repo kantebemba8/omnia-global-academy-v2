@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink,
+  Search, ExternalLink, UserRoundCheck,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -26,7 +26,8 @@ const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
   { path: '/dashboard/certificats', label: 'Certificats', icon: Award },
- { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText, badge: 'Nouveau' },
+  { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
+  { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
   { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
   { path: '/forum', label: 'Forum communauté', icon: MessageSquare },
