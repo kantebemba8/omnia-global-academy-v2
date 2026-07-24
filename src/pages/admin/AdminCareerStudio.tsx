@@ -8,8 +8,6 @@ import {
   Check,
   Coins,
   Download,
-  Eye,
-  EyeOff,
   FileText,
   Mail,
   MessageSquare,
@@ -19,8 +17,6 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
-  ToggleLeft,
-  Trash2,
   X,
   ExternalLink,
 } from 'lucide-react';
@@ -589,31 +585,7 @@ export default function AdminCareerStudio() {
 
   return (
     <div className="min-h-screen" style={{ background: '#F8FAFC' }}>
-      <header className="sticky top-0 z-40 border-b bg-white" style={{ borderColor: BORDER }}>
-        <div className="flex min-h-16 items-center justify-between gap-4 px-5 py-3">
-          <div className="flex items-center gap-3">
-            <img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-10 w-10 rounded-lg object-contain" />
-            <div><p className="text-base font-bold leading-tight" style={{color:OMNIA_BLUE}}>Omnia</p><p className="text-base font-bold leading-tight" style={{color:OMNIA_GOLD}}>Career Studio</p></div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Link
-              to="/career-studio"
-              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50"
-              style={{ borderColor: BORDER, color: OMNIA_BLUE }}
-            >
-              <ExternalLink size={15} /> Ouvrir Omnia Career Studio
-            </Link>
-            <Link
-              to="/admin/dashboard"
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
-              style={{ background: OMNIA_BLUE }}
-            >
-              <ArrowLeft size={15} /> Retour au Dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
-      <div className="flex min-h-[calc(100vh-65px)]" style={{ background: '#F8FAFC' }}>
+      <div className="flex min-h-screen" style={{ background: '#F8FAFC' }}>
         {toast && (
           <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-5 py-3 text-sm font-semibold shadow-lg" style={{ borderColor: toast.type === 'success' ? '#BBF7D0' : '#FECACA', color: toast.type === 'success' ? '#166534' : '#DC2626' }}>
             {toast.text}
@@ -648,9 +620,14 @@ export default function AdminCareerStudio() {
                 Gérez les règles, les prix, les jetons, les modèles CV/LM, l’IA et les exports depuis le tableau de bord Super Admin.
               </p>
             </div>
-            <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
-              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/career-studio" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
+                <ExternalLink size={15} /> Ouvrir Omnia Career Studio
+              </Link>
+              <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
+              </button>
+            </div>
           </div>
 
           {loading && (

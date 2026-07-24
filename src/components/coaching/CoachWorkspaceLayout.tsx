@@ -13,7 +13,6 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import CoachingHeader from './CoachingHeader';
 import { isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -96,24 +95,23 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      <CoachingHeader />
-      <div className="flex min-h-[calc(100vh-72px)]">
-        <div className="hidden w-[260px] flex-shrink-0 lg:block">{sidebar}</div>
-        {open && (
-          <div className="fixed inset-0 z-[70] flex lg:hidden">
-            <button type="button" className="fixed inset-0 bg-black/55" onClick={() => setOpen(false)} aria-label="Fermer le menu coach" />
-            <div className="relative z-10 h-full w-[270px]">{sidebar}</div>
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-            <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
-              <Menu size={18} /> Menu coach
-            </button>
-          </div>
-          <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">{children}</main>
+    <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
+      <div className="hidden w-[260px] flex-shrink-0 lg:block">{sidebar}</div>
+      {open && (
+        <div className="fixed inset-0 z-[70] flex lg:hidden">
+          <button type="button" className="fixed inset-0 bg-black/55" onClick={() => setOpen(false)} aria-label="Fermer le menu coach" />
+          <div className="relative z-10 h-full w-[270px] max-w-[88vw]">{sidebar}</div>
         </div>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+          <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
+            <Menu size={18} /> Menu coach
+          </button>
+        </div>
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">{children}</div>
+        </main>
       </div>
     </div>
   );

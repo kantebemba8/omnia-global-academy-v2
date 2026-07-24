@@ -78,7 +78,7 @@ export default function CoachingCatalogue() {
   }, [data, query, domain, level, language, sort]);
 
   return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader />
+    <CoachingHeader showSearch searchValue={query} onSearchChange={setQuery} searchPlaceholder="Rechercher un coach, une spécialité…" />
     <section className="border-b bg-white" style={{ borderColor: BORDER }}>
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16">
         <div className="max-w-3xl">

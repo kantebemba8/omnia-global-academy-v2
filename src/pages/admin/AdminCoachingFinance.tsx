@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, CircleDollarSign, Clock3, RefreshCw, Settings2, WalletCards, X, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { AdminLayout } from '../../components/AdminLayout';
+import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachingRefund, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -45,7 +45,7 @@ export default function AdminCoachingFinance() {
     { label: 'Remboursements à traiter', value: data?.metrics.pending_refunds || 0, Icon: RefreshCw, money: false },
   ];
 
-  return <AdminLayout><div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+  return <AdminCoachingManagementLayout><div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}><div><span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Omnia Coaching</span><h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>Paiements et remboursements</h1><p className="mt-2 text-sm text-slate-500">Suivez les paiements FedaPay, les factures et le traitement administratif des remboursements.</p></div><div className="flex flex-wrap gap-2"><Link to="/admin/coaching" className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Retour à la gestion</Link><button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15}/>Politique</button><button onClick={load} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><RefreshCw size={15}/>Actualiser</button></div></header>
     {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}{notice && <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">{notice}</div>}
     <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metricCards.map(({ label, value, Icon, money }) => <div key={label} className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><Icon color={GOLD}/><p className="mt-4 text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{money ? formatXof(value) : String(value)}</p></div>)}</section>
@@ -55,7 +55,7 @@ export default function AdminCoachingFinance() {
     {loading ? <div className="py-20 text-center text-sm text-slate-500">Chargement…</div> : tab === 'refunds' ? <Refunds refunds={data?.refunds || []} onOpen={setRefund}/> : <Orders orders={data?.orders || []}/>} 
     {refund && <RefundModal refund={refund} onClose={() => setRefund(null)} onDone={async message => { setRefund(null); setNotice(message); await load(); }}/>} 
     {settingsOpen && data?.settings && <SettingsModal settings={data.settings} onClose={() => setSettingsOpen(false)} onDone={async () => { setSettingsOpen(false); setNotice('La politique financière du coaching a été mise à jour.'); await load(); }}/>} 
-  </div></AdminLayout>;
+  </div></AdminCoachingManagementLayout>;
 }
 
 function Refunds({ refunds, onOpen }: { refunds: FinanceRefund[]; onOpen: (refund: FinanceRefund) => void }) {

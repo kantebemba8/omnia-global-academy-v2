@@ -1,20 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, CalendarClock, CircleDollarSign, ExternalLink, FolderCog, Layers3, Package, RefreshCw, Search, Settings2, ShieldAlert, Star, UserRoundCheck, UsersRound, X } from 'lucide-react';
-import { AdminLayout } from '../../components/AdminLayout';
+import { Activity, ExternalLink, FolderCog, Layers3, RefreshCw, Search, ShieldAlert, Star, UserRoundCheck, UsersRound, X } from 'lucide-react';
+import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachApplication, CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050'; const GOLD = '#BF8813'; const BORDER = '#E4E7EC';
 type Section = 'overview' | 'applications' | 'coaches' | 'levels' | 'domains';
 type Metrics = { pending_applications: number; total_applications: number; active_coaches: number; suspended_coaches: number; levels: number; domains: number };
 
-const tabs: Array<{ section: Section; path: string; label: string }> = [
-  { section: 'overview', path: '/admin/coaching', label: 'Vue d’ensemble' },
-  { section: 'applications', path: '/admin/coaching/candidatures', label: 'Candidatures' },
-  { section: 'coaches', path: '/admin/coaching/coachs', label: 'Coachs' },
-  { section: 'levels', path: '/admin/coaching/niveaux', label: 'Niveaux' },
-  { section: 'domains', path: '/admin/coaching/domaines', label: 'Domaines' },
-];
 const statusLabel: Record<string, string> = { pending:'En attente', under_review:'En cours d’examen', changes_requested:'Modifications demandées', approved:'Validée', rejected:'Refusée', suspended:'Suspendue', active:'Actif', vacation:'Vacances', archived:'Archivé' };
 
 function sectionFromPath(path: string): Section {
@@ -47,9 +40,22 @@ export default function AdminCoaching() {
   }
   useEffect(() => { load(); }, []);
 
-  return <AdminLayout><div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-    <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}><div><span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Omnia Coaching</span><h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>Gestion du coaching 1-on-1</h1><p className="mt-2 text-sm text-slate-500">Validation des coachs, niveaux, domaines, visibilité et gouvernance.</p></div><div className="flex flex-wrap gap-2"><Link to="/admin/coaching/sessions" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><CalendarClock size={15}/>Sessions</Link><Link to="/admin/coaching/offres" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15}/>Offres à valider</Link><Link to="/admin/coaching/finance" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><CircleDollarSign size={15}/>Finance</Link><Link to="/admin/coaching/litiges" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ShieldAlert size={15}/>Litiges</Link><Link to="/admin/coaching/avis" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Star size={15}/>Avis</Link><Link to="/admin/coaching/revenus" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><CircleDollarSign size={15}/>Revenus coachs</Link><Link to="/admin/coaching/avance" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Package size={15}/>Fonctions avancées</Link><Link to="/coaching" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ExternalLink size={15}/>Voir Omnia Coaching</Link><button onClick={load} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><RefreshCw size={15}/>Actualiser</button></div></header>
-    <nav className="mt-5 flex gap-1 overflow-x-auto border-b" style={{ borderColor: BORDER }}>{tabs.map(tab => <button key={tab.section} onClick={() => navigate(tab.path)} className="whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold" style={{ color: section === tab.section ? BLUE : '#667085', borderColor: section === tab.section ? GOLD : 'transparent' }}>{tab.label}</button>)}</nav>
+  return <AdminCoachingManagementLayout><div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
+      <div>
+        <span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Omnia Coaching</span>
+        <h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>Gestion du coaching 1-on-1</h1>
+        <p className="mt-2 text-sm text-slate-500">Validation des coachs, niveaux, domaines, visibilité et gouvernance.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Link to="/coaching" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>
+          <ExternalLink size={15}/> Voir Omnia Coaching
+        </Link>
+        <button onClick={load} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>
+          <RefreshCw size={15}/> Actualiser
+        </button>
+      </div>
+    </header>
     {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}{notice && <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">{notice}</div>}
     {loading ? <div className="py-20 text-center text-sm text-slate-500">Chargement…</div> : <>
       {section === 'overview' && <Overview metrics={metrics} applications={applications} coaches={coaches} onOpenApplications={() => navigate('/admin/coaching/candidatures')}/>} 
@@ -62,7 +68,7 @@ export default function AdminCoaching() {
     {coachAction && <CoachActionModal coach={coachAction} levels={levels} onClose={() => setCoachAction(null)} onDone={async message => { setCoachAction(null); setNotice(message); await load(); }}/>} 
     {editingLevel && <LevelModal level={editingLevel} onClose={() => setEditingLevel(null)} onDone={async message => { setEditingLevel(null); setNotice(message); await load(); }}/>} 
     {editingDomain && <DomainModal domain={editingDomain} onClose={() => setEditingDomain(null)} onDone={async message => { setEditingDomain(null); setNotice(message); await load(); }}/>} 
-  </div></AdminLayout>;
+  </div></AdminCoachingManagementLayout>;
 }
 
 function Overview({ metrics, applications, coaches, onOpenApplications }: { metrics: Metrics | null; applications: CoachApplication[]; coaches: CoachProfile[]; onOpenApplications: () => void }) {
