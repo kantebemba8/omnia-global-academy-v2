@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, Clock3, DoorOpen, ExternalLink, Headphones, Link2, Loader2, LogOut, Play, RefreshCw, ShieldCheck, Square, UsersRound, Video } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Clock3, Download, DoorOpen, ExternalLink, Headphones, Link2, Loader2, LogOut, Play, Radio, RefreshCw, ShieldCheck, Square, UsersRound, Video } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
-import { CoachingAttendance, CoachingSessionRoomAccess, coachingRequest, formatCoachingDate } from '../../lib/coachingApi';
+import { CoachingAttendance, CoachingRecording, CoachingSessionRoomAccess, coachingRequest, formatCoachingDate } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
 type JoinedRoom = { join_url: string; room: { id: string; status: string }; role: string } | null;
+type RecordingState = { role: string; recording_enabled: boolean; consents: Array<{ user_id: string; party_role: string; consent_status: string }>; recording: CoachingRecording | null };
 
 export default function CoachingSessionRoom() {
   const { sessionId } = useParams();
@@ -23,6 +24,7 @@ export default function CoachingSessionRoom() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [recording, setRecording] = useState<RecordingState | null>(null);
   const heartbeat = useRef<number | null>(null);
 
   async function load(silent = false) {
@@ -30,8 +32,12 @@ export default function CoachingSessionRoom() {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const response = await coachingRequest<{ success: true } & CoachingSessionRoomAccess>('session_room_access', { session_id: sessionId });
+      const [response, recordingData] = await Promise.all([
+        coachingRequest<{ success: true } & CoachingSessionRoomAccess>('session_room_access', { session_id: sessionId }),
+        coachingRequest<RecordingState>('recording_status', { session_id: sessionId }).catch(() => null),
+      ]);
       setData(response);
+      setRecording(recordingData);
       setMeetingUrl(response.session.external_meeting_url || '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'La session est indisponible.');
@@ -134,6 +140,24 @@ export default function CoachingSessionRoom() {
     finally { setBusy(''); }
   }
 
+
+  async function setRecordingConsent(consent_status: 'accepted' | 'declined' | 'revoked') {
+    if (!sessionId) return; setBusy('consent'); setError('');
+    try { await coachingRequest('recording_consent', { session_id: sessionId, consent_status }); setNotice('Votre choix concernant l’enregistrement a été enregistré.'); await load(true); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Consentement impossible.'); } finally { setBusy(''); }
+  }
+  async function recordingAction(action: 'start' | 'stop') {
+    if (!sessionId) return; setBusy(`recording-${action}`); setError('');
+    try { await coachingRequest(action === 'start' ? 'recording_start' : 'recording_stop', { session_id: sessionId }); setNotice(action === 'start' ? 'La demande d’enregistrement a été transmise.' : 'L’enregistrement est en cours de traitement.'); await load(true); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action d’enregistrement impossible.'); } finally { setBusy(''); }
+  }
+  async function openRecording() {
+    if (!recording?.recording?.id) return;
+    setBusy('recording-download');
+    try { const result = await coachingRequest<{ signed_url: string }>('recording_signed_url', { recording_id: recording.recording.id }); window.open(result.signed_url, '_blank', 'noopener,noreferrer'); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement indisponible.'); } finally { setBusy(''); }
+  }
+
   const canManage = data?.role === 'coach' || data?.role === 'admin_supervisor';
   const sessionEnded = ['completed', 'no_show_coach', 'no_show_learner', 'cancelled_by_learner', 'cancelled_by_coach', 'refunded', 'partially_refunded'].includes(data?.session.status || '');
   const statusLabel = useMemo(() => { const labels: Record<string, string> = { confirmed: 'Confirmée', ready: 'Salle disponible', in_progress: 'En cours', completed: 'Terminée', no_show_coach: 'Absence du coach', no_show_learner: 'Absence de l’apprenant' }; return labels[data?.session.status || ''] || data?.session.status?.replace(/_/g, ' '); }, [data?.session.status]);
@@ -167,11 +191,12 @@ export default function CoachingSessionRoom() {
         <aside className="space-y-5">
           <section className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Commandes de session</h2><div className="mt-4 space-y-2">{canManage && data.session.status !== 'in_progress' && <button disabled={busy === 'start'} onClick={startSession} className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><Play size={16}/>Démarrer la session</button>}{canManage && <button onClick={() => setConfirmEnd(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700"><Square size={15}/>Clôturer la session</button>}</div><p className="mt-3 text-xs leading-5 text-slate-500">La clôture calcule les présences du coach et de l’apprenant. Une absence du coach crée automatiquement une demande de remboursement total.</p></section>
           <AttendancePanel attendance={data.attendance}/>
+          {data.session.meeting_mode === 'jitsi' && <RecordingPanel state={recording} role={data.role} busy={busy} onConsent={setRecordingConsent} onStart={()=>recordingAction('start')} onStop={()=>recordingAction('stop')} onDownload={openRecording}/>}
           {data.role === 'admin_supervisor' && <section className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><div className="flex items-center gap-2"><ShieldCheck color={GOLD} size={18}/><h2 className="font-semibold" style={{ color: BLUE }}>Supervision administrative</h2></div><p className="mt-2 text-sm text-slate-600">Votre accès est journalisé. Vous pouvez démarrer ou clôturer la session sans modifier votre rôle Super Admin.</p></section>}
         </aside>
       </div>}
 
-      {sessionEnded && data && <section className="rounded-2xl border bg-white p-7" style={{ borderColor: BORDER }}><CheckCircle2 color={GOLD} size={34}/><h2 className="mt-4 text-xl font-semibold" style={{ color: BLUE }}>Session clôturée</h2><p className="mt-2 text-sm text-slate-600">Statut final : <strong>{statusLabel}</strong>. Les présences ci-dessous sont conservées dans l’historique administratif.</p><div className="mt-5 max-w-md"><AttendancePanel attendance={data.attendance}/></div><div className="mt-5"><Link to={data.role === 'coach' ? '/coach/sessions' : data.role === 'admin_supervisor' ? '/admin/coaching/sessions' : '/dashboard/coaching'} className="inline-flex rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Retour aux sessions</Link></div></section>}
+      {sessionEnded && data && <section className="rounded-2xl border bg-white p-7" style={{ borderColor: BORDER }}><CheckCircle2 color={GOLD} size={34}/><h2 className="mt-4 text-xl font-semibold" style={{ color: BLUE }}>Session clôturée</h2><p className="mt-2 text-sm text-slate-600">Statut final : <strong>{statusLabel}</strong>. Les présences ci-dessous sont conservées dans l’historique administratif.</p><div className="mt-5 grid max-w-3xl gap-5 md:grid-cols-2"><AttendancePanel attendance={data.attendance}/>{data.session.meeting_mode === 'jitsi' && <RecordingPanel state={recording} role={data.role} busy={busy} onConsent={setRecordingConsent} onStart={()=>recordingAction('start')} onStop={()=>recordingAction('stop')} onDownload={openRecording}/>}</div><div className="mt-5"><Link to={data.role === 'coach' ? '/coach/sessions' : data.role === 'admin_supervisor' ? '/admin/coaching/sessions' : '/dashboard/coaching'} className="inline-flex rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Retour aux sessions</Link></div></section>}
     </main>
 
     {confirmEnd && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Clôturer la session</h2><p className="mt-3 text-sm leading-6 text-slate-600">Cette action ferme la salle et calcule les présences. Elle ne doit être utilisée qu’à la fin réelle de la session.</p><div className="mt-5 flex justify-end gap-3"><button onClick={() => setConfirmEnd(false)} className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: BORDER }}>Annuler</button><button disabled={busy === 'end'} onClick={endSession} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Clôturer</button></div></div></div>}
@@ -180,6 +205,15 @@ export default function CoachingSessionRoom() {
 
 function ExternalSession({ data, meetingUrl, setMeetingUrl, canManage, present, busy, onSave, onJoin, onLeave }: { data: CoachingSessionRoomAccess; meetingUrl: string; setMeetingUrl: (value: string) => void; canManage: boolean; present: boolean; busy: string; onSave: () => void; onJoin: () => void; onLeave: () => void }) {
   return <div className="flex min-h-[68vh] items-center justify-center p-6 text-white"><div className="w-full max-w-2xl"><ExternalLink className="mx-auto" size={50}/><h2 className="mt-4 text-center text-2xl font-semibold">Réunion externe sécurisée</h2><p className="mt-2 text-center text-sm text-slate-400">Le lien est associé uniquement à cette réservation et n’est jamais affiché sur le profil public du coach.</p>{canManage && <div className="mt-6 rounded-2xl border border-white/15 bg-white/5 p-4"><label className="text-sm font-semibold">Lien Zoom, Google Meet ou autre<input value={meetingUrl} onChange={e => setMeetingUrl(e.target.value)} placeholder="https://..." className="mt-2 h-11 w-full rounded-xl border border-white/20 bg-slate-900 px-3 text-sm text-white outline-none"/></label><button disabled={busy === 'link'} onClick={onSave} className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: GOLD }}><Link2 size={16}/>Enregistrer et notifier</button></div>}{data.session.external_meeting_url ? <div className="mt-6 rounded-2xl border border-white/15 bg-white/5 p-5 text-center"><a href={data.session.external_meeting_url} target="_blank" rel="noreferrer" onClick={onJoin} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: GOLD }}><ExternalLink size={17}/>Ouvrir la réunion</a><div className="mt-4 flex justify-center gap-2"><button disabled={present || busy === 'join'} onClick={onJoin} className="rounded-xl border border-white/20 px-4 py-2 text-sm disabled:opacity-40">J’ai rejoint</button><button disabled={!present || busy === 'leave'} onClick={onLeave} className="rounded-xl border border-white/20 px-4 py-2 text-sm disabled:opacity-40">J’ai quitté</button></div></div> : <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-center text-sm text-amber-100">{canManage ? 'Ajoutez le lien de réunion avant le rendez-vous.' : data.external_link_visible ? 'Le coach n’a pas encore ajouté le lien.' : 'Le lien apparaîtra peu avant le début de la session.'}</div>}</div></div>;
+}
+
+
+function RecordingPanel({ state, role, busy, onConsent, onStart, onStop, onDownload }: { state: RecordingState | null; role: string; busy: string; onConsent: (status:'accepted'|'declined'|'revoked')=>void; onStart:()=>void; onStop:()=>void; onDownload:()=>void }) {
+  const mine = state?.consents.find(item => item.party_role === role);
+  const accepted = new Set((state?.consents || []).filter(item => item.consent_status === 'accepted').map(item => item.party_role));
+  const bothAccepted = accepted.has('coach') && accepted.has('learner');
+  const status = state?.recording?.status;
+  return <section className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><div className="flex items-center gap-2"><Radio size={18} color={GOLD}/><h2 className="font-semibold" style={{ color: BLUE }}>Enregistrement privé</h2></div>{!state?.recording_enabled ? <p className="mt-3 text-sm text-slate-500">Cette fonction est désactivée par le Super Admin.</p> : <><p className="mt-3 text-xs leading-5 text-slate-500">Aucune capture ne démarre sans l’accord explicite du coach et de l’apprenant.</p>{['coach','learner'].includes(role) && <div className="mt-3 flex gap-2"><button onClick={()=>onConsent('accepted')} disabled={busy!==''} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">J’accepte</button><button onClick={()=>onConsent(mine?.consent_status==='accepted'?'revoked':'declined')} disabled={busy!==''} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Je refuse</button></div>}<p className="mt-3 text-xs text-slate-500">Coach : {accepted.has('coach')?'accord donné':'en attente'} · Apprenant : {accepted.has('learner')?'accord donné':'en attente'}</p>{['coach','admin_supervisor'].includes(role) && bothAccepted && !['starting','recording','processing','ready'].includes(status||'') && <button onClick={onStart} disabled={busy!==''} className="mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>Démarrer l’enregistrement</button>}{['coach','admin_supervisor'].includes(role) && ['starting','recording'].includes(status||'') && <button onClick={onStop} disabled={busy!==''} className="mt-3 w-full rounded-xl bg-red-700 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Arrêter l’enregistrement</button>}{status && <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">Statut : {status.replace(/_/g,' ')}</p>}{status==='ready' && <button onClick={onDownload} disabled={busy!==''} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold" style={{color:BLUE,borderColor:BORDER}}><Download size={15}/>Lire l’enregistrement</button>}</>}</section>
 }
 
 function AttendancePanel({ attendance }: { attendance: CoachingAttendance[] }) {

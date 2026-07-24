@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarDays, CircleDollarSign, LayoutDashboard, ListChecks, Settings2, Star } from 'lucide-react';
+import { CalendarDays, CircleDollarSign, LayoutDashboard, ListChecks, Package, Settings2, Star } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -12,6 +12,7 @@ const items = [
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },
   { path: '/coach/avis', label: 'Mes avis', icon: Star },
   { path: '/coach/revenus', label: 'Mes revenus', icon: CircleDollarSign },
+  { path: '/coach/produits', label: 'Packs et groupes', icon: Package },
 ];
 
 export default function CoachWorkspaceNav() {

@@ -766,6 +766,69 @@ COMPLETION_PERCENT: payload.completion_percent ?? 0,
         break;
       }
 
+
+      case "coaching_recording_available": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.offer_title as string || "Session de coaching",
+            STATUT: "Enregistrement disponible",
+            MESSAGE_SPECIFIQUE: "L’enregistrement privé de votre session est disponible dans Omnia Coaching pendant sa période de conservation.",
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching"}`,
+          } },
+          smsMessage: "Omnia Coaching : l’enregistrement privé de votre session est disponible.",
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_advanced_purchase_confirmed": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.product_title as string || "Produit Omnia Coaching",
+            STATUT: "Achat confirmé",
+            MESSAGE_SPECIFIQUE: `Votre achat ${String(payload.product_type || "coaching").replace(/_/g, " ")} est confirmé.`,
+            COMMENTAIRE: `Montant : ${payload.amount_xof || 0} XOF`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/dashboard/coaching/avance"}`,
+          } },
+          smsMessage: `Omnia Coaching : votre achat « ${payload.product_title || "coaching"} » est confirmé.`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_advanced_sale": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: payload.product_title as string || "Produit Omnia Coaching",
+            STATUT: "Nouvelle vente",
+            MESSAGE_SPECIFIQUE: `Un apprenant a acheté votre ${String(payload.product_type || "produit").replace(/_/g, " ")}.`,
+            COMMENTAIRE: `Montant brut : ${payload.amount_xof || 0} XOF`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/produits"}`,
+          } },
+          smsMessage: `Omnia Coaching : nouvelle vente de « ${payload.product_title || "votre produit"} ».`,
+          sb,
+        });
+        break;
+      }
+
+      case "coaching_advanced_revenue_available": {
+        await notifyUser({
+          userId: payload.userId as string,
+          emailConfig: { templateId: 3, from: "contact@omniaglobalacademy.com", params: {
+            FORMATION_TITRE: "Revenu Coaching avancé",
+            STATUT: "Revenu disponible",
+            MESSAGE_SPECIFIQUE: `${payload.amount_xof || 0} XOF provenant d’un ${String(payload.source_type || "produit").replace(/_/g, " ")} ont été crédités dans votre portefeuille.`,
+            ACTION_URL: `${appUrl}${payload.action_url || "/coach/revenus"}`,
+          } },
+          smsMessage: `Omnia Coaching : ${payload.amount_xof || 0} XOF sont disponibles dans votre portefeuille.`,
+          sb,
+        });
+        break;
+      }
+
       default:
         return json({ error: "UNKNOWN_TYPE", type }, 400);
     }

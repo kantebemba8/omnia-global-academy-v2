@@ -234,7 +234,7 @@ async function processCoachingWebhook(
     const result = await sb.from("coaching_payment_orders").select("*").eq("provider_transaction_id", fedapayId).maybeSingle();
     order = result.data;
   }
-  if (!order && metadata.resource_type !== "coaching_session") return false;
+  if (!order && !["coaching_session", "coaching_advanced"].includes(String(metadata.resource_type || ""))) return false;
   if (!order) return true;
 
   const providerEventId = String(event.id || `${eventName}:${fedapayId}:${String(txn.updated_at || txn.status || "event")}`);
@@ -254,7 +254,9 @@ async function processCoachingWebhook(
     const approved = eventName === "transaction.approved" || txn.status === "approved";
     const failed = ["transaction.declined", "transaction.canceled", "transaction.cancelled"].includes(eventName) || ["declined", "canceled", "cancelled"].includes(String(txn.status));
     if (approved) {
-      const { data: confirmation, error } = await sb.rpc("coaching_confirm_payment", {
+      const advanced = String(order.product_type || "session") !== "session";
+      const rpcName = advanced ? "coaching_confirm_advanced_payment" : "coaching_confirm_payment";
+      const { data: confirmation, error } = await sb.rpc(rpcName, {
         p_order_id: order.id,
         p_provider_transaction_id: fedapayId,
         p_provider_reference: txn.reference ? String(txn.reference) : null,
@@ -262,29 +264,46 @@ async function processCoachingWebhook(
       });
       if (error) throw error;
 
-      const [{ data: coachingSession }, { data: learner }, { data: coachProfile }] = await Promise.all([
-        sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
-        sb.from("users").select("id,full_name,email").eq("id", order.user_id).maybeSingle(),
-        sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle(),
-      ]);
-      const late = Boolean((confirmation as Record<string, unknown> | null)?.late_payment);
-      if (late) {
-        await postInternal("notify-dispatch", { type: "coaching_payment_issue", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: "/dashboard/coaching" } });
-      } else if (coachingSession) {
+      if (advanced) {
+        const productType = String(order.product_type || "");
         await Promise.all([
           postInternal("invoice-generate", { coaching_order_id: order.id }),
-          postInternal("notify-dispatch", { type: "coaching_booking_confirmed", payload: { userId: order.user_id, session_id: coachingSession.id, coach_name: coachingSession.coach_name_snapshot, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/dashboard/coaching" } }),
-          coachProfile?.user_id ? postInternal("notify-dispatch", { type: "coaching_new_booking", payload: { userId: coachProfile.user_id, learner_name: learner?.full_name || learner?.email || "Apprenant", session_id: coachingSession.id, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/coach/sessions" } }) : Promise.resolve(null),
+          postInternal("notify-dispatch", { type: "coaching_advanced_purchase_confirmed", payload: { userId: order.user_id, product_type: productType, product_title: order.offer_title_snapshot, amount_xof: order.amount_xof, action_url: productType === "group" ? "/dashboard/coaching/avance" : "/dashboard/coaching/avance" } }),
         ]);
+        if (order.coach_id) {
+          const { data: coachProfile } = await sb.from("coach_profiles").select("user_id").eq("id", order.coach_id).maybeSingle();
+          if (coachProfile?.user_id) await postInternal("notify-dispatch", { type: "coaching_advanced_sale", payload: { userId: coachProfile.user_id, product_type: productType, product_title: order.offer_title_snapshot, amount_xof: order.amount_xof, action_url: "/coach/produits" } });
+        }
+      } else {
+        const [{ data: coachingSession }, { data: learner }, { data: coachProfile }] = await Promise.all([
+          sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
+          sb.from("users").select("id,full_name,email").eq("id", order.user_id).maybeSingle(),
+          sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle(),
+        ]);
+        const late = Boolean((confirmation as Record<string, unknown> | null)?.late_payment);
+        if (late) {
+          await postInternal("notify-dispatch", { type: "coaching_payment_issue", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: "/dashboard/coaching" } });
+        } else if (coachingSession) {
+          await Promise.all([
+            postInternal("invoice-generate", { coaching_order_id: order.id }),
+            postInternal("notify-dispatch", { type: "coaching_booking_confirmed", payload: { userId: order.user_id, session_id: coachingSession.id, coach_name: coachingSession.coach_name_snapshot, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/dashboard/coaching" } }),
+            coachProfile?.user_id ? postInternal("notify-dispatch", { type: "coaching_new_booking", payload: { userId: coachProfile.user_id, learner_name: learner?.full_name || learner?.email || "Apprenant", session_id: coachingSession.id, offer_title: coachingSession.offer_title_snapshot, scheduled_start: coachingSession.scheduled_start, duration_minutes: coachingSession.duration_minutes, amount_xof: order.amount_xof, action_url: "/coach/sessions" } }) : Promise.resolve(null),
+          ]);
+        }
       }
     } else if (failed) {
-      const { error } = await sb.rpc("coaching_mark_payment_failed", {
-        p_order_id: order.id,
-        p_provider_transaction_id: fedapayId || null,
-        p_provider_metadata: txn,
-      });
-      if (error) throw error;
-      await postInternal("notify-dispatch", { type: "coaching_payment_failed", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: `/coaching/paiement/${order.session_id}` } });
+      if (String(order.product_type || "session") === "session") {
+        const { error } = await sb.rpc("coaching_mark_payment_failed", {
+          p_order_id: order.id,
+          p_provider_transaction_id: fedapayId || null,
+          p_provider_metadata: txn,
+        });
+        if (error) throw error;
+      } else {
+        await sb.from("coaching_payment_orders").update({ payment_status: "failed", provider_transaction_id: fedapayId || null, provider_metadata: txn, failed_at: new Date().toISOString() }).eq("id", order.id);
+        if (String(order.product_type) === "group") await sb.from("coaching_group_registrations").update({ status: "expired" }).eq("id", order.product_id).eq("status", "pending_payment");
+      }
+      await postInternal("notify-dispatch", { type: "coaching_payment_failed", payload: { userId: order.user_id, session_id: order.session_id, order_number: order.order_number, action_url: String(order.product_type || "session") === "session" ? `/coaching/paiement/${order.session_id}` : `/coaching/avance/paiement/${order.id}` } });
     }
     if (paymentEventId) await sb.from("coaching_payment_events").update({ processing_status: approved || failed ? "processed" : "ignored", processed_at: new Date().toISOString() }).eq("id", paymentEventId);
   } catch (error) {

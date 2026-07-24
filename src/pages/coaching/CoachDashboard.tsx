@@ -1,23 +1,82 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CircleDollarSign, Clock3, ExternalLink, Settings2, Star, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, CircleDollarSign, Package, Star } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import CoachWorkspaceNav from '../../components/coaching/CoachWorkspaceNav';
-import { CoachOffer, CoachProfile, CoachingSession, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
+import { CoachProfile, CoachingSession, coachingRequest, formatXof } from '../../lib/coachingApi';
 
-const BLUE = '#002050'; const GOLD = '#BF8813'; const BORDER = '#E4E7EC';
-type Dashboard = { success: true; profile: CoachProfile; offers: CoachOffer[]; recent_sessions: CoachingSession[]; metrics: { upcoming_sessions: number; pending_custom_requests: number; completed_sessions: number; average_rating: number; available_revenue_xof: number } };
+const BLUE = '#002050';
+const GOLD = '#BF8813';
+const BORDER = '#E4E7EC';
+
+type DashboardData = {
+  profile: CoachProfile;
+  recent_sessions: CoachingSession[];
+  metrics: {
+    upcoming_sessions: number;
+    pending_custom_requests: number;
+    completed_sessions: number;
+    average_rating: number;
+    available_revenue_xof: number;
+  };
+};
 
 export default function CoachDashboard() {
-  const [data, setData] = useState<Dashboard | null>(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(true);
-  useEffect(() => { coachingRequest<Dashboard>('coach_dashboard').then(setData).catch(e => setError(e instanceof Error ? e.message : 'Espace indisponible.')).finally(() => setLoading(false)); }, []);
-  if (loading) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="py-24 text-center text-sm text-slate-500">Chargement de l’espace coach…</div></div>;
-  if (!data) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-2xl px-5 py-20 text-center"><UserRoundCheck className="mx-auto h-11 w-11" color={GOLD}/><h1 className="mt-4 text-2xl font-semibold" style={{ color: BLUE }}>Espace coach non disponible</h1><p className="mt-3 text-slate-600">{error}</p><Link to="/coaching/devenir-coach" className="mt-6 inline-block rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>Voir ma candidature</Link></main></div>;
-  const metrics = [['Sessions à venir', data.metrics.upcoming_sessions, CalendarDays], ['Demandes personnalisées', data.metrics.pending_custom_requests, Clock3], ['Note moyenne', Number(data.metrics.average_rating || 0).toFixed(1), Star], ['Revenus disponibles', formatXof(data.metrics.available_revenue_xof), CircleDollarSign]] as const;
-  const activeOffers = data.offers.filter(item => item.status === 'active').length;
-  const pendingOffers = data.offers.filter(item => item.status === 'pending').length;
-  return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><main className="mx-auto max-w-7xl px-4 py-8 md:px-6"><CoachWorkspaceNav/><div className="flex flex-wrap items-start justify-between gap-4"><div><span className="text-sm font-semibold uppercase tracking-[.12em]" style={{ color: GOLD }}>Espace coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Bonjour, {data.profile.full_name}</h1><p className="mt-2 text-slate-600">Gérez vos offres, disponibilités, sessions, avis et revenus depuis un seul espace.</p></div><Link to={`/coaching/coachs/${data.profile.public_slug}`} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ExternalLink size={16}/>Voir mon profil public</Link></div><div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><Icon color={GOLD}/><p className="mt-4 text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{value}</p></div>)}</div>
-  <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]"><section className="rounded-2xl border bg-white p-6" style={{ borderColor: BORDER }}><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Activité récente</h2><p className="mt-1 text-sm text-slate-500">Demandes et pré-réservations créées depuis le catalogue.</p></div><Link to="/coach/sessions" className="text-sm font-semibold" style={{ color: GOLD }}>Tout voir</Link></div><div className="mt-5 divide-y" style={{ borderColor: BORDER }}>{data.recent_sessions.length ? data.recent_sessions.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="text-sm font-semibold" style={{ color: BLUE }}>{item.offer_title_snapshot}</p><p className="mt-1 text-xs text-slate-500">{item.learner?.full_name || 'Apprenant OGA'} · {formatCoachingDate(item.scheduled_start || item.requested_start)}</p></div><span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">{item.status === 'pending_coach' ? 'Réponse attendue' : item.status === 'pending_payment' ? 'Paiement attendu' : item.status}</span></div>) : <p className="py-12 text-center text-sm text-slate-500">Aucune demande pour le moment.</p>}</div></section>
-  <aside className="space-y-4"><div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><Settings2 color={GOLD}/><h2 className="mt-4 font-semibold" style={{ color: BLUE }}>Configuration</h2><div className="mt-4 space-y-3 text-sm"><Row label="Offres actives" value={String(activeOffers)}/><Row label="Offres en validation" value={String(pendingOffers)}/><Row label="Fuseau horaire" value={data.profile.timezone}/></div><div className="mt-5 grid gap-2"><Link to="/coach/offres" className="rounded-xl px-4 py-2.5 text-center text-sm font-semibold text-white" style={{ background: BLUE }}>Gérer mes offres</Link><Link to="/coach/calendrier" className="rounded-xl border px-4 py-2.5 text-center text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Configurer mes disponibilités</Link></div></div><div className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-semibold text-amber-900">Paiement au module suivant</h2><p className="mt-2 text-sm leading-6 text-amber-800">Les créneaux peuvent être pré-réservés. FedaPay, les factures et la confirmation payée seront raccordés dans le Grand module 3.</p></div></aside></div></main></div>;
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    coachingRequest<DashboardData>('coach_dashboard')
+      .then(setData)
+      .catch(error => setError(error instanceof Error ? error.message : 'Chargement impossible.'));
+  }, []);
+
+  const cards = [
+    ['Sessions à venir', data?.metrics.upcoming_sessions || 0, CalendarDays],
+    ['Revenus disponibles', formatXof(data?.metrics.available_revenue_xof || 0), CircleDollarSign],
+    ['Note moyenne', Number(data?.metrics.average_rating || data?.profile?.average_rating || 0).toFixed(1), Star],
+    ['Demandes personnalisées', data?.metrics.pending_custom_requests || 0, Package],
+  ] as const;
+
+  return <div className="min-h-screen bg-slate-50">
+    <CoachingHeader />
+    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
+      <CoachWorkspaceNav />
+      <p className="text-xs font-semibold uppercase tracking-[.18em]" style={{ color: GOLD }}>Espace coach</p>
+      <h1 className="mt-2 text-3xl font-bold" style={{ color: BLUE }}>Bonjour {data?.profile?.full_name || 'Coach'}</h1>
+      {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+          <Icon color={GOLD} />
+          <p className="mt-4 text-sm text-slate-500">{label}</p>
+          <p className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{value}</p>
+        </div>)}
+      </div>
+
+      <div className="mt-6 grid gap-5 md:grid-cols-3">
+        <Card to="/coach/sessions" title="Gérer mes sessions" text="Réservations, salles et suivi des apprenants." />
+        <Card to="/coach/produits" title="Packs et groupes" text="Créer des packs de séances et du coaching collectif." />
+        <Card to="/coach/revenus" title="Revenus et retraits" text="Consulter les revenus disponibles et demander un payout." />
+      </div>
+
+      <section className="mt-6 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+        <h2 className="font-semibold" style={{ color: BLUE }}>Activité récente</h2>
+        {data?.recent_sessions?.length ? <div className="mt-4 divide-y">
+          {data.recent_sessions.slice(0, 5).map(session => <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+            <div><p className="font-semibold" style={{ color: BLUE }}>{session.offer_title_snapshot}</p><p className="text-xs text-slate-500">{session.status.replace(/_/g, ' ')}</p></div>
+            <Link to="/coach/sessions" className="text-sm font-semibold" style={{ color: GOLD }}>Ouvrir</Link>
+          </div>)}
+        </div> : <p className="mt-4 text-sm text-slate-500">Aucune activité récente.</p>}
+      </section>
+    </main>
+  </div>;
 }
-function Row({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between gap-4"><span className="text-slate-500">{label}</span><span className="text-right font-semibold text-slate-800">{value}</span></div>; }
+
+function Card({ to, title, text }: { to: string; title: string; text: string }) {
+  return <Link to={to} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+    <h2 className="font-semibold" style={{ color: BLUE }}>{title}</h2>
+    <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
+    <span className="mt-4 inline-block text-sm font-semibold" style={{ color: GOLD }}>Ouvrir →</span>
+  </Link>;
+}

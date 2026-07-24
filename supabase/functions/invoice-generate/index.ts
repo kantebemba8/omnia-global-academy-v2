@@ -146,8 +146,10 @@ async function buildCoachingPdf(data: {
   buyerEmail: string;
   coachName: string;
   offerTitle: string;
-  sessionStart: string;
-  durationMinutes: number;
+  sessionStart?: string | null;
+  durationMinutes?: number | null;
+  productType?: string;
+  productDetail?: string | null;
   amountXof: number;
   providerTransactionId?: string | null;
 }) {
@@ -185,15 +187,16 @@ async function buildCoachingPdf(data: {
 
   y = 575;
   page.drawRectangle({ x, y, width: 485, height: 34, color: blue });
-  page.drawText("DETAIL DE LA SESSION", { x: x + 14, y: y + 12, size: 11, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(data.productType && data.productType !== "session" ? "DETAIL DU SERVICE" : "DETAIL DE LA SESSION", { x: x + 14, y: y + 12, size: 11, font: bold, color: rgb(1, 1, 1) });
   y -= 30;
   const rows: Array<[string, string]> = [
     ["Service", data.offerTitle],
-    ["Coach", data.coachName],
-    ["Date et heure", new Date(data.sessionStart).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })],
-    ["Duree", `${data.durationMinutes} minutes`],
+    ["Prestataire", data.coachName],
+    ...(data.productDetail ? [["Détail", data.productDetail] as [string, string]] : []),
+    ...(data.sessionStart ? [["Date et heure", new Date(data.sessionStart).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })] as [string, string]] : []),
+    ...(data.durationMinutes ? [["Durée", `${data.durationMinutes} minutes`] as [string, string]] : []),
     ["Paiement", "FedaPay"],
-    ["Reference transaction", data.providerTransactionId || "-"],
+    ["Référence transaction", data.providerTransactionId || "-"],
   ];
   for (const [label, value] of rows) {
     page.drawText(cleanPdfText(label), { x: x + 14, y, size: 10, font: bold, color: blue });
@@ -230,22 +233,21 @@ async function generateCoachingInvoice(sb: ReturnType<typeof createClient>, coac
     return new Response(JSON.stringify({ error: "COACHING_ORDER_NOT_PAID" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   const existing = await sb.from("coaching_invoices").select("id,invoice_number").eq("order_id", order.id).maybeSingle();
-  if (existing.data) {
-    return new Response(JSON.stringify({ success: true, invoice_id: existing.data.id, invoice_number: existing.data.invoice_number }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
+  if (existing.data) return new Response(JSON.stringify({ success: true, invoice_id: existing.data.id, invoice_number: existing.data.invoice_number }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   const [{ data: coachingSession }, { data: buyer }, { data: coachProfile }] = await Promise.all([
-    sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
+    order.session_id ? sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle() : Promise.resolve({ data: null }),
     sb.from("users").select("id,full_name,email").eq("id", order.user_id).maybeSingle(),
-    sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle(),
+    order.coach_id ? sb.from("coach_profiles").select("id,user_id").eq("id", order.coach_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  if (!coachingSession || !buyer || !coachProfile) {
-    return new Response(JSON.stringify({ error: "COACHING_INVOICE_DATA_MISSING" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-  const coachUser = await sb.from("users").select("full_name").eq("id", coachProfile.user_id).maybeSingle();
+  if (!buyer) return new Response(JSON.stringify({ error: "COACHING_INVOICE_DATA_MISSING" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  const coachUser = coachProfile ? await sb.from("users").select("full_name").eq("id", coachProfile.user_id).maybeSingle() : { data: null };
   const year = new Date().getFullYear();
   const invoiceNumber = `OGA-COACH-${year}-${String(order.order_number).split("-").slice(-1)[0]}`;
-  const coachName = String(coachUser.data?.full_name || order.coach_name_snapshot);
+  const coachName = String(coachUser.data?.full_name || order.coach_name_snapshot || "Omnia Coaching");
+  const productType = String(order.product_type || "session");
+  const snapshot = (order.product_snapshot || {}) as Record<string, unknown>;
+  const productDetail = productType === "package" ? `${snapshot.session_count || ""} séances de ${snapshot.session_duration_minutes || ""} minutes` : productType === "subscription" ? `Abonnement de ${snapshot.validity_days || 30} jours · réduction ${snapshot.discount_percent || 0}%` : productType === "group" ? `Coaching collectif · capacité ${snapshot.capacity || ""}` : null;
   const pdfBytes = await buildCoachingPdf({
     invoiceNumber,
     orderNumber: String(order.order_number),
@@ -253,8 +255,10 @@ async function generateCoachingInvoice(sb: ReturnType<typeof createClient>, coac
     buyerEmail: String(buyer.email),
     coachName,
     offerTitle: String(order.offer_title_snapshot),
-    sessionStart: String(order.session_start_snapshot),
-    durationMinutes: Number(coachingSession.duration_minutes),
+    sessionStart: order.session_start_snapshot ? String(order.session_start_snapshot) : null,
+    durationMinutes: coachingSession?.duration_minutes ? Number(coachingSession.duration_minutes) : null,
+    productType,
+    productDetail,
     amountXof: Number(order.amount_xof),
     providerTransactionId: order.provider_transaction_id,
   });
@@ -266,27 +270,20 @@ async function generateCoachingInvoice(sb: ReturnType<typeof createClient>, coac
   const invoiceInsert = await sb.from("coaching_invoices").insert({
     invoice_number: invoiceNumber,
     order_id: order.id,
-    session_id: order.session_id,
+    session_id: order.session_id || null,
     user_id: order.user_id,
-    coach_id: order.coach_id,
+    coach_id: order.coach_id || null,
     amount_xof: order.amount_xof,
     currency: order.currency,
     buyer_name: buyer.full_name || buyer.email,
     buyer_email: buyer.email,
     coach_name: coachName,
     offer_title: order.offer_title_snapshot,
-    session_start: order.session_start_snapshot,
-    duration_minutes: coachingSession.duration_minutes,
-    invoice_snapshot: {
-      order_number: order.order_number,
-      provider_transaction_id: order.provider_transaction_id,
-      coach_name: coachName,
-      offer_title: order.offer_title_snapshot,
-      session_start: order.session_start_snapshot,
-      session_end: order.session_end_snapshot,
-      amount_xof: order.amount_xof,
-      currency: order.currency,
-    },
+    session_start: order.session_start_snapshot || null,
+    duration_minutes: coachingSession?.duration_minutes || null,
+    product_type: productType,
+    product_id: order.product_id || null,
+    invoice_snapshot: { order_number: order.order_number, provider_transaction_id: order.provider_transaction_id, coach_name: coachName, offer_title: order.offer_title_snapshot, session_start: order.session_start_snapshot, session_end: order.session_end_snapshot, amount_xof: order.amount_xof, currency: order.currency, product_type: productType, product_id: order.product_id, product_snapshot: snapshot },
     pdf_storage_path: storagePath,
     checksum_sha256: checksum,
   }).select("id,invoice_number").single();

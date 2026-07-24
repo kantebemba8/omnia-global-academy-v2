@@ -157,6 +157,11 @@ import CoachingSessionRoom from './pages/coaching/CoachingSessionRoom';
 import CoachingSessionFollowUp from './pages/coaching/CoachingSessionFollowUp';
 import CoachReviews from './pages/coaching/CoachReviews';
 import CoachRevenue from './pages/coaching/CoachRevenue';
+import CoachingAdvancedHub from './pages/coaching/CoachingAdvancedHub';
+import CoachingAdvancedPayment from './pages/coaching/CoachingAdvancedPayment';
+import CoachingGroupRoom from './pages/coaching/CoachingGroupRoom';
+import CoachAdvancedProducts from './pages/coaching/CoachAdvancedProducts';
+import AdminCoachingAdvanced from './pages/admin/AdminCoachingAdvanced';
 import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
 import OmniaLiveHome from './pages/omnia-live/OmniaLiveHome';
 import CatalogView from './pages/omnia-live/CatalogView';
@@ -348,6 +353,10 @@ export default function App() {
           <Route path="/coaching/paiement/:sessionId" element={<CoachingPayment />} />
           <Route path="/coaching/devenir-coach" element={<CoachApplication />} />
           <Route path="/dashboard/coaching" element={<LearnerCoachingDashboard />} />
+          <Route path="/coaching/solutions" element={<CoachingAdvancedHub />} />
+          <Route path="/dashboard/coaching/avance" element={<CoachingAdvancedHub />} />
+          <Route path="/coaching/avance/paiement/:orderId" element={<CoachingAdvancedPayment />} />
+          <Route path="/coaching/groupes/:programId/room" element={<CoachingGroupRoom />} />
           <Route path="/coaching/sessions/:sessionId/room" element={<CoachingSessionRoom />} />
           <Route path="/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
           <Route path="/dashboard/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
@@ -357,6 +366,7 @@ export default function App() {
           <Route path="/coach/sessions" element={<CoachSessions />} />
           <Route path="/coach/avis" element={<CoachReviews />} />
           <Route path="/coach/revenus" element={<CoachRevenue />} />
+          <Route path="/coach/produits" element={<CoachAdvancedProducts />} />
           <Route path="/talents" element={<TalentDirectory />} />
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
@@ -481,6 +491,7 @@ export default function App() {
         <Route path="/admin/coaching/litiges" element={<AdminCoachingDisputes />} />
         <Route path="/admin/coaching/avis" element={<AdminCoachingRatings />} />
         <Route path="/admin/coaching/revenus" element={<AdminCoachingRevenue />} />
+        <Route path="/admin/coaching/avance" element={<AdminCoachingAdvanced />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />

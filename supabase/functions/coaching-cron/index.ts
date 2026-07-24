@@ -33,6 +33,40 @@ async function dispatch(type: string, payload: Record<string, unknown>) {
   if (!response.ok) throw new Error(`NOTIFY_${response.status}:${await response.text()}`);
 }
 
+async function cleanupExpiredRecordings(sb: Supabase) {
+  const { data: recordings, error } = await sb.from("coaching_recordings")
+    .select("id,storage_key")
+    .eq("status", "ready")
+    .not("storage_key", "is", null)
+    .lte("retention_expires_at", new Date().toISOString())
+    .limit(100);
+  if (error) throw error;
+  if (!(recordings || []).length) return { found: 0, deleted: 0, skipped: 0, failed: 0 };
+
+  const endpoint = Deno.env.get("R2_ENDPOINT") || "";
+  const accessKey = Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "";
+  const secretKey = Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "";
+  const bucket = Deno.env.get("R2_BUCKET_NAME") || "";
+  if (!endpoint || !accessKey || !secretKey || !bucket) return { found: recordings?.length || 0, deleted: 0, skipped: recordings?.length || 0, failed: 0 };
+
+  const { S3Client, DeleteObjectCommand } = await import("npm:@aws-sdk/client-s3@3.637.0");
+  const client = new S3Client({ region: "auto", endpoint, credentials: { accessKeyId: accessKey, secretAccessKey: secretKey } });
+  let deleted = 0;
+  let failed = 0;
+  for (const recording of recordings || []) {
+    try {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: String(recording.storage_key) }));
+      const update = await sb.from("coaching_recordings").update({ status: "deleted", storage_key: null, deleted_at: new Date().toISOString() }).eq("id", recording.id).eq("status", "ready");
+      if (update.error) throw update.error;
+      deleted += 1;
+    } catch (error) {
+      console.error("[coaching-cron] recording cleanup", recording.id, error);
+      failed += 1;
+    }
+  }
+  return { found: recordings?.length || 0, deleted, skipped: 0, failed };
+}
+
 async function processJobs(sb: Supabase) {
   const now = new Date().toISOString();
   const { data: jobs, error } = await sb
@@ -186,6 +220,9 @@ Deno.serve(async (req: Request) => {
     if (readyError) throw readyError;
 
     const reconciled = await reconcileFinishedSessions(sb, settings);
+    const recordingCleanup = await cleanupExpiredRecordings(sb);
+    const { data: advancedExpired, error: advancedExpireError } = await sb.rpc("coaching_expire_advanced_products");
+    if (advancedExpireError) throw advancedExpireError;
     const { data: released, error: releaseError } = await sb.rpc("coaching_release_eligible_earnings");
     if (releaseError) throw releaseError;
     for (const earning of released || []) {
@@ -196,8 +233,14 @@ Deno.serve(async (req: Request) => {
         action_url: "/coach/revenus",
       });
     }
+    const { data: advancedReleased, error: advancedReleaseError } = await sb.rpc("coaching_release_advanced_earnings");
+    if (advancedReleaseError) throw advancedReleaseError;
+    if (Number(advancedReleased || 0) > 0) {
+      const { data: recentAdvanced } = await sb.from("coaching_advanced_earnings").select("coach_user_id,source_type,source_id,net_amount_xof,credited_at").eq("status", "available").gte("credited_at", new Date(Date.now() - 10 * 60000).toISOString());
+      for (const earning of recentAdvanced || []) await dispatch("coaching_advanced_revenue_available", { userId: earning.coach_user_id, source_type: earning.source_type, source_id: earning.source_id, amount_xof: Number(earning.net_amount_xof || 0), action_url: "/coach/revenus" });
+    }
     const jobs = await processJobs(sb);
-    return json({ success: true, expired_payment_holds: Number(expired || 0), reconciled_sessions: reconciled, released_earnings: (released || []).length, notifications: jobs });
+    return json({ success: true, expired_payment_holds: Number(expired || 0), expired_advanced_products: advancedExpired || {}, recording_cleanup: recordingCleanup, reconciled_sessions: reconciled, released_earnings: (released || []).length, released_advanced_earnings: Number(advancedReleased || 0), notifications: jobs });
   } catch (error) {
     console.error("[coaching-cron]", error);
     return json({ error: "INTERNAL", message: error instanceof Error ? error.message : String(error) }, 500);

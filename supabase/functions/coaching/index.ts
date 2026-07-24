@@ -169,6 +169,10 @@ async function publicProfile(sb: Supabase, identifier: string) {
     activeOffers(sb, String(profile.id)),
     publicCoachRatings(sb, String(profile.id)),
   ]);
+  const [{ data: packages }, { data: groups }] = await Promise.all([
+    sb.from("coaching_packages").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).eq("status", "active").order("created_at", { ascending: false }),
+    sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).in("status", ["active", "full"]).gt("scheduled_start", new Date().toISOString()).order("scheduled_start"),
+  ]);
   return {
     ...profile,
     full_name: user?.full_name || "Coach Omnia",
@@ -176,6 +180,8 @@ async function publicProfile(sb: Supabase, identifier: string) {
     domains: domainsByCoach.get(String(profile.id)) || [],
     offers,
     ratings,
+    packages: packages || [],
+    groups: groups || [],
   };
 }
 
@@ -957,7 +963,14 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
   await expireBookingHolds(sb, String(context.profile.id));
   const duration = Number(context.offer.duration_minutes);
   const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
-  const price = Number(context.offer.price_xof);
+  const originalPrice = Number(context.offer.price_xof);
+  const subscription = await activeSubscriptionForUser(sb, session.userId);
+  const subscriptionPlan = (subscription?.plan || null) as Record<string, unknown> | null;
+  const bookingLimit = subscriptionPlan?.monthly_booking_limit === null || subscriptionPlan?.monthly_booking_limit === undefined ? null : Number(subscriptionPlan.monthly_booking_limit);
+  const subscriptionUsable = Boolean(subscription && (!bookingLimit || Number(subscription.bookings_used || 0) < bookingLimit));
+  const discountPercent = subscriptionUsable ? Number(subscriptionPlan?.discount_percent || 0) : 0;
+  const discountXof = Math.round(originalPrice * discountPercent / 100);
+  const price = Math.max(0, originalPrice - discountXof);
   const commissionAmount = Math.round(price * context.limits.commission / 100);
   const holdExpiresAt = new Date(Date.now() + Number(context.settings?.slot_hold_minutes || 15) * 60000).toISOString();
   const payload = {
@@ -982,7 +995,11 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15) },
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15), subscription_id: subscriptionUsable ? subscription?.id : null, discount_percent: discountPercent },
+    funding_source: subscriptionUsable && discountPercent > 0 ? "subscription_discount" : "direct",
+    funding_reference_id: subscriptionUsable && discountPercent > 0 ? subscription?.id : null,
+    original_price_xof: originalPrice,
+    discount_xof: discountXof,
   };
   const { data, error } = await sb.from("coaching_sessions").insert(payload).select().single();
   if (error) {
@@ -1004,7 +1021,14 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
   if (!asStringArray(context.offer.session_modes, 2, 20).includes(meetingMode)) throw new Error("INVALID_SESSION_MODE");
   if (duration < Number(context.offer.custom_min_minutes) || duration > Number(context.offer.custom_max_minutes) || (duration - Number(context.offer.custom_min_minutes)) % Number(context.offer.custom_step_minutes) !== 0) throw new Error("INVALID_DURATION");
   const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
-  const price = Math.round(Number(context.offer.hourly_price_xof) * duration / 60);
+  const originalPrice = Math.round(Number(context.offer.hourly_price_xof) * duration / 60);
+  const subscription = await activeSubscriptionForUser(sb, session.userId);
+  const subscriptionPlan = (subscription?.plan || null) as Record<string, unknown> | null;
+  const bookingLimit = subscriptionPlan?.monthly_booking_limit === null || subscriptionPlan?.monthly_booking_limit === undefined ? null : Number(subscriptionPlan.monthly_booking_limit);
+  const subscriptionUsable = Boolean(subscription && (!bookingLimit || Number(subscription.bookings_used || 0) < bookingLimit));
+  const discountPercent = subscriptionUsable ? Number(subscriptionPlan?.discount_percent || 0) : 0;
+  const discountXof = Math.round(originalPrice * discountPercent / 100);
+  const price = Math.max(0, originalPrice - discountXof);
   const commissionAmount = Math.round(price * context.limits.commission / 100);
   const { data, error } = await sb.from("coaching_sessions").insert({
     learner_user_id: session.userId,
@@ -1025,12 +1049,16 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3" },
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", subscription_id: subscriptionUsable ? subscription?.id : null, discount_percent: discountPercent },
+    funding_source: subscriptionUsable && discountPercent > 0 ? "subscription_discount" : "direct",
+    funding_reference_id: subscriptionUsable && discountPercent > 0 ? subscription?.id : null,
+    original_price_xof: originalPrice,
+    discount_xof: discountXof,
   }).select().single();
   if (error) throw error;
   await invokeNotification("coaching_custom_request_received", {
     userId: context.profile.user_id,
-    learner_name: session.fullName || "Un apprenant",
+    learner_name: "Un apprenant",
     offer_title: context.offer.title,
     scheduled_start: slot.slot_start,
     duration_minutes: duration,
@@ -1227,6 +1255,17 @@ async function invokeNotification(type: string, payload: Record<string, unknown>
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ type, payload }),
+  }).catch(() => undefined);
+}
+
+async function requestCoachingInvoice(orderId: string) {
+  const url = Deno.env.get("SUPABASE_URL") || "";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return;
+  await fetch(`${url}/functions/v1/invoice-generate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ coaching_order_id: orderId }),
   }).catch(() => undefined);
 }
 
@@ -1521,12 +1560,15 @@ function errorResponse(error: unknown) {
     "BOOKING_CANNOT_CANCEL", "PAYMENT_NOT_ALLOWED", "PAYMENT_HOLD_EXPIRED", "PAYMENT_CONFIGURATION_MISSING", "PAYMENT_INIT_FAILED", "PAYMENT_LINK_FAILED",
     "INVALID_REFUND_AMOUNT", "PROVIDER_REFERENCE_REQUIRED", "REFUND_NOT_APPROVED", "INVALID_FINANCE_SETTINGS",
     "INVALID_MEETING_URL", "INVALID_PRESENCE_ACTION", "INVALID_SESSION_SETTINGS", "SESSION_CANNOT_CLOSE",
+    "PACKAGE_INCOMPLETE", "PACKAGE_PRICE_OUT_OF_RANGE", "GROUP_INCOMPLETE", "SUBSCRIPTION_PLAN_INCOMPLETE", "ADVANCED_PRODUCT_REQUIRED",
+    "ACTION_PLAN_INCOMPLETE", "ACTION_ITEM_INCOMPLETE", "INVALID_RECORDING_CONSENT", "RECORDING_STORAGE_KEY_REQUIRED", "INVALID_ADVANCED_SETTINGS",
   ];
   if (code === "SESSION_INVALID") return json({ error: code }, 401);
   if (code === "FORBIDDEN") return json({ error: code }, 403);
-  if (code === "INVOICE_UNAVAILABLE") return json({ error: code }, 503);
-  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
-  if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED", "SESSION_TOO_EARLY", "SESSION_OUTSIDE_ACCESS_WINDOW", "SESSION_ROOM_CLOSED", "SESSION_ROOM_UNAVAILABLE"].includes(code)) return json({ error: code }, 409);
+  if (["INVOICE_UNAVAILABLE", "RECORDING_STORAGE_NOT_CONFIGURED", "RECORDING_PROVIDER_FAILED"].includes(code)) return json({ error: code }, 503);
+  if (code === "INVALID_RECORDING_SECRET") return json({ error: code }, 401);
+  if (["APPLICATION_NOT_FOUND", "COACH_NOT_FOUND", "OFFER_NOT_FOUND", "BOOKING_NOT_FOUND", "COACHING_ORDER_NOT_FOUND", "INVOICE_NOT_FOUND", "REFUND_NOT_FOUND", "PACKAGE_NOT_FOUND", "SUBSCRIPTION_PLAN_NOT_FOUND", "GROUP_NOT_FOUND", "GROUP_REGISTRATION_NOT_FOUND", "ACTION_PLAN_NOT_FOUND", "RECORDING_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
+  if (["APPLICATION_ALREADY_ACTIVE", "SLOT_UNAVAILABLE", "OFFER_NOT_APPROVED", "SESSION_TOO_EARLY", "SESSION_OUTSIDE_ACCESS_WINDOW", "SESSION_ROOM_CLOSED", "SESSION_ROOM_UNAVAILABLE", "GROUP_FULL", "GROUP_ALREADY_REGISTERED", "GROUP_NOT_AVAILABLE", "PACKAGE_CREDIT_UNAVAILABLE", "PACKAGE_OFFER_MISMATCH", "RECORDING_CONSENT_REQUIRED", "RECORDING_DISABLED", "ACTIVE_RECORDING_NOT_FOUND", "GROUP_CANNOT_EDIT", "SUBSCRIPTION_ALREADY_ACTIVE"].includes(code)) return json({ error: code }, 409);
   if (["SESSION_ROOM_NOT_FOUND", "SESSION_MEMBER_NOT_FOUND"].includes(code)) return json({ error: code }, 404);
   if (badRequest.includes(code)) return json({ error: code }, 400);
   console.error("[coaching]", error);
@@ -2188,8 +2230,9 @@ async function addCoachingDisputeMessage(sb: Supabase, actor: Session, body: Rec
 
 async function coachRevenueDashboard(sb: Supabase, actor: Session) {
   const profile = await ownCoachProfile(sb, actor);
-  const [{ data: earnings, error: earningError }, { data: wallet }, { data: payouts }, { data: settings }] = await Promise.all([
+  const [{ data: earnings, error: earningError }, { data: advancedEarnings }, { data: wallet }, { data: payouts }, { data: settings }] = await Promise.all([
     sb.from("coaching_earnings").select("*,session:coaching_sessions(id,offer_title_snapshot,scheduled_start,status),order:coaching_payment_orders(id,order_number,payment_status)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
+    sb.from("coaching_advanced_earnings").select("*,order:coaching_payment_orders(id,order_number,payment_status,offer_title_snapshot,product_type,product_id)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
     sb.from("wallets").select("*").eq("user_id", actor.userId).maybeSingle(),
     sb.from("payout_requests").select("id,amount_xof,channel,status,requested_at,processed_at,paid_at,provider_reference,admin_note").eq("user_id", actor.userId).order("requested_at", { ascending: false }).limit(100),
     sb.from("site_settings").select("key,value").in("key", ["payout_minimum_xof", "payout_delay_label", "canal_mobile_money", "canal_virement_uemoa", "canal_swift"]),
@@ -2198,14 +2241,16 @@ async function coachRevenueDashboard(sb: Supabase, actor: Session) {
   const cfg: Record<string, unknown> = {};
   for (const row of settings || []) cfg[String(row.key)] = row.value;
   const rows = earnings || [];
-  const sum = (status: string) => rows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0);
+  const advancedRows = advancedEarnings || [];
+  const sum = (status: string) => rows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) + advancedRows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Number(row.net_amount_xof || 0), 0);
   return {
     profile,
     earnings: rows,
+    advanced_earnings: advancedRows,
     wallet: wallet || { balance_xof: 0, reserved_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
     payouts: payouts || [],
     settings: cfg,
-    metrics: { locked_xof: sum("locked"), frozen_xof: sum("frozen"), available_earnings_xof: sum("available"), lifetime_net_xof: rows.reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) },
+    metrics: { locked_xof: sum("locked"), frozen_xof: sum("frozen"), available_earnings_xof: sum("available"), lifetime_net_xof: rows.reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) + advancedRows.reduce((total: number, row: Record<string, unknown>) => total + Number(row.net_amount_xof || 0), 0) },
   };
 }
 
@@ -2319,26 +2364,30 @@ async function adminModerateCoachingRating(sb: Supabase, actor: Session, body: R
 }
 
 async function adminCoachingRevenue(sb: Supabase) {
-  const [{ data: earnings, error }, { data: wallets }, { data: payouts }] = await Promise.all([
+  const [{ data: earnings, error }, { data: advancedEarnings }, { data: wallets }, { data: payouts }] = await Promise.all([
     sb.from("coaching_earnings").select("*,session:coaching_sessions(id,offer_title_snapshot,coach_name_snapshot,scheduled_start,status),order:coaching_payment_orders(id,order_number,payment_status)").order("created_at", { ascending: false }).limit(500),
+    sb.from("coaching_advanced_earnings").select("*,order:coaching_payment_orders(id,order_number,payment_status,offer_title_snapshot,product_type,product_id)").order("created_at", { ascending: false }).limit(500),
     sb.from("wallets").select("id,user_id,balance_xof,reserved_xof,total_earned_xof,total_withdrawn_xof"),
     sb.from("payout_requests").select("id,user_id,amount_xof,status,requested_at,paid_at,channel").order("requested_at", { ascending: false }).limit(300),
   ]);
   if (error) throw error;
-  const coachUserIds = [...new Set((earnings || []).map((row: Record<string, unknown>) => String(row.coach_user_id)))];
+  const coachUserIds = [...new Set([...(earnings || []), ...(advancedEarnings || [])].map((row: Record<string, unknown>) => String(row.coach_user_id)))];
   const { data: users } = coachUserIds.length ? await sb.from("users").select("id,full_name,email").in("id", coachUserIds) : { data: [] };
   const byId = new Map((users || []).map((row: Record<string, unknown>) => [String(row.id), row]));
   const rows = (earnings || []).map((row: Record<string, unknown>) => ({ ...row, coach_user: byId.get(String(row.coach_user_id)) || null }));
+  const advancedRows = (advancedEarnings || []).map((row: Record<string, unknown>) => ({ ...row, coach_user: byId.get(String(row.coach_user_id)) || null }));
+  const allRows = [...rows, ...advancedRows];
   const net = (row: Record<string, unknown>) => Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0));
   return {
     earnings: rows,
+    advanced_earnings: advancedRows,
     wallets: wallets || [],
     payouts: (payouts || []).filter((row: Record<string, unknown>) => coachUserIds.includes(String(row.user_id))),
     metrics: {
-      locked_xof: rows.filter((r: Record<string, unknown>) => r.status === "locked").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
-      frozen_xof: rows.filter((r: Record<string, unknown>) => r.status === "frozen").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
-      credited_xof: rows.filter((r: Record<string, unknown>) => r.status === "available").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
-      commission_xof: rows.reduce((s: number, r: Record<string, unknown>) => {
+      locked_xof: allRows.filter((r: Record<string, unknown>) => r.status === "locked").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      frozen_xof: allRows.filter((r: Record<string, unknown>) => r.status === "frozen").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      credited_xof: allRows.filter((r: Record<string, unknown>) => r.status === "available").reduce((s: number, r: Record<string, unknown>) => s + net(r), 0),
+      commission_xof: allRows.reduce((s: number, r: Record<string, unknown>) => {
         const gross = Math.max(0, Number(r.gross_amount_xof || 0) - Number(r.refunded_gross_xof || 0));
         const coachNet = Math.max(0, Number(r.net_amount_xof || 0) - Number(r.refunded_net_xof || 0));
         return s + Math.max(0, gross - coachNet);
@@ -2366,6 +2415,527 @@ async function adminSavePerformanceSettings(sb: Supabase, actor: Session, body: 
 }
 
 
+type AdvancedProductType = "package" | "subscription" | "group";
+
+type AdvancedOrderContext = {
+  productType: AdvancedProductType;
+  productId: string;
+  title: string;
+  description: string;
+  amountXof: number;
+  coachId: string | null;
+  coachName: string;
+  commissionPercent: number;
+  commissionAmount: number;
+  coachNet: number;
+  returnPath: string;
+  snapshot: Record<string, unknown>;
+};
+
+async function advancedSettings(sb: Supabase) {
+  const { data, error } = await sb.from("coaching_settings").select("*").eq("id", 1).single();
+  if (error) throw error;
+  return data as Record<string, unknown>;
+}
+
+async function learnerPreferences(sb: Supabase, actor: Session) {
+  const { data, error } = await sb.from("learner_coaching_preferences").select("*").eq("user_id", actor.userId).maybeSingle();
+  if (error) throw error;
+  return data || {
+    user_id: actor.userId,
+    domain_ids: [],
+    languages: ["Français"],
+    goals: [],
+    budget_min_xof: 0,
+    budget_max_xof: null,
+    meeting_modes: ["jitsi", "external"],
+    preferred_formats: ["individual"],
+  };
+}
+
+async function saveLearnerPreferences(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const domainIds = asStringArray(body.domain_ids, 20, 80);
+  if (domainIds.length) {
+    const { data } = await sb.from("coaching_domains").select("id").in("id", domainIds).eq("is_active", true);
+    if ((data || []).length !== domainIds.length) throw new Error("INVALID_DOMAIN");
+  }
+  const minBudget = asInteger(body.budget_min_xof) ?? 0;
+  const maxBudget = asInteger(body.budget_max_xof);
+  if (maxBudget !== null && maxBudget < minBudget) throw new Error("INVALID_PRICE_RANGE");
+  const meetingModes = asStringArray(body.meeting_modes, 2, 20).filter((v) => ["jitsi", "external"].includes(v));
+  const formats = asStringArray(body.preferred_formats, 2, 20).filter((v) => ["individual", "group"].includes(v));
+  const payload = {
+    user_id: actor.userId,
+    domain_ids: domainIds,
+    languages: asStringArray(body.languages, 12, 80),
+    goals: asStringArray(body.goals, 15, 180),
+    budget_min_xof: minBudget,
+    budget_max_xof: maxBudget,
+    meeting_modes: meetingModes.length ? meetingModes : ["jitsi", "external"],
+    preferred_formats: formats.length ? formats : ["individual"],
+  };
+  const { data, error } = await sb.from("learner_coaching_preferences").upsert(payload, { onConflict: "user_id" }).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+async function activeSubscriptionForUser(sb: Supabase, userId: string) {
+  await sb.from("coaching_subscriptions").update({ status: "expired" }).eq("user_id", userId).eq("status", "active").lt("ends_at", new Date().toISOString());
+  const { data, error } = await sb.from("coaching_subscriptions").select("*,plan:coaching_subscription_plans(*)").eq("user_id", userId).eq("status", "active").gt("ends_at", new Date().toISOString()).maybeSingle();
+  if (error) throw error;
+  return data as Record<string, unknown> | null;
+}
+
+async function learnerAdvancedDashboard(sb: Supabase, actor: Session) {
+  const now = new Date().toISOString();
+  const [preferences, subscription, packages, groups, plans] = await Promise.all([
+    learnerPreferences(sb, actor),
+    activeSubscriptionForUser(sb, actor.userId),
+    sb.from("coaching_package_purchases").select("*,package:coaching_packages(*,coach:coach_profiles(id,user_id,public_slug,professional_title))").eq("user_id", actor.userId).order("created_at", { ascending: false }),
+    sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(*,coach:coach_profiles(id,user_id,public_slug,professional_title))").eq("user_id", actor.userId).order("created_at", { ascending: false }),
+    sb.from("coaching_action_plans").select("*,items:coaching_action_items(*)").eq("learner_user_id", actor.userId).eq("learner_visible", true).order("updated_at", { ascending: false }),
+  ]);
+  const packageRows = (packages.data || []).map((row: Record<string, unknown>) => ({ ...row, expired: Boolean(row.expires_at && String(row.expires_at) < now) }));
+  return { preferences, subscription, packages: packageRows, groups: groups.data || [], action_plans: plans.data || [] };
+}
+
+function normalizedWords(values: unknown[]): Set<string> {
+  const words = new Set<string>();
+  for (const value of values) {
+    const text = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    for (const word of text.split(/[^a-z0-9]+/).filter((item) => item.length > 2)) words.add(word);
+  }
+  return words;
+}
+
+async function coachingRecommendations(sb: Supabase, actor: Session) {
+  const settings = await advancedSettings(sb);
+  if (settings.recommendations_enabled === false) return { preferences: await learnerPreferences(sb, actor), recommendations: [], source_categories: [] };
+  const preferences = await learnerPreferences(sb, actor) as Record<string, unknown>;
+  const [{ data: enrollments }, coaches, subscription] = await Promise.all([
+    sb.from("user_enrollments").select("course_id,courses(category,title)").eq("user_id", actor.userId),
+    publicCoaches(sb),
+    activeSubscriptionForUser(sb, actor.userId),
+  ]);
+  const coachRows = coaches as Array<Record<string, unknown>>;
+  const coachIds = coachRows.map((coach) => String(coach.id));
+  const [{ data: offerRows }, { data: availabilityRows }] = coachIds.length
+    ? await Promise.all([
+        sb.from("coach_offers").select("id,coach_id,price_xof,hourly_price_xof,session_modes,status").in("coach_id", coachIds).eq("status", "active"),
+        sb.from("coach_availability_rules").select("coach_id").in("coach_id", coachIds).eq("is_active", true),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const availableCoachIds = new Set((availabilityRows || []).map((row: Record<string, unknown>) => String(row.coach_id)));
+  const offersByCoach = new Map<string, Array<Record<string, unknown>>>();
+  for (const offer of offerRows || []) {
+    const coachId = String((offer as Record<string, unknown>).coach_id);
+    offersByCoach.set(coachId, [...(offersByCoach.get(coachId) || []), offer as Record<string, unknown>]);
+  }
+  const courseCategories = (enrollments || []).flatMap((row: Record<string, unknown>) => {
+    const course = row.courses as Record<string, unknown> | null;
+    return course ? [String(course.category || ""), String(course.title || "")] : [];
+  }).filter(Boolean);
+  const goals = Array.isArray(preferences.goals) ? preferences.goals : [];
+  const interestWords = normalizedWords([...goals, ...courseCategories]);
+  const preferredDomains = new Set(asStringArray(preferences.domain_ids, 30, 80));
+  const preferredLanguages = new Set(asStringArray(preferences.languages, 20, 80).map((v) => v.toLowerCase()));
+  const preferredModes = new Set(asStringArray(preferences.meeting_modes, 5, 20));
+  const minBudget = Number(preferences.budget_min_xof || 0);
+  const maxBudget = preferences.budget_max_xof === null || preferences.budget_max_xof === undefined ? null : Number(preferences.budget_max_xof);
+  const weights = (settings.matching_weights || {}) as Record<string, unknown>;
+  const subscriptionPlan = subscription?.plan as Record<string, unknown> | undefined;
+  const priorityBonus = Boolean(subscriptionPlan?.priority_matching) ? 5 : 0;
+  const rows = coachRows.filter((coach) => String(coach.user_id) !== actor.userId).map((coach) => {
+    let score = priorityBonus;
+    const reasons: string[] = [];
+    const domains = (coach.domains || []) as Array<Record<string, unknown>>;
+    const domainMatch = domains.filter((domain) => preferredDomains.has(String(domain.id)));
+    if (domainMatch.length) { score += Number(weights.domains || 40); reasons.push(`Domaine : ${domainMatch.map((d) => d.name).join(", ")}`); }
+    const specialties = Array.isArray(coach.specialties) ? coach.specialties : [];
+    const coachWords = normalizedWords([coach.professional_title, coach.biography, ...specialties, ...domains.map((d) => d.name)]);
+    const sharedWords = [...interestWords].filter((word) => coachWords.has(word));
+    if (sharedWords.length) { score += Math.min(20, sharedWords.length * 4); reasons.push("Correspond à vos objectifs et formations"); }
+    const languages = asStringArray(coach.languages, 20, 80).map((v) => v.toLowerCase());
+    if (languages.some((lang) => preferredLanguages.has(lang))) { score += Number(weights.languages || 20); reasons.push("Langue compatible"); }
+    const offers = offersByCoach.get(String(coach.id)) || [];
+    const prices = offers.map((offer) => Number(offer.price_xof || offer.hourly_price_xof || 0)).filter((price) => Number.isFinite(price) && price >= 0);
+    const minPrice = prices.length ? Math.min(...prices) : null;
+    if (minPrice !== null && minPrice >= minBudget && (maxBudget === null || minPrice <= maxBudget)) { score += Number(weights.budget || 15); reasons.push("Dans votre budget"); }
+    if (offers.some((offer) => asStringArray(offer.session_modes, 5, 20).some((mode) => preferredModes.has(mode)))) score += 5;
+    if (availableCoachIds.has(String(coach.id)) && coach.vacation_mode !== true) {
+      score += Number(weights.availability || 10);
+      reasons.push("Disponibilités configurées");
+    }
+    const rating = Number(coach.average_rating || 0);
+    score += Math.round((rating / 5) * Number(weights.rating || 15));
+    if (rating >= 4.5 && Number(coach.rating_count || 0) >= 3) reasons.push("Très bien évalué");
+    return { coach: { ...coach, offers }, score: Math.min(100, Math.round(score)), reasons: [...new Set(reasons)].slice(0, 4), minimum_price_xof: minPrice };
+  }).sort((a, b) => b.score - a.score || Number(b.coach.average_rating || 0) - Number(a.coach.average_rating || 0)).slice(0, 12);
+  return { preferences, recommendations: rows, source_categories: courseCategories.slice(0, 12), subscription };
+}
+
+async function publicAdvancedCatalogue(sb: Supabase) {
+  const now = new Date().toISOString();
+  const [{ data: packages }, { data: plans }, { data: groups }, domains] = await Promise.all([
+    sb.from("coaching_packages").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title,photo_url,average_rating,rating_count),domain:coaching_domains(id,slug,name)").eq("status", "active").order("created_at", { ascending: false }),
+    sb.from("coaching_subscription_plans").select("*").eq("is_active", true).order("display_order"),
+    sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title,photo_url,average_rating,rating_count),domain:coaching_domains(id,slug,name),registrations:coaching_group_registrations(id,status)").in("status", ["active", "full"]).gt("scheduled_start", now).order("scheduled_start"),
+    getDomains(sb),
+  ]);
+  const coachUserIds = [...new Set([...(packages || []), ...(groups || [])].map((row: Record<string, unknown>) => String((row.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
+  const { data: users } = coachUserIds.length ? await sb.from("users").select("id,full_name").in("id", coachUserIds) : { data: [] };
+  const names = new Map((users || []).map((u: Record<string, unknown>) => [String(u.id), String(u.full_name || "Coach Omnia")]));
+  const enrich = (row: Record<string, unknown>) => {
+    const coach = (row.coach || {}) as Record<string, unknown>;
+    return { ...row, coach: { ...coach, full_name: names.get(String(coach.user_id)) || "Coach Omnia" } };
+  };
+  return {
+    packages: (packages || []).map(enrich),
+    subscription_plans: plans || [],
+    groups: (groups || []).map((row: Record<string, unknown>) => ({ ...enrich(row), confirmed_count: ((row.registrations || []) as Array<Record<string, unknown>>).filter((r) => ["confirmed", "attended"].includes(String(r.status))).length })),
+    domains,
+  };
+}
+
+async function coachAdvancedProducts(sb: Supabase, actor: Session) {
+  const profile = await ownCoachProfile(sb, actor);
+  const [{ data: packages }, { data: groups }] = await Promise.all([
+    sb.from("coaching_packages").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
+    sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).order("scheduled_start", { ascending: false }),
+  ]);
+  const packageIds = (packages || []).map((row: Record<string, unknown>) => String(row.id));
+  const groupIds = (groups || []).map((row: Record<string, unknown>) => String(row.id));
+  const [{ data: purchases }, { data: registrations }] = await Promise.all([
+    packageIds.length ? sb.from("coaching_package_purchases").select("*,package:coaching_packages(id,coach_id,title)").in("package_id", packageIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    groupIds.length ? sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(id,coach_id,title,scheduled_start),user:users(id,full_name,email)").in("program_id", groupIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+  ]);
+  return { profile, packages: packages || [], groups: groups || [], package_purchases: purchases || [], group_registrations: registrations || [], domains: await getDomains(sb) };
+}
+
+async function saveCoachPackage(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, actor);
+  const id = asNullableText(body.id, 80);
+  const title = asText(body.title, 180);
+  const sessionCount = asInteger(body.session_count);
+  const duration = asInteger(body.session_duration_minutes);
+  const price = asInteger(body.price_xof);
+  const validity = asInteger(body.validity_days);
+  const modes = asStringArray(body.session_modes, 2, 20).filter((v) => ["jitsi", "external"].includes(v));
+  if (!title || !sessionCount || sessionCount < 2 || sessionCount > 24 || !duration || ![30,60,90].includes(duration) || price === null || !validity || validity < 7 || !modes.length) throw new Error("PACKAGE_INCOMPLETE");
+  const limits = await coachPriceLimits(sb, profile);
+  const perSession = price / sessionCount;
+  if (perSession < limits.minimum || (limits.maximum !== null && perSession > limits.maximum)) throw new Error("PACKAGE_PRICE_OUT_OF_RANGE");
+  const payload = { coach_id: profile.id, domain_id: asNullableText(body.domain_id, 80), title, description: asText(body.description, 2500), session_count: sessionCount, session_duration_minutes: duration, price_xof: price, validity_days: validity, session_modes: modes, status: "pending", admin_message: null, reviewed_by: null, reviewed_at: null };
+  if (id) {
+    const current = await sb.from("coaching_packages").select("*").eq("id", id).eq("coach_id", profile.id).maybeSingle();
+    if (!current.data) throw new Error("PACKAGE_NOT_FOUND");
+    const { data, error } = await sb.from("coaching_packages").update(payload).eq("id", id).select("*").single(); if (error) throw error; return data;
+  }
+  const { data, error } = await sb.from("coaching_packages").insert(payload).select("*").single(); if (error) throw error; return data;
+}
+
+async function saveCoachGroup(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const profile = await ownCoachProfile(sb, actor);
+  const id = asNullableText(body.id, 80);
+  const title = asText(body.title, 180);
+  const start = asIsoDate(body.scheduled_start);
+  const end = asIsoDate(body.scheduled_end);
+  const capacity = asInteger(body.capacity);
+  const price = asInteger(body.price_per_participant_xof);
+  const mode = asText(body.meeting_mode, 20);
+  if (!title || !start || !end || new Date(start) >= new Date(end) || !capacity || capacity < 2 || capacity > 5 || price === null || !["jitsi", "external"].includes(mode)) throw new Error("GROUP_INCOMPLETE");
+  const limits = await coachPriceLimits(sb, profile);
+  if (price < limits.minimum || (limits.maximum !== null && price > limits.maximum)) throw new Error("OFFER_PRICE_OUT_OF_RANGE");
+  const payload = { coach_id: profile.id, domain_id: asNullableText(body.domain_id, 80), title, description: asText(body.description, 3000), scheduled_start: start, scheduled_end: end, capacity, price_per_participant_xof: price, meeting_mode: mode, external_meeting_url: mode === "external" ? asNullableText(body.external_meeting_url, 1000) : null, status: "pending", admin_message: null, reviewed_by: null, reviewed_at: null };
+  if (payload.external_meeting_url && !isHttpUrl(payload.external_meeting_url)) throw new Error("INVALID_MEETING_URL");
+  if (id) {
+    const current = await sb.from("coaching_group_programs").select("*").eq("id", id).eq("coach_id", profile.id).maybeSingle();
+    if (!current.data) throw new Error("GROUP_NOT_FOUND");
+    if (["in_progress","completed"].includes(String(current.data.status))) throw new Error("GROUP_CANNOT_EDIT");
+    const { data, error } = await sb.from("coaching_group_programs").update(payload).eq("id", id).select("*").single(); if (error) throw error; return data;
+  }
+  const { data, error } = await sb.from("coaching_group_programs").insert(payload).select("*").single(); if (error) throw error; return data;
+}
+
+async function adminAdvancedProducts(sb: Supabase) {
+  const [{ data: packages }, { data: groups }, { data: plans }, { data: recordings }, settings] = await Promise.all([
+    sb.from("coaching_packages").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title),domain:coaching_domains(id,name)").order("created_at", { ascending: false }),
+    sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title),domain:coaching_domains(id,name)").order("scheduled_start", { ascending: false }),
+    sb.from("coaching_subscription_plans").select("*").order("display_order"),
+    sb.from("coaching_recordings").select("*,session:coaching_sessions(id,offer_title_snapshot,coach_name_snapshot,scheduled_start)").order("created_at", { ascending: false }).limit(200),
+    advancedSettings(sb),
+  ]);
+  const userIds = [...new Set([...(packages || []), ...(groups || [])].map((r: Record<string, unknown>) => String((r.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
+  const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
+  const names = new Map((users || []).map((u: Record<string, unknown>) => [String(u.id), String(u.full_name || "Coach Omnia")]));
+  const enrich = (row: Record<string, unknown>) => { const coach=(row.coach||{}) as Record<string,unknown>; return {...row,coach:{...coach,full_name:names.get(String(coach.user_id))||"Coach Omnia"}}; };
+  return { packages: (packages || []).map(enrich), groups: (groups || []).map(enrich), subscription_plans: plans || [], recordings: recordings || [], settings };
+}
+
+async function adminReviewAdvanced(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const productType = asText(body.product_type, 30);
+  const productId = asText(body.product_id, 80);
+  const decision = asText(body.decision, 30);
+  const table = productType === "package" ? "coaching_packages" : productType === "group" ? "coaching_group_programs" : "";
+  if (!table || !productId || !["approve","reject","inactive","archive"].includes(decision)) throw new Error("INVALID_REVIEW");
+  const current = await sb.from(table).select("*").eq("id", productId).maybeSingle();
+  if (!current.data) throw new Error(productType === "package" ? "PACKAGE_NOT_FOUND" : "GROUP_NOT_FOUND");
+  const message = asNullableText(body.message, 2000);
+  if (decision === "reject" && !message) throw new Error("REVIEW_MESSAGE_REQUIRED");
+  const status = decision === "approve" ? "active" : decision === "reject" ? "rejected" : decision === "inactive" ? "inactive" : "archived";
+  const { data, error } = await sb.from(table).update({ status, admin_message: message, reviewed_by: actor.userId, reviewed_at: new Date().toISOString() }).eq("id", productId).select("*").single();
+  if (error) throw error;
+  await audit(sb, actor.userId, `${productType}_${status}`, productType, productId, current.data, data);
+  return data;
+}
+
+async function adminSaveSubscriptionPlan(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const id = asNullableText(body.id, 80);
+  const name = asText(body.name, 160);
+  const price = asInteger(body.monthly_price_xof);
+  const discount = asInteger(body.discount_percent);
+  const limit = asInteger(body.monthly_booking_limit);
+  const validity = asInteger(body.validity_days) || 30;
+  if (!name || price === null || discount === null || discount > 80 || validity < 7 || validity > 60) throw new Error("SUBSCRIPTION_PLAN_INCOMPLETE");
+  const payload = { slug: slugify(asText(body.slug, 160) || name), name, description: asText(body.description, 2500), monthly_price_xof: price, discount_percent: discount, monthly_booking_limit: limit, priority_matching: asBoolean(body.priority_matching), validity_days: validity, display_order: asInteger(body.display_order) || 0, is_active: asBoolean(body.is_active, true) };
+  const result = id ? await sb.from("coaching_subscription_plans").update(payload).eq("id", id).select("*").single() : await sb.from("coaching_subscription_plans").insert(payload).select("*").single();
+  if (result.error) throw result.error;
+  await audit(sb, actor.userId, id ? "subscription_plan_updated" : "subscription_plan_created", "coaching_subscription_plan", String(result.data.id), null, result.data);
+  return result.data;
+}
+
+async function resolveAdvancedOrderContext(sb: Supabase, actor: Session, body: Record<string, unknown>): Promise<AdvancedOrderContext> {
+  const productType = asText(body.product_type, 30) as AdvancedProductType;
+  const productId = asText(body.product_id, 80);
+  if (!productId || !["package","subscription","group"].includes(productType)) throw new Error("ADVANCED_PRODUCT_REQUIRED");
+  if (productType === "package") {
+    const { data: product } = await sb.from("coaching_packages").select("*,coach:coach_profiles(*)").eq("id", productId).eq("status", "active").maybeSingle();
+    if (!product) throw new Error("PACKAGE_NOT_FOUND");
+    if (String((product.coach as Record<string, unknown>).user_id) === actor.userId) throw new Error("CANNOT_BOOK_SELF");
+    const limits = await coachPriceLimits(sb, product.coach as Record<string, unknown>);
+    const amount = Number(product.price_xof); const commission = Math.round(amount * limits.commission / 100);
+    const { data: coachUser } = await sb.from("users").select("full_name").eq("id", (product.coach as Record<string, unknown>).user_id).maybeSingle();
+    return { productType, productId, title: String(product.title), description: `Pack de ${product.session_count} séances`, amountXof: amount, coachId: String(product.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: limits.commission, commissionAmount: commission, coachNet: amount-commission, returnPath: "/dashboard/coaching/avance", snapshot: product };
+  }
+  if (productType === "subscription") {
+    const { data: plan } = await sb.from("coaching_subscription_plans").select("*").eq("id", productId).eq("is_active", true).maybeSingle();
+    if (!plan) throw new Error("SUBSCRIPTION_PLAN_NOT_FOUND");
+    const current = await activeSubscriptionForUser(sb, actor.userId);
+    if (current) throw new Error("SUBSCRIPTION_ALREADY_ACTIVE");
+    return { productType, productId, title: String(plan.name), description: "Abonnement mensuel Omnia Coaching", amountXof: Number(plan.monthly_price_xof), coachId: null, coachName: "Omnia Coaching", commissionPercent: 100, commissionAmount: Number(plan.monthly_price_xof), coachNet: 0, returnPath: "/dashboard/coaching/avance", snapshot: plan };
+  }
+  let registrationId = asNullableText(body.registration_id, 80);
+  if (!registrationId) {
+    const existing = await sb.from("coaching_group_registrations").select("id,status,hold_expires_at").eq("program_id", productId).eq("user_id", actor.userId).in("status", ["pending_payment","confirmed","attended"]).maybeSingle();
+    if (existing.data?.status === "confirmed" || existing.data?.status === "attended") throw new Error("GROUP_ALREADY_REGISTERED");
+    if (existing.data?.status === "pending_payment" && (!existing.data.hold_expires_at || new Date(String(existing.data.hold_expires_at)).getTime() > Date.now())) registrationId = String(existing.data.id);
+    if (!registrationId) {
+      const settings = await advancedSettings(sb);
+      const rpc = await sb.rpc("coaching_reserve_group_seat", { p_program_id: productId, p_user_id: actor.userId, p_hold_minutes: Number(settings.slot_hold_minutes || 15) });
+      if (rpc.error) throw new Error(String(rpc.error.message || "GROUP_NOT_AVAILABLE").includes("GROUP_FULL") ? "GROUP_FULL" : String(rpc.error.message || "GROUP_NOT_AVAILABLE").includes("GROUP_ALREADY_REGISTERED") ? "GROUP_ALREADY_REGISTERED" : "GROUP_NOT_AVAILABLE");
+      registrationId = String(rpc.data);
+    }
+  }
+  const { data: registration } = await sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(*,coach:coach_profiles(*))").eq("id", registrationId).eq("user_id", actor.userId).maybeSingle();
+  if (!registration) throw new Error("GROUP_REGISTRATION_NOT_FOUND");
+  const program = registration.program as Record<string, unknown>; const coach = program.coach as Record<string, unknown>;
+  if (!["active","full"].includes(String(program.status)) || new Date(String(program.scheduled_start)).getTime() <= Date.now()) throw new Error("GROUP_NOT_AVAILABLE");
+  const limits = await coachPriceLimits(sb, coach); const amount = Number(program.price_per_participant_xof); const commission = Math.round(amount * limits.commission / 100);
+  await sb.from("coaching_group_registrations").update({ commission_percent_snapshot: limits.commission, commission_amount_xof: commission, coach_net_xof: amount-commission }).eq("id", registration.id);
+  const { data: coachUser } = await sb.from("users").select("full_name").eq("id", coach.user_id).maybeSingle();
+  return { productType, productId: String(registration.id), title: String(program.title), description: "Coaching collectif", amountXof: amount, coachId: String(program.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: limits.commission, commissionAmount: commission, coachNet: amount-commission, returnPath: `/coaching/groupes/${program.id}/room`, snapshot: { ...program, registration_id: registration.id } };
+}
+
+function advancedOrderNumber(type: AdvancedProductType) {
+  const prefix = type === "package" ? "PACK" : type === "subscription" ? "SUB" : "GRP";
+  return `OGA-COACH-${prefix}-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`;
+}
+
+async function advancedCheckout(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const context = await resolveAdvancedOrderContext(sb, actor, body);
+  const existing = await sb.from("coaching_payment_orders").select("*").eq("user_id", actor.userId).eq("product_type", context.productType).eq("product_id", context.productId).in("payment_status", ["pending","paid"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (existing.data?.payment_status === "paid") return { order: existing.data, already_paid: true, payment_url: null };
+  const { data: user } = await sb.from("users").select("id,full_name,email,phone_number,country_code,status").eq("id", actor.userId).maybeSingle();
+  if (!user || user.status !== "actif") throw new Error("SESSION_INVALID");
+  const orderNumber = existing.data?.order_number || advancedOrderNumber(context.productType);
+  const idempotencyKey = existing.data?.idempotency_key || await sha256Hex(`${actor.userId}:${context.productType}:${context.productId}:${orderNumber}`);
+  const orderPayload = { order_number: orderNumber, session_id: null, user_id: actor.userId, coach_id: context.coachId, amount_xof: context.amountXof, currency: "XOF", payment_status: "pending", payment_provider: "fedapay", idempotency_key: idempotencyKey, commission_percent_snapshot: context.commissionPercent, commission_amount_xof: context.commissionAmount, coach_net_xof: context.coachNet, offer_title_snapshot: context.title, coach_name_snapshot: context.coachName, session_start_snapshot: context.productType === "group" ? context.snapshot.scheduled_start : null, session_end_snapshot: context.productType === "group" ? context.snapshot.scheduled_end : null, policy_snapshot: { source: "coaching_module_6" }, product_type: context.productType, product_id: context.productId, product_snapshot: context.snapshot };
+  const result = existing.data ? await sb.from("coaching_payment_orders").update(orderPayload).eq("id", existing.data.id).select("*").single() : await sb.from("coaching_payment_orders").insert(orderPayload).select("*").single();
+  if (result.error) throw result.error;
+  const order = result.data;
+  if (context.productType === "group") await sb.from("coaching_group_registrations").update({ order_id: order.id }).eq("id", context.productId);
+  if (context.amountXof === 0) {
+    const freeReference = `FREE-${order.order_number}`;
+    const confirmed = await sb.rpc("coaching_confirm_advanced_payment", { p_order_id: order.id, p_provider_transaction_id: freeReference, p_provider_reference: freeReference, p_provider_metadata: { source: "free_advanced_product" } });
+    if (confirmed.error) throw confirmed.error;
+    await requestCoachingInvoice(order.id);
+    await invokeNotification("coaching_advanced_purchase_confirmed", { userId: actor.userId, product_type: context.productType, product_title: context.title, amount_xof: 0, action_url: context.returnPath });
+    if (context.coachId) {
+      const { data: coach } = await sb.from("coach_profiles").select("user_id").eq("id", context.coachId).maybeSingle();
+      if (coach?.user_id) await invokeNotification("coaching_advanced_sale", { userId: coach.user_id, product_type: context.productType, product_title: context.title, amount_xof: 0, action_url: "/coach/produits" });
+    }
+    const { data: paidOrder } = await sb.from("coaching_payment_orders").select("*").eq("id", order.id).single();
+    return { order: paidOrder || { ...order, payment_status: "paid", provider_transaction_id: freeReference }, payment_url: null, already_paid: true, free_order: true };
+  }
+  const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || ""; if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
+  const apiBase = (Deno.env.get("FEDAPAY_API_BASE") || "https://api.fedapay.com/v1").replace(/\/$/, "");
+  const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const names = String(user.full_name || "").trim().split(/\s+/); const firstname = names.shift() || String(user.email).split("@")[0]; const lastname = names.join(" ") || "-";
+  const metadata = { resource_type: "coaching_advanced", coaching_order_id: order.id, product_type: context.productType, product_id: context.productId, user_id: actor.userId };
+  const transactionResponse = await fetch(`${apiBase}/transactions`, { method: "POST", headers: { Authorization: `Bearer ${fedaKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ description: `Omnia Coaching — ${context.title}`, amount: context.amountXof, currency: { iso: "XOF" }, callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`, return_url: `${appUrl}/coaching/avance/paiement/${order.id}?retour=fedapay`, cancel_url: `${appUrl}/coaching/avance/paiement/${order.id}?annule=1`, merchant_reference: `${order.order_number}-${Date.now().toString().slice(-6)}`, custom_metadata: metadata, metadata, customer: { email: user.email, firstname, lastname, ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}) } }) });
+  if (!transactionResponse.ok) { const detail=await transactionResponse.text().catch(()=>""); await sb.from("coaching_payment_orders").update({payment_status:"failed",failed_at:new Date().toISOString(),provider_metadata:{initialization_error:detail.slice(0,1000)}}).eq("id",order.id); throw new Error("PAYMENT_INIT_FAILED"); }
+  const transactionData=await transactionResponse.json(); const transaction=transactionData.v1Transaction||transactionData.transaction||transactionData; const providerId=transaction?.id?String(transaction.id):""; if(!providerId) throw new Error("PAYMENT_INIT_FAILED");
+  const tokenResponse=await fetch(`${apiBase}/transactions/${providerId}/token`,{method:"POST",headers:{Authorization:`Bearer ${fedaKey}`,"Content-Type":"application/json"}}); if(!tokenResponse.ok) throw new Error("PAYMENT_LINK_FAILED"); const tokenData=await tokenResponse.json(); const paymentUrl=String(tokenData.url||tokenData.token_url||""); if(!paymentUrl) throw new Error("PAYMENT_LINK_FAILED");
+  await sb.from("coaching_payment_orders").update({provider_transaction_id:providerId,provider_reference:transaction?.reference||null,provider_metadata:transactionData}).eq("id",order.id);
+  return { order: { ...order, provider_transaction_id: providerId }, payment_url: paymentUrl, already_paid: false };
+}
+
+async function advancedPaymentStatus(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const orderId = asText(body.order_id, 80);
+  const { data: order, error } = await sb.from("coaching_payment_orders").select("*").eq("id", orderId).eq("user_id", actor.userId).maybeSingle();
+  if (error) throw error; if (!order || order.product_type === "session") throw new Error("COACHING_ORDER_NOT_FOUND");
+  const { data: invoice } = await sb.from("coaching_invoices").select("id,invoice_number,issued_at,amount_xof,currency").eq("order_id", order.id).maybeSingle();
+  let product: unknown = null;
+  if (order.product_type === "package") product = (await sb.from("coaching_package_purchases").select("*,package:coaching_packages(*)").eq("order_id", order.id).maybeSingle()).data;
+  if (order.product_type === "subscription") product = (await sb.from("coaching_subscriptions").select("*,plan:coaching_subscription_plans(*)").eq("order_id", order.id).maybeSingle()).data;
+  if (order.product_type === "group") product = (await sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(*)").eq("order_id", order.id).maybeSingle()).data;
+  return { order, invoice: invoice || null, product };
+}
+
+async function packageBookingCreate(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const purchaseId = asText(body.purchase_id, 80); const offerId = asText(body.offer_id, 80); const startIso = asIsoDate(body.slot_start); const meetingMode=asText(body.meeting_mode,20);
+  if(!purchaseId||!offerId||!startIso||!["jitsi","external"].includes(meetingMode)) throw new Error("BOOKING_INCOMPLETE");
+  const {data:purchase}=await sb.from("coaching_package_purchases").select("*,package:coaching_packages(*)").eq("id",purchaseId).eq("user_id",actor.userId).eq("status","active").gt("expires_at",new Date().toISOString()).maybeSingle();
+  if(!purchase||Number(purchase.sessions_remaining)<=0) throw new Error("PACKAGE_CREDIT_UNAVAILABLE");
+  const pkg=purchase.package as Record<string,unknown>; const context=await loadBookingContext(sb,offerId);
+  if(String(context.profile.id)!==String(pkg.coach_id)||context.offer.offer_type!=="fixed"||Number(context.offer.duration_minutes)!==Number(pkg.session_duration_minutes)||!asStringArray(pkg.session_modes,2,20).includes(meetingMode)) throw new Error("PACKAGE_OFFER_MISMATCH");
+  const slot=await ensureSlotAvailable(sb,String(context.profile.id),Number(pkg.session_duration_minutes),startIso);
+  const decrement=await sb.from("coaching_package_purchases").update({sessions_remaining:Number(purchase.sessions_remaining)-1,status:Number(purchase.sessions_remaining)-1===0?"depleted":"active"}).eq("id",purchase.id).eq("sessions_remaining",purchase.sessions_remaining).select("id").maybeSingle();
+  if(!decrement.data) throw new Error("PACKAGE_CREDIT_UNAVAILABLE");
+  const perSession=Math.round(Number(pkg.price_xof)/Number(pkg.session_count));
+  const inserted=await sb.from("coaching_sessions").insert({learner_user_id:actor.userId,coach_id:context.profile.id,offer_id:context.offer.id,session_type:"fixed",status:"confirmed",payment_status:"paid",meeting_mode:meetingMode,requested_start:slot.slot_start,requested_end:slot.slot_end,scheduled_start:slot.slot_start,scheduled_end:slot.slot_end,duration_minutes:Number(pkg.session_duration_minutes),hold_expires_at:null,learner_message:asNullableText(body.learner_message,1500),price_total_xof:0,commission_percent_snapshot:0,commission_amount_xof:0,coach_net_xof:0,offer_title_snapshot:context.offer.title,coach_name_snapshot:context.coachName,coach_timezone_snapshot:context.profile.timezone,policy_snapshot:{source:"coaching_package",purchase_id:purchase.id},funding_source:"package",funding_reference_id:purchase.id,original_price_xof:perSession,discount_xof:perSession}).select("*").single();
+  if(inserted.error){await sb.from("coaching_package_purchases").update({sessions_remaining:purchase.sessions_remaining,status:"active"}).eq("id",purchase.id); if(String(inserted.error.code)==="23P01") throw new Error("SLOT_UNAVAILABLE"); throw inserted.error;}
+  await sb.from("coaching_package_redemptions").insert({purchase_id:purchase.id,session_id:inserted.data.id});
+  const settings=await financeSettings(sb); const startMs=new Date(String(inserted.data.scheduled_start)).getTime();
+  const reminderOffsets=[Number(settings.reminder_day_before_hours||24)*60,Number(settings.reminder_minutes_before||30)].filter((value)=>value>0);
+  const jobs=[] as Array<Record<string,unknown>>;
+  for(const minutes of reminderOffsets){const scheduledFor=new Date(startMs-minutes*60000);if(scheduledFor.getTime()>Date.now())for(const recipient of [actor.userId,String(context.profile.user_id)])jobs.push({session_id:inserted.data.id,user_id:recipient,event_type:minutes>=60?"coaching_reminder_day_before":"coaching_reminder_soon",scheduled_for:scheduledFor.toISOString(),payload:{session_id:inserted.data.id,offer_title:context.offer.title,coach_name:context.coachName,scheduled_start:inserted.data.scheduled_start,action_url:recipient===actor.userId?"/dashboard/coaching":"/coach/sessions"}});}
+  if(jobs.length) await sb.from("coaching_notification_jobs").insert(jobs);
+  await invokeNotification("coaching_booking_confirmed",{userId:actor.userId,session_id:inserted.data.id,offer_title:context.offer.title,coach_name:context.coachName,scheduled_start:inserted.data.scheduled_start,action_url:"/dashboard/coaching"});
+  await invokeNotification("coaching_new_booking",{userId:String(context.profile.user_id),session_id:inserted.data.id,offer_title:context.offer.title,scheduled_start:inserted.data.scheduled_start,action_url:"/coach/sessions"});
+  return inserted.data;
+}
+
+async function actionPlanForSession(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId=asText(body.session_id,80); const access=await coachingSessionAccess(sb,actor,sessionId);
+  const {data:plan}=await sb.from("coaching_action_plans").select("*,items:coaching_action_items(*)").eq("session_id",sessionId).maybeSingle();
+  if(plan && access.role==="learner" && plan.learner_visible===false) return {plan:null,role:access.role};
+  return {plan:plan||null,role:access.role,session:access.booking};
+}
+
+async function actionPlanSave(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId=asText(body.session_id,80); const access=await coachingSessionAccess(sb,actor,sessionId); if(!["coach","admin_supervisor"].includes(access.role)) throw new Error("FORBIDDEN");
+  const title=asText(body.title,180); if(!title) throw new Error("ACTION_PLAN_INCOMPLETE");
+  const payload={session_id:sessionId,coach_id:access.booking.coach_id,learner_user_id:access.booking.learner_user_id,title,summary:asText(body.summary,4000),next_session_recommendation:asNullableText(body.next_session_recommendation,2500),status:["active","completed","archived"].includes(asText(body.status,20))?asText(body.status,20):"active",learner_visible:asBoolean(body.learner_visible,true),created_by:actor.userId};
+  const {data,error}=await sb.from("coaching_action_plans").upsert(payload,{onConflict:"session_id"}).select("*").single(); if(error) throw error;
+  return data;
+}
+
+async function actionItemSave(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const planId=asText(body.plan_id,80); const {data:plan}=await sb.from("coaching_action_plans").select("*").eq("id",planId).maybeSingle(); if(!plan) throw new Error("ACTION_PLAN_NOT_FOUND");
+  const access=await coachingSessionAccess(sb,actor,String(plan.session_id)); const id=asNullableText(body.id,80);
+  if(access.role==="learner"){
+    if(!id) throw new Error("FORBIDDEN"); const status=asText(body.status,20); if(!["todo","in_progress","done","skipped"].includes(status)) throw new Error("INVALID_STATUS");
+    const {data,error}=await sb.from("coaching_action_items").update({status,completed_at:status==="done"?new Date().toISOString():null}).eq("id",id).eq("plan_id",planId).select("*").single(); if(error) throw error; return data;
+  }
+  if(!["coach","admin_supervisor"].includes(access.role)) throw new Error("FORBIDDEN"); const title=asText(body.title,220); if(!title) throw new Error("ACTION_ITEM_INCOMPLETE");
+  const payload={plan_id:planId,title,description:asText(body.description,2500),due_date:asNullableText(body.due_date,20),status:["todo","in_progress","done","skipped"].includes(asText(body.status,20))?asText(body.status,20):"todo",position:asInteger(body.position)||0,created_by:actor.userId,completed_at:asText(body.status,20)==="done"?new Date().toISOString():null};
+  const result=id?await sb.from("coaching_action_items").update(payload).eq("id",id).eq("plan_id",planId).select("*").single():await sb.from("coaching_action_items").insert(payload).select("*").single(); if(result.error) throw result.error; return result.data;
+}
+
+async function recordingStatus(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId=asText(body.session_id,80); const access=await coachingSessionAccess(sb,actor,sessionId);
+  const [{data:consents},{data:recording},settings]=await Promise.all([sb.from("coaching_recording_consents").select("*").eq("session_id",sessionId),sb.from("coaching_recordings").select("*").eq("session_id",sessionId).maybeSingle(),advancedSettings(sb)]);
+  return {role:access.role,consents:consents||[],recording:recording||null,recording_enabled:Boolean(settings.recording_enabled)};
+}
+
+async function recordingConsent(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const sessionId=asText(body.session_id,80); const status=asText(body.consent_status,20); if(!["accepted","declined","revoked"].includes(status)) throw new Error("INVALID_RECORDING_CONSENT");
+  const access=await coachingSessionAccess(sb,actor,sessionId); if(!["coach","learner"].includes(access.role)) throw new Error("FORBIDDEN");
+  const now=new Date().toISOString(); const {data,error}=await sb.from("coaching_recording_consents").upsert({session_id:sessionId,user_id:actor.userId,party_role:access.role,consent_status:status,consented_at:status==="accepted"?now:null,revoked_at:status==="revoked"?now:null},{onConflict:"session_id,user_id"}).select("*").single(); if(error) throw error;
+  if(status!=="accepted") await sb.from("coaching_recordings").update({status:"cancelled",error_message:"CONSENT_WITHDRAWN"}).eq("session_id",sessionId).in("status",["consent_pending","starting"]);
+  return data;
+}
+
+async function recordingStartStop(sb: Supabase, actor: Session, body: Record<string, unknown>, operation: "start"|"stop") {
+  const sessionId=asText(body.session_id,80); const access=await coachingSessionAccess(sb,actor,sessionId); if(!["coach","admin_supervisor"].includes(access.role)) throw new Error("FORBIDDEN");
+  const settings=await advancedSettings(sb); if(!settings.recording_enabled) throw new Error("RECORDING_DISABLED");
+  const {data:consents}=await sb.from("coaching_recording_consents").select("party_role,consent_status").eq("session_id",sessionId); const accepted=new Set((consents||[]).filter((c:Record<string,unknown>)=>c.consent_status==="accepted").map((c:Record<string,unknown>)=>String(c.party_role))); if(!accepted.has("coach")||!accepted.has("learner")) throw new Error("RECORDING_CONSENT_REQUIRED");
+  const {data:room}=await sb.from("coaching_rooms").select("*").eq("session_id",sessionId).maybeSingle(); if(!room) throw new Error("SESSION_ROOM_NOT_FOUND");
+  let recording=(await sb.from("coaching_recordings").select("*").eq("session_id",sessionId).maybeSingle()).data;
+  const now=new Date().toISOString();
+  if(operation==="start"){
+    if(recording&&["starting","recording","processing","ready"].includes(String(recording.status))) return {recording,already_started:true,provider_action_required:false};
+    const payload={session_id:sessionId,room_id:room.id,provider:"jitsi_jibri",status:"starting",retention_expires_at:new Date(Date.now()+Number(settings.recording_retention_days||30)*86400000).toISOString(),started_at:now,requested_by:actor.userId,metadata:{room_slug:room.room_slug}};
+    const result=recording?await sb.from("coaching_recordings").update(payload).eq("id",recording.id).select("*").single():await sb.from("coaching_recordings").insert(payload).select("*").single(); if(result.error) throw result.error; recording=result.data;
+  }else{
+    if(!recording||!["starting","recording"].includes(String(recording.status))) throw new Error("ACTIVE_RECORDING_NOT_FOUND"); const result=await sb.from("coaching_recordings").update({status:"processing",stopped_at:now}).eq("id",recording.id).select("*").single(); if(result.error) throw result.error; recording=result.data;
+  }
+  const providerUrl=Deno.env.get("COACHING_RECORDING_PROVIDER_URL")||""; const secret=Deno.env.get("COACHING_RECORDING_SECRET")||Deno.env.get("LIVE_RECORDING_SECRET")||"";
+  if(providerUrl){const callback=`${(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"")}/functions/v1/coaching`; const response=await fetch(providerUrl,{method:"POST",headers:{"Content-Type":"application/json",...(secret?{"x-omnia-recording-secret":secret}:{})},body:JSON.stringify({action:operation,recording_id:recording.id,session_id:sessionId,room_slug:room.room_slug,join_url:room.provider_join_url,callback_url:callback,callback_payload:{action:"recording_provider_callback",recording_id:recording.id}})}); if(!response.ok){await sb.from("coaching_recordings").update({status:"failed",error_message:(await response.text().catch(()=>"PROVIDER_ERROR")).slice(0,1000)}).eq("id",recording.id); throw new Error("RECORDING_PROVIDER_FAILED");}}
+  return {recording,provider_action_required:!providerUrl};
+}
+
+async function recordingProviderCallback(sb: Supabase, req: Request, body: Record<string, unknown>) {
+  const secret=Deno.env.get("COACHING_RECORDING_SECRET")||Deno.env.get("LIVE_RECORDING_SECRET")||""; const supplied=req.headers.get("x-omnia-recording-secret")||req.headers.get("X-Omnia-Recording-Secret")||""; if(!secret||supplied!==secret) throw new Error("INVALID_RECORDING_SECRET");
+  const recordingId=asText(body.recording_id,80); const status=asText(body.status,30); const {data:recording}=await sb.from("coaching_recordings").select("*").eq("id",recordingId).maybeSingle(); if(!recording) throw new Error("RECORDING_NOT_FOUND");
+  const patch:Record<string,unknown>={provider_recording_id:asNullableText(body.provider_recording_id,300),metadata:{...(recording.metadata||{}),provider_payload:body.provider_payload||{}}};
+  if(status==="recording") Object.assign(patch,{status:"recording",started_at:recording.started_at||new Date().toISOString()});
+  else if(status==="ready") Object.assign(patch,{status:"ready",storage_key:asText(body.storage_key,1200),file_name:asNullableText(body.file_name,300)||"coaching-recording.mp4",mime_type:asNullableText(body.mime_type,100)||"video/mp4",size_bytes:asInteger(body.size_bytes),duration_seconds:asInteger(body.duration_seconds),stopped_at:recording.stopped_at||new Date().toISOString(),error_message:null});
+  else if(status==="failed") Object.assign(patch,{status:"failed",error_message:asText(body.error_message,1000)||"RECORDING_FAILED"}); else throw new Error("INVALID_STATUS");
+  if(status==="ready"&&!patch.storage_key) throw new Error("RECORDING_STORAGE_KEY_REQUIRED");
+  const {data,error}=await sb.from("coaching_recordings").update(patch).eq("id",recordingId).select("*").single(); if(error) throw error;
+  if (status === "ready") {
+    const { data: booking } = await sb.from("coaching_sessions").select("id,learner_user_id,coach_id,offer_title_snapshot").eq("id", recording.session_id).maybeSingle();
+    if (booking) {
+      const { data: coach } = await sb.from("coach_profiles").select("user_id").eq("id", booking.coach_id).maybeSingle();
+      for (const userId of [booking.learner_user_id, coach?.user_id].filter(Boolean)) {
+        await invokeNotification("coaching_recording_available", { userId, session_id: booking.id, offer_title: booking.offer_title_snapshot, recording_id: data.id, action_url: `/coaching/sessions/${booking.id}/room` });
+      }
+    }
+  }
+  return data;
+}
+
+async function recordingSignedUrl(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const recordingId=asText(body.recording_id,80); const {data:recording}=await sb.from("coaching_recordings").select("*").eq("id",recordingId).maybeSingle(); if(!recording||recording.status!=="ready"||!recording.storage_key) throw new Error("RECORDING_NOT_FOUND");
+  await coachingSessionAccess(sb,actor,String(recording.session_id));
+  const endpoint=Deno.env.get("R2_ENDPOINT")||""; const accessKey=Deno.env.get("R2_ACCESS_KEY_ID")||Deno.env.get("R2_ACCESS_KEY")||""; const secretKey=Deno.env.get("R2_SECRET_ACCESS_KEY")||Deno.env.get("R2_SECRET_KEY")||""; const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
+  if(!endpoint||!accessKey||!secretKey||!bucket) throw new Error("RECORDING_STORAGE_NOT_CONFIGURED");
+  const [{S3Client,GetObjectCommand},{getSignedUrl}]=await Promise.all([import("npm:@aws-sdk/client-s3@3.637.0"),import("npm:@aws-sdk/s3-request-presigner@3.637.0")]);
+  const client=new S3Client({region:"auto",endpoint,credentials:{accessKeyId:accessKey,secretAccessKey:secretKey}}); const signedUrl=await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:String(recording.storage_key),ResponseContentDisposition:`inline; filename=\"${String(recording.file_name||"coaching.mp4").replace(/[\"\\]/g,"")}\"`}),{expiresIn:600});
+  return {recording,signed_url:signedUrl};
+}
+
+async function groupRoomAccess(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  const programId=asText(body.program_id,80); const {data:program}=await sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id)").eq("id",programId).maybeSingle(); if(!program) throw new Error("GROUP_NOT_FOUND");
+  const coachUser=String((program.coach as Record<string,unknown>).user_id); const isCoach=coachUser===actor.userId; const registration=isCoach||isAdmin(actor)?null:(await sb.from("coaching_group_registrations").select("*").eq("program_id",programId).eq("user_id",actor.userId).in("status",["confirmed","attended"]).maybeSingle()).data; if(!isCoach&&!isAdmin(actor)&&!registration) throw new Error("FORBIDDEN");
+  const settings=await advancedSettings(sb); const opens=new Date(new Date(String(program.scheduled_start)).getTime()-Number(settings.group_access_before_minutes||30)*60000); const closes=new Date(new Date(String(program.scheduled_end)).getTime()+Number(settings.group_access_after_minutes||30)*60000); const now=Date.now(); const accessStatus=now<opens.getTime()?"too_early":now>closes.getTime()?"closed":"available";
+  const {count}=await sb.from("coaching_group_registrations").select("id",{count:"exact",head:true}).eq("program_id",programId).in("status",["confirmed","attended"]);
+  const joinUrl=program.meeting_mode==="jitsi"?`https://meet.jit.si/${program.room_slug}#config.prejoinPageEnabled=false`:program.external_meeting_url;
+  return {program:{...program,confirmed_count:count||0},role:isAdmin(actor)?"admin_supervisor":isCoach?"coach":"learner",access_status:accessStatus,opens_at:opens.toISOString(),closes_at:closes.toISOString(),join_url:accessStatus==="available"?joinUrl:null,registration};
+}
+
+async function groupRoomPresence(sb: Supabase, actor: Session, body: Record<string, unknown>, action: "join"|"leave"|"start"|"end") {
+  const access=await groupRoomAccess(sb,actor,body); const program=access.program as Record<string,unknown>; if(["start","end"].includes(action)&&!["coach","admin_supervisor"].includes(access.role)) throw new Error("FORBIDDEN"); if(access.access_status!=="available"&&action!=="end") throw new Error(access.access_status==="too_early"?"SESSION_TOO_EARLY":"SESSION_OUTSIDE_ACCESS_WINDOW"); const now=new Date().toISOString();
+  if(action==="start") await sb.from("coaching_group_programs").update({status:"in_progress",actual_started_at:program.actual_started_at||now}).eq("id",program.id);
+  if(action==="end"){await sb.from("coaching_group_programs").update({status:"completed",actual_ended_at:now}).eq("id",program.id); await sb.from("coaching_group_registrations").update({status:"attended",left_at:now}).eq("program_id",program.id).eq("status","confirmed").not("joined_at","is",null);}
+  if(access.role==="learner"&&action==="join") await sb.from("coaching_group_registrations").update({joined_at:now,last_seen_at:now}).eq("program_id",program.id).eq("user_id",actor.userId);
+  if(access.role==="learner"&&action==="leave") await sb.from("coaching_group_registrations").update({left_at:now,last_seen_at:now,status:"attended"}).eq("program_id",program.id).eq("user_id",actor.userId);
+  return await groupRoomAccess(sb,actor,body);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -2385,6 +2955,8 @@ Deno.serve(async (req: Request) => {
       return coach ? json({ success: true, coach }) : json({ error: "COACH_NOT_FOUND" }, 404);
     }
     if (action === "public_availability") return json({ success: true, ...(await publicSlots(sb, body)) });
+    if (action === "public_advanced_catalogue") return json({ success: true, ...(await publicAdvancedCatalogue(sb)) });
+    if (action === "recording_provider_callback") return json({ success: true, recording: await recordingProviderCallback(sb, req, body) });
 
     const session = await authenticate(sb, req);
     if (!session) throw new Error("SESSION_INVALID");
@@ -2409,6 +2981,26 @@ Deno.serve(async (req: Request) => {
     }
     if (action === "favorite_toggle") return json({ success: true, favorite: await toggleFavorite(sb, session, body) });
     if (action === "learner_coaching_dashboard") return json({ success: true, ...(await learnerDashboard(sb, session)) });
+    if (action === "learner_advanced_dashboard") return json({ success: true, ...(await learnerAdvancedDashboard(sb, session)) });
+    if (action === "learner_preferences") return json({ success: true, preferences: await learnerPreferences(sb, session) });
+    if (action === "learner_preferences_save") return json({ success: true, preferences: await saveLearnerPreferences(sb, session, body) });
+    if (action === "learner_recommendations") return json({ success: true, ...(await coachingRecommendations(sb, session)) });
+    if (action === "advanced_checkout") return json({ success: true, ...(await advancedCheckout(sb, session, body)) });
+    if (action === "advanced_payment_status") return json({ success: true, ...(await advancedPaymentStatus(sb, session, body)) });
+    if (action === "package_booking_create") return json({ success: true, session: await packageBookingCreate(sb, session, body) });
+    if (action === "action_plan_get") return json({ success: true, ...(await actionPlanForSession(sb, session, body)) });
+    if (action === "action_plan_save") return json({ success: true, plan: await actionPlanSave(sb, session, body) });
+    if (action === "action_item_save") return json({ success: true, item: await actionItemSave(sb, session, body) });
+    if (action === "recording_status") return json({ success: true, ...(await recordingStatus(sb, session, body)) });
+    if (action === "recording_consent") return json({ success: true, consent: await recordingConsent(sb, session, body) });
+    if (action === "recording_start") return json({ success: true, ...(await recordingStartStop(sb, session, body, "start")) });
+    if (action === "recording_stop") return json({ success: true, ...(await recordingStartStop(sb, session, body, "stop")) });
+    if (action === "recording_signed_url") return json({ success: true, ...(await recordingSignedUrl(sb, session, body)) });
+    if (action === "group_room_access") return json({ success: true, ...(await groupRoomAccess(sb, session, body)) });
+    if (action === "group_room_join") return json({ success: true, ...(await groupRoomPresence(sb, session, body, "join")) });
+    if (action === "group_room_leave") return json({ success: true, ...(await groupRoomPresence(sb, session, body, "leave")) });
+    if (action === "group_room_start") return json({ success: true, ...(await groupRoomPresence(sb, session, body, "start")) });
+    if (action === "group_room_end") return json({ success: true, ...(await groupRoomPresence(sb, session, body, "end")) });
     if (action === "booking_create_fixed") return json({ success: true, session: await createFixedBooking(sb, session, body) });
     if (action === "booking_create_custom") return json({ success: true, session: await createCustomRequest(sb, session, body) });
     if (action === "booking_cancel_pending") return json({ success: true, session: await cancelPendingBooking(sb, session, body) });
@@ -2434,6 +3026,9 @@ Deno.serve(async (req: Request) => {
     if (action === "dispute_message_add") return json({ success: true, message: await addCoachingDisputeMessage(sb, session, body) });
     if (action === "coach_revenue") return json({ success: true, ...(await coachRevenueDashboard(sb, session)) });
     if (action === "coach_payout_request") return json({ success: true, payout: await coachCreatePayout(sb, session, body) });
+    if (action === "coach_advanced_products") return json({ success: true, ...(await coachAdvancedProducts(sb, session)) });
+    if (action === "coach_package_save") return json({ success: true, package: await saveCoachPackage(sb, session, body) });
+    if (action === "coach_group_save") return json({ success: true, group: await saveCoachGroup(sb, session, body) });
     if (action === "coach_dashboard") {
       const profile = await ownCoachProfile(sb, session);
       await expireBookingHolds(sb, String(profile.id));
@@ -2496,6 +3091,38 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_rating_moderate") return json({ success: true, rating: await adminModerateCoachingRating(sb, session, body) });
     if (action === "admin_revenue") return json({ success: true, ...(await adminCoachingRevenue(sb)) });
     if (action === "admin_performance_settings_save") return json({ success: true, settings: await adminSavePerformanceSettings(sb, session, body) });
+    if (action === "admin_advanced_products") return json({ success: true, ...(await adminAdvancedProducts(sb)) });
+    if (action === "admin_advanced_review") return json({ success: true, product: await adminReviewAdvanced(sb, session, body) });
+    if (action === "admin_subscription_plan_save") return json({ success: true, plan: await adminSaveSubscriptionPlan(sb, session, body) });
+    if (action === "admin_advanced_settings_save") {
+      const before = await advancedSettings(sb);
+      const retentionDays = asInteger(body.recording_retention_days) ?? 30;
+      const packageReleaseDays = asInteger(body.package_release_delay_days) ?? 7;
+      const groupAccessBefore = asInteger(body.group_access_before_minutes) ?? 30;
+      const groupAccessAfter = asInteger(body.group_access_after_minutes) ?? 30;
+      const rawWeights = body.matching_weights && typeof body.matching_weights === "object" ? body.matching_weights as Record<string, unknown> : before.matching_weights as Record<string, unknown>;
+      const matchingWeights = {
+        domains: Number(rawWeights?.domains ?? 40),
+        languages: Number(rawWeights?.languages ?? 20),
+        budget: Number(rawWeights?.budget ?? 15),
+        rating: Number(rawWeights?.rating ?? 15),
+        availability: Number(rawWeights?.availability ?? 10),
+      };
+      if (retentionDays < 1 || retentionDays > 365 || packageReleaseDays < 0 || packageReleaseDays > 60 || groupAccessBefore < 0 || groupAccessBefore > 240 || groupAccessAfter < 0 || groupAccessAfter > 240 || Object.values(matchingWeights).some(value => !Number.isFinite(value) || value < 0 || value > 100)) throw new Error("INVALID_ADVANCED_SETTINGS");
+      const payload = {
+        recommendations_enabled: asBoolean(body.recommendations_enabled, true),
+        recording_enabled: asBoolean(body.recording_enabled),
+        recording_retention_days: retentionDays,
+        package_release_delay_days: packageReleaseDays,
+        group_access_before_minutes: groupAccessBefore,
+        group_access_after_minutes: groupAccessAfter,
+        matching_weights: matchingWeights,
+      };
+      const result = await sb.from("coaching_settings").update(payload).eq("id", 1).select("*").single();
+      if (result.error) throw result.error;
+      await audit(sb, session.userId, "coaching_advanced_settings_updated", "coaching_settings", null, before, payload);
+      return json({ success: true, settings: result.data });
+    }
 
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {

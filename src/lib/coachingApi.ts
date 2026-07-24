@@ -60,6 +60,8 @@ export type CoachProfile = {
   domains: CoachingDomain[];
   offers?: CoachOffer[];
   ratings?: CoachingRating[];
+  packages?: CoachingPackage[];
+  groups?: CoachingGroupProgram[];
 };
 
 export type CoachOffer = {
@@ -116,7 +118,10 @@ export type CoachingSlot = { slot_start: string; slot_end: string };
 export type CoachingPaymentOrder = {
   id: string;
   order_number: string;
-  session_id: string;
+  session_id?: string | null;
+  product_type?: 'session' | 'package' | 'subscription' | 'group';
+  product_id?: string | null;
+  product_snapshot?: Record<string, unknown>;
   amount_xof: number;
   currency: string;
   payment_status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'partially_refunded' | 'refunded' | 'disputed';
@@ -130,7 +135,9 @@ export type CoachingInvoice = {
   id: string;
   invoice_number: string;
   order_id: string;
-  session_id: string;
+  session_id?: string | null;
+  product_type?: 'session' | 'package' | 'subscription' | 'group';
+  product_id?: string | null;
   issued_at: string;
   amount_xof: number;
   currency: string;
@@ -236,6 +243,23 @@ export type CoachingEarning = {
   credited_at?: string | null;
   session?: Pick<CoachingSession, 'id' | 'offer_title_snapshot' | 'scheduled_start' | 'status'> | null;
   order?: Pick<CoachingPaymentOrder, 'id' | 'order_number' | 'payment_status'> | null;
+  coach_user?: { id: string; full_name?: string; email?: string } | null;
+};
+
+export type CoachingAdvancedEarning = {
+  id: string;
+  order_id: string;
+  source_type: 'package' | 'group';
+  source_id: string;
+  coach_id: string;
+  coach_user_id: string;
+  gross_amount_xof: number;
+  commission_amount_xof: number;
+  net_amount_xof: number;
+  status: 'locked' | 'frozen' | 'available' | 'reversed';
+  unlock_at?: string | null;
+  credited_at?: string | null;
+  order?: Pick<CoachingPaymentOrder, 'id' | 'order_number' | 'payment_status' | 'product_type' | 'product_id'> & { offer_title_snapshot?: string } | null;
   coach_user?: { id: string; full_name?: string; email?: string } | null;
 };
 
@@ -346,6 +370,148 @@ export type CoachApplication = {
   approved_level?: CoachingLevel | null;
 };
 
+
+export type LearnerCoachingPreferences = {
+  user_id?: string;
+  domain_ids: string[];
+  languages: string[];
+  goals: string[];
+  budget_min_xof: number;
+  budget_max_xof?: number | null;
+  meeting_modes: Array<'jitsi' | 'external'>;
+  preferred_formats: Array<'individual' | 'group'>;
+};
+
+export type CoachingPackage = {
+  id: string;
+  coach_id: string;
+  domain_id?: string | null;
+  title: string;
+  description: string;
+  session_count: number;
+  session_duration_minutes: number;
+  price_xof: number;
+  validity_days: number;
+  session_modes: Array<'jitsi' | 'external'>;
+  status: string;
+  admin_message?: string | null;
+  coach?: Partial<CoachProfile> | null;
+  domain?: Pick<CoachingDomain, 'id' | 'slug' | 'name'> | null;
+};
+
+export type CoachingPackagePurchase = {
+  id: string;
+  package_id: string;
+  user_id: string;
+  order_id?: string | null;
+  status: string;
+  sessions_total: number;
+  sessions_remaining: number;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  package?: CoachingPackage | null;
+};
+
+export type CoachingSubscriptionPlan = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  monthly_price_xof: number;
+  discount_percent: number;
+  monthly_booking_limit?: number | null;
+  priority_matching: boolean;
+  validity_days: number;
+  display_order: number;
+  is_active: boolean;
+};
+
+export type CoachingSubscription = {
+  id: string;
+  plan_id: string;
+  user_id: string;
+  order_id?: string | null;
+  status: string;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  bookings_used: number;
+  plan?: CoachingSubscriptionPlan | null;
+};
+
+export type CoachingGroupProgram = {
+  id: string;
+  coach_id: string;
+  domain_id?: string | null;
+  title: string;
+  description: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  capacity: number;
+  confirmed_count?: number;
+  price_per_participant_xof: number;
+  meeting_mode: 'jitsi' | 'external';
+  external_meeting_url?: string | null;
+  room_slug?: string | null;
+  status: string;
+  admin_message?: string | null;
+  coach?: Partial<CoachProfile> | null;
+  domain?: Pick<CoachingDomain, 'id' | 'slug' | 'name'> | null;
+};
+
+export type CoachingGroupRegistration = {
+  id: string;
+  program_id: string;
+  user_id: string;
+  order_id?: string | null;
+  status: string;
+  hold_expires_at?: string | null;
+  amount_xof: number;
+  program?: CoachingGroupProgram | null;
+};
+
+export type CoachingActionItem = {
+  id: string;
+  plan_id: string;
+  title: string;
+  description?: string;
+  due_date?: string | null;
+  status: 'todo' | 'in_progress' | 'done' | 'skipped';
+  position: number;
+  completed_at?: string | null;
+};
+
+export type CoachingActionPlan = {
+  id: string;
+  session_id: string;
+  coach_id: string;
+  learner_user_id: string;
+  title: string;
+  summary: string;
+  next_session_recommendation?: string | null;
+  status: 'active' | 'completed' | 'archived';
+  learner_visible: boolean;
+  items?: CoachingActionItem[];
+  updated_at?: string;
+};
+
+export type CoachingRecording = {
+  id: string;
+  session_id: string;
+  status: 'consent_pending' | 'starting' | 'recording' | 'processing' | 'ready' | 'failed' | 'cancelled' | 'deleted';
+  file_name?: string | null;
+  duration_seconds?: number | null;
+  size_bytes?: number | null;
+  retention_expires_at?: string | null;
+  error_message?: string | null;
+};
+
+export type CoachingRecommendation = {
+  coach: CoachProfile;
+  score: number;
+  reasons: string[];
+  minimum_price_xof?: number | null;
+};
+
 const messages: Record<string, string> = {
   SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
   FORBIDDEN: 'Vous ne disposez pas des droits nécessaires.',
@@ -419,6 +585,32 @@ const messages: Record<string, string> = {
   PAYOUT_DETAILS_REQUIRED: 'Complétez les coordonnées nécessaires au retrait.',
   PAYOUT_INSUFFICIENT_BALANCE: 'Le solde disponible est insuffisant pour ce retrait.',
   INVALID_PERFORMANCE_SETTINGS: 'Les paramètres de qualité saisis sont invalides.',
+  ADVANCED_PRODUCT_REQUIRED: 'Sélectionnez un produit de coaching valide.',
+  PACKAGE_NOT_FOUND: 'Ce pack de coaching est introuvable.',
+  PACKAGE_INCOMPLETE: 'Complétez correctement les informations du pack.',
+  PACKAGE_PRICE_OUT_OF_RANGE: 'Le prix moyen par séance du pack ne respecte pas la fourchette autorisée.',
+  PACKAGE_CREDIT_UNAVAILABLE: 'Aucun crédit de séance n’est disponible dans ce pack.',
+  PACKAGE_OFFER_MISMATCH: 'Cette offre ne correspond pas aux conditions du pack.',
+  SUBSCRIPTION_PLAN_NOT_FOUND: 'Cet abonnement de coaching est introuvable.',
+  SUBSCRIPTION_ALREADY_ACTIVE: 'Un abonnement de coaching est déjà actif sur ce compte.',
+  GROUP_NOT_FOUND: 'Cette session collective est introuvable.',
+  GROUP_NOT_AVAILABLE: 'Cette session collective n’est plus disponible.',
+  GROUP_FULL: 'Cette session collective est complète.',
+  GROUP_ALREADY_REGISTERED: 'Vous êtes déjà inscrit à cette session collective.',
+  GROUP_REGISTRATION_NOT_FOUND: 'Votre inscription collective est introuvable.',
+  GROUP_INCOMPLETE: 'Complétez correctement les informations de la session collective.',
+  PREFERENCES_INVALID: 'Les préférences de recommandation sont invalides.',
+  ACTION_PLAN_INCOMPLETE: 'Ajoutez un titre au plan d’action.',
+  ACTION_PLAN_NOT_FOUND: 'Le plan d’action est introuvable.',
+  ACTION_ITEM_INCOMPLETE: 'Ajoutez un titre à cette action.',
+  RECORDING_DISABLED: 'L’enregistrement des sessions est désactivé.',
+  INVALID_RECORDING_CONSENT: 'Le choix de consentement est invalide.',
+  RECORDING_CONSENT_REQUIRED: 'L’accord explicite du coach et de l’apprenant est requis.',
+  RECORDING_PROVIDER_FAILED: 'Le fournisseur d’enregistrement n’a pas pu démarrer ou arrêter la capture.',
+  RECORDING_NOT_FOUND: 'Aucun enregistrement n’est disponible.',
+  RECORDING_STORAGE_NOT_CONFIGURED: 'Le stockage privé des enregistrements n’est pas configuré.',
+  ACTIVE_RECORDING_NOT_FOUND: 'Aucun enregistrement actif n’a été trouvé.',
+  INVALID_ADVANCED_SETTINGS: 'Les paramètres avancés saisis sont invalides.',
 };
 
 export async function coachingRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
