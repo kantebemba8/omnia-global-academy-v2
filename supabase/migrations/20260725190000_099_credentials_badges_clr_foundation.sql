@@ -347,6 +347,11 @@ alter table public.badge_awards
   add column if not exists created_at timestamptz default now(),
   add column if not exists updated_at timestamptz default now();
 
+-- Compatibilité avec les versions antérieures où source_id pouvait être UUID.
+-- Conversion sans perte : les UUID existants deviennent leur représentation texte.
+alter table public.badge_awards
+  alter column source_id type text using source_id::text;
+
 update public.badge_awards
 set credential_uuid = gen_random_uuid()
 where credential_uuid is null;
@@ -650,6 +655,11 @@ alter table public.clr_achievements
   add column if not exists payload jsonb default '{}'::jsonb,
   add column if not exists created_at timestamptz default now(),
   add column if not exists updated_at timestamptz default now();
+
+-- Compatibilité avec le schéma du Grand module 1 où source_id pouvait être UUID.
+-- Conversion sans perte : les UUID existants deviennent leur représentation texte.
+alter table public.clr_achievements
+  alter column source_id type text using source_id::text;
 
 create unique index if not exists clr_achievements_award_uidx
   on public.clr_achievements(award_id) where award_id is not null;
