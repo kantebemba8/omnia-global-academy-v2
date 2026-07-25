@@ -374,39 +374,7 @@ async function getOrCreateClr(sb: Supabase, userId: string) {
 }
 
 async function rebuildClr(sb: Supabase, userId: string) {
-  const record = await getOrCreateClr(sb, userId);
-  const { data: achievements, error: achievementError } = await sb.from("clr_achievements")
-    .select("*").eq("clr_record_id", record.id).order("issued_at", { ascending: false });
-  if (achievementError) throw achievementError;
-  const payload = {
-    "@context": [
-      "https://www.w3.org/ns/credentials/v2",
-      "https://purl.imsglobal.org/spec/clr/v2p0/context-2.0.1.json",
-      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
-    ],
-    id: `urn:uuid:${record.record_uuid}`,
-    type: ["VerifiableCredential", "ClrCredential"],
-    name: String(record.title || "Omnia Learning Record"),
-    issuer: { id: "https://omniaglobalacademy.com/credentials/issuers/omnia-global-academy", type: ["Profile"], name: "Omnia Global Academy" },
-    credentialSubject: {
-      id: `urn:uuid:${record.record_uuid}`,
-      type: ["ClrSubject"],
-      verifiableCredential: (achievements || []).filter((row: JsonRecord) => row.status !== "hidden").map((row: JsonRecord) => row.payload),
-    },
-    validFrom: String(record.created_at || new Date().toISOString()),
-    credentialSchema: [{
-      id: "https://purl.imsglobal.org/spec/clr/v2p0/schema/json/clr_v2p0_clrcredential_schema.json",
-      type: "1EdTechJsonSchemaValidator2019",
-    }],
-  };
-  const unchanged = JSON.stringify(record.clr_json || {}) === JSON.stringify(payload);
-  if (unchanged) return { record, achievements: achievements || [] };
-  const nextVersion = record.last_built_at ? Number(record.version || 1) + 1 : Number(record.version || 1);
-  const { data: updated, error: updateError } = await sb.from("clr_records")
-    .update({ clr_json: payload, standards_status: "clr2_draft", version: nextVersion, last_built_at: new Date().toISOString() })
-    .eq("id", record.id).select("*").single();
-  if (updateError) throw updateError;
-  return { record: updated, achievements: achievements || [] };
+  return rebuildCompleteClr(sb, userId);
 }
 
 async function templateRows(sb: Supabase, includeInactive = true) {
@@ -497,23 +465,72 @@ async function publicBadge(sb: Supabase, identifier: string) {
   return publicAward({ ...data, evidence: evidence || [] });
 }
 
-async function publicClr(sb: Supabase, token: string) {
+async function publicClr(sb: Supabase, token: string, req: Request) {
   const tokenHash = await sha256(token);
   const { data: share, error } = await sb.from("clr_shares").select("*").eq("token_hash", tokenHash).maybeSingle();
   if (error) throw error;
   if (!share || share.revoked_at || (share.expires_at && new Date(share.expires_at) <= new Date())) throw new Error("CLR_SHARE_NOT_FOUND");
-  const { data: record, error: recordError } = await sb.from("clr_records").select("*,user:users(id,full_name,avatar_url)").eq("id", share.clr_record_id).maybeSingle();
+  const { data: record, error: recordError } = await sb.from("clr_records").select("*,user:users!clr_records_user_id_fkey(id,full_name,avatar_url,country_code)").eq("id", share.clr_record_id).maybeSingle();
   if (recordError) throw recordError;
   if (!record) throw new Error("CLR_NOT_FOUND");
+  const verification = record.clr_jwt
+    ? await verifyPortableCredential(sb, String(record.clr_jwt), req, record as JsonRecord, "ClrCredential", "public_page")
+    : record.verification_result || {};
   const allowed = new Set(stringArray(share.include_sections, 30, 80));
   const { data: achievements, error: achievementError } = await sb.from("clr_achievements")
     .select("*").eq("clr_record_id", record.id).in("visibility", [share.visibility_filter, "public"]).order("issued_at", { ascending: false });
   if (achievementError) throw achievementError;
   await sb.from("clr_shares").update({ last_accessed_at: new Date().toISOString() }).eq("id", share.id);
   return {
-    record: { record_uuid: record.record_uuid, title: record.title, description: record.description, version: record.version, standards_status: record.standards_status, user: record.user ? { full_name: record.user.full_name, avatar_url: record.user.avatar_url } : null },
+    record: {
+      record_uuid: record.record_uuid,
+      title: record.title,
+      description: record.description,
+      profile_headline: record.profile_headline,
+      summary: record.summary,
+      language_code: record.language_code,
+      section_order: record.section_order || [],
+      hidden_sections: record.hidden_sections || [],
+      version: record.version,
+      standards_status: record.standards_status,
+      signed_at: record.signed_at,
+      verification_result: verification,
+      user: record.user ? {
+        full_name: record.user.full_name,
+        avatar_url: record.user.avatar_url,
+        country_code: record.user.country_code,
+      } : null,
+    },
+    share: {
+      label: share.label,
+      expires_at: share.expires_at,
+      visibility_filter: share.visibility_filter,
+      include_sections: share.include_sections || [],
+    },
     achievements: (achievements || []).filter((row: JsonRecord) => !allowed.size || allowed.has(String(row.section))).map((row: JsonRecord) => ({
-      id: row.id, title: row.title, description: row.description, achievement_type: row.achievement_type, section: row.section, status: row.status, visibility: row.visibility, issued_at: row.issued_at,
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      achievement_type: row.achievement_type,
+      section: row.section,
+      status: row.status,
+      visibility: row.visibility,
+      issued_at: row.issued_at,
+      started_at: row.started_at,
+      ended_at: row.ended_at,
+      score: row.score,
+      score_max: row.score_max,
+      result_label: row.result_label,
+      skills: row.skills || [],
+      evidence: row.evidence || [],
+      external_url: row.external_url,
+      issuer_name: row.issuer_name,
+      issuer_url: row.issuer_url,
+      entry_origin: row.entry_origin || "platform",
+      verification_status: row.verification_status || "verified",
+      learner_editable: false,
+      is_featured: Boolean(row.is_featured),
+      sort_order: row.sort_order || 0,
     })),
   };
 }
@@ -1008,7 +1025,7 @@ async function createClrShare(sb: Supabase, session: Session, body: JsonRecord) 
   }).select("id,label,include_sections,visibility_filter,expires_at,created_at").single();
   if (error) throw error;
   await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "share_created", metadata: { share_id: data.id } });
-  return { ...data, token, url: `https://omniaglobalacademy.com/credentials/clr/${token}` };
+  return { ...data, token, url: `${appBaseUrl()}/credentials/clr/${token}` };
 }
 
 async function learnerClr(sb: Supabase, session: Session) {
@@ -1025,6 +1042,1240 @@ async function revokeShare(sb: Supabase, session: Session, body: JsonRecord) {
   const { error } = await sb.from("clr_shares").update({ revoked_at: new Date().toISOString() }).eq("id", shareId).eq("clr_record_id", record.id);
   if (error) throw error;
   return { success: true };
+}
+
+const CLR_SECTIONS = [
+  "formations", "certificats", "competences_verifiees", "evaluations", "badges",
+  "coaching", "omnia_live", "projets", "experiences", "recommandations",
+  "engagement_communautaire",
+];
+
+const PASSPORT_SECTIONS = [
+  "competences_verifiees", "certificats", "badges", "evaluations",
+  "projets", "experiences", "recommandations",
+];
+
+function jsonRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
+
+function jsonArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function decodeJwtPayload(compactJwt: string): JsonRecord {
+  const parts = compactJwt.split(".");
+  if (parts.length !== 3) throw new Error("VC_JWT_INVALID");
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padding = "=".repeat((4 - normalized.length % 4) % 4);
+    return JSON.parse(atob(normalized + padding)) as JsonRecord;
+  } catch {
+    throw new Error("VC_JWT_INVALID");
+  }
+}
+
+function portableCredentialChecks(payload: JsonRecord, requiredType: string) {
+  const contexts = jsonArray(payload["@context"]).map(String);
+  const types = jsonArray(payload.type).map(String);
+  const issuer = jsonRecord(payload.issuer);
+  const subject = jsonRecord(payload.credentialSubject);
+  const validFrom = text(payload.validFrom, 80);
+  const checks = {
+    context: contexts.includes("https://www.w3.org/ns/credentials/v2"),
+    type: types.includes("VerifiableCredential") && types.includes(requiredType),
+    id: Boolean(payload.id && payload.jti === payload.id),
+    issuer: Boolean(issuer.id && payload.iss === issuer.id),
+    subject: Boolean(subject.id && payload.sub === subject.id),
+    valid_from: Boolean(validFrom && Number(payload.nbf) === numericDate(validFrom)),
+    valid_until: !payload.validUntil || Number(payload.exp) === numericDate(String(payload.validUntil)),
+  };
+  return { checks, valid: Object.values(checks).every(Boolean) };
+}
+
+async function verifyPortableCredential(
+  sb: Supabase,
+  compactJwt: string,
+  req: Request,
+  registry: JsonRecord,
+  requiredType: "ClrCredential" | "OmniaSkillsPassportCredential",
+  source: string,
+) {
+  let signatureValid = false;
+  let structureValid = false;
+  let statusValid = false;
+  let errorCode: string | null = null;
+  let payload: JsonRecord = {};
+  let header: JsonRecord = {};
+  let keyRow: JsonRecord | null = null;
+  let structureChecks: JsonRecord = {};
+  try {
+    header = decodeProtectedHeader(compactJwt) as JsonRecord;
+    const keyResult = await signingKeyForHeader(sb, header, req);
+    keyRow = keyResult.key;
+    const publicKey = await importJWK(keyResult.publicJwk as never, "RS256");
+    const verified = await compactVerify(compactJwt, publicKey, { algorithms: ["RS256"] });
+    signatureValid = true;
+    payload = JSON.parse(new TextDecoder().decode(verified.payload)) as JsonRecord;
+    const structure = portableCredentialChecks(payload, requiredType);
+    structureValid = structure.valid;
+    structureChecks = structure.checks;
+    if (!structureValid) errorCode = "CREDENTIAL_STRUCTURE_INVALID";
+
+    const storedHash = text(registry.credential_hash, 128);
+    const actualHash = await sha256(compactJwt);
+    const hashValid = !storedHash || storedHash === actualHash;
+    const registryId = requiredType === "ClrCredential"
+      ? `urn:uuid:${registry.record_uuid}`
+      : `urn:uuid:${registry.passport_uuid}`;
+    const idValid = payload.id === registryId;
+    const activeStatus = requiredType === "ClrCredential"
+      ? registry.status === "active"
+      : registry.status === "published";
+    const now = Date.now();
+    const datesValid = (!payload.validFrom || new Date(String(payload.validFrom)).getTime() <= now)
+      && (!payload.validUntil || new Date(String(payload.validUntil)).getTime() >= now);
+    statusValid = hashValid && idValid && activeStatus && datesValid;
+    if (!hashValid) errorCode = "CREDENTIAL_HASH_MISMATCH";
+    else if (!idValid) errorCode = "CREDENTIAL_REGISTRY_MISMATCH";
+    else if (!activeStatus) errorCode = "CREDENTIAL_NOT_ACTIVE";
+    else if (!datesValid) errorCode = "CREDENTIAL_EXPIRED_OR_NOT_YET_VALID";
+  } catch (error) {
+    errorCode = error instanceof Error ? error.message : "SIGNATURE_INVALID";
+  }
+
+  const result = {
+    signature_valid: signatureValid,
+    structure_valid: structureValid,
+    status_valid: statusValid,
+    overall_valid: signatureValid && structureValid && statusValid,
+    error_code: errorCode,
+    protected_header: header,
+    credential: payload,
+    structure_checks: structureChecks,
+    checked_at: new Date().toISOString(),
+  };
+
+  if (requiredType === "ClrCredential") {
+    await sb.from("clr_records").update({ verification_result: result }).eq("id", registry.id);
+    await sb.from("clr_audit_logs").insert({
+      actor_user_id: null,
+      record_id: registry.id,
+      action: "credential_verified",
+      metadata: { source, overall_valid: result.overall_valid, error_code: errorCode },
+    });
+  } else {
+    await sb.from("skills_passport_verification_events").insert({
+      passport_id: registry.id,
+      signing_key_id: keyRow?.id || registry.signing_key_id || null,
+      verification_source: source,
+      signature_valid: signatureValid,
+      structure_valid: structureValid,
+      status_valid: statusValid,
+      overall_valid: result.overall_valid,
+      error_code: errorCode,
+      result,
+    });
+    await sb.from("skills_passports").update({ verification_result: result }).eq("id", registry.id);
+  }
+  return result;
+}
+
+function clrEntryCredential(recordUuid: string, entry: JsonRecord): JsonRecord {
+  const sourceType = text(entry.source_type, 80) || "manual";
+  const sourceId = text(entry.source_id, 160) || crypto.randomUUID();
+  const issuedAt = text(entry.issued_at, 80) || text(entry.ended_at, 80) || new Date().toISOString();
+  const achievement: JsonRecord = {
+    id: `${appBaseUrl()}/credentials/clr/achievements/${sourceType}/${encodeURIComponent(sourceId)}`,
+    type: ["Achievement"],
+    name: text(entry.title, 240),
+    description: nullableText(entry.description, 4000),
+    achievementType: text(entry.achievement_type, 80) || "Achievement",
+  };
+  const result: JsonRecord = {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
+    ],
+    id: `${appBaseUrl()}/credentials/clr/entries/${sourceType}/${encodeURIComponent(sourceId)}`,
+    type: ["VerifiableCredential", "OpenBadgeCredential"],
+    issuer: {
+      id: text(entry.issuer_url, 1000) || `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      type: ["Profile"],
+      name: text(entry.issuer_name, 240) || "Omnia Global Academy",
+    },
+    validFrom: issuedAt,
+    credentialSubject: {
+      id: `urn:uuid:${recordUuid}`,
+      type: ["AchievementSubject"],
+      achievement,
+    },
+  };
+  const score = nullableNumber(entry.score);
+  if (score !== null) {
+    result.credentialSubject = {
+      ...jsonRecord(result.credentialSubject),
+      result: [{
+        type: ["Result"],
+        value: String(score),
+        resultDescription: entry.score_max ? `Score sur ${entry.score_max}` : nullableText(entry.result_label, 500),
+      }],
+    };
+  }
+  return result;
+}
+
+async function upsertClrSourceEntry(sb: Supabase, record: JsonRecord, entry: JsonRecord): Promise<boolean> {
+  const sourceType = text(entry.source_type, 80);
+  const sourceId = text(entry.source_id, 200);
+  if (!sourceType || !sourceId || !text(entry.title, 240)) return false;
+  const { data: existing, error: existingError } = await sb.from("clr_achievements").select("*")
+    .eq("clr_record_id", record.id).eq("source_type", sourceType).eq("source_id", sourceId).maybeSingle();
+  if (existingError) throw existingError;
+  const common = {
+    title: text(entry.title, 240),
+    description: nullableText(entry.description, 4000),
+    achievement_type: text(entry.achievement_type, 80) || "Achievement",
+    section: CLR_SECTIONS.includes(text(entry.section, 80)) ? text(entry.section, 80) : "formations",
+    issued_at: nullableText(entry.issued_at, 80),
+    started_at: nullableText(entry.started_at, 80),
+    ended_at: nullableText(entry.ended_at, 80),
+    score: nullableNumber(entry.score),
+    score_max: nullableNumber(entry.score_max),
+    result_label: nullableText(entry.result_label, 500),
+    skills: stringArray(entry.skills, 80, 120),
+    evidence: jsonArray(entry.evidence),
+    external_url: validHttpUrl(nullableText(entry.external_url, 1000)) ? nullableText(entry.external_url, 1000) : null,
+    issuer_name: nullableText(entry.issuer_name, 240) || "Omnia Global Academy",
+    issuer_url: validHttpUrl(nullableText(entry.issuer_url, 1000)) ? nullableText(entry.issuer_url, 1000) : null,
+    entry_origin: "platform",
+    verification_status: "verified",
+    learner_editable: false,
+    metadata: jsonRecord(entry.metadata),
+    source_updated_at: nullableText(entry.source_updated_at, 80),
+  };
+  const payload = clrEntryCredential(String(record.record_uuid), { ...entry, ...common });
+  if (existing) {
+    const comparisonKeys = Object.keys(common);
+    const changed = comparisonKeys.some((key) => JSON.stringify(existing[key]) !== JSON.stringify(common[key]))
+      || JSON.stringify(existing.payload || {}) !== JSON.stringify(payload);
+    if (!changed) return false;
+    const { error } = await sb.from("clr_achievements").update({
+      ...common,
+      payload,
+      status: existing.status === "hidden" ? "hidden" : "active",
+    }).eq("id", existing.id);
+    if (error) throw error;
+    return true;
+  }
+  const { error } = await sb.from("clr_achievements").insert({
+    clr_record_id: record.id,
+    source_type: sourceType,
+    source_id: sourceId,
+    visibility: "oga",
+    status: "active",
+    ...common,
+    payload,
+  });
+  if (error) throw error;
+  return true;
+}
+
+async function optionalSourceRows(
+  query: PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+): Promise<JsonRecord[]> {
+  try {
+    const result = await query;
+    if (result.error) return [];
+    return Array.isArray(result.data) ? result.data as JsonRecord[] : [];
+  } catch {
+    return [];
+  }
+}
+
+async function syncPlatformClr(sb: Supabase, userId: string) {
+  const record = await getOrCreateClr(sb, userId);
+  let changed = 0;
+
+  const enrollments = await optionalSourceRows(
+    sb.from("enrollments").select("*,courses(id,title,category,level,language)")
+      .eq("user_id", userId).eq("status", "completed"),
+  );
+  for (const row of enrollments) {
+    const course = jsonRecord(row.courses);
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "course",
+      source_id: row.course_id || row.id,
+      section: "formations",
+      achievement_type: "Course",
+      title: course.title || row.course_title || "Formation Omnia terminée",
+      description: course.category || row.description,
+      issued_at: row.completed_at || row.updated_at,
+      ended_at: row.completed_at,
+      skills: jsonArray(row.skills),
+      issuer_name: "Omnia Global Academy",
+      metadata: { course_id: row.course_id, level: course.level, language: course.language },
+      source_updated_at: row.updated_at,
+    })) changed++;
+  }
+
+  const certificates = await optionalSourceRows(
+    sb.from("certificates").select("*").eq("user_id", userId),
+  );
+  for (const row of certificates) {
+    const revoked = row.validity_status === "revoked" || row.status === "revoked";
+    if (revoked) continue;
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "certificate",
+      source_id: row.id,
+      section: "certificats",
+      achievement_type: "Certificate",
+      title: row.course_title || row.title || "Certificat Omnia",
+      description: row.course_category || row.description,
+      issued_at: row.issued_at || row.created_at,
+      ended_at: row.issued_at,
+      external_url: row.verification_url || row.pdf_url,
+      issuer_name: row.issuer_name || row.establishment_name || "Omnia Global Academy",
+      evidence: row.verification_url ? [{ type: "verification", url: row.verification_url }] : [],
+      metadata: {
+        certificate_id: row.omnia_certificate_id,
+        cpd_hours: row.cpd_hours,
+        document_type: row.document_type,
+      },
+      source_updated_at: row.updated_at,
+    })) changed++;
+  }
+
+  const attempts = await optionalSourceRows(
+    sb.from("assessment_attempts").select("*,assessment:course_assessments(title,scope,passing_score)")
+      .eq("user_id", userId).eq("passed", true),
+  );
+  for (const row of attempts) {
+    const assessment = jsonRecord(row.assessment);
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "assessment",
+      source_id: row.id,
+      section: "evaluations",
+      achievement_type: "Assessment",
+      title: assessment.title || "Évaluation réussie",
+      description: row.feedback,
+      issued_at: row.graded_at || row.submitted_at,
+      score: row.score,
+      score_max: 100,
+      result_label: `Évaluation ${assessment.scope || ""} réussie`,
+      metadata: { course_id: row.course_id, assessment_id: row.assessment_id },
+      source_updated_at: row.graded_at || row.submitted_at,
+    })) changed++;
+  }
+
+  const projects = await optionalSourceRows(
+    sb.from("course_assignment_submissions").select("*")
+      .eq("learner_id", userId).eq("status", "graded"),
+  );
+  for (const row of projects) {
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "project",
+      source_id: row.id,
+      section: "projets",
+      achievement_type: "Project",
+      title: row.file_name || "Projet évalué",
+      description: row.evaluator_comment || row.answer_text,
+      issued_at: row.evaluated_at || row.submitted_at,
+      score: row.score,
+      external_url: row.file_url,
+      evidence: row.file_url ? [{ type: "artifact", url: row.file_url, name: row.file_name }] : [],
+      metadata: { course_id: row.course_id, lesson_id: row.lesson_id },
+      source_updated_at: row.updated_at,
+    })) changed++;
+  }
+
+  const liveDocuments = [
+    ...await optionalSourceRows(sb.from("live_issued_documents").select("*").eq("user_id", userId).eq("status", "issued")),
+    ...await optionalSourceRows(sb.from("live_documents_issued").select("*").eq("user_id", userId).is("revoked_at", null)),
+  ];
+  for (const row of liveDocuments) {
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "omnia_live",
+      source_id: row.id,
+      section: "omnia_live",
+      achievement_type: "Participation",
+      title: row.event_title || row.title || "Participation Omnia Live",
+      description: row.document_type || "Attestation Omnia Live",
+      issued_at: row.issue_date || row.issued_at || row.created_at,
+      score: row.assessment_score,
+      score_max: row.assessment_score === null || row.assessment_score === undefined ? null : 100,
+      external_url: row.verification_url,
+      issuer_name: row.organizer_name || row.issuer_name || "Omnia Global Academy",
+      metadata: {
+        event_id: row.event_id,
+        attendance_percent: row.attendance_percent,
+        cpd_hours: row.cpd_hours,
+      },
+      source_updated_at: row.updated_at || row.created_at,
+    })) changed++;
+  }
+
+  const coachingSessions = await optionalSourceRows(
+    sb.from("coaching_sessions").select("*").eq("learner_user_id", userId).eq("status", "completed"),
+  );
+  for (const row of coachingSessions) {
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "coaching",
+      source_id: row.id,
+      section: "coaching",
+      achievement_type: "Coaching",
+      title: row.offer_title_snapshot || "Session de coaching terminée",
+      description: row.coach_name_snapshot ? `Coach : ${row.coach_name_snapshot}` : null,
+      started_at: row.actual_started_at || row.scheduled_start,
+      ended_at: row.actual_ended_at || row.scheduled_end,
+      issued_at: row.actual_ended_at || row.scheduled_end,
+      issuer_name: row.coach_name_snapshot || "Coach Omnia",
+      metadata: { duration_minutes: row.duration_minutes, meeting_mode: row.meeting_mode },
+      source_updated_at: row.updated_at || row.actual_ended_at,
+    })) changed++;
+  }
+
+  const recommendations = await optionalSourceRows(
+    sb.from("coaching_action_plans").select("*")
+      .eq("learner_user_id", userId).eq("learner_visible", true),
+  );
+  for (const row of recommendations) {
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "coaching_recommendation",
+      source_id: row.id,
+      section: "recommandations",
+      achievement_type: "Recommendation",
+      title: row.title || "Recommandation de coaching",
+      description: row.summary || row.next_session_recommendation,
+      issued_at: row.updated_at || row.created_at,
+      verification_status: "verified",
+      metadata: { session_id: row.session_id, status: row.status },
+      source_updated_at: row.updated_at,
+    })) changed++;
+  }
+
+  const { error } = await sb.from("clr_records").update({
+    last_synced_at: new Date().toISOString(),
+    ...(changed ? {
+      clr_jwt: null,
+      signed_at: null,
+      signing_key_id: null,
+      signature_alg: null,
+      credential_hash: null,
+      standards_status: "clr2_draft",
+      verification_result: {},
+    } : {}),
+  }).eq("id", record.id);
+  if (error) throw error;
+  return changed;
+}
+
+async function rebuildCompleteClr(sb: Supabase, userId: string) {
+  const record = await getOrCreateClr(sb, userId);
+  const { data: user, error: userError } = await sb.from("users")
+    .select("id,full_name,country_code").eq("id", userId).maybeSingle();
+  if (userError) throw userError;
+  const { data: achievements, error: achievementError } = await sb.from("clr_achievements")
+    .select("*").eq("clr_record_id", record.id)
+    .order("sort_order").order("issued_at", { ascending: false });
+  if (achievementError) throw achievementError;
+  const active = (achievements || []).filter((row: JsonRecord) => row.status !== "hidden");
+  const payload: JsonRecord = {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://purl.imsglobal.org/spec/clr/v2p0/context-2.0.1.json",
+      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
+    ],
+    id: `urn:uuid:${record.record_uuid}`,
+    type: ["VerifiableCredential", "ClrCredential"],
+    name: String(record.title || "Omnia Learning Record"),
+    description: nullableText(record.description, 3000),
+    issuer: {
+      id: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      type: ["Profile"],
+      name: "Omnia Global Academy",
+    },
+    credentialSubject: {
+      id: `urn:uuid:${record.record_uuid}`,
+      type: ["ClrSubject"],
+      name: user?.full_name || "Titulaire Omnia",
+      ...(user?.country_code ? { address: { addressCountry: user.country_code } } : {}),
+      verifiableCredential: active.map((row: JsonRecord) => row.payload),
+    },
+    validFrom: String(record.created_at || new Date().toISOString()),
+    credentialSchema: [{
+      id: "https://purl.imsglobal.org/spec/clr/v2p0/schema/json/clr_v2p0_clrcredential_schema.json",
+      type: "1EdTechJsonSchemaValidator2019",
+    }],
+  };
+  const unchanged = JSON.stringify(record.clr_json || {}) === JSON.stringify(payload);
+  let current = record;
+  if (!unchanged) {
+    const { data, error } = await sb.from("clr_records").update({
+      clr_json: payload,
+      standards_status: "clr2_draft",
+      version: record.last_built_at ? Number(record.version || 1) + 1 : Number(record.version || 1),
+      last_built_at: new Date().toISOString(),
+      clr_jwt: null,
+      signed_at: null,
+      signing_key_id: null,
+      signature_alg: null,
+      credential_hash: null,
+      verification_result: {},
+    }).eq("id", record.id).select("*").single();
+    if (error) throw error;
+    current = data as JsonRecord;
+  }
+  return { record: current, achievements: achievements || [], changed: !unchanged };
+}
+
+function clrCounts(achievements: JsonRecord[]) {
+  return {
+    total: achievements.filter((row) => row.status !== "hidden").length,
+    verified: achievements.filter((row) => row.status !== "hidden" && row.verification_status === "verified").length,
+    pending: achievements.filter((row) => row.verification_status === "pending_review").length,
+  };
+}
+
+async function learnerClrComplete(sb: Supabase, session: Session, synchronize = false) {
+  const syncedEntries = synchronize ? await syncPlatformClr(sb, session.userId) : 0;
+  const rebuilt = await rebuildCompleteClr(sb, session.userId);
+  const [sharesResult, importsResult] = await Promise.all([
+    sb.from("clr_shares").select("id,label,include_sections,visibility_filter,expires_at,revoked_at,created_at,last_accessed_at")
+      .eq("clr_record_id", rebuilt.record.id).order("created_at", { ascending: false }),
+    sb.from("clr_imports").select("*").eq("user_id", session.userId).order("created_at", { ascending: false }),
+  ]);
+  if (sharesResult.error) throw sharesResult.error;
+  if (importsResult.error) throw importsResult.error;
+  const achievements = rebuilt.achievements as JsonRecord[];
+  return {
+    record: { ...rebuilt.record, entry_counts: clrCounts(achievements) },
+    achievements,
+    shares: sharesResult.data || [],
+    imports: importsResult.data || [],
+    sections: CLR_SECTIONS,
+    synced_entries: syncedEntries,
+  };
+}
+
+async function invalidateClrSignature(sb: Supabase, recordId: string) {
+  const { error } = await sb.from("clr_records").update({
+    standards_status: "clr2_draft",
+    clr_jwt: null,
+    signed_at: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    verification_result: {},
+  }).eq("id", recordId);
+  if (error) throw error;
+}
+
+async function ownedClrEntry(sb: Supabase, session: Session, entryId: string) {
+  const { data, error } = await sb.from("clr_achievements")
+    .select("*,record:clr_records!clr_achievements_record_id_fkey(id,user_id)")
+    .eq("id", entryId).maybeSingle();
+  if (error) throw error;
+  const record = jsonRecord(data?.record);
+  if (!data || String(record.user_id) !== session.userId) throw new Error("CLR_ENTRY_NOT_FOUND");
+  return data as JsonRecord;
+}
+
+async function updateClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const entry = await ownedClrEntry(sb, session, text(body.entry_id, 80));
+  const patch: JsonRecord = {};
+  if (body.visibility !== undefined) {
+    const visibility = text(body.visibility, 30);
+    if (!["private","oga","recruiters","structure","public"].includes(visibility)) throw new Error("INVALID_VISIBILITY");
+    patch.visibility = visibility;
+  }
+  if (body.is_featured !== undefined) patch.is_featured = bool(body.is_featured);
+  if (body.hidden !== undefined) patch.status = bool(body.hidden) ? "hidden" : "active";
+  if (!Object.keys(patch).length) throw new Error("CLR_ENTRY_UPDATE_EMPTY");
+  const { data, error } = await sb.from("clr_achievements").update(patch).eq("id", entry.id).select("*").single();
+  if (error) throw error;
+  await invalidateClrSignature(sb, String(entry.clr_record_id));
+  return data;
+}
+
+async function saveClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const section = text(body.section, 80);
+  if (!["experiences","projets","recommandations","certificats"].includes(section)) throw new Error("CLR_SECTION_NOT_MANUAL");
+  const title = text(body.title, 240);
+  if (!title) throw new Error("CLR_ENTRY_TITLE_REQUIRED");
+  const entryId = nullableText(body.id, 80);
+  const base: JsonRecord = {
+    source_type: "manual",
+    source_id: entryId || crypto.randomUUID(),
+    title,
+    description: nullableText(body.description, 4000),
+    achievement_type: section === "experiences" ? "Experience" : section === "projets" ? "Project" : section === "recommandations" ? "Recommendation" : "Certificate",
+    section,
+    status: "active",
+    visibility: ["private","oga","recruiters","structure","public"].includes(text(body.visibility, 30)) ? text(body.visibility, 30) : "private",
+    issued_at: nullableText(body.ended_at, 80) || new Date().toISOString(),
+    started_at: nullableText(body.started_at, 80),
+    ended_at: nullableText(body.ended_at, 80),
+    result_label: nullableText(body.result_label, 500),
+    skills: stringArray(body.skills, 50, 120),
+    evidence: [],
+    external_url: validHttpUrl(nullableText(body.external_url, 1000)) ? nullableText(body.external_url, 1000) : null,
+    issuer_name: nullableText(body.issuer_name, 240),
+    entry_origin: "manual",
+    verification_status: "declared",
+    learner_editable: true,
+    is_featured: bool(body.is_featured),
+    metadata: {},
+  };
+  base.payload = clrEntryCredential(String(record.record_uuid), base);
+  if (entryId) {
+    const existing = await ownedClrEntry(sb, session, entryId);
+    if (!existing.learner_editable) throw new Error("CLR_ENTRY_NOT_EDITABLE");
+    const { data, error } = await sb.from("clr_achievements").update(base).eq("id", entryId).select("*").single();
+    if (error) throw error;
+    await invalidateClrSignature(sb, String(record.id));
+    return data;
+  }
+  const { data, error } = await sb.from("clr_achievements").insert({
+    clr_record_id: record.id,
+    ...base,
+  }).select("*").single();
+  if (error) throw error;
+  await invalidateClrSignature(sb, String(record.id));
+  return data;
+}
+
+async function deleteClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const entry = await ownedClrEntry(sb, session, text(body.entry_id, 80));
+  if (!entry.learner_editable) throw new Error("CLR_ENTRY_NOT_EDITABLE");
+  const { error } = await sb.from("clr_achievements").delete().eq("id", entry.id);
+  if (error) throw error;
+  await invalidateClrSignature(sb, String(entry.clr_record_id));
+  return { success: true };
+}
+
+async function updateClrProfile(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const order = stringArray(body.section_order, CLR_SECTIONS.length, 80).filter((value) => CLR_SECTIONS.includes(value));
+  const hidden = stringArray(body.hidden_sections, CLR_SECTIONS.length, 80).filter((value) => CLR_SECTIONS.includes(value));
+  const visibility = text(body.default_visibility, 30) || String(record.default_visibility || "oga");
+  if (!["private","oga","recruiters","structure","public"].includes(visibility)) throw new Error("INVALID_VISIBILITY");
+  const { data, error } = await sb.from("clr_records").update({
+    title: text(body.title, 240) || "Omnia Learning Record",
+    description: nullableText(body.description, 3000),
+    profile_headline: nullableText(body.profile_headline, 300),
+    summary: nullableText(body.summary, 4000),
+    language_code: text(body.language_code, 10) || "fr",
+    default_visibility: visibility,
+    section_order: order.length ? order : CLR_SECTIONS,
+    hidden_sections: hidden,
+  }).eq("id", record.id).select("*").single();
+  if (error) throw error;
+  await invalidateClrSignature(sb, String(record.id));
+  return data;
+}
+
+function importedCredentials(payload: JsonRecord): JsonRecord[] {
+  const subject = jsonRecord(payload.credentialSubject);
+  const nested = jsonArray(subject.verifiableCredential)
+    .map((item) => typeof item === "string" ? decodeJwtPayload(item) : jsonRecord(item))
+    .filter((item) => Object.keys(item).length);
+  return nested.length ? nested.slice(0, 100) : [payload];
+}
+
+async function importClr(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const sourceFormat = text(body.source_format, 20);
+  if (!["json","json_ld","vc_jwt"].includes(sourceFormat)) throw new Error("CLR_IMPORT_FORMAT_INVALID");
+  const content = text(body.content, 2_000_000);
+  if (!content) throw new Error("CLR_IMPORT_EMPTY");
+  let payload: JsonRecord;
+  let compactJwt: string | null = null;
+  try {
+    if (sourceFormat === "vc_jwt") {
+      compactJwt = content;
+      payload = decodeJwtPayload(content);
+    } else {
+      payload = JSON.parse(content) as JsonRecord;
+    }
+  } catch {
+    throw new Error("CLR_IMPORT_INVALID");
+  }
+  const credentials = importedCredentials(payload);
+  const issuer = jsonRecord(payload.issuer);
+  const { data, error } = await sb.from("clr_imports").insert({
+    clr_record_id: record.id,
+    user_id: session.userId,
+    source_format: sourceFormat,
+    source_file_name: nullableText(body.source_file_name, 240),
+    source_issuer: nullableText(issuer.name || issuer.id, 300),
+    credential_type: jsonArray(payload.type).map(String).join(",").slice(0, 300) || null,
+    raw_payload: payload,
+    compact_jwt: compactJwt,
+    status: "pending",
+    verification_result: {
+      structure_recognized: Boolean(credentials.length),
+      signature_checked: false,
+      note: "Contrôle Super Admin requis avant intégration.",
+    },
+    imported_entries_count: credentials.length,
+  }).select("*").single();
+  if (error) throw error;
+  await sb.from("clr_audit_logs").insert({
+    actor_user_id: session.userId,
+    record_id: record.id,
+    action: "import_submitted",
+    metadata: { import_id: data.id, source_format: sourceFormat, entries: credentials.length },
+  });
+  return data;
+}
+
+async function reviewClrImport(sb: Supabase, session: Session, body: JsonRecord) {
+  const importId = text(body.import_id, 80);
+  const decision = text(body.decision, 20);
+  if (!["approve","reject"].includes(decision)) throw new Error("CLR_IMPORT_DECISION_INVALID");
+  const { data: imported, error } = await sb.from("clr_imports").select("*").eq("id", importId).maybeSingle();
+  if (error) throw error;
+  if (!imported) throw new Error("CLR_IMPORT_NOT_FOUND");
+  if (imported.status !== "pending") throw new Error("CLR_IMPORT_ALREADY_REVIEWED");
+  let inserted = 0;
+  if (decision === "approve") {
+    const credentials = importedCredentials(jsonRecord(imported.raw_payload));
+    for (const credential of credentials) {
+      const subject = jsonRecord(credential.credentialSubject);
+      const achievement = jsonRecord(subject.achievement);
+      const title = text(achievement.name || credential.name, 240);
+      if (!title) continue;
+      const sourceId = text(credential.id, 500) || crypto.randomUUID();
+      const issuer = jsonRecord(credential.issuer);
+      const section = jsonArray(credential.type).map(String).includes("OpenBadgeCredential") ? "badges" : "certificats";
+      const { data: exists } = await sb.from("clr_achievements").select("id")
+        .eq("clr_record_id", imported.clr_record_id).eq("source_type", "imported").eq("source_id", sourceId).maybeSingle();
+      if (exists) continue;
+      const { error: insertError } = await sb.from("clr_achievements").insert({
+        clr_record_id: imported.clr_record_id,
+        source_type: "imported",
+        source_id: sourceId,
+        title,
+        description: nullableText(achievement.description || credential.description, 4000),
+        achievement_type: text(achievement.achievementType, 80) || "Achievement",
+        section,
+        status: "active",
+        visibility: "private",
+        issued_at: nullableText(credential.validFrom, 80) || imported.created_at,
+        skills: stringArray(achievement.tag, 50, 120),
+        evidence: jsonArray(subject.evidence),
+        external_url: validHttpUrl(nullableText(credential.id, 1000)) ? nullableText(credential.id, 1000) : null,
+        issuer_name: nullableText(issuer.name || issuer.id, 240),
+        issuer_url: validHttpUrl(nullableText(issuer.id, 1000)) ? nullableText(issuer.id, 1000) : null,
+        entry_origin: "imported",
+        verification_status: "verified",
+        learner_editable: false,
+        metadata: { import_id: imported.id },
+        payload: credential,
+      });
+      if (insertError) throw insertError;
+      inserted++;
+    }
+    await invalidateClrSignature(sb, String(imported.clr_record_id));
+  }
+  const status = decision === "approve" ? "imported" : "rejected";
+  const { data, error: updateError } = await sb.from("clr_imports").update({
+    status,
+    imported_entries_count: decision === "approve" ? inserted : Number(imported.imported_entries_count || 0),
+    review_note: nullableText(body.review_note, 2500),
+    reviewed_by: session.userId,
+    reviewed_at: new Date().toISOString(),
+  }).eq("id", importId).select("*").single();
+  if (updateError) throw updateError;
+  await sb.from("clr_audit_logs").insert({
+    actor_user_id: session.userId,
+    record_id: imported.clr_record_id,
+    action: decision === "approve" ? "import_approved" : "import_rejected",
+    metadata: { import_id: importId, inserted_entries: inserted },
+  });
+  return data;
+}
+
+async function signClr(sb: Supabase, userId: string, actorUserId: string, req: Request) {
+  const rebuilt = await rebuildCompleteClr(sb, userId);
+  const key = await syncSigningKey(sb, req, actorUserId);
+  const signed = await signCredential(rebuilt.record.clr_json as JsonRecord, req);
+  const hash = await sha256(signed.compactJws);
+  const verification = {
+    signature_valid: true,
+    structure_valid: true,
+    status_valid: true,
+    overall_valid: true,
+    checked_at: new Date().toISOString(),
+  };
+  const { data, error } = await sb.from("clr_records").update({
+    clr_jwt: signed.compactJws,
+    signed_at: new Date().toISOString(),
+    signing_key_id: key.id,
+    signature_alg: "RS256",
+    credential_hash: hash,
+    standards_status: "clr2_signed",
+    verification_result: verification,
+  }).eq("id", rebuilt.record.id).select("*").single();
+  if (error) throw error;
+  await sb.from("clr_audit_logs").insert({
+    actor_user_id: actorUserId,
+    record_id: data.id,
+    action: "clr_signed",
+    metadata: { version: data.version, credential_hash: hash },
+  });
+  return data as JsonRecord;
+}
+
+async function exportClr(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
+  const format = text(body.format, 30);
+  if (!["clr_json","vc_jwt"].includes(format)) throw new Error("CLR_EXPORT_FORMAT_INVALID");
+  const rebuilt = await rebuildCompleteClr(sb, session.userId);
+  let record = rebuilt.record;
+  let content: JsonRecord | string = rebuilt.record.clr_json as JsonRecord;
+  if (format === "vc_jwt") {
+    record = await signClr(sb, session.userId, session.userId, req);
+    content = String(record.clr_jwt);
+  }
+  await sb.from("clr_exports").insert({
+    clr_record_id: record.id,
+    user_id: session.userId,
+    export_format: format,
+    credential_hash: format === "vc_jwt" ? record.credential_hash : await sha256(JSON.stringify(content)),
+  });
+  return {
+    format,
+    content,
+    file_name: format === "vc_jwt" ? `omnia-clr-${record.record_uuid}.jwt` : `omnia-clr-${record.record_uuid}.json`,
+    media_type: format === "vc_jwt" ? "application/vc+jwt" : "application/ld+json",
+    record,
+  };
+}
+
+async function adminClrRecords(sb: Supabase) {
+  const { data, error } = await sb.from("clr_records")
+    .select("*,user:users!clr_records_user_id_fkey(id,full_name,email,avatar_url,country_code)")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const records = data || [];
+  const recordIds = records.map((row: JsonRecord) => String(row.id));
+  const { data: achievements, error: achievementsError } = recordIds.length
+    ? await sb.from("clr_achievements").select("clr_record_id,status,verification_status").in("clr_record_id", recordIds)
+    : { data: [], error: null };
+  if (achievementsError) throw achievementsError;
+  return records.map((record: JsonRecord) => {
+    const entries = (achievements || []).filter((row: JsonRecord) => row.clr_record_id === record.id);
+    return { ...record, entry_counts: clrCounts(entries as JsonRecord[]) };
+  });
+}
+
+async function adminClrImports(sb: Supabase) {
+  const { data, error } = await sb.from("clr_imports")
+    .select("*,user:users!clr_imports_user_id_fkey(id,full_name,email),record:clr_records!clr_imports_record_id_fkey(id,record_uuid,title)")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+async function ensureSkillsPassport(sb: Supabase, userId: string) {
+  const record = await getOrCreateClr(sb, userId);
+  const { data: existing, error } = await sb.from("skills_passports").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (existing) return existing as JsonRecord;
+  const { data, error: insertError } = await sb.from("skills_passports").insert({
+    user_id: userId,
+    clr_record_id: record.id,
+    title: "Omnia Skills Passport",
+    selected_sections: PASSPORT_SECTIONS,
+  }).select("*").single();
+  if (insertError) throw insertError;
+  const { data: candidates } = await sb.from("clr_achievements").select("id")
+    .eq("clr_record_id", record.id).eq("status", "active").eq("verification_status", "verified")
+    .in("section", PASSPORT_SECTIONS).neq("visibility", "private").limit(30);
+  if (candidates?.length) {
+    await sb.from("skills_passport_items").insert(candidates.map((row: { id: string }, index: number) => ({
+      passport_id: data.id,
+      clr_achievement_id: row.id,
+      display_order: index,
+      is_featured: false,
+    })));
+  }
+  return data as JsonRecord;
+}
+
+async function learnerSkillsPassport(sb: Supabase, session: Session) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  const [itemsResult, candidatesResult, sharesResult] = await Promise.all([
+    sb.from("skills_passport_items")
+      .select("*,achievement:clr_achievements!skills_passport_items_clr_achievement_id_fkey(*)")
+      .eq("passport_id", passport.id).order("display_order"),
+    sb.from("clr_achievements").select("*").eq("clr_record_id", passport.clr_record_id)
+      .eq("status", "active").in("section", PASSPORT_SECTIONS)
+      .in("verification_status", ["verified","declared","pending_review"]).neq("visibility", "private")
+      .order("issued_at", { ascending: false }),
+    sb.from("skills_passport_shares").select("id,label,expires_at,max_views,view_count,last_accessed_at,revoked_at,created_at")
+      .eq("passport_id", passport.id).order("created_at", { ascending: false }),
+  ]);
+  if (itemsResult.error) throw itemsResult.error;
+  if (candidatesResult.error) throw candidatesResult.error;
+  if (sharesResult.error) throw sharesResult.error;
+  return {
+    passport,
+    items: itemsResult.data || [],
+    candidates: candidatesResult.data || [],
+    shares: sharesResult.data || [],
+    allowed_sections: PASSPORT_SECTIONS,
+  };
+}
+
+async function updateSkillsPassportItems(sb: Supabase, session: Session, body: JsonRecord) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  const requested = jsonArray(body.items).slice(0, 100).map((item, index) => {
+    const row = jsonRecord(item);
+    return {
+      achievement_id: text(row.achievement_id, 80),
+      display_order: integer(row.display_order) ?? index,
+      is_featured: bool(row.is_featured),
+    };
+  }).filter((item) => item.achievement_id);
+  const ids = [...new Set(requested.map((item) => item.achievement_id))];
+  const { data: allowed, error } = ids.length
+    ? await sb.from("clr_achievements").select("id,section").eq("clr_record_id", passport.clr_record_id)
+      .in("id", ids).eq("status", "active").in("section", PASSPORT_SECTIONS).neq("visibility", "private")
+    : { data: [], error: null };
+  if (error) throw error;
+  const allowedIds = new Set((allowed || []).map((row: { id: string }) => String(row.id)));
+  if (allowedIds.size !== ids.length) throw new Error("SKILLS_PASSPORT_ITEM_FORBIDDEN");
+  const { error: deleteError } = await sb.from("skills_passport_items").delete().eq("passport_id", passport.id);
+  if (deleteError) throw deleteError;
+  if (requested.length) {
+    const { error: insertError } = await sb.from("skills_passport_items").insert(requested.map((item) => ({
+      passport_id: passport.id,
+      clr_achievement_id: item.achievement_id,
+      display_order: Math.max(0, item.display_order),
+      is_featured: item.is_featured,
+    })));
+    if (insertError) throw insertError;
+  }
+  const { error: invalidateError } = await sb.from("skills_passports").update({
+    status: "draft",
+    presentation_jwt: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    published_at: null,
+    verification_result: {},
+  }).eq("id", passport.id);
+  if (invalidateError) throw invalidateError;
+  await sb.from("skills_passport_audit_logs").insert({
+    passport_id: passport.id,
+    actor_user_id: session.userId,
+    action: "selection_updated",
+    metadata: { item_count: requested.length },
+  });
+  return { success: true };
+}
+
+async function updateSkillsPassportProfile(sb: Supabase, session: Session, body: JsonRecord) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  const sections = stringArray(body.selected_sections, PASSPORT_SECTIONS.length, 80)
+    .filter((value) => PASSPORT_SECTIONS.includes(value));
+  const { data, error } = await sb.from("skills_passports").update({
+    title: text(body.title, 240) || "Omnia Skills Passport",
+    professional_headline: nullableText(body.professional_headline, 300),
+    professional_summary: nullableText(body.professional_summary, 4000),
+    target_roles: stringArray(body.target_roles, 20, 120),
+    languages: stringArray(body.languages, 20, 80),
+    location_text: nullableText(body.location_text, 240),
+    availability_text: nullableText(body.availability_text, 240),
+    selected_sections: sections.length ? sections : PASSPORT_SECTIONS,
+    status: "draft",
+    presentation_jwt: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    published_at: null,
+    verification_result: {},
+  }).eq("id", passport.id).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+function publicPassportItem(row: JsonRecord) {
+  return {
+    id: row.id,
+    clr_achievement_id: row.id,
+    section: row.section,
+    title: row.title,
+    description: row.description,
+    achievement_type: row.achievement_type,
+    issued_at: row.issued_at,
+    started_at: row.started_at,
+    ended_at: row.ended_at,
+    result_label: row.result_label,
+    score: row.score,
+    score_max: row.score_max,
+    skills: stringArray(row.skills, 80, 120),
+    evidence: jsonArray(row.evidence).filter((item) => {
+      const evidence = jsonRecord(item);
+      return evidence.is_public !== false;
+    }),
+    external_url: row.external_url,
+    issuer_name: row.issuer_name,
+    verification_status: row.verification_status,
+    entry_origin: row.entry_origin,
+    is_featured: bool(row.is_featured),
+    display_order: integer(row.display_order) || 0,
+  };
+}
+
+async function buildSkillsPassport(sb: Supabase, userId: string) {
+  const passport = await ensureSkillsPassport(sb, userId);
+  const { data: user, error: userError } = await sb.from("users").select("id,full_name,country_code").eq("id", userId).maybeSingle();
+  if (userError) throw userError;
+  const { data: itemRows, error } = await sb.from("skills_passport_items")
+    .select("display_order,is_featured,achievement:clr_achievements!skills_passport_items_clr_achievement_id_fkey(*)")
+    .eq("passport_id", passport.id).order("display_order");
+  if (error) throw error;
+  const allowedSections = new Set(stringArray(passport.selected_sections, PASSPORT_SECTIONS.length, 80));
+  const items = (itemRows || []).map((item: JsonRecord) => ({
+    ...jsonRecord(item.achievement),
+    display_order: item.display_order,
+    is_featured: item.is_featured,
+  })).filter((item: JsonRecord) =>
+    item.status === "active"
+    && item.visibility !== "private"
+    && PASSPORT_SECTIONS.includes(String(item.section))
+    && (!allowedSections.size || allowedSections.has(String(item.section)))
+  ).map(publicPassportItem);
+  const validFrom = String(passport.created_at || new Date().toISOString());
+  const payload: JsonRecord = {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
+    ],
+    id: `urn:uuid:${passport.passport_uuid}`,
+    type: ["VerifiableCredential", "OmniaSkillsPassportCredential"],
+    name: String(passport.title || "Omnia Skills Passport"),
+    issuer: {
+      id: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      type: ["Profile"],
+      name: "Omnia Global Academy",
+    },
+    validFrom,
+    credentialSubject: {
+      id: `urn:uuid:${passport.passport_uuid}`,
+      type: ["Person"],
+      name: user?.full_name || "Titulaire Omnia",
+      ...(user?.country_code ? { address: { addressCountry: user.country_code } } : {}),
+      professionalHeadline: passport.professional_headline,
+      professionalSummary: passport.professional_summary,
+      targetRoles: stringArray(passport.target_roles, 20, 120),
+      languages: stringArray(passport.languages, 20, 80),
+      location: passport.location_text,
+      availability: passport.availability_text,
+      achievement: items,
+    },
+  };
+  const unchanged = JSON.stringify(passport.presentation_json || {}) === JSON.stringify(payload);
+  let current = passport;
+  if (!unchanged) {
+    const { data, error: updateError } = await sb.from("skills_passports").update({
+      presentation_json: payload,
+      version: passport.last_built_at ? Number(passport.version || 1) + 1 : Number(passport.version || 1),
+      last_built_at: new Date().toISOString(),
+      status: "draft",
+      presentation_jwt: null,
+      signing_key_id: null,
+      signature_alg: null,
+      credential_hash: null,
+      published_at: null,
+      verification_result: {},
+    }).eq("id", passport.id).select("*").single();
+    if (updateError) throw updateError;
+    current = data as JsonRecord;
+  }
+  return { passport: current, items, changed: !unchanged };
+}
+
+async function publishSkillsPassport(sb: Supabase, session: Session, req: Request) {
+  const built = await buildSkillsPassport(sb, session.userId);
+  if (!built.items.length) throw new Error("SKILLS_PASSPORT_EMPTY");
+  const key = await syncSigningKey(sb, req, session.userId);
+  const signed = await signCredential(built.passport.presentation_json as JsonRecord, req);
+  const hash = await sha256(signed.compactJws);
+  const verification = {
+    signature_valid: true,
+    structure_valid: true,
+    status_valid: true,
+    overall_valid: true,
+    checked_at: new Date().toISOString(),
+  };
+  const { data, error } = await sb.from("skills_passports").update({
+    status: "published",
+    presentation_jwt: signed.compactJws,
+    signing_key_id: key.id,
+    signature_alg: "RS256",
+    credential_hash: hash,
+    published_at: new Date().toISOString(),
+    verification_result: verification,
+  }).eq("id", built.passport.id).select("*").single();
+  if (error) throw error;
+  await sb.from("skills_passport_audit_logs").insert({
+    passport_id: data.id,
+    actor_user_id: session.userId,
+    action: "passport_published",
+    metadata: { version: data.version, item_count: built.items.length, credential_hash: hash },
+  });
+  return { passport: data as JsonRecord, jwt: signed.compactJws };
+}
+
+async function createSkillsPassportShare(sb: Supabase, session: Session, body: JsonRecord) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  if (passport.status !== "published" || !passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_PUBLISHED");
+  const token = randomToken();
+  const days = integer(body.validity_days);
+  const maxViews = integer(body.max_views);
+  if (maxViews !== null && maxViews <= 0) throw new Error("SKILLS_PASSPORT_MAX_VIEWS_INVALID");
+  const expiresAt = days && days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null;
+  const { data, error } = await sb.from("skills_passport_shares").insert({
+    passport_id: passport.id,
+    token_hash: await sha256(token),
+    label: nullableText(body.label, 180),
+    expires_at: expiresAt,
+    max_views: maxViews,
+    created_by: session.userId,
+  }).select("id,label,expires_at,max_views,view_count,last_accessed_at,revoked_at,created_at").single();
+  if (error) throw error;
+  return { ...data, token, url: `${appBaseUrl()}/credentials/passports/${token}` };
+}
+
+async function revokeSkillsPassportShare(sb: Supabase, session: Session, body: JsonRecord) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  const { data, error } = await sb.from("skills_passport_shares").update({ revoked_at: new Date().toISOString() })
+    .eq("id", text(body.share_id, 80)).eq("passport_id", passport.id).select("id").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("SKILLS_PASSPORT_SHARE_NOT_FOUND");
+  return { success: true };
+}
+
+async function verifyOwnedSkillsPassport(sb: Supabase, session: Session, req: Request) {
+  const passport = await ensureSkillsPassport(sb, session.userId);
+  if (!passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_SIGNED");
+  return verifyPortableCredential(sb, String(passport.presentation_jwt), req, passport, "OmniaSkillsPassportCredential", "learner");
+}
+
+async function exportSkillsPassport(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
+  const format = text(body.format, 30);
+  if (!["passport_json","vc_jwt"].includes(format)) throw new Error("SKILLS_PASSPORT_EXPORT_FORMAT_INVALID");
+  let built = await buildSkillsPassport(sb, session.userId);
+  if (format === "vc_jwt" && (!built.passport.presentation_jwt || built.passport.status !== "published")) {
+    const published = await publishSkillsPassport(sb, session, req);
+    built = { ...built, passport: published.passport };
+  }
+  const content = format === "vc_jwt" ? String(built.passport.presentation_jwt) : built.passport.presentation_json as JsonRecord;
+  await sb.from("skills_passport_exports").insert({
+    passport_id: built.passport.id,
+    requested_by: session.userId,
+    export_format: format,
+    credential_hash: format === "vc_jwt" ? built.passport.credential_hash : await sha256(JSON.stringify(content)),
+  });
+  return {
+    format,
+    content,
+    file_name: format === "vc_jwt" ? `omnia-skills-passport-${built.passport.passport_uuid}.jwt` : `omnia-skills-passport-${built.passport.passport_uuid}.json`,
+    media_type: format === "vc_jwt" ? "application/vc+jwt" : "application/ld+json",
+    passport: built.passport,
+  };
+}
+
+async function publicSkillsPassport(sb: Supabase, token: string, req: Request) {
+  const { data: share, error } = await sb.from("skills_passport_shares").select("*")
+    .eq("token_hash", await sha256(token)).maybeSingle();
+  if (error) throw error;
+  if (!share || share.revoked_at) throw new Error("SKILLS_PASSPORT_SHARE_NOT_FOUND");
+  if (share.expires_at && new Date(share.expires_at) <= new Date()) throw new Error("SKILLS_PASSPORT_SHARE_EXPIRED");
+  if (share.max_views !== null && Number(share.view_count || 0) >= Number(share.max_views)) throw new Error("SKILLS_PASSPORT_SHARE_LIMIT_REACHED");
+  const { data: passport, error: passportError } = await sb.from("skills_passports")
+    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,country_code)")
+    .eq("id", share.passport_id).maybeSingle();
+  if (passportError) throw passportError;
+  if (!passport || passport.status !== "published" || !passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_PUBLISHED");
+  const verification = await verifyPortableCredential(
+    sb,
+    String(passport.presentation_jwt),
+    req,
+    passport as JsonRecord,
+    "OmniaSkillsPassportCredential",
+    "public_page",
+  );
+  const snapshot = jsonRecord(passport.presentation_json);
+  const subject = jsonRecord(snapshot.credentialSubject);
+  const items = jsonArray(subject.achievement).map((item) => jsonRecord(item));
+  const nextCount = Number(share.view_count || 0) + 1;
+  const { data: updatedShare, error: viewError } = await sb.from("skills_passport_shares")
+    .update({ view_count: nextCount, last_accessed_at: new Date().toISOString() })
+    .eq("id", share.id).eq("view_count", Number(share.view_count || 0))
+    .select("label,expires_at,max_views,view_count").maybeSingle();
+  if (viewError) throw viewError;
+  if (!updatedShare) throw new Error("SKILLS_PASSPORT_VIEW_CONFLICT");
+  return {
+    passport: {
+      id: passport.id,
+      passport_uuid: passport.passport_uuid,
+      title: passport.title,
+      professional_headline: passport.professional_headline,
+      professional_summary: passport.professional_summary,
+      target_roles: passport.target_roles,
+      languages: passport.languages,
+      location_text: passport.location_text,
+      availability_text: passport.availability_text,
+      selected_sections: passport.selected_sections,
+      status: passport.status,
+      version: passport.version,
+      published_at: passport.published_at,
+      verification_result: verification,
+      user: passport.user ? {
+        full_name: passport.user.full_name,
+        country_code: passport.user.country_code,
+      } : null,
+    },
+    share: updatedShare,
+    items,
+    verification,
+  };
+}
+
+async function adminSkillsPassports(sb: Supabase) {
+  const { data, error } = await sb.from("skills_passports")
+    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,email,country_code)")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const rows = data || [];
+  const ids = rows.map((row: JsonRecord) => String(row.id));
+  if (!ids.length) return [];
+  const [itemsResult, sharesResult] = await Promise.all([
+    sb.from("skills_passport_items").select("passport_id").in("passport_id", ids),
+    sb.from("skills_passport_shares").select("passport_id,revoked_at,expires_at").in("passport_id", ids),
+  ]);
+  if (itemsResult.error) throw itemsResult.error;
+  if (sharesResult.error) throw sharesResult.error;
+  const now = Date.now();
+  return rows.map((row: JsonRecord) => ({
+    ...row,
+    item_count: (itemsResult.data || []).filter((item: JsonRecord) => item.passport_id === row.id).length,
+    active_share_count: (sharesResult.data || []).filter((share: JsonRecord) =>
+      share.passport_id === row.id && !share.revoked_at && (!share.expires_at || new Date(String(share.expires_at)).getTime() > now)
+    ).length,
+  }));
 }
 
 async function verifyOwnedBadge(sb: Supabase, session: Session, awardId: string, req: Request) {
@@ -1096,7 +2347,8 @@ Deno.serve(async (req: Request) => {
     const session = await authenticate(sb, req);
 
     if (action === "public_badge" || action === "public_verify_badge") return json({ success: true, ...(await verifyPublicBadge(sb, text(body.identifier, 120), req)) });
-    if (action === "public_clr") return json({ success: true, ...(await publicClr(sb, text(body.token, 200))) });
+    if (action === "public_clr") return json({ success: true, ...(await publicClr(sb, text(body.token, 200), req)) });
+    if (action === "public_skills_passport") return json({ success: true, ...(await publicSkillsPassport(sb, text(body.token, 200), req)) });
     if (action === "public_issuer") return json({ success: true, issuer: await issuerPublicProfile(sb, text(body.code, 120) || "omnia-global-academy") });
     if (action === "public_signing_keys") return json({ success: true, keys: await activePublicKeys(sb) });
 
@@ -1110,7 +2362,35 @@ Deno.serve(async (req: Request) => {
     }
     if (action === "learner_clr") {
       requireSession(session);
-      return json({ success: true, ...(await learnerClr(sb, session)) });
+      return json({ success: true, ...(await learnerClrComplete(sb, session)) });
+    }
+    if (action === "learner_sync_clr") {
+      requireSession(session);
+      return json({ success: true, ...(await learnerClrComplete(sb, session, true)) });
+    }
+    if (action === "learner_update_clr_entry") {
+      requireSession(session);
+      return json({ success: true, entry: await updateClrEntry(sb, session, body) });
+    }
+    if (action === "learner_save_clr_entry") {
+      requireSession(session);
+      return json({ success: true, entry: await saveClrEntry(sb, session, body) });
+    }
+    if (action === "learner_delete_clr_entry") {
+      requireSession(session);
+      return json({ success: true, ...(await deleteClrEntry(sb, session, body)) });
+    }
+    if (action === "learner_update_clr_profile") {
+      requireSession(session);
+      return json({ success: true, record: await updateClrProfile(sb, session, body) });
+    }
+    if (action === "learner_import_clr") {
+      requireSession(session);
+      return json({ success: true, import: await importClr(sb, session, body) });
+    }
+    if (action === "learner_export_clr") {
+      requireSession(session);
+      return json({ success: true, ...(await exportClr(sb, session, body, req)) });
     }
     if (action === "learner_update_visibility") {
       requireSession(session);
@@ -1123,6 +2403,38 @@ Deno.serve(async (req: Request) => {
     if (action === "learner_revoke_clr_share") {
       requireSession(session);
       return json({ success: true, ...(await revokeShare(sb, session, body)) });
+    }
+    if (action === "learner_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await learnerSkillsPassport(sb, session)) });
+    }
+    if (action === "learner_update_skills_passport_items") {
+      requireSession(session);
+      return json({ success: true, ...(await updateSkillsPassportItems(sb, session, body)) });
+    }
+    if (action === "learner_update_skills_passport_profile") {
+      requireSession(session);
+      return json({ success: true, passport: await updateSkillsPassportProfile(sb, session, body) });
+    }
+    if (action === "learner_publish_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await publishSkillsPassport(sb, session, req)) });
+    }
+    if (action === "learner_verify_skills_passport") {
+      requireSession(session);
+      return json({ success: true, verification: await verifyOwnedSkillsPassport(sb, session, req) });
+    }
+    if (action === "learner_export_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await exportSkillsPassport(sb, session, body, req)) });
+    }
+    if (action === "learner_create_skills_passport_share") {
+      requireSession(session);
+      return json({ success: true, share: await createSkillsPassportShare(sb, session, body) });
+    }
+    if (action === "learner_revoke_skills_passport_share") {
+      requireSession(session);
+      return json({ success: true, ...(await revokeSkillsPassportShare(sb, session, body)) });
     }
 
     requireAdmin(session);
@@ -1157,10 +2469,34 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_awards") return json({ success: true, awards: await awardRows(sb), templates: await templateRows(sb, false) });
     if (action === "admin_issue_badge") return json({ success: true, award: await issueBadge(sb, session, body, req) });
     if (action === "admin_revoke_badge") return json({ success: true, award: await revokeBadge(sb, session, body) });
-    if (action === "admin_clr_records") {
-      const { data, error } = await sb.from("clr_records").select("*,user:users(id,full_name,email,avatar_url)").order("updated_at", { ascending: false });
+    if (action === "admin_clr_records") return json({ success: true, records: await adminClrRecords(sb) });
+    if (action === "admin_clr_imports") return json({ success: true, imports: await adminClrImports(sb) });
+    if (action === "admin_sync_clr") {
+      const userId = text(body.user_id, 80);
+      if (!userId) throw new Error("CLR_USER_REQUIRED");
+      await syncPlatformClr(sb, userId);
+      return json({ success: true, ...(await rebuildCompleteClr(sb, userId)) });
+    }
+    if (action === "admin_sign_clr") {
+      const userId = text(body.user_id, 80);
+      if (!userId) throw new Error("CLR_USER_REQUIRED");
+      return json({ success: true, record: await signClr(sb, userId, session.userId, req) });
+    }
+    if (action === "admin_verify_clr") {
+      const { data: record, error } = await sb.from("clr_records").select("*").eq("id", text(body.record_id, 80)).maybeSingle();
       if (error) throw error;
-      return json({ success: true, records: data || [] });
+      if (!record) throw new Error("CLR_NOT_FOUND");
+      if (!record.clr_jwt) throw new Error("CLR_NOT_SIGNED");
+      return json({ success: true, verification: await verifyPortableCredential(sb, String(record.clr_jwt), req, record as JsonRecord, "ClrCredential", "admin") });
+    }
+    if (action === "admin_review_clr_import") return json({ success: true, import: await reviewClrImport(sb, session, body) });
+    if (action === "admin_skills_passports") return json({ success: true, passports: await adminSkillsPassports(sb) });
+    if (action === "admin_verify_skills_passport") {
+      const { data: passport, error } = await sb.from("skills_passports").select("*").eq("id", text(body.passport_id, 80)).maybeSingle();
+      if (error) throw error;
+      if (!passport) throw new Error("SKILLS_PASSPORT_NOT_FOUND");
+      if (!passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_SIGNED");
+      return json({ success: true, verification: await verifyPortableCredential(sb, String(passport.presentation_jwt), req, passport as JsonRecord, "OmniaSkillsPassportCredential", "admin") });
     }
     throw new Error("UNKNOWN_ACTION");
   } catch (error) {
