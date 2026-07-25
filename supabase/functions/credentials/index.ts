@@ -1976,6 +1976,482 @@ async function learnerClr(sb: Supabase, session: Session) {
   return { ...rebuilt, shares: shares || [], imports: imports || [], synced_entries: sync.synced_entries, sections: stringArray(rebuilt.record.section_order, 30, 80) };
 }
 
+
+const SKILLS_PASSPORT_SECTIONS = [
+  "competences_verifiees", "certificats", "badges", "evaluations", "projets", "experiences", "recommandations",
+];
+const SKILLS_PASSPORT_SECTION_SET = new Set(SKILLS_PASSPORT_SECTIONS);
+
+async function getOrCreateSkillsPassport(sb: Supabase, userId: string) {
+  const record = await getOrCreateClr(sb, userId);
+  const { data: existing, error } = await sb.from("skills_passports").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (existing) return { passport: existing as JsonRecord, record };
+  const { data, error: insertError } = await sb.from("skills_passports").insert({
+    user_id: userId,
+    clr_record_id: record.id,
+    title: "Omnia Skills Passport",
+    professional_headline: record.profile_headline || null,
+    professional_summary: record.summary || record.description || null,
+    selected_sections: SKILLS_PASSPORT_SECTIONS,
+  }).select("*").single();
+  if (insertError) throw insertError;
+  return { passport: data as JsonRecord, record };
+}
+
+async function seedSkillsPassportItems(sb: Supabase, passport: JsonRecord, record: JsonRecord) {
+  if (passport.items_initialized) return;
+  const { data: achievements, error } = await sb.from("clr_achievements")
+    .select("id,section,verification_status,status,issued_at")
+    .eq("clr_record_id", record.id)
+    .eq("status", "active")
+    .eq("verification_status", "verified")
+    .in("section", SKILLS_PASSPORT_SECTIONS)
+    .order("issued_at", { ascending: false });
+  if (error) throw error;
+  const rows = (achievements || []).slice(0, 30).map((item: JsonRecord, index: number) => ({
+    passport_id: passport.id,
+    clr_achievement_id: item.id,
+    display_order: index,
+    is_featured: index < 3,
+  }));
+  if (rows.length) {
+    const { error: insertError } = await sb.from("skills_passport_items").insert(rows);
+    if (insertError) throw insertError;
+  }
+  const { error: updateError } = await sb.from("skills_passports").update({ items_initialized: true }).eq("id", passport.id);
+  if (updateError) throw updateError;
+  passport.items_initialized = true;
+}
+
+async function skillsPassportItems(sb: Supabase, passportId: string) {
+  const { data, error } = await sb.from("skills_passport_items")
+    .select("*,achievement:clr_achievements!skills_passport_items_clr_achievement_id_fkey(*)")
+    .eq("passport_id", passportId)
+    .order("is_featured", { ascending: false })
+    .order("display_order")
+    .order("created_at");
+  if (error) throw error;
+  return (data || []).map((item: JsonRecord) => ({ ...item, achievement: related(item.achievement) }));
+}
+
+function publicPassportItem(item: JsonRecord) {
+  const achievement = related(item.achievement) || {};
+  return {
+    id: item.id,
+    clr_achievement_id: achievement.id,
+    section: achievement.section,
+    title: achievement.title,
+    description: achievement.description,
+    achievement_type: achievement.achievement_type,
+    issued_at: achievement.issued_at,
+    started_at: achievement.started_at,
+    ended_at: achievement.ended_at,
+    result_label: achievement.result_label,
+    score: achievement.score,
+    score_max: achievement.score_max,
+    skills: achievement.skills || [],
+    evidence: achievement.evidence || [],
+    external_url: achievement.external_url,
+    issuer_name: achievement.issuer_name,
+    verification_status: achievement.verification_status,
+    entry_origin: achievement.entry_origin,
+    is_featured: Boolean(item.is_featured),
+    display_order: Number(item.display_order || 0),
+  };
+}
+
+async function buildSkillsPassport(sb: Supabase, userId: string) {
+  const { passport, record } = await getOrCreateSkillsPassport(sb, userId);
+  await seedSkillsPassportItems(sb, passport, record);
+  const [items, userResult, issuer] = await Promise.all([
+    skillsPassportItems(sb, String(passport.id)),
+    sb.from("users").select("id,full_name,avatar_url,country_code").eq("id", userId).maybeSingle(),
+    getIssuer(sb),
+  ]);
+  if (userResult.error) throw userResult.error;
+  if (!userResult.data) throw new Error("USER_NOT_FOUND");
+  const selectedSections = stringArray(passport.selected_sections, 20, 80).filter((section) => SKILLS_PASSPORT_SECTION_SET.has(section));
+  const included = items.filter((item) => {
+    const achievement = related(item.achievement);
+    return achievement
+      && selectedSections.includes(String(achievement.section))
+      && achievement.status === "active"
+      && achievement.verification_status !== "rejected"
+      && achievement.verification_status !== "revoked";
+  });
+  const profile: JsonRecord = {
+    id: `urn:uuid:${record.record_uuid}`,
+    type: ["ClrSubject"],
+    name: userResult.data.full_name,
+    verifiableCredential: included.map((item) => entryCredential(related(item.achievement) || {}, record, issuer)),
+  };
+  if (passport.professional_headline) profile["https://schema.org/headline"] = passport.professional_headline;
+  if (passport.professional_summary) profile["https://schema.org/description"] = passport.professional_summary;
+  if (stringArray(passport.target_roles, 20, 120).length) profile["https://schema.org/jobTitle"] = stringArray(passport.target_roles, 20, 120);
+  if (stringArray(passport.languages, 20, 80).length) profile["https://schema.org/knowsLanguage"] = stringArray(passport.languages, 20, 80);
+  if (passport.location_text) profile["https://schema.org/homeLocation"] = passport.location_text;
+  if (passport.availability_text) profile["https://omniaglobalacademy.com/vocab/availability"] = passport.availability_text;
+
+  const payload = {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://purl.imsglobal.org/spec/clr/v2p0/context-2.0.1.json",
+      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
+    ],
+    id: `urn:uuid:${passport.passport_uuid}`,
+    type: ["VerifiableCredential", "ClrCredential"],
+    name: String(passport.title || "Omnia Skills Passport"),
+    description: String(passport.professional_summary || "Passeport professionnel vérifiable construit à partir du Learning Record Omnia."),
+    issuer: {
+      id: issuer.did || issuer.issuer_uri,
+      type: ["Profile"],
+      name: issuer.name,
+      ...(issuer.website_url ? { url: issuer.website_url } : {}),
+    },
+    credentialSubject: profile,
+    validFrom: String(passport.created_at || new Date().toISOString()),
+    credentialSchema: [{
+      id: "https://purl.imsglobal.org/spec/clr/v2p0/schema/json/clr_v2p0_clrcredential_schema.json",
+      type: "1EdTechJsonSchemaValidator2019",
+    }],
+  };
+  const unchanged = stableJson(passport.presentation_json || {}) === stableJson(payload);
+  if (unchanged) return { passport, record, items, presentation: payload };
+  const nextVersion = passport.last_built_at ? Number(passport.version || 1) + 1 : Number(passport.version || 1);
+  const { data: updated, error } = await sb.from("skills_passports").update({
+    presentation_json: payload,
+    presentation_jwt: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    verification_result: {},
+    status: passport.status === "suspended" ? "suspended" : "draft",
+    version: nextVersion,
+    last_built_at: new Date().toISOString(),
+  }).eq("id", passport.id).select("*").single();
+  if (error) throw error;
+  return { passport: updated as JsonRecord, record, items, presentation: payload };
+}
+
+function skillsPassportStructureChecks(payload: JsonRecord) {
+  const base = clrCredentialStructureChecks(payload);
+  const subject = payload.credentialSubject as JsonRecord | undefined;
+  const credentials = Array.isArray(subject?.verifiableCredential) ? subject?.verifiableCredential as JsonRecord[] : [];
+  const sectionsValid = credentials.every((credential) => {
+    const credentialSubject = credential.credentialSubject as JsonRecord | undefined;
+    const achievement = credentialSubject?.achievement as JsonRecord | undefined;
+    return Boolean(achievement?.name);
+  });
+  const checks = { ...base.checks, selected_credentials: credentials.length > 0, achievement_structure: sectionsValid };
+  return { checks, valid: Object.values(checks).every(Boolean) };
+}
+
+async function verifyCompactSkillsPassport(sb: Supabase, compactJws: string, req: Request, passport: JsonRecord | null, source: string, shareId?: string | null) {
+  let signatureValid = false;
+  let structureValid = false;
+  let statusValid = false;
+  let errorCode: string | null = null;
+  let payload: JsonRecord = {};
+  let header: JsonRecord = {};
+  let structureChecks: JsonRecord = {};
+  try {
+    header = decodeProtectedHeader(compactJws) as JsonRecord;
+    const keyResult = await signingKeyForHeader(sb, header, req);
+    const publicKey = await importJWK(keyResult.publicJwk as never, "RS256");
+    const verified = await compactVerify(compactJws, publicKey, { algorithms: ["RS256"] });
+    signatureValid = true;
+    payload = JSON.parse(new TextDecoder().decode(verified.payload)) as JsonRecord;
+    const structure = skillsPassportStructureChecks(payload);
+    structureValid = structure.valid;
+    structureChecks = structure.checks;
+    if (!structureValid) errorCode = "SKILLS_PASSPORT_STRUCTURE_INVALID";
+    const now = Date.now();
+    statusValid = (!payload.validFrom || new Date(String(payload.validFrom)).getTime() <= now)
+      && (!payload.validUntil || new Date(String(payload.validUntil)).getTime() >= now)
+      && (!passport || String(passport.status) === "published");
+    if (passport) {
+      const actualHash = await sha256(compactJws);
+      if (passport.credential_hash && String(passport.credential_hash) !== actualHash) {
+        statusValid = false;
+        errorCode = "SKILLS_PASSPORT_HASH_MISMATCH";
+      }
+      if (payload.jti !== (passport.presentation_json as JsonRecord | undefined)?.id) {
+        structureValid = false;
+        errorCode = "SKILLS_PASSPORT_REGISTRY_MISMATCH";
+      }
+    }
+  } catch (cause) {
+    errorCode = cause instanceof Error ? cause.message : "SKILLS_PASSPORT_SIGNATURE_INVALID";
+  }
+  const result = {
+    signature_valid: signatureValid,
+    structure_valid: structureValid,
+    status_valid: statusValid,
+    overall_valid: signatureValid && structureValid && statusValid,
+    error_code: errorCode,
+    protected_header: header,
+    credential: payload,
+    structure_checks: structureChecks,
+    checked_at: new Date().toISOString(),
+  };
+  await sb.from("skills_passport_verification_events").insert({
+    passport_id: passport?.id || null,
+    share_id: shareId || null,
+    verification_source: ["public_page","learner","admin","export","api"].includes(source) ? source : "api",
+    signature_valid: signatureValid,
+    structure_valid: structureValid,
+    status_valid: statusValid,
+    overall_valid: result.overall_valid,
+    error_code: errorCode,
+    result,
+  });
+  if (passport?.id) await sb.from("skills_passports").update({ verification_result: result }).eq("id", passport.id);
+  return result;
+}
+
+async function publishSkillsPassport(sb: Supabase, userId: string, actorUserId: string, req: Request) {
+  const built = await buildSkillsPassport(sb, userId);
+  const subject = (built.presentation as JsonRecord).credentialSubject as JsonRecord | undefined;
+  const presentedCredentials = Array.isArray(subject?.verifiableCredential) ? subject?.verifiableCredential as unknown[] : [];
+  if (!presentedCredentials.length) throw new Error("SKILLS_PASSPORT_EMPTY");
+  const key = await syncSigningKey(sb, req, actorUserId);
+  const signed = await signCredential(built.presentation as JsonRecord, req);
+  const hash = await sha256(signed.compactJws);
+  const publishedAt = new Date().toISOString();
+  const { data: updated, error } = await sb.from("skills_passports").update({
+    presentation_json: built.presentation,
+    presentation_jwt: signed.compactJws,
+    signing_key_id: key.id,
+    signature_alg: "RS256",
+    credential_hash: hash,
+    status: "published",
+    published_at: publishedAt,
+  }).eq("id", built.passport.id).select("*").single();
+  if (error) throw error;
+  const verification = await verifyCompactSkillsPassport(sb, signed.compactJws, req, updated as JsonRecord, actorUserId === userId ? "learner" : "admin");
+  if (!verification.overall_valid) throw new Error(verification.error_code || "SKILLS_PASSPORT_SIGNING_PREFLIGHT_FAILED");
+  await sb.from("skills_passport_audit_logs").insert({ actor_user_id: actorUserId, passport_id: updated.id, action: "passport_published", metadata: { version: updated.version } });
+  return { passport: { ...updated, verification_result: verification }, jwt: signed.compactJws };
+}
+
+async function learnerSkillsPassport(sb: Supabase, session: Session) {
+  await syncPlatformSources(sb, session.userId);
+  await rebuildClr(sb, session.userId);
+  const built = await buildSkillsPassport(sb, session.userId);
+  const { data: candidates, error: candidateError } = await sb.from("clr_achievements")
+    .select("*")
+    .eq("clr_record_id", built.record.id)
+    .eq("status", "active")
+    .in("section", SKILLS_PASSPORT_SECTIONS)
+    .neq("verification_status", "rejected")
+    .order("is_featured", { ascending: false })
+    .order("issued_at", { ascending: false });
+  if (candidateError) throw candidateError;
+  const { data: shares, error: shareError } = await sb.from("skills_passport_shares")
+    .select("id,label,expires_at,max_views,view_count,last_accessed_at,revoked_at,created_at")
+    .eq("passport_id", built.passport.id).order("created_at", { ascending: false });
+  if (shareError) throw shareError;
+  return { passport: built.passport, items: built.items, candidates: candidates || [], shares: shares || [], allowed_sections: SKILLS_PASSPORT_SECTIONS };
+}
+
+async function updateSkillsPassportProfile(sb: Supabase, session: Session, body: JsonRecord) {
+  const { passport } = await getOrCreateSkillsPassport(sb, session.userId);
+  const sections = stringArray(body.selected_sections, 20, 80).filter((section) => SKILLS_PASSPORT_SECTION_SET.has(section));
+  const payload = {
+    title: text(body.title, 180) || "Omnia Skills Passport",
+    professional_headline: nullableText(body.professional_headline, 240),
+    professional_summary: nullableText(body.professional_summary, 3000),
+    target_roles: stringArray(body.target_roles, 20, 120),
+    languages: stringArray(body.languages, 20, 80),
+    location_text: nullableText(body.location_text, 180),
+    availability_text: nullableText(body.availability_text, 300),
+    selected_sections: sections.length ? sections : SKILLS_PASSPORT_SECTIONS,
+    presentation_jwt: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    verification_result: {},
+    status: passport.status === "suspended" ? "suspended" : "draft",
+  };
+  const { data, error } = await sb.from("skills_passports").update(payload).eq("id", passport.id).select("*").single();
+  if (error) throw error;
+  await buildSkillsPassport(sb, session.userId);
+  await sb.from("skills_passport_audit_logs").insert({ actor_user_id: session.userId, passport_id: passport.id, action: "profile_updated", previous_data: passport, new_data: data });
+  return data;
+}
+
+async function updateSkillsPassportItems(sb: Supabase, session: Session, body: JsonRecord) {
+  const { passport, record } = await getOrCreateSkillsPassport(sb, session.userId);
+  const requested = objectArray(body.items).slice(0, 60).map((item, index) => ({
+    achievement_id: text(item.achievement_id, 80),
+    display_order: Math.max(0, integer(item.display_order) ?? index),
+    is_featured: bool(item.is_featured),
+  })).filter((item) => item.achievement_id);
+  const ids = [...new Set(requested.map((item) => item.achievement_id))];
+  if (ids.length) {
+    const { data: valid, error: validError } = await sb.from("clr_achievements")
+      .select("id,section,status,verification_status")
+      .eq("clr_record_id", record.id).in("id", ids);
+    if (validError) throw validError;
+    const validIds = new Set((valid || []).filter((item: JsonRecord) => SKILLS_PASSPORT_SECTION_SET.has(String(item.section)) && item.status === "active" && !["rejected","revoked"].includes(String(item.verification_status))).map((item: JsonRecord) => String(item.id)));
+    if (validIds.size !== ids.length) throw new Error("SKILLS_PASSPORT_ITEM_INVALID");
+  }
+  const { error: deleteError } = await sb.from("skills_passport_items").delete().eq("passport_id", passport.id);
+  if (deleteError) throw deleteError;
+  if (requested.length) {
+    const rows = requested.map((item) => ({
+      passport_id: passport.id,
+      clr_achievement_id: item.achievement_id,
+      display_order: item.display_order,
+      is_featured: item.is_featured,
+    }));
+    const { error: insertError } = await sb.from("skills_passport_items").insert(rows);
+    if (insertError) throw insertError;
+  }
+  const { error: updateError } = await sb.from("skills_passports").update({
+    items_initialized: true,
+    presentation_jwt: null,
+    signing_key_id: null,
+    signature_alg: null,
+    credential_hash: null,
+    verification_result: {},
+    status: passport.status === "suspended" ? "suspended" : "draft",
+  }).eq("id", passport.id);
+  if (updateError) throw updateError;
+  const built = await buildSkillsPassport(sb, session.userId);
+  await sb.from("skills_passport_audit_logs").insert({ actor_user_id: session.userId, passport_id: passport.id, action: "items_updated", metadata: { count: requested.length } });
+  return { passport: built.passport, items: built.items };
+}
+
+async function createSkillsPassportShare(sb: Supabase, session: Session, body: JsonRecord) {
+  const { passport } = await getOrCreateSkillsPassport(sb, session.userId);
+  if (passport.status !== "published" || !passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_PUBLISHED");
+  const token = randomToken();
+  const tokenHash = await sha256(token);
+  const days = integer(body.validity_days);
+  const maxViewsRaw = integer(body.max_views);
+  const maxViews = maxViewsRaw && maxViewsRaw > 0 ? Math.min(maxViewsRaw, 100000) : null;
+  const expiresAt = days && days > 0 ? new Date(Date.now() + Math.min(days, 3650) * 86400000).toISOString() : null;
+  const { data, error } = await sb.from("skills_passport_shares").insert({
+    passport_id: passport.id,
+    token_hash: tokenHash,
+    label: nullableText(body.label, 180),
+    expires_at: expiresAt,
+    max_views: maxViews,
+    created_by: session.userId,
+  }).select("id,label,expires_at,max_views,view_count,created_at").single();
+  if (error) throw error;
+  await sb.from("skills_passport_audit_logs").insert({ actor_user_id: session.userId, passport_id: passport.id, action: "share_created", metadata: { share_id: data.id } });
+  return { ...data, token, url: `${appBaseUrl()}/credentials/passports/${token}` };
+}
+
+async function revokeSkillsPassportShare(sb: Supabase, session: Session, body: JsonRecord) {
+  const { passport } = await getOrCreateSkillsPassport(sb, session.userId);
+  const shareId = text(body.share_id, 80);
+  const { error } = await sb.from("skills_passport_shares").update({ revoked_at: new Date().toISOString() }).eq("id", shareId).eq("passport_id", passport.id);
+  if (error) throw error;
+  await sb.from("skills_passport_audit_logs").insert({ actor_user_id: session.userId, passport_id: passport.id, action: "share_revoked", metadata: { share_id: shareId } });
+  return { success: true };
+}
+
+async function publicSkillsPassport(sb: Supabase, token: string, req: Request) {
+  const tokenHash = await sha256(token);
+  const { data: share, error: shareError } = await sb.from("skills_passport_shares").select("*").eq("token_hash", tokenHash).maybeSingle();
+  if (shareError) throw shareError;
+  if (!share || share.revoked_at) throw new Error("SKILLS_PASSPORT_SHARE_NOT_FOUND");
+  if (share.expires_at && new Date(String(share.expires_at)).getTime() < Date.now()) throw new Error("SKILLS_PASSPORT_SHARE_EXPIRED");
+  if (share.max_views && Number(share.view_count || 0) >= Number(share.max_views)) throw new Error("SKILLS_PASSPORT_SHARE_LIMIT_REACHED");
+  const { data: passport, error: passportError } = await sb.from("skills_passports")
+    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,country_code)")
+    .eq("id", share.passport_id).maybeSingle();
+  if (passportError) throw passportError;
+  if (!passport || passport.status !== "published" || !passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_PUBLISHED");
+  const items = await skillsPassportItems(sb, String(passport.id));
+  const verification = await verifyCompactSkillsPassport(sb, String(passport.presentation_jwt), req, passport as JsonRecord, "public_page", String(share.id));
+  await sb.from("skills_passport_shares").update({ view_count: Number(share.view_count || 0) + 1, last_accessed_at: new Date().toISOString() }).eq("id", share.id);
+  return {
+    passport: {
+      passport_uuid: passport.passport_uuid,
+      title: passport.title,
+      professional_headline: passport.professional_headline,
+      professional_summary: passport.professional_summary,
+      target_roles: passport.target_roles,
+      languages: passport.languages,
+      location_text: passport.location_text,
+      availability_text: passport.availability_text,
+      selected_sections: passport.selected_sections,
+      status: passport.status,
+      version: passport.version,
+      published_at: passport.published_at,
+      signature_alg: passport.signature_alg,
+      credential_hash: passport.credential_hash,
+      user: passport.user ? { full_name: passport.user.full_name, country_code: passport.user.country_code } : null,
+    },
+    share: { label: share.label, expires_at: share.expires_at, max_views: share.max_views, view_count: Number(share.view_count || 0) + 1 },
+    items: items
+      .filter((item) => {
+        const achievement = related(item.achievement);
+        const selectedSections = stringArray(passport.selected_sections, 20, 80);
+        return achievement
+          && selectedSections.includes(String(achievement.section))
+          && achievement.status === "active"
+          && !["rejected", "revoked"].includes(String(achievement.verification_status));
+      })
+      .map(publicPassportItem),
+    verification,
+  };
+}
+
+async function exportSkillsPassport(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
+  const format = text(body.format, 30) || "passport_json";
+  if (!["passport_json","vc_jwt"].includes(format)) throw new Error("SKILLS_PASSPORT_EXPORT_FORMAT_INVALID");
+  let built = await buildSkillsPassport(sb, session.userId);
+  let content: unknown = built.presentation;
+  let passport = built.passport;
+  let hash = await sha256(stableJson(content));
+  if (format === "vc_jwt") {
+    const published = await publishSkillsPassport(sb, session.userId, session.userId, req);
+    passport = published.passport;
+    content = published.jwt;
+    hash = String(passport.credential_hash || await sha256(published.jwt));
+  }
+  await sb.from("skills_passport_exports").insert({
+    passport_id: passport.id,
+    requested_by: session.userId,
+    export_format: format,
+    passport_version: passport.version,
+    credential_hash: hash,
+    metadata: { selected_items: built.items.length },
+  });
+  return {
+    format,
+    content,
+    file_name: format === "vc_jwt" ? `omnia-skills-passport-v${passport.version}.jwt` : `omnia-skills-passport-v${passport.version}.json`,
+    media_type: format === "vc_jwt" ? "text/plain" : "application/vc+ld+json",
+    passport,
+  };
+}
+
+async function adminSkillsPassports(sb: Supabase) {
+  const { data, error } = await sb.from("skills_passports")
+    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,email,avatar_url,country_code)")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const ids = (data || []).map((item: JsonRecord) => String(item.id));
+  const [{ data: items, error: itemsError }, { data: shares, error: sharesError }] = ids.length ? await Promise.all([
+    sb.from("skills_passport_items").select("passport_id").in("passport_id", ids),
+    sb.from("skills_passport_shares").select("passport_id,revoked_at").in("passport_id", ids),
+  ]) : [{ data: [], error: null }, { data: [], error: null }];
+  if (itemsError) throw itemsError;
+  if (sharesError) throw sharesError;
+  const itemCounts = new Map<string, number>();
+  const shareCounts = new Map<string, number>();
+  for (const item of items || []) itemCounts.set(String(item.passport_id), (itemCounts.get(String(item.passport_id)) || 0) + 1);
+  for (const share of shares || []) if (!share.revoked_at) shareCounts.set(String(share.passport_id), (shareCounts.get(String(share.passport_id)) || 0) + 1);
+  return (data || []).map((item: JsonRecord) => ({ ...item, item_count: itemCounts.get(String(item.id)) || 0, active_share_count: shareCounts.get(String(item.id)) || 0 }));
+}
+
 async function revokeShare(sb: Supabase, session: Session, body: JsonRecord) {
   const shareId = text(body.share_id, 80);
   const record = await getOrCreateClr(sb, session.userId);
@@ -2089,6 +2565,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "public_badge" || action === "public_verify_badge") return json({ success: true, ...(await verifyPublicBadge(sb, text(body.identifier, 120), req)) });
     if (action === "public_clr") return json({ success: true, ...(await publicClr(sb, text(body.token, 200))) });
+    if (action === "public_skills_passport") return json({ success: true, ...(await publicSkillsPassport(sb, text(body.token, 200), req)) });
     if (action === "public_issuer") return json({ success: true, issuer: await issuerPublicProfile(sb, text(body.code, 120) || "omnia-global-academy") });
     if (action === "public_signing_keys") return json({ success: true, keys: await activePublicKeys(sb) });
 
@@ -2146,6 +2623,40 @@ Deno.serve(async (req: Request) => {
       requireSession(session);
       return json({ success: true, ...(await revokeShare(sb, session, body)) });
     }
+    if (action === "learner_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await learnerSkillsPassport(sb, session)) });
+    }
+    if (action === "learner_update_skills_passport_profile") {
+      requireSession(session);
+      return json({ success: true, passport: await updateSkillsPassportProfile(sb, session, body) });
+    }
+    if (action === "learner_update_skills_passport_items") {
+      requireSession(session);
+      return json({ success: true, ...(await updateSkillsPassportItems(sb, session, body)) });
+    }
+    if (action === "learner_publish_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await publishSkillsPassport(sb, session.userId, session.userId, req)) });
+    }
+    if (action === "learner_verify_skills_passport") {
+      requireSession(session);
+      const { passport } = await getOrCreateSkillsPassport(sb, session.userId);
+      if (!passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_SIGNED");
+      return json({ success: true, verification: await verifyCompactSkillsPassport(sb, String(passport.presentation_jwt), req, passport, "learner") });
+    }
+    if (action === "learner_create_skills_passport_share") {
+      requireSession(session);
+      return json({ success: true, share: await createSkillsPassportShare(sb, session, body) });
+    }
+    if (action === "learner_revoke_skills_passport_share") {
+      requireSession(session);
+      return json({ success: true, ...(await revokeSkillsPassportShare(sb, session, body)) });
+    }
+    if (action === "learner_export_skills_passport") {
+      requireSession(session);
+      return json({ success: true, ...(await exportSkillsPassport(sb, session, body, req)) });
+    }
 
     requireAdmin(session);
     if (action === "admin_overview") {
@@ -2197,6 +2708,15 @@ Deno.serve(async (req: Request) => {
         counts.set(key, current);
       }
       return json({ success: true, records: (data || []).map((item: JsonRecord) => ({ ...item, entry_counts: counts.get(String(item.id)) || { total: 0, verified: 0, pending: 0 } })) });
+    }
+    if (action === "admin_skills_passports") return json({ success: true, passports: await adminSkillsPassports(sb) });
+    if (action === "admin_verify_skills_passport") {
+      const passportId = text(body.passport_id, 80);
+      const { data: passport, error } = await sb.from("skills_passports").select("*").eq("id", passportId).maybeSingle();
+      if (error) throw error;
+      if (!passport) throw new Error("SKILLS_PASSPORT_NOT_FOUND");
+      if (!passport.presentation_jwt) throw new Error("SKILLS_PASSPORT_NOT_SIGNED");
+      return json({ success: true, verification: await verifyCompactSkillsPassport(sb, String(passport.presentation_jwt), req, passport as JsonRecord, "admin") });
     }
     if (action === "admin_clr_imports") return json({ success: true, imports: await adminClrImports(sb) });
     if (action === "admin_review_clr_import") return json({ success: true, imported: await adminReviewClrImport(sb, session, body) });
