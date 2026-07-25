@@ -421,7 +421,7 @@ async function templateRows(sb: Supabase, includeInactive = true) {
 
 async function awardRows(sb: Supabase, recipientUserId?: string) {
   let query = sb.from("badge_awards")
-    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,email,avatar_url)")
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users!badge_awards_recipient_user_id_fkey(id,full_name,email,avatar_url)")
     .order("issued_at", { ascending: false });
   if (recipientUserId) query = query.eq("recipient_user_id", recipientUserId);
   const { data, error } = await query;
@@ -484,7 +484,7 @@ function publicAward(row: JsonRecord) {
 
 async function publicBadge(sb: Supabase, identifier: string) {
   const baseQuery = sb.from("badge_awards")
-    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,avatar_url)");
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users!badge_awards_recipient_user_id_fkey(id,full_name,avatar_url)");
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
   const { data, error } = await (isUuid
     ? baseQuery.eq("credential_uuid", identifier)
@@ -743,7 +743,7 @@ async function issueBadge(sb: Supabase, session: Session, body: JsonRecord, req:
 
 async function awardForSigning(sb: Supabase, awardId: string) {
   const { data: award, error } = await sb.from("badge_awards")
-    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,email,avatar_url)")
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users!badge_awards_recipient_user_id_fkey(id,full_name,email,avatar_url)")
     .eq("id", awardId).maybeSingle();
   if (error) throw error;
   if (!award) throw new Error("BADGE_NOT_FOUND");
@@ -877,7 +877,7 @@ async function signingStatus(sb: Supabase, req: Request) {
 
 async function findPublicAwardByIdentifier(sb: Supabase, identifier: string) {
   const base = sb.from("badge_awards")
-    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,avatar_url)")
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users!badge_awards_recipient_user_id_fkey(id,full_name,avatar_url)")
     .eq("visibility", "public");
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
   const query = isUuid ? base.eq("credential_uuid", identifier) : base.eq("verification_code", identifier.toUpperCase());
