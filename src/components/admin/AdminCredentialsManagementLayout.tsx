@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Award, BadgeCheck, Building2, FileCheck2, Layers3, LayoutDashboard, Menu, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowLeft, Award, BadgeCheck, Building2, FileCheck2, Layers3, KeyRound, LayoutDashboard, Menu, ShieldCheck, Users, X } from 'lucide-react';
 import { useState } from 'react';
 
 const BLUE = '#002050';
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { path: '/admin/credentials/modeles', label: 'Modèles de badges', icon: Award },
   { path: '/admin/credentials/attributions', label: 'Attributions', icon: BadgeCheck },
   { path: '/admin/credentials/emetteurs', label: 'Émetteurs', icon: Building2 },
+  { path: '/admin/credentials/signatures', label: 'Signatures Open Badges', icon: KeyRound },
   { path: '/admin/credentials/categories', label: 'Catégories & niveaux', icon: Layers3 },
   { path: '/admin/credentials/clr', label: 'Learning Records', icon: FileCheck2 },
   { path: '/admin/credentials/revocations', label: 'Révocations', icon: ShieldCheck },

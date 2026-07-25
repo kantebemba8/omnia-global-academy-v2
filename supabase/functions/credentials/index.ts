@@ -1,15 +1,22 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { calculateJwkThumbprint, compactVerify, decodeProtectedHeader, importJWK, SignJWT } from "npm:jose@5.9.6";
+import QRCode from "npm:qrcode@1.5.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
-  headers: { ...corsHeaders, "Content-Type": "application/json" },
+  headers: { ...corsHeaders, "Content-Type": "application/json", ...extraHeaders },
+});
+
+const textResponse = (value: string, contentType = "text/plain; charset=utf-8", extraHeaders: Record<string, string> = {}) => new Response(value, {
+  status: 200,
+  headers: { ...corsHeaders, "Content-Type": contentType, ...extraHeaders },
 });
 
 type Supabase = ReturnType<typeof createClient>;
@@ -106,6 +113,244 @@ function verificationCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const values = crypto.getRandomValues(new Uint8Array(14));
   return `OGA-${Array.from(values).map((value) => alphabet[value % alphabet.length]).join("")}`;
+}
+
+function appBaseUrl(): string {
+  return (Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com").replace(/\/+$/, "");
+}
+
+function functionBaseUrl(req: Request): string {
+  const url = new URL(req.url);
+  const marker = "/credentials";
+  const markerIndex = url.pathname.indexOf(marker);
+  const path = markerIndex >= 0 ? url.pathname.slice(0, markerIndex + marker.length) : url.pathname.replace(/\/+$/, "");
+  return `${url.origin}${path}`;
+}
+
+function parseJwkSecret(name: string): JsonRecord | null {
+  const raw = Deno.env.get(name);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as JsonRecord;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    throw new Error(`${name}_INVALID_JSON`);
+  }
+}
+
+function publicRsaJwk(privateJwk: JsonRecord): JsonRecord {
+  if (privateJwk.kty !== "RSA" || !privateJwk.n || !privateJwk.e || !privateJwk.d) throw new Error("SIGNING_PRIVATE_JWK_INVALID");
+  return {
+    kty: "RSA",
+    n: privateJwk.n,
+    e: privateJwk.e,
+    alg: "RS256",
+    use: "sig",
+  };
+}
+
+async function signingConfiguration(req: Request) {
+  const privateJwk = parseJwkSecret("CREDENTIALS_SIGNING_PRIVATE_JWK");
+  if (!privateJwk) throw new Error("SIGNING_NOT_CONFIGURED");
+  const publicJwk = publicRsaJwk(privateJwk);
+  const thumbprint = await calculateJwkThumbprint(publicJwk as never, "sha256");
+  const keyId = (Deno.env.get("CREDENTIALS_SIGNING_KEY_ID") || `${functionBaseUrl(req)}/keys/${thumbprint}`).trim();
+  if (!validHttpUrl(keyId)) throw new Error("SIGNING_KEY_ID_INVALID");
+  return { privateJwk, publicJwk: { ...publicJwk, kid: keyId }, thumbprint, keyId, algorithm: "RS256" as const };
+}
+
+function signingConfigured(): boolean {
+  try {
+    const privateJwk = parseJwkSecret("CREDENTIALS_SIGNING_PRIVATE_JWK");
+    return Boolean(privateJwk?.kty === "RSA" && privateJwk.n && privateJwk.e && privateJwk.d);
+  } catch {
+    return false;
+  }
+}
+
+async function syncSigningKey(sb: Supabase, req: Request, actorUserId?: string | null) {
+  const issuer = await getIssuer(sb);
+  const config = await signingConfiguration(req);
+  const { data: current, error: currentError } = await sb.from("credential_signing_keys")
+    .select("*").eq("key_id_uri", config.keyId).maybeSingle();
+  if (currentError) throw currentError;
+  if (current?.id) {
+    const { error: retireError } = await sb.from("credential_signing_keys").update({ status: "retired", valid_until: new Date().toISOString() })
+      .eq("issuer_id", issuer.id).eq("status", "active").neq("id", current.id);
+    if (retireError) throw retireError;
+    const { data, error } = await sb.from("credential_signing_keys").update({
+      public_jwk: config.publicJwk,
+      jwk_thumbprint: config.thumbprint,
+      algorithm: config.algorithm,
+      status: "active",
+      valid_until: null,
+    }).eq("id", current.id).select("*").single();
+    if (error) throw error;
+    await sb.from("credential_issuers").update({
+      public_key_set_uri: `${functionBaseUrl(req)}/keys`,
+      verification_method: { type: "JsonWebKey2020", controller: issuer.did || issuer.issuer_uri, publicKeyJwk: config.publicJwk, id: config.keyId },
+      last_key_sync_at: new Date().toISOString(),
+    }).eq("id", issuer.id);
+    return data as JsonRecord;
+  }
+  await sb.from("credential_signing_keys").update({ status: "retired", valid_until: new Date().toISOString() })
+    .eq("issuer_id", issuer.id).eq("status", "active");
+  const { data, error } = await sb.from("credential_signing_keys").insert({
+    issuer_id: issuer.id,
+    key_name: `Omnia RS256 ${new Date().toISOString().slice(0, 10)}`,
+    key_id_uri: config.keyId,
+    algorithm: config.algorithm,
+    public_jwk: config.publicJwk,
+    jwk_thumbprint: config.thumbprint,
+    status: "active",
+    created_by: actorUserId || null,
+  }).select("*").single();
+  if (error) throw error;
+  await sb.from("credential_issuers").update({
+    public_key_set_uri: `${functionBaseUrl(req)}/keys`,
+    verification_method: { type: "JsonWebKey2020", controller: issuer.did || issuer.issuer_uri, publicKeyJwk: config.publicJwk, id: config.keyId },
+    last_key_sync_at: new Date().toISOString(),
+  }).eq("id", issuer.id);
+  return data as JsonRecord;
+}
+
+function numericDate(value: string): number {
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
+function signedPayloadFromCredential(credential: JsonRecord): JsonRecord {
+  const issuer = credential.issuer as JsonRecord | undefined;
+  const subject = credential.credentialSubject as JsonRecord | undefined;
+  const validFrom = text(credential.validFrom, 80);
+  if (!credential.id || !issuer?.id || !subject?.id || !validFrom) throw new Error("CREDENTIAL_STRUCTURE_INVALID");
+  const payload: JsonRecord = {
+    ...credential,
+    iss: issuer.id,
+    jti: credential.id,
+    sub: subject.id,
+    nbf: numericDate(validFrom),
+  };
+  if (credential.validUntil) payload.exp = numericDate(String(credential.validUntil));
+  return payload;
+}
+
+async function signCredential(credential: JsonRecord, req: Request) {
+  const config = await signingConfiguration(req);
+  const privateKey = await importJWK(config.privateJwk as never, "RS256");
+  const payload = signedPayloadFromCredential(credential);
+  const compactJws = await new SignJWT(payload)
+    .setProtectedHeader({ alg: "RS256", kid: config.keyId, typ: "JWT" })
+    .sign(privateKey);
+  return { compactJws, payload, config };
+}
+
+async function signingKeyForHeader(sb: Supabase, header: JsonRecord, req: Request) {
+  if (header.alg !== "RS256") throw new Error("UNSUPPORTED_SIGNING_ALGORITHM");
+  if (header.typ && header.typ !== "JWT") throw new Error("INVALID_JWT_TYPE");
+  const embedded = header.jwk as JsonRecord | undefined;
+  if (embedded) {
+    if (embedded.d) throw new Error("PRIVATE_JWK_EXPOSED");
+    return { publicJwk: embedded, key: null as JsonRecord | null };
+  }
+  const kid = text(header.kid, 1200);
+  if (!kid) throw new Error("SIGNING_KEY_MISSING");
+  const { data: stored, error } = await sb.from("credential_signing_keys").select("*").eq("key_id_uri", kid).maybeSingle();
+  if (error) throw error;
+  if (stored?.status === "revoked") throw new Error("SIGNING_KEY_REVOKED");
+  if (stored?.public_jwk) return { publicJwk: stored.public_jwk as JsonRecord, key: stored as JsonRecord };
+  const config = await signingConfiguration(req).catch(() => null);
+  if (config && config.keyId === kid) return { publicJwk: config.publicJwk, key: null as JsonRecord | null };
+  throw new Error("SIGNING_KEY_NOT_TRUSTED");
+}
+
+function credentialStructureChecks(payload: JsonRecord) {
+  const contexts = Array.isArray(payload["@context"]) ? payload["@context"].map(String) : [];
+  const types = Array.isArray(payload.type) ? payload.type.map(String) : [];
+  const issuer = payload.issuer as JsonRecord | undefined;
+  const subject = payload.credentialSubject as JsonRecord | undefined;
+  const schema = Array.isArray(payload.credentialSchema) ? payload.credentialSchema as JsonRecord[] : [];
+  const validFrom = text(payload.validFrom, 80);
+  const checks = {
+    context: contexts.includes("https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json"),
+    type: types.includes("OpenBadgeCredential") && types.includes("VerifiableCredential"),
+    issuer: Boolean(issuer?.id && payload.iss === issuer.id),
+    subject: Boolean(subject?.id && payload.sub === subject.id),
+    credential_id: Boolean(payload.id && payload.jti === payload.id),
+    valid_from: Boolean(validFrom && Number(payload.nbf) === numericDate(validFrom)),
+    valid_until: !payload.validUntil || Number(payload.exp) === numericDate(String(payload.validUntil)),
+    schema: schema.some((item) => String(item.id || "").includes("ob_v3p0_achievementcredential_schema.json")),
+  };
+  return { checks, valid: Object.values(checks).every(Boolean) };
+}
+
+async function verifyCompactCredential(sb: Supabase, compactJws: string, req: Request, award: JsonRecord | null, source: string) {
+  let signatureValid = false;
+  let structureValid = false;
+  let statusValid = false;
+  let errorCode: string | null = null;
+  let payload: JsonRecord = {};
+  let header: JsonRecord = {};
+  let keyRow: JsonRecord | null = null;
+  let structureChecks: JsonRecord = {};
+  try {
+    header = decodeProtectedHeader(compactJws) as JsonRecord;
+    const keyResult = await signingKeyForHeader(sb, header, req);
+    keyRow = keyResult.key;
+    const publicKey = await importJWK(keyResult.publicJwk as never, "RS256");
+    const verified = await compactVerify(compactJws, publicKey, { algorithms: ["RS256"] });
+    signatureValid = true;
+    payload = JSON.parse(new TextDecoder().decode(verified.payload)) as JsonRecord;
+    const structure = credentialStructureChecks(payload);
+    structureValid = structure.valid;
+    structureChecks = structure.checks;
+    if (!structureValid) errorCode = "CREDENTIAL_STRUCTURE_INVALID";
+    const now = Date.now();
+    const notBeforeValid = !payload.validFrom || new Date(String(payload.validFrom)).getTime() <= now;
+    const expirationValid = !payload.validUntil || new Date(String(payload.validUntil)).getTime() >= now;
+    const registryStatus = award ? String(award.status) : "awarded";
+    statusValid = notBeforeValid && expirationValid && registryStatus === "awarded";
+    if (!statusValid && !errorCode) errorCode = registryStatus !== "awarded" ? `CREDENTIAL_${registryStatus.toUpperCase()}` : "CREDENTIAL_EXPIRED_OR_NOT_YET_VALID";
+    if (award) {
+      const storedHash = text(award.credential_hash, 128);
+      const actualHash = await sha256(compactJws);
+      if (storedHash && storedHash !== actualHash) {
+        statusValid = false;
+        errorCode = "CREDENTIAL_HASH_MISMATCH";
+      }
+      if (payload.jti !== (award.credential_json as JsonRecord | undefined)?.id) {
+        structureValid = false;
+        errorCode = "CREDENTIAL_REGISTRY_MISMATCH";
+      }
+    }
+  } catch (error) {
+    errorCode = error instanceof Error ? error.message : "SIGNATURE_INVALID";
+  }
+  const result = {
+    signature_valid: signatureValid,
+    structure_valid: structureValid,
+    status_valid: statusValid,
+    overall_valid: signatureValid && structureValid && statusValid,
+    error_code: errorCode,
+    protected_header: header,
+    credential: payload,
+    structure_checks: structureChecks,
+    checked_at: new Date().toISOString(),
+  };
+  if (award?.id) {
+    await sb.from("credential_verification_events").insert({
+      award_id: award.id,
+      signing_key_id: keyRow?.id || award.signing_key_id || null,
+      verification_source: ["public_page","admin","learner","api","export","internal"].includes(source) ? source : "api",
+      signature_valid: signatureValid,
+      structure_valid: structureValid,
+      status_valid: statusValid,
+      overall_valid: result.overall_valid,
+      error_code: errorCode,
+      result,
+    });
+    await sb.from("badge_awards").update({ last_verified_at: result.checked_at, verification_result: result }).eq("id", award.id);
+  }
+  return result;
 }
 
 async function getIssuer(sb: Supabase, issuerId?: string | null) {
@@ -214,6 +459,13 @@ function publicAward(row: JsonRecord) {
     revoked_at: row.revoked_at,
     revocation_reason: row.revocation_reason,
     standards_status: row.standards_status,
+    signed_at: row.signed_at,
+    signature_alg: row.signature_alg,
+    credential_media_type: row.credential_media_type,
+    credential_hash: row.credential_hash,
+    last_verified_at: row.last_verified_at,
+    verification_result: row.verification_result,
+    credential_jwt_available: Boolean(row.credential_jwt),
     credential_json: row.credential_json,
     template: template ? {
       id: template.id, code: template.code, name: template.name, description: template.description, image_url: template.image_url,
@@ -374,7 +626,7 @@ async function saveIssuer(sb: Supabase, session: Session, body: JsonRecord) {
   return result.data;
 }
 
-async function issueBadge(sb: Supabase, session: Session, body: JsonRecord) {
+async function issueBadge(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
   const templateId = text(body.template_id, 80);
   const recipientEmail = text(body.recipient_email, 255).toLowerCase();
   if (!templateId || !recipientEmail) throw new Error("AWARD_INCOMPLETE");
@@ -418,7 +670,8 @@ async function issueBadge(sb: Supabase, session: Session, body: JsonRecord) {
     ...(expiresAt ? { validUntil: expiresAt } : {}),
     credentialSubject: { id: recipientSubjectId, type: ["AchievementSubject"], achievement },
     credentialSchema: [{ id: "https://purl.imsglobal.org/spec/ob/v3p0/schema/json/ob_v3p0_achievementcredential_schema.json", type: "1EdTechJsonSchemaValidator2019" }],
-    evidence: evidence.map((item) => {
+    refreshService: { id: `${functionBaseUrl(req)}/badges/${code}/refresh`, type: "1EdTechCredentialRefresh" },
+    evidence: evidence.filter((item) => bool(item.is_public)).map((item) => {
       const evidenceUrl = nullableText(item.url, 1000);
       if (!validHttpUrl(evidenceUrl)) throw new Error("INVALID_EVIDENCE_URL");
       return { ...(evidenceUrl ? { id: evidenceUrl } : {}), type: ["Evidence"], name: text(item.title, 180), description: nullableText(item.description, 1000) };
@@ -440,6 +693,7 @@ async function issueBadge(sb: Supabase, session: Session, body: JsonRecord) {
     evidence_summary: nullableText(body.evidence_summary, 2000),
     issued_at: issuedAt.toISOString(),
     expires_at: expiresAt,
+    recipient_subject_id: recipientSubjectId,
     standards_status: "ob3_draft",
     credential_json: credential,
   }).select("*").single();
@@ -479,8 +733,225 @@ async function issueBadge(sb: Supabase, session: Session, body: JsonRecord) {
   });
   if (clrItemError) throw clrItemError;
   await rebuildClr(sb, String(recipient.id));
-  await audit(sb, session.userId, "badge_awarded", "badge_award", String(award.id), null, award, { recipient_email: recipient.email });
-  return award;
+  let finalAward = award as JsonRecord;
+  if (!template.internal_only && signingConfigured()) {
+    finalAward = await signAwardById(sb, session.userId, String(award.id), req);
+  }
+  await audit(sb, session.userId, "badge_awarded", "badge_award", String(award.id), null, finalAward, { recipient_email: recipient.email });
+  return finalAward;
+}
+
+async function awardForSigning(sb: Supabase, awardId: string) {
+  const { data: award, error } = await sb.from("badge_awards")
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,email,avatar_url)")
+    .eq("id", awardId).maybeSingle();
+  if (error) throw error;
+  if (!award) throw new Error("BADGE_NOT_FOUND");
+  const { data: evidence, error: evidenceError } = await sb.from("badge_evidence").select("*")
+    .eq("award_id", awardId).eq("is_public", true).order("created_at");
+  if (evidenceError) throw evidenceError;
+  return { ...(award as JsonRecord), evidence: evidence || [] } as JsonRecord;
+}
+
+function credentialWithCurrentEvidence(award: JsonRecord, req: Request): JsonRecord {
+  const template = award.template as JsonRecord | undefined;
+  const issuer = award.issuer as JsonRecord | undefined;
+  const stored = { ...((award.credential_json as JsonRecord | undefined) || {}) };
+  const subjectId = text(award.recipient_subject_id, 1000)
+    || text((stored.credentialSubject as JsonRecord | undefined)?.id, 1000)
+    || `urn:uuid:${crypto.randomUUID()}`;
+  const evidence = ((award.evidence as JsonRecord[] | undefined) || []).map((item) => ({
+    ...(item.url ? { id: item.url } : {}),
+    type: ["Evidence"],
+    name: item.title,
+    description: item.description || undefined,
+  }));
+  return {
+    ...stored,
+    id: stored.id || `${appBaseUrl()}/credentials/badges/${award.credential_uuid}`,
+    type: ["VerifiableCredential", "OpenBadgeCredential"],
+    name: stored.name || template?.name || "Badge Omnia",
+    issuer: {
+      id: issuer?.did || issuer?.issuer_uri,
+      type: ["Profile"],
+      name: issuer?.name,
+      ...(issuer?.website_url ? { url: issuer.website_url } : {}),
+      ...(issuer?.email ? { email: issuer.email } : {}),
+    },
+    credentialSubject: {
+      ...((stored.credentialSubject as JsonRecord | undefined) || {}),
+      id: subjectId,
+      type: ["AchievementSubject"],
+    },
+    refreshService: { id: `${functionBaseUrl(req)}/badges/${award.verification_code}/refresh`, type: "1EdTechCredentialRefresh" },
+    evidence,
+  };
+}
+
+async function signAwardById(sb: Supabase, actorUserId: string | null, awardId: string, req: Request) {
+  const award = await awardForSigning(sb, awardId);
+  const template = award.template as JsonRecord | undefined;
+  if (template?.internal_only) throw new Error("INTERNAL_BADGE_NOT_SIGNABLE");
+  if (award.status !== "awarded") throw new Error("BADGE_NOT_ACTIVE");
+  const keyRow = await syncSigningKey(sb, req, actorUserId);
+  const credential = credentialWithCurrentEvidence(award, req);
+  const signed = await signCredential(credential, req);
+  const preflight = await verifyCompactCredential(sb, signed.compactJws, req, null, "internal");
+  if (!preflight.signature_valid || !preflight.structure_valid) throw new Error(preflight.error_code || "SIGNED_CREDENTIAL_PREFLIGHT_FAILED");
+  const credentialHash = await sha256(signed.compactJws);
+  const subjectId = text((signed.payload.credentialSubject as JsonRecord | undefined)?.id, 1000);
+  const signedAt = new Date().toISOString();
+  const { data: updated, error } = await sb.from("badge_awards").update({
+    recipient_subject_id: subjectId,
+    standards_status: "ob3_signed",
+    credential_json: signed.payload,
+    credential_jwt: signed.compactJws,
+    signing_key_id: keyRow.id,
+    signed_at: signedAt,
+    signature_alg: "RS256",
+    credential_media_type: "text/plain",
+    credential_hash: credentialHash,
+  }).eq("id", awardId).select("*").single();
+  if (error) throw error;
+  await sb.from("clr_achievements").update({ payload: signed.payload }).eq("award_id", awardId);
+  await rebuildClr(sb, String(award.recipient_user_id));
+  const verification = await verifyCompactCredential(sb, signed.compactJws, req, { ...award, ...updated, credential_json: signed.payload }, "internal");
+  if (!verification.overall_valid) throw new Error(verification.error_code || "SIGNED_CREDENTIAL_VERIFICATION_FAILED");
+  if (actorUserId) await audit(sb, actorUserId, "badge_signed", "badge_award", awardId, award, updated, { key_id: signed.config.keyId, algorithm: "RS256" });
+  return { ...updated, verification_result: verification } as JsonRecord;
+}
+
+async function signUnsignedAwards(sb: Supabase, session: Session, req: Request, limitValue: number) {
+  const limit = Math.min(250, Math.max(1, limitValue || 100));
+  const { data, error } = await sb.from("badge_awards")
+    .select("id,template:badge_templates(internal_only)")
+    .eq("status", "awarded")
+    .neq("standards_status", "ob3_signed")
+    .order("issued_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  const results: JsonRecord[] = [];
+  for (const row of data || []) {
+    const template = row.template as unknown as JsonRecord | null;
+    if (template?.internal_only) continue;
+    try {
+      const signed = await signAwardById(sb, session.userId, String(row.id), req);
+      results.push({ id: row.id, success: true, signed_at: signed.signed_at });
+    } catch (cause) {
+      results.push({ id: row.id, success: false, error: cause instanceof Error ? cause.message : "SIGNING_FAILED" });
+    }
+  }
+  return results;
+}
+
+async function signingStatus(sb: Supabase, req: Request) {
+  const [keyResult, signed, drafts, verificationEvents] = await Promise.all([
+    sb.from("credential_signing_keys").select("*").order("created_at", { ascending: false }),
+    sb.from("badge_awards").select("id", { count: "exact", head: true }).eq("standards_status", "ob3_signed"),
+    sb.from("badge_awards").select("id", { count: "exact", head: true }).eq("status", "awarded").neq("standards_status", "ob3_signed"),
+    sb.from("credential_verification_events").select("id", { count: "exact", head: true }),
+  ]);
+  if (keyResult.error) throw keyResult.error;
+  let currentKey: JsonRecord | null = null;
+  let configError: string | null = null;
+  if (signingConfigured()) {
+    try {
+      const config = await signingConfiguration(req);
+      currentKey = (keyResult.data || []).find((item: JsonRecord) => item.key_id_uri === config.keyId) || null;
+    } catch (cause) {
+      configError = cause instanceof Error ? cause.message : "SIGNING_CONFIGURATION_INVALID";
+    }
+  }
+  return {
+    configured: signingConfigured() && !configError,
+    configuration_error: configError,
+    current_key: currentKey,
+    keys: keyResult.data || [],
+    signed_awards: signed.count || 0,
+    unsigned_awards: drafts.count || 0,
+    verification_events: verificationEvents.count || 0,
+    required_algorithm: "RS256",
+    public_key_endpoint: `${functionBaseUrl(req)}/keys`,
+  };
+}
+
+async function findPublicAwardByIdentifier(sb: Supabase, identifier: string) {
+  const base = sb.from("badge_awards")
+    .select("*,template:badge_templates(*,category:badge_categories(*),level:badge_levels(*)),issuer:credential_issuers(*),recipient:users(id,full_name,avatar_url)")
+    .eq("visibility", "public");
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
+  const query = isUuid ? base.eq("credential_uuid", identifier) : base.eq("verification_code", identifier.toUpperCase());
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("BADGE_NOT_FOUND");
+  return data as JsonRecord;
+}
+
+async function verifyPublicBadge(sb: Supabase, identifier: string, req: Request, source = "public_page") {
+  const award = await findPublicAwardByIdentifier(sb, identifier);
+  const badge = await publicBadge(sb, identifier);
+  if (!award.credential_jwt) {
+    return {
+      badge,
+      verification: {
+        signature_valid: false,
+        structure_valid: false,
+        status_valid: award.status === "awarded",
+        overall_valid: false,
+        error_code: "CREDENTIAL_NOT_SIGNED",
+        checked_at: new Date().toISOString(),
+      },
+    };
+  }
+  const verification = await verifyCompactCredential(sb, String(award.credential_jwt), req, award, source);
+  return { badge, verification };
+}
+
+async function issuerPublicProfile(sb: Supabase, code: string) {
+  const { data, error } = await sb.from("credential_issuers")
+    .select("code,name,description,issuer_type,website_url,email,logo_url,issuer_uri,did,verification_method,public_key_set_uri,status")
+    .eq("code", code).eq("status", "active").maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("ISSUER_NOT_FOUND");
+  return data;
+}
+
+async function activePublicKeys(sb: Supabase) {
+  const { data, error } = await sb.from("credential_signing_keys")
+    .select("key_id_uri,algorithm,public_jwk,jwk_thumbprint,status,valid_from,valid_until")
+    .in("status", ["active", "retired"]).order("valid_from", { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row: JsonRecord) => ({ ...(row.public_jwk as JsonRecord), kid: row.key_id_uri, alg: row.algorithm, use: "sig" }));
+}
+
+async function exportResponse(sb: Supabase, award: JsonRecord, format: string, req: Request) {
+  if (format === "vc_jwt") {
+    if (!award.credential_jwt) throw new Error("CREDENTIAL_NOT_SIGNED");
+    await verifyCompactCredential(sb, String(award.credential_jwt), req, award, "export");
+    await sb.from("credential_exports").insert({ award_id: award.id, export_format: "vc_jwt" });
+    return textResponse(String(award.credential_jwt), "text/plain; charset=utf-8", {
+      "Content-Disposition": `attachment; filename="omnia-badge-${award.verification_code}.jwt"`,
+      "Cache-Control": "no-store",
+    });
+  }
+  if (format === "json_ld") {
+    await sb.from("credential_exports").insert({ award_id: award.id, export_format: "json_ld" });
+    return json(award.credential_json || {}, 200, {
+      "Content-Type": "application/vc+ld+json",
+      "Content-Disposition": `attachment; filename="omnia-badge-${award.verification_code}.json"`,
+      "Cache-Control": "no-store",
+    });
+  }
+  if (format === "qr_svg") {
+    const verificationUrl = `${appBaseUrl()}/credentials/badges/${award.verification_code}`;
+    const svg = await QRCode.toString(verificationUrl, { type: "svg", margin: 1, width: 320, errorCorrectionLevel: "M" });
+    await sb.from("credential_exports").insert({ award_id: award.id, export_format: "qr_svg" });
+    return textResponse(svg, "image/svg+xml; charset=utf-8", {
+      "Content-Disposition": `inline; filename="omnia-badge-${award.verification_code}-qr.svg"`,
+      "Cache-Control": "public, max-age=3600",
+    });
+  }
+  throw new Error("EXPORT_FORMAT_UNSUPPORTED");
 }
 
 async function revokeBadge(sb: Supabase, session: Session, body: JsonRecord) {
@@ -556,21 +1027,86 @@ async function revokeShare(sb: Supabase, session: Session, body: JsonRecord) {
   return { success: true };
 }
 
+async function verifyOwnedBadge(sb: Supabase, session: Session, awardId: string, req: Request) {
+  const { data: award, error } = await sb.from("badge_awards").select("*").eq("id", awardId).eq("recipient_user_id", session.userId).maybeSingle();
+  if (error) throw error;
+  if (!award) throw new Error("BADGE_NOT_FOUND");
+  if (!award.credential_jwt) return { signature_valid: false, structure_valid: false, status_valid: award.status === "awarded", overall_valid: false, error_code: "CREDENTIAL_NOT_SIGNED", checked_at: new Date().toISOString() };
+  return verifyCompactCredential(sb, String(award.credential_jwt), req, award as JsonRecord, "learner");
+}
+
+async function handlePublicGet(sb: Supabase, req: Request) {
+  const url = new URL(req.url);
+  const marker = "/credentials";
+  const markerIndex = url.pathname.indexOf(marker);
+  const relative = markerIndex >= 0 ? url.pathname.slice(markerIndex + marker.length) : "/";
+  const parts = relative.split("/").filter(Boolean).map(decodeURIComponent);
+
+  if (parts[0] === "keys") {
+    const keys = await activePublicKeys(sb);
+    if (parts.length === 1) return json({ keys }, 200, { "Cache-Control": "public, max-age=300" });
+    if (parts[1] === "current") {
+      const { data: currentRow, error: currentError } = await sb.from("credential_signing_keys")
+        .select("key_id_uri,algorithm,public_jwk")
+        .eq("status", "active")
+        .order("valid_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (!currentRow) throw new Error("SIGNING_KEY_NOT_FOUND");
+      return json({ ...(currentRow.public_jwk as JsonRecord), kid: currentRow.key_id_uri, alg: currentRow.algorithm, use: "sig" }, 200, { "Cache-Control": "public, max-age=300" });
+    }
+    const { data, error } = await sb.from("credential_signing_keys").select("key_id_uri,algorithm,public_jwk")
+      .eq("jwk_thumbprint", parts[1]).in("status", ["active", "retired"]).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("SIGNING_KEY_NOT_FOUND");
+    return json({ ...(data.public_jwk as JsonRecord), kid: data.key_id_uri, alg: data.algorithm, use: "sig" }, 200, { "Cache-Control": "public, max-age=300" });
+  }
+
+  if (parts[0] === "issuers" && parts[1]) {
+    return json(await issuerPublicProfile(sb, parts[1]), 200, { "Cache-Control": "public, max-age=300" });
+  }
+
+  if (parts[0] === "badges" && parts[1]) {
+    const rawIdentifier = parts[1];
+    let identifier = rawIdentifier;
+    let format = "verify";
+    if (rawIdentifier.endsWith(".jwt")) { identifier = rawIdentifier.slice(0, -4); format = "vc_jwt"; }
+    else if (rawIdentifier.endsWith(".json")) { identifier = rawIdentifier.slice(0, -5); format = "json_ld"; }
+    else if (parts[2] === "qr.svg") format = "qr_svg";
+    else if (parts[2] === "refresh") format = "vc_jwt";
+    else if (parts[2] === "verify") format = "verify";
+    const award = await findPublicAwardByIdentifier(sb, identifier);
+    if (format === "verify") return json({ success: true, ...(await verifyPublicBadge(sb, identifier, req, "api")) }, 200, { "Cache-Control": "no-store" });
+    return exportResponse(sb, award, format, req);
+  }
+
+  return json({ success: false, error: "PUBLIC_RESOURCE_NOT_FOUND" }, 404);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-  if (req.method !== "POST") return json({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
+    if (req.method === "GET") return await handlePublicGet(sb, req);
+    if (req.method !== "POST") return json({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
+
     const body = await req.json().catch(() => ({})) as JsonRecord;
     const action = text(body.action, 80);
     const session = await authenticate(sb, req);
 
-    if (action === "public_badge") return json({ success: true, badge: await publicBadge(sb, text(body.identifier, 120)) });
+    if (action === "public_badge" || action === "public_verify_badge") return json({ success: true, ...(await verifyPublicBadge(sb, text(body.identifier, 120), req)) });
     if (action === "public_clr") return json({ success: true, ...(await publicClr(sb, text(body.token, 200))) });
+    if (action === "public_issuer") return json({ success: true, issuer: await issuerPublicProfile(sb, text(body.code, 120) || "omnia-global-academy") });
+    if (action === "public_signing_keys") return json({ success: true, keys: await activePublicKeys(sb) });
 
     if (action === "learner_badges") {
       requireSession(session);
       return json({ success: true, badges: await awardRows(sb, session.userId), templates: await templateRows(sb, false) });
+    }
+    if (action === "learner_verify_badge") {
+      requireSession(session);
+      return json({ success: true, verification: await verifyOwnedBadge(sb, session, text(body.award_id, 80), req) });
     }
     if (action === "learner_clr") {
       requireSession(session);
@@ -591,14 +1127,24 @@ Deno.serve(async (req: Request) => {
 
     requireAdmin(session);
     if (action === "admin_overview") {
-      const [templates, awards, pendingReviews, issuers, clrRecords] = await Promise.all([
+      const [templates, awards, pendingReviews, issuers, clrRecords, signedAwards] = await Promise.all([
         sb.from("badge_templates").select("id", { count: "exact", head: true }),
         sb.from("badge_awards").select("id", { count: "exact", head: true }),
         sb.from("badge_review_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         sb.from("credential_issuers").select("id", { count: "exact", head: true }).eq("status", "active"),
         sb.from("clr_records").select("id", { count: "exact", head: true }),
+        sb.from("badge_awards").select("id", { count: "exact", head: true }).eq("standards_status", "ob3_signed"),
       ]);
-      return json({ success: true, metrics: { templates: templates.count || 0, awards: awards.count || 0, pending_reviews: pendingReviews.count || 0, active_issuers: issuers.count || 0, clr_records: clrRecords.count || 0 } });
+      return json({ success: true, metrics: { templates: templates.count || 0, awards: awards.count || 0, pending_reviews: pendingReviews.count || 0, active_issuers: issuers.count || 0, clr_records: clrRecords.count || 0, signed_awards: signedAwards.count || 0 } });
+    }
+    if (action === "admin_signing_status") return json({ success: true, signing: await signingStatus(sb, req) });
+    if (action === "admin_sync_signing_key") return json({ success: true, key: await syncSigningKey(sb, req, session.userId), signing: await signingStatus(sb, req) });
+    if (action === "admin_sign_award") return json({ success: true, award: await signAwardById(sb, session.userId, text(body.award_id, 80), req) });
+    if (action === "admin_sign_unsigned") return json({ success: true, results: await signUnsignedAwards(sb, session, req, integer(body.limit) || 100), signing: await signingStatus(sb, req) });
+    if (action === "admin_verify_award") {
+      const award = await awardForSigning(sb, text(body.award_id, 80));
+      if (!award.credential_jwt) throw new Error("CREDENTIAL_NOT_SIGNED");
+      return json({ success: true, verification: await verifyCompactCredential(sb, String(award.credential_jwt), req, award, "admin") });
     }
     if (action === "admin_templates") return json({ success: true, templates: await templateRows(sb), categories: (await sb.from("badge_categories").select("*").order("display_order")).data || [], levels: (await sb.from("badge_levels").select("*").order("rank")).data || [], issuers: (await sb.from("credential_issuers").select("*").order("name")).data || [] });
     if (action === "admin_save_template") return json({ success: true, template: await saveTemplate(sb, session, body) });
@@ -609,7 +1155,7 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_issuers") return json({ success: true, issuers: (await sb.from("credential_issuers").select("*").order("created_at", { ascending: false })).data || [] });
     if (action === "admin_save_issuer") return json({ success: true, issuer: await saveIssuer(sb, session, body) });
     if (action === "admin_awards") return json({ success: true, awards: await awardRows(sb), templates: await templateRows(sb, false) });
-    if (action === "admin_issue_badge") return json({ success: true, award: await issueBadge(sb, session, body) });
+    if (action === "admin_issue_badge") return json({ success: true, award: await issueBadge(sb, session, body, req) });
     if (action === "admin_revoke_badge") return json({ success: true, award: await revokeBadge(sb, session, body) });
     if (action === "admin_clr_records") {
       const { data, error } = await sb.from("clr_records").select("*,user:users(id,full_name,email,avatar_url)").order("updated_at", { ascending: false });

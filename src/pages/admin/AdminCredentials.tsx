@@ -1,17 +1,17 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Award, BadgeCheck, Building2, ExternalLink, FileCheck2, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, KeyRound, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import AdminCredentialsManagementLayout from '../../components/admin/AdminCredentialsManagementLayout';
 import {
-  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrRecord, CredentialIssuer,
+  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification,
   credentialStatusLabel, credentialsRequest,
 } from '../../lib/credentialsApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
-type Section = 'overview' | 'templates' | 'awards' | 'issuers' | 'taxonomy' | 'clr' | 'revocations';
-type Metrics = { templates: number; awards: number; pending_reviews: number; active_issuers: number; clr_records: number };
+type Section = 'overview' | 'templates' | 'awards' | 'issuers' | 'signatures' | 'taxonomy' | 'clr' | 'revocations';
+type Metrics = { templates: number; awards: number; pending_reviews: number; active_issuers: number; clr_records: number; signed_awards: number };
 
 type TemplateDraft = Partial<BadgeTemplate> & { source_types_text?: string };
 type IssuerDraft = Partial<CredentialIssuer>;
@@ -22,6 +22,7 @@ function sectionFromPath(path: string): Section {
   if (path.includes('/modeles')) return 'templates';
   if (path.includes('/attributions')) return 'awards';
   if (path.includes('/emetteurs')) return 'issuers';
+  if (path.includes('/signatures')) return 'signatures';
   if (path.includes('/categories')) return 'taxonomy';
   if (path.includes('/clr')) return 'clr';
   if (path.includes('/revocations')) return 'revocations';
@@ -38,6 +39,7 @@ export default function AdminCredentials() {
   const [categories, setCategories] = useState<BadgeCategory[]>([]);
   const [levels, setLevels] = useState<BadgeLevel[]>([]);
   const [records, setRecords] = useState<ClrRecord[]>([]);
+  const [signing, setSigning] = useState<CredentialSigningStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -52,15 +54,16 @@ export default function AdminCredentials() {
   async function load() {
     setLoading(true); setError('');
     try {
-      const [overview, templateData, awardData, issuerData, recordData] = await Promise.all([
+      const [overview, templateData, awardData, issuerData, recordData, signingData] = await Promise.all([
         credentialsRequest<{ success: true; metrics: Metrics }>('admin_overview'),
         credentialsRequest<{ success: true; templates: BadgeTemplate[]; categories: BadgeCategory[]; levels: BadgeLevel[]; issuers: CredentialIssuer[] }>('admin_templates'),
         credentialsRequest<{ success: true; awards: BadgeAward[] }>('admin_awards'),
         credentialsRequest<{ success: true; issuers: CredentialIssuer[] }>('admin_issuers'),
         credentialsRequest<{ success: true; records: ClrRecord[] }>('admin_clr_records'),
+        credentialsRequest<{ success: true; signing: CredentialSigningStatus }>('admin_signing_status'),
       ]);
       setMetrics(overview.metrics); setTemplates(templateData.templates); setCategories(templateData.categories); setLevels(templateData.levels);
-      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records);
+      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setSigning(signingData.signing);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Gestion des credentials indisponible.'); }
     finally { setLoading(false); }
   }
@@ -78,6 +81,7 @@ export default function AdminCredentials() {
       {section === 'templates' && <Templates templates={templates} query={query} setQuery={setQuery} onCreate={() => setTemplateDraft({ status: 'draft', achievement_type: 'Achievement', default_visibility: 'oga', source_types_text: 'manual' })} onEdit={template => setTemplateDraft({ ...template, source_types_text: template.source_types.join(', ') })} />}
       {section === 'awards' && <Awards awards={awards} query={query} setQuery={setQuery} onIssue={() => setIssueOpen(true)} onRevoke={setRevokeAward} />}
       {section === 'issuers' && <Issuers issuers={issuers} onCreate={() => setIssuerDraft({ issuer_type: 'external', status: 'draft' })} onEdit={setIssuerDraft} />}
+      {section === 'signatures' && <SigningPanel signing={signing} awards={awards} onNotice={setNotice} onReload={load} />}
       {section === 'taxonomy' && <Taxonomy categories={categories} levels={levels} onCategory={() => setCategoryDraft({ category_type: 'achievement', is_active: true })} onLevel={() => setLevelDraft({ is_active: true, color: BLUE })} onEditCategory={setCategoryDraft} onEditLevel={setLevelDraft} />}
       {section === 'clr' && <ClrRecords records={records} />}
       {section === 'revocations' && <Awards awards={awards.filter(award => award.status === 'revoked')} query={query} setQuery={setQuery} onIssue={() => setIssueOpen(true)} onRevoke={setRevokeAward} hideIssue />}
@@ -119,6 +123,72 @@ function Issuers({ issuers, onCreate, onEdit }: { issuers: CredentialIssuer[]; o
 function Taxonomy({ categories, levels, onCategory, onLevel, onEditCategory, onEditLevel }: { categories: BadgeCategory[]; levels: BadgeLevel[]; onCategory: () => void; onLevel: () => void; onEditCategory: (category: BadgeCategory) => void; onEditLevel: (level: BadgeLevel) => void }) { return <div className="mt-6 grid gap-6 lg:grid-cols-2"><section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="flex items-center justify-between border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Catégories</h2><button onClick={onCategory} className="text-sm font-semibold" style={{ color: GOLD }}>Ajouter</button></div><div className="divide-y">{categories.map(category => <button key={category.id} onClick={() => onEditCategory(category)} className="flex w-full items-center justify-between gap-3 p-4 text-left"><div><p className="font-semibold" style={{ color: BLUE }}>{category.name}</p><p className="text-xs text-slate-500">{category.category_type}</p></div><Status value={category.is_active ? 'active' : 'inactive'} /></button>)}</div></section><section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="flex items-center justify-between border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Niveaux</h2><button onClick={onLevel} className="text-sm font-semibold" style={{ color: GOLD }}>Ajouter</button></div><div className="divide-y">{levels.map(level => <button key={level.id} onClick={() => onEditLevel(level)} className="flex w-full items-center justify-between gap-3 p-4 text-left"><div className="flex items-center gap-3"><span className="h-4 w-4 rounded-full" style={{ background: level.color }} /><div><p className="font-semibold" style={{ color: BLUE }}>{level.name}</p><p className="text-xs text-slate-500">Rang {level.rank}</p></div></div><Status value={level.is_active ? 'active' : 'inactive'} /></button>)}</div></section></div>; }
 
 function ClrRecords({ records }: { records: ClrRecord[] }) { return <section className="mt-6 rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Omnia Learning Records</h2><p className="text-xs text-slate-500">Dossiers créés et préparés pour CLR 2.0.</p></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Utilisateur</th><th className="px-4 py-3">Version</th><th className="px-4 py-3">Statut standard</th><th className="px-4 py-3">Dernière génération</th></tr></thead><tbody className="divide-y">{records.map(record => <tr key={record.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{record.user?.full_name || 'Utilisateur'}</p><p className="text-xs text-slate-500">{record.user?.email || record.record_uuid}</p></td><td className="px-4 py-4">v{record.version}</td><td className="px-4 py-4"><Status value={record.standards_status} /></td><td className="px-4 py-4">{record.last_built_at ? new Date(record.last_built_at).toLocaleString('fr-FR') : '—'}</td></tr>)}{records.length === 0 && <tr><td colSpan={4}><Empty text="Aucun Learning Record généré." /></td></tr>}</tbody></table></div></section>; }
+
+function SigningPanel({ signing, awards, onNotice, onReload }: { signing: CredentialSigningStatus | null; awards: BadgeAward[]; onNotice: (message: string) => void; onReload: () => Promise<void> }) {
+  const [working, setWorking] = useState('');
+  const [error, setError] = useState('');
+  const [verification, setVerification] = useState<{ awardId: string; result: CredentialVerification } | null>(null);
+  const unsigned = awards.filter(award => award.status === 'awarded' && award.standards_status !== 'ob3_signed' && award.template?.internal_only !== true);
+  const signed = awards.filter(award => award.standards_status === 'ob3_signed');
+
+  async function execute(label: string, action: string, payload: Record<string, unknown> = {}, success = 'Opération terminée.') {
+    setWorking(label); setError(''); setVerification(null);
+    try {
+      const response = await credentialsRequest<{ success: true; verification?: CredentialVerification }>(action, payload);
+      if (response.verification) setVerification({ awardId: String(payload.award_id || ''), result: response.verification });
+      onNotice(success);
+      await onReload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Opération de signature impossible.');
+    } finally { setWorking(''); }
+  }
+
+  return <div className="mt-6 space-y-6">
+    <section className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="rounded-xl bg-amber-50 p-3" style={{ color: GOLD }}><KeyRound size={22} /></span>
+          <div><h2 className="font-semibold" style={{ color: BLUE }}>Signature Open Badges 3.0</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Signature VC-JWT en RS256, publication de la clé publique et vérification cryptographique des badges.</p></div>
+        </div>
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${signing?.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+          {signing?.configured ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+          {signing?.configured ? 'Signature configurée' : 'Configuration requise'}
+        </span>
+      </div>
+      {!signing?.configured && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p className="font-semibold">Clé privée absente ou invalide</p><p className="mt-1">Ajoutez le secret Supabase <code>CREDENTIALS_SIGNING_PRIVATE_JWK</code>, puis redéployez la fonction <code>credentials</code>. La clé privée ne doit jamais être enregistrée en base ni copiée dans le frontend.</p>{signing?.configuration_error && <p className="mt-2 font-mono text-xs">{signing.configuration_error}</p>}</div>}
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Badges signés" value={signing?.signed_awards || signed.length} />
+        <Metric label="À signer" value={signing?.unsigned_awards || unsigned.length} />
+        <Metric label="Clés publiques" value={signing?.keys.length || 0} />
+        <Metric label="Vérifications" value={signing?.verification_events || 0} />
+      </div>
+      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <p className="font-semibold" style={{ color: BLUE }}>Point public des clés</p>
+        <p className="mt-1 break-all font-mono text-xs text-slate-600">{signing?.public_key_endpoint || 'À déterminer après déploiement'}</p>
+        {signing?.current_key && <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2"><p><strong>Algorithme :</strong> {signing.current_key.algorithm}</p><p><strong>Empreinte :</strong> <span className="font-mono">{signing.current_key.jwk_thumbprint}</span></p><p className="sm:col-span-2"><strong>Key ID :</strong> <span className="break-all font-mono">{signing.current_key.key_id_uri}</span></p></div>}
+      </div>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button disabled={!signing?.configured || Boolean(working)} onClick={() => void execute('sync', 'admin_sync_signing_key', {}, 'Clé publique synchronisée avec l’émetteur OGA.')} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: BLUE }}><RefreshCw size={15} className={working === 'sync' ? 'animate-spin' : ''} /> Synchroniser la clé publique</button>
+        <button disabled={!signing?.configured || unsigned.length === 0 || Boolean(working)} onClick={() => void execute('bulk', 'admin_sign_unsigned', { limit: 100 }, 'Badges non signés traités.')} className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50" style={{ borderColor: GOLD, color: GOLD }}><KeyRound size={15} /> Signer les badges existants</button>
+      </div>
+      {error && <Message kind="error" text={error} />}
+    </section>
+
+    <section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}>
+      <div className="border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Contrôle des attributions</h2><p className="text-xs text-slate-500">La signature n’est proposée que pour les badges actifs et non internes.</p></div>
+      <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Badge</th><th className="px-4 py-3">Bénéficiaire</th><th className="px-4 py-3">Standard</th><th className="px-4 py-3">Dernière vérification</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y">
+        {awards.filter(award => award.status === 'awarded').map(award => {
+          const isSigned = award.standards_status === 'ob3_signed';
+          const result = verification?.awardId === award.id ? verification.result : award.verification_result;
+          return <tr key={award.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{award.template?.name || 'Badge'}</p><p className="font-mono text-xs text-slate-500">{award.verification_code}</p></td><td className="px-4 py-4">{award.recipient?.full_name || '—'}</td><td className="px-4 py-4"><Status value={award.standards_status} /></td><td className="px-4 py-4 text-xs text-slate-500">{result ? <span className={result.overall_valid ? 'text-green-700' : 'text-red-700'}>{result.overall_valid ? 'Valide' : result.error_code || 'Invalide'} · {new Date(result.checked_at).toLocaleString('fr-FR')}</span> : 'Jamais vérifié'}</td><td className="px-4 py-4 text-right"><div className="flex justify-end gap-2">{isSigned ? <button disabled={Boolean(working)} onClick={() => void execute(`verify-${award.id}`, 'admin_verify_award', { award_id: award.id }, 'Signature vérifiée.')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold" style={{ color: BLUE }}>Vérifier</button> : <button disabled={!signing?.configured || award.template?.internal_only === true || Boolean(working)} onClick={() => void execute(`sign-${award.id}`, 'admin_sign_award', { award_id: award.id }, 'Badge signé en Open Badges 3.0.')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}>Signer</button>}</div></td></tr>;
+        })}
+        {awards.filter(award => award.status === 'awarded').length === 0 && <tr><td colSpan={5}><Empty text="Aucun badge actif à signer." /></td></tr>}
+      </tbody></table></div>
+    </section>
+  </div>;
+}
+
+function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{value}</p></div>; }
 
 function Toolbar({ query, setQuery, button, onClick }: { query: string; setQuery: (value: string) => void; button?: string; onClick: () => void }) { return <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><label className="flex min-w-[240px] flex-1 items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: BORDER }}><Search size={16} className="text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none" placeholder="Rechercher…" /></label>{button && <button onClick={onClick} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Plus size={15} /> {button}</button>}</div>; }
 function Empty({ text }: { text: string }) { return <div className="p-8 text-center text-sm text-slate-500">{text}</div>; }

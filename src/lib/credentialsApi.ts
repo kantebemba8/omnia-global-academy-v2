@@ -1,6 +1,8 @@
 import { API_BASE_URL } from './config';
 import { edgeAuthHeaders } from './edgeAuth';
 
+export const CREDENTIALS_FUNCTION_URL = `${API_BASE_URL}/credentials`;
+
 export type CredentialIssuer = {
   id: string;
   code: string;
@@ -13,6 +15,9 @@ export type CredentialIssuer = {
   issuer_uri: string;
   did?: string | null;
   status: 'draft' | 'active' | 'suspended' | 'archived';
+  public_key_set_uri?: string | null;
+  verification_method?: Record<string, unknown>;
+  last_key_sync_at?: string | null;
 };
 
 export type BadgeCategory = {
@@ -84,11 +89,56 @@ export type BadgeAward = {
   revoked_at?: string | null;
   revocation_reason?: string | null;
   standards_status: 'internal_verified' | 'ob3_draft' | 'ob3_signed';
+  signed_at?: string | null;
+  signature_alg?: string | null;
+  credential_media_type?: string | null;
+  credential_hash?: string | null;
+  last_verified_at?: string | null;
+  verification_result?: CredentialVerification;
+  credential_jwt_available?: boolean;
   credential_json?: Record<string, unknown>;
   template?: BadgeTemplate | null;
   issuer?: CredentialIssuer | null;
   recipient?: { id?: string; full_name: string; email?: string; avatar_url?: string | null } | null;
   evidence?: BadgeEvidence[];
+};
+
+
+export type CredentialVerification = {
+  signature_valid: boolean;
+  structure_valid: boolean;
+  status_valid: boolean;
+  overall_valid: boolean;
+  error_code?: string | null;
+  protected_header?: Record<string, unknown>;
+  credential?: Record<string, unknown>;
+  structure_checks?: Record<string, boolean>;
+  checked_at: string;
+};
+
+export type CredentialSigningKey = {
+  id: string;
+  issuer_id: string;
+  key_name: string;
+  key_id_uri: string;
+  algorithm: 'RS256';
+  public_jwk: Record<string, unknown>;
+  jwk_thumbprint: string;
+  status: 'active' | 'retired' | 'revoked';
+  valid_from: string;
+  valid_until?: string | null;
+};
+
+export type CredentialSigningStatus = {
+  configured: boolean;
+  configuration_error?: string | null;
+  current_key?: CredentialSigningKey | null;
+  keys: CredentialSigningKey[];
+  signed_awards: number;
+  unsigned_awards: number;
+  verification_events: number;
+  required_algorithm: 'RS256';
+  public_key_endpoint: string;
 };
 
 export type ClrAchievement = {
@@ -141,4 +191,13 @@ export const visibilityLabel: Record<BadgeAward['visibility'], string> = {
 
 export function credentialStatusLabel(value: string): string {
   return ({ awarded: 'Actif', pending: 'En attente', expired: 'Expiré', revoked: 'Révoqué', suspended: 'Suspendu' } as Record<string, string>)[value] || value;
+}
+
+
+export function credentialAssetUrl(identifier: string, format: 'jwt' | 'json' | 'qr' | 'verify'): string {
+  const encoded = encodeURIComponent(identifier);
+  if (format === 'jwt') return `${CREDENTIALS_FUNCTION_URL}/badges/${encoded}.jwt`;
+  if (format === 'json') return `${CREDENTIALS_FUNCTION_URL}/badges/${encoded}.json`;
+  if (format === 'qr') return `${CREDENTIALS_FUNCTION_URL}/badges/${encoded}/qr.svg`;
+  return `${CREDENTIALS_FUNCTION_URL}/badges/${encoded}/verify`;
 }

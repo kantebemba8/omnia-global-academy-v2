@@ -530,6 +530,7 @@ export default function App() {
           <Route path="/admin/credentials/modeles" element={<AdminCredentials />} />
           <Route path="/admin/credentials/attributions" element={<AdminCredentials />} />
           <Route path="/admin/credentials/emetteurs" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/signatures" element={<AdminCredentials />} />
           <Route path="/admin/credentials/categories" element={<AdminCredentials />} />
           <Route path="/admin/credentials/clr" element={<AdminCredentials />} />
           <Route path="/admin/credentials/revocations" element={<AdminCredentials />} />
