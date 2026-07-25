@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, CircleDollarSign, Package, Star } from 'lucide-react';
 import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
-import { CoachProfile, CoachingSession, coachingRequest, formatXof } from '../../lib/coachingApi';
+import { CoachProfile, CoachingSession, coachingRequest, formatXof, withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -40,7 +40,7 @@ export default function CoachDashboard() {
   return <CoachWorkspaceLayout>
     <div>
       <p className="text-xs font-semibold uppercase tracking-[.18em]" style={{ color: GOLD }}>Espace coach</p>
-      <h1 className="mt-2 text-3xl font-bold" style={{ color: BLUE }}>Bonjour {data?.profile?.full_name || 'Coach'}</h1>
+      <h1 className="mt-2 text-3xl font-bold" style={{ color: BLUE }}>Tableau de bord coach</h1>
       {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -52,9 +52,9 @@ export default function CoachDashboard() {
       </div>
 
       <div className="mt-6 grid gap-5 md:grid-cols-3">
-        <Card to="/coach/sessions" title="Gérer mes sessions" text="Réservations, salles et suivi des apprenants." />
-        <Card to="/coach/produits" title="Packs et groupes" text="Créer des packs de séances et du coaching collectif." />
-        <Card to="/coach/revenus" title="Revenus et retraits" text="Consulter les revenus disponibles et demander un payout." />
+        <Card to={withCoachPreview("/coach/sessions")} title="Gérer mes sessions" text="Réservations, salles et suivi des apprenants." />
+        <Card to={withCoachPreview("/coach/produits")} title="Packs et groupes" text="Créer des packs de séances et du coaching collectif." />
+        <Card to={withCoachPreview("/coach/revenus")} title="Revenus et retraits" text="Consulter les revenus disponibles et demander un payout." />
       </div>
 
       <section className="mt-6 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
@@ -62,7 +62,7 @@ export default function CoachDashboard() {
         {data?.recent_sessions?.length ? <div className="mt-4 divide-y">
           {data.recent_sessions.slice(0, 5).map(session => <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
             <div><p className="font-semibold" style={{ color: BLUE }}>{session.offer_title_snapshot}</p><p className="text-xs text-slate-500">{session.status.replace(/_/g, ' ')}</p></div>
-            <Link to="/coach/sessions" className="text-sm font-semibold" style={{ color: GOLD }}>Ouvrir</Link>
+            <Link to={withCoachPreview("/coach/sessions")} className="text-sm font-semibold" style={{ color: GOLD }}>Ouvrir</Link>
           </div>)}
         </div> : <p className="mt-4 text-sm text-slate-500">Aucune activité récente.</p>}
       </section>

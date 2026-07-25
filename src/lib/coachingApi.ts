@@ -13,15 +13,12 @@ const COACH_PREVIEW_READ_ACTIONS = new Set([
   'coach_ratings',
   'coach_revenue',
   'coach_advanced_products',
-  'session_follow_up',
-  'session_room_access',
-  'recording_status',
 ]);
 
 export function isCoachPreviewMode(): boolean {
   if (typeof window === 'undefined') return false;
   const queryPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
-  const storedPreview = sessionStorage.getItem(COACH_PREVIEW_SESSION_KEY) === 'true';
+  const storedPreview = sessionStorage.getItem(COACH_PREVIEW_SESSION_KEY) === 'coach';
   let isSuperAdmin = false;
   try {
     isSuperAdmin = JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false;
@@ -545,6 +542,103 @@ export type CoachingRecommendation = {
   minimum_price_xof?: number | null;
 };
 
+
+const EMPTY_COACH_PREVIEW_PROFILE: CoachProfile = {
+  id: 'coach-preview',
+  user_id: 'coach-preview',
+  public_slug: '',
+  full_name: '',
+  professional_title: '',
+  biography: '',
+  specialties: [],
+  languages: [],
+  country: '',
+  timezone: 'Africa/Bamako',
+  photo_url: null,
+  linkedin_url: null,
+  website_url: null,
+  presentation_video_url: null,
+  preferred_session_modes: ['jitsi'],
+  price_30_xof: null,
+  price_60_xof: null,
+  price_90_xof: null,
+  custom_duration_enabled: false,
+  custom_hourly_price_xof: null,
+  status: 'active',
+  is_featured: false,
+  average_rating: 0,
+  rating_count: 0,
+  completed_sessions_count: 0,
+  badge_override: null,
+  level: null,
+  domains: [],
+  offers: [],
+  ratings: [],
+  packages: [],
+  groups: [],
+};
+
+function getCoachPreviewResponse(action: string): unknown {
+  switch (action) {
+    case 'coach_dashboard':
+      return {
+        profile: EMPTY_COACH_PREVIEW_PROFILE,
+        recent_sessions: [],
+        metrics: {
+          upcoming_sessions: 0,
+          pending_custom_requests: 0,
+          completed_sessions: 0,
+          average_rating: 0,
+          available_revenue_xof: 0,
+        },
+      };
+    case 'coach_offers':
+      return {
+        success: true,
+        offers: [],
+        domains: [],
+        profile: EMPTY_COACH_PREVIEW_PROFILE,
+        limits: { minimum: 0, maximum: null, commission: 0 },
+      };
+    case 'coach_availability':
+      return {
+        success: true,
+        profile: EMPTY_COACH_PREVIEW_PROFILE,
+        rules: [],
+        exceptions: [],
+        settings: {
+          default_booking_notice_hours: 24,
+          default_max_sessions_per_day: 8,
+          maximum_booking_window_days: 90,
+        },
+      };
+    case 'coach_sessions':
+      return { success: true, sessions: [] };
+    case 'coach_request_availability':
+      return { success: true, slots: [] };
+    case 'coach_ratings':
+      return {
+        success: true,
+        ratings: [],
+        metrics: { average_rating: 0, rating_count: 0, recommendation_percent: 0 },
+      };
+    case 'coach_revenue':
+      return {
+        success: true,
+        earnings: [],
+        advanced_earnings: [],
+        wallet: { balance_xof: 0, reserved_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
+        payouts: [],
+        settings: { payout_minimum_xof: 5000 },
+        metrics: { locked_xof: 0, frozen_xof: 0, available_earnings_xof: 0, lifetime_net_xof: 0 },
+      };
+    case 'coach_advanced_products':
+      return { packages: [], groups: [], domains: [], package_purchases: [], group_registrations: [] };
+    default:
+      return null;
+  }
+}
+
 const messages: Record<string, string> = {
   SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
   FORBIDDEN: 'Vous ne disposez pas des droits nécessaires.',
@@ -644,19 +738,22 @@ const messages: Record<string, string> = {
   RECORDING_STORAGE_NOT_CONFIGURED: 'Le stockage privé des enregistrements n’est pas configuré.',
   ACTIVE_RECORDING_NOT_FOUND: 'Aucun enregistrement actif n’a été trouvé.',
   INVALID_ADVANCED_SETTINGS: 'Les paramètres avancés saisis sont invalides.',
-  PREVIEW_READ_ONLY: 'La prévisualisation Coach est en lecture seule. Quittez-la pour effectuer cette action.',
-  COACH_PREVIEW_ACCOUNT_MISSING: 'Le compte coach de test n’est pas encore installé. Exécutez la migration SQL 105.',
+  PREVIEW_READ_ONLY: 'Cette action n’est pas disponible dans cet espace.',
+  COACH_PREVIEW_ACCOUNT_MISSING: 'L’espace coach est temporairement indisponible.',
 };
 
 export async function coachingRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   const previewMode = isCoachPreviewMode();
-  if (previewMode && !COACH_PREVIEW_READ_ACTIONS.has(action)) {
-    throw new Error(messages.PREVIEW_READ_ONLY);
+  if (previewMode) {
+    if (!COACH_PREVIEW_READ_ACTIONS.has(action)) {
+      throw new Error(messages.PREVIEW_READ_ONLY);
+    }
+    return getCoachPreviewResponse(action) as T;
   }
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: edgeAuthHeaders(),
-    body: JSON.stringify({ action, ...payload, ...(previewMode ? { preview_mode: true } : {}) }),
+    body: JSON.stringify({ action, ...payload }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {

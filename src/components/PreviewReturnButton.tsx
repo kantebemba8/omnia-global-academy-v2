@@ -2,19 +2,22 @@ import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
-const PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
+export const PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
+
 const ROLE_SPACE_PREFIXES = [
-  '/dashboard',
-  '/professeur',
-  '/structure',
-  '/staff',
-  '/enseignant',
-  '/moderateur',
-  '/moderator',
-  '/partner',
-  '/talent',
-  '/coach',
-];
+  ['/dashboard', 'apprenant'],
+  ['/professeur', 'professeur'],
+  ['/structure', 'structure'],
+  ['/staff', 'enseignant'],
+  ['/enseignant', 'enseignant'],
+  ['/moderateur', 'moderateur'],
+  ['/moderator', 'moderateur'],
+  ['/partner', 'structure'],
+  ['/talent/recruteur', 'recruteur'],
+  ['/talent', 'talent'],
+  ['/coach', 'coach'],
+  ['/omnia-live/organisateur', 'organisateur'],
+] as const;
 
 function isStoredSuperAdmin(): boolean {
   try {
@@ -25,8 +28,9 @@ function isStoredSuperAdmin(): boolean {
   }
 }
 
-function isRoleSpace(pathname: string): boolean {
-  return ROLE_SPACE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+function previewSpace(pathname: string): string | null {
+  const match = ROLE_SPACE_PREFIXES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return match?.[1] || null;
 }
 
 export function PreviewReturnButton() {
@@ -34,9 +38,9 @@ export function PreviewReturnButton() {
   const navigate = useNavigate();
   const isAdmin = isStoredSuperAdmin();
   const queryPreview = new URLSearchParams(location.search).get('preview') === 'true';
-  const roleSpace = useMemo(() => isRoleSpace(location.pathname), [location.pathname]);
-  const storedPreview = sessionStorage.getItem(PREVIEW_SESSION_KEY) === 'true';
-  const activePreview = isAdmin && roleSpace && (queryPreview || storedPreview);
+  const currentSpace = useMemo(() => previewSpace(location.pathname), [location.pathname]);
+  const storedSpace = sessionStorage.getItem(PREVIEW_SESSION_KEY);
+  const activePreview = Boolean(isAdmin && currentSpace && (queryPreview || storedSpace === currentSpace));
 
   useEffect(() => {
     if (!isAdmin) {
@@ -44,8 +48,8 @@ export function PreviewReturnButton() {
       return;
     }
 
-    if (queryPreview && roleSpace) {
-      sessionStorage.setItem(PREVIEW_SESSION_KEY, 'true');
+    if (queryPreview && currentSpace) {
+      sessionStorage.setItem(PREVIEW_SESSION_KEY, currentSpace);
       return;
     }
 
@@ -54,16 +58,16 @@ export function PreviewReturnButton() {
       return;
     }
 
-    // Si un lien interne a perdu ?preview=true, on le rétablit afin que les
-    // protections de rôle restent en mode aperçu Super Admin.
-    if (storedPreview && roleSpace && !queryPreview) {
+    // Un aperçu est limité à l’espace sélectionné. Il ne peut donc pas
+    // transformer la session Super Admin en un autre rôle.
+    if (storedSpace && currentSpace === storedSpace && !queryPreview) {
       const params = new URLSearchParams(location.search);
       params.set('preview', 'true');
       navigate(`${location.pathname}?${params.toString()}${location.hash}`, { replace: true });
     }
-  }, [isAdmin, queryPreview, roleSpace, storedPreview, location.pathname, location.search, location.hash, navigate]);
+  }, [isAdmin, queryPreview, currentSpace, storedSpace, location.pathname, location.search, location.hash, navigate]);
 
-  if (!activePreview) return null;
+  if (!activePreview || currentSpace === 'coach') return null;
 
   return (
     <button

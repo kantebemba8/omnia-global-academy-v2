@@ -31,6 +31,16 @@ function getApiBase() {
   return url ? `${url}/functions/v1` : '/api';
 }
 
+
+const PREVIEW_DASHBOARD: DashData = {
+  user: { full_name: '', email: '' },
+  kpis: { solde_retirable_xof: 0, gains_cumules_xof: 0, total_eleves: 0, note_globale: 0 },
+  formations: [],
+  payout_requests: [],
+  wallet: { balance_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
+  forum_questions_unanswered: 0,
+};
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   brouillon:                       { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
   soumise:                         { label: 'Soumise', color: '#3B82F6', bg: '#EFF6FF' },
@@ -73,12 +83,13 @@ function kpiCard(label: string, value: string, icon: React.ReactNode, color: str
 }
 
 export function DashboardProfesseur() {
-  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
+  const queryPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
+  const storedPreview = sessionStorage.getItem('omnia_admin_role_preview') === 'professeur';
   const isSuperAdmin = (() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
   })();
-  const bypassAuth = isPreview && isSuperAdmin;
+  const bypassAuth = isSuperAdmin && (queryPreview || storedPreview);
 
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +105,7 @@ export function DashboardProfesseur() {
   }
 
   const load = useCallback(async () => {
-    if (bypassAuth) { setLoading(false); return; }
+    if (bypassAuth) { setData(PREVIEW_DASHBOARD); setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
     try {
@@ -154,7 +165,7 @@ export function DashboardProfesseur() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Bonjour{data ? `, ${data.user.full_name.split(' ')[0]}` : ''} 👋
+              {data?.user.full_name ? `Bonjour, ${data.user.full_name.split(' ')[0]}` : 'Tableau de bord professeur'}
             </h1>
             <p className="text-gray-500 text-sm mt-1">Espace professeur</p>
           </div>
@@ -213,10 +224,15 @@ export function DashboardProfesseur() {
                     <div className="bg-white rounded-xl p-8 border border-gray-100 text-center">
                       <PlusCircle className="w-10 h-10 mx-auto mb-3 text-gray-200" />
                       <p className="text-gray-500 text-sm">Aucune formation</p>
-                      <Link to="/professeur/courses/new"
-                        className="mt-3 inline-block text-sm font-medium" style={{ color: '#002050' }}>
-                        Créer votre première formation
-                      </Link>
+                      {bypassAuth ? (
+                        <button type="button" onClick={handlePreviewAction} className="mt-3 text-sm font-medium" style={{ color: '#002050' }}>
+                          Créer votre première formation
+                        </button>
+                      ) : (
+                        <Link to="/professeur/courses/new" className="mt-3 inline-block text-sm font-medium" style={{ color: '#002050' }}>
+                          Créer votre première formation
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     formations.slice(0, 6).map((f) => {
@@ -288,7 +304,7 @@ export function DashboardProfesseur() {
                       <p className="text-orange-700 text-xs font-medium">
                         {data!.forum_questions_unanswered} question(s) sans réponse depuis 24h
                       </p>
-                      <Link to="/professeur/forum" className="mt-1 text-xs font-semibold text-orange-600 hover:underline">
+                      <Link to="/forum" className="mt-1 text-xs font-semibold text-orange-600 hover:underline">
                         Voir les questions
                       </Link>
                     </div>

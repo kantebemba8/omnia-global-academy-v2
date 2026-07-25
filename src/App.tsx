@@ -652,7 +652,7 @@ export default function App() {
   <Route path="/omnia-career/lettres" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/entretien" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/candidatures" element={<DashboardCareerStudio />} />
-  <Route path="/omnia-career/profil" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/profil" element={<Navigate to="/dashboard/profil?tab=professionnel" replace />} />
   <Route path="/omnia-career/coaching" element={<Navigate to="/coaching" replace />} />
   <Route path="/omnia-career/parametres" element={<DashboardCareerStudio />} />
 </Route>

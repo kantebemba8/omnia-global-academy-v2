@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, KeyRound, Plus, RefreshCw, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, Image as ImageIcon, KeyRound, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Upload, X } from 'lucide-react';
 import AdminCredentialsManagementLayout from '../../components/admin/AdminCredentialsManagementLayout';
 import {
   BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrImport, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification, SkillsPassport,
@@ -69,7 +69,7 @@ export default function AdminCredentials() {
       ]);
       setMetrics(overview.metrics); setTemplates(templateData.templates); setCategories(templateData.categories); setLevels(templateData.levels);
       setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setClrImports(importData.imports); setSigning(signingData.signing); setPassports(passportData.passports);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Gestion des credentials indisponible.'); }
+    } catch (cause) { setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Gestion des credentials indisponible.')); }
     finally { setLoading(false); }
   }
 
@@ -101,6 +101,26 @@ export default function AdminCredentials() {
   </div></AdminCredentialsManagementLayout>;
 }
 
+function humanCredentialsError(value: string) {
+  return ({
+    CREDENTIALS_SIGNING_PRIVATE_JWK_INVALID_JSON: 'La clé privée de signature enregistrée dans Supabase n’est pas un JWK JSON valide. Remplacez la valeur du secret CREDENTIALS_SIGNING_PRIVATE_JWK par l’objet JSON complet, sans guillemets supplémentaires ni retour à la ligne autour.',
+    SIGNING_NOT_CONFIGURED: 'La signature cryptographique n’est pas encore configurée dans Supabase.',
+    BADGE_IMAGE_INVALID: 'Le fichier doit être une image PNG, JPEG ou WEBP.',
+    BADGE_IMAGE_TOO_LARGE: 'L’image dépasse la taille maximale autorisée de 5 Mo.',
+    BADGE_IMAGE_EMPTY: 'Le fichier image est vide.',
+    LEARNER_ROLE_REQUIRED: 'Cette action est réservée à un véritable compte apprenant et ne peut pas être exécutée depuis une prévisualisation Super Admin.',
+  } as Record<string, string>)[value] || value;
+}
+
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function Message({ kind, text }: { kind: 'error' | 'success'; text: string }) { return <div className={`mt-5 rounded-xl border p-4 text-sm ${kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>{text}</div>; }
 
 function Overview({ metrics, templates, awards }: { metrics: Metrics | null; templates: BadgeTemplate[]; awards: BadgeAward[] }) {
@@ -110,7 +130,11 @@ function Overview({ metrics, templates, awards }: { metrics: Metrics | null; tem
   return <div className="mt-6"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(([label, value, Icon]) => <div key={label} className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><Icon color={GOLD} /><p className="mt-4 text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{value}</p></div>)}</div>
     <div className="mt-6 grid gap-6 lg:grid-cols-2"><section className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Modèles récents</h2><div className="mt-4 divide-y">{templates.slice(0, 6).map(template => <div key={template.id} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-semibold" style={{ color: BLUE }}>{template.name}</p><p className="text-xs text-slate-500">{template.category?.name || 'Sans catégorie'}</p></div><Status value={template.status} /></div>)}{templates.length === 0 && <Empty text="Aucun modèle." />}</div></section>
     <section className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Attributions récentes</h2><div className="mt-4 divide-y">{awards.slice(0, 6).map(award => <div key={award.id} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-semibold" style={{ color: BLUE }}>{award.template?.name || 'Badge'}</p><p className="text-xs text-slate-500">{award.recipient?.full_name || 'Bénéficiaire'}</p></div><Status value={award.status} /></div>)}{awards.length === 0 && <Empty text="Aucune attribution." />}</div></section></div>
-    <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><strong>Interopérabilité :</strong> ce module crée les données et les payloads Open Badges 3.0 / CLR 2.0. Les signatures cryptographiques et les API d’échange seront activées dans le module suivant.</div>
+    <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <Link to="/admin/credentials/clr" className="rounded-xl border bg-white p-5 transition hover:border-slate-400" style={{ borderColor: BORDER }}><div className="flex items-center gap-3"><FileCheck2 color={GOLD} /><div><p className="font-semibold" style={{ color: BLUE }}>Gérer les Learning Records</p><p className="mt-1 text-xs text-slate-500">Synchronisation, imports, signature et vérification CLR 2.0.</p></div></div></Link>
+      <Link to="/admin/credentials/passports" className="rounded-xl border bg-white p-5 transition hover:border-slate-400" style={{ borderColor: BORDER }}><div className="flex items-center gap-3"><Sparkles color={GOLD} /><div><p className="font-semibold" style={{ color: BLUE }}>Gérer les Skills Passports</p><p className="mt-1 text-xs text-slate-500">Contrôle des passeports professionnels publiés et signés.</p></div></div></Link>
+    </div>
+    <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800"><strong>Interopérabilité active :</strong> Open Badges 3.0, CLR 2.0, JSON-LD, VC-JWT, signatures et vérifications sont gérés depuis cet espace.</div>
   </div>;
 }
 
@@ -198,7 +222,7 @@ function PassportsPanel({ passports, onNotice, onReload }: { passports: SkillsPa
       setVerification({ id: passport.id, result: response.verification });
       onNotice(response.verification.overall_valid ? 'Skills Passport vérifié.' : 'La vérification a détecté une anomalie.');
       await onReload();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Vérification impossible.'); }
+    } catch (cause) { setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Vérification impossible.')); }
     finally { setWorking(''); }
   }
 
@@ -210,7 +234,7 @@ function PassportsPanel({ passports, onNotice, onReload }: { passports: SkillsPa
     </section>
     <section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}>
       <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Titulaire</th><th className="px-4 py-3">Passeport</th><th className="px-4 py-3">Contenu</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3">Vérification</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y">
-        {passports.map(passport => { const result = verification?.id === passport.id ? verification.result : passport.verification_result as CredentialVerification | undefined; return <tr key={passport.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.user?.full_name || 'Apprenant'}</p><p className="text-xs text-slate-500">{passport.user?.email || '—'}</p></td><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.title}</p><p className="text-xs text-slate-500">Version {passport.version}{passport.published_at ? ` · ${new Date(passport.published_at).toLocaleDateString('fr-FR')}` : ''}</p></td><td className="px-4 py-4 text-xs text-slate-600">{passport.item_count || 0} élément(s)<br />{passport.active_share_count || 0} lien(s) actif(s)</td><td className="px-4 py-4"><Status value={passport.status} /></td><td className="px-4 py-4 text-xs">{result?.checked_at ? <span className={result.overall_valid ? 'text-green-700' : 'text-red-700'}>{result.overall_valid ? 'Valide' : result.error_code || 'Invalide'}<br />{new Date(result.checked_at).toLocaleString('fr-FR')}</span> : 'Jamais vérifié'}</td><td className="px-4 py-4 text-right"><button disabled={working === passport.id || !passport.presentation_jwt} onClick={() => void verify(passport)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ color: BLUE }}>Vérifier</button></td></tr>; })}
+        {passports.map(passport => { const result = verification?.id === passport.id ? verification.result : passport.verification_result as CredentialVerification | undefined; return <tr key={passport.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.user?.full_name || 'Apprenant'}</p><p className="text-xs text-slate-500">Données personnelles protégées</p></td><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.title}</p><p className="text-xs text-slate-500">Version {passport.version}{passport.published_at ? ` · ${new Date(passport.published_at).toLocaleDateString('fr-FR')}` : ''}</p></td><td className="px-4 py-4 text-xs text-slate-600">{passport.item_count || 0} élément(s)<br />{passport.active_share_count || 0} lien(s) actif(s)</td><td className="px-4 py-4"><Status value={passport.status} /></td><td className="px-4 py-4 text-xs">{result?.checked_at ? <span className={result.overall_valid ? 'text-green-700' : 'text-red-700'}>{result.overall_valid ? 'Valide' : result.error_code || 'Invalide'}<br />{new Date(result.checked_at).toLocaleString('fr-FR')}</span> : 'Jamais vérifié'}</td><td className="px-4 py-4 text-right"><button disabled={working === passport.id || !passport.presentation_jwt} onClick={() => void verify(passport)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ color: BLUE }}>Vérifier</button></td></tr>; })}
         {passports.length === 0 && <tr><td colSpan={6}><Empty text="Aucun Skills Passport créé." /></td></tr>}
       </tbody></table></div>
     </section>
@@ -232,7 +256,7 @@ function SigningPanel({ signing, awards, onNotice, onReload }: { signing: Creden
       onNotice(success);
       await onReload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Opération de signature impossible.');
+      setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Opération de signature impossible.'));
     } finally { setWorking(''); }
   }
 
@@ -248,7 +272,7 @@ function SigningPanel({ signing, awards, onNotice, onReload }: { signing: Creden
           {signing?.configured ? 'Signature configurée' : 'Configuration requise'}
         </span>
       </div>
-      {!signing?.configured && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p className="font-semibold">Clé privée absente ou invalide</p><p className="mt-1">Ajoutez le secret Supabase <code>CREDENTIALS_SIGNING_PRIVATE_JWK</code>, puis redéployez la fonction <code>credentials</code>. La clé privée ne doit jamais être enregistrée en base ni copiée dans le frontend.</p>{signing?.configuration_error && <p className="mt-2 font-mono text-xs">{signing.configuration_error}</p>}</div>}
+      {!signing?.configured && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p className="font-semibold">Clé privée absente ou invalide</p><p className="mt-1">Ajoutez le secret Supabase <code>CREDENTIALS_SIGNING_PRIVATE_JWK</code>, puis redéployez la fonction <code>credentials</code>. La clé privée ne doit jamais être enregistrée en base ni copiée dans le frontend.</p>{signing?.configuration_error && <p className="mt-2 text-xs">{humanCredentialsError(signing.configuration_error)}</p>}</div>}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Badges signés" value={signing?.signed_awards || signed.length} />
         <Metric label="À signer" value={signing?.unsigned_awards || unsigned.length} />
@@ -291,9 +315,70 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400';
 
 function TemplateModal({ draft, issuers, categories, levels, onClose, onDone }: { draft: TemplateDraft; issuers: CredentialIssuer[]; categories: BadgeCategory[]; levels: BadgeLevel[]; onClose: () => void; onDone: (message: string) => void }) {
-  const [form, setForm] = useState<TemplateDraft>(draft); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
-  async function submit(event: FormEvent) { event.preventDefault(); setSaving(true); setError(''); try { await credentialsRequest('admin_save_template', { ...form, source_types: String(form.source_types_text || '').split(',').map(value => value.trim()).filter(Boolean) }); onDone(form.id ? 'Modèle modifié.' : 'Modèle créé.'); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Enregistrement impossible.'); } finally { setSaving(false); } }
-  return <Modal title={form.id ? 'Modifier le modèle' : 'Nouveau modèle de badge'} onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5"><div className="grid gap-4 sm:grid-cols-2"><Field label="Nom"><input required className={inputClass} value={form.name || ''} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} /></Field><Field label="Code"><input className={inputClass} value={form.code || ''} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} placeholder="généré automatiquement" /></Field><Field label="Émetteur"><select required className={inputClass} value={form.issuer_id || ''} onChange={event => setForm(current => ({ ...current, issuer_id: event.target.value }))}><option value="">Sélectionner</option>{issuers.filter(issuer => issuer.status === 'active').map(issuer => <option key={issuer.id} value={issuer.id}>{issuer.name}</option>)}</select></Field><Field label="Catégorie"><select required className={inputClass} value={form.category_id || ''} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Sélectionner</option>{categories.filter(category => category.is_active).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></Field><Field label="Niveau"><select className={inputClass} value={form.level_id || ''} onChange={event => setForm(current => ({ ...current, level_id: event.target.value || null }))}><option value="">Sans niveau</option>{levels.filter(level => level.is_active).map(level => <option key={level.id} value={level.id}>{level.name}</option>)}</select></Field><Field label="Type de réalisation"><input className={inputClass} value={form.achievement_type || ''} onChange={event => setForm(current => ({ ...current, achievement_type: event.target.value }))} placeholder="Achievement, Competency…" /></Field></div><Field label="Description"><textarea required rows={3} className={inputClass} value={form.description || ''} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} /></Field><Field label="Critères d’obtention"><textarea required rows={3} className={inputClass} value={form.criteria_narrative || ''} onChange={event => setForm(current => ({ ...current, criteria_narrative: event.target.value }))} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="URL de l’image"><input className={inputClass} value={form.image_url || ''} onChange={event => setForm(current => ({ ...current, image_url: event.target.value }))} /></Field><Field label="Sources autorisées"><input className={inputClass} value={form.source_types_text || ''} onChange={event => setForm(current => ({ ...current, source_types_text: event.target.value }))} placeholder="manual, course, forum" /></Field><Field label="Visibilité par défaut"><select className={inputClass} value={form.default_visibility || 'oga'} onChange={event => setForm(current => ({ ...current, default_visibility: event.target.value as BadgeTemplate['default_visibility'] }))}>{['private','oga','recruiters','structure','public'].map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Statut"><select className={inputClass} value={form.status || 'draft'} onChange={event => setForm(current => ({ ...current, status: event.target.value as BadgeTemplate['status'] }))}>{['draft','pending_validation','active','inactive','archived'].map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Validité en jours"><input type="number" min="1" className={inputClass} value={form.validity_days || ''} onChange={event => setForm(current => ({ ...current, validity_days: event.target.value ? Number(event.target.value) : null }))} /></Field></div><div className="flex flex-wrap gap-5 text-sm"><Check label="Preuve obligatoire" checked={Boolean(form.evidence_required)} onChange={value => setForm(current => ({ ...current, evidence_required: value }))} /><Check label="Badge interne" checked={Boolean(form.internal_only)} onChange={value => setForm(current => ({ ...current, internal_only: value }))} /><Check label="Attribution automatique" checked={Boolean(form.automatic_enabled)} onChange={value => setForm(current => ({ ...current, automatic_enabled: value }))} /></div>{error && <Message kind="error" text={error} />}<Submit saving={saving} /></form></Modal>;
+  const [form, setForm] = useState<TemplateDraft>(draft);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function uploadImage(file?: File) {
+    if (!file) return;
+    setError('');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError(humanCredentialsError('BADGE_IMAGE_INVALID')); return; }
+    if (file.size > 5 * 1024 * 1024) { setError(humanCredentialsError('BADGE_IMAGE_TOO_LARGE')); return; }
+    setUploading(true);
+    try {
+      const response = await credentialsRequest<{ success: true; url: string }>('admin_upload_badge_image', {
+        file_name: file.name,
+        mime_type: file.type,
+        base64: await fileToBase64(file),
+      });
+      setForm(current => ({ ...current, image_url: response.url }));
+    } catch (cause) {
+      setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Téléversement impossible.'));
+    } finally { setUploading(false); }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setSaving(true); setError('');
+    try {
+      await credentialsRequest('admin_save_template', { ...form, source_types: String(form.source_types_text || '').split(',').map(value => value.trim()).filter(Boolean) });
+      onDone(form.id ? 'Modèle modifié.' : 'Modèle créé.');
+    } catch (cause) { setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Enregistrement impossible.')); }
+    finally { setSaving(false); }
+  }
+
+  return <Modal title={form.id ? 'Modifier le modèle' : 'Nouveau modèle de badge'} onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5">
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Nom"><input required className={inputClass} value={form.name || ''} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} /></Field>
+      <Field label="Code"><input className={inputClass} value={form.code || ''} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} placeholder="généré automatiquement" /></Field>
+      <Field label="Émetteur"><select required className={inputClass} value={form.issuer_id || ''} onChange={event => setForm(current => ({ ...current, issuer_id: event.target.value }))}><option value="">Sélectionner</option>{issuers.filter(issuer => issuer.status === 'active').map(issuer => <option key={issuer.id} value={issuer.id}>{issuer.name}</option>)}</select></Field>
+      <Field label="Catégorie"><select required className={inputClass} value={form.category_id || ''} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Sélectionner</option>{categories.filter(category => category.is_active).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></Field>
+      <Field label="Niveau"><select className={inputClass} value={form.level_id || ''} onChange={event => setForm(current => ({ ...current, level_id: event.target.value || null }))}><option value="">Sans niveau</option>{levels.filter(level => level.is_active).map(level => <option key={level.id} value={level.id}>{level.name}</option>)}</select></Field>
+      <Field label="Type de réalisation"><input className={inputClass} value={form.achievement_type || ''} onChange={event => setForm(current => ({ ...current, achievement_type: event.target.value }))} placeholder="Achievement, Competency…" /></Field>
+    </div>
+    <Field label="Description"><textarea required rows={3} className={inputClass} value={form.description || ''} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} /></Field>
+    <Field label="Critères d’obtention"><textarea required rows={3} className={inputClass} value={form.criteria_narrative || ''} onChange={event => setForm(current => ({ ...current, criteria_narrative: event.target.value }))} /></Field>
+    <div className="rounded-xl border border-slate-200 p-4">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
+          {form.image_url ? <img src={form.image_url} alt="Aperçu du badge" className="h-full w-full object-contain" /> : <ImageIcon className="text-slate-400" />}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <Field label="URL de l’image"><input className={inputClass} value={form.image_url || ''} onChange={event => setForm(current => ({ ...current, image_url: event.target.value }))} placeholder="https://…" /></Field>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Upload size={15} />{uploading ? 'Téléversement…' : 'Joindre une image'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} className="hidden" onChange={event => { void uploadImage(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+          <p className="text-xs text-slate-500">PNG, JPEG ou WEBP · 5 Mo maximum. Le fichier est enregistré dans le stockage sécurisé des credentials.</p>
+        </div>
+      </div>
+    </div>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Sources autorisées"><input className={inputClass} value={form.source_types_text || ''} onChange={event => setForm(current => ({ ...current, source_types_text: event.target.value }))} placeholder="manual, course, assessment" /></Field>
+      <Field label="Visibilité par défaut"><select className={inputClass} value={form.default_visibility || 'oga'} onChange={event => setForm(current => ({ ...current, default_visibility: event.target.value as BadgeTemplate['default_visibility'] }))}>{['private','oga','recruiters','structure','public'].map(value => <option key={value}>{value}</option>)}</select></Field>
+      <Field label="Statut"><select className={inputClass} value={form.status || 'draft'} onChange={event => setForm(current => ({ ...current, status: event.target.value as BadgeTemplate['status'] }))}>{['draft','pending_validation','active','inactive','archived'].map(value => <option key={value}>{value}</option>)}</select></Field>
+      <Field label="Validité en jours"><input type="number" min="1" className={inputClass} value={form.validity_days || ''} onChange={event => setForm(current => ({ ...current, validity_days: event.target.value ? Number(event.target.value) : null }))} /></Field>
+    </div>
+    <div className="flex flex-wrap gap-5 text-sm"><Check label="Preuve obligatoire" checked={Boolean(form.evidence_required)} onChange={value => setForm(current => ({ ...current, evidence_required: value }))} /><Check label="Badge interne" checked={Boolean(form.internal_only)} onChange={value => setForm(current => ({ ...current, internal_only: value }))} /><Check label="Attribution automatique" checked={Boolean(form.automatic_enabled)} onChange={value => setForm(current => ({ ...current, automatic_enabled: value }))} /></div>
+    {error && <Message kind="error" text={error} />}<Submit saving={saving || uploading} />
+  </form></Modal>;
 }
 
 function IssueModal({ templates, onClose, onDone }: { templates: BadgeTemplate[]; onClose: () => void; onDone: (message: string) => void }) { const [form, setForm] = useState({ template_id: '', recipient_email: '', source_type: 'manual', evidence_summary: '', visibility: 'oga', evidence_title: '', evidence_url: '', evidence_public: false }); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); async function submit(event: FormEvent) { event.preventDefault(); setSaving(true); setError(''); try { const evidence = form.evidence_title ? [{ evidence_type: 'other', title: form.evidence_title, url: form.evidence_url || null, is_public: form.evidence_public }] : []; await credentialsRequest('admin_issue_badge', { ...form, evidence }); onDone('Badge attribué et ajouté au Learning Record.'); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Attribution impossible.'); } finally { setSaving(false); } } return <Modal title="Attribuer un badge" onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5"><Field label="Modèle"><select required className={inputClass} value={form.template_id} onChange={event => setForm(current => ({ ...current, template_id: event.target.value }))}><option value="">Sélectionner</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></Field><Field label="Email du bénéficiaire"><input required type="email" className={inputClass} value={form.recipient_email} onChange={event => setForm(current => ({ ...current, recipient_email: event.target.value }))} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Source"><select className={inputClass} value={form.source_type} onChange={event => setForm(current => ({ ...current, source_type: event.target.value }))}>{['manual','course','assessment','project','live','coaching','forum','community','structure'].map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Visibilité"><select className={inputClass} value={form.visibility} onChange={event => setForm(current => ({ ...current, visibility: event.target.value }))}>{['private','oga','recruiters','structure','public'].map(value => <option key={value}>{value}</option>)}</select></Field></div><Field label="Résumé de la preuve"><textarea rows={3} className={inputClass} value={form.evidence_summary} onChange={event => setForm(current => ({ ...current, evidence_summary: event.target.value }))} /></Field><div className="rounded-xl border border-slate-200 p-4"><p className="mb-3 text-sm font-semibold" style={{ color: BLUE }}>Preuve détaillée facultative</p><div className="space-y-3"><input className={inputClass} value={form.evidence_title} onChange={event => setForm(current => ({ ...current, evidence_title: event.target.value }))} placeholder="Titre de la preuve" /><input className={inputClass} value={form.evidence_url} onChange={event => setForm(current => ({ ...current, evidence_url: event.target.value }))} placeholder="URL de la preuve" /><Check label="Preuve visible publiquement" checked={form.evidence_public} onChange={value => setForm(current => ({ ...current, evidence_public: value }))} /></div></div>{error && <Message kind="error" text={error} />}<Submit saving={saving} /></form></Modal>; }

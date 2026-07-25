@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Award, CheckCircle, Download, ExternalLink, Eye, KeyRound, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   BadgeAward,
   CredentialVerification,
@@ -23,9 +24,11 @@ export default function DashboardBadges() {
   const [filter, setFilter] = useState('all');
   const [saving, setSaving] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
+  const previewMode = isLearnerPreviewMode();
 
   async function load() {
     setLoading(true);
+    if (previewMode) { setBadges([]); setError(''); setLoading(false); return; }
     setError('');
     try {
       const response = await credentialsRequest<{ success: true; badges: BadgeAward[] }>('learner_badges');
@@ -92,7 +95,7 @@ export default function DashboardBadges() {
             <p className="mt-2 text-sm text-slate-500">Réalisations, compétences et contributions reconnues par Omnia.</p>
           </div>
           <div className="flex gap-2">
-            <Link to="/dashboard/learning-record" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
+            <Link to={withLearnerPreview('/dashboard/learning-record')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
               <ShieldCheck size={16} /> Learning Record
             </Link>
             <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>

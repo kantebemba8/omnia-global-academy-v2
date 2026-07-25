@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Award, BadgeCheck, Building2, FileCheck2, Layers3, KeyRound, LayoutDashboard, Menu, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
+import { ArrowLeft, Award, BadgeCheck, Building2, FileCheck2, Layers3, KeyRound, LayoutDashboard, Menu, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 
 const BLUE = '#002050';
@@ -46,8 +46,7 @@ export default function AdminCredentialsManagementLayout({ children }: { childre
         })}
       </nav>
       <div className="border-t border-white/10 px-3 py-4">
-        <Link to="/dashboard/badges" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ color: GOLD }}><Users size={18} /> Voir l’espace apprenant</Link>
-        <Link to="/admin/dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white"><ArrowLeft size={18} /> Retour au Dashboard</Link>
+        <Link to="/admin/dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white"><ArrowLeft size={18} /> Retour au Dashboard Super Admin</Link>
       </div>
     </aside>
   );

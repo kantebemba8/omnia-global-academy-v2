@@ -18,7 +18,7 @@ export default function ForumHamburgerNav(){
   useEffect(()=>setOpen(false),[location.pathname,location.search]);
   return <>
     <header className="sticky top-0 z-40 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-7">
-      <div className="flex items-center gap-3"><button onClick={()=>setOpen(v=>!v)} aria-label="Ouvrir le menu Forum" className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100" style={{color:open?GOLD:BLUE}}><Menu size={23}/></button><span className="text-lg font-bold" style={{color:BLUE}}>Forum Omnia</span></div>
+      <div className="flex items-center gap-3"><button onClick={()=>setOpen(v=>!v)} aria-label="Ouvrir le menu Forum" className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100" style={{color:open?GOLD:BLUE}}><Menu size={23}/></button><span className="text-lg font-bold"><span style={{color:BLUE}}>Omnia</span> <span style={{color:GOLD}}>Forum</span></span></div>
       {user&&<button onClick={()=>navigate(dashboard)} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-slate-100 sm:flex" style={{color:BLUE}}><ArrowLeft size={16}/>Retour au Dashboard</button>}
     </header>
     {open&&<div className="fixed inset-0 z-50"><button className="absolute inset-0 bg-slate-950/25" onClick={()=>setOpen(false)} aria-label="Fermer le menu"/><aside className="absolute bottom-0 left-0 top-0 w-[286px] max-w-[86vw] bg-white shadow-2xl">

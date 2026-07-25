@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
-  Building2, Key, Shield, Briefcase, HelpCircle, Flag, CreditCard, Tag, Monitor, Gift,
+  Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
   Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2,
 } from 'lucide-react';
 
@@ -24,17 +24,18 @@ interface StoredUser {
 
 const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/dashboard/profil', label: 'Mon profil', icon: User },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
-  { path: '/dashboard/certificats', label: 'Certificats', icon: Award },
+  { path: '/dashboard/certificats', label: 'Mes certificats', icon: Award },
   { path: '/dashboard/badges', label: 'Mes badges', icon: BadgeCheck },
   { path: '/dashboard/learning-record', label: 'Learning Record', icon: FileCheck2 },
+  { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
   { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
-  { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
-  { path: '/talent', label: 'Omnia Talent', icon: Search },
-  { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
-  { path: '/forum', label: 'Forum communauté', icon: MessageSquare },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
-  { path: '/dashboard/profil', label: 'Mon profil', icon: User },
+  { path: '/talent', label: 'Omnia Talent', icon: Search },
+  { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
+  { path: '/forum', label: 'Omnia Forum', icon: MessageSquare },
+  { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
   { path: '/dashboard/structure', label: 'Ma Structure', icon: Building2 },
 ];
 
@@ -108,16 +109,23 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
   })();
-  const previewMode = isPreview && isSuperAdmin;
-  const buildPath = (path: string) => previewMode ? `${path}?preview=true` : path;
+  const previewRole = role === 'directeur' ? 'structure' : role;
+  const storedPreviewRole = typeof window !== 'undefined' ? sessionStorage.getItem('omnia_admin_role_preview') : null;
+  const previewMode = isSuperAdmin && (isPreview || storedPreviewRole === previewRole);
+  const buildPath = (path: string) => {
+    if (!previewMode) return path;
+    const [withoutHash, hash = ''] = path.split('#', 2);
+    const [pathname, query = ''] = withoutHash.split('?', 2);
+    const params = new URLSearchParams(query);
+    params.set('preview', 'true');
+    return `${pathname}?${params.toString()}${hash ? `#${hash}` : ''}`;
+  };
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const isPreview = searchParams.get('preview') === 'true';
     const token = localStorage.getItem('omnia_session_token');
     const stored = localStorage.getItem('omnia_user');
-    // Mode aperçu Super-admin : bypass total
-    if (isPreview && stored) {
+    // Une prévisualisation conserve la session Super Admin sans lui attribuer le rôle affiché.
+    if (previewMode && stored) {
       try {
         const u = JSON.parse(stored);
         if (u?.roles?.includes('super_admin')) {
@@ -129,12 +137,14 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     // Mode normal : vérification token
     if (!token) { navigate('/connexion'); return; }
     if (stored) { try { setUser(JSON.parse(stored)); } catch { /* ignore */ } }
-  }, [navigate]);
+  }, [navigate, previewMode]);
 
   function handleLogout() {
-    const searchParams = new URLSearchParams(window.location.search);
-    const isPreview = searchParams.get('preview') === 'true';
-    if (isPreview) { navigate('/admin/dashboard'); return; }
+    if (previewMode) {
+      sessionStorage.removeItem('omnia_admin_role_preview');
+      navigate('/admin/dashboard');
+      return;
+    }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
     navigate('/connexion');

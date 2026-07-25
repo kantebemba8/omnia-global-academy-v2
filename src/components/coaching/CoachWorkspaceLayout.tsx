@@ -35,6 +35,11 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
   const previewMode = isCoachPreviewMode();
 
   function logout() {
+    if (previewMode) {
+      sessionStorage.removeItem('omnia_admin_role_preview');
+      navigate('/admin/dashboard');
+      return;
+    }
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_access_token');
@@ -54,12 +59,6 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
         </Link>
         <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-white/80 lg:hidden" aria-label="Fermer le menu"><X size={18} /></button>
       </div>
-
-      {previewMode && (
-        <div className="mx-3 mt-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-3 text-xs leading-5 text-amber-100">
-          <strong>Prévisualisation Super-admin</strong><br />Compte coach de test en lecture seule.
-        </div>
-      )}
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         {items.map(item => {
@@ -85,11 +84,9 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
         <Link to="/coaching" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ color: GOLD }}>
           <ArrowLeft size={18} /> Voir Omnia Coaching
         </Link>
-        {!previewMode && (
-          <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
-            <LogOut size={18} /> Déconnexion
-          </button>
-        )}
+        <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
+          <LogOut size={18} /> Déconnexion
+        </button>
       </div>
     </aside>
   );

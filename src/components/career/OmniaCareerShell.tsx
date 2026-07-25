@@ -59,7 +59,7 @@ const SECTION_TO_URL: Record<CareerSection, string> = {
   letters: '/dashboard/career-studio?section=lm',
   interview: '/dashboard/career-studio?section=interview',
   applications: '/dashboard/career-studio?section=applications',
-  profile: '/dashboard/career-studio?section=profile',
+  profile: '/dashboard/profil?tab=professionnel',
   settings: '/dashboard/career-studio?section=settings',
 };
 

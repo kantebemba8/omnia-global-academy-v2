@@ -137,13 +137,13 @@ export default function AdminDashboard() {
   useEffect(() => { load(period); }, [period]);
 
   const previewSpaces = [
-    { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true' },
-    { label: 'Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true' },
-    { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true' },
-    { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true' },
-    { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true' },
-    { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true' },
-    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true' },
+    { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true', role: 'apprenant' },
+    { label: 'Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true', role: 'professeur' },
+    { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true', role: 'coach' },
+    { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true', role: 'organisateur' },
+    { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true', role: 'structure' },
+    { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true', role: 'moderateur' },
+    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true', role: 'recruteur' },
   ];
 
   return (
@@ -184,7 +184,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-3 border-y border-gray-200 py-4">
             {previewSpaces.map(item => (
-              <button key={item.path} type="button" onClick={() => navigate(item.path)}
+              <button key={item.path} type="button" onClick={() => { sessionStorage.setItem('omnia_admin_role_preview', item.role); navigate(item.path); }}
                 className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                 style={{ color: '#002050' }}>
                 <item.icon size={16} />

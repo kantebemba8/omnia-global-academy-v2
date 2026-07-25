@@ -6,6 +6,7 @@ import {
   RefreshCw, Save, Settings2, ShieldCheck, Sparkles, Star, Trash2, Upload, Users, X,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { isLearnerPreviewMode, previewClrRecord, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   ClrAchievement, ClrExportResponse, ClrImport, ClrRecord, ClrShare, ClrVisibility, LearnerClrResponse,
   credentialStatusLabel, credentialsRequest, visibilityLabel,
@@ -63,12 +64,19 @@ export default function DashboardLearningRecord() {
   const [notice, setNotice] = useState('');
   const [newShareUrl, setNewShareUrl] = useState('');
   const [entryDraft, setEntryDraft] = useState<EntryDraft | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedShareSections, setSelectedShareSections] = useState<string[]>([]);
+  const previewMode = isLearnerPreviewMode();
 
   async function load(action = 'learner_clr', successMessage = '') {
     setLoading(true); setError('');
+    if (previewMode) {
+      const previewRecord = previewClrRecord();
+      setRecord(previewRecord); setAchievements([]); setShares([]); setImports([]);
+      setSelectedShareSections(previewRecord.section_order); setLoading(false);
+      if (successMessage) setNotice(successMessage);
+      return;
+    }
     try {
       const response = await credentialsRequest<LearnerClrResponse>(action);
       setRecord(response.record);
@@ -105,6 +113,7 @@ export default function DashboardLearningRecord() {
 
   async function run(label: string, action: string, payload: Record<string, unknown>, success: string, reload = true) {
     setWorking(label); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucune donnée n’a été créée ou modifiée.'); setWorking(''); return; }
     try {
       await credentialsRequest(action, payload);
       if (reload) await load('learner_clr');
@@ -115,6 +124,7 @@ export default function DashboardLearningRecord() {
 
   async function createShare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setWorking('share'); setError(''); setNewShareUrl('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun lien n’a été créé.'); setWorking(''); return; }
     const form = new FormData(event.currentTarget);
     try {
       const response = await credentialsRequest<{ success: true; share: ClrShare & { url: string } }>('learner_create_clr_share', {
@@ -133,14 +143,16 @@ export default function DashboardLearningRecord() {
 
   async function exportRecord(format: 'clr_json' | 'vc_jwt') {
     setWorking(`export-${format}`); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun export n’a été généré.'); setWorking(''); return; }
     try {
       const response = await credentialsRequest<ClrExportResponse>('learner_export_clr', { format });
       const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content, null, 2);
       const blob = new Blob([content], { type: response.media_type });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url; link.download = response.file_name; link.click();
-      URL.revokeObjectURL(url);
+      link.href = url; link.download = response.file_name;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setRecord(response.record);
       setNotice(format === 'vc_jwt' ? 'CLR 2.0 signé et exporté.' : 'Learning Record exporté en JSON-LD.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Export impossible.'); }
@@ -172,15 +184,16 @@ export default function DashboardLearningRecord() {
         <p className="mt-2 max-w-3xl text-sm text-slate-500">Votre dossier portable de formations, compétences, badges, certificats, coaching, projets, expériences et recommandations.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link to="/dashboard/skills-passport" className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Sparkles size={15} /> Skills Passport</Link>
+        <Link to={withLearnerPreview('/dashboard/skills-passport')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Sparkles size={15} /> Skills Passport</Link>
         <button disabled={Boolean(working)} onClick={() => void load('learner_sync_clr', 'Toutes les sources Omnia ont été synchronisées.')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={15} className={working ? 'animate-spin' : ''} /> Synchroniser</button>
-        <button disabled={Boolean(working)} onClick={() => void exportRecord('clr_json')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: GOLD, color: GOLD }}><Download size={15} /> JSON-LD</button>
-        <button disabled={Boolean(working)} onClick={() => void exportRecord('vc_jwt')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><ShieldCheck size={15} /> Export signé</button>
+        <button disabled={Boolean(working)} onClick={() => void exportRecord('clr_json')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: GOLD, color: GOLD }}><Download size={15} /> Télécharger JSON-LD</button>
+        <button disabled={Boolean(working)} onClick={() => void exportRecord('vc_jwt')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><ShieldCheck size={15} /> Télécharger la preuve signée</button>
       </div>
     </header>
 
     {error && <Message kind="error" text={humanError(error)} />}
     {notice && <Message kind="success" text={notice} onClose={() => setNotice('')} />}
+    <p className="mt-3 text-xs leading-5 text-slate-500">Le JSON-LD est le fichier structuré et portable de votre dossier. La preuve signée VC-JWT sert à vérifier cryptographiquement qu’Omnia l’a émis et qu’il n’a pas été modifié.</p>
 
     {loading ? <div className="py-24 text-center text-sm text-slate-500">Chargement du Learning Record…</div> : <>
       <section className="mt-6 overflow-hidden rounded-2xl border bg-white" style={{ borderColor: BORDER }}>
@@ -194,7 +207,7 @@ export default function DashboardLearningRecord() {
               <p className="mt-3 text-xs text-slate-400">Version {record?.version || 1} · dernière synchronisation {record?.last_synced_at ? new Date(record.last_synced_at).toLocaleString('fr-FR') : 'non effectuée'}</p>
             </div>
           </div>
-          <button onClick={() => setProfileOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15} /> Personnaliser</button>
+          <Link to={withLearnerPreview('/dashboard/profil?tab=professionnel')} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15} /> Profil professionnel</Link>
         </div>
         <div className="grid grid-cols-2 border-t md:grid-cols-4" style={{ borderColor: BORDER }}>
           <Metric label="Éléments" value={metrics.total} />
@@ -208,7 +221,7 @@ export default function DashboardLearningRecord() {
         <main className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Mon parcours</h2><p className="text-sm text-slate-500">Les données Omnia sont vérifiées. Les ajouts personnels restent clairement identifiés comme déclarés.</p></div>
-            <button onClick={() => setEntryDraft(emptyDraft())} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Plus size={15} /> Ajouter une expérience</button>
+            <button onClick={() => previewMode ? setNotice('Aperçu uniquement : aucune donnée n’a été créée.') : setEntryDraft(emptyDraft())} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Plus size={15} /> Ajouter une expérience</button>
           </div>
 
           {orderedSections.map(([section, items]) => <ClrSection key={section} section={section} items={items} working={working} onEdit={editEntry} onAction={(label, action, payload, success) => void run(label, action, payload, success)} />)}
@@ -233,7 +246,7 @@ export default function DashboardLearningRecord() {
 
           <section className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
             <div className="flex items-center justify-between"><div><h2 className="font-semibold" style={{ color: BLUE }}>Importer un credential</h2><p className="mt-1 text-xs text-slate-500">CLR 2.0, Open Badge ou VC-JWT.</p></div><Upload color={GOLD} /></div>
-            <button onClick={() => setImportOpen(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Upload size={15} /> Importer</button>
+            <button onClick={() => previewMode ? setNotice('Aperçu uniquement : aucun credential n’a été importé.') : setImportOpen(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Upload size={15} /> Importer</button>
             <div className="mt-4 space-y-3">{imports.slice(0, 5).map(item => <div key={item.id} className="rounded-xl border p-3" style={{ borderColor: BORDER }}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{item.source_file_name || item.source_issuer || 'Credential importé'}</p><p className="mt-1 text-xs text-slate-500">{item.imported_entries_count} élément(s) · {new Date(item.created_at).toLocaleDateString('fr-FR')}</p></div><SmallStatus value={item.status} /></div>{item.review_note && <p className="mt-2 text-xs text-slate-500">{item.review_note}</p>}</div>)}{imports.length === 0 && <p className="text-sm text-slate-500">Aucun import.</p>}</div>
           </section>
 
@@ -243,7 +256,6 @@ export default function DashboardLearningRecord() {
     </>}
 
     {entryDraft && <EntryModal draft={entryDraft} onClose={() => setEntryDraft(null)} onSaved={async () => { setEntryDraft(null); await load(); setNotice('Élément enregistré dans votre Learning Record.'); }} />}
-    {profileOpen && record && <ProfileModal record={record} onClose={() => setProfileOpen(false)} onSaved={async () => { setProfileOpen(false); await load(); setNotice('Présentation du Learning Record mise à jour.'); }} />}
     {importOpen && <ImportModal onClose={() => setImportOpen(false)} onImported={async () => { setImportOpen(false); await load(); setNotice('Credential importé. Les sources externes non vérifiables restent en attente de contrôle.'); }} />}
   </div></DashboardLayout>;
 }
@@ -294,13 +306,6 @@ function EntryModal({ draft, onClose, onSaved }: { draft: EntryDraft; onClose: (
   </form></Modal>;
 }
 
-function ProfileModal({ record, onClose, onSaved }: { record: ClrRecord; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ title: record.title, description: record.description || '', profile_headline: record.profile_headline || '', summary: record.summary || '', language_code: record.language_code || 'fr', default_visibility: record.default_visibility, hidden_sections: record.hidden_sections || [] });
-  const [saving, setSaving] = useState(false); const [error, setError] = useState('');
-  async function submit(event: FormEvent) { event.preventDefault(); setSaving(true); setError(''); try { await credentialsRequest('learner_update_clr_profile', { ...form, section_order: record.section_order }); onSaved(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Mise à jour impossible.'); } finally { setSaving(false); } }
-  return <Modal title="Personnaliser mon Learning Record" onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5"><Field label="Titre du dossier"><input required className={inputClass} value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></Field><Field label="Accroche professionnelle"><input className={inputClass} value={form.profile_headline} onChange={event => setForm(current => ({ ...current, profile_headline: event.target.value }))} placeholder="Ex. Professionnel QSE orienté développement durable" /></Field><Field label="Présentation"><textarea rows={5} className={inputClass} value={form.summary} onChange={event => setForm(current => ({ ...current, summary: event.target.value }))} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Langue"><select className={inputClass} value={form.language_code} onChange={event => setForm(current => ({ ...current, language_code: event.target.value }))}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option></select></Field><Field label="Visibilité par défaut"><select className={inputClass} value={form.default_visibility} onChange={event => setForm(current => ({ ...current, default_visibility: event.target.value as ClrVisibility }))}>{VISIBILITIES.map(value => <option key={value} value={value}>{visibilityLabel[value]}</option>)}</select></Field></div><Field label="Sections affichées"><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2" style={{ borderColor: BORDER }}>{record.section_order.map(section => { const hidden = form.hidden_sections.includes(section); return <label key={section} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!hidden} onChange={event => setForm(current => ({ ...current, hidden_sections: event.target.checked ? current.hidden_sections.filter(item => item !== section) : [...current.hidden_sections, section] }))} />{SECTION_META[section]?.label || section}</label>; })}</div></Field>{error && <Message kind="error" text={humanError(error)} />}<div className="flex justify-end"><button disabled={saving} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button></div></form></Modal>;
-}
-
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [format, setFormat] = useState<'json' | 'json_ld' | 'vc_jwt'>('json_ld'); const [content, setContent] = useState(''); const [fileName, setFileName] = useState(''); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
   async function fileChanged(file?: File) { if (!file) return; setFileName(file.name); setContent(await file.text()); if (file.name.endsWith('.jwt') || file.name.endsWith('.jws')) setFormat('vc_jwt'); else setFormat('json_ld'); }
@@ -317,5 +322,5 @@ function VerificationStatus({ value }: { value: ClrAchievement['verification_sta
 function StandardStatus({ record }: { record: ClrRecord | null }) { const signed = record?.standards_status === 'clr2_signed'; return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${signed ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{signed ? <ShieldCheck size={13} /> : <FileCheck2 size={13} />}{signed ? 'CLR 2.0 signé' : 'CLR 2.0 prêt'}</span>; }
 function dateRange(item: ClrAchievement) { const start = item.started_at || item.issued_at; const end = item.ended_at; if (!start) return ''; const startLabel = new Date(start).toLocaleDateString('fr-FR'); if (!end || end === start) return startLabel; return `${startLabel} – ${new Date(end).toLocaleDateString('fr-FR')}`; }
 function toDateInput(value?: string | null) { return value ? String(value).slice(0, 10) : ''; }
-function humanError(value: string) { return ({ CLR_NOT_SIGNED: 'Le Learning Record doit d’abord être signé.', SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.', CLR_IMPORT_ALREADY_EXISTS: 'Ce credential a déjà été importé.', CLR_IMPORT_INVALID_JSON: 'Le contenu JSON est invalide.', CLR_IMPORT_CREDENTIAL_TYPE_UNSUPPORTED: 'Ce type de credential n’est pas pris en charge.', CLR_ENTRY_NOT_DELETABLE: 'Cet élément vérifié ne peut pas être supprimé.', CLR_SECTION_NOT_EDITABLE: 'Cette section est alimentée automatiquement par Omnia.' } as Record<string, string>)[value] || value; }
+function humanError(value: string) { return ({ CLR_NOT_SIGNED: 'Le Learning Record doit d’abord être signé.', SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.', CREDENTIALS_SIGNING_PRIVATE_JWK_INVALID_JSON: 'La clé privée enregistrée dans Supabase n’est pas un JSON valide. Remplacez uniquement la valeur du secret par le contenu JWK complet, sans nom de variable ni guillemets supplémentaires.', SIGNING_PRIVATE_JWK_INVALID: 'La clé de signature doit être un JWK privé RSA complet contenant notamment kty, n, e et d.', CLR_IMPORT_ALREADY_EXISTS: 'Ce credential a déjà été importé.', CLR_IMPORT_INVALID_JSON: 'Le contenu JSON est invalide.', CLR_IMPORT_CREDENTIAL_TYPE_UNSUPPORTED: 'Ce type de credential n’est pas pris en charge.', CLR_ENTRY_NOT_DELETABLE: 'Cet élément vérifié ne peut pas être supprimé.', CLR_SECTION_NOT_EDITABLE: 'Cette section est alimentée automatiquement par Omnia.' } as Record<string, string>)[value] || value; }
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400';

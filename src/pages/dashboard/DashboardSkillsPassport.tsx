@@ -6,6 +6,7 @@ import {
   Trash2, UploadCloud, X,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { isLearnerPreviewMode, previewSkillsPassport, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   ClrAchievement, CredentialVerification, LearnerSkillsPassportResponse, SkillsPassport,
   SkillsPassportExportResponse, SkillsPassportShare, credentialStatusLabel,
@@ -42,11 +43,15 @@ export default function DashboardSkillsPassport() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [newShareUrl, setNewShareUrl] = useState('');
-  const [profileOpen, setProfileOpen] = useState(false);
   const [verification, setVerification] = useState<CredentialVerification | null>(null);
+  const previewMode = isLearnerPreviewMode();
 
   async function load(message = '') {
     setLoading(true); setError('');
+    if (previewMode) {
+      setPassport(previewSkillsPassport()); setCandidates([]); setShares([]); setSelected(new Map()); setVerification(null);
+      setLoading(false); if (message) setNotice(message); return;
+    }
     try {
       const response = await credentialsRequest<LearnerSkillsPassportResponse>('learner_skills_passport');
       setPassport(response.passport);
@@ -100,6 +105,7 @@ export default function DashboardSkillsPassport() {
 
   async function saveSelection() {
     setWorking('items'); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucune sélection n’a été enregistrée.'); setWorking(''); return; }
     try {
       await credentialsRequest('learner_update_skills_passport_items', { items: [...selected.values()] });
       await load('Sélection du Skills Passport enregistrée.');
@@ -109,6 +115,7 @@ export default function DashboardSkillsPassport() {
 
   async function publish() {
     setWorking('publish'); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun passeport n’a été publié.'); setWorking(''); return; }
     try {
       const response = await credentialsRequest<{ success: true; passport: SkillsPassport; jwt: string }>('learner_publish_skills_passport');
       setPassport(response.passport);
@@ -120,6 +127,7 @@ export default function DashboardSkillsPassport() {
 
   async function verifyPassport() {
     setWorking('verify'); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun passeport réel n’est disponible à vérifier.'); setWorking(''); return; }
     try {
       const response = await credentialsRequest<{ success: true; verification: CredentialVerification }>('learner_verify_skills_passport');
       setVerification(response.verification);
@@ -130,11 +138,14 @@ export default function DashboardSkillsPassport() {
 
   async function exportPassport(format: 'passport_json' | 'vc_jwt') {
     setWorking(`export-${format}`); setError(''); setNotice('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun fichier n’a été généré.'); setWorking(''); return; }
     try {
       const response = await credentialsRequest<SkillsPassportExportResponse>('learner_export_skills_passport', { format });
       const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content, null, 2);
       const url = URL.createObjectURL(new Blob([content], { type: response.media_type }));
-      const link = document.createElement('a'); link.href = url; link.download = response.file_name; link.click(); URL.revokeObjectURL(url);
+      const link = document.createElement('a'); link.href = url; link.download = response.file_name;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setPassport(response.passport);
       setNotice(format === 'vc_jwt' ? 'Passeport signé exporté.' : 'Passeport JSON-LD exporté.');
     } catch (cause) { setError(humanError(cause instanceof Error ? cause.message : 'Export impossible.')); }
@@ -143,6 +154,7 @@ export default function DashboardSkillsPassport() {
 
   async function createShare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setWorking('share'); setError(''); setNotice(''); setNewShareUrl('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun lien n’a été créé.'); setWorking(''); return; }
     const form = new FormData(event.currentTarget);
     try {
       const response = await credentialsRequest<{ success: true; share: SkillsPassportShare & { url: string } }>('learner_create_skills_passport_share', {
@@ -160,6 +172,7 @@ export default function DashboardSkillsPassport() {
 
   async function revokeShare(id: string) {
     setWorking(`revoke-${id}`); setError('');
+    if (previewMode) { setNotice('Aperçu uniquement : aucun lien n’a été modifié.'); setWorking(''); return; }
     try {
       await credentialsRequest('learner_revoke_skills_passport_share', { share_id: id });
       await load('Lien révoqué.');
@@ -170,14 +183,14 @@ export default function DashboardSkillsPassport() {
   return <DashboardLayout><div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
       <div>
-        <Link to="/dashboard/learning-record" className="mb-3 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: BLUE }}><ArrowLeft size={16} /> Learning Record</Link>
+        <Link to={withLearnerPreview('/dashboard/learning-record')} className="mb-3 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: BLUE }}><ArrowLeft size={16} /> Learning Record</Link>
         <div className="text-xs font-semibold uppercase tracking-[.18em]" style={{ color: GOLD }}>Omnia Skills Passport</div>
         <h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>{passport?.title || 'Passeport professionnel'}</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-500">Sélectionnez les preuves de compétences que vous souhaitez présenter aux recruteurs et Structures.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => void load()} className={secondaryButton}><RefreshCw size={15} /> Actualiser</button>
-        <button onClick={() => setProfileOpen(true)} className={secondaryButton}><Briefcase size={15} /> Profil</button>
+        <Link to={withLearnerPreview('/dashboard/profil?tab=professionnel')} className={secondaryButton}><Briefcase size={15} /> Profil professionnel</Link>
         <button disabled={working === 'publish' || selected.size === 0} onClick={() => void publish()} className={primaryButton}><UploadCloud size={15} /> {working === 'publish' ? 'Publication…' : 'Publier et signer'}</button>
       </div>
     </header>
@@ -208,10 +221,11 @@ export default function DashboardSkillsPassport() {
           {passport?.professional_headline && <p className="mt-5 text-lg font-semibold" style={{ color: BLUE }}>{passport.professional_headline}</p>}
           {passport?.professional_summary && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{passport.professional_summary}</p>}
           <div className="mt-5 flex flex-wrap gap-2">
-            <button onClick={() => void exportPassport('passport_json')} disabled={Boolean(working)} className={secondaryButton}><Download size={15} /> JSON-LD</button>
-            <button onClick={() => void exportPassport('vc_jwt')} disabled={Boolean(working) || selected.size === 0} className={secondaryButton}><ShieldCheck size={15} /> VC-JWT signé</button>
+            <button onClick={() => void exportPassport('passport_json')} disabled={Boolean(working)} className={secondaryButton}><Download size={15} /> Télécharger JSON-LD</button>
+            <button onClick={() => void exportPassport('vc_jwt')} disabled={Boolean(working) || selected.size === 0} className={secondaryButton}><ShieldCheck size={15} /> Télécharger la preuve signée</button>
             <button onClick={() => void verifyPassport()} disabled={Boolean(working) || !passport?.presentation_jwt} className={secondaryButton}><BadgeCheck size={15} /> Vérifier</button>
           </div>
+          <p className="mt-3 text-xs leading-5 text-slate-500">Le fichier JSON-LD est un document portable lisible par les plateformes compatibles. La preuve signée VC-JWT permet de vérifier cryptographiquement que le passeport a été émis par Omnia et n’a pas été modifié.</p>
         </div>
 
         <form onSubmit={createShare} className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
@@ -238,35 +252,7 @@ export default function DashboardSkillsPassport() {
       </section>
     </>}
 
-    {profileOpen && passport && <ProfileModal passport={passport} onClose={() => setProfileOpen(false)} onDone={async () => { setProfileOpen(false); await load('Profil professionnel enregistré.'); }} />}
   </div></DashboardLayout>;
-}
-
-function ProfileModal({ passport, onClose, onDone }: { passport: SkillsPassport; onClose: () => void; onDone: () => void }) {
-  const [form, setForm] = useState({
-    title: passport.title || 'Omnia Skills Passport',
-    professional_headline: passport.professional_headline || '',
-    professional_summary: passport.professional_summary || '',
-    target_roles: (passport.target_roles || []).join(', '),
-    languages: (passport.languages || []).join(', '),
-    location_text: passport.location_text || '',
-    availability_text: passport.availability_text || '',
-    selected_sections: passport.selected_sections || Object.keys(SECTION_LABELS),
-  });
-  const [saving, setSaving] = useState(false); const [error, setError] = useState('');
-  async function submit(event: FormEvent) {
-    event.preventDefault(); setSaving(true); setError('');
-    try {
-      await credentialsRequest('learner_update_skills_passport_profile', {
-        ...form,
-        target_roles: splitList(form.target_roles),
-        languages: splitList(form.languages),
-      });
-      onDone();
-    } catch (cause) { setError(humanError(cause instanceof Error ? cause.message : 'Enregistrement impossible.')); }
-    finally { setSaving(false); }
-  }
-  return <Modal title="Profil du Skills Passport" onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5"><Field label="Titre"><input required className={inputClass} value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></Field><Field label="Accroche professionnelle"><input className={inputClass} value={form.professional_headline} onChange={event => setForm(current => ({ ...current, professional_headline: event.target.value }))} placeholder="Ex. Responsable QSE orienté développement durable" /></Field><Field label="Présentation"><textarea rows={5} className={inputClass} value={form.professional_summary} onChange={event => setForm(current => ({ ...current, professional_summary: event.target.value }))} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Postes recherchés"><input className={inputClass} value={form.target_roles} onChange={event => setForm(current => ({ ...current, target_roles: event.target.value }))} placeholder="Responsable QSE, ESG Analyst" /></Field><Field label="Langues"><input className={inputClass} value={form.languages} onChange={event => setForm(current => ({ ...current, languages: event.target.value }))} placeholder="Français, Anglais" /></Field><Field label="Localisation"><input className={inputClass} value={form.location_text} onChange={event => setForm(current => ({ ...current, location_text: event.target.value }))} /></Field><Field label="Disponibilité"><input className={inputClass} value={form.availability_text} onChange={event => setForm(current => ({ ...current, availability_text: event.target.value }))} placeholder="Disponible immédiatement" /></Field></div><Field label="Sections professionnelles"><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2" style={{ borderColor: BORDER }}>{Object.entries(SECTION_LABELS).map(([section, label]) => <label key={section} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.selected_sections.includes(section)} onChange={event => setForm(current => ({ ...current, selected_sections: event.target.checked ? [...current.selected_sections, section] : current.selected_sections.filter(item => item !== section) }))} />{label}</label>)}</div></Field>{error && <Message kind="error" text={error} />}<div className="flex justify-end"><button disabled={saving} className={primaryButton}><Save size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer'}</button></div></form></Modal>;
 }
 
 function PassportStatus({ passport, verification }: { passport: SkillsPassport | null; verification: CredentialVerification | null }) {
@@ -281,9 +267,9 @@ function Metric({ label, value }: { label: string; value: number }) { return <di
 function Empty({ text }: { text: string }) { return <div className="py-8 text-center text-sm text-slate-500">{text}</div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-700">{label}</span>{children}</label>; }
 function Message({ kind, text, onClose }: { kind: 'error' | 'success'; text: string; onClose?: () => void }) { return <div className={`mt-5 flex items-start justify-between gap-3 rounded-xl border p-4 text-sm ${kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}><span>{text}</span>{onClose && <button onClick={onClose}><X size={15} /></button>}</div>; }
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) { return <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4"><div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-5" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>{title}</h2><button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={18} /></button></div>{children}</div></div>; }
-function splitList(value: string) { return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]; }
-function humanError(value: string) { return ({ SKILLS_PASSPORT_EMPTY: 'Sélectionnez au moins un élément avant de publier.', SKILLS_PASSPORT_NOT_PUBLISHED: 'Publiez et signez d’abord le Skills Passport.', SKILLS_PASSPORT_NOT_SIGNED: 'Le Skills Passport n’est pas encore signé.', SKILLS_PASSPORT_ITEM_INVALID: 'Un élément sélectionné ne peut pas être présenté.', SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.' } as Record<string, string>)[value] || value; }
+
+
+function humanError(value: string) { return ({ SKILLS_PASSPORT_EMPTY: 'Sélectionnez au moins un élément avant de publier.', SKILLS_PASSPORT_NOT_PUBLISHED: 'Publiez et signez d’abord le Skills Passport.', SKILLS_PASSPORT_NOT_SIGNED: 'Le Skills Passport n’est pas encore signé.', SKILLS_PASSPORT_ITEM_INVALID: 'Un élément sélectionné ne peut pas être présenté.', SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.', CREDENTIALS_SIGNING_PRIVATE_JWK_INVALID_JSON: 'La clé privée enregistrée dans Supabase n’est pas un JSON valide. Remplacez uniquement la valeur du secret par le contenu JWK complet, sans nom de variable ni guillemets supplémentaires.' } as Record<string, string>)[value] || value; }
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400';
 const primaryButton = 'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 bg-[#002050]';
 const secondaryButton = 'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] disabled:cursor-not-allowed disabled:opacity-50';

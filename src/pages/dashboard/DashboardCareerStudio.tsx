@@ -301,7 +301,7 @@ export default function DashboardCareerStudio() {
   function goToView(view: ActiveView) {
     const routes: Record<ActiveView, string> = {
       dashboard: '/omnia-career', cv: '/omnia-career/cv-builder', lm: '/omnia-career/lettres', interview: '/omnia-career/entretien',
-      applications: '/omnia-career/candidatures', profile: '/omnia-career/profil', settings: '/omnia-career/parametres',
+      applications: '/omnia-career/candidatures', profile: '/dashboard/profil?tab=professionnel', settings: '/omnia-career/parametres',
     };
     const currentJob = searchParams.get('job_id');
     const query = currentJob && (view === 'interview' || view === 'applications') ? `?job_id=${encodeURIComponent(currentJob)}` : '';
@@ -343,7 +343,7 @@ export default function DashboardCareerStudio() {
 
   const careerNavItems = navItems.map((item) => ({
     label: item.label,
-    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/omnia-career/profil', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
+    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/dashboard/profil?tab=professionnel', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
     icon: item.icon,
     exact: item.id === 'dashboard',
   }));

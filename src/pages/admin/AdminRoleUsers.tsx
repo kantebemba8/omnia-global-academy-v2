@@ -56,8 +56,8 @@ export default function AdminRoleUsers(){
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>{LABELS[roleKey]||data?.role||roleKey}</h1>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-gray-500">Seules les informations administratives minimales sont affichées : nom, e-mail et date d’inscription.</p>
-          {roleKey==='recruteur_independant'&&<button type="button" onClick={()=>navigate('/talent/recruteur/dashboard?preview=true')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
-          {roleKey==='coach'&&<button type="button" onClick={()=>navigate('/coach/dashboard?preview=true')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
+          {roleKey==='recruteur_independant'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur');navigate('/talent/recruteur/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
+          {roleKey==='coach'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','coach');navigate('/coach/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
         </div>
       </div>
 

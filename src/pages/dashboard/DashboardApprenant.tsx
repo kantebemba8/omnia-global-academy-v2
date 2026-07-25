@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
+import { withLearnerPreview } from '../../lib/learnerPreview';
 import {
   BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, Users, ArrowRight
 } from 'lucide-react';
@@ -18,6 +19,15 @@ interface DashboardData {
   activite_recente: Array<{ lesson_title: string; course_id: string; completed_at: string }>;
   parrainage: { total_filleuls: number; total_recompenses_xof: number; referral_link: string };
 }
+
+
+const PREVIEW_DASHBOARD: DashboardData = {
+  user: { full_name: '', ai_tokens: 0, member_since: new Date().toISOString() },
+  kpis: { formations_en_cours: 0, formations_terminees: 0, certificats_obtenus: 0, jetons_ia_restants: 0 },
+  courses_en_cours: [],
+  activite_recente: [],
+  parrainage: { total_filleuls: 0, total_recompenses_xof: 0, referral_link: '' },
+};
 
 function kpiCard(label: string, value: number | string, icon: React.ReactNode, color: string) {
   return (
@@ -39,28 +49,12 @@ function formatDate(iso: string) {
 }
 
 export function DashboardApprenant() {
-  const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
-  const storedUser = localStorage.getItem('omnia_user');
-  const isSuperAdmin = (() => {
-    try { return JSON.parse(storedUser || '{}')?.roles?.includes('super_admin') ?? false; }
-    catch { return false; }
-  })();
-  const bypassAuth = isPreview && isSuperAdmin;
-
+  const previewMode = usePreviewMode();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [previewToast, setPreviewToast] = useState(false);
-  const previewMode = usePreviewMode();
-
-  function handlePreviewAction() {
-    if (!previewMode) return;
-    setPreviewToast(true);
-    setTimeout(() => setPreviewToast(false), 3000);
-  }
-
   const load = useCallback(async () => {
-    if (bypassAuth) { setLoading(false); return; }
+    if (previewMode) { setData(PREVIEW_DASHBOARD); setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
     if (!token) { setLoading(false); return; }
     try {
@@ -82,24 +76,20 @@ export function DashboardApprenant() {
       }
     } catch { setError('Erreur réseau'); }
     finally { setLoading(false); }
-  }, []);
+  }, [previewMode]);
 
   useEffect(() => { load(); }, [load]);
 
   return (
     <DashboardLayout>
-      {previewToast && (
-        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
-          Mode aperçu — Action désactivée
-        </div>
-      )}
+
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">
-            Bonjour{data ? `, ${data.user.full_name.split(' ')[0]}` : ''} 👋
+            {data?.user.full_name ? `Bonjour, ${data.user.full_name.split(' ')[0]}` : 'Tableau de bord apprenant'}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Voici un aperçu de votre progression</p>
+          <p className="text-gray-500 text-sm mt-1">Suivez vos formations, vos réalisations et vos prochaines étapes.</p>
         </div>
 
         {loading && (
@@ -127,7 +117,7 @@ export function DashboardApprenant() {
               <div className="lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-semibold text-gray-900">Formations en cours</h2>
-                  <Link to="/dashboard/mes-cours" className="text-sm font-medium flex items-center gap-1 hover:opacity-80" style={{ color: '#002050' }}>
+                  <Link to={withLearnerPreview('/dashboard/mes-cours')} className="text-sm font-medium flex items-center gap-1 hover:opacity-80" style={{ color: '#002050' }}>
                     Voir tout <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
@@ -203,7 +193,7 @@ export function DashboardApprenant() {
                       <p className="text-xs text-white/60">XOF gagnés</p>
                     </div>
                   </div>
-                  <Link to="/dashboard/parrainage"
+                  <Link to={withLearnerPreview('/dashboard/parrainage')}
                     className="block text-center text-xs font-semibold py-2 rounded-lg transition-all hover:opacity-90"
                     style={{ backgroundColor: '#BF8813', color: '#002050' }}>
                     Inviter des amis

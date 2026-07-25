@@ -85,7 +85,7 @@ export default function Forum() {
             <MessageCircle className="w-4 h-4" style={{ color: '#BF8813' }} />
             <span className="text-sm font-medium" style={{ color: '#BF8813' }}>Communauté Omnia</span>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">Forum Omnia Global Academy</h1>
+          <h1 className="mb-3 inline-flex rounded-2xl bg-white/95 px-5 py-3 text-4xl font-bold shadow-sm md:text-5xl"><span style={{ color: '#002050' }}>Omnia</span><span className="ml-3" style={{ color: '#BF8813' }}>Forum</span></h1>
           <p className="text-lg mb-8" style={{ color: '#BF8813' }}>Apprenez ensemble, posez vos questions, partagez votre savoir</p>
 
           {/* Country selector */}
