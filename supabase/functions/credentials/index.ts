@@ -55,6 +55,18 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "badge";
 }
 
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as JsonRecord).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, canonicalJson(item)]));
+  }
+  return value;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalJson(value));
+}
+
 function validHttpUrl(value: string | null): boolean {
   if (!value) return true;
   try {
@@ -367,17 +379,522 @@ async function getOrCreateClr(sb: Supabase, userId: string) {
   if (error) throw error;
   if (existing) return existing as JsonRecord;
   const { data, error: insertError } = await sb.from("clr_records")
-    .insert({ user_id: userId, title: "Omnia Learning Record", description: "Dossier vérifié des réalisations Omnia." })
+    .insert({
+      user_id: userId,
+      title: "Omnia Learning Record",
+      description: "Dossier vérifié des réalisations Omnia.",
+      summary: "Parcours de formation, compétences, expériences et réalisations vérifiées dans Omnia Global Academy.",
+    })
     .select("*").single();
   if (insertError) throw insertError;
   return data as JsonRecord;
 }
 
+function related(value: unknown): JsonRecord | null {
+  if (Array.isArray(value)) return value.length && value[0] && typeof value[0] === "object" ? value[0] as JsonRecord : null;
+  return value && typeof value === "object" ? value as JsonRecord : null;
+}
+
+function objectArray(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object").map((item) => item as JsonRecord) : [];
+}
+
+function learningOutcomeNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => {
+    if (typeof item === "string") return text(item, 180);
+    if (item && typeof item === "object") {
+      const row = item as JsonRecord;
+      return text(row.name || row.title || row.label || row.outcome || row.description, 180);
+    }
+    return "";
+  }).filter(Boolean))].slice(0, 30);
+}
+
+function errorRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" ? value as JsonRecord : {};
+}
+
+function optionalRelationError(value: unknown): boolean {
+  const error = errorRecord(value);
+  const code = text(error.code, 30);
+  const message = text(error.message || error.details || error.hint, 1000).toLowerCase();
+  return ["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(code)
+    || message.includes("could not find the table")
+    || message.includes("schema cache")
+    || message.includes("does not exist");
+}
+
+async function optionalRows(query: PromiseLike<{ data: unknown; error: unknown }>): Promise<JsonRecord[]> {
+  const result = await query;
+  if (result.error) {
+    if (optionalRelationError(result.error)) return [];
+    throw result.error;
+  }
+  return Array.isArray(result.data) ? result.data as JsonRecord[] : [];
+}
+
+const CLR_SECTION_ORDER = [
+  "formations", "certificats", "competences_verifiees", "evaluations", "badges",
+  "coaching", "omnia_live", "projets", "experiences", "recommandations",
+  "engagement_communautaire",
+];
+
+const CLR_MANUAL_SECTIONS = new Set(["experiences", "projets", "recommandations", "certificats"]);
+const CLR_VISIBILITIES = new Set(["private", "oga", "recruiters", "structure", "public"]);
+
+function entryCredential(row: JsonRecord, record: JsonRecord, issuer: JsonRecord): JsonRecord {
+  const existing = row.payload as JsonRecord | undefined;
+  const existingTypes = Array.isArray(existing?.type) ? existing?.type.map(String) : [];
+  if (existing && existingTypes.some((value) => ["AchievementCredential", "OpenBadgeCredential"].includes(value))) return existing;
+
+  const subject: JsonRecord = {
+    id: `urn:uuid:${record.record_uuid}`,
+    type: ["AchievementSubject"],
+    achievement: {
+      id: `${appBaseUrl()}/credentials/clr/entries/${row.id}`,
+      type: ["Achievement"],
+      name: String(row.title || "Réalisation Omnia"),
+      description: String(row.description || row.title || "Réalisation enregistrée dans Omnia Global Academy."),
+      achievementType: String(row.achievement_type || "Achievement"),
+      creator: {
+        id: row.issuer_url || issuer.did || issuer.issuer_uri,
+        type: ["Profile"],
+        name: row.issuer_name || issuer.name,
+      },
+      criteria: {
+        narrative: row.verification_status === "verified"
+          ? "Réalisation vérifiée par Omnia Global Academy ou par une source institutionnelle enregistrée."
+          : row.verification_status === "pending_review"
+          ? "Credential externe importé et conservé en attente de validation."
+          : "Réalisation déclarée par le titulaire du Learning Record.",
+      },
+    },
+  };
+  if (row.started_at) subject.activityStartDate = row.started_at;
+  if (row.ended_at) subject.activityEndDate = row.ended_at;
+
+  return {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json",
+    ],
+    id: `urn:uuid:${row.id}`,
+    type: ["VerifiableCredential", "AchievementCredential"],
+    name: String(row.title || "Réalisation Omnia"),
+    description: String(row.description || row.title || "Réalisation enregistrée dans Omnia Global Academy."),
+    issuer: {
+      id: row.issuer_url || issuer.did || issuer.issuer_uri,
+      type: ["Profile"],
+      name: row.issuer_name || issuer.name,
+    },
+    validFrom: String(row.issued_at || row.ended_at || row.created_at || new Date().toISOString()),
+    credentialSubject: subject,
+    credentialSchema: [{
+      id: "https://purl.imsglobal.org/spec/ob/v3p0/schema/json/ob_v3p0_achievementcredential_schema.json",
+      type: "1EdTechJsonSchemaValidator2019",
+    }],
+  };
+}
+
+async function syncPlatformSources(sb: Supabase, userId: string) {
+  const record = await getOrCreateClr(sb, userId);
+  const rows: JsonRecord[] = [];
+  const now = new Date().toISOString();
+
+  const completedCourses = await optionalRows(sb.from("user_enrollments")
+    .select("id,course_id,enrolled_at,completed_at,course:courses(id,title,short_description,category,level,cpd_hours,learning_outcomes,objectives,language,updated_at)")
+    .eq("user_id", userId).not("completed_at", "is", null));
+  for (const enrollment of completedCourses) {
+    const course = related(enrollment.course);
+    if (!course) continue;
+    const skills = learningOutcomeNames(course.learning_outcomes).length
+      ? learningOutcomeNames(course.learning_outcomes)
+      : learningOutcomeNames(course.objectives);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "course_completion",
+      source_id: String(enrollment.id || enrollment.course_id),
+      title: String(course.title || "Formation terminée"),
+      description: nullableText(course.short_description, 2500),
+      achievement_type: "Course",
+      section: "formations",
+      status: "active",
+      visibility: "oga",
+      issued_at: enrollment.completed_at || enrollment.enrolled_at,
+      started_at: enrollment.enrolled_at,
+      ended_at: enrollment.completed_at,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Omnia Global Academy",
+      issuer_url: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      skills,
+      result_label: [course.category, course.level].filter(Boolean).join(" · ") || null,
+      learner_editable: false,
+      source_updated_at: course.updated_at || enrollment.completed_at || now,
+      metadata: { course_id: enrollment.course_id, cpd_hours: course.cpd_hours || 0, language: course.language || "fr" },
+    });
+  }
+
+  const certificates = await optionalRows(sb.from("certificates")
+    .select("id,omnia_certificate_id,user_id,course_id,course_title,course_level,course_category,cpd_hours,status,validity_status,revoked_at,revocation_reason,pdf_url,verification_url,issued_at,expires_at,issuer_name,document_type,metadata,course:courses(id,short_description,learning_outcomes,objectives,updated_at)")
+    .eq("user_id", userId));
+  for (const certificate of certificates) {
+    const course = related(certificate.course);
+    const revoked = certificate.status === "revoque" || certificate.status === "revoked" || certificate.validity_status === "revoked" || Boolean(certificate.revoked_at);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "certificate",
+      source_id: String(certificate.id),
+      title: String(certificate.course_title || "Certificat Omnia"),
+      description: nullableText(course?.short_description || certificate.document_type, 2500),
+      achievement_type: "Certificate",
+      section: "certificats",
+      status: revoked ? "revoked" : "active",
+      visibility: "recruiters",
+      issued_at: certificate.issued_at,
+      ended_at: certificate.issued_at,
+      entry_origin: "platform",
+      verification_status: revoked ? "revoked" : "verified",
+      issuer_name: certificate.issuer_name || "Omnia Global Academy",
+      issuer_url: certificate.verification_url || `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      external_url: certificate.verification_url || certificate.pdf_url || null,
+      skills: learningOutcomeNames(course?.learning_outcomes).length ? learningOutcomeNames(course?.learning_outcomes) : learningOutcomeNames(course?.objectives),
+      result_label: [certificate.course_category, certificate.course_level].filter(Boolean).join(" · ") || null,
+      evidence: certificate.pdf_url ? [{ type: "Certificate", name: certificate.omnia_certificate_id, id: certificate.pdf_url }] : [],
+      learner_editable: false,
+      source_updated_at: certificate.issued_at || course?.updated_at || now,
+      metadata: { course_id: certificate.course_id, credential_id: certificate.omnia_certificate_id, cpd_hours: certificate.cpd_hours || 0, expires_at: certificate.expires_at || null, revocation_reason: certificate.revocation_reason || null },
+    });
+  }
+
+  const assessmentAttempts = await optionalRows(sb.from("assessment_attempts")
+    .select("id,assessment_id,course_id,attempt_number,status,score,passed,started_at,submitted_at,graded_at,feedback,assessment:course_assessments(id,title,scope,passing_score),course:courses(id,title,category,level,learning_outcomes,objectives,updated_at)")
+    .eq("user_id", userId).eq("passed", true).order("graded_at", { ascending: false }));
+  const bestAssessment = new Map<string, JsonRecord>();
+  for (const attempt of assessmentAttempts) {
+    const key = String(attempt.assessment_id || attempt.id);
+    const current = bestAssessment.get(key);
+    if (!current || Number(attempt.score || 0) > Number(current.score || 0)) bestAssessment.set(key, attempt);
+  }
+  for (const attempt of bestAssessment.values()) {
+    const assessment = related(attempt.assessment);
+    const course = related(attempt.course);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "assessment",
+      source_id: String(attempt.assessment_id || attempt.id),
+      title: String(assessment?.title || `Évaluation — ${course?.title || "Omnia"}`),
+      description: nullableText(attempt.feedback || `Évaluation ${assessment?.scope || "validée"}.`, 2500),
+      achievement_type: "Assessment",
+      section: "evaluations",
+      status: "active",
+      visibility: "recruiters",
+      issued_at: attempt.graded_at || attempt.submitted_at,
+      started_at: attempt.started_at,
+      ended_at: attempt.graded_at || attempt.submitted_at,
+      score: attempt.score,
+      score_max: 100,
+      result_label: `Réussie · seuil ${assessment?.passing_score || "—"}%`,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Omnia Global Academy",
+      issuer_url: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      skills: learningOutcomeNames(course?.learning_outcomes).length ? learningOutcomeNames(course?.learning_outcomes) : learningOutcomeNames(course?.objectives),
+      learner_editable: false,
+      source_updated_at: attempt.graded_at || course?.updated_at || now,
+      metadata: { course_id: attempt.course_id, assessment_id: attempt.assessment_id, attempt_number: attempt.attempt_number, course_title: course?.title || null },
+    });
+  }
+
+  const assignments = await optionalRows(sb.from("course_assignment_submissions")
+    .select("id,course_id,lesson_id,block_id,file_url,file_name,answer_text,status,score,evaluator_comment,submitted_at,evaluated_at,updated_at,course:courses(id,title,category,level,learning_outcomes,objectives),lesson:course_lessons(id,title),block:lesson_blocks(id,title)")
+    .eq("learner_id", userId).eq("status", "graded"));
+  for (const assignment of assignments) {
+    const course = related(assignment.course);
+    const lesson = related(assignment.lesson);
+    const block = related(assignment.block);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "course_project",
+      source_id: String(assignment.id),
+      title: String(block?.title || lesson?.title || `Projet — ${course?.title || "Omnia"}`),
+      description: nullableText(assignment.evaluator_comment || assignment.answer_text || `Projet évalué dans la formation ${course?.title || "Omnia"}.`, 2500),
+      achievement_type: "Project",
+      section: "projets",
+      status: "active",
+      visibility: "recruiters",
+      issued_at: assignment.evaluated_at || assignment.submitted_at,
+      started_at: assignment.submitted_at,
+      ended_at: assignment.evaluated_at,
+      score: assignment.score,
+      score_max: 100,
+      result_label: course?.title || null,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Omnia Global Academy",
+      issuer_url: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      external_url: assignment.file_url || null,
+      evidence: assignment.file_url ? [{ type: "Evidence", name: assignment.file_name || "Livrable du projet", id: assignment.file_url }] : [],
+      skills: learningOutcomeNames(course?.learning_outcomes).length ? learningOutcomeNames(course?.learning_outcomes) : learningOutcomeNames(course?.objectives),
+      learner_editable: false,
+      source_updated_at: assignment.updated_at || assignment.evaluated_at || now,
+      metadata: { course_id: assignment.course_id, lesson_id: assignment.lesson_id, block_id: assignment.block_id },
+    });
+  }
+
+  const liveDocuments = await optionalRows(sb.from("live_issued_documents")
+    .select("id,event_id,document_type,document_number,verification_code,verification_url,event_title,organizer_name,issue_date,attendance_percent,sessions_attended,sessions_total,assessment_score,cpd_hours,cpd_points,status,revoked_at,revocation_reason,created_at")
+    .eq("user_id", userId));
+  for (const document of liveDocuments) {
+    const revoked = document.status === "revoked" || Boolean(document.revoked_at);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "live_document",
+      source_id: String(document.id),
+      title: String(document.event_title || "Participation Omnia Live"),
+      description: `Document ${document.document_type || "de participation"} émis pour une activité Omnia Live.`,
+      achievement_type: "ProfessionalDevelopment",
+      section: "omnia_live",
+      status: revoked ? "revoked" : "active",
+      visibility: "recruiters",
+      issued_at: document.issue_date || document.created_at,
+      ended_at: document.issue_date || document.created_at,
+      score: document.assessment_score,
+      score_max: document.assessment_score === null || document.assessment_score === undefined ? null : 100,
+      result_label: document.attendance_percent !== null && document.attendance_percent !== undefined ? `${document.attendance_percent}% de présence` : null,
+      entry_origin: "platform",
+      verification_status: revoked ? "revoked" : "verified",
+      issuer_name: document.organizer_name || "Omnia Global Academy",
+      issuer_url: document.verification_url || `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      external_url: document.verification_url || null,
+      learner_editable: false,
+      source_updated_at: document.created_at || now,
+      metadata: { event_id: document.event_id, document_number: document.document_number, verification_code: document.verification_code, sessions_attended: document.sessions_attended, sessions_total: document.sessions_total, cpd_hours: document.cpd_hours, cpd_points: document.cpd_points, revocation_reason: document.revocation_reason || null },
+    });
+  }
+
+  const liveEligibility = await optionalRows(sb.from("live_certificate_eligibility")
+    .select("id,event_id,attendance_seconds,attendance_percent,evaluation_passed,eligible,eligibility_reason,document_type,calculated_at,event:live_events(id,title,short_description,event_type,delivery_type,starts_at,duration_minutes,organizer_display_name,learning_outcomes,updated_at)")
+    .eq("user_id", userId).eq("eligible", true));
+  const documentedEventIds = new Set(liveDocuments.map((item) => String(item.event_id)));
+  for (const eligibility of liveEligibility) {
+    if (documentedEventIds.has(String(eligibility.event_id))) continue;
+    const event = related(eligibility.event);
+    if (!event) continue;
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "live_participation",
+      source_id: String(eligibility.id),
+      title: String(event.title || "Omnia Live"),
+      description: nullableText(event.short_description || eligibility.eligibility_reason, 2500),
+      achievement_type: "ProfessionalDevelopment",
+      section: "omnia_live",
+      status: "active",
+      visibility: "oga",
+      issued_at: eligibility.calculated_at || event.starts_at,
+      started_at: event.starts_at,
+      ended_at: eligibility.calculated_at,
+      result_label: eligibility.attendance_percent !== null && eligibility.attendance_percent !== undefined ? `${eligibility.attendance_percent}% de présence` : null,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: event.organizer_display_name || "Omnia Global Academy",
+      issuer_url: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      skills: learningOutcomeNames(event.learning_outcomes),
+      learner_editable: false,
+      source_updated_at: event.updated_at || eligibility.calculated_at || now,
+      metadata: { event_id: eligibility.event_id, event_type: event.event_type, delivery_type: event.delivery_type, duration_minutes: event.duration_minutes, evaluation_passed: eligibility.evaluation_passed },
+    });
+  }
+
+  const coachingSessions = await optionalRows(sb.from("coaching_sessions")
+    .select("id,learner_user_id,status,payment_status,scheduled_start,scheduled_end,actual_started_at,actual_ended_at,duration_minutes,offer_title_snapshot,coach_name_snapshot,updated_at")
+    .eq("learner_user_id", userId).eq("status", "completed"));
+  for (const session of coachingSessions) {
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "coaching_session",
+      source_id: String(session.id),
+      title: String(session.offer_title_snapshot || "Session de coaching individuel"),
+      description: `Session individuelle réalisée avec ${session.coach_name_snapshot || "un coach Omnia"}.`,
+      achievement_type: "ProfessionalDevelopment",
+      section: "coaching",
+      status: "active",
+      visibility: "oga",
+      issued_at: session.actual_ended_at || session.scheduled_end || session.updated_at,
+      started_at: session.actual_started_at || session.scheduled_start,
+      ended_at: session.actual_ended_at || session.scheduled_end,
+      result_label: session.duration_minutes ? `${session.duration_minutes} minutes` : null,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: session.coach_name_snapshot || "Coach Omnia",
+      issuer_url: `${appBaseUrl()}/coaching`,
+      learner_editable: false,
+      source_updated_at: session.updated_at || session.actual_ended_at || now,
+      metadata: { payment_status: session.payment_status },
+    });
+  }
+
+  const groupRegistrations = await optionalRows(sb.from("coaching_group_registrations")
+    .select("id,program_id,status,joined_at,left_at,created_at,program:coaching_group_programs(id,title,description,scheduled_start,scheduled_end,status,coach_id,updated_at)")
+    .eq("user_id", userId).eq("status", "attended"));
+  for (const registration of groupRegistrations) {
+    const program = related(registration.program);
+    if (!program) continue;
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "coaching_group",
+      source_id: String(registration.id),
+      title: String(program.title || "Session de coaching collectif"),
+      description: nullableText(program.description, 2500),
+      achievement_type: "ProfessionalDevelopment",
+      section: "coaching",
+      status: "active",
+      visibility: "oga",
+      issued_at: registration.left_at || program.scheduled_end || program.updated_at,
+      started_at: registration.joined_at || program.scheduled_start,
+      ended_at: registration.left_at || program.scheduled_end,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Omnia Coaching",
+      issuer_url: `${appBaseUrl()}/coaching`,
+      learner_editable: false,
+      source_updated_at: program.updated_at || registration.left_at || now,
+      metadata: { program_id: registration.program_id },
+    });
+  }
+
+  const actionPlans = await optionalRows(sb.from("coaching_action_plans")
+    .select("id,session_id,title,summary,next_session_recommendation,status,learner_visible,updated_at,session:coaching_sessions(id,coach_name_snapshot,offer_title_snapshot,scheduled_start)")
+    .eq("learner_user_id", userId).eq("learner_visible", true));
+  for (const plan of actionPlans) {
+    const session = related(plan.session);
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "coaching_recommendation",
+      source_id: String(plan.id),
+      title: String(plan.title || "Recommandation du coach"),
+      description: nullableText(plan.summary || plan.next_session_recommendation, 2500),
+      achievement_type: "Recommendation",
+      section: "recommandations",
+      status: plan.status === "archived" ? "hidden" : "active",
+      visibility: "private",
+      issued_at: plan.updated_at || session?.scheduled_start,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: session?.coach_name_snapshot || "Coach Omnia",
+      issuer_url: `${appBaseUrl()}/coaching`,
+      learner_editable: false,
+      source_updated_at: plan.updated_at || now,
+      metadata: { session_id: plan.session_id, next_session_recommendation: plan.next_session_recommendation || null, session_title: session?.offer_title_snapshot || null },
+    });
+  }
+
+  const forumPosts = await optionalRows(sb.from("forum_posts")
+    .select("id,title,content,space,likes_count,replies_count,is_pinned,is_solved,created_at")
+    .eq("user_id", userId).eq("is_visible", true));
+  for (const post of forumPosts.filter((item) => Number(item.likes_count || 0) > 0 || Number(item.replies_count || 0) > 0 || item.is_pinned || item.is_solved)) {
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "community_contribution",
+      source_id: String(post.id),
+      title: String(post.title || "Contribution utile à la communauté"),
+      description: nullableText(post.content, 600),
+      achievement_type: "CommunityService",
+      section: "engagement_communautaire",
+      status: "active",
+      visibility: "oga",
+      issued_at: post.created_at,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Communauté Omnia",
+      issuer_url: `${appBaseUrl()}/forum`,
+      result_label: `${Number(post.likes_count || 0)} appréciation(s) · ${Number(post.replies_count || 0)} réponse(s)`,
+      learner_editable: false,
+      source_updated_at: post.created_at || now,
+      metadata: { space: post.space, is_pinned: Boolean(post.is_pinned), is_solved: Boolean(post.is_solved), professional_skill: false },
+    });
+  }
+
+  // Les compétences professionnelles sont dérivées uniquement de sources Omnia
+  // vérifiées (formations, certificats, évaluations et projets). Les contributions
+  // du Forum restent dans l'engagement communautaire et ne créent jamais une compétence.
+  const competencyMap = new Map<string, { name: string; issuedAt: string | null; sources: Array<{ type: string; id: string; title: string }> }>();
+  for (const source of rows) {
+    if (source.verification_status !== "verified" || source.section === "engagement_communautaire" || source.source_type === "competency") continue;
+    for (const skill of stringArray(source.skills, 50, 160)) {
+      const key = slugify(skill);
+      const current = competencyMap.get(key) || { name: skill, issuedAt: null, sources: [] };
+      const issuedAt = nullableText(source.issued_at, 80);
+      if (issuedAt && (!current.issuedAt || new Date(issuedAt) > new Date(current.issuedAt))) current.issuedAt = issuedAt;
+      current.sources.push({ type: String(source.source_type), id: String(source.source_id), title: String(source.title) });
+      competencyMap.set(key, current);
+    }
+  }
+  for (const [key, competency] of competencyMap) {
+    rows.push({
+      clr_record_id: record.id,
+      source_type: "competency",
+      source_id: key,
+      title: competency.name,
+      description: "Compétence démontrée par des réalisations vérifiées dans Omnia Global Academy.",
+      achievement_type: "Competency",
+      section: "competences_verifiees",
+      status: "active",
+      visibility: "recruiters",
+      issued_at: competency.issuedAt || now,
+      ended_at: competency.issuedAt || now,
+      entry_origin: "platform",
+      verification_status: "verified",
+      issuer_name: "Omnia Global Academy",
+      issuer_url: `${appBaseUrl()}/credentials/issuers/omnia-global-academy`,
+      skills: [competency.name],
+      evidence: competency.sources.slice(0, 25).map((source) => ({ type: "Evidence", name: source.title, id: `${source.type}:${source.id}` })),
+      learner_editable: false,
+      source_updated_at: competency.issuedAt || now,
+      metadata: { evidence_sources: competency.sources.slice(0, 100), source_count: competency.sources.length, professional_skill: true },
+    });
+  }
+
+  if (rows.length) {
+    const { data: existingRows, error: existingError } = await sb.from("clr_achievements")
+      .select("id,source_type,source_id,visibility,status,is_featured,sort_order")
+      .eq("clr_record_id", record.id);
+    if (existingError) throw existingError;
+    const existingMap = new Map((existingRows || []).map((item: JsonRecord) => [`${item.source_type}:${item.source_id}`, item]));
+    const merged = rows.map((item) => {
+      const existing = existingMap.get(`${item.source_type}:${item.source_id}`);
+      return existing ? {
+        ...item,
+        id: existing.id,
+        visibility: existing.visibility || item.visibility,
+        status: existing.status === "hidden" ? "hidden" : item.status,
+        is_featured: Boolean(existing.is_featured),
+        sort_order: Number(existing.sort_order || 0),
+      } : item;
+    });
+    const { error } = await sb.from("clr_achievements").upsert(merged, { onConflict: "clr_record_id,source_type,source_id" });
+    if (error) throw error;
+  }
+
+  const { error: syncError } = await sb.from("clr_records").update({ last_synced_at: now }).eq("id", record.id);
+  if (syncError) throw syncError;
+  return { record, synced_entries: rows.length };
+}
+
 async function rebuildClr(sb: Supabase, userId: string) {
   const record = await getOrCreateClr(sb, userId);
-  const { data: achievements, error: achievementError } = await sb.from("clr_achievements")
-    .select("*").eq("clr_record_id", record.id).order("issued_at", { ascending: false });
+  const [{ data: achievements, error: achievementError }, { data: user, error: userError }, issuer] = await Promise.all([
+    sb.from("clr_achievements").select("*").eq("clr_record_id", record.id).order("sort_order").order("issued_at", { ascending: false }),
+    sb.from("users").select("id,full_name,email,avatar_url,country_code").eq("id", userId).maybeSingle(),
+    getIssuer(sb),
+  ]);
   if (achievementError) throw achievementError;
+  if (userError) throw userError;
+  if (!user) throw new Error("USER_NOT_FOUND");
+
+  const hiddenSections = new Set(stringArray(record.hidden_sections, 30, 80));
+  const included = (achievements || []).filter((row: JsonRecord) => row.status === "active" && row.verification_status !== "rejected" && !hiddenSections.has(String(row.section)));
   const payload = {
     "@context": [
       "https://www.w3.org/ns/credentials/v2",
@@ -387,11 +904,18 @@ async function rebuildClr(sb: Supabase, userId: string) {
     id: `urn:uuid:${record.record_uuid}`,
     type: ["VerifiableCredential", "ClrCredential"],
     name: String(record.title || "Omnia Learning Record"),
-    issuer: { id: "https://omniaglobalacademy.com/credentials/issuers/omnia-global-academy", type: ["Profile"], name: "Omnia Global Academy" },
+    description: String(record.summary || record.description || "Dossier vérifié des réalisations Omnia."),
+    issuer: {
+      id: issuer.did || issuer.issuer_uri,
+      type: ["Profile"],
+      name: issuer.name,
+      ...(issuer.website_url ? { url: issuer.website_url } : {}),
+    },
     credentialSubject: {
       id: `urn:uuid:${record.record_uuid}`,
       type: ["ClrSubject"],
-      verifiableCredential: (achievements || []).filter((row: JsonRecord) => row.status !== "hidden").map((row: JsonRecord) => row.payload),
+      name: user.full_name,
+      verifiableCredential: included.map((row: JsonRecord) => entryCredential(row, record, issuer)),
     },
     validFrom: String(record.created_at || new Date().toISOString()),
     credentialSchema: [{
@@ -399,14 +923,124 @@ async function rebuildClr(sb: Supabase, userId: string) {
       type: "1EdTechJsonSchemaValidator2019",
     }],
   };
-  const unchanged = JSON.stringify(record.clr_json || {}) === JSON.stringify(payload);
+  const unchanged = stableJson(record.clr_json || {}) === stableJson(payload);
   if (unchanged) return { record, achievements: achievements || [] };
   const nextVersion = record.last_built_at ? Number(record.version || 1) + 1 : Number(record.version || 1);
   const { data: updated, error: updateError } = await sb.from("clr_records")
-    .update({ clr_json: payload, standards_status: "clr2_draft", version: nextVersion, last_built_at: new Date().toISOString() })
+    .update({
+      clr_json: payload,
+      clr_jwt: null,
+      signing_key_id: null,
+      signed_at: null,
+      signature_alg: null,
+      credential_hash: null,
+      verification_result: {},
+      standards_status: "clr2_draft",
+      version: nextVersion,
+      last_built_at: new Date().toISOString(),
+    })
     .eq("id", record.id).select("*").single();
   if (updateError) throw updateError;
   return { record: updated, achievements: achievements || [] };
+}
+
+function clrCredentialStructureChecks(payload: JsonRecord) {
+  const contexts = Array.isArray(payload["@context"]) ? payload["@context"].map(String) : [];
+  const types = Array.isArray(payload.type) ? payload.type.map(String) : [];
+  const issuer = payload.issuer as JsonRecord | undefined;
+  const subject = payload.credentialSubject as JsonRecord | undefined;
+  const hasCredentialsArray = Array.isArray(subject?.verifiableCredential);
+  const credentials = hasCredentialsArray ? subject?.verifiableCredential as unknown[] : [];
+  const schema = Array.isArray(payload.credentialSchema) ? payload.credentialSchema as JsonRecord[] : [];
+  const validFrom = text(payload.validFrom, 80);
+  const checks = {
+    context: contexts.includes("https://purl.imsglobal.org/spec/clr/v2p0/context-2.0.1.json"),
+    type: types.includes("ClrCredential") && types.includes("VerifiableCredential"),
+    issuer: Boolean(issuer?.id && payload.iss === issuer.id),
+    subject: Boolean(subject?.id && payload.sub === subject.id),
+    credential_id: Boolean(payload.id && payload.jti === payload.id),
+    valid_from: Boolean(validFrom && Number(payload.nbf) === numericDate(validFrom)),
+    credentials: hasCredentialsArray,
+    schema: schema.some((item) => String(item.id || "").includes("clr_v2p0_clrcredential_schema.json")),
+  };
+  return { checks, valid: Object.values(checks).every(Boolean) };
+}
+
+async function verifyCompactClr(sb: Supabase, compactJws: string, req: Request, record: JsonRecord | null) {
+  let signatureValid = false;
+  let structureValid = false;
+  let statusValid = false;
+  let errorCode: string | null = null;
+  let payload: JsonRecord = {};
+  let header: JsonRecord = {};
+  let keyRow: JsonRecord | null = null;
+  let structureChecks: JsonRecord = {};
+  try {
+    header = decodeProtectedHeader(compactJws) as JsonRecord;
+    const keyResult = await signingKeyForHeader(sb, header, req);
+    keyRow = keyResult.key;
+    const publicKey = await importJWK(keyResult.publicJwk as never, "RS256");
+    const verified = await compactVerify(compactJws, publicKey, { algorithms: ["RS256"] });
+    signatureValid = true;
+    payload = JSON.parse(new TextDecoder().decode(verified.payload)) as JsonRecord;
+    const structure = clrCredentialStructureChecks(payload);
+    structureValid = structure.valid;
+    structureChecks = structure.checks;
+    if (!structureValid) errorCode = "CLR_STRUCTURE_INVALID";
+    const now = Date.now();
+    statusValid = (!payload.validFrom || new Date(String(payload.validFrom)).getTime() <= now)
+      && (!payload.validUntil || new Date(String(payload.validUntil)).getTime() >= now)
+      && (!record || String(record.status) === "active");
+    if (record) {
+      const actualHash = await sha256(compactJws);
+      if (record.credential_hash && String(record.credential_hash) !== actualHash) {
+        statusValid = false;
+        errorCode = "CLR_HASH_MISMATCH";
+      }
+      if (payload.jti !== (record.clr_json as JsonRecord | undefined)?.id) {
+        structureValid = false;
+        errorCode = "CLR_REGISTRY_MISMATCH";
+      }
+    }
+  } catch (cause) {
+    errorCode = cause instanceof Error ? cause.message : "CLR_SIGNATURE_INVALID";
+  }
+  const result = {
+    signature_valid: signatureValid,
+    structure_valid: structureValid,
+    status_valid: statusValid,
+    overall_valid: signatureValid && structureValid && statusValid,
+    error_code: errorCode,
+    protected_header: header,
+    credential: payload,
+    structure_checks: structureChecks,
+    checked_at: new Date().toISOString(),
+  };
+  if (record?.id) await sb.from("clr_records").update({ verification_result: result }).eq("id", record.id);
+  return { result, keyRow };
+}
+
+async function signClr(sb: Supabase, userId: string, actorUserId: string, req: Request) {
+  await syncPlatformSources(sb, userId);
+  const rebuilt = await rebuildClr(sb, userId);
+  const key = await syncSigningKey(sb, req, actorUserId);
+  const signed = await signCredential(rebuilt.record.clr_json as JsonRecord, req);
+  const hash = await sha256(signed.compactJws);
+  const signedAt = new Date().toISOString();
+  const { data: updated, error } = await sb.from("clr_records").update({
+    clr_json: rebuilt.record.clr_json,
+    clr_jwt: signed.compactJws,
+    signing_key_id: key.id,
+    signed_at: signedAt,
+    signature_alg: "RS256",
+    credential_hash: hash,
+    standards_status: "clr2_signed",
+  }).eq("id", rebuilt.record.id).select("*").single();
+  if (error) throw error;
+  const verification = await verifyCompactClr(sb, signed.compactJws, req, updated as JsonRecord);
+  if (!verification.result.overall_valid) throw new Error(verification.result.error_code || "CLR_SIGNING_PREFLIGHT_FAILED");
+  await sb.from("clr_audit_logs").insert({ actor_user_id: actorUserId, record_id: updated.id, action: "clr_signed", metadata: { key_id: signed.config.keyId, version: updated.version } });
+  return { record: { ...updated, verification_result: verification.result }, jwt: signed.compactJws };
 }
 
 async function templateRows(sb: Supabase, includeInactive = true) {
@@ -502,19 +1136,61 @@ async function publicClr(sb: Supabase, token: string) {
   const { data: share, error } = await sb.from("clr_shares").select("*").eq("token_hash", tokenHash).maybeSingle();
   if (error) throw error;
   if (!share || share.revoked_at || (share.expires_at && new Date(share.expires_at) <= new Date())) throw new Error("CLR_SHARE_NOT_FOUND");
-  const { data: record, error: recordError } = await sb.from("clr_records").select("*,user:users(id,full_name,avatar_url)").eq("id", share.clr_record_id).maybeSingle();
+  const { data: record, error: recordError } = await sb.from("clr_records")
+    .select("*,user:users!clr_records_user_id_fkey(id,full_name,avatar_url,country_code)")
+    .eq("id", share.clr_record_id).maybeSingle();
   if (recordError) throw recordError;
   if (!record) throw new Error("CLR_NOT_FOUND");
   const allowed = new Set(stringArray(share.include_sections, 30, 80));
+  const visibility = String(share.visibility_filter || "public");
+  const visibleValues = visibility === "public" ? ["public"] : [visibility, "public"];
   const { data: achievements, error: achievementError } = await sb.from("clr_achievements")
-    .select("*").eq("clr_record_id", record.id).in("visibility", [share.visibility_filter, "public"]).order("issued_at", { ascending: false });
+    .select("*").eq("clr_record_id", record.id).eq("status", "active").in("visibility", visibleValues)
+    .order("sort_order").order("issued_at", { ascending: false });
   if (achievementError) throw achievementError;
   await sb.from("clr_shares").update({ last_accessed_at: new Date().toISOString() }).eq("id", share.id);
   return {
-    record: { record_uuid: record.record_uuid, title: record.title, description: record.description, version: record.version, standards_status: record.standards_status, user: record.user ? { full_name: record.user.full_name, avatar_url: record.user.avatar_url } : null },
-    achievements: (achievements || []).filter((row: JsonRecord) => !allowed.size || allowed.has(String(row.section))).map((row: JsonRecord) => ({
-      id: row.id, title: row.title, description: row.description, achievement_type: row.achievement_type, section: row.section, status: row.status, visibility: row.visibility, issued_at: row.issued_at,
-    })),
+    record: {
+      record_uuid: record.record_uuid,
+      title: record.title,
+      description: record.description,
+      profile_headline: record.profile_headline,
+      summary: record.summary,
+      language_code: record.language_code,
+      section_order: record.section_order,
+      hidden_sections: record.hidden_sections,
+      version: record.version,
+      standards_status: record.standards_status,
+      signed_at: record.signed_at,
+      verification_result: record.verification_result,
+      user: record.user ? { full_name: record.user.full_name, avatar_url: record.user.avatar_url, country_code: record.user.country_code } : null,
+    },
+    share: { label: share.label, expires_at: share.expires_at, visibility_filter: share.visibility_filter, include_sections: share.include_sections },
+    achievements: (achievements || [])
+      .filter((row: JsonRecord) => (!allowed.size || allowed.has(String(row.section))) && row.verification_status !== "rejected")
+      .map((row: JsonRecord) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        achievement_type: row.achievement_type,
+        section: row.section,
+        status: row.status,
+        visibility: row.visibility,
+        issued_at: row.issued_at,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        score: row.score,
+        score_max: row.score_max,
+        result_label: row.result_label,
+        skills: row.skills,
+        evidence: row.evidence,
+        external_url: row.external_url,
+        issuer_name: row.issuer_name,
+        entry_origin: row.entry_origin,
+        verification_status: row.verification_status,
+        is_featured: row.is_featured,
+        metadata: row.metadata,
+      })),
   };
 }
 
@@ -989,34 +1665,315 @@ async function updateVisibility(sb: Supabase, session: Session, body: JsonRecord
 }
 
 async function createClrShare(sb: Supabase, session: Session, body: JsonRecord) {
-  const record = await getOrCreateClr(sb, session.userId);
+  await syncPlatformSources(sb, session.userId);
+  const rebuilt = await rebuildClr(sb, session.userId);
+  const record = rebuilt.record;
   const token = randomToken();
   const tokenHash = await sha256(token);
   const days = integer(body.validity_days);
-  const expiresAt = days && days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null;
-  const sections = stringArray(body.include_sections, 20, 80);
+  const expiresAt = days && days > 0 ? new Date(Date.now() + Math.min(days, 3650) * 86400000).toISOString() : null;
+  const requestedSections = stringArray(body.include_sections, 30, 80).filter((section) => CLR_SECTION_ORDER.includes(section));
   const visibilityFilter = text(body.visibility_filter, 30) || "public";
   if (!["oga","recruiters","structure","public"].includes(visibilityFilter)) throw new Error("INVALID_VISIBILITY");
   const { data, error } = await sb.from("clr_shares").insert({
     clr_record_id: record.id,
     token_hash: tokenHash,
     label: nullableText(body.label, 180),
-    include_sections: sections.length ? sections : ["badges","competences_verifiees","engagement_communautaire"],
+    include_sections: requestedSections.length ? requestedSections : stringArray(record.section_order, 30, 80),
     visibility_filter: visibilityFilter,
     expires_at: expiresAt,
     created_by: session.userId,
   }).select("id,label,include_sections,visibility_filter,expires_at,created_at").single();
   if (error) throw error;
-  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "share_created", metadata: { share_id: data.id } });
-  return { ...data, token, url: `https://omniaglobalacademy.com/credentials/clr/${token}` };
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "share_created", metadata: { share_id: data.id, include_sections: data.include_sections } });
+  return { ...data, token, url: `${appBaseUrl()}/credentials/clr/${token}` };
+}
+
+async function updateClrProfile(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const order = stringArray(body.section_order, 30, 80).filter((section) => CLR_SECTION_ORDER.includes(section));
+  const hidden = stringArray(body.hidden_sections, 30, 80).filter((section) => CLR_SECTION_ORDER.includes(section));
+  const visibility = text(body.default_visibility, 30) || String(record.default_visibility || "oga");
+  if (!CLR_VISIBILITIES.has(visibility)) throw new Error("INVALID_VISIBILITY");
+  const payload = {
+    title: text(body.title, 180) || "Omnia Learning Record",
+    description: nullableText(body.description, 1000),
+    profile_headline: nullableText(body.profile_headline, 220),
+    summary: nullableText(body.summary, 3000),
+    language_code: text(body.language_code, 12) || "fr",
+    default_visibility: visibility,
+    section_order: order.length ? order : CLR_SECTION_ORDER,
+    hidden_sections: hidden,
+  };
+  const { data, error } = await sb.from("clr_records").update(payload).eq("id", record.id).select("*").single();
+  if (error) throw error;
+  await rebuildClr(sb, session.userId);
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "profile_updated", metadata: { hidden_sections: hidden } });
+  return data;
+}
+
+async function saveManualClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const id = nullableText(body.id, 80);
+  const section = text(body.section, 80);
+  if (!CLR_MANUAL_SECTIONS.has(section)) throw new Error("CLR_SECTION_NOT_EDITABLE");
+  const title = text(body.title, 220);
+  if (!title) throw new Error("CLR_ENTRY_TITLE_REQUIRED");
+  const visibility = text(body.visibility, 30) || "private";
+  if (!CLR_VISIBILITIES.has(visibility)) throw new Error("INVALID_VISIBILITY");
+  const start = nullableText(body.started_at, 40);
+  const end = nullableText(body.ended_at, 40);
+  if (start && Number.isNaN(new Date(start).getTime())) throw new Error("CLR_ENTRY_DATE_INVALID");
+  if (end && Number.isNaN(new Date(end).getTime())) throw new Error("CLR_ENTRY_DATE_INVALID");
+  if (start && end && new Date(end) < new Date(start)) throw new Error("CLR_ENTRY_DATE_INVALID");
+  const sourceId = id || crypto.randomUUID();
+  const payload = {
+    clr_record_id: record.id,
+    source_type: `manual_${section}`,
+    source_id: sourceId,
+    title,
+    description: nullableText(body.description, 3000),
+    achievement_type: section === "projets" ? "Project" : section === "experiences" ? "WorkExperience" : section === "recommandations" ? "Recommendation" : "Certificate",
+    section,
+    status: "active",
+    visibility,
+    issued_at: end || start || new Date().toISOString(),
+    started_at: start,
+    ended_at: end,
+    result_label: nullableText(body.result_label, 300),
+    skills: stringArray(body.skills, 30, 180),
+    evidence: objectArray(body.evidence).slice(0, 20),
+    external_url: nullableText(body.external_url, 1000),
+    issuer_name: nullableText(body.issuer_name, 220),
+    issuer_url: nullableText(body.issuer_url, 1000),
+    entry_origin: "manual",
+    verification_status: "declared",
+    learner_editable: true,
+    is_featured: bool(body.is_featured),
+    metadata: typeof body.metadata === "object" && body.metadata !== null ? body.metadata : {},
+    source_updated_at: new Date().toISOString(),
+    payload: {},
+  };
+  let saved: JsonRecord;
+  if (id) {
+    const { data: current, error: currentError } = await sb.from("clr_achievements").select("*").eq("id", id).eq("clr_record_id", record.id).eq("learner_editable", true).maybeSingle();
+    if (currentError) throw currentError;
+    if (!current || current.entry_origin !== "manual") throw new Error("CLR_ENTRY_NOT_FOUND");
+    const { data, error } = await sb.from("clr_achievements").update({ ...payload, source_id: current.source_id, source_type: current.source_type }).eq("id", id).select("*").single();
+    if (error) throw error;
+    saved = data as JsonRecord;
+  } else {
+    const { data, error } = await sb.from("clr_achievements").insert(payload).select("*").single();
+    if (error) throw error;
+    saved = data as JsonRecord;
+  }
+  await rebuildClr(sb, session.userId);
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: id ? "manual_entry_updated" : "manual_entry_created", metadata: { entry_id: saved.id, section } });
+  return saved;
+}
+
+async function updateClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const entryId = text(body.entry_id, 80);
+  const { data: entry, error } = await sb.from("clr_achievements").select("*").eq("id", entryId).eq("clr_record_id", record.id).maybeSingle();
+  if (error) throw error;
+  if (!entry) throw new Error("CLR_ENTRY_NOT_FOUND");
+  const updates: JsonRecord = {};
+  if (body.visibility !== undefined) {
+    const visibility = text(body.visibility, 30);
+    if (!CLR_VISIBILITIES.has(visibility)) throw new Error("INVALID_VISIBILITY");
+    updates.visibility = visibility;
+    if (entry.award_id) await sb.from("badge_awards").update({ visibility }).eq("id", entry.award_id).eq("recipient_user_id", session.userId);
+  }
+  if (body.is_featured !== undefined) updates.is_featured = bool(body.is_featured);
+  if (body.hidden !== undefined) updates.status = bool(body.hidden) ? "hidden" : "active";
+  if (!Object.keys(updates).length) throw new Error("CLR_ENTRY_UPDATE_EMPTY");
+  const { data: updated, error: updateError } = await sb.from("clr_achievements").update(updates).eq("id", entryId).select("*").single();
+  if (updateError) throw updateError;
+  await rebuildClr(sb, session.userId);
+  return updated;
+}
+
+async function deleteClrEntry(sb: Supabase, session: Session, body: JsonRecord) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const entryId = text(body.entry_id, 80);
+  const { data: entry, error } = await sb.from("clr_achievements").select("id,entry_origin,learner_editable").eq("id", entryId).eq("clr_record_id", record.id).maybeSingle();
+  if (error) throw error;
+  if (!entry || !entry.learner_editable || !["manual", "imported"].includes(String(entry.entry_origin))) throw new Error("CLR_ENTRY_NOT_DELETABLE");
+  const { error: deleteError } = await sb.from("clr_achievements").delete().eq("id", entryId).eq("clr_record_id", record.id);
+  if (deleteError) throw deleteError;
+  await rebuildClr(sb, session.userId);
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "entry_deleted", metadata: { entry_id: entryId } });
+  return { success: true };
+}
+
+function base64UrlJson(segment: string): JsonRecord {
+  const normalized = segment.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(segment.length / 4) * 4, "=");
+  const binary = atob(normalized);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object") throw new Error("CLR_IMPORT_INVALID");
+  return value as JsonRecord;
+}
+
+function credentialTypes(payload: JsonRecord): string[] {
+  return Array.isArray(payload.type) ? payload.type.map(String) : payload.type ? [String(payload.type)] : [];
+}
+
+function importedCredentialRows(payload: JsonRecord): JsonRecord[] {
+  const types = credentialTypes(payload);
+  if (types.includes("ClrCredential")) {
+    const subject = related(payload.credentialSubject);
+    return objectArray(subject?.verifiableCredential).slice(0, 200);
+  }
+  if (types.includes("AchievementCredential") || types.includes("OpenBadgeCredential")) return [payload];
+  throw new Error("CLR_IMPORT_CREDENTIAL_TYPE_UNSUPPORTED");
+}
+
+function importEntrySection(credential: JsonRecord): string {
+  const subject = related(credential.credentialSubject);
+  const achievement = related(subject?.achievement);
+  const type = text(achievement?.achievementType || credential.name, 120).toLowerCase();
+  if (type.includes("course") || type.includes("formation")) return "formations";
+  if (type.includes("certificate") || type.includes("degree") || type.includes("diploma")) return "certificats";
+  if (type.includes("competenc") || type.includes("skill")) return "competences_verifiees";
+  if (type.includes("assessment") || type.includes("exam")) return "evaluations";
+  if (type.includes("project")) return "projets";
+  if (type.includes("experience") || type.includes("internship") || type.includes("employment")) return "experiences";
+  if (type.includes("recommend")) return "recommandations";
+  return "badges";
+}
+
+async function importClr(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
+  const record = await getOrCreateClr(sb, session.userId);
+  const sourceFormat = text(body.source_format, 20) || "json";
+  if (!["json", "json_ld", "vc_jwt"].includes(sourceFormat)) throw new Error("CLR_IMPORT_FORMAT_INVALID");
+  const content = text(body.content, 1500000);
+  if (!content) throw new Error("CLR_IMPORT_EMPTY");
+  let payload: JsonRecord;
+  let rawJwt: string | null = null;
+  let verification: JsonRecord = { overall_valid: false, error_code: "UNSIGNED_IMPORTED_CREDENTIAL", checked_at: new Date().toISOString() };
+  if (sourceFormat === "vc_jwt") {
+    const parts = content.split(".");
+    if (parts.length !== 3) throw new Error("CLR_IMPORT_INVALID_JWT");
+    payload = base64UrlJson(parts[1]);
+    rawJwt = content;
+    const types = credentialTypes(payload);
+    if (types.includes("ClrCredential")) verification = (await verifyCompactClr(sb, content, req, null)).result;
+    else if (types.includes("OpenBadgeCredential") || types.includes("AchievementCredential")) verification = await verifyCompactCredential(sb, content, req, null, "api");
+  } else {
+    try { payload = JSON.parse(content) as JsonRecord; }
+    catch { throw new Error("CLR_IMPORT_INVALID_JSON"); }
+  }
+  const credentials = importedCredentialRows(payload);
+  if (!credentials.length) throw new Error("CLR_IMPORT_EMPTY_CREDENTIAL");
+  const hash = await sha256(content);
+  const issuer = related(payload.issuer);
+  const status = verification.overall_valid ? "imported" : "pending";
+  const { data: importRow, error: importError } = await sb.from("clr_imports").insert({
+    clr_record_id: record.id,
+    user_id: session.userId,
+    source_format: sourceFormat,
+    source_file_name: nullableText(body.source_file_name, 255),
+    source_issuer: nullableText(issuer?.name || issuer?.id, 500),
+    credential_type: credentialTypes(payload).join(","),
+    status,
+    raw_payload: payload,
+    raw_jwt: rawJwt,
+    payload_hash: hash,
+    verification_result: verification,
+    imported_entries_count: credentials.length,
+  }).select("*").single();
+  if (importError) {
+    if (text(errorRecord(importError).code, 30) === "23505") throw new Error("CLR_IMPORT_ALREADY_EXISTS");
+    throw importError;
+  }
+  const verified = Boolean(verification.overall_valid);
+  const entries = credentials.map((credential, index) => {
+    const subject = related(credential.credentialSubject);
+    const achievement = related(subject?.achievement);
+    const credentialIssuer = related(credential.issuer);
+    const section = importEntrySection(credential);
+    const title = text(credential.name || achievement?.name, 220) || `Credential importé ${index + 1}`;
+    return {
+      clr_record_id: record.id,
+      source_type: "clr_import",
+      source_id: `${importRow.id}:${index}`,
+      title,
+      description: nullableText(credential.description || achievement?.description, 3000),
+      achievement_type: text(achievement?.achievementType, 120) || "Achievement",
+      section,
+      status: "active",
+      visibility: "private",
+      issued_at: credential.validFrom || new Date().toISOString(),
+      started_at: subject?.activityStartDate || null,
+      ended_at: subject?.activityEndDate || credential.validFrom || null,
+      issuer_name: nullableText(credentialIssuer?.name || credentialIssuer?.id, 220),
+      issuer_url: nullableText(credentialIssuer?.id, 1000),
+      entry_origin: "imported",
+      verification_status: verified ? "verified" : "pending_review",
+      learner_editable: true,
+      external_url: nullableText(credential.id, 1000),
+      source_updated_at: new Date().toISOString(),
+      metadata: { import_id: importRow.id, original_types: credentialTypes(credential) },
+      payload: credential,
+    };
+  });
+  const { error: entryError } = await sb.from("clr_achievements").insert(entries);
+  if (entryError) {
+    await sb.from("clr_imports").update({ status: "failed", review_note: text(errorRecord(entryError).message, 1000) }).eq("id", importRow.id);
+    throw entryError;
+  }
+  await rebuildClr(sb, session.userId);
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "credential_imported", metadata: { import_id: importRow.id, count: entries.length, verified } });
+  return { ...importRow, status, verification_result: verification };
+}
+
+async function exportClr(sb: Supabase, session: Session, body: JsonRecord, req: Request) {
+  const format = text(body.format, 20) || "clr_json";
+  if (!["clr_json", "vc_jwt"].includes(format)) throw new Error("CLR_EXPORT_FORMAT_INVALID");
+  await syncPlatformSources(sb, session.userId);
+  let rebuilt = await rebuildClr(sb, session.userId);
+  let content: unknown = rebuilt.record.clr_json;
+  let hash = await sha256(stableJson(content));
+  let standardsStatus = String(rebuilt.record.standards_status);
+  if (format === "vc_jwt") {
+    const signed = await signClr(sb, session.userId, session.userId, req);
+    rebuilt = { record: signed.record, achievements: rebuilt.achievements };
+    content = signed.jwt;
+    hash = String(signed.record.credential_hash || await sha256(signed.jwt));
+    standardsStatus = "clr2_signed";
+  }
+  await sb.from("clr_exports").insert({
+    clr_record_id: rebuilt.record.id,
+    requested_by: session.userId,
+    export_format: format,
+    record_version: rebuilt.record.version,
+    standards_status: standardsStatus,
+    credential_hash: hash,
+    metadata: { entries_count: rebuilt.achievements.length },
+  });
+  return {
+    format,
+    content,
+    file_name: format === "vc_jwt" ? `omnia-learning-record-v${rebuilt.record.version}.jwt` : `omnia-learning-record-v${rebuilt.record.version}.json`,
+    media_type: format === "vc_jwt" ? "text/plain" : "application/vc+ld+json",
+    record: rebuilt.record,
+  };
 }
 
 async function learnerClr(sb: Supabase, session: Session) {
+  const sync = await syncPlatformSources(sb, session.userId);
   const rebuilt = await rebuildClr(sb, session.userId);
-  const { data: shares, error } = await sb.from("clr_shares").select("id,label,include_sections,visibility_filter,expires_at,revoked_at,created_at,last_accessed_at")
-    .eq("clr_record_id", rebuilt.record.id).order("created_at", { ascending: false });
-  if (error) throw error;
-  return { ...rebuilt, shares: shares || [] };
+  const [{ data: shares, error: shareError }, { data: imports, error: importError }] = await Promise.all([
+    sb.from("clr_shares").select("id,label,include_sections,visibility_filter,expires_at,revoked_at,created_at,last_accessed_at")
+      .eq("clr_record_id", rebuilt.record.id).order("created_at", { ascending: false }),
+    sb.from("clr_imports").select("id,source_format,source_file_name,source_issuer,credential_type,status,verification_result,imported_entries_count,review_note,created_at,reviewed_at")
+      .eq("clr_record_id", rebuilt.record.id).order("created_at", { ascending: false }),
+  ]);
+  if (shareError) throw shareError;
+  if (importError && !optionalRelationError(importError)) throw importError;
+  return { ...rebuilt, shares: shares || [], imports: imports || [], synced_entries: sync.synced_entries, sections: stringArray(rebuilt.record.section_order, 30, 80) };
 }
 
 async function revokeShare(sb: Supabase, session: Session, body: JsonRecord) {
@@ -1024,7 +1981,42 @@ async function revokeShare(sb: Supabase, session: Session, body: JsonRecord) {
   const record = await getOrCreateClr(sb, session.userId);
   const { error } = await sb.from("clr_shares").update({ revoked_at: new Date().toISOString() }).eq("id", shareId).eq("clr_record_id", record.id);
   if (error) throw error;
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: record.id, action: "share_revoked", metadata: { share_id: shareId } });
   return { success: true };
+}
+
+async function adminClrImports(sb: Supabase) {
+  const { data, error } = await sb.from("clr_imports")
+    .select("*,user:users!clr_imports_user_id_fkey(id,full_name,email),record:clr_records!clr_imports_record_id_fkey(id,record_uuid,title)")
+    .order("created_at", { ascending: false }).limit(500);
+  if (error) throw error;
+  return data || [];
+}
+
+async function adminReviewClrImport(sb: Supabase, session: Session, body: JsonRecord) {
+  const importId = text(body.import_id, 80);
+  const decision = text(body.decision, 20);
+  const note = nullableText(body.review_note, 1500);
+  if (!["approve", "reject"].includes(decision)) throw new Error("CLR_IMPORT_DECISION_INVALID");
+  const { data: current, error } = await sb.from("clr_imports").select("*").eq("id", importId).maybeSingle();
+  if (error) throw error;
+  if (!current) throw new Error("CLR_IMPORT_NOT_FOUND");
+  const approved = decision === "approve";
+  const { data: updated, error: updateError } = await sb.from("clr_imports").update({
+    status: approved ? "imported" : "rejected",
+    review_note: note,
+    reviewed_by: session.userId,
+    reviewed_at: new Date().toISOString(),
+  }).eq("id", importId).select("*").single();
+  if (updateError) throw updateError;
+  const { error: entriesError } = await sb.from("clr_achievements").update({
+    verification_status: approved ? "verified" : "rejected",
+    status: approved ? "active" : "hidden",
+  }).eq("clr_record_id", current.clr_record_id).eq("source_type", "clr_import").like("source_id", `${importId}:%`);
+  if (entriesError) throw entriesError;
+  await rebuildClr(sb, String(current.user_id));
+  await sb.from("clr_audit_logs").insert({ actor_user_id: session.userId, record_id: current.clr_record_id, action: approved ? "import_approved" : "import_rejected", metadata: { import_id: importId, note } });
+  return updated;
 }
 
 async function verifyOwnedBadge(sb: Supabase, session: Session, awardId: string, req: Request) {
@@ -1108,9 +2100,39 @@ Deno.serve(async (req: Request) => {
       requireSession(session);
       return json({ success: true, verification: await verifyOwnedBadge(sb, session, text(body.award_id, 80), req) });
     }
-    if (action === "learner_clr") {
+    if (action === "learner_clr" || action === "learner_sync_clr") {
       requireSession(session);
       return json({ success: true, ...(await learnerClr(sb, session)) });
+    }
+    if (action === "learner_update_clr_profile") {
+      requireSession(session);
+      return json({ success: true, record: await updateClrProfile(sb, session, body) });
+    }
+    if (action === "learner_save_clr_entry") {
+      requireSession(session);
+      return json({ success: true, entry: await saveManualClrEntry(sb, session, body) });
+    }
+    if (action === "learner_update_clr_entry") {
+      requireSession(session);
+      return json({ success: true, entry: await updateClrEntry(sb, session, body) });
+    }
+    if (action === "learner_delete_clr_entry") {
+      requireSession(session);
+      return json({ success: true, ...(await deleteClrEntry(sb, session, body)) });
+    }
+    if (action === "learner_import_clr") {
+      requireSession(session);
+      return json({ success: true, imported: await importClr(sb, session, body, req) });
+    }
+    if (action === "learner_export_clr") {
+      requireSession(session);
+      return json({ success: true, ...(await exportClr(sb, session, body, req)) });
+    }
+    if (action === "learner_verify_clr") {
+      requireSession(session);
+      const record = await getOrCreateClr(sb, session.userId);
+      if (!record.clr_jwt) throw new Error("CLR_NOT_SIGNED");
+      return json({ success: true, verification: (await verifyCompactClr(sb, String(record.clr_jwt), req, record)).result });
     }
     if (action === "learner_update_visibility") {
       requireSession(session);
@@ -1158,9 +2180,45 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_issue_badge") return json({ success: true, award: await issueBadge(sb, session, body, req) });
     if (action === "admin_revoke_badge") return json({ success: true, award: await revokeBadge(sb, session, body) });
     if (action === "admin_clr_records") {
-      const { data, error } = await sb.from("clr_records").select("*,user:users(id,full_name,email,avatar_url)").order("updated_at", { ascending: false });
+      const { data, error } = await sb.from("clr_records").select("*,user:users!clr_records_user_id_fkey(id,full_name,email,avatar_url,country_code)").order("updated_at", { ascending: false });
       if (error) throw error;
-      return json({ success: true, records: data || [] });
+      const recordIds = (data || []).map((item: JsonRecord) => String(item.id));
+      const { data: entries, error: entriesError } = recordIds.length
+        ? await sb.from("clr_achievements").select("clr_record_id,verification_status,status").in("clr_record_id", recordIds)
+        : { data: [], error: null };
+      if (entriesError) throw entriesError;
+      const counts = new Map<string, { total: number; verified: number; pending: number }>();
+      for (const item of entries || []) {
+        const key = String(item.clr_record_id);
+        const current = counts.get(key) || { total: 0, verified: 0, pending: 0 };
+        current.total += item.status === "hidden" ? 0 : 1;
+        current.verified += item.verification_status === "verified" && item.status !== "hidden" ? 1 : 0;
+        current.pending += item.verification_status === "pending_review" ? 1 : 0;
+        counts.set(key, current);
+      }
+      return json({ success: true, records: (data || []).map((item: JsonRecord) => ({ ...item, entry_counts: counts.get(String(item.id)) || { total: 0, verified: 0, pending: 0 } })) });
+    }
+    if (action === "admin_clr_imports") return json({ success: true, imports: await adminClrImports(sb) });
+    if (action === "admin_review_clr_import") return json({ success: true, imported: await adminReviewClrImport(sb, session, body) });
+    if (action === "admin_sync_clr") {
+      const userId = text(body.user_id, 80);
+      if (!userId) throw new Error("USER_NOT_FOUND");
+      const sync = await syncPlatformSources(sb, userId);
+      const rebuilt = await rebuildClr(sb, userId);
+      return json({ success: true, ...sync, ...rebuilt });
+    }
+    if (action === "admin_sign_clr") {
+      const userId = text(body.user_id, 80);
+      if (!userId) throw new Error("USER_NOT_FOUND");
+      return json({ success: true, ...(await signClr(sb, userId, session.userId, req)) });
+    }
+    if (action === "admin_verify_clr") {
+      const recordId = text(body.record_id, 80);
+      const { data: record, error } = await sb.from("clr_records").select("*").eq("id", recordId).maybeSingle();
+      if (error) throw error;
+      if (!record) throw new Error("CLR_NOT_FOUND");
+      if (!record.clr_jwt) throw new Error("CLR_NOT_SIGNED");
+      return json({ success: true, verification: (await verifyCompactClr(sb, String(record.clr_jwt), req, record as JsonRecord)).result });
     }
     throw new Error("UNKNOWN_ACTION");
   } catch (error) {
