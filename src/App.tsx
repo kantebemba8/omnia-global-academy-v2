@@ -31,6 +31,8 @@ import { ForcePasswordChange } from './pages/auth/ForcePasswordChange';
 import { DashboardApprenant } from './pages/dashboard/DashboardApprenant';
 import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
+import DashboardBadges from './pages/dashboard/DashboardBadges';
+import DashboardLearningRecord from './pages/dashboard/DashboardLearningRecord';
 import DashboardCareerStudio from './pages/dashboard/DashboardCareerStudio';
 import CareerStudioEditor from './pages/dashboard/CareerStudioEditor';
 import OmniaCareerStudio from './pages/OmniaCareerStudio';
@@ -88,6 +90,7 @@ import AdminMesFormations from './pages/admin/AdminMesFormations';
 import AdminStructures from './pages/admin/AdminStructures';
 import AdminStructureCodes from './pages/admin/AdminStructureCodes';
 import AdminStructureAvantages from './pages/admin/AdminStructureAvantages';
+import AdminCredentials from './pages/admin/AdminCredentials';
 import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
 import ProfessorCourseStart from './pages/studio/ProfessorCourseStart';
 import Checkout from './pages/Checkout';
@@ -95,6 +98,8 @@ import PaymentConfirmation from './pages/PaymentConfirmation';
 import PaymentFailed from './pages/PaymentFailed';
 import VerifyCertificate from './pages/VerifyCertificate';
 import CpdPage from './pages/CpdPage';
+import PublicBadgeVerification from './pages/credentials/PublicBadgeVerification';
+import PublicClrShare from './pages/credentials/PublicClrShare';
 import Forum from './pages/Forum';
 import ForumGeneral from './pages/ForumGeneral';
 import ForumPost from './pages/ForumPost';
@@ -348,6 +353,8 @@ export default function App() {
         <Route path="/accueil" element={<LandingPage />} />
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
           <Route path="/coaching" element={<CoachingCatalogue />} />
+          <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
+          <Route path="/credentials/clr/:shareToken" element={<PublicClrShare />} />
           <Route path="/coaching/coachs/:coachId" element={<CoachingCoachProfile />} />
           <Route path="/coaching/coachs/:coachId/reserver" element={<CoachingBooking />} />
           <Route path="/coaching/paiement/:sessionId" element={<CoachingPayment />} />
@@ -519,6 +526,13 @@ export default function App() {
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />
           <Route path="/admin/certificate-templates" element={<AdminCertificateTemplates />} />
           <Route path="/admin/certificate-preview" element={<AdminCertificatePreview />} />
+          <Route path="/admin/credentials" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/modeles" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/attributions" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/emetteurs" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/categories" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/clr" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/revocations" element={<AdminCredentials />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />
 <Route path="/admin/structure-codes" element={<AdminStructureCodes />} />
@@ -549,6 +563,8 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardApprenant />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
+        <Route path="/dashboard/badges" element={<DashboardBadges />} />
+        <Route path="/dashboard/learning-record" element={<DashboardLearningRecord />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />

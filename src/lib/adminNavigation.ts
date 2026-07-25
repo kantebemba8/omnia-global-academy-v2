@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap
+  Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -52,6 +52,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/certificate-templates', label: 'Modèles', icon: FileText },
       { path: '/admin/certificate-settings', label: 'Paramètres', icon: Settings },
       { path: '/admin/certificate-preview', label: 'Aperçu & Tests', icon: Eye },
+    ],
+  },
+  {
+    id: 'credentials',
+    label: 'Badges & Learning Records',
+    icon: BadgeCheck,
+    items: [
+      { path: '/admin/credentials', label: 'Gestion des credentials', icon: BadgeCheck },
     ],
   },
   {
