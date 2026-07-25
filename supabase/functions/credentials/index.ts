@@ -86,6 +86,15 @@ function requireAdmin(session: Session | null): asserts session is Session {
   if (!session?.roles.includes("super_admin")) throw new Error("FORBIDDEN");
 }
 
+function requireLearner(session: Session | null): asserts session is Session {
+  requireSession(session);
+  // Le Super Admin ne devient jamais apprenant pendant une prévisualisation,
+  // même si une ancienne donnée lui a attribué ce rôle par erreur.
+  if (session.roles.includes("super_admin") || !session.roles.includes("apprenant")) {
+    throw new Error("LEARNER_ROLE_REQUIRED");
+  }
+}
+
 async function audit(sb: Supabase, actorUserId: string, action: string, entityType: string, entityId: string | null, previousData: unknown, newData: unknown, metadata: JsonRecord = {}) {
   await sb.from("badge_audit_logs").insert({
     actor_user_id: actorUserId,
@@ -129,10 +138,18 @@ function functionBaseUrl(req: Request): string {
 
 function parseJwkSecret(name: string): JsonRecord | null {
   const raw = Deno.env.get(name);
-  if (!raw) return null;
+  if (!raw?.trim()) return null;
+
+  let candidate = raw.trim();
+  if (candidate.startsWith(`${name}=`)) candidate = candidate.slice(name.length + 1).trim();
+
   try {
-    const parsed = JSON.parse(raw) as JsonRecord;
-    return parsed && typeof parsed === "object" ? parsed : null;
+    let parsed: unknown = JSON.parse(candidate);
+    // Le Dashboard Supabase peut recevoir accidentellement un JSON entouré de
+    // guillemets. On accepte ce format sans affaiblir la validation du JWK.
+    if (typeof parsed === "string") parsed = JSON.parse(parsed.trim());
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("INVALID_OBJECT");
+    return parsed as JsonRecord;
   } catch {
     throw new Error(`${name}_INVALID_JSON`);
   }
@@ -533,6 +550,36 @@ async function publicClr(sb: Supabase, token: string, req: Request) {
       sort_order: row.sort_order || 0,
     })),
   };
+}
+
+async function uploadBadgeTemplateImage(sb: Supabase, session: Session, body: JsonRecord) {
+  const mimeType = text(body.mime_type, 100).toLowerCase();
+  const fileName = text(body.file_name, 240);
+  const encoded = text(body.base64, 8_000_000).replace(/^data:[^;]+;base64,/, "");
+  const allowed: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+  };
+  const extension = allowed[mimeType];
+  if (!fileName || !encoded || !extension) throw new Error("BADGE_IMAGE_INVALID");
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  } catch {
+    throw new Error("BADGE_IMAGE_INVALID_BASE64");
+  }
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error("BADGE_IMAGE_TOO_LARGE");
+  const storagePath = `badge-templates/${session.userId}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await sb.storage.from("credential-assets").upload(storagePath, bytes, {
+    contentType: mimeType,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = sb.storage.from("credential-assets").getPublicUrl(storagePath);
+  if (!data.publicUrl) throw new Error("BADGE_IMAGE_PUBLIC_URL_UNAVAILABLE");
+  return { url: data.publicUrl, storage_path: storagePath };
 }
 
 async function saveTemplate(sb: Supabase, session: Session, body: JsonRecord) {
@@ -1667,16 +1714,17 @@ async function updateClrProfile(sb: Supabase, session: Session, body: JsonRecord
   const hidden = stringArray(body.hidden_sections, CLR_SECTIONS.length, 80).filter((value) => CLR_SECTIONS.includes(value));
   const visibility = text(body.default_visibility, 30) || String(record.default_visibility || "oga");
   if (!["private","oga","recruiters","structure","public"].includes(visibility)) throw new Error("INVALID_VISIBILITY");
-  const { data, error } = await sb.from("clr_records").update({
-    title: text(body.title, 240) || "Omnia Learning Record",
-    description: nullableText(body.description, 3000),
-    profile_headline: nullableText(body.profile_headline, 300),
-    summary: nullableText(body.summary, 4000),
-    language_code: text(body.language_code, 10) || "fr",
+  const update: JsonRecord = {
+    title: body.title === undefined ? String(record.title || "Omnia Learning Record") : (text(body.title, 240) || "Omnia Learning Record"),
+    description: body.description === undefined ? record.description : nullableText(body.description, 3000),
+    profile_headline: body.profile_headline === undefined ? record.profile_headline : nullableText(body.profile_headline, 300),
+    summary: body.summary === undefined ? record.summary : nullableText(body.summary, 4000),
+    language_code: body.language_code === undefined ? String(record.language_code || "fr") : (text(body.language_code, 10) || "fr"),
     default_visibility: visibility,
-    section_order: order.length ? order : CLR_SECTIONS,
-    hidden_sections: hidden,
-  }).eq("id", record.id).select("*").single();
+    section_order: body.section_order === undefined ? (jsonArray(record.section_order).map(String).filter(Boolean).length ? record.section_order : CLR_SECTIONS) : (order.length ? order : CLR_SECTIONS),
+    hidden_sections: body.hidden_sections === undefined ? (record.hidden_sections || []) : hidden,
+  };
+  const { data, error } = await sb.from("clr_records").update(update).eq("id", record.id).select("*").single();
   if (error) throw error;
   await invalidateClrSignature(sb, String(record.id));
   return data;
@@ -1854,7 +1902,7 @@ async function exportClr(sb: Supabase, session: Session, body: JsonRecord, req: 
   return {
     format,
     content,
-    file_name: format === "vc_jwt" ? `omnia-clr-${record.record_uuid}.jwt` : `omnia-clr-${record.record_uuid}.json`,
+    file_name: format === "vc_jwt" ? `omnia-clr-${record.record_uuid}.jwt` : `omnia-clr-${record.record_uuid}.jsonld`,
     media_type: format === "vc_jwt" ? "application/vc+jwt" : "application/ld+json",
     record,
   };
@@ -1986,17 +2034,21 @@ async function updateSkillsPassportItems(sb: Supabase, session: Session, body: J
 
 async function updateSkillsPassportProfile(sb: Supabase, session: Session, body: JsonRecord) {
   const passport = await ensureSkillsPassport(sb, session.userId);
-  const sections = stringArray(body.selected_sections, PASSPORT_SECTIONS.length, 80)
+  const submittedSections = stringArray(body.selected_sections, PASSPORT_SECTIONS.length, 80)
+    .filter((value) => PASSPORT_SECTIONS.includes(value));
+  const existingSections = stringArray(passport.selected_sections, PASSPORT_SECTIONS.length, 80)
     .filter((value) => PASSPORT_SECTIONS.includes(value));
   const { data, error } = await sb.from("skills_passports").update({
-    title: text(body.title, 240) || "Omnia Skills Passport",
-    professional_headline: nullableText(body.professional_headline, 300),
-    professional_summary: nullableText(body.professional_summary, 4000),
-    target_roles: stringArray(body.target_roles, 20, 120),
-    languages: stringArray(body.languages, 20, 80),
-    location_text: nullableText(body.location_text, 240),
-    availability_text: nullableText(body.availability_text, 240),
-    selected_sections: sections.length ? sections : PASSPORT_SECTIONS,
+    title: body.title === undefined ? String(passport.title || "Omnia Skills Passport") : (text(body.title, 240) || "Omnia Skills Passport"),
+    professional_headline: body.professional_headline === undefined ? passport.professional_headline : nullableText(body.professional_headline, 300),
+    professional_summary: body.professional_summary === undefined ? passport.professional_summary : nullableText(body.professional_summary, 4000),
+    target_roles: body.target_roles === undefined ? (passport.target_roles || []) : stringArray(body.target_roles, 20, 120),
+    languages: body.languages === undefined ? (passport.languages || []) : stringArray(body.languages, 20, 80),
+    location_text: body.location_text === undefined ? passport.location_text : nullableText(body.location_text, 240),
+    availability_text: body.availability_text === undefined ? passport.availability_text : nullableText(body.availability_text, 240),
+    selected_sections: body.selected_sections === undefined
+      ? (existingSections.length ? existingSections : PASSPORT_SECTIONS)
+      : (submittedSections.length ? submittedSections : PASSPORT_SECTIONS),
     status: "draft",
     presentation_jwt: null,
     signing_key_id: null,
@@ -2191,7 +2243,7 @@ async function exportSkillsPassport(sb: Supabase, session: Session, body: JsonRe
   return {
     format,
     content,
-    file_name: format === "vc_jwt" ? `omnia-skills-passport-${built.passport.passport_uuid}.jwt` : `omnia-skills-passport-${built.passport.passport_uuid}.json`,
+    file_name: format === "vc_jwt" ? `omnia-skills-passport-${built.passport.passport_uuid}.jwt` : `omnia-skills-passport-${built.passport.passport_uuid}.jsonld`,
     media_type: format === "vc_jwt" ? "application/vc+jwt" : "application/ld+json",
     passport: built.passport,
   };
@@ -2256,7 +2308,7 @@ async function publicSkillsPassport(sb: Supabase, token: string, req: Request) {
 
 async function adminSkillsPassports(sb: Supabase) {
   const { data, error } = await sb.from("skills_passports")
-    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,email,country_code)")
+    .select("*,user:users!skills_passports_user_id_fkey(id,full_name,country_code)")
     .order("updated_at", { ascending: false });
   if (error) throw error;
   const rows = data || [];
@@ -2353,87 +2405,87 @@ Deno.serve(async (req: Request) => {
     if (action === "public_signing_keys") return json({ success: true, keys: await activePublicKeys(sb) });
 
     if (action === "learner_badges") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, badges: await awardRows(sb, session.userId), templates: await templateRows(sb, false) });
     }
     if (action === "learner_verify_badge") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, verification: await verifyOwnedBadge(sb, session, text(body.award_id, 80), req) });
     }
     if (action === "learner_clr") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await learnerClrComplete(sb, session)) });
     }
     if (action === "learner_sync_clr") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await learnerClrComplete(sb, session, true)) });
     }
     if (action === "learner_update_clr_entry") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, entry: await updateClrEntry(sb, session, body) });
     }
     if (action === "learner_save_clr_entry") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, entry: await saveClrEntry(sb, session, body) });
     }
     if (action === "learner_delete_clr_entry") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await deleteClrEntry(sb, session, body)) });
     }
     if (action === "learner_update_clr_profile") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, record: await updateClrProfile(sb, session, body) });
     }
     if (action === "learner_import_clr") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, import: await importClr(sb, session, body) });
     }
     if (action === "learner_export_clr") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await exportClr(sb, session, body, req)) });
     }
     if (action === "learner_update_visibility") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await updateVisibility(sb, session, body)) });
     }
     if (action === "learner_create_clr_share") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, share: await createClrShare(sb, session, body) });
     }
     if (action === "learner_revoke_clr_share") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await revokeShare(sb, session, body)) });
     }
     if (action === "learner_skills_passport") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await learnerSkillsPassport(sb, session)) });
     }
     if (action === "learner_update_skills_passport_items") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await updateSkillsPassportItems(sb, session, body)) });
     }
     if (action === "learner_update_skills_passport_profile") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, passport: await updateSkillsPassportProfile(sb, session, body) });
     }
     if (action === "learner_publish_skills_passport") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await publishSkillsPassport(sb, session, req)) });
     }
     if (action === "learner_verify_skills_passport") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, verification: await verifyOwnedSkillsPassport(sb, session, req) });
     }
     if (action === "learner_export_skills_passport") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await exportSkillsPassport(sb, session, body, req)) });
     }
     if (action === "learner_create_skills_passport_share") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, share: await createSkillsPassportShare(sb, session, body) });
     }
     if (action === "learner_revoke_skills_passport_share") {
-      requireSession(session);
+      requireLearner(session);
       return json({ success: true, ...(await revokeSkillsPassportShare(sb, session, body)) });
     }
 
@@ -2459,6 +2511,7 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, verification: await verifyCompactCredential(sb, String(award.credential_jwt), req, award, "admin") });
     }
     if (action === "admin_templates") return json({ success: true, templates: await templateRows(sb), categories: (await sb.from("badge_categories").select("*").order("display_order")).data || [], levels: (await sb.from("badge_levels").select("*").order("rank")).data || [], issuers: (await sb.from("credential_issuers").select("*").order("name")).data || [] });
+    if (action === "admin_upload_badge_image") return json({ success: true, ...(await uploadBadgeTemplateImage(sb, session, body)) });
     if (action === "admin_save_template") return json({ success: true, template: await saveTemplate(sb, session, body) });
     if (action === "admin_categories") return json({ success: true, categories: (await sb.from("badge_categories").select("*").order("display_order")).data || [] });
     if (action === "admin_save_category") return json({ success: true, category: await saveCategory(sb, session, body) });
@@ -2501,7 +2554,7 @@ Deno.serve(async (req: Request) => {
     throw new Error("UNKNOWN_ACTION");
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "FORBIDDEN" ? 403 : message.endsWith("_NOT_FOUND") ? 404 : 400;
+    const status = message === "UNAUTHENTICATED" ? 401 : ["FORBIDDEN","LEARNER_ROLE_REQUIRED"].includes(message) ? 403 : message.endsWith("_NOT_FOUND") ? 404 : 400;
     return json({ success: false, error: message }, status);
   }
 });
