@@ -1,16 +1,16 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, KeyRound, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, KeyRound, Plus, RefreshCw, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import AdminCredentialsManagementLayout from '../../components/admin/AdminCredentialsManagementLayout';
 import {
-  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrImport, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification,
+  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrImport, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification, SkillsPassport,
   credentialStatusLabel, credentialsRequest,
 } from '../../lib/credentialsApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
-type Section = 'overview' | 'templates' | 'awards' | 'issuers' | 'signatures' | 'taxonomy' | 'clr' | 'revocations';
+type Section = 'overview' | 'templates' | 'awards' | 'issuers' | 'signatures' | 'taxonomy' | 'clr' | 'passports' | 'revocations';
 type Metrics = { templates: number; awards: number; pending_reviews: number; active_issuers: number; clr_records: number; signed_awards: number };
 
 type TemplateDraft = Partial<BadgeTemplate> & { source_types_text?: string };
@@ -24,6 +24,7 @@ function sectionFromPath(path: string): Section {
   if (path.includes('/emetteurs')) return 'issuers';
   if (path.includes('/signatures')) return 'signatures';
   if (path.includes('/categories')) return 'taxonomy';
+  if (path.includes('/passports')) return 'passports';
   if (path.includes('/clr')) return 'clr';
   if (path.includes('/revocations')) return 'revocations';
   return 'overview';
@@ -40,6 +41,7 @@ export default function AdminCredentials() {
   const [levels, setLevels] = useState<BadgeLevel[]>([]);
   const [records, setRecords] = useState<ClrRecord[]>([]);
   const [clrImports, setClrImports] = useState<ClrImport[]>([]);
+  const [passports, setPassports] = useState<SkillsPassport[]>([]);
   const [signing, setSigning] = useState<CredentialSigningStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,7 +57,7 @@ export default function AdminCredentials() {
   async function load() {
     setLoading(true); setError('');
     try {
-      const [overview, templateData, awardData, issuerData, recordData, importData, signingData] = await Promise.all([
+      const [overview, templateData, awardData, issuerData, recordData, importData, signingData, passportData] = await Promise.all([
         credentialsRequest<{ success: true; metrics: Metrics }>('admin_overview'),
         credentialsRequest<{ success: true; templates: BadgeTemplate[]; categories: BadgeCategory[]; levels: BadgeLevel[]; issuers: CredentialIssuer[] }>('admin_templates'),
         credentialsRequest<{ success: true; awards: BadgeAward[] }>('admin_awards'),
@@ -63,9 +65,10 @@ export default function AdminCredentials() {
         credentialsRequest<{ success: true; records: ClrRecord[] }>('admin_clr_records'),
         credentialsRequest<{ success: true; imports: ClrImport[] }>('admin_clr_imports'),
         credentialsRequest<{ success: true; signing: CredentialSigningStatus }>('admin_signing_status'),
+        credentialsRequest<{ success: true; passports: SkillsPassport[] }>('admin_skills_passports'),
       ]);
       setMetrics(overview.metrics); setTemplates(templateData.templates); setCategories(templateData.categories); setLevels(templateData.levels);
-      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setClrImports(importData.imports); setSigning(signingData.signing);
+      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setClrImports(importData.imports); setSigning(signingData.signing); setPassports(passportData.passports);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Gestion des credentials indisponible.'); }
     finally { setLoading(false); }
   }
@@ -86,6 +89,7 @@ export default function AdminCredentials() {
       {section === 'signatures' && <SigningPanel signing={signing} awards={awards} onNotice={setNotice} onReload={load} />}
       {section === 'taxonomy' && <Taxonomy categories={categories} levels={levels} onCategory={() => setCategoryDraft({ category_type: 'achievement', is_active: true })} onLevel={() => setLevelDraft({ is_active: true, color: BLUE })} onEditCategory={setCategoryDraft} onEditLevel={setLevelDraft} />}
       {section === 'clr' && <ClrRecords records={records} imports={clrImports} signingConfigured={Boolean(signing?.configured)} onNotice={setNotice} onReload={load} />}
+      {section === 'passports' && <PassportsPanel passports={passports} onNotice={setNotice} onReload={load} />}
       {section === 'revocations' && <Awards awards={awards.filter(award => award.status === 'revoked')} query={query} setQuery={setQuery} onIssue={() => setIssueOpen(true)} onRevoke={setRevokeAward} hideIssue />}
     </>}
     {templateDraft && <TemplateModal draft={templateDraft} issuers={issuers} categories={categories} levels={levels} onClose={() => setTemplateDraft(null)} onDone={async message => { setTemplateDraft(null); setNotice(message); await load(); }} />}
@@ -181,6 +185,37 @@ function ClrRecords({ records, imports, signingConfigured, onNotice, onReload }:
 
 function ClrMetric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) { return <div className="border-r p-4 last:border-r-0" style={{ borderColor: BORDER }}><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 text-xl font-semibold ${warning ? 'text-amber-700' : ''}`} style={warning ? undefined : { color: BLUE }}>{value}</p></div>; }
 function humanClrError(value: string) { return ({ SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.', CLR_NOT_SIGNED: 'Ce Learning Record doit d’abord être signé.', CLR_IMPORT_NOT_FOUND: 'Cet import est introuvable.', CLR_IMPORT_DECISION_INVALID: 'La décision de contrôle est invalide.' } as Record<string, string>)[value] || value; }
+
+function PassportsPanel({ passports, onNotice, onReload }: { passports: SkillsPassport[]; onNotice: (message: string) => void; onReload: () => Promise<void> }) {
+  const [working, setWorking] = useState('');
+  const [error, setError] = useState('');
+  const [verification, setVerification] = useState<{ id: string; result: CredentialVerification } | null>(null);
+
+  async function verify(passport: SkillsPassport) {
+    setWorking(passport.id); setError('');
+    try {
+      const response = await credentialsRequest<{ success: true; verification: CredentialVerification }>('admin_verify_skills_passport', { passport_id: passport.id });
+      setVerification({ id: passport.id, result: response.verification });
+      onNotice(response.verification.overall_valid ? 'Skills Passport vérifié.' : 'La vérification a détecté une anomalie.');
+      await onReload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Vérification impossible.'); }
+    finally { setWorking(''); }
+  }
+
+  return <div className="mt-6 space-y-6">
+    <section className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
+      <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-3" style={{ color: GOLD }}><Sparkles size={22} /></span><div><h2 className="font-semibold" style={{ color: BLUE }}>Omnia Skills Passport</h2><p className="mt-1 max-w-3xl text-sm text-slate-500">Contrôle des passeports professionnels publiés à partir des Learning Records. Le Super Admin vérifie la signature sans modifier la sélection de l’apprenant.</p></div></div>
+      <div className="mt-5 grid gap-4 sm:grid-cols-3"><Metric label="Passeports" value={passports.length} /><Metric label="Publiés" value={passports.filter(item => item.status === 'published').length} /><Metric label="Liens actifs" value={passports.reduce((sum, item) => sum + Number(item.active_share_count || 0), 0)} /></div>
+      {error && <Message kind="error" text={error} />}
+    </section>
+    <section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}>
+      <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Titulaire</th><th className="px-4 py-3">Passeport</th><th className="px-4 py-3">Contenu</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3">Vérification</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y">
+        {passports.map(passport => { const result = verification?.id === passport.id ? verification.result : passport.verification_result as CredentialVerification | undefined; return <tr key={passport.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.user?.full_name || 'Apprenant'}</p><p className="text-xs text-slate-500">{passport.user?.email || '—'}</p></td><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{passport.title}</p><p className="text-xs text-slate-500">Version {passport.version}{passport.published_at ? ` · ${new Date(passport.published_at).toLocaleDateString('fr-FR')}` : ''}</p></td><td className="px-4 py-4 text-xs text-slate-600">{passport.item_count || 0} élément(s)<br />{passport.active_share_count || 0} lien(s) actif(s)</td><td className="px-4 py-4"><Status value={passport.status} /></td><td className="px-4 py-4 text-xs">{result?.checked_at ? <span className={result.overall_valid ? 'text-green-700' : 'text-red-700'}>{result.overall_valid ? 'Valide' : result.error_code || 'Invalide'}<br />{new Date(result.checked_at).toLocaleString('fr-FR')}</span> : 'Jamais vérifié'}</td><td className="px-4 py-4 text-right"><button disabled={working === passport.id || !passport.presentation_jwt} onClick={() => void verify(passport)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ color: BLUE }}>Vérifier</button></td></tr>; })}
+        {passports.length === 0 && <tr><td colSpan={6}><Empty text="Aucun Skills Passport créé." /></td></tr>}
+      </tbody></table></div>
+    </section>
+  </div>;
+}
 
 function SigningPanel({ signing, awards, onNotice, onReload }: { signing: CredentialSigningStatus | null; awards: BadgeAward[]; onNotice: (message: string) => void; onReload: () => Promise<void> }) {
   const [working, setWorking] = useState('');

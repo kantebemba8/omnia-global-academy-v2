@@ -33,6 +33,7 @@ import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
 import DashboardBadges from './pages/dashboard/DashboardBadges';
 import DashboardLearningRecord from './pages/dashboard/DashboardLearningRecord';
+import DashboardSkillsPassport from './pages/dashboard/DashboardSkillsPassport';
 import DashboardCareerStudio from './pages/dashboard/DashboardCareerStudio';
 import CareerStudioEditor from './pages/dashboard/CareerStudioEditor';
 import OmniaCareerStudio from './pages/OmniaCareerStudio';
@@ -100,6 +101,7 @@ import VerifyCertificate from './pages/VerifyCertificate';
 import CpdPage from './pages/CpdPage';
 import PublicBadgeVerification from './pages/credentials/PublicBadgeVerification';
 import PublicClrShare from './pages/credentials/PublicClrShare';
+import PublicSkillsPassport from './pages/credentials/PublicSkillsPassport';
 import Forum from './pages/Forum';
 import ForumGeneral from './pages/ForumGeneral';
 import ForumPost from './pages/ForumPost';
@@ -355,6 +357,7 @@ export default function App() {
           <Route path="/coaching" element={<CoachingCatalogue />} />
           <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
           <Route path="/credentials/clr/:shareToken" element={<PublicClrShare />} />
+          <Route path="/credentials/passports/:shareToken" element={<PublicSkillsPassport />} />
           <Route path="/coaching/coachs/:coachId" element={<CoachingCoachProfile />} />
           <Route path="/coaching/coachs/:coachId/reserver" element={<CoachingBooking />} />
           <Route path="/coaching/paiement/:sessionId" element={<CoachingPayment />} />
@@ -533,6 +536,7 @@ export default function App() {
           <Route path="/admin/credentials/signatures" element={<AdminCredentials />} />
           <Route path="/admin/credentials/categories" element={<AdminCredentials />} />
           <Route path="/admin/credentials/clr" element={<AdminCredentials />} />
+          <Route path="/admin/credentials/passports" element={<AdminCredentials />} />
           <Route path="/admin/credentials/revocations" element={<AdminCredentials />} />
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />
@@ -566,6 +570,7 @@ export default function App() {
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
         <Route path="/dashboard/badges" element={<DashboardBadges />} />
         <Route path="/dashboard/learning-record" element={<DashboardLearningRecord />} />
+        <Route path="/dashboard/skills-passport" element={<DashboardSkillsPassport />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />

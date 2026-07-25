@@ -254,6 +254,105 @@ export type LearnerClrResponse = {
   synced_entries: number;
 };
 
+export type SkillsPassportStatus = 'draft' | 'published' | 'suspended' | 'archived';
+
+export type SkillsPassport = {
+  id: string;
+  passport_uuid: string;
+  user_id?: string;
+  clr_record_id?: string;
+  title: string;
+  professional_headline?: string | null;
+  professional_summary?: string | null;
+  target_roles: string[];
+  languages: string[];
+  location_text?: string | null;
+  availability_text?: string | null;
+  selected_sections: string[];
+  status: SkillsPassportStatus;
+  version: number;
+  presentation_json?: Record<string, unknown>;
+  presentation_jwt?: string | null;
+  signature_alg?: string | null;
+  credential_hash?: string | null;
+  verification_result?: CredentialVerification | Record<string, unknown>;
+  published_at?: string | null;
+  last_built_at?: string | null;
+  updated_at?: string | null;
+  item_count?: number;
+  active_share_count?: number;
+  user?: { id?: string; full_name?: string; email?: string; avatar_url?: string | null; country_code?: string | null } | null;
+};
+
+export type SkillsPassportItem = {
+  id: string;
+  passport_id: string;
+  clr_achievement_id: string;
+  display_order: number;
+  is_featured: boolean;
+  achievement?: ClrAchievement | null;
+};
+
+export type SkillsPassportShare = {
+  id: string;
+  label?: string | null;
+  expires_at?: string | null;
+  max_views?: number | null;
+  view_count: number;
+  last_accessed_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+  url?: string;
+  token?: string;
+};
+
+export type LearnerSkillsPassportResponse = {
+  success: true;
+  passport: SkillsPassport;
+  items: SkillsPassportItem[];
+  candidates: ClrAchievement[];
+  shares: SkillsPassportShare[];
+  allowed_sections: string[];
+};
+
+export type SkillsPassportExportResponse = {
+  success: true;
+  format: 'passport_json' | 'vc_jwt';
+  content: Record<string, unknown> | string;
+  file_name: string;
+  media_type: string;
+  passport: SkillsPassport;
+};
+
+export type PublicSkillsPassportResponse = {
+  success: true;
+  passport: SkillsPassport;
+  share: Pick<SkillsPassportShare, 'label' | 'expires_at' | 'max_views' | 'view_count'>;
+  items: Array<{
+    id: string;
+    clr_achievement_id?: string;
+    section: string;
+    title: string;
+    description?: string | null;
+    achievement_type?: string;
+    issued_at?: string | null;
+    started_at?: string | null;
+    ended_at?: string | null;
+    result_label?: string | null;
+    score?: number | null;
+    score_max?: number | null;
+    skills: string[];
+    evidence: Array<Record<string, unknown>>;
+    external_url?: string | null;
+    issuer_name?: string | null;
+    verification_status: ClrAchievement['verification_status'];
+    entry_origin: ClrAchievement['entry_origin'];
+    is_featured: boolean;
+    display_order: number;
+  }>;
+  verification: CredentialVerification;
+};
+
 export async function credentialsRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}/credentials`, {
     method: 'POST',
@@ -278,7 +377,7 @@ export function credentialStatusLabel(value: string): string {
     awarded: 'Actif', active: 'Actif', pending: 'En attente', expired: 'Expiré', revoked: 'Révoqué', suspended: 'Suspendu',
     hidden: 'Masqué', verified: 'Vérifié', declared: 'Déclaré', pending_review: 'À vérifier', rejected: 'Refusé',
     imported: 'Importé', failed: 'Échec', internal_record: 'Dossier interne', clr2_draft: 'CLR 2.0 prêt', clr2_signed: 'CLR 2.0 signé',
-    ob3_draft: 'Open Badge prêt', ob3_signed: 'Open Badge signé',
+    ob3_draft: 'Open Badge prêt', ob3_signed: 'Open Badge signé', draft: 'Brouillon', published: 'Publié', archived: 'Archivé',
   } as Record<string, string>)[value] || value;
 }
 

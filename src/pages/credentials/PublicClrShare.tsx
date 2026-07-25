@@ -120,7 +120,7 @@ export default function PublicClrShare() {
 
             <main className="mt-6 space-y-6">
               {sections.map(([section, items]) => {
-                const meta = SECTION_META[section] || { label: section.replaceAll('_', ' '), icon: FileCheck2 };
+                const meta = SECTION_META[section] || { label: section.replace(/_/g, ' '), icon: FileCheck2 };
                 const Icon = meta.icon;
                 return <section key={section} className="overflow-hidden rounded-2xl border bg-white" style={{ borderColor: BORDER }}>
                   <div className="flex items-center gap-3 border-b p-5" style={{ borderColor: BORDER }}>

@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle, Award, BadgeCheck, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, Copy, Download,
   Eye, EyeOff, FileCheck2, FolderOpen, GraduationCap, Link2, MessageSquare, Pencil, Plus, Radio,
-  RefreshCw, Save, Settings2, ShieldCheck, Star, Trash2, Upload, Users, X,
+  RefreshCw, Save, Settings2, ShieldCheck, Sparkles, Star, Trash2, Upload, Users, X,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import {
@@ -171,6 +172,7 @@ export default function DashboardLearningRecord() {
         <p className="mt-2 max-w-3xl text-sm text-slate-500">Votre dossier portable de formations, compétences, badges, certificats, coaching, projets, expériences et recommandations.</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Link to="/dashboard/skills-passport" className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Sparkles size={15} /> Skills Passport</Link>
         <button disabled={Boolean(working)} onClick={() => void load('learner_sync_clr', 'Toutes les sources Omnia ont été synchronisées.')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={15} className={working ? 'animate-spin' : ''} /> Synchroniser</button>
         <button disabled={Boolean(working)} onClick={() => void exportRecord('clr_json')} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: GOLD, color: GOLD }}><Download size={15} /> JSON-LD</button>
         <button disabled={Boolean(working)} onClick={() => void exportRecord('vc_jwt')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><ShieldCheck size={15} /> Export signé</button>
@@ -247,7 +249,7 @@ export default function DashboardLearningRecord() {
 }
 
 function ClrSection({ section, items, working, onEdit, onAction }: { section: string; items: ClrAchievement[]; working: string; onEdit: (item: ClrAchievement) => void; onAction: (label: string, action: string, payload: Record<string, unknown>, success: string) => void }) {
-  const meta = SECTION_META[section] || { label: section.replaceAll('_', ' '), description: '', icon: FileCheck2 };
+  const meta = SECTION_META[section] || { label: section.replace(/_/g, ' '), description: '', icon: FileCheck2 };
   const Icon = meta.icon;
   return <section className="overflow-hidden rounded-2xl border bg-white" style={{ borderColor: BORDER }}>
     <div className="flex items-start gap-3 border-b p-4" style={{ borderColor: BORDER }}><span className="rounded-lg bg-slate-50 p-2" style={{ color: GOLD }}><Icon size={19} /></span><div><h3 className="font-semibold" style={{ color: BLUE }}>{meta.label}</h3><p className="text-xs text-slate-500">{meta.description}</p></div><span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{items.length}</span></div>
