@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { AlertTriangle, Award, BadgeCheck, Building2, CheckCircle2, ExternalLink, FileCheck2, KeyRound, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import AdminCredentialsManagementLayout from '../../components/admin/AdminCredentialsManagementLayout';
 import {
-  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification,
+  BadgeAward, BadgeCategory, BadgeLevel, BadgeTemplate, ClrImport, ClrRecord, CredentialIssuer, CredentialSigningStatus, CredentialVerification,
   credentialStatusLabel, credentialsRequest,
 } from '../../lib/credentialsApi';
 
@@ -39,6 +39,7 @@ export default function AdminCredentials() {
   const [categories, setCategories] = useState<BadgeCategory[]>([]);
   const [levels, setLevels] = useState<BadgeLevel[]>([]);
   const [records, setRecords] = useState<ClrRecord[]>([]);
+  const [clrImports, setClrImports] = useState<ClrImport[]>([]);
   const [signing, setSigning] = useState<CredentialSigningStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,16 +55,17 @@ export default function AdminCredentials() {
   async function load() {
     setLoading(true); setError('');
     try {
-      const [overview, templateData, awardData, issuerData, recordData, signingData] = await Promise.all([
+      const [overview, templateData, awardData, issuerData, recordData, importData, signingData] = await Promise.all([
         credentialsRequest<{ success: true; metrics: Metrics }>('admin_overview'),
         credentialsRequest<{ success: true; templates: BadgeTemplate[]; categories: BadgeCategory[]; levels: BadgeLevel[]; issuers: CredentialIssuer[] }>('admin_templates'),
         credentialsRequest<{ success: true; awards: BadgeAward[] }>('admin_awards'),
         credentialsRequest<{ success: true; issuers: CredentialIssuer[] }>('admin_issuers'),
         credentialsRequest<{ success: true; records: ClrRecord[] }>('admin_clr_records'),
+        credentialsRequest<{ success: true; imports: ClrImport[] }>('admin_clr_imports'),
         credentialsRequest<{ success: true; signing: CredentialSigningStatus }>('admin_signing_status'),
       ]);
       setMetrics(overview.metrics); setTemplates(templateData.templates); setCategories(templateData.categories); setLevels(templateData.levels);
-      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setSigning(signingData.signing);
+      setIssuers(issuerData.issuers.length ? issuerData.issuers : templateData.issuers); setAwards(awardData.awards); setRecords(recordData.records); setClrImports(importData.imports); setSigning(signingData.signing);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Gestion des credentials indisponible.'); }
     finally { setLoading(false); }
   }
@@ -83,7 +85,7 @@ export default function AdminCredentials() {
       {section === 'issuers' && <Issuers issuers={issuers} onCreate={() => setIssuerDraft({ issuer_type: 'external', status: 'draft' })} onEdit={setIssuerDraft} />}
       {section === 'signatures' && <SigningPanel signing={signing} awards={awards} onNotice={setNotice} onReload={load} />}
       {section === 'taxonomy' && <Taxonomy categories={categories} levels={levels} onCategory={() => setCategoryDraft({ category_type: 'achievement', is_active: true })} onLevel={() => setLevelDraft({ is_active: true, color: BLUE })} onEditCategory={setCategoryDraft} onEditLevel={setLevelDraft} />}
-      {section === 'clr' && <ClrRecords records={records} />}
+      {section === 'clr' && <ClrRecords records={records} imports={clrImports} signingConfigured={Boolean(signing?.configured)} onNotice={setNotice} onReload={load} />}
       {section === 'revocations' && <Awards awards={awards.filter(award => award.status === 'revoked')} query={query} setQuery={setQuery} onIssue={() => setIssueOpen(true)} onRevoke={setRevokeAward} hideIssue />}
     </>}
     {templateDraft && <TemplateModal draft={templateDraft} issuers={issuers} categories={categories} levels={levels} onClose={() => setTemplateDraft(null)} onDone={async message => { setTemplateDraft(null); setNotice(message); await load(); }} />}
@@ -122,7 +124,63 @@ function Issuers({ issuers, onCreate, onEdit }: { issuers: CredentialIssuer[]; o
 
 function Taxonomy({ categories, levels, onCategory, onLevel, onEditCategory, onEditLevel }: { categories: BadgeCategory[]; levels: BadgeLevel[]; onCategory: () => void; onLevel: () => void; onEditCategory: (category: BadgeCategory) => void; onEditLevel: (level: BadgeLevel) => void }) { return <div className="mt-6 grid gap-6 lg:grid-cols-2"><section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="flex items-center justify-between border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Catégories</h2><button onClick={onCategory} className="text-sm font-semibold" style={{ color: GOLD }}>Ajouter</button></div><div className="divide-y">{categories.map(category => <button key={category.id} onClick={() => onEditCategory(category)} className="flex w-full items-center justify-between gap-3 p-4 text-left"><div><p className="font-semibold" style={{ color: BLUE }}>{category.name}</p><p className="text-xs text-slate-500">{category.category_type}</p></div><Status value={category.is_active ? 'active' : 'inactive'} /></button>)}</div></section><section className="rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="flex items-center justify-between border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Niveaux</h2><button onClick={onLevel} className="text-sm font-semibold" style={{ color: GOLD }}>Ajouter</button></div><div className="divide-y">{levels.map(level => <button key={level.id} onClick={() => onEditLevel(level)} className="flex w-full items-center justify-between gap-3 p-4 text-left"><div className="flex items-center gap-3"><span className="h-4 w-4 rounded-full" style={{ background: level.color }} /><div><p className="font-semibold" style={{ color: BLUE }}>{level.name}</p><p className="text-xs text-slate-500">Rang {level.rank}</p></div></div><Status value={level.is_active ? 'active' : 'inactive'} /></button>)}</div></section></div>; }
 
-function ClrRecords({ records }: { records: ClrRecord[] }) { return <section className="mt-6 rounded-xl border bg-white" style={{ borderColor: BORDER }}><div className="border-b p-4"><h2 className="font-semibold" style={{ color: BLUE }}>Omnia Learning Records</h2><p className="text-xs text-slate-500">Dossiers créés et préparés pour CLR 2.0.</p></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Utilisateur</th><th className="px-4 py-3">Version</th><th className="px-4 py-3">Statut standard</th><th className="px-4 py-3">Dernière génération</th></tr></thead><tbody className="divide-y">{records.map(record => <tr key={record.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{record.user?.full_name || 'Utilisateur'}</p><p className="text-xs text-slate-500">{record.user?.email || record.record_uuid}</p></td><td className="px-4 py-4">v{record.version}</td><td className="px-4 py-4"><Status value={record.standards_status} /></td><td className="px-4 py-4">{record.last_built_at ? new Date(record.last_built_at).toLocaleString('fr-FR') : '—'}</td></tr>)}{records.length === 0 && <tr><td colSpan={4}><Empty text="Aucun Learning Record généré." /></td></tr>}</tbody></table></div></section>; }
+function ClrRecords({ records, imports, signingConfigured, onNotice, onReload }: { records: ClrRecord[]; imports: ClrImport[]; signingConfigured: boolean; onNotice: (message: string) => void; onReload: () => Promise<void> }) {
+  const [working, setWorking] = useState('');
+  const [error, setError] = useState('');
+  const [verification, setVerification] = useState<{ recordId: string; result: CredentialVerification } | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<{ item: ClrImport; decision: 'approve' | 'reject' } | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const pendingImports = imports.filter(item => item.status === 'pending');
+  const metrics = {
+    records: records.length,
+    signed: records.filter(record => record.standards_status === 'clr2_signed').length,
+    verifiedEntries: records.reduce((sum, record) => sum + (record.entry_counts?.verified || 0), 0),
+    pendingImports: pendingImports.length,
+  };
+
+  async function execute(label: string, action: string, payload: Record<string, unknown>, success: string) {
+    setWorking(label); setError(''); setVerification(null);
+    try {
+      const response = await credentialsRequest<{ success: true; verification?: CredentialVerification }>(action, payload);
+      if (response.verification) setVerification({ recordId: String(payload.record_id || ''), result: response.verification });
+      onNotice(success);
+      await onReload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Opération CLR impossible.'); }
+    finally { setWorking(''); }
+  }
+
+  async function review(event: FormEvent) {
+    event.preventDefault();
+    if (!reviewTarget || (reviewTarget.decision === 'reject' && !reviewNote.trim())) return;
+    const target = reviewTarget;
+    setReviewTarget(null);
+    await execute(`import-${target.item.id}`, 'admin_review_clr_import', { import_id: target.item.id, decision: target.decision, review_note: reviewNote }, target.decision === 'approve' ? 'Import CLR validé.' : 'Import CLR refusé.');
+    setReviewNote('');
+  }
+
+  return <div className="mt-6 space-y-6">
+    {error && <Message kind="error" text={humanClrError(error)} />}
+    <section className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: BORDER }}>
+      <div className="border-b p-4" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Omnia Learning Records</h2><p className="text-xs text-slate-500">Synchronisation, signature, vérification et contrôle des imports CLR.</p></div>
+      <div className="grid grid-cols-2 border-b md:grid-cols-4" style={{ borderColor: BORDER }}>
+        <ClrMetric label="Dossiers" value={metrics.records} />
+        <ClrMetric label="CLR signés" value={metrics.signed} />
+        <ClrMetric label="Éléments vérifiés" value={metrics.verifiedEntries} />
+        <ClrMetric label="Imports à contrôler" value={metrics.pendingImports} warning={metrics.pendingImports > 0} />
+      </div>
+      <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Utilisateur</th><th className="px-4 py-3">Contenu</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3">Dernière génération</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y">{records.map(record => <tr key={record.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{record.user?.full_name || 'Utilisateur'}</p><p className="text-xs text-slate-500">{record.user?.email || record.record_uuid}</p></td><td className="px-4 py-4"><p>{record.entry_counts?.total || 0} élément(s)</p><p className="text-xs text-slate-500">{record.entry_counts?.verified || 0} vérifié(s) · {record.entry_counts?.pending || 0} à contrôler</p></td><td className="px-4 py-4"><Status value={record.standards_status} /></td><td className="px-4 py-4 text-xs text-slate-500">{record.last_built_at ? new Date(record.last_built_at).toLocaleString('fr-FR') : '—'}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button disabled={Boolean(working)} onClick={() => void execute(`sync-${record.id}`, 'admin_sync_clr', { user_id: record.user_id }, 'CLR synchronisé.')} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={13} className="mr-1 inline" />Synchroniser</button><button disabled={Boolean(working) || !signingConfigured} title={!signingConfigured ? 'La clé de signature doit être configurée.' : undefined} onClick={() => void execute(`sign-${record.id}`, 'admin_sign_clr', { user_id: record.user_id }, 'CLR signé.')} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><ShieldCheck size={13} className="mr-1 inline" />Signer</button>{record.standards_status === 'clr2_signed' && <button disabled={Boolean(working)} onClick={() => void execute(`verify-${record.id}`, 'admin_verify_clr', { record_id: record.id }, 'Vérification terminée.')} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-green-700 disabled:opacity-50" style={{ borderColor: '#BBF7D0' }}><CheckCircle2 size={13} className="mr-1 inline" />Vérifier</button>}</div>{verification?.recordId === record.id && <p className={`mt-2 text-xs font-semibold ${verification.result.overall_valid ? 'text-green-700' : 'text-red-600'}`}>{verification.result.overall_valid ? 'Signature et structure valides.' : `Vérification échouée : ${verification.result.error_code || 'credential invalide'}`}</p>}</td></tr>)}{records.length === 0 && <tr><td colSpan={5}><Empty text="Aucun Learning Record généré." /></td></tr>}</tbody></table></div>
+    </section>
+
+    <section className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: BORDER }}>
+      <div className="border-b p-4" style={{ borderColor: BORDER }}><h2 className="font-semibold" style={{ color: BLUE }}>Imports externes</h2><p className="text-xs text-slate-500">Les credentials externes non vérifiables automatiquement restent en attente d’une décision Super Admin.</p></div>
+      <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Apprenant</th><th className="px-4 py-3">Fichier / émetteur</th><th className="px-4 py-3">Format</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Décision</th></tr></thead><tbody className="divide-y">{imports.map(item => <tr key={item.id}><td className="px-4 py-4"><p className="font-semibold" style={{ color: BLUE }}>{item.user?.full_name || 'Apprenant'}</p><p className="text-xs text-slate-500">{item.user?.email || item.record?.title || ''}</p></td><td className="px-4 py-4"><p>{item.source_file_name || item.credential_type || 'Credential externe'}</p><p className="text-xs text-slate-500">{item.source_issuer || 'Émetteur non renseigné'} · {item.imported_entries_count} entrée(s)</p></td><td className="px-4 py-4 font-mono text-xs">{item.source_format}</td><td className="px-4 py-4"><Status value={item.status} /></td><td className="px-4 py-4 text-xs text-slate-500">{new Date(item.created_at).toLocaleString('fr-FR')}</td><td className="px-4 py-4">{item.status === 'pending' ? <div className="flex gap-2"><button disabled={Boolean(working)} onClick={() => { setReviewNote(''); setReviewTarget({ item, decision: 'approve' }); }} className="rounded-lg bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700 disabled:opacity-50">Valider</button><button disabled={Boolean(working)} onClick={() => { setReviewNote(''); setReviewTarget({ item, decision: 'reject' }); }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">Refuser</button></div> : <p className="max-w-xs text-xs text-slate-500">{item.review_note || 'Décision enregistrée.'}</p>}</td></tr>)}{imports.length === 0 && <tr><td colSpan={6}><Empty text="Aucun import externe." /></td></tr>}</tbody></table></div>
+    </section>
+    {reviewTarget && <Modal title={reviewTarget.decision === 'approve' ? 'Valider l’import CLR' : 'Refuser l’import CLR'} onClose={() => { setReviewTarget(null); setReviewNote(''); }}><form onSubmit={review} className="space-y-4 p-5"><p className="text-sm text-slate-600"><span className="font-semibold" style={{ color: BLUE }}>{reviewTarget.item.source_file_name || reviewTarget.item.credential_type || 'Credential externe'}</span><br />{reviewTarget.item.user?.full_name || reviewTarget.item.user?.email || 'Apprenant'}</p><Field label={reviewTarget.decision === 'approve' ? 'Note de validation (facultative)' : 'Motif du refus'}><textarea required={reviewTarget.decision === 'reject'} rows={4} className={inputClass} value={reviewNote} onChange={event => setReviewNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><button type="button" onClick={() => { setReviewTarget(null); setReviewNote(''); }} className="rounded-lg border px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Annuler</button><button disabled={Boolean(working) || (reviewTarget.decision === 'reject' && !reviewNote.trim())} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${reviewTarget.decision === 'reject' ? 'bg-red-600' : ''}`} style={reviewTarget.decision === 'approve' ? { background: BLUE } : undefined}>{reviewTarget.decision === 'approve' ? 'Valider l’import' : 'Confirmer le refus'}</button></div></form></Modal>}
+  </div>;
+}
+
+function ClrMetric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) { return <div className="border-r p-4 last:border-r-0" style={{ borderColor: BORDER }}><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 text-xl font-semibold ${warning ? 'text-amber-700' : ''}`} style={warning ? undefined : { color: BLUE }}>{value}</p></div>; }
+function humanClrError(value: string) { return ({ SIGNING_NOT_CONFIGURED: 'La clé de signature Supabase n’est pas configurée.', CLR_NOT_SIGNED: 'Ce Learning Record doit d’abord être signé.', CLR_IMPORT_NOT_FOUND: 'Cet import est introuvable.', CLR_IMPORT_DECISION_INVALID: 'La décision de contrôle est invalide.' } as Record<string, string>)[value] || value; }
 
 function SigningPanel({ signing, awards, onNotice, onReload }: { signing: CredentialSigningStatus | null; awards: BadgeAward[]; onNotice: (message: string) => void; onReload: () => Promise<void> }) {
   const [working, setWorking] = useState('');

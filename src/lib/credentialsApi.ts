@@ -141,19 +141,41 @@ export type CredentialSigningStatus = {
   public_key_endpoint: string;
 };
 
+export type ClrVisibility = BadgeAward['visibility'];
+
 export type ClrAchievement = {
   id: string;
+  clr_record_id?: string;
+  award_id?: string | null;
   source_type: string;
-  source_id?: string | null;
+  source_id: string;
   title: string;
   description?: string | null;
   achievement_type: string;
   section: string;
-  status: string;
-  visibility: BadgeAward['visibility'];
+  status: 'active' | 'hidden' | 'revoked' | 'expired';
+  visibility: ClrVisibility;
   issued_at?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  score?: number | null;
+  score_max?: number | null;
+  result_label?: string | null;
+  skills: string[];
+  evidence: Array<Record<string, unknown>>;
+  external_url?: string | null;
+  issuer_name?: string | null;
+  issuer_url?: string | null;
+  entry_origin: 'platform' | 'manual' | 'imported';
+  verification_status: 'verified' | 'declared' | 'pending_review' | 'rejected' | 'revoked';
+  learner_editable: boolean;
+  is_featured: boolean;
+  sort_order?: number;
+  metadata?: Record<string, unknown>;
   payload?: Record<string, unknown>;
 };
+
+export type ClrEntryCounts = { total: number; verified: number; pending: number };
 
 export type ClrRecord = {
   id: string;
@@ -161,13 +183,75 @@ export type ClrRecord = {
   user_id: string;
   title: string;
   description?: string | null;
+  profile_headline?: string | null;
+  summary?: string | null;
+  language_code?: string;
   status: string;
-  default_visibility: BadgeAward['visibility'];
+  default_visibility: ClrVisibility;
+  section_order: string[];
+  hidden_sections: string[];
   version: number;
   standards_status: 'internal_record' | 'clr2_draft' | 'clr2_signed';
   clr_json?: Record<string, unknown>;
+  clr_jwt?: string | null;
+  signed_at?: string | null;
+  signature_alg?: string | null;
+  credential_hash?: string | null;
+  verification_result?: CredentialVerification | Record<string, never>;
   last_built_at?: string | null;
-  user?: { id: string; full_name: string; email?: string; avatar_url?: string | null } | null;
+  last_synced_at?: string | null;
+  entry_counts?: ClrEntryCounts;
+  user?: { id?: string; full_name: string; email?: string; avatar_url?: string | null; country_code?: string | null } | null;
+};
+
+export type ClrShare = {
+  id: string;
+  label?: string | null;
+  include_sections: string[];
+  visibility_filter: Exclude<ClrVisibility, 'private'>;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+  last_accessed_at?: string | null;
+  url?: string;
+  token?: string;
+};
+
+export type ClrImport = {
+  id: string;
+  clr_record_id?: string;
+  user_id?: string;
+  source_format: 'json' | 'json_ld' | 'vc_jwt';
+  source_file_name?: string | null;
+  source_issuer?: string | null;
+  credential_type?: string | null;
+  status: 'pending' | 'imported' | 'rejected' | 'failed';
+  verification_result?: CredentialVerification | Record<string, unknown>;
+  imported_entries_count: number;
+  review_note?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  user?: { id: string; full_name?: string; email?: string } | null;
+  record?: { id: string; record_uuid: string; title: string } | null;
+};
+
+export type ClrExportResponse = {
+  success: true;
+  format: 'clr_json' | 'vc_jwt';
+  content: Record<string, unknown> | string;
+  file_name: string;
+  media_type: string;
+  record: ClrRecord;
+};
+
+export type LearnerClrResponse = {
+  success: true;
+  record: ClrRecord;
+  achievements: ClrAchievement[];
+  shares: ClrShare[];
+  imports: ClrImport[];
+  sections: string[];
+  synced_entries: number;
 };
 
 export async function credentialsRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
@@ -190,7 +274,12 @@ export const visibilityLabel: Record<BadgeAward['visibility'], string> = {
 };
 
 export function credentialStatusLabel(value: string): string {
-  return ({ awarded: 'Actif', pending: 'En attente', expired: 'Expiré', revoked: 'Révoqué', suspended: 'Suspendu' } as Record<string, string>)[value] || value;
+  return ({
+    awarded: 'Actif', active: 'Actif', pending: 'En attente', expired: 'Expiré', revoked: 'Révoqué', suspended: 'Suspendu',
+    hidden: 'Masqué', verified: 'Vérifié', declared: 'Déclaré', pending_review: 'À vérifier', rejected: 'Refusé',
+    imported: 'Importé', failed: 'Échec', internal_record: 'Dossier interne', clr2_draft: 'CLR 2.0 prêt', clr2_signed: 'CLR 2.0 signé',
+    ob3_draft: 'Open Badge prêt', ob3_signed: 'Open Badge signé',
+  } as Record<string, string>)[value] || value;
 }
 
 
