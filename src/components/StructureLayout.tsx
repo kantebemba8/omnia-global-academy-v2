@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   Gift, BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -50,6 +50,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/structure/formations', label: 'Mes formations', icon: BookOpen },
       { path: '/structure/studio/new', label: 'Créer une formation', icon: PlusCircle },
+      { path: '/structure/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
     ],
   },
   {

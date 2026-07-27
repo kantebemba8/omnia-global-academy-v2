@@ -1399,12 +1399,42 @@ async function syncPlatformClr(sb: Supabase, userId: string) {
     })) changed++;
   }
 
+  const competencyResults = await optionalSourceRows(
+    sb.from("assessment_result_competencies").select("*")
+      .eq("user_id", userId).eq("status", "validated"),
+  );
+  const competenciesByAttempt = new Map<string, string[]>();
+  for (const row of competencyResults) {
+    const attemptId = text(row.attempt_id, 200);
+    if (!attemptId) continue;
+    const current = competenciesByAttempt.get(attemptId) || [];
+    current.push(text(row.competency_name, 240));
+    competenciesByAttempt.set(attemptId, current.filter(Boolean));
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "assessment_competency",
+      source_id: row.id,
+      section: "competences_verifiees",
+      achievement_type: "Competency",
+      title: row.competency_name || "Compétence évaluée",
+      description: "Compétence validée par une évaluation Omnia.",
+      issued_at: row.validated_at || row.updated_at || row.created_at,
+      score: row.score,
+      score_max: 100,
+      result_label: "Compétence validée",
+      skills: [row.competency_name],
+      evidence: [{ type: "assessment", attempt_id: row.attempt_id, assessment_id: row.assessment_id }],
+      metadata: { attempt_id: row.attempt_id, assessment_id: row.assessment_id, validation_status: row.status },
+      source_updated_at: row.updated_at || row.validated_at,
+    })) changed++;
+  }
+
   const attempts = await optionalSourceRows(
-    sb.from("assessment_attempts").select("*,assessment:course_assessments(title,scope,passing_score)")
-      .eq("user_id", userId).eq("passed", true),
+    sb.from("assessment_attempts").select("*,assessment:course_assessments(title,scope,passing_score,assessment_type,competency_labels)")
+      .eq("user_id", userId).eq("passed", true).eq("result_status", "published"),
   );
   for (const row of attempts) {
     const assessment = jsonRecord(row.assessment);
+    const resultSkills = competenciesByAttempt.get(text(row.id, 200)) || stringArray(assessment.competency_labels, 80, 120);
     if (await upsertClrSourceEntry(sb, record, {
       source_type: "assessment",
       source_id: row.id,
@@ -1412,12 +1442,13 @@ async function syncPlatformClr(sb: Supabase, userId: string) {
       achievement_type: "Assessment",
       title: assessment.title || "Évaluation réussie",
       description: row.feedback,
-      issued_at: row.graded_at || row.submitted_at,
+      issued_at: row.result_published_at || row.graded_at || row.submitted_at,
       score: row.score,
       score_max: 100,
       result_label: `Évaluation ${assessment.scope || ""} réussie`,
-      metadata: { course_id: row.course_id, assessment_id: row.assessment_id },
-      source_updated_at: row.graded_at || row.submitted_at,
+      skills: resultSkills,
+      metadata: { course_id: row.course_id, assessment_id: row.assessment_id, assessment_type: assessment.assessment_type, integrity_status: row.integrity_status },
+      source_updated_at: row.result_published_at || row.graded_at || row.submitted_at,
     })) changed++;
   }
 

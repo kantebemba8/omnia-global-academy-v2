@@ -309,7 +309,7 @@ Deno.serve(async (req: Request) => {
     const {data:assessments}=await sb.from("course_assessments").select("id,title,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);
     const missing:string[]=[];
     if(!(assessments||[]).length)missing.push("required_assessments_missing");
-    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||1))missing.push(`${a.scope}:${a.id}`);}
+    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status,result_status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).eq("result_status","published").order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||1))missing.push(`${a.scope}:${a.id}`);}
     const {data:attemptIds}=await sb.from("assessment_attempts").select("id").eq("course_id",courseId).eq("user_id",userId);
     if(attemptIds?.length){const {count}=await sb.from("assessment_answers").select("id",{count:"exact",head:true}).eq("review_status","pending").in("attempt_id",attemptIds.map((x:any)=>x.id));if((count||0)>0)missing.push("manual_reviews_pending");}
     const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle();

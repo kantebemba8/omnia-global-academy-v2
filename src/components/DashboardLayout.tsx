@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2,
+  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -23,6 +23,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/profil', label: 'Mon profil', icon: User },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
+  { path: '/dashboard/evaluations', label: 'Mes évaluations', icon: ClipboardCheck },
   { path: '/dashboard/certificats', label: 'Mes certificats', icon: Award },
   { path: '/dashboard/badges', label: 'Mes badges', icon: BadgeCheck },
   { path: '/dashboard/learning-record', label: 'Learning Record', icon: FileCheck2 },
@@ -40,6 +41,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/dashboard', label: "Vue d'ensemble", icon: LayoutDashboard, exact: true },
   { path: '/professeur/courses', label: 'Mes formations', icon: BookOpen },
   { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
+  { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
   { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Omnia Talent', icon: Search },

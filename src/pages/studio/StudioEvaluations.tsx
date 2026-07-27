@@ -40,12 +40,12 @@ type AttemptSummary = {
   remediation_completed_at?: string | null;
   submitted_at?: string;
   users?: { full_name?: string; email?: string };
-  course_assessments?: { title?: string; scope?: string; passing_score?: number; remediation_mode?: string };
+  course_assessments?: { title?: string; scope?: string; passing_score?: number; remediation_mode?: string; competency_labels?: string[] };
   assessment_corrections?: Array<{ status: string; score?: number; updated_at?: string }>;
 };
 
 type AttemptDetail = {
-  attempt: AttemptSummary & { score?: number; course_assessments?: { title?: string; scope?: string; passing_score?: number; remediation_mode?: string } };
+  attempt: AttemptSummary & { score?: number; course_assessments?: { title?: string; scope?: string; passing_score?: number; remediation_mode?: string; competency_labels?: string[] } };
   answers: Array<{
     id: string;
     answer_json: unknown;
@@ -92,6 +92,7 @@ export function StudioEvaluations() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [score, setScore] = useState('');
   const [comment, setComment] = useState('');
+  const [competencyScores, setCompetencyScores] = useState<Record<string, string>>({});
   const [correctedFile, setCorrectedFile] = useState<File | null>(null);
   const [uploadedCorrection, setUploadedCorrection] = useState<UploadedCorrection | null>(null);
   const [saving, setSaving] = useState(false);
@@ -126,6 +127,7 @@ export function StudioEvaluations() {
       setSelected(detail);
       setScore(detail.correction?.score !== undefined ? String(detail.correction.score) : '');
       setComment(detail.correction?.comment || '');
+      setCompetencyScores(Object.fromEntries((detail.attempt.course_assessments?.competency_labels || []).map(label => [label, detail.correction?.score !== undefined ? String(detail.correction.score) : ''])));
       setUploadedCorrection(detail.correction?.corrected_file_name && detail.correction?.signed_url ? {
         bucket_name: 'assessment-corrections',
         storage_path: '',
@@ -206,6 +208,7 @@ export function StudioEvaluations() {
         max_score: 100,
         comment,
         corrected_file: file,
+        competency_results: Object.entries(competencyScores).map(([name, value]) => ({ name, score: Number(value || numericScore) })),
         publish,
       });
       if (publish) {
@@ -336,6 +339,20 @@ export function StudioEvaluations() {
                           <input type="number" min={0} max={100} step="0.01" value={score} onChange={event => setScore(event.target.value)} className="mt-1 h-11 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} />
                         </label>
                         {!validScore && score !== '' && <p className="mt-1 text-xs text-red-600">La note doit être comprise entre 0 et 100.</p>}
+
+                        {(selected.attempt.course_assessments?.competency_labels || []).length > 0 && (
+                          <div className="mt-4 rounded-lg bg-gray-50 p-3">
+                            <p className="text-xs font-semibold text-gray-600">Résultats par compétence</p>
+                            <div className="mt-3 space-y-2">
+                              {(selected.attempt.course_assessments?.competency_labels || []).map(label => (
+                                <label key={label} className="grid grid-cols-[1fr_88px] items-center gap-3 text-xs text-gray-700">
+                                  <span>{label}</span>
+                                  <input type="number" min={0} max={100} step="0.01" value={competencyScores[label] ?? ''} onChange={event => setCompetencyScores(current => ({ ...current, [label]: event.target.value }))} className="h-9 rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }} placeholder={score || '0'} />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <label className="mt-4 block text-xs font-semibold text-gray-600">Commentaire facultatif
                           <textarea rows={5} value={comment} onChange={event => setComment(event.target.value)} className="mt-1 w-full rounded-lg border p-3 text-sm" style={{ borderColor: BORDER }} placeholder="Appréciation, points à améliorer ou consignes…" />

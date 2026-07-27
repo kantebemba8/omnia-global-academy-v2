@@ -29,6 +29,8 @@ import { PendingValidation } from './pages/auth/PendingValidation';
 import { ForcePasswordChange } from './pages/auth/ForcePasswordChange';
 import { DashboardApprenant } from './pages/dashboard/DashboardApprenant';
 import { DashboardMesCours } from './pages/dashboard/DashboardMesCours';
+import DashboardAssessments from './pages/dashboard/DashboardAssessments';
+import AssessmentSession from './pages/AssessmentSession';
 import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
 import DashboardBadges from './pages/dashboard/DashboardBadges';
 import DashboardLearningRecord from './pages/dashboard/DashboardLearningRecord';
@@ -40,6 +42,7 @@ import { DashboardParrainage } from './pages/dashboard/DashboardParrainage';
 import { DashboardProfil } from './pages/dashboard/DashboardProfil';
 import { DashboardProfesseur } from './pages/professeur/DashboardProfesseur';
 import { ProfesseurMesFormations } from './pages/professeur/ProfesseurMesFormations';
+import ProfesseurAssessmentCenter from './pages/professeur/ProfesseurAssessmentCenter';
 import { ProfesseurPortefeuille } from './pages/professeur/ProfesseurPortefeuille';
 import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
 import { ProfesseurProfil } from './pages/professeur/ProfesseurProfil';
@@ -55,6 +58,7 @@ import AdminCareerStudioDetail from './pages/admin/AdminCareerStudioDetail';
 import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminCoursePricing from './pages/admin/AdminCoursePricing';
 import AdminQualityCenter from './pages/admin/AdminQualityCenter';
+import AdminAssessmentCenter from './pages/admin/AdminAssessmentCenter';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
 import ModerateurAnalytique from './pages/moderateur/ModerateurAnalytique';
@@ -436,6 +440,7 @@ export default function App() {
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
           <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
+          <Route path="/admin/assessment-center" element={<AdminAssessmentCenter />} />
           <Route path="/admin/studio-validation" element={<Navigate to="/admin/quality-center" replace />} />
               <Route path="/admin/course-pricing" element={<AdminCoursePricing />} />
           <Route path="/admin/course-health" element={<Navigate to="/admin/quality-center" replace />} />
@@ -539,6 +544,8 @@ export default function App() {
         {/* Module 6 — Dashboard apprenant — always accessible */}
         <Route path="/dashboard" element={<DashboardApprenant />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
+        <Route path="/dashboard/evaluations" element={<DashboardAssessments />} />
+        <Route path="/dashboard/evaluations/session/:sessionId" element={<AssessmentSession />} />
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
         <Route path="/dashboard/badges" element={<DashboardBadges />} />
         <Route path="/dashboard/learning-record" element={<DashboardLearningRecord />} />
@@ -554,6 +561,7 @@ export default function App() {
         <Route path="/professeur/dashboard" element={<DashboardProfesseur />} />
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
         <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
+        <Route path="/professeur/assessment-center" element={<ProfesseurAssessmentCenter />} />
         <Route path="/professeur/courses/:id/edit" element={<StudioConceptionFormation />} />
           <Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
 <Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
@@ -565,6 +573,7 @@ export default function App() {
         <Route path="/professeur/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/structure/studio/:courseId/evaluations" element={<StudioEvaluations />} />
 <Route path="/structure/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/structure/assessment-center" element={<ProfesseurAssessmentCenter />} />
 <Route path="/structure/studio/:courseId" element={<StudioConceptionFormation />} />
 <Route path="/structure/formations/nouvelle" element={<Navigate to="/structure/studio/new" replace />} />
 

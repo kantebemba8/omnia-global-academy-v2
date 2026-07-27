@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck
+  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -39,6 +39,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/quality-center', label: 'Centre Qualité', icon: ShieldCheck },
+      { path: '/admin/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
       { path: '/admin/cpd-credits', label: 'Open CPD', icon: Award },
     ],
   },

@@ -112,14 +112,20 @@ export function AssessmentEngine({
   courseId,
   lessonId,
   moduleId,
+  assessmentId,
+  sessionId,
   scope = 'lesson',
   onPassed,
+  onSubmitted,
 }: {
   courseId: string;
   lessonId?: string;
   moduleId?: string;
+  assessmentId?: string;
+  sessionId?: string;
   scope?: 'lesson' | 'module' | 'final';
   onPassed?: () => void;
+  onSubmitted?: (attemptId?: string) => void;
 }) {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
@@ -138,6 +144,8 @@ export function AssessmentEngine({
         course_id: courseId,
         lesson_id: lessonId,
         module_id: moduleId,
+        assessment_id: assessmentId,
+        session_id: sessionId,
         scope,
       });
       setAssessment(data.assessment || null);
@@ -146,7 +154,7 @@ export function AssessmentEngine({
     } finally {
       setLoading(false);
     }
-  }, [courseId, lessonId, moduleId, scope]);
+  }, [assessmentId, courseId, lessonId, moduleId, scope, sessionId]);
 
   useEffect(() => {
     setAnswers({});
@@ -230,11 +238,13 @@ export function AssessmentEngine({
       setUploading(false);
       const data = await call('learner_submit_assessment', {
         assessment_id: assessment.id,
+        session_id: sessionId,
         answers: normalizedAnswers,
       });
       setResult(data);
       setAnswers({});
       if (data.passed) onPassed?.();
+      onSubmitted?.(data.attempt_id);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Envoi impossible.');
