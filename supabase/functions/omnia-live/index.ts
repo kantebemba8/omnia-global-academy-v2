@@ -4077,28 +4077,15 @@ async function privateCodeRedeem(
 }
 
 async function structurePackCreate(
-  req: Request,
-  sb: ReturnType<typeof createClient>,
+  _req: Request,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
-  const body=await req.json().catch(()=>({})) as any;
-  if(!body.structure_id||!body.pack_name) return json({error:"MISSING_PARAMS"},400);
-
-  const {data,error}=await sb.from("live_structure_packs").insert({
-    structure_id:body.structure_id,pack_name:body.pack_name,status:body.status||"active",
-    starts_at:body.starts_at||new Date().toISOString(),ends_at:body.ends_at||null,
-    max_members:body.max_members==null?null:Number(body.max_members),
-    max_live_events:body.max_live_events==null?null:Number(body.max_live_events),
-    max_participants_per_event:body.max_participants_per_event==null?null:Number(body.max_participants_per_event),
-    storage_gb:body.storage_gb==null?null:Number(body.storage_gb),
-    archive_enabled:Boolean(body.archive_enabled),certificates_enabled:Boolean(body.certificates_enabled),
-    reports_enabled:Boolean(body.reports_enabled),support_level:body.support_level||null,
-    features:body.features||{},created_by:ctx.userId
-  }).select("*").single();
-
-  if(error) throw error;
-  return json({success:true,pack:data},201);
+  return json({
+    error:"LEGACY_COMMERCE_DISABLED",
+    message:"Les anciens Packs Omnia Live ont été retirés. Ils seront remplacés par le moteur central de monétisation.",
+  },410);
 }
 
 async function archiveCreate(
@@ -5152,13 +5139,11 @@ async function adminOrganizerDecision(
 
 
 async function adminStructurePacks(
-  sb: ReturnType<typeof createClient>,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
-  const { data, error } = await sb.from("live_structure_packs").select("*").order("created_at",{ascending:false});
-  if (error) throw error;
-  return json({ success:true, packs:data??[] });
+  return json({ success:true, packs:[], legacy_commerce_disabled:true });
 }
 
 async function adminMediaQueue(
@@ -6807,7 +6792,13 @@ async function commerceProductsList(
   const type=url.searchParams.get("product_type");
   const eventId=url.searchParams.get("event_id");
 
-  let q=sb.from("live_commerce_products").select("*").eq("status","active").order("created_at",{ascending:false});
+  if(type && ["subscription","structure_pack"].includes(type)) {
+    return json({success:true,products:[],legacy_commerce_disabled:true});
+  }
+
+  let q=sb.from("live_commerce_products").select("*").eq("status","active")
+    .not("product_type","in",'("subscription","structure_pack")')
+    .order("created_at",{ascending:false});
   if(type) q=q.eq("product_type",type);
   if(eventId) q=q.eq("event_id",eventId);
 
@@ -6861,6 +6852,12 @@ async function commerceCheckout(
   });
 
   if(!product) return json({error:"PRODUCT_NOT_FOUND"},404);
+  if(["subscription","structure_pack"].includes(String(product.product_type||""))) {
+    return json({
+      error:"LEGACY_COMMERCE_DISABLED",
+      message:"Cet ancien produit Omnia Live a été retiré en attente du moteur central de monétisation.",
+    },410);
+  }
   if(product.status!=="active") return json({error:"PRODUCT_NOT_ACTIVE"},409);
 
   const {discount,code}=await commerceApplyDiscount(sb,body.discount_code||null,product);
@@ -7231,42 +7228,24 @@ async function payoutAdminDecision(
 }
 
 async function subscriptionPlansAdmin(
-  sb: ReturnType<typeof createClient>,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
-  const {data,error}=await sb.from("live_subscription_plans").select("*").order("created_at");
-  if(error) throw error;
-  return json({success:true,plans:data??[]});
+  return json({success:true,plans:[],legacy_commerce_disabled:true});
 }
 
 async function subscriptionPlanSave(
-  req: Request,
-  sb: ReturnType<typeof createClient>,
+  _req: Request,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
-  const body=await req.json().catch(()=>({})) as any;
-  if(!body.plan_key||!body.name||!body.audience) return json({error:"MISSING_PARAMS"},400);
-
-  const {data,error}=await sb.from("live_subscription_plans").upsert({
-    plan_key:body.plan_key,
-    name:body.name,
-    audience:body.audience,
-    status:body.status||"draft",
-    price_amount:Number(body.price_amount||0),
-    currency:body.currency||"XOF",
-    billing_period:body.billing_period||"monthly",
-    features:body.features||{},
-    permissions:body.permissions||{},
-    created_by:ctx.userId,
-    updated_at:new Date().toISOString()
-  },{onConflict:"plan_key"}).select("*").single();
-
-  if(error) throw error;
-  return json({success:true,plan:data});
+  return json({
+    error:"LEGACY_COMMERCE_DISABLED",
+    message:"Les anciens abonnements Omnia Live ont été retirés. Utilisez le futur moteur central de monétisation.",
+  },410);
 }
-
 
 function liveDocumentNumberG(type:string){
   const p = ({attendance_certificate:"ATT",completion_certificate:"CMP",cpd_certificate:"CPD",participation_attestation:"PAR"} as any)[type]||"DOC";
@@ -7663,8 +7642,8 @@ async function rolePermissionsList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))r
 async function rolePermissionSave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.role_key||!b.permission_key)return json({error:"MISSING_PARAMS"},400);const {data,error}=await sb.from("live_role_permissions").upsert({role_key:b.role_key,permission_key:b.permission_key,enabled:b.enabled!==false,scope:b.scope||"global",settings:b.settings||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"role_key,permission_key"}).select("*").single();if(error)throw error;return json({success:true,permission:data});}
 async function securityPoliciesList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const {data,error}=await sb.from("live_security_policies").select("*").order("policy_key");if(error)throw error;return json({success:true,policies:data||[]});}
 async function securityPolicySave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.policy_key)return json({error:"POLICY_KEY_REQUIRED"},400);const {data,error}=await sb.from("live_security_policies").upsert({policy_key:b.policy_key,enabled:b.enabled!==false,config:b.config||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"policy_key"}).select("*").single();if(error)throw error;return json({success:true,policy:data});}
-async function featureFlagsList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const {data,error}=await sb.from("live_feature_flags").select("*").order("flag_key");if(error)throw error;return json({success:true,flags:data||[]});}
-async function featureFlagSave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.flag_key)return json({error:"FLAG_KEY_REQUIRED"},400);const {data,error}=await sb.from("live_feature_flags").upsert({flag_key:b.flag_key,enabled:Boolean(b.enabled),audience:b.audience||{roles:[],countries:[],structures:[]},config:b.config||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"flag_key"}).select("*").single();if(error)throw error;return json({success:true,flag:data});}
+async function featureFlagsList(sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const {data,error}=await sb.from("live_feature_flags").select("*").not("flag_key","in",'("omnia_live_pass","oga_premium_live")').order("flag_key");if(error)throw error;return json({success:true,flags:data||[]});}
+async function featureFlagSave(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.flag_key)return json({error:"FLAG_KEY_REQUIRED"},400);if(["omnia_live_pass","oga_premium_live"].includes(String(b.flag_key)))return json({error:"LEGACY_COMMERCE_DISABLED",message:"Cet ancien plan a été retiré au profit du futur moteur central de monétisation."},410);const {data,error}=await sb.from("live_feature_flags").upsert({flag_key:b.flag_key,enabled:Boolean(b.enabled),audience:b.audience||{roles:[],countries:[],structures:[]},config:b.config||{},updated_by:ctx.userId,updated_at:new Date().toISOString()},{onConflict:"flag_key"}).select("*").single();if(error)throw error;return json({success:true,flag:data});}
 async function auditLogWrite(sb:any,ctx:any,action:string,opts:any={}){try{await sb.from("live_audit_log").insert({actor_user_id:ctx?.userId||null,actor_role:Array.isArray(ctx?.roles)?(ctx.roles.includes("super_admin")?"super_admin":ctx.roles[0]||null):null,event_id:opts.event_id||null,entity_type:opts.entity_type||null,entity_id:opts.entity_id||null,action,result:opts.result||"success",metadata:opts.metadata||{}});}catch(e){console.error("audit write",e);} }
 async function auditLogList(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const url=new URL(req.url);const action=url.searchParams.get("action");let q=sb.from("live_audit_log").select("*").order("created_at",{ascending:false}).limit(1000);if(action)q=q.eq("action",action);const {data,error}=await q;if(error)throw error;return json({success:true,items:data||[]});}
 async function integrityChecksRun(req:Request,sb:any,ctx:any){
