@@ -48,13 +48,9 @@ Deno.serve(async (req: Request) => {
 
       const { data: templates } = await query;
 
-      // Packs de jetons publics
-      const { data: packs } = await sb.from("career_token_packs")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order");
-
-      return json({ templates: templates ?? [], packs: packs ?? [] });
+      // Les anciens packs de jetons ont été retirés. Les futurs avantages
+      // seront fournis par le moteur central de monétisation.
+      return json({ templates: templates ?? [], packs: [] });
     }
 
     // ── POST : données personnalisées de l'apprenant ────────
@@ -78,12 +74,6 @@ Deno.serve(async (req: Request) => {
     const { data: templates } = await sb.from("career_templates")
       .select("*")
       .eq("template_type", doc_type)
-      .eq("is_active", true)
-      .order("display_order");
-
-    // Packs de jetons
-    const { data: packs } = await sb.from("career_token_packs")
-      .select("*")
       .eq("is_active", true)
       .order("display_order");
 
@@ -134,7 +124,7 @@ Deno.serve(async (req: Request) => {
       },
       documents: documents ?? [],
       templates: templates ?? [],
-      packs: packs ?? [],
+      packs: [],
       token_config: configMap,
       ai_config: aiConfigMap,
       completed_formations: completedFormations ?? [],
