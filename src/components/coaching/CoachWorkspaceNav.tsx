@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { withCoachPreview } from '../../lib/coachingApi';
-import { CalendarDays, CircleDollarSign, LayoutDashboard, ListChecks, Package, Settings2, Star } from 'lucide-react';
+import { CalendarDays, CircleDollarSign, CreditCard, LayoutDashboard, ListChecks, Package, Settings2, Star } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -13,6 +13,8 @@ const items = [
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },
   { path: '/coach/avis', label: 'Mes avis', icon: Star },
   { path: '/coach/revenus', label: 'Mes revenus', icon: CircleDollarSign },
+  { path: '/coach/commerce', label: 'Tarifs & abonnements', icon: CreditCard },
+  { path: '/coach/plan-omnia', label: 'Mon plan Omnia', icon: CreditCard },
   { path: '/coach/produits', label: 'Coaching collectif', icon: Package },
 ];
 

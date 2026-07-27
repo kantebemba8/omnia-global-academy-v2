@@ -23,6 +23,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/profil', label: 'Mon profil', icon: User },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
+  { path: '/dashboard/abonnements', label: 'Abonnements & avantages', icon: CreditCard },
   { path: '/dashboard/evaluations', label: 'Mes évaluations', icon: ClipboardCheck },
   { path: '/dashboard/certificats', label: 'Mes certificats', icon: Award },
   { path: '/dashboard/badges', label: 'Mes badges', icon: BadgeCheck },

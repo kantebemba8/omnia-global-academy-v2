@@ -24,6 +24,64 @@ async function sha256hex(str: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+
+type TrainingBenefitState = {
+  discountXof: number;
+  included: boolean;
+  entitlementId: string | null;
+  source: string | null;
+};
+
+function benefitNumber(value: Record<string, unknown> | null | undefined) {
+  const raw = value?.value ?? value?.amount ?? value?.percentage ?? value?.quantity ?? 0;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function contentScopeAllows(value: Record<string, any>, course: Record<string, any>) {
+  const scope = String(value?.scope || "all");
+  if (scope === "all") return true;
+  if (scope === "categories") return Array.isArray(value?.category_ids) && value.category_ids.includes(course.category);
+  if (scope === "courses") return Array.isArray(value?.course_ids) && value.course_ids.includes(course.id);
+  if (scope === "selected") return Array.isArray(value?.ids) && value.ids.includes(course.id);
+  return false;
+}
+
+async function resolveTrainingBenefits(sb: ReturnType<typeof createClient>, userId: string, course: Record<string, any>, priceXof: number): Promise<TrainingBenefitState> {
+  const keys = ["training_discount_percent", "training_discount_xof", "training_access_count", "training_catalog_access"];
+  const { data: definitions } = await sb.from("commerce_benefit_definitions").select("id,benefit_key").in("benefit_key", keys).eq("is_active", true);
+  if (!definitions?.length) return { discountXof: 0, included: false, entitlementId: null, source: null };
+  const ids = definitions.map((row: any) => row.id);
+  const keyById = new Map(definitions.map((row: any) => [String(row.id), String(row.benefit_key)]));
+  const now = new Date().toISOString();
+  const { data: entitlements } = await sb.from("commerce_entitlements").select("id,benefit_definition_id,value_json,remaining_quantity,valid_until,status")
+    .eq("user_id", userId).in("benefit_definition_id", ids).eq("status", "active").lte("valid_from", now)
+    .or(`valid_until.is.null,valid_until.gte.${now}`);
+  let bestDiscount = 0;
+  let included = false;
+  let entitlementId: string | null = null;
+  let source: string | null = null;
+  for (const right of entitlements || []) {
+    const key = keyById.get(String(right.benefit_definition_id));
+    const value = (right.value_json || {}) as Record<string, any>;
+    const scopeAllowed = contentScopeAllows(value, course);
+    if (key === "training_catalog_access" && scopeAllowed) { included = true; source = key; entitlementId = null; }
+    if (key === "training_access_count" && scopeAllowed && !included && (right.remaining_quantity === null || Number(right.remaining_quantity) >= 1)) { included = true; source = key; entitlementId = String(right.id); }
+    if (key === "training_discount_percent" && scopeAllowed) bestDiscount = Math.max(bestDiscount, Math.floor(priceXof * benefitNumber(value) / 100));
+    if (key === "training_discount_xof" && scopeAllowed) bestDiscount = Math.max(bestDiscount, Math.min(priceXof, Math.floor(benefitNumber(value))));
+  }
+  return { discountXof: Math.min(priceXof, bestDiscount), included, entitlementId, source };
+}
+
+async function consumeTrainingInclusion(sb: ReturnType<typeof createClient>, userId: string, entitlementId: string | null, courseId: string) {
+  if (!entitlementId) return;
+  const { data: right } = await sb.from("commerce_entitlements").select("remaining_quantity").eq("id", entitlementId).eq("user_id", userId).single();
+  if (!right || right.remaining_quantity === null || Number(right.remaining_quantity) < 1) throw new Error("TRAINING_ENTITLEMENT_EXHAUSTED");
+  const remaining = Number(right.remaining_quantity) - 1;
+  await sb.from("commerce_entitlements").update({ remaining_quantity: remaining, status: remaining <= 0 ? "exhausted" : "active" }).eq("id", entitlementId);
+  await sb.from("commerce_usage_ledger").insert({ entitlement_id: entitlementId, user_id: userId, quantity: 1, module_key: "formations", action_key: "training_access_count", reference_type: "course", reference_id: courseId });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -61,8 +119,16 @@ Deno.serve(async (req: Request) => {
     let couponId: string | null = null;
     let couponCodeApplied: string | null = null;
     let licenseIdApplied: string | null = null;
+    const commerceBenefit = await resolveTrainingBenefits(sb, user.id, course, originalPrice);
+    if (commerceBenefit.included) {
+      discountXof = originalPrice;
+      finalPrice = 0;
+    } else if (commerceBenefit.discountXof > 0) {
+      discountXof = commerceBenefit.discountXof;
+      finalPrice = Math.max(0, originalPrice - discountXof);
+    }
 
-    if (coupon_code) {
+    if (coupon_code && !commerceBenefit.included) {
       const { data: coupon } = await sb.from("coupons").select("*").eq("code", coupon_code.toUpperCase()).eq("is_active", true).maybeSingle();
       if (coupon) {
         const now = new Date().toISOString();
@@ -74,18 +140,21 @@ Deno.serve(async (req: Request) => {
           (coupon.applicable_to === "course" && coupon.applicable_id === course_id);
 
         if (!expired && !maxed && !alreadyUsed && scopeOk) {
-          discountXof = coupon.discount_type === "percentage"
+          const couponDiscount = coupon.discount_type === "percentage"
             ? Math.floor(originalPrice * coupon.discount_value / 100)
             : Math.min(coupon.discount_value, originalPrice);
-          finalPrice = Math.max(0, originalPrice - discountXof);
-          couponId = coupon.id;
-          couponCodeApplied = coupon.code;
+          if (couponDiscount > discountXof) {
+            discountXof = couponDiscount;
+            finalPrice = Math.max(0, originalPrice - discountXof);
+            couponId = coupon.id;
+            couponCodeApplied = coupon.code;
+          }
         }
       }
     }
 
     // License processing
-    if (license_code) {
+    if (license_code && !commerceBenefit.included) {
       const { data: license } = await sb.from("group_licenses").select("*").eq("code", String(license_code).toUpperCase()).eq("is_active", true).maybeSingle().catch(() => ({ data: null }));
       if (license && license.course_id === course_id) {
         licenseIdApplied = license.id;
@@ -123,6 +192,7 @@ Deno.serve(async (req: Request) => {
         paid_at: new Date().toISOString(),
       }).select("id").single();
       await sb.from("user_enrollments").insert({ user_id: user.id, course_id, enrolled_at: new Date().toISOString() });
+      await consumeTrainingInclusion(sb, user.id, commerceBenefit.entitlementId, course_id);
       if (couponId && freeOrder) {
         await sb.from("coupons").update({ used_count: (await sb.from("coupons").select("used_count").eq("id", couponId).single().then(r => r.data?.used_count || 0)) + 1 }).eq("id", couponId);
         await sb.from("coupon_usages").insert({ coupon_id: couponId, user_id: user.id, order_id: freeOrder.id, discount_applied_xof: discountXof });
@@ -148,19 +218,22 @@ Deno.serve(async (req: Request) => {
     if (orderErr) throw orderErr;
 
     const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-    const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
+    const mode = (Deno.env.get("FEDAPAY_MODE") || "live").toLowerCase();
+    const fedaBase = mode === "sandbox" || mode === "test" ? "https://sandbox-api.fedapay.com/v1" : "https://api.fedapay.com/v1";
+    const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const nameParts = (user.full_name || "").trim().split(/\s+/);
     const firstname = nameParts[0] || user.email.split("@")[0];
     const lastname = nameParts.slice(1).join(" ") || "-";
 
-    const fedaRes = await fetch("https://api.fedapay.com/v1/transactions", {
+    const fedaRes = await fetch(`${fedaBase}/transactions`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${fedaKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         description: `Formation: ${course.title}`,
         amount: finalPrice,
         currency: { iso: "XOF" },
-        callback_url: `${appUrl}/functions/v1/fedapay-webhook`,
+        callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`,
         return_url: `${appUrl}/paiement/confirmation?order=${orderNum}`,
         cancel_url: `${appUrl}/paiement/echec?order=${orderNum}&course=${course_id}`,
         customer: {
@@ -186,7 +259,7 @@ Deno.serve(async (req: Request) => {
     let checkoutUrl = `${appUrl}/paiement/echec?order=${orderNum}&course=${course_id}`;
     if (fedapayId) {
       try {
-        const tokenRes = await fetch(`https://api.fedapay.com/v1/transactions/${fedapayId}/token`, {
+        const tokenRes = await fetch(`${fedaBase}/transactions/${fedapayId}/token`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${fedaKey}`, "Content-Type": "application/json" },
         });
@@ -205,6 +278,7 @@ Deno.serve(async (req: Request) => {
       discount_xof: discountXof,
       final_price: finalPrice,
       coupon_applied: couponCodeApplied,
+      subscription_discount_xof: commerceBenefit.discountXof,
       payment_url: checkoutUrl,
       fedapay_token: fedapayId,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

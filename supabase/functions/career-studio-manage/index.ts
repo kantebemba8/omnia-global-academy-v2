@@ -268,6 +268,22 @@ async function callClaude(system: string, prompt: string) {
   return String(payload?.content?.[0]?.text || "");
 }
 
+async function centralCareerCredits(sb: ReturnType<typeof createClient>, userId: string, quantity: number, consume = false) {
+  const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", "career_ai_credits").eq("is_active", true).maybeSingle();
+  if (!definition) return { available: 0, consumed: false };
+  const now = new Date().toISOString();
+  const { data: rights } = await sb.from("commerce_entitlements").select("*").eq("user_id", userId).eq("benefit_definition_id", definition.id).eq("status", "active").lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`).order("valid_until", { ascending: true, nullsFirst: false });
+  const right = (rights || []).find((row: any) => row.remaining_quantity === null || Number(row.remaining_quantity) >= quantity);
+  if (!right) return { available: 0, consumed: false };
+  if (consume && right.remaining_quantity !== null) {
+    const remaining = Number(right.remaining_quantity) - quantity;
+    await sb.from("commerce_entitlements").update({ remaining_quantity: remaining, status: remaining <= 0 ? "exhausted" : "active" }).eq("id", right.id);
+    await sb.from("commerce_usage_ledger").insert({ entitlement_id: right.id, user_id: userId, quantity, module_key: "career", action_key: "career_ai_credits", reference_type: "career_ai" });
+    return { available: remaining, consumed: true };
+  }
+  return { available: right.remaining_quantity === null ? Number.MAX_SAFE_INTEGER : Number(right.remaining_quantity), consumed: false };
+}
+
 async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   const token = tokenFrom(req);
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
@@ -301,12 +317,14 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
       return json({ error: "AI_DISABLED", message: "Cette fonction IA est désactivée." }, 403);
     }
     tokensToConsume = Number(tokenConfig[paidActions[action]] ?? 1);
-    if (Number(user.cv_tokens || 0) < tokensToConsume) {
+    const central = await centralCareerCredits(sb, user.id, tokensToConsume, false);
+    if (central.available < tokensToConsume && Number(user.cv_tokens || 0) < tokensToConsume) {
       return json({
         error: "INSUFFICIENT_TOKENS",
         tokens_required: tokensToConsume,
         tokens_available: Number(user.cv_tokens || 0),
-        message: `Cette action nécessite ${tokensToConsume} jeton(s).`,
+        subscription_credits_available: central.available,
+        message: `Cette action nécessite ${tokensToConsume} crédit(s).`,
       }, 402);
     }
   }
@@ -331,18 +349,24 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   const result = await callClaude(SYSTEM_PROMPT, prompt);
 
   let tokensRemaining = Number(user.cv_tokens || 0);
+  let subscriptionCreditsRemaining: number | null = null;
   if (tokensToConsume > 0) {
-    tokensRemaining = Math.max(0, tokensRemaining - tokensToConsume);
-    const { error: userError } = await sb.from("users").update({ cv_tokens: tokensRemaining }).eq("id", user.id);
-    if (userError) throw userError;
-    await sb.from("career_token_transactions").insert({
-      user_id: user.id,
-      transaction_type: "debit",
-      amount: tokensToConsume,
-      balance_after: tokensRemaining,
-      reason: action,
-      reference_type: "career_ai",
-    });
+    const central = await centralCareerCredits(sb, user.id, tokensToConsume, true);
+    if (central.consumed) {
+      subscriptionCreditsRemaining = central.available;
+    } else {
+      tokensRemaining = Math.max(0, tokensRemaining - tokensToConsume);
+      const { error: userError } = await sb.from("users").update({ cv_tokens: tokensRemaining }).eq("id", user.id);
+      if (userError) throw userError;
+      await sb.from("career_token_transactions").insert({
+        user_id: user.id,
+        transaction_type: "debit",
+        amount: tokensToConsume,
+        balance_after: tokensRemaining,
+        reason: action,
+        reference_type: "career_ai",
+      });
+    }
   }
 
   return json({
@@ -351,6 +375,7 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
     result,
     tokens_consumed: tokensToConsume,
     tokens_remaining: tokensRemaining,
+    subscription_credits_remaining: subscriptionCreditsRemaining,
   });
 }
 

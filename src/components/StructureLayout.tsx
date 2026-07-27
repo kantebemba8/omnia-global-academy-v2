@@ -2,9 +2,9 @@ import React, { ReactNode, useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
-  Gift, BarChart2, Bell, Settings, LogOut,
+  BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard,
 } from 'lucide-react';
 
 interface NavItem {
@@ -39,7 +39,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
       { path: '/structure/membres', label: 'Membres liés', icon: Users },
       { path: '/structure/rattachements', label: 'Demandes de rattachement', icon: UserCheck },
       { path: '/structure/codes', label: 'Codes structure', icon: QrCode },
-      { path: '/structure/avantages', label: 'Avantages structure', icon: Gift },
+      { path: '/structure/abonnements', label: 'Abonnements & capacités', icon: CreditCard },
       { path: '/structure/equipe', label: 'Équipe de la structure', icon: Shield },
     ],
   },

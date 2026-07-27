@@ -889,6 +889,27 @@ async function coachPriceLimits(sb: Supabase, profile: Record<string, unknown>) 
   };
 }
 
+async function centralCoachingCommission(sb: Supabase, creatorUserId: string, amountXof: number, fallbackPercent: number, offerType: string) {
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await sb.from("commerce_commission_rules").select("*")
+      .in("module_key", ["coaching", "global"]).eq("status", "active")
+      .lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`)
+      .order("priority", { ascending: true });
+    if (error) return { percent: fallbackPercent, fixedFeeXof: 0, source: "coaching_profile" };
+    const rule = (data || []).find((row: Record<string, unknown>) =>
+      (!row.creator_user_id || String(row.creator_user_id) === creatorUserId) &&
+      (!row.offer_type || String(row.offer_type) === offerType) &&
+      amountXof >= Number(row.minimum_amount_xof || 0)
+    );
+    return rule
+      ? { percent: Number(rule.platform_percent || 0), fixedFeeXof: Number(rule.fixed_fee_xof || 0), source: "central_commerce" }
+      : { percent: fallbackPercent, fixedFeeXof: 0, source: "coaching_profile" };
+  } catch {
+    return { percent: fallbackPercent, fixedFeeXof: 0, source: "coaching_profile" };
+  }
+}
+
 function validateOfferPrice(price: number, limits: { minimum: number; maximum: number | null }) {
   if (!Number.isFinite(price) || price < limits.minimum || (limits.maximum !== null && price > limits.maximum)) {
     throw new Error("OFFER_PRICE_OUT_OF_RANGE");
@@ -1163,7 +1184,9 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
   const originalPrice = Number(context.offer.price_xof);
   const discountXof = 0;
   const price = originalPrice;
-  const commissionAmount = Math.round(price * context.limits.commission / 100);
+  const commissionTerms = await centralCoachingCommission(sb, String(context.profile.user_id), price, context.limits.commission, "session");
+  const commissionAmount = Math.min(price, Math.round(price * commissionTerms.percent / 100) + commissionTerms.fixedFeeXof);
+  const effectiveCommissionPercent = price > 0 ? Number(((commissionAmount / price) * 100).toFixed(2)) : 0;
   const holdExpiresAt = new Date(Date.now() + Number(context.settings?.slot_hold_minutes || 15) * 60000).toISOString();
   const payload = {
     learner_user_id: session.userId,
@@ -1181,13 +1204,13 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
     hold_expires_at: holdExpiresAt,
     learner_message: asNullableText(body.learner_message, 1500),
     price_total_xof: price,
-    commission_percent_snapshot: context.limits.commission,
+    commission_percent_snapshot: effectiveCommissionPercent,
     commission_amount_xof: commissionAmount,
     coach_net_xof: price - commissionAmount,
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15) },
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15), commission_source: commissionTerms.source, commission_fixed_fee_xof: commissionTerms.fixedFeeXof },
     funding_source: "direct",
     funding_reference_id: null,
     original_price_xof: originalPrice,
@@ -1216,7 +1239,9 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
   const originalPrice = Math.round(Number(context.offer.hourly_price_xof) * duration / 60);
   const discountXof = 0;
   const price = originalPrice;
-  const commissionAmount = Math.round(price * context.limits.commission / 100);
+  const commissionTerms = await centralCoachingCommission(sb, String(context.profile.user_id), price, context.limits.commission, "session_custom");
+  const commissionAmount = Math.min(price, Math.round(price * commissionTerms.percent / 100) + commissionTerms.fixedFeeXof);
+  const effectiveCommissionPercent = price > 0 ? Number(((commissionAmount / price) * 100).toFixed(2)) : 0;
   const { data, error } = await sb.from("coaching_sessions").insert({
     learner_user_id: session.userId,
     coach_id: context.profile.id,
@@ -1230,13 +1255,13 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
     duration_minutes: duration,
     learner_message: asNullableText(body.learner_message, 1500),
     price_total_xof: price,
-    commission_percent_snapshot: context.limits.commission,
+    commission_percent_snapshot: effectiveCommissionPercent,
     commission_amount_xof: commissionAmount,
     coach_net_xof: price - commissionAmount,
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3" },
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", commission_source: commissionTerms.source, commission_fixed_fee_xof: commissionTerms.fixedFeeXof },
     funding_source: "direct",
     funding_reference_id: null,
     original_price_xof: originalPrice,
@@ -2847,10 +2872,13 @@ async function resolveAdvancedOrderContext(sb: Supabase, actor: Session, body: R
   if (!registration) throw new Error("GROUP_REGISTRATION_NOT_FOUND");
   const program = registration.program as Record<string, unknown>; const coach = program.coach as Record<string, unknown>;
   if (!["active","full"].includes(String(program.status)) || new Date(String(program.scheduled_start)).getTime() <= Date.now()) throw new Error("GROUP_NOT_AVAILABLE");
-  const limits = await coachPriceLimits(sb, coach); const amount = Number(program.price_per_participant_xof); const commission = Math.round(amount * limits.commission / 100);
-  await sb.from("coaching_group_registrations").update({ commission_percent_snapshot: limits.commission, commission_amount_xof: commission, coach_net_xof: amount-commission }).eq("id", registration.id);
+  const limits = await coachPriceLimits(sb, coach); const amount = Number(program.price_per_participant_xof);
+  const commissionTerms = await centralCoachingCommission(sb, String(coach.user_id), amount, limits.commission, "group");
+  const commission = Math.min(amount, Math.round(amount * commissionTerms.percent / 100) + commissionTerms.fixedFeeXof);
+  const effectiveCommissionPercent = amount > 0 ? Number(((commission / amount) * 100).toFixed(2)) : 0;
+  await sb.from("coaching_group_registrations").update({ commission_percent_snapshot: effectiveCommissionPercent, commission_amount_xof: commission, coach_net_xof: amount-commission }).eq("id", registration.id);
   const { data: coachUser } = await sb.from("users").select("full_name").eq("id", coach.user_id).maybeSingle();
-  return { productType, productId: String(registration.id), title: String(program.title), description: "Coaching collectif", amountXof: amount, coachId: String(program.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: limits.commission, commissionAmount: commission, coachNet: amount-commission, returnPath: `/coaching/groupes/${program.id}/room`, snapshot: { ...program, registration_id: registration.id } };
+  return { productType, productId: String(registration.id), title: String(program.title), description: "Coaching collectif", amountXof: amount, coachId: String(program.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: effectiveCommissionPercent, commissionAmount: commission, coachNet: amount-commission, returnPath: `/coaching/groupes/${program.id}/room`, snapshot: { ...program, registration_id: registration.id, commission_source: commissionTerms.source, commission_fixed_fee_xof: commissionTerms.fixedFeeXof } };
 }
 function advancedOrderNumber(_type: AdvancedProductType) {
   return `OGA-COACH-GRP-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`;

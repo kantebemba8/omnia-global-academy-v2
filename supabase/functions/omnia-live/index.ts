@@ -97,6 +97,29 @@ async function featureFlagEnabled(
   return data ? Boolean(data.enabled) : fallback;
 }
 
+async function organizerLiveLimit(sb: ReturnType<typeof createClient>, userId: string) {
+  const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", "organizer_live_limit").eq("is_active", true).maybeSingle();
+  if (!definition) return 1;
+  const now = new Date().toISOString();
+  const { data: rights } = await sb.from("commerce_entitlements").select("remaining_quantity,value_json")
+    .eq("user_id", userId).eq("benefit_definition_id", definition.id).eq("status", "active").lte("valid_from", now)
+    .or(`valid_until.is.null,valid_until.gte.${now}`);
+  let limit = 1;
+  for (const right of rights || []) {
+    const value = Number(right.remaining_quantity ?? right.value_json?.capacity ?? right.value_json?.value ?? 0);
+    if (Number.isFinite(value)) limit = Math.max(limit, value);
+  }
+  return limit;
+}
+
+async function ensureOrganizerLiveCapacity(sb: ReturnType<typeof createClient>, userId: string, currentEventId: string) {
+  const limit = await organizerLiveLimit(sb, userId);
+  const { count } = await sb.from("live_events").select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId).neq("id", currentEventId)
+    .in("status", ["submitted", "under_review", "approved", "published", "live"]);
+  return { allowed: Number(count || 0) < limit, limit, active: Number(count || 0) };
+}
+
 function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return false;
 
@@ -947,6 +970,19 @@ async function submitEvent(
       },
       409,
     );
+  }
+
+  if (!isSuperAdmin(ctx) && ev.organizer_kind !== "omnia") {
+    const capacity = await ensureOrganizerLiveCapacity(sb, ctx.userId, eventId);
+    if (!capacity.allowed) {
+      return json({
+        error: "ORGANIZER_PLAN_LIMIT_REACHED",
+        message: "La limite de lives actifs de votre accès organisateur est atteinte.",
+        limit: capacity.limit,
+        active: capacity.active,
+        action_url: "/omnia-live/organisateur/offres",
+      }, 402);
+    }
   }
 
   const missing: string[] = [];
@@ -3853,6 +3889,32 @@ async function certificateEligibilityMine(
   return json({ success: true, eligibility: data || null });
 }
 
+async function centralLiveCommission(
+  sb: ReturnType<typeof createClient>,
+  creatorUserId: string,
+  amountXof: number,
+  fallbackPercent: number,
+) {
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await sb.from("commerce_commission_rules").select("*")
+      .in("module_key", ["omnia_live", "global"]).eq("status", "active")
+      .lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`)
+      .order("priority", { ascending: true });
+    if (error) return { percent: fallbackPercent, fixedFeeXof: 0, source: "live_terms" };
+    const rule = (data || []).find((row: any) =>
+      (!row.creator_user_id || String(row.creator_user_id) === creatorUserId) &&
+      (!row.offer_type || String(row.offer_type) === "event") &&
+      amountXof >= Number(row.minimum_amount_xof || 0)
+    );
+    return rule
+      ? { percent: Number(rule.platform_percent || 0), fixedFeeXof: Number(rule.fixed_fee_xof || 0), source: "central_commerce" }
+      : { percent: fallbackPercent, fixedFeeXof: 0, source: "live_terms" };
+  } catch {
+    return { percent: fallbackPercent, fixedFeeXof: 0, source: "live_terms" };
+  }
+}
+
 async function organizerLedgerCreateForOrder(
   sb: ReturnType<typeof createClient>,
   order: any,
@@ -3864,10 +3926,11 @@ async function organizerLedgerCreateForOrder(
     .select("*").eq("event_id", order.event_id)
     .eq("version", ev.commercial_terms_version || 0).maybeSingle();
 
-  const ogaPct = Number(terms?.oga_commission_percent ?? 0);
   const gross = Number(order.amount || 0);
-  const ogaAmount = gross * ogaPct / 100;
-  const organizerAmount = gross - ogaAmount;
+  const fallbackPct = Number(terms?.oga_commission_percent ?? 0);
+  const commissionTerms = await centralLiveCommission(sb, String(ev.owner_user_id), gross, fallbackPct);
+  const ogaAmount = Math.min(gross, Math.round(gross * commissionTerms.percent / 100) + commissionTerms.fixedFeeXof);
+  const organizerAmount = Math.max(0, gross - ogaAmount);
   const availableAt = new Date(Date.now() + Number(terms?.payout_delay_hours ?? 48) * 3600_000).toISOString();
 
   const { data, error } = await sb.from("live_organizer_ledger").insert({

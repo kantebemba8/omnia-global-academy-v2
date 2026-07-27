@@ -13,7 +13,7 @@ const SECTION_BY_PATH: Array<{ test: (p: string) => boolean; title: string; desc
   { test: p => p === '/structure/membres', title: 'Membres liés', description: 'Aucun membre lié.', icon: Users },
   { test: p => p === '/structure/rattachements', title: 'Demandes de rattachement', description: 'Aucune demande de rattachement.', icon: UserCheck },
   { test: p => p === '/structure/codes', title: 'Codes Structure', description: 'Aucun code Structure actif.', icon: QrCode },
-  { test: p => p === '/structure/avantages', title: 'Avantages Structure', description: 'Aucun avantage Structure actif.', icon: Gift },
+  { test: p => p === '/structure/abonnements', title: 'Avantages Structure', description: 'Aucun avantage Structure actif.', icon: Gift },
   { test: p => p === '/structure/offres-emploi', title: "Offres d'emploi", description: 'Aucune offre publiée.', icon: Briefcase },
   { test: p => p === '/structure/recrutement/dashboard', title: 'Recrutement', description: 'Aucune activité de recrutement.', icon: UserRoundSearch },
   { test: p => p === '/structure/recrutement/offres', title: 'Offres de recrutement', description: 'Aucune offre de recrutement.', icon: Briefcase },

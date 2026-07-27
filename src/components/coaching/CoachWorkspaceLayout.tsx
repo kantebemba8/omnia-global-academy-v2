@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   CalendarDays,
-  CircleDollarSign,
+  CircleDollarSign, CreditCard,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -25,6 +25,8 @@ const items = [
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },
   { path: '/coach/avis', label: 'Mes avis', icon: Star },
   { path: '/coach/revenus', label: 'Mes revenus', icon: CircleDollarSign },
+  { path: '/coach/commerce', label: 'Tarifs & abonnements', icon: CreditCard },
+  { path: '/coach/plan-omnia', label: 'Mon plan Omnia', icon: CreditCard },
   { path: '/coach/produits', label: 'Coaching collectif', icon: Package },
 ];
 

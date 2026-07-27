@@ -70,6 +70,9 @@ import AdminRoleUsers from './pages/admin/AdminRoleUsers';
 import AdminActivityToday from './pages/admin/AdminActivityToday';
 import AdminCMS from './pages/admin/AdminCMS';
 import AdminFintech from './pages/admin/AdminFintech';
+import AdminMonetization from './pages/admin/AdminMonetization';
+import CommerceCatalog from './pages/commerce/CommerceCatalog';
+import CreatorCommerce from './pages/commerce/CreatorCommerce';
 import AdminRetraits from './pages/admin/AdminRetraits';
 import AdminMarketing from './pages/admin/AdminMarketing';
 import AdminCatalogue from './pages/admin/AdminCatalogue';
@@ -83,7 +86,6 @@ import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
 import AdminMesFormations from './pages/admin/AdminMesFormations';
 import AdminStructures from './pages/admin/AdminStructures';
 import AdminStructureCodes from './pages/admin/AdminStructureCodes';
-import AdminStructureAvantages from './pages/admin/AdminStructureAvantages';
 import AdminCredentials from './pages/admin/AdminCredentials';
 import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
 import ProfessorCourseStart from './pages/studio/ProfessorCourseStart';
@@ -111,7 +113,6 @@ import StructureMesFormations from './pages/structure/StructureMesFormations';
 import StructureProfil from './pages/structure/StructureProfil';
 import StructureCodes from './pages/structure/StructureCodes';
 import StructureMembres from './pages/structure/StructureMembres';
-import StructureAvantages from './pages/structure/StructureAvantages';
 import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
 import StructureRecruitment from './pages/structure/StructureRecruitment';
@@ -356,6 +357,8 @@ export default function App() {
           <Route path="/coach/avis" element={<CoachReviews />} />
           <Route path="/coach/revenus" element={<CoachRevenue />} />
           <Route path="/coach/produits" element={<CoachAdvancedProducts />} />
+          <Route path="/coach/commerce" element={<CreatorCommerce moduleKey="coaching" />} />
+          <Route path="/coach/plan-omnia" element={<CommerceCatalog audience="coach" />} />
           <Route path="/talents" element={<TalentDirectory />} />
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
@@ -369,6 +372,7 @@ export default function App() {
           <Route path="/talent/recruteur/messages" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/profil" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/parametres" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/plans" element={<CommerceCatalog audience="recruiter" />} />
           <Route path="/talent/organisations" element={<TalentOrganisations />} />
           <Route path="/talent/a-propos" element={<TalentAbout />} />
           <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
@@ -420,6 +424,8 @@ export default function App() {
           <Route path="/omnia-live/organisateur/medias" element={<OrganizerMedia />} />
           <Route path="/omnia-live/organisateur/statistiques" element={<OrganizerAnalytics />} />
           <Route path="/omnia-live/organisateur/parametres" element={<OrganizerSettings />} />
+          <Route path="/omnia-live/organisateur/offres" element={<CreatorCommerce moduleKey="omnia_live" />} />
+          <Route path="/omnia-live/organisateur/plan-omnia" element={<CommerceCatalog audience="organizer" />} />
           <Route path="/omnia-live/media-center" element={<OmniaLiveMediaHub />} />
           <Route path="/omnia-live/media/:mediaId/versions" element={<OmniaLiveMediaVersions />} />
           <Route path="/omnia-live/watch/:mediaId" element={<OmniaLiveWatch />} />
@@ -499,6 +505,7 @@ export default function App() {
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
+        <Route path="/admin/monetization" element={<AdminMonetization />} />
         <Route path="/admin/payouts" element={<AdminRetraits />} />
         <Route path="/admin/marketing" element={<AdminMarketing />} />
         <Route path="/admin/courses" element={<AdminCatalogue />} />
@@ -523,7 +530,7 @@ export default function App() {
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />
 <Route path="/admin/structure-codes" element={<AdminStructureCodes />} />
-<Route path="/admin/structure-avantages" element={<AdminStructureAvantages />} />
+<Route path="/admin/structure-avantages" element={<Navigate to="/admin/monetization" replace />} />
           
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
@@ -549,6 +556,7 @@ export default function App() {
         {/* Module 6 — Dashboard apprenant — always accessible */}
         <Route path="/dashboard" element={<DashboardApprenant />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
+        <Route path="/dashboard/abonnements" element={<CommerceCatalog audience="learner" />} />
         <Route path="/dashboard/evaluations" element={<DashboardAssessments />} />
         <Route path="/dashboard/evaluations/session/:sessionId" element={<AssessmentSession />} />
         <Route path="/dashboard/certificats" element={<DashboardCertificats />} />
@@ -596,7 +604,8 @@ export default function App() {
 <Route path="/structure/codes" element={<StructureCodes />} />
 <Route path="/structure/membres" element={<StructureMembres />} />
 <Route path="/structure/rattachements" element={<StructureMembres />} />
-<Route path="/structure/avantages" element={<StructureAvantages />} />
+<Route path="/structure/avantages" element={<Navigate to="/structure/abonnements" replace />} />
+<Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
 <Route path="/structure/offres-emploi" element={<StructureJobs />} />
 <Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />

@@ -274,7 +274,7 @@ export default function StructureDashboard() {
             {[
               { label: 'Membres liés',       value: stats.members,        icon: Users,   color: '#002050', bg: '#EEF2FF', path: '/structure/membres' },
               { label: 'Codes actifs',       value: stats.active_codes,   icon: QrCode,  color: '#065F46', bg: '#D1FAE5', path: '/structure/codes' },
-              { label: 'Avantages actifs',   value: stats.active_benefits, icon: Gift,   color: '#78350F', bg: '#FEF3C7', path: '/structure/avantages' },
+              { label: 'Avantages actifs',   value: stats.active_benefits, icon: Gift,   color: '#78350F', bg: '#FEF3C7', path: '/structure/abonnements' },
             ].map(stat => {
               const Icon = stat.icon;
               return (
@@ -302,7 +302,7 @@ export default function StructureDashboard() {
                 { label: 'Créer une formation',          icon: PlusCircle,  color: '#002050', path: '/structure/formations/nouvelle' },
                 { label: 'Créer un code structure',      icon: QrCode,      color: '#1E7A52', path: '/structure/codes' },
                 { label: 'Voir les membres',             icon: Users,       color: '#7C3AED', path: '/structure/membres' },
-                { label: 'Demander un avantage',         icon: Gift,        color: '#BF8813', path: '/structure/avantages' },
+                { label: 'Demander un avantage',         icon: Gift,        color: '#BF8813', path: '/structure/abonnements' },
               ].map(action => {
                 const Icon = action.icon;
                 return (

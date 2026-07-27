@@ -71,7 +71,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
       { path: '/admin/structures', label: 'Structures', icon: Building2 },
       { path: '/admin/structure-codes', label: 'Codes structure', icon: QrCode },
-      { path: '/admin/structure-avantages', label: 'Avantages structure', icon: Gift },
     ],
   },
   {
@@ -80,6 +79,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Landmark,
     items: [
       { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
+      { path: '/admin/monetization', label: 'Abonnements & monétisation', icon: Gift },
       { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },
       { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
     ],

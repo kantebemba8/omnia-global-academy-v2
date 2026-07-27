@@ -1,7 +1,7 @@
 import {ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
-  LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,Settings2,
+  LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,CreditCard,Settings2,
   PlusCircle,MessageSquare,KeyRound,Menu,X,ExternalLink,LogOut,ArrowLeft
 } from 'lucide-react';
 
@@ -17,6 +17,8 @@ const NAV=[
   ['/omnia-live/organisateur/communications','Communications',MessageSquare],
   ['/omnia-live/organisateur/acces-prives','Codes privés',KeyRound],
   ['/omnia-live/revenus','Revenus & Payouts',Wallet],
+  ['/omnia-live/organisateur/offres','Offres aux participants',CreditCard],
+  ['/omnia-live/organisateur/plan-omnia','Mon plan organisateur',CreditCard],
   ['/omnia-live/organisateur/statistiques','Analytics',BarChart3],
   ['/omnia-live/organisateur/parametres','Paramètres',Settings2],
 ] as const;

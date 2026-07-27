@@ -209,6 +209,17 @@ async function addRole(sb: ReturnType<typeof createClient>, userId: string, role
   if (error && error.code !== "23505") throw error;
 }
 
+async function structureCapacity(sb: ReturnType<typeof createClient>, organizationId: string, benefitKey: string) {
+  const { data: manager } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true).neq("status", "retire").maybeSingle();
+  if (!manager?.user_id) return null;
+  const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", benefitKey).eq("is_active", true).maybeSingle();
+  if (!definition) return null;
+  const now = new Date().toISOString();
+  const { data: rights } = await sb.from("commerce_entitlements").select("value_json").eq("user_id", manager.user_id).eq("benefit_definition_id", definition.id).eq("status", "active").lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`);
+  const values = (rights || []).map((row: any) => Number(row.value_json?.value ?? row.value_json?.capacity ?? row.value_json?.quantity)).filter((value: number) => Number.isFinite(value) && value >= 0);
+  return values.length ? Math.max(...values) : null;
+}
+
 async function getOrganization(sb: ReturnType<typeof createClient>, organizationId: string) {
   const { data, error } = await sb.from("partner_organizations").select("*").eq("id", organizationId).maybeSingle();
   if (error) throw error;
@@ -454,6 +465,13 @@ Deno.serve(async (req: Request) => {
       const { data: membership } = await sb.from("partner_code_users").select("*").eq("id", membershipId).eq("organization_id", organizationId).maybeSingle();
       if (!membership) return json({ error: "MEMBERSHIP_NOT_FOUND" }, 404);
       const newStatus = decision === "approve" ? "validated" : "rejected";
+      if (decision === "approve") {
+        const capacity = await structureCapacity(sb, organizationId, "structure_member_limit");
+        if (capacity !== null) {
+          const { count } = await sb.from("partner_code_users").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["validated", "approved", "active"]);
+          if (Number(count || 0) >= capacity) return json({ error: "STRUCTURE_MEMBER_LIMIT_REACHED", message: "La capacité de membres prévue par l'abonnement de la Structure est atteinte." }, 409);
+        }
+      }
       const { error } = await sb.from("partner_code_users").update({ status: newStatus }).eq("id", membershipId);
       if (error) throw error;
       if (decision === "approve" && membership.code_id) {
@@ -500,6 +518,11 @@ Deno.serve(async (req: Request) => {
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
       const email = String(body.email || "").trim().toLowerCase();
       if (!email) return json({ error: "EMAIL_REQUIRED" }, 400);
+      const managerCapacity = await structureCapacity(sb, organizationId, "structure_manager_limit");
+      if (managerCapacity !== null) {
+        const { count } = await sb.from("partner_managers").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["actif", "active", "invite", "invited"]);
+        if (Number(count || 0) >= managerCapacity) return json({ error: "STRUCTURE_MANAGER_LIMIT_REACHED", message: "La limite de gestionnaires prévue par l'abonnement est atteinte." }, 409);
+      }
       const { data: user } = await sb.from("users").select("id,full_name,email").ilike("email", email).maybeSingle();
       if (!user) return json({ error: "USER_ACCOUNT_REQUIRED", message: "Cette personne doit d'abord créer un compte Omnia avec cette adresse e-mail." }, 404);
       const permissions = body.permissions && typeof body.permissions === "object" ? body.permissions : {};

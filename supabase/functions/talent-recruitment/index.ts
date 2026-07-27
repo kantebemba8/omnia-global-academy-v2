@@ -89,6 +89,31 @@ function can(s: Session, permission: string) {
 }
 function scopeOrg(s: Session, scope: string) { return scope === "structure" ? s.organizationId : null; }
 
+
+async function commerceEntitlementOwner(sb: ReturnType<typeof createClient>, userId: string, organizationId: string | null) {
+  if (!organizationId) return userId;
+  const { data } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true).eq("status", "actif").maybeSingle();
+  return data?.user_id ? String(data.user_id) : userId;
+}
+
+async function consumeCommerceBenefit(sb: ReturnType<typeof createClient>, userId: string, organizationId: string | null, benefitKey: string, referenceType: string, referenceId: string | null = null) {
+  const ownerId = await commerceEntitlementOwner(sb, userId, organizationId);
+  const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", benefitKey).eq("is_active", true).maybeSingle();
+  if (!definition) return { allowed: false, reason: "MONETIZATION_NOT_CONFIGURED" };
+  const now = new Date().toISOString();
+  const { data: rights } = await sb.from("commerce_entitlements").select("id,remaining_quantity")
+    .eq("user_id", ownerId).eq("benefit_definition_id", definition.id).eq("status", "active").lte("valid_from", now)
+    .or(`valid_until.is.null,valid_until.gte.${now}`).order("valid_until", { ascending: true, nullsFirst: false });
+  const right = (rights || []).find((row: any) => row.remaining_quantity === null || Number(row.remaining_quantity) >= 1);
+  if (!right) return { allowed: false, reason: "SUBSCRIPTION_OR_PACK_REQUIRED" };
+  if (right.remaining_quantity !== null) {
+    const remaining = Number(right.remaining_quantity) - 1;
+    await sb.from("commerce_entitlements").update({ remaining_quantity: remaining, status: remaining <= 0 ? "exhausted" : "active" }).eq("id", right.id);
+  }
+  await sb.from("commerce_usage_ledger").insert({ entitlement_id: right.id, user_id: ownerId, quantity: 1, module_key: "talent", action_key: benefitKey, reference_type: referenceType, reference_id: referenceId });
+  return { allowed: true };
+}
+
 async function profilesByIds(sb: ReturnType<typeof createClient>, ids: string[]) {
   if (!ids.length) return new Map<string, any>();
   const { data } = await sb.from("career_public_profiles").select("user_id,full_name,professional_title,location,photo_url,visibility").in("user_id", ids);
@@ -601,6 +626,10 @@ Deno.serve(async (req: Request) => {
       const talentId = String(body.talent_user_id || "");
       const message = String(body.message || "").trim();
       if (!talentId || message.length < 5) return json({ error: "INVALID_CONTACT" }, 400);
+      if (!hasRole(session, "super_admin")) {
+        const commercial = await consumeCommerceBenefit(sb, session.userId, organizationId, "recruiter_contact_credits", "talent", talentId);
+        if (!commercial.allowed) return json({ error: commercial.reason, message: "Un crédit de contact recruteur est requis." }, 402);
+      }
       const { data: contact, error } = await sb.from("talent_contacts").insert({ actor_user_id: session.userId, organization_id: organizationId, talent_user_id: talentId, subject: body.subject || null, message, status: "sent" }).select().single();
       if (error) throw error;
       let convQuery = sb.from("talent_conversations").select("id").eq("talent_user_id", talentId).is("closed_at", null);

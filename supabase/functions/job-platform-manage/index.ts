@@ -84,6 +84,31 @@ function can(session: Session, permission: string) {
   return session.permissions[permission] === true;
 }
 
+
+async function commerceEntitlementOwner(sb: ReturnType<typeof createClient>, userId: string, organizationId: string | null) {
+  if (!organizationId) return userId;
+  const { data } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true).eq("status", "actif").maybeSingle();
+  return data?.user_id ? String(data.user_id) : userId;
+}
+
+async function consumeCommerceBenefit(sb: ReturnType<typeof createClient>, userId: string, organizationId: string | null, benefitKey: string, referenceType: string, referenceId: string | null = null) {
+  const ownerId = await commerceEntitlementOwner(sb, userId, organizationId);
+  const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", benefitKey).eq("is_active", true).maybeSingle();
+  if (!definition) return { allowed: false, reason: "MONETIZATION_NOT_CONFIGURED" };
+  const now = new Date().toISOString();
+  const { data: rights } = await sb.from("commerce_entitlements").select("id,remaining_quantity")
+    .eq("user_id", ownerId).eq("benefit_definition_id", definition.id).eq("status", "active").lte("valid_from", now)
+    .or(`valid_until.is.null,valid_until.gte.${now}`).order("valid_until", { ascending: true, nullsFirst: false });
+  const right = (rights || []).find((row: any) => row.remaining_quantity === null || Number(row.remaining_quantity) >= 1);
+  if (!right) return { allowed: false, reason: "SUBSCRIPTION_OR_PACK_REQUIRED" };
+  if (right.remaining_quantity !== null) {
+    const remaining = Number(right.remaining_quantity) - 1;
+    await sb.from("commerce_entitlements").update({ remaining_quantity: remaining, status: remaining <= 0 ? "exhausted" : "active" }).eq("id", right.id);
+  }
+  await sb.from("commerce_usage_ledger").insert({ entitlement_id: right.id, user_id: ownerId, quantity: 1, module_key: "talent", action_key: benefitKey, reference_type: referenceType, reference_id: referenceId });
+  return { allowed: true };
+}
+
 function validApplicationMode(value: unknown) {
   const mode = String(value || "omnia_managed");
   return ["omnia_managed", "external_link", "external_email"].includes(mode) ? mode : "omnia_managed";
@@ -169,6 +194,10 @@ Deno.serve(async (req: Request) => {
       }
       if (job.application_mode === "external_email" && !job.external_apply_email) {
         return json({ error: "EXTERNAL_EMAIL_REQUIRED", message: "L’email externe est requis." }, 400);
+      }
+      if (!isSuperAdmin(session)) {
+        const commercial = await consumeCommerceBenefit(sb, session.userId, session.organizationId, "recruiter_job_posts", "job_offer");
+        if (!commercial.allowed) return json({ error: commercial.reason, message: "Un droit de publication recruteur est requis." }, 402);
       }
 
       const { data, error } = await sb.from("job_offers").insert({

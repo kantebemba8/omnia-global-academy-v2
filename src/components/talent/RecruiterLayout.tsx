@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Briefcase,
   CalendarDays,
+  CreditCard,
   ChevronDown,
   ExternalLink,
   FileText,
@@ -33,6 +34,7 @@ const NAV = [
   { path: '/talent/recruteur/entretiens', label: 'Entretiens', icon: CalendarDays },
   { path: '/talent/recruteur/messages', label: 'Messages', icon: MessageSquare },
   { path: '/talent/recruteur/profil', label: 'Profil recruteur', icon: UserRound },
+  { path: '/talent/recruteur/plans', label: 'Plans & crédits', icon: CreditCard },
   { path: '/talent/recruteur/parametres', label: 'Paramètres', icon: Settings },
 ];
 

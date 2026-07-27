@@ -55,30 +55,51 @@ async function processApprovedPayment(sb: ReturnType<typeof createClient>, order
 
   let profPercent = 0;
   if (courseRow?.creator_type === "professeur" || !courseRow?.creator_type) {
-    // Determine commission tier
-    if (courseRow?.cpd_accredited && courseRow?.is_assisted) {
-      profPercent = parseInt(cfg["commission_cpd_assiste_prof"] ?? "60");
-    } else if (courseRow?.cpd_accredited) {
-      profPercent = parseInt(cfg["commission_avec_cpd_prof"] ?? "65");
-    } else if (courseRow?.is_assisted) {
-      profPercent = parseInt(cfg["commission_assiste_prof"] ?? "55");
+    const finalPrice = Number(order.final_price_xof || 0);
+    const now = new Date().toISOString();
+    const { data: centralRules } = await sb.from("commerce_commission_rules").select("*")
+      .in("module_key", ["courses", "global"]).eq("status", "active")
+      .lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`)
+      .order("priority", { ascending: true });
+    const centralRule = (centralRules || []).find((row: Record<string, unknown>) =>
+      (!row.creator_user_id || row.creator_user_id === courseRow?.creator_id) &&
+      (!row.offer_type || row.offer_type === "course_sale") &&
+      finalPrice >= Number(row.minimum_amount_xof || 0)
+    );
+
+    let platformPercent = 0;
+    let fixedFee = 0;
+    if (centralRule) {
+      platformPercent = Number(centralRule.platform_percent || 0);
+      fixedFee = Number(centralRule.fixed_fee_xof || 0);
+      profPercent = Math.max(0, 100 - platformPercent);
     } else {
-      profPercent = parseInt(cfg["commission_sans_cpd_prof"] ?? "70");
+      if (courseRow?.cpd_accredited && courseRow?.is_assisted) {
+        profPercent = parseInt(cfg["commission_cpd_assiste_prof"] ?? "60");
+      } else if (courseRow?.cpd_accredited) {
+        profPercent = parseInt(cfg["commission_avec_cpd_prof"] ?? "65");
+      } else if (courseRow?.is_assisted) {
+        profPercent = parseInt(cfg["commission_assiste_prof"] ?? "55");
+      } else {
+        profPercent = parseInt(cfg["commission_sans_cpd_prof"] ?? "70");
+      }
+      platformPercent = 100 - profPercent;
     }
 
-    const finalPrice = order.final_price_xof as number;
-    const profShare = Math.floor(finalPrice * profPercent / 100);
-    const platShare = finalPrice - profShare;
+    const platShare = Math.min(finalPrice, Math.round(finalPrice * platformPercent / 100) + fixedFee);
+    const profShare = Math.max(0, finalPrice - platShare);
+    const effectiveProfPercent = finalPrice > 0 ? Number(((profShare / finalPrice) * 100).toFixed(2)) : 0;
+    const effectivePlatformPercent = finalPrice > 0 ? Number(((platShare / finalPrice) * 100).toFixed(2)) : 0;
+    profPercent = effectiveProfPercent;
 
     await sb.from("orders").update({
       professor_share_xof: profShare,
       platform_share_xof: platShare,
-      professor_percent: profPercent,
-      platform_percent: 100 - profPercent,
+      professor_percent: effectiveProfPercent,
+      platform_percent: effectivePlatformPercent,
     }).eq("id", order.id);
 
     if (courseRow.creator_id && profShare > 0) {
-      // Upsert wallet
       const { data: wallet } = await sb.from("wallets").select("id, balance_xof, total_earned_xof")
         .eq("user_id", courseRow.creator_id).maybeSingle();
       if (wallet) {
@@ -184,7 +205,8 @@ async function processApprovedPayment(sb: ReturnType<typeof createClient>, order
   if (courseRow?.creator_id) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const profShare = Math.floor((order.final_price_xof as number) * profPercent / 100);
+    const { data: settledOrder } = await sb.from("orders").select("professor_share_xof").eq("id", order.id).maybeSingle();
+    const profShare = Number(settledOrder?.professor_share_xof || 0);
     const { data: walletAfter } = await sb.from("wallets").select("balance_xof").eq("user_id", courseRow.creator_id).maybeSingle();
     fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
       method: "POST",
@@ -335,6 +357,16 @@ Deno.serve(async (req: Request) => {
     const eventName: string = event.name ?? "";
     const txn = event.data ?? {};
     const fedapayId = String(txn.id ?? "");
+    const centralMetadata = txn.custom_metadata ?? txn.metadata ?? {};
+
+    if (centralMetadata.commerce_order_id || centralMetadata.resource_type === "central_commerce") {
+      const response = await postInternal("commerce-engine", { action: "system_payment_event", event });
+      if (!response || !response.ok) {
+        const detail = response ? await response.text().catch(() => "") : "commerce-engine unavailable";
+        throw new Error(`CENTRAL_COMMERCE_WEBHOOK_FAILED:${detail}`);
+      }
+      return new Response(JSON.stringify({ received: true, resource: "central_commerce" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (await processCoachingWebhook(sb, event, eventName, txn, fedapayId)) {
       return new Response(JSON.stringify({ received: true, resource: "coaching" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
