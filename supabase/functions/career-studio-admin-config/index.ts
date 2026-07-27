@@ -223,7 +223,7 @@ Deno.serve(async (req: Request) => {
       const [rules, tokenConfig, packs, aiConfig, templates, questions, exportLogs, transactions, documents, orders, userRoles] = await Promise.all([
         safeRows(sb, "career_admin_rules"),
         safeRows(sb, "career_token_config"),
-        safeRows(sb, "career_token_packs"),
+        Promise.resolve([]),
         safeRows(sb, "career_ai_config"),
         safeRows(sb, "career_templates"),
         safeRows(sb, "career_interview_questions"),
@@ -324,7 +324,7 @@ Deno.serve(async (req: Request) => {
         active_templates: templates.filter((row: any) => row.is_active).length,
         active_cv_templates: templates.filter((row: any) => row.is_active && row.template_type === "cv").length,
         active_lm_templates: templates.filter((row: any) => row.is_active && row.template_type === "lm").length,
-        active_packs: packs.filter((row: any) => row.is_active).length,
+        active_packs: 0,
         active_questions: questions.filter((row: any) => row.is_active).length,
         top_templates: topTemplates,
       };
@@ -332,7 +332,7 @@ Deno.serve(async (req: Request) => {
       return json({
         rules: rules.sort((a: any, b: any) => String(a.group_key).localeCompare(String(b.group_key)) || Number(a.display_order || 0) - Number(b.display_order || 0)),
         token_config: tokenConfig.sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
-        token_packs: packs.sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
+        token_packs: [],
         ai_config: aiConfig.sort((a: any, b: any) => String(a.config_key).localeCompare(String(b.config_key))),
         templates: templates.sort((a: any, b: any) => String(a.template_type).localeCompare(String(b.template_type)) || Number(a.display_order || 0) - Number(b.display_order || 0)),
         questions: questions.sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at)),
@@ -345,8 +345,11 @@ Deno.serve(async (req: Request) => {
     if (action === "save_rules") {
       const items = Array.isArray(body.rules) ? body.rules : [];
       for (const rule of items) {
+        const safeRule = rule?.rule_key === "token_sales_enabled"
+          ? { ...rule, value_json: { value: false }, is_active: false }
+          : rule;
         const { error } = await sb.from("career_admin_rules").upsert(
-          { ...rule, updated_at: new Date().toISOString() },
+          { ...safeRule, updated_at: new Date().toISOString() },
           { onConflict: "rule_key" },
         );
         if (error) throw error;

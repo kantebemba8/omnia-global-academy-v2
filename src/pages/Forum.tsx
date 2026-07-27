@@ -27,7 +27,8 @@ export default function Forum() {
   const dashboardPath = userRoles.includes('super_admin') ? '/admin/dashboard'
     : userRoles.includes('moderateur') ? '/moderateur/dashboard'
     : userRoles.includes('professeur') ? '/professeur/dashboard'
-    : userRoles.includes('directeur') ? '/school/dashboard'
+    : userRoles.some(role => ['responsable_structure', 'structure_admin', 'gestionnaire_partenaire', 'directeur', 'etablissement_directeur'].includes(role)) ? '/structure/dashboard'
+    : userRoles.some(role => ['enseignant', 'etablissement_enseignant'].includes(role)) ? '/professeur/dashboard'
     : '/dashboard';
 
   useEffect(() => {

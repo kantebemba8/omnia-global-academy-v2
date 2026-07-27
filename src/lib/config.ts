@@ -32,12 +32,7 @@ export const ENDPOINTS ={
   dashboardProfesseur: `${API_BASE_URL}/dashboard-professeur`,
   courseScorePreview: `${API_BASE_URL}/course-score-preview`,
   payoutRequest: `${API_BASE_URL}/payout-request`,
-  // Module 8 — Dashboard établissement
-  dashboardDirecteur: `${API_BASE_URL}/dashboard-directeur`,
-  dashboardEnseignant: `${API_BASE_URL}/dashboard-enseignant`,
-  teacherCreate: `${API_BASE_URL}/teacher-create`,
-  teacherManage: `${API_BASE_URL}/teacher-manage`,
-  schoolCourseValidate: `${API_BASE_URL}/school-course-validate`,
+  // Module 8 — Espace Structure
   jobOfferCreate: `${API_BASE_URL}/job-offer-create`,
   // Module 9 — Dashboard modérateur
   dashboardModerateur: `${API_BASE_URL}/dashboard-moderateur`,
@@ -100,6 +95,7 @@ export const ENDPOINTS ={
   dallecover: `${API_BASE_URL}/dall-e-cover`,
   subtitleRequest: `${API_BASE_URL}/subtitle-request`,
   subtitleProcess: `${API_BASE_URL}/subtitle-process`,
-  demoHeartbeat: `${API_BASE_URL}/demo-heartbeat`,  structureManage: `${API_BASE_URL}/structure-manage`,
+  demoHeartbeat: `${API_BASE_URL}/demo-heartbeat`,
+  structureManage: `${API_BASE_URL}/structure-manage`,
   talentRecruitment: `${API_BASE_URL}/talent-recruitment`,
 } as const;

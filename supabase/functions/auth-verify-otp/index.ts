@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
       .from("user_roles").select("role").eq("user_id", user.id);
     const userRoles = (rolesData || []).map((r: { role: string }) => r.role);
     const requiresManualValidation = userRoles.some((r: string) =>
-      ["professeur", "etablissement_directeur", "etablissement_enseignant", "recruteur_independant"].includes(r)
+      ["professeur", "responsable_structure", "recruteur_independant"].includes(r)
     );
 
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
@@ -160,10 +160,10 @@ Deno.serve(async (req: Request) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Professeur / Établissement / Recruteur indépendant → validation manuelle
+      // Professeur / Structure / Recruteur indépendant → validation manuelle
       const roleDisplay = userRoles.includes("professeur") ? "Professeur"
         : userRoles.includes("recruteur_independant") ? "Recruteur indépendant"
-        : "Établissement";
+        : "Structure";
       if (brevoApiKey) {
         try {
           await sendBrevoWelcome(

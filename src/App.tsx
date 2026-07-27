@@ -18,7 +18,6 @@ import { RegisterApprenant } from './pages/auth/RegisterApprenant';
 import { RegisterProfesseur } from './pages/auth/RegisterProfesseur';
 import { RegisterOrganizer } from './pages/auth/RegisterOrganizer';
 import { RegisterRecruiterIndependent } from './pages/auth/RegisterRecruiterIndependent';
-import { RegisterEtablissement } from './pages/auth/RegisterEtablissement';
 import RegisterOrganisation from './pages/auth/RegisterOrganisation';
 import { RegisterStructure } from './pages/auth/RegisterStructure';
 import { VerifyOTP } from './pages/auth/VerifyOTP';
@@ -41,21 +40,10 @@ import { DashboardParrainage } from './pages/dashboard/DashboardParrainage';
 import { DashboardProfil } from './pages/dashboard/DashboardProfil';
 import { DashboardProfesseur } from './pages/professeur/DashboardProfesseur';
 import { ProfesseurMesFormations } from './pages/professeur/ProfesseurMesFormations';
-import ProfesseurTarification from './pages/professeur/ProfesseurTarification';
 import { ProfesseurPortefeuille } from './pages/professeur/ProfesseurPortefeuille';
 import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
 import { ProfesseurProfil } from './pages/professeur/ProfesseurProfil';
 import ProfesseurCertificats from './pages/professeur/ProfesseurCertificats';
-import { DirecteurDashboard } from './pages/directeur/DirecteurDashboard';
-import PartnerDashboard from './pages/partner/PartnerDashboard';
-import { DirecteurEnseignants } from './pages/directeur/DirecteurEnseignants';
-import { DirecteurCatalogueInterne } from './pages/directeur/DirecteurCatalogueInterne';
-import { DirecteurLicences } from './pages/directeur/DirecteurLicences';
-import { DirecteurPortefeuille } from './pages/directeur/DirecteurPortefeuille';
-import DirecteurCertificats from './pages/directeur/DirecteurCertificats';
-import { EnseignantDashboard } from './pages/enseignant/EnseignantDashboard';
-import { EnseignantMesCours } from './pages/enseignant/EnseignantMesCours';
-import { EnseignantAnalytique } from './pages/enseignant/EnseignantAnalytique';
 import ModerateurDashboard from './pages/moderateur/ModerateurDashboard';
 import ModerateurCours from './pages/moderateur/ModerateurCours';
 import ModerateurKyc from './pages/moderateur/ModerateurKyc';
@@ -124,15 +112,6 @@ import StructureRecruitment from './pages/structure/StructureRecruitment';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
 import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
-import OmniaCareerLayout from './layouts/OmniaCareerLayout';
-import OmniaCareerEntry from './pages/omnia-career/OmniaCareerEntry';
-import OmniaCareerCVBuilder from './pages/omnia-career/OmniaCareerCVBuilder';
-import OmniaCareerLetters from './pages/omnia-career/OmniaCareerLetters';
-import OmniaCareerInterview from './pages/omnia-career/OmniaCareerInterview';
-import OmniaCareerApplications from './pages/omnia-career/OmniaCareerApplications';
-import OmniaCareerProfile from './pages/omnia-career/OmniaCareerProfile';
-import OmniaCareerSettings from './pages/omnia-career/OmniaCareerSettings';
-import AdminOmniaCareerStudio from './pages/admin/AdminOmniaCareerStudio';
 import TalentDirectory from './pages/TalentDirectory';
 import TalentHome from './pages/talent/TalentHome';
 import TalentExplore from './pages/talent/TalentExplore';
@@ -172,7 +151,6 @@ import AdminAssistedCourses from './pages/admin/AdminAssistedCourses';
 import OmniaLiveHome from './pages/omnia-live/OmniaLiveHome';
 import CatalogView from './pages/omnia-live/CatalogView';
 import OmniaLiveAbout from './pages/omnia-live/OmniaLiveAbout';
-import OmniaLiveMyLives from './pages/omnia-live/OmniaLiveMyLives';
 import OmniaLiveOrganizers from './pages/omnia-live/OmniaLiveOrganizers';
 import OmniaLivePropose from './pages/omnia-live/OmniaLivePropose';
 import OmniaLiveDetail from './pages/omnia-live/OmniaLiveDetail';
@@ -184,9 +162,6 @@ import OmniaLiveStudioSpeakers from './pages/omnia-live/OmniaLiveStudioSpeakers'
 import OmniaLiveStudioResources from './pages/omnia-live/OmniaLiveStudioResources';
 import OmniaLiveStudioPreview from './pages/omnia-live/OmniaLiveStudioPreview';
 import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
-import OmniaLiveMediaProcessing from './pages/omnia-live/OmniaLiveMediaProcessing';
-import OmniaLiveRoom from './pages/omnia-live/OmniaLiveRoom';
-import OmniaLiveHostRoom from './pages/omnia-live/OmniaLiveHostRoom';
 import OmniaLiveAttendance from './pages/omnia-live/OmniaLiveAttendance';
 import OmniaLiveCheckout from './pages/omnia-live/OmniaLiveCheckout';
 import OmniaLiveOrders from './pages/omnia-live/OmniaLiveOrders';
@@ -197,7 +172,6 @@ import OmniaLiveReviews from './pages/omnia-live/OmniaLiveReviews';
 import OmniaLivePrivateAccess from './pages/omnia-live/OmniaLivePrivateAccess';
 import OmniaLiveOrganizerProfile from './pages/omnia-live/OmniaLiveOrganizerProfile';
 import OmniaLiveAnalytics from './pages/omnia-live/OmniaLiveAnalytics';
-import OmniaLiveDocuments from './pages/omnia-live/OmniaLiveDocuments';
 import OmniaLiveDocumentVerify from './pages/omnia-live/OmniaLiveDocumentVerify';
 import AdminOmniaLiveOverview from './pages/omnia-live/admin/AdminOmniaLiveOverview';
 import AdminOmniaLiveValidation from './pages/omnia-live/admin/AdminOmniaLiveValidation';
@@ -233,7 +207,6 @@ import MyLiveDocuments from './pages/omnia-live/documents/MyLiveDocuments';
 import VerifyLiveDocument from './pages/omnia-live/documents/VerifyLiveDocument';
 import AdminLiveDocuments from './pages/omnia-live/documents/AdminLiveDocuments';
 import EventDocumentSettings from './pages/omnia-live/documents/EventDocumentSettings';
-import OmniaLiveNotificationCenter from './pages/omnia-live/notifications/OmniaLiveNotificationCenter';
 import OrganizerCommunications from './pages/omnia-live/organizer/OrganizerCommunications';
 import OrganizerAccessCodes from './pages/omnia-live/organizer/OrganizerAccessCodes';
 import AdminOmniaLiveCommunications from './pages/omnia-live/admin/AdminOmniaLiveCommunications';
@@ -621,12 +594,9 @@ export default function App() {
 <Route path="/structure/recrutement/equipe" element={<StructureRecruitment />} />
 
 
-        {/* Module 8 — Dashboard enseignant — always accessible */}
-        <Route path="/staff/dashboard" element={<EnseignantDashboard />} />
-        <Route path="/staff/courses" element={<EnseignantMesCours />} />
-        <Route path="/staff/courses/new" element={<StudioConceptionFormation />} />
-        <Route path="/staff/courses/:id/edit" element={<StudioConceptionFormation />} />
-        <Route path="/staff/analytics" element={<EnseignantAnalytique />} />
+        {/* Compatibilité des anciennes URL Établissement : aucun ancien Dashboard n'est monté. */}
+        <Route path="/staff/*" element={<Navigate to="/professeur/dashboard" replace />} />
+        <Route path="/school/*" element={<Navigate to="/structure/dashboard" replace />} />
 
         {/* Module 11 — Paiement — always accessible */}
         <Route path="/paiement/:courseId" element={<Checkout />} />

@@ -11,15 +11,12 @@ interface NavItem { path: string; label: string; icon: React.ElementType; exact?
 interface NavGroup { id: string; label: string; icon: React.ElementType; items: NavItem[] }
 interface Props {
   children: ReactNode;
-  role?: 'apprenant' | 'professeur' | 'directeur' | 'enseignant' | 'moderateur' | 'super_admin';
+  role?: 'apprenant' | 'professeur' | 'directeur' | 'moderateur' | 'super_admin';
   navItems?: NavItem[];
   navGroups?: NavGroup[];
 }
 
-interface StoredUser {
-  id: string; full_name: string; email: string;
-  country_code?: string; ai_tokens?: number;
-}
+
 
 
 const APPRENANT_NAV = [
@@ -62,23 +59,9 @@ const PARTNER_NAV = [
   { path: '/structure/certificats', label: 'Certificats', icon: Award },
 ];
 
-const DIRECTEUR_NAV = [
-  { path: '/structure/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
-  { path: '/structure/teachers', label: 'Gestion enseignants', icon: Users },
-  { path: '/structure/courses', label: 'Catalogue interne', icon: BookOpen },
-  { path: '/structure/licenses', label: 'Licences B2B', icon: Key },
-  { path: '/structure/payouts', label: 'Retraits établissement', icon: Wallet },
-  { path: '/forum', label: 'Forum école', icon: MessageSquare },
-  { path: '/structure/certificats', label: 'Certificats', icon: Award },
-];
 
-const ENSEIGNANT_NAV = [
-  { path: '/staff/dashboard', label: 'Mon espace', icon: LayoutDashboard, exact: true },
-  { path: '/staff/courses', label: 'Mes cours', icon: BookOpen },
-  { path: '/staff/courses/new', label: 'Créer un cours', icon: PlusCircle },
-  { path: '/staff/analytics', label: 'Analytique', icon: BarChart2 },
-  { path: '/forum', label: 'Forum école', icon: MessageSquare },
-];
+
+
 
 const ADMIN_NAV = [
   { path: '/admin/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
@@ -100,7 +83,6 @@ const ADMIN_NAV = [
 export function DashboardLayout({ children, role = 'apprenant', navItems, navGroups }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<StoredUser | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
@@ -129,14 +111,12 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
       try {
         const u = JSON.parse(stored);
         if (u?.roles?.includes('super_admin')) {
-          setUser(u);
           return; // pas de vérification de rôle
         }
       } catch { /* ignore */ }
     }
     // Mode normal : vérification token
     if (!token) { navigate('/connexion'); return; }
-    if (stored) { try { setUser(JSON.parse(stored)); } catch { /* ignore */ } }
   }, [navigate, previewMode]);
 
   function handleLogout() {
@@ -153,7 +133,6 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   const NAV_ITEMS = navItems ?? (
     role === 'professeur' ? PROFESSEUR_NAV
    : role === 'directeur' ? PARTNER_NAV
-    : role === 'enseignant' ? ENSEIGNANT_NAV
     : role === 'super_admin' ? ADMIN_NAV
     : APPRENANT_NAV
   );

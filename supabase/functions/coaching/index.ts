@@ -355,10 +355,12 @@ async function publicProfile(sb: Supabase, identifier: string, includeInactive =
     activeOffers(sb, String(profile.id)),
     publicCoachRatings(sb, String(profile.id)),
   ]);
-  const [{ data: packages }, { data: groups }] = await Promise.all([
-    sb.from("coaching_packages").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).eq("status", "active").order("created_at", { ascending: false }),
-    sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).in("status", ["active", "full"]).gt("scheduled_start", new Date().toISOString()).order("scheduled_start"),
-  ]);
+  const { data: groups } = await sb.from("coaching_group_programs")
+    .select("*,domain:coaching_domains(id,slug,name)")
+    .eq("coach_id", profile.id)
+    .in("status", ["active", "full"])
+    .gt("scheduled_start", new Date().toISOString())
+    .order("scheduled_start");
   const enriched = {
     ...profile,
     full_name: user?.full_name || "Coach Omnia",
@@ -366,7 +368,6 @@ async function publicProfile(sb: Supabase, identifier: string, includeInactive =
     domains: domainsByCoach.get(String(profile.id)) || [],
     offers: includeInactive ? offers : (offers || []).map((offer: Record<string, unknown>) => sanitizePublicOffer(offer)),
     ratings,
-    packages: includeInactive ? (packages || []) : (packages || []).map((item: Record<string, unknown>) => sanitizePublicPackage(item)),
     groups: includeInactive ? (groups || []) : (groups || []).map((item: Record<string, unknown>) => sanitizePublicGroup(item)),
   };
   return includeInactive ? enriched : sanitizePublicCoach(enriched);
@@ -1160,13 +1161,8 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
   const duration = Number(context.offer.duration_minutes);
   const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
   const originalPrice = Number(context.offer.price_xof);
-  const subscription = await activeSubscriptionForUser(sb, session.userId);
-  const subscriptionPlan = (subscription?.plan || null) as Record<string, unknown> | null;
-  const bookingLimit = subscriptionPlan?.monthly_booking_limit === null || subscriptionPlan?.monthly_booking_limit === undefined ? null : Number(subscriptionPlan.monthly_booking_limit);
-  const subscriptionUsable = Boolean(subscription && (!bookingLimit || Number(subscription.bookings_used || 0) < bookingLimit));
-  const discountPercent = subscriptionUsable ? Number(subscriptionPlan?.discount_percent || 0) : 0;
-  const discountXof = Math.round(originalPrice * discountPercent / 100);
-  const price = Math.max(0, originalPrice - discountXof);
+  const discountXof = 0;
+  const price = originalPrice;
   const commissionAmount = Math.round(price * context.limits.commission / 100);
   const holdExpiresAt = new Date(Date.now() + Number(context.settings?.slot_hold_minutes || 15) * 60000).toISOString();
   const payload = {
@@ -1191,9 +1187,9 @@ async function createFixedBooking(sb: Supabase, session: Session, body: Record<s
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15), subscription_id: subscriptionUsable ? subscription?.id : null, discount_percent: discountPercent },
-    funding_source: subscriptionUsable && discountPercent > 0 ? "subscription_discount" : "direct",
-    funding_reference_id: subscriptionUsable && discountPercent > 0 ? subscription?.id : null,
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", hold_minutes: Number(context.settings?.slot_hold_minutes || 15) },
+    funding_source: "direct",
+    funding_reference_id: null,
     original_price_xof: originalPrice,
     discount_xof: discountXof,
   };
@@ -1218,13 +1214,8 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
   if (duration < Number(context.offer.custom_min_minutes) || duration > Number(context.offer.custom_max_minutes) || (duration - Number(context.offer.custom_min_minutes)) % Number(context.offer.custom_step_minutes) !== 0) throw new Error("INVALID_DURATION");
   const slot = await ensureSlotAvailable(sb, String(context.profile.id), duration, startIso);
   const originalPrice = Math.round(Number(context.offer.hourly_price_xof) * duration / 60);
-  const subscription = await activeSubscriptionForUser(sb, session.userId);
-  const subscriptionPlan = (subscription?.plan || null) as Record<string, unknown> | null;
-  const bookingLimit = subscriptionPlan?.monthly_booking_limit === null || subscriptionPlan?.monthly_booking_limit === undefined ? null : Number(subscriptionPlan.monthly_booking_limit);
-  const subscriptionUsable = Boolean(subscription && (!bookingLimit || Number(subscription.bookings_used || 0) < bookingLimit));
-  const discountPercent = subscriptionUsable ? Number(subscriptionPlan?.discount_percent || 0) : 0;
-  const discountXof = Math.round(originalPrice * discountPercent / 100);
-  const price = Math.max(0, originalPrice - discountXof);
+  const discountXof = 0;
+  const price = originalPrice;
   const commissionAmount = Math.round(price * context.limits.commission / 100);
   const { data, error } = await sb.from("coaching_sessions").insert({
     learner_user_id: session.userId,
@@ -1245,9 +1236,9 @@ async function createCustomRequest(sb: Supabase, session: Session, body: Record<
     offer_title_snapshot: context.offer.title,
     coach_name_snapshot: context.coachName,
     coach_timezone_snapshot: context.profile.timezone,
-    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3", subscription_id: subscriptionUsable ? subscription?.id : null, discount_percent: discountPercent },
-    funding_source: subscriptionUsable && discountPercent > 0 ? "subscription_discount" : "direct",
-    funding_reference_id: subscriptionUsable && discountPercent > 0 ? subscription?.id : null,
+    policy_snapshot: { source: "coaching_module_2", payment_activation: "module_3" },
+    funding_source: "direct",
+    funding_reference_id: null,
     original_price_xof: originalPrice,
     discount_xof: discountXof,
   }).select().single();
@@ -2613,7 +2604,7 @@ async function adminSavePerformanceSettings(sb: Supabase, actor: Session, body: 
 }
 
 
-type AdvancedProductType = "package" | "subscription" | "group";
+type AdvancedProductType = "group";
 
 type AdvancedOrderContext = {
   productType: AdvancedProductType;
@@ -2677,24 +2668,13 @@ async function saveLearnerPreferences(sb: Supabase, actor: Session, body: Record
   return data;
 }
 
-async function activeSubscriptionForUser(sb: Supabase, userId: string) {
-  await sb.from("coaching_subscriptions").update({ status: "expired" }).eq("user_id", userId).eq("status", "active").lt("ends_at", new Date().toISOString());
-  const { data, error } = await sb.from("coaching_subscriptions").select("*,plan:coaching_subscription_plans(*)").eq("user_id", userId).eq("status", "active").gt("ends_at", new Date().toISOString()).maybeSingle();
-  if (error) throw error;
-  return data as Record<string, unknown> | null;
-}
-
 async function learnerAdvancedDashboard(sb: Supabase, actor: Session) {
-  const now = new Date().toISOString();
-  const [preferences, subscription, packages, groups, plans] = await Promise.all([
+  const [preferences, groups, plans] = await Promise.all([
     learnerPreferences(sb, actor),
-    activeSubscriptionForUser(sb, actor.userId),
-    sb.from("coaching_package_purchases").select("*,package:coaching_packages(*,coach:coach_profiles(id,user_id,public_slug,professional_title))").eq("user_id", actor.userId).order("created_at", { ascending: false }),
     sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(*,coach:coach_profiles(id,user_id,public_slug,professional_title))").eq("user_id", actor.userId).order("created_at", { ascending: false }),
     sb.from("coaching_action_plans").select("*,items:coaching_action_items(*)").eq("learner_user_id", actor.userId).eq("learner_visible", true).order("updated_at", { ascending: false }),
   ]);
-  const packageRows = (packages.data || []).map((row: Record<string, unknown>) => ({ ...row, expired: Boolean(row.expires_at && String(row.expires_at) < now) }));
-  return { preferences, subscription, packages: packageRows, groups: groups.data || [], action_plans: plans.data || [] };
+  return { preferences, groups: groups.data || [], action_plans: plans.data || [] };
 }
 
 function normalizedWords(values: unknown[]): Set<string> {
@@ -2710,10 +2690,9 @@ async function coachingRecommendations(sb: Supabase, actor: Session) {
   const settings = await advancedSettings(sb);
   if (settings.recommendations_enabled === false) return { preferences: await learnerPreferences(sb, actor), recommendations: [], source_categories: [] };
   const preferences = await learnerPreferences(sb, actor) as Record<string, unknown>;
-  const [{ data: enrollments }, coaches, subscription] = await Promise.all([
+  const [{ data: enrollments }, coaches] = await Promise.all([
     sb.from("user_enrollments").select("course_id,courses(category,title)").eq("user_id", actor.userId),
     publicCoaches(sb, true),
-    activeSubscriptionForUser(sb, actor.userId),
   ]);
   const coachRows = coaches as Array<Record<string, unknown>>;
   const coachIds = coachRows.map((coach) => String(coach.id));
@@ -2741,8 +2720,7 @@ async function coachingRecommendations(sb: Supabase, actor: Session) {
   const minBudget = Number(preferences.budget_min_xof || 0);
   const maxBudget = preferences.budget_max_xof === null || preferences.budget_max_xof === undefined ? null : Number(preferences.budget_max_xof);
   const weights = (settings.matching_weights || {}) as Record<string, unknown>;
-  const subscriptionPlan = subscription?.plan as Record<string, unknown> | undefined;
-  const priorityBonus = Boolean(subscriptionPlan?.priority_matching) ? 5 : 0;
+  const priorityBonus = 0;
   const rows = coachRows.filter((coach) => String(coach.user_id) !== actor.userId).map((coach) => {
     let score = priorityBonus;
     const reasons: string[] = [];
@@ -2769,70 +2747,31 @@ async function coachingRecommendations(sb: Supabase, actor: Session) {
     if (rating >= 4.5 && Number(coach.rating_count || 0) >= 3) reasons.push("Très bien évalué");
     return { coach: { ...coach, offers }, score: Math.min(100, Math.round(score)), reasons: [...new Set(reasons)].slice(0, 4), minimum_price_xof: minPrice };
   }).sort((a, b) => b.score - a.score || Number((b.coach as Record<string, unknown>).average_rating || 0) - Number((a.coach as Record<string, unknown>).average_rating || 0)).slice(0, 12);
-  return { preferences, recommendations: rows, source_categories: courseCategories.slice(0, 12), subscription };
+  return { preferences, recommendations: rows, source_categories: courseCategories.slice(0, 12) };
 }
 
 async function publicAdvancedCatalogue(sb: Supabase) {
   const now = new Date().toISOString();
-  const [{ data: packages }, { data: plans }, { data: groups }, domains] = await Promise.all([
-    sb.from("coaching_packages").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title,photo_url,average_rating,rating_count),domain:coaching_domains(id,slug,name)").eq("status", "active").order("created_at", { ascending: false }),
-    sb.from("coaching_subscription_plans").select("*").eq("is_active", true).order("display_order"),
+  const [{ data: groups }, domains] = await Promise.all([
     sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title,photo_url,average_rating,rating_count),domain:coaching_domains(id,slug,name),registrations:coaching_group_registrations(id,status)").in("status", ["active", "full"]).gt("scheduled_start", now).order("scheduled_start"),
     getDomains(sb),
   ]);
-  const coachUserIds = [...new Set([...(packages || []), ...(groups || [])].map((row: Record<string, unknown>) => String((row.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
+  const coachUserIds = [...new Set((groups || []).map((row: Record<string, unknown>) => String((row.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
   const { data: users } = coachUserIds.length ? await sb.from("users").select("id,full_name").in("id", coachUserIds) : { data: [] };
   const names = new Map((users || []).map((u: Record<string, unknown>) => [String(u.id), String(u.full_name || "Coach Omnia")]));
-  const enrich = (row: Record<string, unknown>) => {
-    const coach = (row.coach || {}) as Record<string, unknown>;
-    return { ...row, coach: { ...coach, full_name: names.get(String(coach.user_id)) || "Coach Omnia" } };
-  };
+  const enrich = (row: Record<string, unknown>) => { const coach = (row.coach || {}) as Record<string, unknown>; return { ...row, coach: { ...coach, full_name: names.get(String(coach.user_id)) || "Coach Omnia" } }; };
   return {
-    packages: (packages || []).map((row: Record<string, unknown>) => sanitizePublicPackage(enrich(row))),
-    subscription_plans: (plans || []).map((row: Record<string, unknown>) => omitPublicFields(row, ["created_at", "updated_at"])),
-    groups: (groups || []).map((row: Record<string, unknown>) => sanitizePublicGroup({
-      ...enrich(row),
-      confirmed_count: ((row.registrations || []) as Array<Record<string, unknown>>).filter((r) => ["confirmed", "attended"].includes(String(r.status))).length,
-    })),
+    groups: (groups || []).map((row: Record<string, unknown>) => sanitizePublicGroup({ ...enrich(row), confirmed_count: ((row.registrations || []) as Array<Record<string, unknown>>).filter((r) => ["confirmed", "attended"].includes(String(r.status))).length })),
     domains,
   };
 }
 
 async function coachAdvancedProducts(sb: Supabase, actor: Session) {
   const profile = await ownCoachProfile(sb, actor);
-  const [{ data: packages }, { data: groups }] = await Promise.all([
-    sb.from("coaching_packages").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
-    sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).order("scheduled_start", { ascending: false }),
-  ]);
-  const packageIds = (packages || []).map((row: Record<string, unknown>) => String(row.id));
+  const { data: groups } = await sb.from("coaching_group_programs").select("*,domain:coaching_domains(id,slug,name)").eq("coach_id", profile.id).order("scheduled_start", { ascending: false });
   const groupIds = (groups || []).map((row: Record<string, unknown>) => String(row.id));
-  const [{ data: purchases }, { data: registrations }] = await Promise.all([
-    packageIds.length ? sb.from("coaching_package_purchases").select("*,package:coaching_packages(id,coach_id,title)").in("package_id", packageIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
-    groupIds.length ? sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(id,coach_id,title,scheduled_start),user:users(id,full_name,email)").in("program_id", groupIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
-  ]);
-  return { profile, packages: packages || [], groups: groups || [], package_purchases: purchases || [], group_registrations: registrations || [], domains: await getDomains(sb) };
-}
-
-async function saveCoachPackage(sb: Supabase, actor: Session, body: Record<string, unknown>) {
-  const profile = await ownCoachProfile(sb, actor);
-  const id = asNullableText(body.id, 80);
-  const title = asText(body.title, 180);
-  const sessionCount = asInteger(body.session_count);
-  const duration = asInteger(body.session_duration_minutes);
-  const price = asInteger(body.price_xof);
-  const validity = asInteger(body.validity_days);
-  const modes = asStringArray(body.session_modes, 2, 20).filter((v) => ["jitsi", "external"].includes(v));
-  if (!title || !sessionCount || sessionCount < 2 || sessionCount > 24 || !duration || ![30,60,90].includes(duration) || price === null || !validity || validity < 7 || !modes.length) throw new Error("PACKAGE_INCOMPLETE");
-  const limits = await coachPriceLimits(sb, profile);
-  const perSession = price / sessionCount;
-  if (perSession < limits.minimum || (limits.maximum !== null && perSession > limits.maximum)) throw new Error("PACKAGE_PRICE_OUT_OF_RANGE");
-  const payload = { coach_id: profile.id, domain_id: asNullableText(body.domain_id, 80), title, description: asText(body.description, 2500), session_count: sessionCount, session_duration_minutes: duration, price_xof: price, validity_days: validity, session_modes: modes, status: "pending", admin_message: null, reviewed_by: null, reviewed_at: null };
-  if (id) {
-    const current = await sb.from("coaching_packages").select("*").eq("id", id).eq("coach_id", profile.id).maybeSingle();
-    if (!current.data) throw new Error("PACKAGE_NOT_FOUND");
-    const { data, error } = await sb.from("coaching_packages").update(payload).eq("id", id).select("*").single(); if (error) throw error; return data;
-  }
-  const { data, error } = await sb.from("coaching_packages").insert(payload).select("*").single(); if (error) throw error; return data;
+  const { data: registrations } = groupIds.length ? await sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(id,coach_id,title,scheduled_start),user:users(id,full_name,email)").in("program_id", groupIds).order("created_at", { ascending: false }) : { data: [] };
+  return { profile, groups: groups || [], group_registrations: registrations || [], domains: await getDomains(sb) };
 }
 
 async function saveCoachGroup(sb: Supabase, actor: Session, body: Record<string, unknown>) {
@@ -2859,28 +2798,26 @@ async function saveCoachGroup(sb: Supabase, actor: Session, body: Record<string,
 }
 
 async function adminAdvancedProducts(sb: Supabase) {
-  const [{ data: packages }, { data: groups }, { data: plans }, { data: recordings }, settings] = await Promise.all([
-    sb.from("coaching_packages").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title),domain:coaching_domains(id,name)").order("created_at", { ascending: false }),
+  const [{ data: groups }, { data: recordings }, settings] = await Promise.all([
     sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id,public_slug,professional_title),domain:coaching_domains(id,name)").order("scheduled_start", { ascending: false }),
-    sb.from("coaching_subscription_plans").select("*").order("display_order"),
     sb.from("coaching_recordings").select("*,session:coaching_sessions(id,offer_title_snapshot,coach_name_snapshot,scheduled_start)").order("created_at", { ascending: false }).limit(200),
     advancedSettings(sb),
   ]);
-  const userIds = [...new Set([...(packages || []), ...(groups || [])].map((r: Record<string, unknown>) => String((r.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
+  const userIds = [...new Set((groups || []).map((r: Record<string, unknown>) => String((r.coach as Record<string, unknown> | null)?.user_id || "")).filter(Boolean))];
   const { data: users } = userIds.length ? await sb.from("users").select("id,full_name").in("id", userIds) : { data: [] };
   const names = new Map((users || []).map((u: Record<string, unknown>) => [String(u.id), String(u.full_name || "Coach Omnia")]));
   const enrich = (row: Record<string, unknown>) => { const coach=(row.coach||{}) as Record<string,unknown>; return {...row,coach:{...coach,full_name:names.get(String(coach.user_id))||"Coach Omnia"}}; };
-  return { packages: (packages || []).map(enrich), groups: (groups || []).map(enrich), subscription_plans: plans || [], recordings: recordings || [], settings };
+  return { groups: (groups || []).map(enrich), recordings: recordings || [], settings };
 }
 
 async function adminReviewAdvanced(sb: Supabase, actor: Session, body: Record<string, unknown>) {
   const productType = asText(body.product_type, 30);
   const productId = asText(body.product_id, 80);
   const decision = asText(body.decision, 30);
-  const table = productType === "package" ? "coaching_packages" : productType === "group" ? "coaching_group_programs" : "";
+  const table = productType === "group" ? "coaching_group_programs" : "";
   if (!table || !productId || !["approve","reject","inactive","archive"].includes(decision)) throw new Error("INVALID_REVIEW");
   const current = await sb.from(table).select("*").eq("id", productId).maybeSingle();
-  if (!current.data) throw new Error(productType === "package" ? "PACKAGE_NOT_FOUND" : "GROUP_NOT_FOUND");
+  if (!current.data) throw new Error("GROUP_NOT_FOUND");
   const message = asNullableText(body.message, 2000);
   if (decision === "reject" && !message) throw new Error("REVIEW_MESSAGE_REQUIRED");
   const status = decision === "approve" ? "active" : decision === "reject" ? "rejected" : decision === "inactive" ? "inactive" : "archived";
@@ -2890,41 +2827,10 @@ async function adminReviewAdvanced(sb: Supabase, actor: Session, body: Record<st
   return data;
 }
 
-async function adminSaveSubscriptionPlan(sb: Supabase, actor: Session, body: Record<string, unknown>) {
-  const id = asNullableText(body.id, 80);
-  const name = asText(body.name, 160);
-  const price = asInteger(body.monthly_price_xof);
-  const discount = asInteger(body.discount_percent);
-  const limit = asInteger(body.monthly_booking_limit);
-  const validity = asInteger(body.validity_days) || 30;
-  if (!name || price === null || discount === null || discount > 80 || validity < 7 || validity > 60) throw new Error("SUBSCRIPTION_PLAN_INCOMPLETE");
-  const payload = { slug: slugify(asText(body.slug, 160) || name), name, description: asText(body.description, 2500), monthly_price_xof: price, discount_percent: discount, monthly_booking_limit: limit, priority_matching: asBoolean(body.priority_matching), validity_days: validity, display_order: asInteger(body.display_order) || 0, is_active: asBoolean(body.is_active, true) };
-  const result = id ? await sb.from("coaching_subscription_plans").update(payload).eq("id", id).select("*").single() : await sb.from("coaching_subscription_plans").insert(payload).select("*").single();
-  if (result.error) throw result.error;
-  await audit(sb, actor.userId, id ? "subscription_plan_updated" : "subscription_plan_created", "coaching_subscription_plan", String(result.data.id), null, result.data);
-  return result.data;
-}
-
 async function resolveAdvancedOrderContext(sb: Supabase, actor: Session, body: Record<string, unknown>): Promise<AdvancedOrderContext> {
   const productType = asText(body.product_type, 30) as AdvancedProductType;
   const productId = asText(body.product_id, 80);
-  if (!productId || !["package","subscription","group"].includes(productType)) throw new Error("ADVANCED_PRODUCT_REQUIRED");
-  if (productType === "package") {
-    const { data: product } = await sb.from("coaching_packages").select("*,coach:coach_profiles(*)").eq("id", productId).eq("status", "active").maybeSingle();
-    if (!product) throw new Error("PACKAGE_NOT_FOUND");
-    if (String((product.coach as Record<string, unknown>).user_id) === actor.userId) throw new Error("CANNOT_BOOK_SELF");
-    const limits = await coachPriceLimits(sb, product.coach as Record<string, unknown>);
-    const amount = Number(product.price_xof); const commission = Math.round(amount * limits.commission / 100);
-    const { data: coachUser } = await sb.from("users").select("full_name").eq("id", (product.coach as Record<string, unknown>).user_id).maybeSingle();
-    return { productType, productId, title: String(product.title), description: `Pack de ${product.session_count} séances`, amountXof: amount, coachId: String(product.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: limits.commission, commissionAmount: commission, coachNet: amount-commission, returnPath: "/dashboard/coaching/avance", snapshot: product };
-  }
-  if (productType === "subscription") {
-    const { data: plan } = await sb.from("coaching_subscription_plans").select("*").eq("id", productId).eq("is_active", true).maybeSingle();
-    if (!plan) throw new Error("SUBSCRIPTION_PLAN_NOT_FOUND");
-    const current = await activeSubscriptionForUser(sb, actor.userId);
-    if (current) throw new Error("SUBSCRIPTION_ALREADY_ACTIVE");
-    return { productType, productId, title: String(plan.name), description: "Abonnement mensuel Omnia Coaching", amountXof: Number(plan.monthly_price_xof), coachId: null, coachName: "Omnia Coaching", commissionPercent: 100, commissionAmount: Number(plan.monthly_price_xof), coachNet: 0, returnPath: "/dashboard/coaching/avance", snapshot: plan };
-  }
+  if (!productId || productType !== "group") throw new Error("ADVANCED_PRODUCT_REQUIRED");
   let registrationId = asNullableText(body.registration_id, 80);
   if (!registrationId) {
     const existing = await sb.from("coaching_group_registrations").select("id,status,hold_expires_at").eq("program_id", productId).eq("user_id", actor.userId).in("status", ["pending_payment","confirmed","attended"]).maybeSingle();
@@ -2946,10 +2852,8 @@ async function resolveAdvancedOrderContext(sb: Supabase, actor: Session, body: R
   const { data: coachUser } = await sb.from("users").select("full_name").eq("id", coach.user_id).maybeSingle();
   return { productType, productId: String(registration.id), title: String(program.title), description: "Coaching collectif", amountXof: amount, coachId: String(program.coach_id), coachName: String(coachUser?.full_name || "Coach Omnia"), commissionPercent: limits.commission, commissionAmount: commission, coachNet: amount-commission, returnPath: `/coaching/groupes/${program.id}/room`, snapshot: { ...program, registration_id: registration.id } };
 }
-
-function advancedOrderNumber(type: AdvancedProductType) {
-  const prefix = type === "package" ? "PACK" : type === "subscription" ? "SUB" : "GRP";
-  return `OGA-COACH-${prefix}-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`;
+function advancedOrderNumber(_type: AdvancedProductType) {
+  return `OGA-COACH-GRP-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`;
 }
 
 async function advancedCheckout(sb: Supabase, actor: Session, body: Record<string, unknown>) {
@@ -2998,38 +2902,9 @@ async function advancedPaymentStatus(sb: Supabase, actor: Session, body: Record<
   if (error) throw error; if (!order || order.product_type === "session") throw new Error("COACHING_ORDER_NOT_FOUND");
   const { data: invoice } = await sb.from("coaching_invoices").select("id,invoice_number,issued_at,amount_xof,currency").eq("order_id", order.id).maybeSingle();
   let product: unknown = null;
-  if (order.product_type === "package") product = (await sb.from("coaching_package_purchases").select("*,package:coaching_packages(*)").eq("order_id", order.id).maybeSingle()).data;
-  if (order.product_type === "subscription") product = (await sb.from("coaching_subscriptions").select("*,plan:coaching_subscription_plans(*)").eq("order_id", order.id).maybeSingle()).data;
+  const legacyProduct = ["package", "subscription"].includes(String(order.product_type));
   if (order.product_type === "group") product = (await sb.from("coaching_group_registrations").select("*,program:coaching_group_programs(*)").eq("order_id", order.id).maybeSingle()).data;
-  return { order, invoice: invoice || null, product };
-}
-
-async function packageBookingCreate(sb: Supabase, actor: Session, body: Record<string, unknown>) {
-  const purchaseId = asText(body.purchase_id, 80); const offerId = asText(body.offer_id, 80); const startIso = asIsoDate(body.slot_start); const meetingMode=asText(body.meeting_mode,20);
-  if(!purchaseId||!offerId||!startIso||!["jitsi","external"].includes(meetingMode)) throw new Error("BOOKING_INCOMPLETE");
-  const {data:purchase}=await sb.from("coaching_package_purchases").select("*,package:coaching_packages(*)").eq("id",purchaseId).eq("user_id",actor.userId).eq("status","active").gt("expires_at",new Date().toISOString()).maybeSingle();
-  if(!purchase||Number(purchase.sessions_remaining)<=0) throw new Error("PACKAGE_CREDIT_UNAVAILABLE");
-  const pkg=purchase.package as Record<string,unknown>; const context=await loadBookingContext(sb,offerId);
-  if(String(context.profile.id)!==String(pkg.coach_id)||context.offer.offer_type!=="fixed"||Number(context.offer.duration_minutes)!==Number(pkg.session_duration_minutes)||!asStringArray(pkg.session_modes,2,20).includes(meetingMode)) throw new Error("PACKAGE_OFFER_MISMATCH");
-  const slot=await ensureSlotAvailable(sb,String(context.profile.id),Number(pkg.session_duration_minutes),startIso);
-  const decrement=await sb.from("coaching_package_purchases").update({sessions_remaining:Number(purchase.sessions_remaining)-1,status:Number(purchase.sessions_remaining)-1===0?"depleted":"active"}).eq("id",purchase.id).eq("sessions_remaining",purchase.sessions_remaining).select("id").maybeSingle();
-  if(!decrement.data) throw new Error("PACKAGE_CREDIT_UNAVAILABLE");
-  const perSession=Math.round(Number(pkg.price_xof)/Number(pkg.session_count));
-  const inserted=await sb.from("coaching_sessions").insert({learner_user_id:actor.userId,coach_id:context.profile.id,offer_id:context.offer.id,session_type:"fixed",status:"confirmed",payment_status:"paid",meeting_mode:meetingMode,requested_start:slot.slot_start,requested_end:slot.slot_end,scheduled_start:slot.slot_start,scheduled_end:slot.slot_end,duration_minutes:Number(pkg.session_duration_minutes),hold_expires_at:null,learner_message:asNullableText(body.learner_message,1500),price_total_xof:0,commission_percent_snapshot:0,commission_amount_xof:0,coach_net_xof:0,offer_title_snapshot:context.offer.title,coach_name_snapshot:context.coachName,coach_timezone_snapshot:context.profile.timezone,policy_snapshot:{source:"coaching_package",purchase_id:purchase.id},funding_source:"package",funding_reference_id:purchase.id,original_price_xof:perSession,discount_xof:perSession}).select("*").single();
-  if(inserted.error){await sb.from("coaching_package_purchases").update({sessions_remaining:purchase.sessions_remaining,status:"active"}).eq("id",purchase.id); if(String(inserted.error.code)==="23P01") throw new Error("SLOT_UNAVAILABLE"); throw inserted.error;}
-  await sb.from("coaching_package_redemptions").insert({purchase_id:purchase.id,session_id:inserted.data.id});
-  const settings=await advancedSettings(sb); const startMs=new Date(String(inserted.data.scheduled_start)).getTime();
-  const reminderOffsets=[Number(settings.reminder_day_before_hours||24)*60,Number(settings.reminder_minutes_before||30)].filter((value)=>value>0);
-  const jobs=[] as Array<Record<string,unknown>>;
-  const recipients=[{userId:actor.userId,audience:"learner"},{userId:String(context.profile.user_id),audience:"coach"}];
-  for(const minutes of reminderOffsets){
-    const scheduledFor=new Date(startMs-minutes*60000);
-    if(scheduledFor.getTime()>Date.now()) for(const recipient of recipients) jobs.push({session_id:inserted.data.id,user_id:recipient.userId,audience:recipient.audience,event_type:minutes>=60?"reminder_day_before":"reminder_soon",scheduled_for:scheduledFor.toISOString()});
-  }
-  if(jobs.length){const {error:jobsError}=await sb.from("coaching_notification_jobs").insert(jobs);if(jobsError) throw jobsError;}
-  await invokeNotification("coaching_booking_confirmed",{userId:actor.userId,session_id:inserted.data.id,offer_title:context.offer.title,coach_name:context.coachName,scheduled_start:inserted.data.scheduled_start,action_url:"/dashboard/coaching"});
-  await invokeNotification("coaching_new_booking",{userId:String(context.profile.user_id),session_id:inserted.data.id,offer_title:context.offer.title,scheduled_start:inserted.data.scheduled_start,action_url:"/coach/sessions"});
-  return inserted.data;
+  return { order, invoice: invoice || null, product, legacy_product: legacyProduct };
 }
 
 async function actionPlanForSession(sb: Supabase, actor: Session, body: Record<string, unknown>) {
@@ -3255,7 +3130,6 @@ Deno.serve(async (req: Request) => {
     if (action === "learner_recommendations") return json({ success: true, ...(await coachingRecommendations(sb, session)) });
     if (action === "advanced_checkout") return json({ success: true, ...(await advancedCheckout(sb, session, body)) });
     if (action === "advanced_payment_status") return json({ success: true, ...(await advancedPaymentStatus(sb, session, body)) });
-    if (action === "package_booking_create") return json({ success: true, session: await packageBookingCreate(sb, session, body) });
     if (action === "action_plan_get") return json({ success: true, ...(await actionPlanForSession(sb, session, body)) });
     if (action === "action_plan_save") return json({ success: true, plan: await actionPlanSave(sb, session, body) });
     if (action === "action_item_save") return json({ success: true, item: await actionItemSave(sb, session, body) });
@@ -3295,7 +3169,6 @@ Deno.serve(async (req: Request) => {
     if (action === "coach_revenue") return json({ success: true, ...(await coachRevenueDashboard(sb, session)) });
     if (action === "coach_payout_request") return json({ success: true, payout: await coachCreatePayout(sb, session, body) });
     if (action === "coach_advanced_products") return json({ success: true, ...(await coachAdvancedProducts(sb, session)) });
-    if (action === "coach_package_save") return json({ success: true, package: await saveCoachPackage(sb, session, body) });
     if (action === "coach_group_save") return json({ success: true, group: await saveCoachGroup(sb, session, body) });
     if (action === "coach_dashboard") {
       const profile = await ownCoachProfile(sb, session);
@@ -3361,11 +3234,9 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_performance_settings_save") return json({ success: true, settings: await adminSavePerformanceSettings(sb, session, body) });
     if (action === "admin_advanced_products") return json({ success: true, ...(await adminAdvancedProducts(sb)) });
     if (action === "admin_advanced_review") return json({ success: true, product: await adminReviewAdvanced(sb, session, body) });
-    if (action === "admin_subscription_plan_save") return json({ success: true, plan: await adminSaveSubscriptionPlan(sb, session, body) });
     if (action === "admin_advanced_settings_save") {
       const before = await advancedSettings(sb);
       const retentionDays = asInteger(body.recording_retention_days) ?? 30;
-      const packageReleaseDays = asInteger(body.package_release_delay_days) ?? 7;
       const groupAccessBefore = asInteger(body.group_access_before_minutes) ?? 30;
       const groupAccessAfter = asInteger(body.group_access_after_minutes) ?? 30;
       const rawWeights = body.matching_weights && typeof body.matching_weights === "object" ? body.matching_weights as Record<string, unknown> : before.matching_weights as Record<string, unknown>;
@@ -3376,12 +3247,11 @@ Deno.serve(async (req: Request) => {
         rating: Number(rawWeights?.rating ?? 15),
         availability: Number(rawWeights?.availability ?? 10),
       };
-      if (retentionDays < 1 || retentionDays > 365 || packageReleaseDays < 0 || packageReleaseDays > 60 || groupAccessBefore < 0 || groupAccessBefore > 240 || groupAccessAfter < 0 || groupAccessAfter > 240 || Object.values(matchingWeights).some(value => !Number.isFinite(value) || value < 0 || value > 100)) throw new Error("INVALID_ADVANCED_SETTINGS");
+      if (retentionDays < 1 || retentionDays > 365 || groupAccessBefore < 0 || groupAccessBefore > 240 || groupAccessAfter < 0 || groupAccessAfter > 240 || Object.values(matchingWeights).some(value => !Number.isFinite(value) || value < 0 || value > 100)) throw new Error("INVALID_ADVANCED_SETTINGS");
       const payload = {
         recommendations_enabled: asBoolean(body.recommendations_enabled, true),
         recording_enabled: asBoolean(body.recording_enabled),
         recording_retention_days: retentionDays,
-        package_release_delay_days: packageReleaseDays,
         group_access_before_minutes: groupAccessBefore,
         group_access_after_minutes: groupAccessAfter,
         matching_weights: matchingWeights,

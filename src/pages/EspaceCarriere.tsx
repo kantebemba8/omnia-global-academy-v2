@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { Briefcase, Search, MapPin, Clock, ChevronDown, Filter, Eye, Globe, Building2, ExternalLink, Mail, ShieldCheck } from 'lucide-react';
+import { Briefcase, Search, MapPin, Clock, Filter, Eye, Globe, Building2, ExternalLink, Mail, ShieldCheck } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, normalizeApplicationMode } from '../lib/jobApplicationModes';
 
 const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance'];
@@ -57,7 +57,6 @@ function deadlineBadge(deadline: string | null): string | null {
 }
 
 export default function EspaceCarriere() {
-  const navigate = useNavigate();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
 
@@ -79,7 +78,6 @@ export default function EspaceCarriere() {
       return roles.includes('super_admin') ||
              roles.includes('responsable_structure') ||
              roles.includes('structure_admin') ||
-             roles.includes('etablissement_directeur') ||
              permissions.includes('can_create_job_offers') ||
              permissions.includes('can_manage_job_offers');
     } catch { return false; }

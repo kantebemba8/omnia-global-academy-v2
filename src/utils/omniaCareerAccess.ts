@@ -33,7 +33,7 @@ export function getCareerRedirectForRole(user: CareerAuthUser) {
   if (isOmniaCareerSuperAdmin(user)) return '/admin/omnia-career';
   if (hasAnyRole(user, ['professeur', 'formateur'])) return '/professeur/dashboard';
   if (hasAnyRole(user, ['responsable_structure', 'structure_admin', 'directeur', 'gestionnaire_partenaire'])) return '/structure/dashboard';
-  if (hasAnyRole(user, ['enseignant'])) return '/staff/dashboard';
+  if (hasAnyRole(user, ['enseignant'])) return '/professeur/dashboard';
   return '/dashboard';
 }
 

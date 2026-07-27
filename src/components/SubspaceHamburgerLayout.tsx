@@ -29,7 +29,7 @@ export function getDashboardPath(roles: string[] = []) {
   if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/dashboard';
   if (roles.includes('recruteur')) return '/talent/recruteur/dashboard';
   if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/dashboard';
-  if (roles.includes('enseignant')) return '/staff/dashboard';
+  if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
   if (roles.includes('moderateur')) return '/moderateur/dashboard';
   return '/dashboard';
 }

@@ -67,9 +67,9 @@ Deno.serve(async (req: Request) => {
             templateId: 4,
             from: "admission@omniaglobalacademy.com",
             params: {
-              ROLE_NAME: "Établissement",
+              ROLE_NAME: "Structure",
               MESSAGE_SPECIFIQUE: "Votre dossier est en cours de vérification (24-48h ouvrées). Vous serez notifié dès validation.",
-              DASHBOARD_URL: `${appUrl}/school/dashboard`,
+              DASHBOARD_URL: `${appUrl}/structure/dashboard`,
             },
           },
           sb,
@@ -106,10 +106,10 @@ Deno.serve(async (req: Request) => {
             params: {
               SCHOOL_NAME: payload.school_name as string,
               DIRECTOR_NAME: payload.director_name as string,
-              DASHBOARD_URL: `${appUrl}/school/dashboard`,
+              DASHBOARD_URL: `${appUrl}/structure/dashboard`,
             },
           },
-          smsMessage: `Omnia Academy : Votre établissement ${payload.school_name} est validé. Accédez à votre espace : ${appUrl}/school/dashboard`,
+          smsMessage: `Omnia Academy : Votre Structure ${payload.school_name} est validée. Accédez à votre espace : ${appUrl}/structure/dashboard`,
           sb,
         });
         break;
@@ -359,7 +359,7 @@ Deno.serve(async (req: Request) => {
               PLATFORM_PERCENT: payload.platform_percent as number,
               SCHOOL_AMOUNT: payload.school_amount as number,
               PLATFORM_AMOUNT: payload.platform_amount as number,
-              ACTION_URL: payload.action_url as string || `${appUrl}/school/dashboard`,
+              ACTION_URL: payload.action_url as string || `${appUrl}/structure/dashboard`,
             },
           },
           sb,

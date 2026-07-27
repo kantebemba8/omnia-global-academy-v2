@@ -111,7 +111,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { role, email, phone_number, password, birth_date, country_code = "ML" } = body;
 
-    if (!["apprenant", "professeur", "organizer", "etablissement", "recruteur_independant"].includes(role)) {
+    if (!["apprenant", "professeur", "organizer", "responsable_structure", "etablissement", "recruteur_independant"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (role !== "recruteur_independant" && !birth_date) {
+    if (!["recruteur_independant", "responsable_structure", "etablissement"].includes(role) && !birth_date) {
       return new Response(JSON.stringify({ success: false, message: "Date de naissance requise" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -212,25 +212,17 @@ Deno.serve(async (req: Request) => {
         event_topics: Array.isArray(body.event_topics) ? body.event_topics : [],
       };
     } else {
-      if (!body.school_name?.trim()) {
-        return new Response(JSON.stringify({ success: false, message: "Nom de l'établissement requis" }), {
+      // `etablissement` reste seulement un alias de compatibilité vers le rôle Structure.
+      // Aucun rôle, profil ou Dashboard Établissement n'est créé.
+      const responsibleName = String(body.full_name || body.responsible_name || body.director_name || "").trim();
+      if (!responsibleName) {
+        return new Response(JSON.stringify({ success: false, message: "Nom du responsable de la Structure requis" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (!body.director_name?.trim()) {
-        return new Response(JSON.stringify({ success: false, message: "Nom du directeur requis" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      fullName = body.director_name.trim();
-      roleForDB = "etablissement_directeur";
-      profileData = {
-        school_name: body.school_name.trim(),
-        registration_number: body.registration_number?.trim() || null,
-        director_name: body.director_name.trim(),
-        logo_url: null,
-        signature_url: null,
-      };
+      fullName = responsibleName;
+      roleForDB = "responsable_structure";
+      profileData = null;
     }
 
     const sanitizedEmail = email.trim().toLowerCase();
@@ -260,7 +252,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Rate limit only for OTP-based roles
-    if (role !== "etablissement") {
+    if (!["responsable_structure", "etablissement"].includes(role)) {
       const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
       const { count: recentSms } = await supabase
         .from("sms_rate_limits")
@@ -319,8 +311,7 @@ Deno.serve(async (req: Request) => {
       const tableName =
         role === "professeur" ? "professeur_profiles" :
         role === "organizer" ? "live_organizer_applications" :
-        role === "recruteur_independant" ? "talent_recruiter_profiles" :
-        "etablissement_profiles";
+        "talent_recruiter_profiles";
       const { error: profileError } = await supabase.from(tableName).insert({ user_id: userId, ...profileData });
       if (profileError) throw profileError;
       if (role === "recruteur_independant") {
@@ -351,8 +342,16 @@ Deno.serve(async (req: Request) => {
     // Logo et signature établissement retirés de l'inscription
     // Ils seront ajoutés dans le menu Certificats de l'établissement
 
-    // Etablissement: no OTP — return pending directly
-    if (role === "etablissement") {
+    // Structure : création du dossier sans OTP, puis validation manuelle par le Super Admin.
+    // Le jeton court sert uniquement à appeler `structure-manage` et créer la fiche Structure.
+    if (["responsable_structure", "etablissement"].includes(role)) {
+      const registrationSessionToken = crypto.randomUUID();
+      await supabase.from("user_sessions").insert({
+        user_id: userId,
+        session_token: registrationSessionToken,
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      });
+
       if (body.subscribe_newsletter === true) {
         const brevoApiKey = Deno.env.get("BREVO_API_KEY");
         const brevoListId = parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7");
@@ -366,7 +365,12 @@ Deno.serve(async (req: Request) => {
           } catch (e) { console.error("Brevo newsletter error:", e); }
         }
       }
-      return new Response(JSON.stringify({ success: true, user_id: userId, next_step: "pending_validation" }), {
+      return new Response(JSON.stringify({
+        success: true,
+        user_id: userId,
+        session_token: registrationSessionToken,
+        next_step: "pending_validation",
+      }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

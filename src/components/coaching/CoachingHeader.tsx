@@ -48,7 +48,7 @@ function dashboardPathForRoles(roles: string[]): string {
   if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/dashboard';
   if (roles.includes('recruteur_structure')) return '/structure/recrutement/dashboard';
   if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/dashboard';
-  if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/staff/dashboard';
+  if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
   if (roles.includes('moderateur')) return '/moderator/dashboard';
   return '/dashboard';
 }

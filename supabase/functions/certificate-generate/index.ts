@@ -294,18 +294,22 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null,{status:200,headers:corsHeaders});
   const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
   try {
-    const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const token=req.headers.get("Authorization")?.replace("Bearer ","")||"";
-    let callerId=token?await verifySession(sb,token):null;
-    if(!callerId&&token){const {data}=await sb.auth.getUser(token);callerId=data.user?.id||null;}
+    const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+    const sb=createClient(Deno.env.get("SUPABASE_URL")!,serviceKey);
+    const body=await req.json().catch(()=>({}));
+    const token=req.headers.get("Authorization")?.replace(/^Bearer\s+/i,"").trim()||"";
+    const internalRequest=Boolean(serviceKey&&token===serviceKey&&body.internal_request===true);
+    let callerId=internalRequest?String(body.user_id||""):token?await verifySession(sb,token):null;
+    if(!callerId&&token&&!internalRequest){const {data}=await sb.auth.getUser(token);callerId=data.user?.id||null;}
     if(!callerId)return json({error:"UNAUTHORIZED"},401);
-    const body=await req.json(); const userId=body.user_id||callerId, courseId=body.course_id;
+    const userId=String(body.user_id||callerId),courseId=String(body.course_id||"");
     if(!courseId)return json({error:"MISSING_FIELDS"},400);
-    if(userId!==callerId){const {data:r}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!r)return json({error:"FORBIDDEN"},403);}
+    if(userId!==callerId&&!internalRequest){const {data:r}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!r)return json({error:"FORBIDDEN"},403);}
 
-    const {data:assessments}=await sb.from("course_assessments").select("id,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);
+    const {data:assessments}=await sb.from("course_assessments").select("id,title,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);
     const missing:string[]=[];
-    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||(a.scope==="final"?70:80)))missing.push(`${a.scope}:${a.id}`);}
+    if(!(assessments||[]).length)missing.push("required_assessments_missing");
+    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||1))missing.push(`${a.scope}:${a.id}`);}
     const {data:attemptIds}=await sb.from("assessment_attempts").select("id").eq("course_id",courseId).eq("user_id",userId);
     if(attemptIds?.length){const {count}=await sb.from("assessment_answers").select("id",{count:"exact",head:true}).eq("review_status","pending").in("attempt_id",attemptIds.map((x:any)=>x.id));if((count||0)>0)missing.push("manual_reviews_pending");}
     const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle();
@@ -313,7 +317,10 @@ Deno.serve(async (req: Request) => {
     if(!course||!user)return json({error:"NOT_FOUND"},404);
     const {data:progress}=await sb.from("user_lesson_progress").select("is_completed,time_spent_seconds").eq("user_id",userId).eq("course_id",courseId);
     if((progress||[]).some((x:any)=>!x.is_completed))missing.push("lessons_incomplete");
-    const spent=(progress||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0)+(await sb.from("assessment_attempts").select("time_spent_seconds").eq("course_id",courseId).eq("user_id",userId)).data?.reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0)||0;
+    const lessonSeconds=(progress||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0);
+    const {data:attemptTimes}=await sb.from("assessment_attempts").select("time_spent_seconds").eq("course_id",courseId).eq("user_id",userId);
+    const assessmentSeconds=(attemptTimes||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0);
+    const spent=lessonSeconds+assessmentSeconds;
     const requiredSeconds=Number(course.calculated_duration_minutes||0)*60;
     if(requiredSeconds>0&&spent<requiredSeconds)missing.push("minimum_time_not_reached");
     if(missing.length){await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,result:"blocked",missing_conditions:missing,source:body.source||"automatic"});return json({error:"CONDITIONS_NOT_MET",missing},422);}
@@ -322,7 +329,7 @@ Deno.serve(async (req: Request) => {
     if(existing)return json({certificate_id:existing.omnia_certificate_id,pdf_url:existing.pdf_url,verification_url:existing.verification_url,cpd_pending:existing.cpd_pending,existing:true});
 
     const {data:accreditations}=await sb.from("course_certifications").select("*").eq("course_id",courseId).eq("status","validated").order("created_at");
-    const certId=await generateUniqueCertId(sb); const appUrl=Deno.env.get("APP_URL")||"https://omniaglobalacademy.com"; const verifyUrl=`${appUrl}/verify/${certId}`; const qrSvg=await generateQrSvg(verifyUrl);
+    const certId=await generateUniqueCertId(sb); const appUrl=Deno.env.get("PUBLIC_APP_URL")||Deno.env.get("APP_URL")||"https://omniaglobalacademy.com"; const verifyUrl=`${appUrl}/verify/${certId}`; const qrSvg=await generateQrSvg(verifyUrl);
     const {data:settingsRows}=await sb.from("certificate_settings").select("key,value"); const settings:Record<string,string>={}; for(const r of settingsRows||[])settings[r.key]=r.value;
     let creatorName="",establishmentName="",establishmentLogoUrl="",directorName="",directorSigUrl="";
     if(course.establishment_id){const {data:e}=await sb.from("etablissement_profiles").select("school_name,logo_url,director_name,signature_url").eq("id",course.establishment_id).maybeSingle();if(e){establishmentName=e.school_name||"";establishmentLogoUrl=e.logo_url||"";directorName=e.director_name||"";directorSigUrl=e.signature_url||"";}}
@@ -336,7 +343,7 @@ Deno.serve(async (req: Request) => {
     const badges=(accreditations||[]).map((a:any)=>`<div style="display:flex;align-items:center;gap:5px">${a.badge_url||a.logo_url?`<img src="${a.badge_url||a.logo_url}" style="height:28px;max-width:80px;object-fit:contain"/>`:''}<span style="font-size:9px;color:#002050;font-weight:600">${a.organization_name}${a.credit_value?` · ${a.credit_value} ${a.credit_unit||''}`:''}</span></div>`).join('');
     if(badges)html=html.replace('</body>',`<div style="position:absolute;left:180px;right:180px;bottom:18px;display:flex;justify-content:center;gap:18px;align-items:center">${badges}</div></body>`);
     const filename=`certificates/${userId}/${certId}.html`; const {error:upErr}=await sb.storage.from("certificates").upload(filename,html,{contentType:"text/html; charset=utf-8",upsert:true});if(upErr)throw upErr; const pdfUrl=sb.storage.from("certificates").getPublicUrl(filename).data.publicUrl;
-    const {data:cert,error:certErr}=await sb.from("certificates").insert({omnia_certificate_id:certId,user_id:userId,course_id:courseId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_hours:certData.cpd_hours,template_type:isC?"C":isB?"B":"A",creator_name:creatorName||null,establishment_name:establishmentName||null,establishment_logo_url:establishmentLogoUrl||null,director_name:directorName||null,director_signature_url:directorSigUrl||null,cpd_accredited:certData.cpd_accredited,cpd_provider_code:certData.cpd_provider_code||null,pdf_url:pdfUrl,validity_status:"valid",verification_url:verifyUrl,qr_svg:qrSvg,duration_minutes:Number(course.calculated_duration_minutes||0),course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language_code:String(course.language||"fr").slice(0,2).toLowerCase(),document_type:"completion_certificate",source_type:"course",issuance_snapshot:{student_full_name:user.full_name,course_title:course.title,course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language:String(course.language||"fr"),template_type:isC?"C":isB?"B":"A",generated_at:new Date().toISOString(),accreditations:validatedCertifications||[]},metadata:{assessment_thresholds:{lesson:80,module:80,final:70},time_spent_seconds:spent}}).select("*").single();if(certErr)throw certErr;
+    const {data:cert,error:certErr}=await sb.from("certificates").insert({omnia_certificate_id:certId,user_id:userId,course_id:courseId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_hours:certData.cpd_hours,template_type:isC?"C":isB?"B":"A",creator_name:creatorName||null,establishment_name:establishmentName||null,establishment_logo_url:establishmentLogoUrl||null,director_name:directorName||null,director_signature_url:directorSigUrl||null,cpd_accredited:certData.cpd_accredited,cpd_provider_code:certData.cpd_provider_code||null,pdf_url:pdfUrl,validity_status:"valid",verification_url:verifyUrl,qr_svg:qrSvg,duration_minutes:Number(course.calculated_duration_minutes||0),course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language_code:String(course.language||"fr").slice(0,2).toLowerCase(),document_type:"completion_certificate",source_type:"course",issuance_snapshot:{student_full_name:user.full_name,course_title:course.title,course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language:String(course.language||"fr"),template_type:isC?"C":isB?"B":"A",generated_at:new Date().toISOString(),accreditations:accreditations||[]},metadata:{assessment_thresholds:Object.fromEntries((assessments||[]).map((a:any)=>[a.id,{title:a.title,scope:a.scope,passing_score:Number(a.passing_score||0)}])),time_spent_seconds:spent}}).select("*").single();if(certErr)throw certErr;
     if(accreditations?.length)await sb.from("certificate_accreditations").insert(accreditations.map((a:any)=>({certificate_id:cert.id,course_certification_id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,badge_url:a.badge_url,logo_url:a.logo_url,signature_url:a.signature_url,stamp_url:a.stamp_url,verification_url:a.verification_url,valid_from:a.valid_from,expires_at:a.expires_at,status:a.expires_at&&new Date(a.expires_at)<new Date()?"expired":"valid"})));
     const creditSummary=(accreditations||[]).map((a:any)=>({organization:a.organization_name,value:a.credit_value,unit:a.credit_unit}));
     await sb.from("user_profile_certifications").upsert({user_id:userId,certificate_id:cert.id,course_id:courseId,title:course.title,issuer:issuerName,credential_id:certId,verification_url:verifyUrl,issued_at:cert.issued_at,expires_at:null,hours_or_credits:creditSummary,status:"valid",updated_at:new Date().toISOString()},{onConflict:"user_id,certificate_id"});
