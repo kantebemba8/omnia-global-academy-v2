@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
         return { ...x, candidate: candidateMap.get(x.id) || null, effective_ends_at: end, computed_status: normalizeSessionStatus({ ...x, ends_at: end }) };
       });
       const assessmentIds = [...new Set((attempts || []).map((x: any) => x.assessment_id))];
-      const { data: assessments } = assessmentIds.length ? await sb.from("course_assessments").select("id,title,scope,assessment_type,passing_score,competency_labels").in("id", assessmentIds) : { data: [] };
+      const { data: assessments } = assessmentIds.length ? await sb.from("course_assessments").select("id,title,scope,assessment_type,passing_score,competency_labels,appeal_enabled,appeal_deadline_days,jury_required").in("id", assessmentIds) : { data: [] };
       const aMap = new Map((assessments || []).map((x: any) => [x.id, x]));
       const competencyMap = new Map<string, any[]>();
       for (const row of competencyResults || []) competencyMap.set(row.attempt_id, [...(competencyMap.get(row.attempt_id) || []), row]);

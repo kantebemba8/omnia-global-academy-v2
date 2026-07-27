@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, CheckCircle2, Eye, Loader2, Monitor, RotateCcw,
-  Save, ShieldCheck, Video, X, type LucideIcon,
+  AlertCircle, CheckCircle2, Eye, Loader2, Monitor, Plus, RotateCcw,
+  Save, ShieldCheck, Trash2, Users, Video, X, type LucideIcon,
 } from 'lucide-react';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
+import { assessmentGovernanceCall } from '../lib/assessmentGovernanceApi';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const BLUE = '#002050';
@@ -18,6 +19,14 @@ type ProctoringSettings = {
   fullscreen_required?: boolean;
   human_proctor_required?: boolean;
   recording_required?: boolean;
+};
+
+type CompetencyMapping = {
+  competency_id: string;
+  target_level_id?: string | null;
+  weight: number;
+  passing_score?: number | null;
+  required: boolean;
 };
 
 type AssessmentRow = {
@@ -40,9 +49,24 @@ type AssessmentRow = {
   proctoring_settings: ProctoringSettings;
   result_release_mode: 'immediate' | 'after_review' | 'manual';
   competency_labels: string[];
+  competency_framework_id?: string | null;
+  competency_mappings: CompetencyMapping[];
+  jury_required: boolean;
+  jury_min_members: number;
+  jury_decision_mode: 'majority' | 'unanimous' | 'president_final';
+  appeal_enabled: boolean;
+  appeal_deadline_days: number;
   allowed_materials?: string;
   candidate_instructions?: string;
   integrity_rules?: string;
+};
+
+type Framework = {
+  id: string;
+  name: string;
+  version: string;
+  competencies: Array<{ id: string; code: string; name: string; domain?: string; framework_id: string }>;
+  levels: Array<{ id: string; code: string; name: string; level_number: number; framework_id: string }>;
 };
 
 async function call(action: string, payload: Record<string, unknown>) {
@@ -58,6 +82,7 @@ async function call(action: string, payload: Record<string, unknown>) {
 
 export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId: string; locked?: boolean; onClose: () => void }) {
   const [rows, setRows] = useState<AssessmentRow[]>([]);
+  const [frameworks, setFrameworks] = useState<Framework[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -68,7 +93,11 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
     setError('');
     try {
       await call('ensure_assessments', { course_id: courseId });
-      const data = await call('assessment_policy_get', { course_id: courseId });
+      const [data, catalog] = await Promise.all([
+        call('assessment_policy_get', { course_id: courseId }),
+        assessmentGovernanceCall<any>('framework_catalog').catch(() => ({ frameworks: [] })),
+      ]);
+      setFrameworks(catalog.frameworks || []);
       setRows((data.assessments || []).map((row: Partial<AssessmentRow> & Pick<AssessmentRow, 'id' | 'title' | 'scope'>) => ({
         ...row,
         passing_score: Number(row.passing_score || 70),
@@ -85,9 +114,22 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
         proctoring_settings: row.proctoring_settings || {},
         result_release_mode: row.result_release_mode || 'after_review',
         competency_labels: Array.isArray(row.competency_labels) ? row.competency_labels : [],
+        competency_framework_id: row.competency_framework_id || null,
+        competency_mappings: Array.isArray(row.competency_mappings) ? row.competency_mappings.map((mapping: any) => ({
+          competency_id: mapping.competency_id,
+          target_level_id: mapping.target_level_id || null,
+          weight: Number(mapping.weight || 1),
+          passing_score: mapping.passing_score === null || mapping.passing_score === undefined ? null : Number(mapping.passing_score),
+          required: mapping.required !== false,
+        })) : [],
+        jury_required: row.jury_required === true,
+        jury_min_members: Number(row.jury_min_members || 2),
+        jury_decision_mode: row.jury_decision_mode || 'majority',
+        appeal_enabled: row.appeal_enabled !== false,
+        appeal_deadline_days: Number(row.appeal_deadline_days ?? 7),
       } as AssessmentRow)));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Chargement impossible.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Chargement impossible.');
     } finally {
       setLoading(false);
     }
@@ -121,9 +163,9 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
         },
         assessments: rows,
       });
-      setMessage('Les règles d’évaluation et de surveillance ont été enregistrées. Elles seront contrôlées par le Centre Qualité.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Enregistrement impossible.');
+      setMessage('Les règles d’évaluation, de jury, de révision et de compétences ont été enregistrées. Elles seront contrôlées par le Centre Qualité.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.');
     } finally {
       setSaving(false);
     }
@@ -134,29 +176,26 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
       <div className="mx-auto my-6 w-full max-w-7xl rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b px-6 py-5" style={{ borderColor: BORDER }}>
           <div>
-            <h2 className="text-lg font-bold" style={{ color: BLUE }}>Évaluations, tentatives et surveillance</h2>
-            <p className="mt-1 max-w-4xl text-sm text-gray-600">
-              Configurez chaque évaluation. Le Centre Qualité valide ensuite le niveau de surveillance, les seuils, la remédiation et les conditions de publication du résultat.
-            </p>
+            <h2 className="text-lg font-bold" style={{ color: BLUE }}>Évaluations, tentatives, jurys et compétences</h2>
+            <p className="mt-1 max-w-4xl text-sm text-gray-600">Configurez chaque évaluation. Le Centre Qualité valide ensuite la surveillance, les jurys, les révisions, la remédiation et les compétences réellement évaluées.</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100" aria-label="Fermer"><X size={20} /></button>
         </div>
 
         <div className="px-6 py-5">
-          <div className="mb-5 grid gap-3 md:grid-cols-4">
+          <div className="mb-5 grid gap-3 md:grid-cols-5">
             <Info icon={RotateCcw} title="Tentatives" text="La remédiation remplace le blocage définitif pour une formation achetée." />
-            <Info icon={ShieldCheck} title="Contrôle qualité" text="Le Super Admin valide la surveillance proposée avant publication." />
+            <Info icon={ShieldCheck} title="Contrôle qualité" text="Le Super Admin valide les règles proposées avant publication." />
             <Info icon={Monitor} title="Sessions" text="Les examens officiels peuvent être programmés à une date précise." />
-            <Info icon={CheckCircle2} title="Résultats" text="La réussite alimente certificats, CLR et Skills Passport." />
+            <Info icon={Users} title="Jurys" text="Un jury limité à l’épreuve peut être exigé sans créer un rôle permanent." />
+            <Info icon={CheckCircle2} title="Compétences" text="Seules les compétences mappées et réellement réussies sont vérifiées." />
           </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500"><Loader2 className="animate-spin" size={18} />Chargement…</div>
-          ) : (
+          {loading ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500"><Loader2 className="animate-spin" size={18} />Chargement…</div> : (
             <div className="space-y-7">
-              <AssessmentGroup title="Évaluations des leçons" rows={groups.lesson} locked={locked} onUpdate={update} />
-              <AssessmentGroup title="Évaluations des modules" rows={groups.module} locked={locked} onUpdate={update} />
-              <AssessmentGroup title="Examen final" rows={groups.final} locked={locked} onUpdate={update} />
+              <AssessmentGroup title="Évaluations des leçons" rows={groups.lesson} frameworks={frameworks} locked={locked} onUpdate={update} />
+              <AssessmentGroup title="Évaluations des modules" rows={groups.module} frameworks={frameworks} locked={locked} onUpdate={update} />
+              <AssessmentGroup title="Examen final" rows={groups.final} frameworks={frameworks} locked={locked} onUpdate={update} />
             </div>
           )}
 
@@ -166,31 +205,27 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
 
         <div className="flex justify-end gap-3 border-t px-6 py-4" style={{ borderColor: BORDER }}>
           <button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER }}>Fermer</button>
-          <button disabled={locked || saving || loading} onClick={save} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Enregistrer les règles
-          </button>
+          <button disabled={locked || saving || loading} onClick={save} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Enregistrer les règles</button>
         </div>
       </div>
     </div>
   );
 }
 
-function AssessmentGroup({ title, rows, locked, onUpdate }: { title: string; rows: AssessmentRow[]; locked?: boolean; onUpdate: (id: string, patch: Partial<AssessmentRow>) => void }) {
+function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title: string; rows: AssessmentRow[]; frameworks: Framework[]; locked?: boolean; onUpdate: (id: string, patch: Partial<AssessmentRow>) => void }) {
   if (!rows.length) return null;
   return (
     <section>
       <h3 className="mb-3 font-semibold" style={{ color: BLUE }}>{title}</h3>
-      <div className="space-y-4">
-        {rows.map(row => (
+      <div className="space-y-4">{rows.map(row => {
+        const framework = frameworks.find(item => item.id === row.competency_framework_id);
+        const selectedIds = new Set(row.competency_mappings.map(item => item.competency_id));
+        const available = framework?.competencies.filter(item => !selectedIds.has(item.id)) || [];
+        return (
           <div key={row.id} className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-medium" style={{ color: BLUE }}>{row.title}</p>
-                <p className="mt-1 text-xs text-gray-500">Niveau de surveillance proposé : {row.security_level}/4</p>
-              </div>
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
-                <input type="checkbox" checked={row.required !== false} disabled={locked} onChange={event => onUpdate(row.id, { required: event.target.checked })} /> Obligatoire
-              </label>
+              <div><p className="font-medium" style={{ color: BLUE }}>{row.title}</p><p className="mt-1 text-xs text-gray-500">Niveau de surveillance proposé : {row.security_level}/4</p></div>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600"><input type="checkbox" checked={row.required !== false} disabled={locked} onChange={event => onUpdate(row.id, { required: event.target.checked })} /> Obligatoire</label>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -230,44 +265,61 @@ function AssessmentGroup({ title, rows, locked, onUpdate }: { title: string; row
                 <Toggle label="Plein écran" checked={row.proctoring_settings.fullscreen_required === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, fullscreen_required: checked } })} />
                 <Toggle label="Surveillant humain" checked={row.proctoring_settings.human_proctor_required === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, human_proctor_required: checked } })} />
               </div>
-              <p className="mt-3 flex items-center gap-2 text-xs text-gray-500"><Eye size={14} />La plateforme enregistre les événements autorisés. Aucun enregistrement audio ou vidéo n’est activé automatiquement.</p>
+              <p className="mt-3 flex items-center gap-2 text-xs text-gray-500"><Eye size={14} />Aucun enregistrement audio ou vidéo n’est activé automatiquement.</p>
+            </div>
+
+            <div className="mt-4 rounded-xl border p-4" style={{ borderColor: BORDER }}>
+              <div className="flex items-center gap-2"><Users size={16} color={GOLD} /><p className="text-sm font-semibold" style={{ color: BLUE }}>Jury et révision de note</p></div>
+              <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <Toggle label="Jury obligatoire" checked={row.jury_required} disabled={locked} onChange={checked => onUpdate(row.id, { jury_required: checked, result_release_mode: checked ? 'manual' : row.result_release_mode })} />
+                <NumberField label="Membres minimum" value={row.jury_min_members} min={1} max={15} disabled={locked || !row.jury_required} onChange={value => onUpdate(row.id, { jury_min_members: value })} />
+                <SelectField label="Mode de décision" value={row.jury_decision_mode} disabled={locked || !row.jury_required} onChange={value => onUpdate(row.id, { jury_decision_mode: value as AssessmentRow['jury_decision_mode'] })} options={[
+                  ['majority', 'Majorité'], ['unanimous', 'Unanimité'], ['president_final', 'Décision finale du président'],
+                ]} />
+                <Toggle label="Révision de note autorisée" checked={row.appeal_enabled} disabled={locked} onChange={checked => onUpdate(row.id, { appeal_enabled: checked })} />
+                <NumberField label="Délai de révision (jours)" value={row.appeal_deadline_days} min={0} max={90} disabled={locked || !row.appeal_enabled} onChange={value => onUpdate(row.id, { appeal_deadline_days: value })} />
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border p-4" style={{ borderColor: BORDER }}>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div><p className="text-sm font-semibold" style={{ color: BLUE }}>Référentiel et compétences évaluées</p><p className="mt-1 text-xs text-gray-500">Une compétence ne sera vérifiée qu’après réussite du seuil défini ici.</p></div>
+                <label className="min-w-[260px] text-xs font-semibold text-gray-600">Référentiel<select value={row.competency_framework_id || ''} disabled={locked} onChange={event => onUpdate(row.id, { competency_framework_id: event.target.value || null, competency_mappings: [] })} className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }}><option value="">Aucun référentiel central</option>{frameworks.map(item => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select></label>
+              </div>
+              {framework && <div className="mt-4">
+                <div className="flex gap-2"><select id={`add-competency-${row.id}`} disabled={locked || !available.length} defaultValue="" className="h-10 min-w-0 flex-1 rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }}><option value="">Choisir une compétence…</option>{available.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select><button type="button" disabled={locked || !available.length} onClick={() => { const select = document.getElementById(`add-competency-${row.id}`) as HTMLSelectElement | null; const competencyId = select?.value || ''; if (!competencyId) return; onUpdate(row.id, { competency_mappings: [...row.competency_mappings, { competency_id: competencyId, target_level_id: null, weight: 1, passing_score: row.passing_score, required: true }] }); if (select) select.value = ''; }} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}><Plus size={14} />Ajouter</button></div>
+                <div className="mt-3 space-y-2">{row.competency_mappings.map(mapping => {
+                  const competency = framework.competencies.find(item => item.id === mapping.competency_id);
+                  return <div key={mapping.competency_id} className="grid gap-3 rounded-lg bg-gray-50 p-3 md:grid-cols-[1fr_180px_130px_110px_44px]">
+                    <div><p className="text-sm font-semibold" style={{ color: BLUE }}>{competency?.code} · {competency?.name || 'Compétence'}</p><label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={mapping.required} disabled={locked} onChange={event => onUpdate(row.id, { competency_mappings: row.competency_mappings.map(item => item.competency_id === mapping.competency_id ? { ...item, required: event.target.checked } : item) })} />Compétence obligatoire</label></div>
+                    <SelectField label="Niveau visé" value={mapping.target_level_id || ''} disabled={locked} onChange={value => onUpdate(row.id, { competency_mappings: row.competency_mappings.map(item => item.competency_id === mapping.competency_id ? { ...item, target_level_id: value || null } : item) })} options={[['', 'Non précisé'], ...framework.levels.map(level => [level.id, `${level.code} · ${level.name}`] as [string, string])]} />
+                    <NumberField label="Seuil (%)" value={Number(mapping.passing_score ?? row.passing_score)} min={0} max={100} disabled={locked} onChange={value => onUpdate(row.id, { competency_mappings: row.competency_mappings.map(item => item.competency_id === mapping.competency_id ? { ...item, passing_score: value } : item) })} />
+                    <NumberField label="Poids" value={Number(mapping.weight || 1)} min={0.01} max={100} step={0.01} disabled={locked} onChange={value => onUpdate(row.id, { competency_mappings: row.competency_mappings.map(item => item.competency_id === mapping.competency_id ? { ...item, weight: value } : item) })} />
+                    <button type="button" disabled={locked} onClick={() => onUpdate(row.id, { competency_mappings: row.competency_mappings.filter(item => item.competency_id !== mapping.competency_id) })} className="mt-5 rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="Retirer"><Trash2 size={16} /></button>
+                  </div>;
+                })}</div>
+              </div>}
+              <TextField className="mt-4" label="Compétences libres complémentaires" value={row.competency_labels.join(', ')} disabled={locked} onChange={value => onUpdate(row.id, { competency_labels: value.split(',').map(item => item.trim()).filter(Boolean) })} placeholder="Utilisez ce champ seulement lorsqu’aucun référentiel publié ne correspond." />
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <TextField label="Compétences évaluées" value={row.competency_labels.join(', ')} disabled={locked} onChange={value => onUpdate(row.id, { competency_labels: value.split(',').map(item => item.trim()).filter(Boolean) })} placeholder="Ex. Analyse des risques, Audit interne" />
               <TextField label="Documents ou matériels autorisés" value={row.allowed_materials || ''} disabled={locked} onChange={value => onUpdate(row.id, { allowed_materials: value })} placeholder="Ex. calculatrice, norme fournie, aucun document" />
               <TextArea label="Instructions au candidat" value={row.candidate_instructions || ''} disabled={locked} onChange={value => onUpdate(row.id, { candidate_instructions: value })} placeholder="Consignes avant le démarrage de l’épreuve…" />
               <TextArea label="Règles d’intégrité" value={row.integrity_rules || ''} disabled={locked} onChange={value => onUpdate(row.id, { integrity_rules: value })} placeholder="Comportements autorisés, incidents et conditions d’annulation…" />
             </div>
-
             <TextField className="mt-4" label="Instructions après un échec" value={row.retry_instructions || ''} disabled={locked} onChange={value => onUpdate(row.id, { retry_instructions: value })} placeholder="Ex. Revoyez le module avant de reprendre l’évaluation." />
           </div>
-        ))}
-      </div>
+        );
+      })}</div>
     </section>
   );
 }
 
-function NumberField({ label, value, min, max, disabled, onChange }: { label: string; value: number; min: number; max?: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <label className="text-xs font-semibold text-gray-600">{label}<input type="number" min={min} max={max} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value || min))} className="mt-1 h-10 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} /></label>;
+function NumberField({ label, value, min, max, step, disabled, onChange }: { label: string; value: number; min: number; max?: number; step?: number; disabled?: boolean; onChange: (value: number) => void }) {
+  return <label className="text-xs font-semibold text-gray-600">{label}<input type="number" min={min} max={max} step={step} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value || min))} className="mt-1 h-10 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} /></label>;
 }
-
-function SelectField({ label, value, options, disabled, onChange }: { label: string; value: string; options: Array<[string, string]>; disabled?: boolean; onChange: (value: string) => void }) {
-  return <label className="text-xs font-semibold text-gray-600">{label}<select value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }}>{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
-}
-
-function TextField({ label, value, placeholder, disabled, onChange, className = '' }: { label: string; value: string; placeholder?: string; disabled?: boolean; onChange: (value: string) => void; className?: string }) {
-  return <label className={`block text-xs font-semibold text-gray-600 ${className}`}>{label}<input value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} placeholder={placeholder} /></label>;
-}
-
-function TextArea({ label, value, placeholder, disabled, onChange }: { label: string; value: string; placeholder?: string; disabled?: boolean; onChange: (value: string) => void }) {
-  return <label className="block text-xs font-semibold text-gray-600">{label}<textarea rows={3} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 w-full rounded-lg border p-3 text-sm" style={{ borderColor: BORDER }} placeholder={placeholder} /></label>;
-}
-
-function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700"><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} />{label}</label>;
-}
-
-function Info({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
-  return <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}><Icon size={18} color={GOLD} /><p className="mt-2 text-sm font-semibold" style={{ color: BLUE }}>{title}</p><p className="mt-1 text-xs text-gray-600">{text}</p></div>;
-}
+function SelectField({ label, value, options, disabled, onChange }: { label: string; value: string; options: Array<[string, string]>; disabled?: boolean; onChange: (value: string) => void }) { return <label className="text-xs font-semibold text-gray-600">{label}<select value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }}>{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>; }
+function TextField({ label, value, placeholder, disabled, onChange, className = '' }: { label: string; value: string; placeholder?: string; disabled?: boolean; onChange: (value: string) => void; className?: string }) { return <label className={`block text-xs font-semibold text-gray-600 ${className}`}>{label}<input value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} placeholder={placeholder} /></label>; }
+function TextArea({ label, value, placeholder, disabled, onChange }: { label: string; value: string; placeholder?: string; disabled?: boolean; onChange: (value: string) => void }) { return <label className="block text-xs font-semibold text-gray-600">{label}<textarea rows={3} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} className="mt-1 w-full rounded-lg border p-3 text-sm" style={{ borderColor: BORDER }} placeholder={placeholder} /></label>; }
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) { return <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700"><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} />{label}</label>; }
+function Info({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) { return <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}><Icon size={18} color={GOLD} /><p className="mt-2 text-sm font-semibold" style={{ color: BLUE }}>{title}</p><p className="mt-1 text-xs text-gray-600">{text}</p></div>; }

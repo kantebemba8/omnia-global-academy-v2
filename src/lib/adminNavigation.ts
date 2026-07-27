@@ -40,6 +40,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/quality-center', label: 'Centre Qualité', icon: ShieldCheck },
       { path: '/admin/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
+      { path: '/admin/assessment-governance', label: 'Jurys & compétences', icon: Users },
       { path: '/admin/cpd-credits', label: 'Open CPD', icon: Award },
     ],
   },

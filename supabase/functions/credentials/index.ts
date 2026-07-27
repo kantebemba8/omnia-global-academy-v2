@@ -1399,31 +1399,84 @@ async function syncPlatformClr(sb: Supabase, userId: string) {
     })) changed++;
   }
 
+  const competenciesByAttempt = new Map<string, string[]>();
+  const canonicalCompetencies = await optionalSourceRows(
+    sb.from("learner_competency_records")
+      .select("*,competency:competency_definitions(id,name,code,description,domain,category,validity_months,renewal_mode),level:competency_levels(id,code,name,level_number)")
+      .eq("user_id", userId).eq("status", "validated"),
+  );
+  const canonicalNames = new Set<string>();
+  for (const row of canonicalCompetencies) {
+    const competency = jsonRecord(row.competency);
+    const level = jsonRecord(row.level);
+    const competencyName = text(competency.name || row.competency_name, 240);
+    if (!competencyName) continue;
+    canonicalNames.add(competencyName.toLowerCase());
+    const attemptId = text(row.attempt_id, 200);
+    if (attemptId) {
+      const current = competenciesByAttempt.get(attemptId) || [];
+      current.push(competencyName);
+      competenciesByAttempt.set(attemptId, [...new Set(current.filter(Boolean))]);
+    }
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "verified_competency",
+      source_id: row.id,
+      section: "competences_verifiees",
+      achievement_type: "Competency",
+      title: competencyName,
+      description: competency.description || "Compétence validée par une évaluation ou un jury Omnia.",
+      issued_at: row.verified_at || row.valid_from || row.updated_at || row.created_at,
+      ended_at: row.valid_until,
+      score: row.score,
+      score_max: 100,
+      result_label: row.source_type === "jury" ? "Compétence validée par jury" : "Compétence vérifiée",
+      skills: [competencyName],
+      evidence: jsonArray(row.evidence).length ? jsonArray(row.evidence) : [{ type: row.source_type || "assessment", attempt_id: row.attempt_id, assessment_id: row.assessment_id }],
+      metadata: {
+        competency_id: row.competency_id,
+        competency_code: competency.code,
+        domain: competency.domain,
+        category: competency.category,
+        level_id: row.competency_level_id,
+        level_code: level.code,
+        level_name: level.name,
+        level_number: level.level_number,
+        framework_version: row.framework_version,
+        source_type: row.source_type,
+        validity_status: row.valid_until && Date.parse(row.valid_until) < Date.now() ? "expired" : "valid",
+        renewal_mode: competency.renewal_mode,
+      },
+      source_updated_at: row.updated_at || row.verified_at,
+    })) changed++;
+  }
+
   const competencyResults = await optionalSourceRows(
     sb.from("assessment_result_competencies").select("*")
       .eq("user_id", userId).eq("status", "validated"),
   );
-  const competenciesByAttempt = new Map<string, string[]>();
   for (const row of competencyResults) {
+    const competencyName = text(row.competency_name, 240);
+    if (!competencyName || canonicalNames.has(competencyName.toLowerCase())) continue;
     const attemptId = text(row.attempt_id, 200);
     if (!attemptId) continue;
     const current = competenciesByAttempt.get(attemptId) || [];
-    current.push(text(row.competency_name, 240));
-    competenciesByAttempt.set(attemptId, current.filter(Boolean));
+    current.push(competencyName);
+    competenciesByAttempt.set(attemptId, [...new Set(current.filter(Boolean))]);
     if (await upsertClrSourceEntry(sb, record, {
       source_type: "assessment_competency",
       source_id: row.id,
       section: "competences_verifiees",
       achievement_type: "Competency",
-      title: row.competency_name || "Compétence évaluée",
+      title: competencyName,
       description: "Compétence validée par une évaluation Omnia.",
       issued_at: row.validated_at || row.updated_at || row.created_at,
+      ended_at: row.valid_until,
       score: row.score,
       score_max: 100,
-      result_label: "Compétence validée",
-      skills: [row.competency_name],
+      result_label: row.verification_status === "jury_validated" ? "Compétence validée par jury" : "Compétence validée",
+      skills: [competencyName],
       evidence: [{ type: "assessment", attempt_id: row.attempt_id, assessment_id: row.assessment_id }],
-      metadata: { attempt_id: row.attempt_id, assessment_id: row.assessment_id, validation_status: row.status },
+      metadata: { attempt_id: row.attempt_id, assessment_id: row.assessment_id, validation_status: row.status, verification_status: row.verification_status, framework_version: row.framework_version },
       source_updated_at: row.updated_at || row.validated_at,
     })) changed++;
   }

@@ -42,6 +42,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/courses', label: 'Mes formations', icon: BookOpen },
   { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
   { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
+  { path: '/professeur/jurys', label: 'Jurys & révisions', icon: Users },
   { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
