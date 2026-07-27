@@ -68,8 +68,11 @@ Deno.serve(async (req: Request) => {
         avgRatings[fb.course_id].count += 1;
       });
 
-      // Projects awaiting correction
-      const { data: submittedProjects } = await sb.from("user_final_validation").select("course_id").in("course_id", courseIds).eq("status", "submitted");
+      // Copies ouvertes et travaux à corriger dans le moteur unique.
+      const { data: submittedProjects } = await sb.from("assessment_attempts")
+        .select("course_id")
+        .in("course_id", courseIds)
+        .in("status", ["submitted", "pending_review"]);
       const projCount: Record<string, number> = {};
       (submittedProjects ?? []).forEach((p) => {
         const sp = p as unknown as { course_id: string };
