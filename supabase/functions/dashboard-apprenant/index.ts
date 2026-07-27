@@ -38,13 +38,14 @@ Deno.serve(async (req: Request) => {
       ? await sb.from("user_lesson_progress").select("lesson_id,is_completed,course_id").eq("user_id", userId).in("course_id", courseIds)
       : { data: [] };
 
-    // Module progress (exams passed)
-    const { data: moduleProgress } = courseIds.length > 0
-      ? await sb.from("user_module_progress").select("module_id,course_id,exam_passed").eq("user_id", userId).in("course_id", courseIds)
+    // Résultats finaux issus du moteur unique course_assessments.
+    const { data: finalAssessments } = courseIds.length > 0
+      ? await sb.from("course_assessments").select("id,course_id").in("course_id", courseIds).eq("scope", "final").eq("required", true).eq("is_active", true)
       : { data: [] };
-
-    // Final validations (certificates)
-    const { data: finalValidations } = await sb.from("user_final_validation").select("course_id,status,created_at").eq("user_id", userId);
+    const finalAssessmentIds = (finalAssessments ?? []).map((row) => (row as { id: string }).id);
+    const { data: finalAttempts } = finalAssessmentIds.length > 0
+      ? await sb.from("assessment_attempts").select("assessment_id,course_id,passed,graded_at,submitted_at").eq("user_id", userId).in("assessment_id", finalAssessmentIds).eq("passed", true)
+      : { data: [] };
 
     // All lessons per course for progress calculation
     const { data: allLessons } = courseIds.length > 0
@@ -70,7 +71,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const passedCourses = new Set((finalValidations ?? []).filter((fv) => (fv as unknown as { status: string }).status === "passed").map((fv) => (fv as unknown as { course_id: string }).course_id));
+    const passedCourses = new Set((finalAttempts ?? []).map((attempt) => (attempt as { course_id: string }).course_id));
 
     const coursesEnCours = [];
     const coursesTermines = [];
