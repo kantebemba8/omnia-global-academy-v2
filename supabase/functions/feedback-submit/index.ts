@@ -34,9 +34,12 @@ Deno.serve(async (req: Request) => {
     if (!sess) return json({ error: "SESSION_INVALID" }, 401);
     const userId = sess.user_id;
 
-    // Verify course completed
-    const { data: finalVal } = await sb.from("user_final_validation").select("id").eq("user_id", userId).eq("course_id", course_id).eq("status", "passed").maybeSingle();
-    if (!finalVal) return json({ error: "COURSE_NOT_COMPLETED", message: "Vous devez terminer la formation pour laisser un avis." }, 403);
+    // Vérifier la réussite de l'évaluation finale du moteur unique.
+    const { data: finalAssessment } = await sb.from("course_assessments").select("id").eq("course_id", course_id).eq("scope", "final").eq("required", true).eq("is_active", true).maybeSingle();
+    const { data: finalAttempt } = finalAssessment
+      ? await sb.from("assessment_attempts").select("id").eq("assessment_id", finalAssessment.id).eq("user_id", userId).eq("passed", true).limit(1).maybeSingle()
+      : { data: null };
+    if (!finalAttempt) return json({ error: "COURSE_NOT_COMPLETED", message: "Vous devez réussir l’évaluation finale pour laisser un avis." }, 403);
 
     const { error } = await sb.from("course_private_feedback").insert({
       user_id: userId,
