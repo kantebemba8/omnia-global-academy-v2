@@ -8,7 +8,6 @@ import {
   Mic,
   MonitorUp,
   ShieldCheck,
-  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
@@ -217,7 +216,7 @@ export default function AssessmentSession() {
               </div>
             ) : (
               <>
-                <div className="mt-5 flex justify-end"><button onClick={() => setIncidentOpen(value => !value)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}><TriangleAlert size={16} />Signaler un incident</button></div>
+                <div className="mt-5 flex justify-end"><button onClick={() => setIncidentOpen(value => !value)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}><AlertCircle size={16} />Signaler un incident</button></div>
                 {incidentOpen && (
                   <div className="mt-4 rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
                     <h3 className="font-semibold" style={{ color: BLUE }}>Signaler un incident</h3>
