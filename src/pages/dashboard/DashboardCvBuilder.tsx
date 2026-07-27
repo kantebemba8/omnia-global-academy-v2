@@ -970,12 +970,6 @@ export default function DashboardCvBuilder() {
   const [showPreview, setShowPreview] = useState(false);
  const [showAi, setShowAi] = useState(false);
   const [toast, setToast] = useState('');
- const [showBuyTokens, setShowBuyTokens] = useState(false);
-  const [buyingTokens, setBuyingTokens] = useState(false);
-  const [tokenPacks, setTokenPacks] = useState<Array<{ id: string; tokens: number; price_xof: number; label: string; popular: boolean }>>([
-    { id: 'pack_3', tokens: 3, price_xof: 500, label: '3 jetons', popular: false },
-    { id: 'pack_5', tokens: 5, price_xof: 1000, label: '5 jetons', popular: true },
-  ]);
   const [aiResult, setAiResult] = useState('');
 
   const TOTAL_STEPS = 5;
@@ -988,13 +982,6 @@ export default function DashboardCvBuilder() {
 
  useEffect(() => {
     loadData();
-    // Détecter retour FedaPay après achat jetons
-    const params = new URLSearchParams(window.location.search);
-    const purchased = params.get('tokens_purchased');
-    if (purchased) {
-      showToast(`✅ ${purchased} jeton(s) crédité(s) sur votre compte !`);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
   }, []);
 
   async function loadData() {
@@ -1012,12 +999,6 @@ export default function DashboardCvBuilder() {
       const settingsRes = await fetch(`${SUPABASE_URL}/functions/v1/site-settings-public`);
       const s = await settingsRes.json();
       setSettings(s);
-      if (s.cv_token_packs) {
-        try {
-          const packs = JSON.parse(s.cv_token_packs);
-          if (Array.isArray(packs) && packs.length > 0) setTokenPacks(packs);
-        } catch (_) {}
-      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1106,27 +1087,6 @@ export default function DashboardCvBuilder() {
     }
     if (currentCvId) await downloadPdfById(currentCvId);
   }
-async function buyTokens(packId: string) {
-    setBuyingTokens(true);
-    try {
-      const token = localStorage.getItem('omnia_session_token');
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/cv-tokens-checkout`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pack_id: packId }),
-      });
-      const data = await res.json();
-      if (data.payment_url) {
-        window.location.href = data.payment_url;
-      } else {
-        showToast('❌ Erreur lors de l\'initialisation du paiement.');
-      }
-    } catch {
-      showToast('❌ Erreur réseau.');
-    } finally {
-      setBuyingTokens(false);
-    }
-  }
   async function deleteCv(cvId: string) {
     if (!confirm('Supprimer ce CV ?')) return;
     const token = localStorage.getItem('omnia_session_token');
@@ -1177,46 +1137,6 @@ async function buyTokens(packId: string) {
  if (view === 'list') {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* Modal achat jetons */}
-        {showBuyTokens && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-lg font-bold" style={{ color: '#002050' }}>Acheter des jetons CV</h3>
-                  <p className="text-xs mt-1" style={{ color: '#6B7280' }}>1 jeton = 1 téléchargement PDF</p>
-                </div>
-                <button onClick={() => setShowBuyTokens(false)}>
-                  <X size={20} style={{ color: '#6B7280' }} />
-                </button>
-              </div>
-              <div className="space-y-3 mb-5">
-                {tokenPacks.map(pack => (
-                  <button key={pack.id} onClick={() => buyTokens(pack.id)} disabled={buyingTokens}
-                    className="w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all disabled:opacity-50 hover:border-[#BF8813]"
-                    style={{ borderColor: pack.popular ? '#BF8813' : '#E4E7EC', backgroundColor: pack.popular ? 'rgba(191,136,19,0.04)' : 'white' }}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(0,32,80,0.08)' }}>
-                        <Coins size={20} style={{ color: '#BF8813' }} />
-                      </div>
-                      <div className="text-left">
-                        <div className="font-bold" style={{ color: '#002050' }}>{pack.label}</div>
-                        {pack.popular && <div className="text-xs font-semibold" style={{ color: '#BF8813' }}>⭐ Meilleure valeur</div>}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold" style={{ color: '#002050' }}>{pack.price_xof.toLocaleString('fr-FR')} FCFA</div>
-                      <div className="text-xs" style={{ color: '#6B7280' }}>{Math.round(pack.price_xof / pack.tokens)} FCFA/jeton</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-center" style={{ color: '#9CA3AF' }}>
-                Paiement sécurisé via FedaPay · Mobile Money & Carte
-              </p>
-            </div>
-          </div>
-        )}
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg" style={{ backgroundColor: '#002050' }}>
             {toast}
@@ -1237,11 +1157,6 @@ async function buyTokens(packId: string) {
               <span className="font-bold" style={{ color: '#BF8813' }}>{tokens}</span>
               <span className="text-xs" style={{ color: '#6B7280' }}>jeton(s)</span>
             </div>
-            <button onClick={() => setShowBuyTokens(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold"
-              style={{ backgroundColor: '#BF8813', color: 'white', border: 'none' }}>
-              <Coins size={16} /> Acheter des jetons
-            </button>
             <button onClick={openNewCv} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white" style={{ backgroundColor: '#002050' }}>
               <Plus size={18} /> Nouveau CV
             </button>
@@ -1256,8 +1171,8 @@ async function buyTokens(packId: string) {
               <span style={{ color: '#6B7280' }}>
                 La saisie et l'aperçu sont gratuits. 1 jeton est consommé à chaque nouveau téléchargement PDF.
                 Le réenregistrement est gratuit si le contenu est inchangé.
-                Vous recevez {settings.cv_tokens_inscription || '1'} jeton à l'inscription
-                et {settings.cv_tokens_per_purchase || '1'} jeton par formation achetée.
+                Les anciens packs de jetons ont été retirés. Les jetons disponibles proviennent uniquement
+                des avantages configurés par Omnia, d'une formation ou d'un crédit administratif.
               </span>
             </div>
           </div>

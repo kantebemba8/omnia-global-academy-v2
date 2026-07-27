@@ -4,12 +4,13 @@ import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 import {omniaDialog} from '../../../lib/omniaDialog';
 
 const BLUE='#002050';
-const FLAG_LABELS:any={omnia_live_enabled:'Omnia Live',fedapay_live_payments:'Paiements FedaPay',omnia_live_pass:'Omnia Live Pass',oga_premium_live:'OGA Premium + Live',sms_notifications:'Notifications SMS',push_notifications:'Notifications Push',server_recording:'Enregistrement serveur'};
+const FLAG_LABELS:any={omnia_live_enabled:'Omnia Live',fedapay_live_payments:'Paiements FedaPay',sms_notifications:'Notifications SMS',push_notifications:'Notifications Push',server_recording:'Enregistrement serveur'};
+const LEGACY_COMMERCE_FLAGS=new Set(['omnia_live_pass','oga_premium_live']);
 const ROLE_LABELS:any={learner:'Apprenant',professor:'Professeur',structure:'Structure',organizer:'Organisateur',super_admin:'Super-admin',moderator:'Modérateur'};
 
 export default function AdminOmniaLiveSecurity(){
  const [policies,setPolicies]=useState<any[]>([]),[flags,setFlags]=useState<any[]>([]),[permissions,setPermissions]=useState<any[]>([]),[msg,setMsg]=useState('');
- const load=async()=>{try{const [p,f,r]=await Promise.all([liveApi('security_policies_list'),liveApi('feature_flags_list'),liveApi('role_permissions_list')]);setPolicies(p.policies||[]);setFlags(f.flags||[]);setPermissions(r.permissions||[])}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}};
+ const load=async()=>{try{const [p,f,r]=await Promise.all([liveApi('security_policies_list'),liveApi('feature_flags_list'),liveApi('role_permissions_list')]);setPolicies(p.policies||[]);setFlags((f.flags||[]).filter((flag:any)=>!LEGACY_COMMERCE_FLAGS.has(flag.flag_key)));setPermissions(r.permissions||[])}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}};
  useEffect(()=>{load()},[]);
 
  async function toggleFlag(flag:any){

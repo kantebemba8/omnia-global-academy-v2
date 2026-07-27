@@ -53,7 +53,7 @@ export default function CoachDashboard() {
 
       <div className="mt-6 grid gap-5 md:grid-cols-3">
         <Card to={withCoachPreview("/coach/sessions")} title="Gérer mes sessions" text="Réservations, salles et suivi des apprenants." />
-        <Card to={withCoachPreview("/coach/produits")} title="Packs et groupes" text="Créer des packs de séances et du coaching collectif." />
+        <Card to={withCoachPreview("/coach/produits")} title="Coaching collectif" text="Créer et suivre vos sessions collectives." />
         <Card to={withCoachPreview("/coach/revenus")} title="Revenus et retraits" text="Consulter les revenus disponibles et demander un payout." />
       </div>
 

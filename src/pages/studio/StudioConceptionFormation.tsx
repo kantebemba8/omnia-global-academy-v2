@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
+import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import { CATEGORY_LABELS } from '../../lib/categories';
@@ -179,6 +180,7 @@ export default function StudioConceptionFormation() {
   const [showRolePreview, setShowRolePreview] = useState(false);
   const [showFinalization, setShowFinalization] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [showAssessmentPolicy, setShowAssessmentPolicy] = useState(false);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -747,7 +749,14 @@ export default function StudioConceptionFormation() {
       <div className="flex flex-1 overflow-hidden relative">
         <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
           <div className="pointer-events-auto max-w-4xl mx-auto">
-            <AssessmentRulesCard courseId={course.id || 'new'} durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0} />
+            <AssessmentRulesCard
+              courseId={course.id || 'new'}
+              durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0}
+              onConfigure={() => {
+                if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; }
+                setShowAssessmentPolicy(true);
+              }}
+            />
           </div>
         </div>
 
@@ -1289,6 +1298,14 @@ export default function StudioConceptionFormation() {
           </div>
         )}
       </div>
+
+      {showAssessmentPolicy && course.id && (
+        <AssessmentPolicyPanel
+          courseId={course.id}
+          locked={locked}
+          onClose={() => setShowAssessmentPolicy(false)}
+        />
+      )}
 
       {/* ── MODAL CHECKLIST ──────────────────────────── */}
       {showChecklist && checklist && (

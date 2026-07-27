@@ -90,7 +90,6 @@ export type CoachProfile = {
   domains: CoachingDomain[];
   offers?: CoachOffer[];
   ratings?: CoachingRating[];
-  packages?: CoachingPackage[];
   groups?: CoachingGroupProgram[];
 };
 
@@ -412,62 +411,6 @@ export type LearnerCoachingPreferences = {
   preferred_formats: Array<'individual' | 'group'>;
 };
 
-export type CoachingPackage = {
-  id: string;
-  coach_id: string;
-  domain_id?: string | null;
-  title: string;
-  description: string;
-  session_count: number;
-  session_duration_minutes: number;
-  price_xof: number;
-  validity_days: number;
-  session_modes: Array<'jitsi' | 'external'>;
-  status: string;
-  admin_message?: string | null;
-  coach?: Partial<CoachProfile> | null;
-  domain?: Pick<CoachingDomain, 'id' | 'slug' | 'name'> | null;
-};
-
-export type CoachingPackagePurchase = {
-  id: string;
-  package_id: string;
-  user_id: string;
-  order_id?: string | null;
-  status: string;
-  sessions_total: number;
-  sessions_remaining: number;
-  starts_at?: string | null;
-  expires_at?: string | null;
-  package?: CoachingPackage | null;
-};
-
-export type CoachingSubscriptionPlan = {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  monthly_price_xof: number;
-  discount_percent: number;
-  monthly_booking_limit?: number | null;
-  priority_matching: boolean;
-  validity_days: number;
-  display_order: number;
-  is_active: boolean;
-};
-
-export type CoachingSubscription = {
-  id: string;
-  plan_id: string;
-  user_id: string;
-  order_id?: string | null;
-  status: string;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  bookings_used: number;
-  plan?: CoachingSubscriptionPlan | null;
-};
-
 export type CoachingGroupProgram = {
   id: string;
   coach_id: string;
@@ -574,7 +517,6 @@ const EMPTY_COACH_PREVIEW_PROFILE: CoachProfile = {
   domains: [],
   offers: [],
   ratings: [],
-  packages: [],
   groups: [],
 };
 
@@ -633,7 +575,7 @@ function getCoachPreviewResponse(action: string): unknown {
         metrics: { locked_xof: 0, frozen_xof: 0, available_earnings_xof: 0, lifetime_net_xof: 0 },
       };
     case 'coach_advanced_products':
-      return { packages: [], groups: [], domains: [], package_purchases: [], group_registrations: [] };
+      return { groups: [], domains: [], group_registrations: [] };
     default:
       return null;
   }

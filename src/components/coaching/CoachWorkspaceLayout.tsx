@@ -25,7 +25,7 @@ const items = [
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },
   { path: '/coach/avis', label: 'Mes avis', icon: Star },
   { path: '/coach/revenus', label: 'Mes revenus', icon: CircleDollarSign },
-  { path: '/coach/produits', label: 'Packs et groupes', icon: Package },
+  { path: '/coach/produits', label: 'Coaching collectif', icon: Package },
 ];
 
 export default function CoachWorkspaceLayout({ children }: { children: ReactNode }) {

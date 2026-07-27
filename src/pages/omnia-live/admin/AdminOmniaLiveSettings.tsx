@@ -6,7 +6,6 @@ const LABELS:Record<string,string>={
  general:'Paramètres généraux',
  limits:'Limites opérationnelles',
  moderation:'Règles de gouvernance',
- subscriptions:'Abonnements',
  live_enabled:'Omnia Live activé',
  recorded_video_enabled:'Vidéos préenregistrées activées',
  replay_enabled:'Replays activés',
@@ -23,9 +22,6 @@ const LABELS:Record<string,string>={
  commercial_terms_required_for_paid:'Conditions commerciales obligatoires pour les Lives payants',
  review_required_before_publish:'Validation obligatoire avant publication',
  cancellation_admin_approval_required:'Validation Super Admin obligatoire pour une annulation',
- omnia_live_pass_enabled:'Omnia Live Pass activé',
- oga_premium_live_enabled:'OGA Premium + Live activé',
- structure_packs_enabled:'Packs Structure activés',
 };
 
 const HELP:Record<string,string>={
@@ -40,16 +36,15 @@ const HELP:Record<string,string>={
  commercial_terms_required_for_paid:'Si activé, un contenu payant ne peut pas être publié tant que prix, commission et conditions commerciales ne sont pas validés.',
  review_required_before_publish:'Impose la validation Super Admin aux contenus proposés par les organisateurs. Les créations officielles OGA du Super Admin suivent leur workflow administratif.',
  cancellation_admin_approval_required:'Empêche un organisateur d’annuler directement un événement sans contrôle administratif.',
- omnia_live_pass_enabled:'Future formule d’abonnement donnant accès à des avantages Omnia Live. Laissez désactivé tant que l’offre commerciale n’est pas finalisée.',
- oga_premium_live_enabled:'Future extension Omnia Live de l’abonnement Premium global OGA. Laissez désactivé avant définition des avantages.',
- structure_packs_enabled:'Active la gestion des Packs institutionnels pour écoles, entreprises, ministères et autres Structures.',
 };
 
 export default function AdminOmniaLiveSettings(){
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState('');
- const load=()=>liveApi('admin_settings_get').then(d=>setRows(d.settings||[])).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));useEffect(()=>{load()},[]);
+ const legacyKeys=new Set(['omnia_live_pass_enabled','oga_premium_live_enabled','structure_packs_enabled']);
+ const sanitize=(row:any)=>({...row,config_value:Object.fromEntries(Object.entries(row.config_value||{}).filter(([key])=>!legacyKeys.has(key)))});
+ const load=()=>liveApi('admin_settings_get').then(d=>setRows((d.settings||[]).filter((row:any)=>row.config_key!=='subscriptions').map(sanitize))).catch(e=>setMsg(e instanceof Error?e.message:'Erreur'));useEffect(()=>{load()},[]);
  function change(i:number,key:string,value:any){setRows(x=>x.map((r,n)=>n===i?{...r,config_value:{...r.config_value,[key]:value}}:r))}
- async function save(r:any){try{await liveApi('admin_settings_save',{method:'POST',body:JSON.stringify({config_key:r.config_key,config_value:r.config_value,description:r.description,is_public:r.is_public})});setMsg(`${LABELS[r.config_key]||r.config_key} enregistré.`)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
+ async function save(r:any){try{await liveApi('admin_settings_save',{method:'POST',body:JSON.stringify({config_key:r.config_key,config_value:sanitize(r).config_value,description:r.description,is_public:r.is_public})});setMsg(`${LABELS[r.config_key]||r.config_key} enregistré.`)}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}}
 
  return <AdminOmniaLiveShell title="Paramètres Omnia Live" subtitle="Réglez les fonctions globales, limites, validations et options commerciales de façon compréhensible.">
   {msg&&<div className="mb-4 rounded-xl bg-slate-50 p-4">{msg}</div>}

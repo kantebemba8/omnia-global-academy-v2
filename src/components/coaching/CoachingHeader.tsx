@@ -104,7 +104,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
   const navItems = useMemo<NavItem[]>(() => {
     const items: NavItem[] = [
       { path: '/coaching', label: 'Trouver un coach', icon: Compass, exact: true },
-      { path: '/coaching/solutions', label: 'Packs et groupes', icon: Package },
+      { path: '/coaching/solutions', label: 'Coaching collectif', icon: Package },
     ];
     if (loggedIn) items.push({ path: '/dashboard/coaching', label: 'Mes sessions', icon: CalendarDays });
     if (isCoach || previewMode) items.push({ path: '/coach/dashboard', label: 'Espace coach', icon: LayoutDashboard });

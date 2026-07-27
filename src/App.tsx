@@ -41,7 +41,6 @@ import { DashboardParrainage } from './pages/dashboard/DashboardParrainage';
 import { DashboardProfil } from './pages/dashboard/DashboardProfil';
 import { DashboardProfesseur } from './pages/professeur/DashboardProfesseur';
 import { ProfesseurMesFormations } from './pages/professeur/ProfesseurMesFormations';
-import { ProfesseurStudioCreation } from './pages/professeur/ProfesseurStudioCreation';
 import ProfesseurTarification from './pages/professeur/ProfesseurTarification';
 import { ProfesseurPortefeuille } from './pages/professeur/ProfesseurPortefeuille';
 import { ProfesseurAnalytique } from './pages/professeur/ProfesseurAnalytique';
@@ -625,8 +624,8 @@ export default function App() {
         {/* Module 8 — Dashboard enseignant — always accessible */}
         <Route path="/staff/dashboard" element={<EnseignantDashboard />} />
         <Route path="/staff/courses" element={<EnseignantMesCours />} />
-        <Route path="/staff/courses/new" element={<ProfesseurStudioCreation />} />
-        <Route path="/staff/courses/:id/edit" element={<ProfesseurStudioCreation />} />
+        <Route path="/staff/courses/new" element={<StudioConceptionFormation />} />
+        <Route path="/staff/courses/:id/edit" element={<StudioConceptionFormation />} />
         <Route path="/staff/analytics" element={<EnseignantAnalytique />} />
 
         {/* Module 11 — Paiement — always accessible */}

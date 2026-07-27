@@ -1,38 +1,410 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Download,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Send,
+  Upload,
+  XCircle,
+} from 'lucide-react';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
-import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Clock, FileText, Loader2, Send, Upload, XCircle } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
-const token = () => localStorage.getItem('omnia_session_token') || '';
+const BLUE = '#002050';
+const GOLD = '#BF8813';
+const BORDER = '#E4E7EC';
 
 async function call(action: string, payload: Record<string, unknown>) {
-  const response = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action, ...payload }) });
+  const response = await fetch(API, {
+    method: 'POST',
+    headers: edgeAuthHeaders(),
+    body: JSON.stringify({ action, ...payload }),
+  });
   const data = await response.json();
-  if (!response.ok || data.success === false) throw new Error(data.message || data.error || 'Erreur');
+  if (!response.ok || data.success === false) {
+    const error = new Error(data.message || data.error || 'Erreur');
+    Object.assign(error, { payload: data });
+    throw error;
+  }
   return data;
 }
 
-type Question = { id:string; question_type:'qcm'|'true_false'|'open_question'|'exercise'; prompt:string; options?:string[]; points:number; explanation?:string; accepted_submission_types?:string[]; resource_files?:Array<{name:string;url:string}> };
-type Assessment = { id:string; title:string; instructions?:string; scope:string; passing_score:number; max_attempts:number; time_limit_minutes?:number; questions:Question[]; latest_attempt?:{score:number;passed:boolean;status:string} };
+type Question = {
+  id: string;
+  question_type: 'qcm' | 'true_false' | 'open_question' | 'exercise';
+  prompt: string;
+  options?: string[];
+  points: number;
+  explanation?: string;
+  accepted_submission_types?: string[];
+  resource_files?: Array<{ name: string; url: string }>;
+};
 
-export function AssessmentEngine({ courseId, lessonId, moduleId, scope='lesson', onPassed }: { courseId:string; lessonId?:string; moduleId?:string; scope?:'lesson'|'module'|'final'; onPassed?:()=>void }) {
-  const [assessment,setAssessment]=useState<Assessment|null>(null); const [answers,setAnswers]=useState<Record<string,any>>({}); const [loading,setLoading]=useState(true); const [sending,setSending]=useState(false); const [result,setResult]=useState<any>(null); const [error,setError]=useState('');
-  useEffect(()=>{ setLoading(true); call('learner_get_assessment',{course_id:courseId,lesson_id:lessonId,module_id:moduleId,scope}).then(d=>setAssessment(d.assessment||null)).catch(e=>setError(e.message)).finally(()=>setLoading(false)); },[courseId,lessonId,moduleId,scope]);
-  const complete=useMemo(()=>assessment?.questions.every(q=>{ const a=answers[q.id]; return q.question_type==='exercise' ? Array.isArray(a?.files)&&a.files.length>0 : a!==undefined&&a!==''; })??false,[assessment,answers]);
-  const submit=async()=>{ if(!assessment||!complete)return; setSending(true);setError(''); try{ const d=await call('learner_submit_assessment',{assessment_id:assessment.id,course_id:courseId,answers:Object.entries(answers).map(([question_id,answer])=>({question_id,answer}))}); setResult(d); if(d.passed)onPassed?.(); }catch(e:any){setError(e.message)}finally{setSending(false)} };
-  if(loading)return <div className="py-5 flex items-center gap-2 text-sm text-gray-500"><Loader2 size={16} className="animate-spin"/>Chargement de l’évaluation…</div>;
-  if(!assessment)return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">L’évaluation obligatoire n’a pas encore été configurée par le créateur.</div>;
-  return <section className="mt-8 rounded-2xl border p-5" style={{borderColor:'#E4E7EC'}}>
-    <div className="flex items-start justify-between gap-4 mb-4"><div><h2 className="font-semibold" style={{color:'#002050'}}>{assessment.title}</h2><p className="text-sm text-gray-500 mt-1">Score minimum obligatoire : <b>{assessment.passing_score}%</b> · {assessment.max_attempts} tentative(s){assessment.time_limit_minutes?` · ${assessment.time_limit_minutes} min`:''}</p></div><Clock size={20} style={{color:'#BF8813'}}/></div>
-    {assessment.instructions&&<p className="text-sm mb-4">{assessment.instructions}</p>}
-    <div className="space-y-5">{assessment.questions.map((q,i)=><div key={q.id} className="rounded-xl bg-gray-50 p-4"><p className="text-sm font-medium mb-3" style={{color:'#002050'}}>{i+1}. {q.prompt} <span className="text-xs text-gray-400">({q.points} pts)</span></p>
-      {q.question_type==='qcm'&&<div className="space-y-2">{(q.options||[]).map((o,idx)=><label key={idx} className="flex gap-2 text-sm"><input type="radio" name={q.id} checked={answers[q.id]===idx} onChange={()=>setAnswers(a=>({...a,[q.id]:idx}))}/>{o}</label>)}</div>}
-      {q.question_type==='true_false'&&<div className="flex gap-4"><label className="text-sm"><input type="radio" name={q.id} checked={answers[q.id]===true} onChange={()=>setAnswers(a=>({...a,[q.id]:true}))}/> Vrai</label><label className="text-sm"><input type="radio" name={q.id} checked={answers[q.id]===false} onChange={()=>setAnswers(a=>({...a,[q.id]:false}))}/> Faux</label></div>}
-      {q.question_type==='open_question'&&<textarea rows={5} className="w-full border rounded-lg p-3 text-sm" value={answers[q.id]||''} onChange={e=>setAnswers(a=>({...a,[q.id]:e.target.value}))} placeholder="Rédigez votre réponse…"/>}
-      {q.question_type==='exercise'&&<div><div className="flex flex-wrap gap-2 mb-3">{(q.resource_files||[]).map((f,j)=><a key={j} href={f.url} target="_blank" rel="noreferrer" className="text-xs underline flex gap-1"><FileText size={13}/>{f.name}</a>)}</div><label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm"><Upload size={15}/>Déposer mon travail<input type="file" multiple className="hidden" accept={(q.accepted_submission_types||[]).map(x=>'.'+x).join(',')} onChange={e=>setAnswers(a=>({...a,[q.id]:{files:Array.from(e.target.files||[]).map(f=>({name:f.name,size:f.size,type:f.type}))}}))}/></label>{answers[q.id]?.files?.length>0&&<p className="text-xs text-green-700 mt-2">{answers[q.id].files.length} fichier(s) prêt(s) à envoyer</p>}</div>}
-    </div>)}</div>
-    {error&&<p className="text-sm text-red-600 mt-4">{error}</p>}
-    {result&&<div className={`mt-4 rounded-xl p-4 ${result.passed?'bg-green-50':'bg-amber-50'}`}>{result.passed?<div className="flex gap-2 text-green-700"><CheckCircle size={18}/>Évaluation réussie : {result.score}%</div>:result.pending_review?<div className="flex gap-2 text-amber-700"><Clock size={18}/>Réponse envoyée, correction en attente.</div>:<div className="flex gap-2 text-red-700"><XCircle size={18}/>Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}</div>}
-    <button disabled={!complete||sending} onClick={submit} className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{backgroundColor:'#002050'}}>{sending?<Loader2 size={15} className="animate-spin"/>:<Send size={15}/>}Envoyer l’évaluation</button>
-  </section>;
+type UploadedFile = {
+  bucket_name: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+};
+
+type PendingFile = { file: File; uploaded?: UploadedFile };
+type AnswerValue = string | number | boolean | { files: PendingFile[] };
+
+type Attempt = {
+  id: string;
+  score?: number | null;
+  passed: boolean;
+  status: string;
+  attempt_number: number;
+  retry_available_at?: string | null;
+  remediation_required?: boolean;
+  remediation_completed_at?: string | null;
+  feedback?: string;
+};
+
+type Correction = {
+  score?: number | null;
+  max_score?: number | null;
+  comment?: string | null;
+  corrected_file_name?: string | null;
+  signed_url?: string | null;
+  published_at?: string | null;
+};
+
+type Assessment = {
+  id: string;
+  title: string;
+  instructions?: string;
+  scope: string;
+  passing_score: number;
+  remediation_after_attempts: number;
+  remediation_mode: 'none' | 'review_lesson' | 'review_module' | 'exercise' | 'manual';
+  retry_cooldown_hours: number;
+  retry_instructions?: string;
+  time_limit_minutes?: number | null;
+  questions: Question[];
+  latest_attempt?: Attempt | null;
+  correction?: Correction | null;
+  can_retry: boolean;
+  retry_blocked_until?: string | null;
+  remediation_blocked?: boolean;
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function remediationLabel(mode: Assessment['remediation_mode']) {
+  if (mode === 'review_lesson') return 'revoir la leçon';
+  if (mode === 'review_module') return 'revoir le module';
+  if (mode === 'exercise') return 'effectuer l’exercice complémentaire';
+  if (mode === 'manual') return 'attendre l’autorisation du formateur';
+  return 'aucune remédiation automatique';
+}
+
+export function AssessmentEngine({
+  courseId,
+  lessonId,
+  moduleId,
+  scope = 'lesson',
+  onPassed,
+}: {
+  courseId: string;
+  lessonId?: string;
+  moduleId?: string;
+  scope?: 'lesson' | 'module' | 'final';
+  onPassed?: () => void;
+}) {
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [remediationLoading, setRemediationLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await call('learner_get_assessment', {
+        course_id: courseId,
+        lesson_id: lessonId,
+        module_id: moduleId,
+        scope,
+      });
+      setAssessment(data.assessment || null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Chargement impossible.');
+    } finally {
+      setLoading(false);
+    }
+  }, [courseId, lessonId, moduleId, scope]);
+
+  useEffect(() => {
+    setAnswers({});
+    setResult(null);
+    void load();
+  }, [load]);
+
+  const complete = useMemo(() => assessment?.questions.every(question => {
+    const answer = answers[question.id];
+    if (question.question_type === 'exercise') {
+      return Boolean(answer && typeof answer === 'object' && 'files' in answer && answer.files.length > 0);
+    }
+    return answer !== undefined && answer !== '';
+  }) ?? false, [assessment, answers]);
+
+  function pendingFiles(questionId: string): PendingFile[] {
+    const answer = answers[questionId];
+    return answer && typeof answer === 'object' && 'files' in answer ? answer.files : [];
+  }
+
+  function setFiles(questionId: string, files: FileList | null) {
+    const selected = Array.from(files || []).map(file => ({ file }));
+    setAnswers(current => ({ ...current, [questionId]: { files: selected } }));
+  }
+
+  async function uploadFiles(questionId: string, items: PendingFile[]): Promise<UploadedFile[]> {
+    if (!assessment) return [];
+    const uploaded: UploadedFile[] = [];
+    for (const item of items) {
+      if (item.uploaded) {
+        uploaded.push(item.uploaded);
+        continue;
+      }
+      const prepared = await call('prepare_assessment_submission_upload', {
+        assessment_id: assessment.id,
+        question_id: questionId,
+        file_name: item.file.name,
+        size_bytes: item.file.size,
+        mime_type: item.file.type,
+      });
+      if (!prepared.signedUrl || !prepared.path) throw new Error('Téléversement impossible.');
+      const response = await fetch(prepared.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': item.file.type || 'application/octet-stream' },
+        body: item.file,
+      });
+      if (!response.ok) throw new Error(`Le fichier « ${item.file.name} » n’a pas pu être envoyé.`);
+      const metadata: UploadedFile = {
+        bucket_name: prepared.bucket || 'assessment-submissions',
+        storage_path: prepared.path,
+        file_name: item.file.name,
+        mime_type: item.file.type || 'application/octet-stream',
+        size_bytes: item.file.size,
+      };
+      uploaded.push(metadata);
+    }
+    setAnswers(current => ({
+      ...current,
+      [questionId]: { files: items.map((item, index) => ({ ...item, uploaded: uploaded[index] })) },
+    }));
+    return uploaded;
+  }
+
+  async function submit() {
+    if (!assessment || !complete || assessment.latest_attempt?.passed || !assessment.can_retry) return;
+    setSending(true);
+    setUploading(true);
+    setError('');
+    try {
+      const normalizedAnswers = [];
+      for (const question of assessment.questions) {
+        const raw = answers[question.id];
+        if (question.question_type === 'exercise') {
+          const pending = raw && typeof raw === 'object' && 'files' in raw ? raw.files : [];
+          const files = await uploadFiles(question.id, pending);
+          normalizedAnswers.push({ question_id: question.id, answer: { files } });
+        } else {
+          normalizedAnswers.push({ question_id: question.id, answer: raw });
+        }
+      }
+      setUploading(false);
+      const data = await call('learner_submit_assessment', {
+        assessment_id: assessment.id,
+        answers: normalizedAnswers,
+      });
+      setResult(data);
+      setAnswers({});
+      if (data.passed) onPassed?.();
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Envoi impossible.');
+    } finally {
+      setSending(false);
+      setUploading(false);
+    }
+  }
+
+  async function completeRemediation() {
+    if (!assessment || assessment.remediation_mode === 'manual') return;
+    setRemediationLoading(true);
+    setError('');
+    try {
+      await call('learner_complete_remediation', {
+        assessment_id: assessment.id,
+        note: assessment.retry_instructions || 'Contenu révisé par l’apprenant.',
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Validation impossible.');
+    } finally {
+      setRemediationLoading(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="flex items-center gap-2 py-5 text-sm text-gray-500"><Loader2 size={16} className="animate-spin" />Chargement de l’évaluation…</div>;
+  }
+
+  if (!assessment) {
+    return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">L’évaluation obligatoire n’a pas encore été configurée par le créateur.</div>;
+  }
+
+  const latest = assessment.latest_attempt;
+  const passed = Boolean(latest?.passed);
+  const pending = Boolean(latest && ['pending_review', 'submitted', 'in_progress'].includes(latest.status));
+  const blocked = !assessment.can_retry && !passed && !pending;
+
+  return (
+    <section className="mt-8 rounded-2xl border p-5" style={{ borderColor: BORDER }}>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-semibold" style={{ color: BLUE }}>{assessment.title}</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Seuil de réussite : <b>{assessment.passing_score}%</b>
+            {' · '}remédiation après {assessment.remediation_after_attempts} échec(s)
+            {assessment.retry_cooldown_hours > 0 ? ` · reprise après ${assessment.retry_cooldown_hours} h` : ''}
+            {assessment.time_limit_minutes ? ` · ${assessment.time_limit_minutes} min` : ''}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">En cas d’échec, les tentatives restent possibles après la règle de reprise prévue.</p>
+        </div>
+        <Clock size={20} style={{ color: GOLD }} />
+      </div>
+
+      {assessment.instructions && <p className="mb-4 text-sm">{assessment.instructions}</p>}
+
+      {latest && (
+        <div className={`mb-5 rounded-xl p-4 ${passed ? 'bg-green-50' : pending ? 'bg-amber-50' : 'bg-gray-50'}`}>
+          <div className="flex items-start gap-2">
+            {passed ? <CheckCircle size={18} className="mt-0.5 text-green-700" /> : pending ? <Clock size={18} className="mt-0.5 text-amber-700" /> : <XCircle size={18} className="mt-0.5 text-red-700" />}
+            <div className="text-sm">
+              <p className="font-semibold" style={{ color: passed ? '#15803D' : pending ? '#B45309' : '#B91C1C' }}>
+                {passed ? `Évaluation réussie — ${latest.score ?? 0}%` : pending ? 'Copie envoyée — correction en attente' : `Dernier résultat — ${latest.score ?? 0}%`}
+              </p>
+              <p className="mt-1 text-xs text-gray-600">Tentative {latest.attempt_number}</p>
+              {latest.feedback && <p className="mt-2 text-sm text-gray-700">{latest.feedback}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {assessment.correction && (
+        <div className="mb-5 rounded-xl border p-4" style={{ borderColor: '#C7D7EF', background: '#F7FAFF' }}>
+          <p className="text-sm font-semibold" style={{ color: BLUE }}>Correction publiée</p>
+          <p className="mt-1 text-sm text-gray-700">Note : {assessment.correction.score ?? 0}/{assessment.correction.max_score ?? 100}</p>
+          {assessment.correction.comment && <p className="mt-2 text-sm text-gray-700">{assessment.correction.comment}</p>}
+          {assessment.correction.signed_url && (
+            <a href={assessment.correction.signed_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}>
+              <Download size={15} /> Télécharger la copie corrigée
+            </a>
+          )}
+        </div>
+      )}
+
+      {assessment.retry_blocked_until && !assessment.remediation_blocked && (
+        <div className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+          <Clock size={17} className="mt-0.5 shrink-0" />
+          <div><p className="font-semibold">Nouvelle tentative temporairement bloquée</p><p className="mt-1">Disponible le {formatDate(assessment.retry_blocked_until)}.</p></div>
+        </div>
+      )}
+
+      {assessment.remediation_blocked && (
+        <div className="mb-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="flex items-start gap-2"><RefreshCw size={17} className="mt-0.5 shrink-0" /><div><p className="font-semibold">Remédiation obligatoire : {remediationLabel(assessment.remediation_mode)}</p><p className="mt-1">{assessment.retry_instructions || 'Revoyez le contenu concerné avant de reprendre l’évaluation.'}</p></div></div>
+          {assessment.remediation_mode !== 'manual' && (
+            <button onClick={completeRemediation} disabled={remediationLoading} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}>
+              {remediationLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} J’ai terminé la remédiation
+            </button>
+          )}
+        </div>
+      )}
+
+      {!passed && !pending && !blocked && (
+        <div className="space-y-5">
+          {assessment.questions.map((question, index) => (
+            <div key={question.id} className="rounded-xl bg-gray-50 p-4">
+              <p className="mb-3 text-sm font-medium" style={{ color: BLUE }}>
+                {index + 1}. {question.prompt} <span className="text-xs text-gray-400">({question.points} pts)</span>
+              </p>
+
+              {question.question_type === 'qcm' && (
+                <div className="space-y-2">
+                  {(question.options || []).map((option, optionIndex) => (
+                    <label key={optionIndex} className="flex gap-2 text-sm">
+                      <input type="radio" name={question.id} checked={answers[question.id] === optionIndex} onChange={() => setAnswers(current => ({ ...current, [question.id]: optionIndex }))} />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {question.question_type === 'true_false' && (
+                <div className="flex gap-4">
+                  <label className="text-sm"><input type="radio" name={question.id} checked={answers[question.id] === true} onChange={() => setAnswers(current => ({ ...current, [question.id]: true }))} /> Vrai</label>
+                  <label className="text-sm"><input type="radio" name={question.id} checked={answers[question.id] === false} onChange={() => setAnswers(current => ({ ...current, [question.id]: false }))} /> Faux</label>
+                </div>
+              )}
+
+              {question.question_type === 'open_question' && (
+                <textarea rows={5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder="Rédigez votre réponse…" />
+              )}
+
+              {question.question_type === 'exercise' && (
+                <div>
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {(question.resource_files || []).map((file, fileIndex) => (
+                      <a key={fileIndex} href={file.url} target="_blank" rel="noreferrer" className="flex gap-1 text-xs underline"><FileText size={13} />{file.name}</a>
+                    ))}
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                    <Upload size={15} /> Déposer mon travail
+                    <input type="file" multiple className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
+                  </label>
+                  {pendingFiles(question.id).length > 0 && (
+                    <div className="mt-2 space-y-1 text-xs text-green-700">
+                      {pendingFiles(question.id).map((item, fileIndex) => <p key={`${item.file.name}-${fileIndex}`}>{item.file.name}</p>)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><AlertCircle size={16} />{error}</p>}
+
+      {result && !latest && (
+        <div className={`mt-4 rounded-xl p-4 ${result.passed ? 'bg-green-50' : 'bg-amber-50'}`}>
+          {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Réponse envoyée, correction en attente.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}
+        </div>
+      )}
+
+      {!passed && !pending && !blocked && (
+        <button disabled={!complete || sending} onClick={submit} className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: BLUE }}>
+          {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+          {uploading ? 'Téléversement des fichiers…' : 'Envoyer l’évaluation'}
+        </button>
+      )}
+    </section>
+  );
 }

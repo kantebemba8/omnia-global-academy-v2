@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
-import { QuizLecon, type QuizQuestion } from './QuizLecon';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
 import { AssessmentEngine } from '../components/AssessmentEngine';
@@ -202,21 +201,21 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
 }
 
 // ── CPD Bar ───────────────────────────────────────────────────────────────────
-function CpdBar({ required, spent, reached, isActive, quizPassed, isCompleted, onStartQuiz, hasQ }: {
+function CpdBar({ required, spent, reached, isActive, assessmentPassed, isCompleted }: {
   required: number; spent: number; reached: boolean; isActive: boolean;
-  quizPassed: boolean; isCompleted: boolean; onStartQuiz: () => void; hasQ: boolean;
+  assessmentPassed: boolean; isCompleted: boolean;
 }) {
-  if (isCompleted || quizPassed) {
+  if (isCompleted || assessmentPassed) {
     return <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: 'rgba(30,122,82,0.08)' }}>
       <CheckCircle size={14} style={{ color: '#1E7A52' }} />
       <span className="text-xs font-semibold" style={{ color: '#1E7A52' }}>Leçon complétée</span>
     </div>;
   }
-  if (reached && hasQ) {
-    return <button onClick={onStartQuiz} className="flex items-center gap-2 px-3 py-2 rounded-xl hover:opacity-85" style={{ backgroundColor: '#BF8813' }}>
-      <ClipboardList size={14} style={{ color: '#FFF' }} />
-      <span className="text-xs font-bold text-white">Démarrer le quiz</span>
-    </button>;
+  if (reached) {
+    return <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FEF3C7' }}>
+      <ClipboardList size={14} style={{ color: '#D97706' }} />
+      <span className="text-xs font-semibold" style={{ color: '#92400E' }}>Temps pédagogique atteint — complétez l’évaluation ci-dessus</span>
+    </div>;
   }
   if (required === 0) return null;
   const pct = Math.min(100, Math.round((spent / required) * 100));
@@ -247,11 +246,10 @@ export function CoursLecteur() {
     lesson: LessonContent;
     progress: { time_spent_seconds: number; quiz_passed: boolean; is_completed: boolean };
     required_seconds: number; cpd_time_reached: boolean;
-    questions: QuizQuestion[]; next_lesson_id: string | null; blocks?: any[];
+    next_lesson_id: string | null; blocks?: any[];
   } | null>(null);
   const [progressLoading, setProgressLoading] = useState(true);
   const [lessonLoading, setLessonLoading] = useState(false);
-  const [showQuiz, setShowQuiz] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [externalVisited, setExternalVisited] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -297,7 +295,7 @@ export function CoursLecteur() {
   useEffect(() => {
     if (!currentLessonId || !courseId || !sessionToken) return;
     setLessonLoading(true);
-    setShowQuiz(false); setShowSummary(false); setVideoUrl(null); setExternalVisited(false);
+    setShowSummary(false); setVideoUrl(null); setExternalVisited(false);
     if (videoTimerRef.current) clearInterval(videoTimerRef.current);
     fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
       .then(r => r.json())
@@ -337,13 +335,6 @@ export function CoursLecteur() {
   });
 
   const goToLesson = (id: string) => { setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}`, { replace: true }); };
-
-  const handleQuizPassed = async (score: number) => {
-    void score;
-    setShowQuiz(false); setShowSummary(true);
-    await loadProgress();
-    setLessonData(prev => prev ? { ...prev, progress: { ...prev.progress, quiz_passed: true, is_completed: true } } : prev);
-  };
 
   const handleNext = () => {
     const nextId = lessonData?.next_lesson_id ?? findNext(modules, currentLessonId ?? '');
@@ -432,7 +423,6 @@ export function CoursLecteur() {
   const prog = lessonData?.progress;
   const isCompleted = prog?.is_completed ?? false;
   const quizPassed = prog?.quiz_passed ?? false;
-  const hasQ = (lessonData?.questions.length ?? 0) > 0;
   const effectiveCpd = cpdTimeReached || (lessonData?.cpd_time_reached ?? false);
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
 
@@ -625,6 +615,7 @@ export function CoursLecteur() {
                   scope="lesson"
                   onPassed={async () => {
                     await loadProgress();
+                    setShowSummary(true);
                     setLessonData(prev => prev ? { ...prev, progress: { ...prev.progress, quiz_passed: true, is_completed: true } } : prev);
                   }}
                 />
@@ -634,8 +625,8 @@ export function CoursLecteur() {
               {!lesson.is_external && lesson.content_type !== 'external' && (
               <div className="flex items-center justify-between mb-5 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E4E7EC' }}>
                 <CpdBar required={lessonData?.required_seconds ?? 0} spent={timeSpent}
-                  reached={effectiveCpd} isActive={isActive} quizPassed={quizPassed}
-                  isCompleted={isCompleted} onStartQuiz={() => setShowQuiz(true)} hasQ={hasQ} />
+                  reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
+                  isCompleted={isCompleted} />
                 {currentMod?.exam_unlocked && !currentMod.exam_passed && (
                   <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}`)}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-80"
@@ -756,11 +747,6 @@ export function CoursLecteur() {
         )}
       </div>
 
-      {/* Quiz modal */}
-      {showQuiz && lessonData && currentLessonId && courseId && sessionToken && (
-        <QuizLecon questions={lessonData.questions} lessonId={currentLessonId} courseId={courseId}
-          sessionToken={sessionToken} onClose={() => setShowQuiz(false)} onPassed={handleQuizPassed} />
-      )}
     </div>
   );
 }

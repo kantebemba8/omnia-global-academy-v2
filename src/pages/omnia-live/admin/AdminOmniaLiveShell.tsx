@@ -20,7 +20,7 @@ const GROUPS:Group[]=[
  ]},
  {label:'Gestion',items:[
   {path:'/admin/omnia-live/organisateurs',label:'Organisateurs',icon:Users},
-  {path:'/admin/omnia-live/structures',label:'Structures & Packs',icon:Building2},
+  {path:'/admin/omnia-live/structures',label:'Structures',icon:Building2},
   {path:'/admin/omnia-live/medias',label:'Médias, replays & documents',icon:Film},
   {path:'/admin/omnia-live/documents',label:'Certificats & attestations',icon:FileBadge2},
   {path:'/admin/omnia-live/communications',label:'Communication',icon:BellRing},

@@ -13,11 +13,9 @@ export const ENDPOINTS ={
   // Module 5 — lecteur
   lessonContent: `${API_BASE_URL}/lesson-content`,
   heartbeat: `${API_BASE_URL}/heartbeat`,
-  quizSubmit: `${API_BASE_URL}/quiz-submit`,
-  moduleExam: `${API_BASE_URL}/module-exam`,
-  finalSubmit: `${API_BASE_URL}/final-submit`,
   videoSignedUrl: `${API_BASE_URL}/video-signed-url`,
-  courseProgress: `${API_BASE_URL}/course-progress`,  authRegister: `${API_BASE_URL}/auth-register`,
+  courseProgress: `${API_BASE_URL}/course-progress`,
+  authRegister: `${API_BASE_URL}/auth-register`,
   authVerifyOtp: `${API_BASE_URL}/auth-verify-otp`,
   authLogin: `${API_BASE_URL}/auth-login`,
   authLoginOtp: `${API_BASE_URL}/auth-login-otp`,
@@ -32,11 +30,8 @@ export const ENDPOINTS ={
   authUpdateProfile: `${API_BASE_URL}/auth-update-profile`,
   // Module 7 — Dashboard professeur
   dashboardProfesseur: `${API_BASE_URL}/dashboard-professeur`,
-  courseCreate: `${API_BASE_URL}/course-create`,
   courseScorePreview: `${API_BASE_URL}/course-score-preview`,
-  courseSubmit: `${API_BASE_URL}/course-submit`,
   payoutRequest: `${API_BASE_URL}/payout-request`,
-  profProjectEvaluate: `${API_BASE_URL}/prof-project-evaluate`,
   // Module 8 — Dashboard établissement
   dashboardDirecteur: `${API_BASE_URL}/dashboard-directeur`,
   dashboardEnseignant: `${API_BASE_URL}/dashboard-enseignant`,

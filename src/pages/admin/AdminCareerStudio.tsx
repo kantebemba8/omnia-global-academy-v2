@@ -54,21 +54,6 @@ type TokenConfig = {
   is_active: boolean;
 };
 
-type TokenPack = {
-  id?: string;
-  pack_key: string;
-  name_fr: string;
-  description_fr?: string | null;
-  tokens: number;
-  bonus_tokens: number;
-  price_xof: number;
-  price_eur?: number | null;
-  currency_code?: string | null;
-  is_popular: boolean;
-  is_active: boolean;
-  display_order: number;
-};
-
 type AiConfig = {
   id?: string;
   config_key: string;
@@ -161,7 +146,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const SUB_MENUS = [
   { key: 'dashboard', label: 'Tableau de bord', icon: BarChart2 },
   { key: 'rules', label: 'Règles & Prix', icon: Settings },
-  { key: 'packs', label: 'Jetons & Packs', icon: Coins },
+  { key: 'packs', label: 'Coûts en jetons', icon: Coins },
   { key: 'cv_templates', label: 'Modèles CV', icon: FileText },
   { key: 'lm_templates', label: 'Modèles LM', icon: Mail },
   { key: 'ai', label: 'IA & Automatisation', icon: Sparkles },
@@ -264,7 +249,6 @@ export default function AdminCareerStudio() {
   const [subTab, setSubTab] = useState<SubTab>('dashboard');
   const [rules, setRules] = useState<CareerRule[]>([]);
   const [tokenConfig, setTokenConfig] = useState<TokenConfig[]>([]);
-  const [tokenPacks, setTokenPacks] = useState<TokenPack[]>([]);
   const [aiConfig, setAiConfig] = useState<AiConfig[]>([]);
   const [cvTemplates, setCvTemplates] = useState<Template[]>([]);
   const [lmTemplates, setLmTemplates] = useState<Template[]>([]);
@@ -299,7 +283,6 @@ export default function AdminCareerStudio() {
       const data = await postAdmin<{
         rules: CareerRule[];
         token_config: TokenConfig[];
-        token_packs: TokenPack[];
         ai_config: AiConfig[];
         templates: Template[];
         stats: AdminStats;
@@ -309,7 +292,6 @@ export default function AdminCareerStudio() {
       }>({ action: 'get_config' });
       setRules(data.rules || []);
       setTokenConfig(data.token_config || []);
-      setTokenPacks(data.token_packs || []);
       setAiConfig(data.ai_config || []);
       let customTemplates: Template[] = [];
       try {
@@ -372,18 +354,6 @@ export default function AdminCareerStudio() {
     }
   }
 
-  async function saveTokenPack(pack: TokenPack) {
-    setSaving(true);
-    try {
-      await postTokenManager({ action: 'update_pack', pack_id: pack.id, pack_key: pack.pack_key, name_fr: pack.name_fr, description_fr: pack.description_fr, tokens: pack.tokens, price_xof: pack.price_xof, price_eur: pack.price_eur, currency_code: pack.currency_code || 'XOF', is_active: pack.is_active, is_popular: pack.is_popular, bonus_tokens: pack.bonus_tokens, display_order: pack.display_order });
-      showToast('Pack sauvegardé');
-      await loadAll();
-    } catch (err) {
-      showToast((err as Error).message || 'Erreur pack', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function saveAiConfig() {
     setSaving(true);
@@ -658,7 +628,6 @@ export default function AdminCareerStudio() {
                 <section className="border-t" style={{borderColor:BORDER}}>
                   <h2 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>État opérationnel</h2>
                   {[
-                    ['Packs de jetons actifs', stats.active_packs],
                     ['Questions entretien actives', stats.active_questions],
                     ['Modèles CV actifs', stats.active_cv_templates],
                     ['Modèles LM actifs', stats.active_lm_templates],
@@ -669,8 +638,7 @@ export default function AdminCareerStudio() {
               </div>
 
               <div className="border-t pt-4" style={{borderColor:BORDER}}>
-                <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Vente de jetons</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les packs configurés dans Jetons & Packs sont la source unique affichée aux apprenants.</p></div><button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Gérer les jetons & packs</button></div>
-                <div className="mt-4 flex flex-wrap gap-x-7 gap-y-2 text-sm"><span><strong>{stats.token_sales_count}</strong> achat(s) confirmé(s)</span><span><strong>{stats.tokens_sold}</strong> jetons vendus/crédités par packs</span><span><strong>{Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')} XOF</strong> de chiffre d’affaires</span></div>
+                <div className="rounded-2xl border p-4" style={{borderColor:BORDER,background:'#F8FAFC'}}><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Packs Career retirés</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les anciens packs de jetons et leur vente ont été désactivés. Les coûts des actions restent configurables jusqu’à leur intégration dans le futur moteur central.</p><button onClick={()=>setSubTab('packs')} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button></div>
               </div>
             </div>
           )}
@@ -688,11 +656,10 @@ export default function AdminCareerStudio() {
               </div>
               <section className="border-y py-4" style={{borderColor:BORDER}}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Jetons & vente — source synchronisée</h3><p className="mt-1 text-sm" style={{color:MUTED}}>Les coûts ci-dessous et les packs vendus sont ceux utilisés par l’espace apprenant. La modification détaillée reste centralisée dans Jetons & Packs pour éviter les doublons.</p></div>
-                  <button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Ouvrir Jetons & Packs</button>
+                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts en jetons</h3><p className="mt-1 text-sm" style={{color:MUTED}}>La vente des anciens packs est désactivée. Seuls les coûts techniques des actions Career restent configurables avant leur reprise par le moteur central.</p></div>
+                  <button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button>
                 </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{tokenConfig.map(cfg=><div key={cfg.config_key} className="flex justify-between border-b py-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{cfg.description_fr||cfg.config_key}</span><strong style={{color:OMNIA_BLUE}}>{cfg.config_value} {cfg.value_unit||'jeton(s)'}</strong></div>)}</div>
-                <div className="mt-4 flex flex-wrap gap-4 text-sm">{tokenPacks.filter(p=>p.is_active).map(pack=><span key={pack.pack_key}><strong style={{color:OMNIA_BLUE}}>{pack.name_fr}</strong> · {pack.tokens+(pack.bonus_tokens||0)} jetons · {Number(pack.price_xof||0).toLocaleString('fr-FR')} XOF</span>)}</div>
               </section>
               {Object.entries(groupedRules).map(([group, items]) => (
                 <section key={group} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
@@ -718,48 +685,15 @@ export default function AdminCareerStudio() {
 
           {!loading && subTab === 'packs' && (
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Gestion centralisée des jetons & packs</h2>
-                  <p className="mt-1 text-sm" style={{ color: MUTED }}>Modifiez les prix, les jetons, les bonus et l’état des packs vendus aux apprenants.</p>
-                </div>
-                <button
-                  onClick={() => setTokenPacks((prev) => [...prev, { pack_key: `pack_${Date.now()}`, name_fr: 'Nouveau pack', description_fr: '', tokens: 1, bonus_tokens: 0, price_xof: 0, price_eur: 0, currency_code: 'XOF', is_popular: false, is_active: false, display_order: prev.length + 1 }])}
-                  className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold"
-                  style={{ borderColor: BORDER, color: OMNIA_BLUE }}
-                >
-                  <Plus size={15} /> Ajouter un pack
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {tokenPacks.map((pack) => (
-                  <div key={pack.id || pack.pack_key} className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: BORDER }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <input value={pack.name_fr} onChange={(e) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, name_fr: e.target.value } : p))} className="w-full bg-transparent text-base font-semibold outline-none" style={{ color: OMNIA_BLUE }} />
-                        <input value={pack.description_fr || ''} placeholder="Description du pack" onChange={(e) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, description_fr: e.target.value } : p))} className="mt-1 w-full bg-transparent text-sm outline-none" style={{ color: MUTED }} />
-                      </div>
-                      <div className="flex items-center gap-2"><span className="text-xs" style={{ color: MUTED }}>Actif</span><Toggle checked={pack.is_active} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, is_active: v } : p))} /></div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-                      <label className="text-xs font-medium" style={{ color: MUTED }}>Jetons<NumberInput value={pack.tokens} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, tokens: v } : p))} /></label>
-                      <label className="text-xs font-medium" style={{ color: MUTED }}>Bonus<NumberInput value={pack.bonus_tokens} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, bonus_tokens: v } : p))} /></label>
-                      <label className="text-xs font-medium" style={{ color: MUTED }}>Prix XOF<NumberInput value={pack.price_xof} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, price_xof: v } : p))} /></label>
-                      <label className="text-xs font-medium" style={{ color: MUTED }}>Prix €<NumberInput value={Number(pack.price_eur || 0)} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, price_eur: v } : p))} /></label>
-                      <label className="text-xs font-medium" style={{ color: MUTED }}>Ordre<NumberInput value={pack.display_order} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, display_order: v } : p))} /></label>
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2"><span className="text-xs" style={{ color: MUTED }}>Populaire</span><Toggle checked={pack.is_popular} onChange={(v) => setTokenPacks((prev) => prev.map((p) => p.pack_key === pack.pack_key ? { ...p, is_popular: v } : p))} /></div>
-                      <button onClick={() => saveTokenPack(pack)} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_GOLD }}><Save size={14} /> Sauvegarder</button>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Coûts des actions en jetons</h2>
+                <p className="mt-1 text-sm" style={{ color: MUTED }}>Les anciens packs vendus aux apprenants ont été retirés. Cette page conserve seulement les coûts des actions Career jusqu’au moteur central de monétisation.</p>
               </div>
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Coûts des actions en jetons</h3>
-                    <p className="text-sm" style={{ color: MUTED }}>Exemple : télécharger un CV PDF = 1 jeton, télécharger une LM = 0 jeton.</p>
+                    <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Règles de consommation</h3>
+                    <p className="text-sm" style={{ color: MUTED }}>Exemple : télécharger un CV PDF peut consommer un jeton. Aucun achat de pack n’est disponible.</p>
                   </div>
                   <button onClick={saveTokenCosts} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}><Save size={14} /> Sauvegarder les coûts</button>
                 </div>
@@ -841,7 +775,7 @@ export default function AdminCareerStudio() {
                 <button onClick={saveAiConfig} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}><Save size={15} /> Sauvegarder</button>
               </div>
               <div className="border-y py-4 text-sm" style={{borderColor:BORDER,color:MUTED}}>
-                <p><strong style={{color:OMNIA_BLUE}}>Fonctionnement :</strong> l’IA assiste la rédaction, l’adaptation à une offre, l’analyse ATS, la traduction et la reformulation. Les interrupteurs activent chaque capacité ; les limites quotidiennes/mensuelles protègent les coûts ; les coûts en jetons restent définis dans Jetons & Packs. Désactiver une capacité ici doit la rendre indisponible côté apprenant.</p>
+                <p><strong style={{color:OMNIA_BLUE}}>Fonctionnement :</strong> l’IA assiste la rédaction, l’adaptation à une offre, l’analyse ATS, la traduction et la reformulation. Les interrupteurs activent chaque capacité ; les limites quotidiennes/mensuelles protègent les coûts ; les coûts en jetons restent définis dans la section Coûts en jetons. Désactiver une capacité ici doit la rendre indisponible côté apprenant.</p>
               </div>
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -976,12 +910,12 @@ export default function AdminCareerStudio() {
                 {[
                   ['CV créés par apprenants',stats.total_cv],['LM créées par apprenants',stats.total_lm],['Créateurs uniques',stats.unique_creators],['Actifs 30 jours',stats.active_users_30d],
                   ['Exports réussis',stats.export_success],['Exports échoués',stats.export_failed],['Actions IA identifiées',stats.ai_actions],['Questions actives',stats.active_questions],
-                  ['Jetons consommés',stats.tokens_consumed],['Jetons crédités',stats.tokens_credited],['Achats de packs',stats.token_sales_count],['CA jetons XOF',Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')],
+                  ['Jetons consommés',stats.tokens_consumed],['Jetons crédités',stats.tokens_credited],['Anciens achats archivés',stats.token_sales_count],['CA historique jetons XOF',Number(stats.token_revenue_xof||0).toLocaleString('fr-FR')],
                 ].map(([label,value])=><div key={String(label)} className="border-b py-3"><p className="text-xs" style={{color:MUTED}}>{label}</p><p className="mt-1 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{value}</p></div>)}
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
                 <section className="border-t" style={{borderColor:BORDER}}><h3 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>Modèles les plus utilisés</h3>{stats.top_templates?.length?stats.top_templates.map(item=><div key={item.template_key} className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>{item.name_fr}<span className="ml-2 text-xs uppercase" style={{color:MUTED}}>{item.template_type}</span></span><strong>{item.usage_count}</strong></div>):<p className="py-6 text-sm" style={{color:MUTED}}>Aucune utilisation de modèle enregistrée.</p>}</section>
-                <section className="border-t" style={{borderColor:BORDER}}><h3 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>Synthèse des modèles disponibles</h3><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>CV actifs</span><strong>{stats.active_cv_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>LM actifs</span><strong>{stats.active_lm_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>Packs actifs</span><strong>{stats.active_packs}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>Jetons vendus via packs</span><strong>{stats.tokens_sold}</strong></div></section>
+                <section className="border-t" style={{borderColor:BORDER}}><h3 className="border-b py-3 font-semibold" style={{color:OMNIA_BLUE,borderColor:BORDER}}>Synthèse des modèles disponibles</h3><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>CV actifs</span><strong>{stats.active_cv_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>LM actifs</span><strong>{stats.active_lm_templates}</strong></div><div className="flex justify-between border-b py-3 text-sm" style={{borderColor:BORDER}}><span>Anciens jetons vendus (historique)</span><strong>{stats.tokens_sold}</strong></div></section>
               </div>
             </div>
           )}

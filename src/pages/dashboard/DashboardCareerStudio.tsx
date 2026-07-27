@@ -93,15 +93,6 @@ interface Template {
   };
 }
 
-interface TokenPack {
-  pack_key: string;
-  name_fr: string;
-  tokens: number;
-  price_xof: number;
-  is_popular?: boolean;
-  bonus_tokens?: number;
-}
-
 interface CurrentUser {
   full_name?: string;
   name?: string;
@@ -183,7 +174,6 @@ export default function DashboardCareerStudio() {
   const [documents, setDocuments] = useState<CareerDocument[]>([]);
   const [cvTemplates, setCvTemplates] = useState<Template[]>(fallbackCvTemplates);
   const [lmTemplates, setLmTemplates] = useState<Template[]>(fallbackLmTemplates);
-  const [packs, setPacks] = useState<TokenPack[]>([]);
   const [tokens, setTokens] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
@@ -223,7 +213,7 @@ export default function DashboardCareerStudio() {
   }
 
   async function loadByType(docType: DocType) {
-    if (!SUPABASE_URL) return { documents: [], templates: [], packs: [], user: null };
+    if (!SUPABASE_URL) return { documents: [], templates: [], user: null };
     const response = await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=list`, {
       method: 'POST',
       headers: {
@@ -235,19 +225,6 @@ export default function DashboardCareerStudio() {
     return response.json();
   }
 
-  async function buyTokenPack(packKey: string) {
-    if (!SUPABASE_URL) return;
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/career-token-manage`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'checkout', pack_key: packKey }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.payment_url) throw new Error(data.message || data.error || 'Paiement indisponible');
-      window.location.href = data.payment_url;
-    } catch (error) { showToast((error as Error).message || 'Impossible de démarrer le paiement.'); }
-  }
 
   async function loadData() {
     setLoading(true);
@@ -267,7 +244,6 @@ export default function DashboardCareerStudio() {
       setCvTemplates(loadedCvTemplates);
       setLmTemplates(loadedLmTemplates);
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
-      setPacks((cvPayload?.packs || lmPayload?.packs || []) as TokenPack[]);
       setTokens(cvPayload?.user?.cv_tokens ?? lmPayload?.user?.cv_tokens ?? 0);
     } catch {
       showToast('Impossible de charger vos données Omnia Career pour le moment.');
@@ -278,8 +254,6 @@ export default function DashboardCareerStudio() {
 
   useEffect(() => {
     loadData();
-    const purchased = searchParams.get('tokens_purchased');
-    if (purchased) showToast(`${purchased} jeton(s) crédité(s) sur votre compte.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -363,7 +337,7 @@ export default function DashboardCareerStudio() {
           </div>
         </div>
         <main className="px-5 py-7 md:px-8">
-          {activeView === 'dashboard' && <div className="space-y-6"><EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} /><Card className="p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Acheter des jetons</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Solde actuel : <strong>{tokens} jeton(s)</strong>. Choisissez un pack actif ; les jetons sont crédités uniquement après confirmation du paiement.</p></div><Coins style={{color:OMNIA_GOLD}} /></div><div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{packs.map(pack=><div key={pack.pack_key} className="rounded-2xl border p-5" style={{borderColor:pack.is_popular?OMNIA_GOLD:BORDER}}><div className="flex items-start justify-between gap-2"><div><div className="font-semibold" style={{color:OMNIA_BLUE}}>{pack.name_fr}</div><div className="mt-1 text-2xl font-semibold" style={{color:OMNIA_BLUE}}>{pack.tokens + (pack.bonus_tokens||0)} jetons</div></div>{pack.is_popular&&<SmallBadge tone="gold">Populaire</SmallBadge>}</div>{(pack.bonus_tokens||0)>0&&<p className="mt-2 text-xs" style={{color:MUTED}}>dont {pack.bonus_tokens} jeton(s) bonus</p>}<div className="mt-4 text-lg font-semibold" style={{color:OMNIA_GOLD}}>{Number(pack.price_xof||0).toLocaleString('fr-FR')} XOF</div><button onClick={()=>buyTokenPack(pack.pack_key)} className="mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Acheter ce pack</button></div>)}{packs.length===0&&<div className="text-sm" style={{color:MUTED}}>Aucun pack de jetons n’est actuellement proposé.</div>}</div></Card></div>}
+          {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
           {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
           {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
           {activeView === 'interview' && <EnhancedInterview />}
@@ -587,7 +561,7 @@ function ProfileView({ displayName }: { displayName: string }) {
   return <div className="space-y-5"><PageHeader title="Profil carrière" subtitle="Ce profil utilise les mêmes données que votre profil apprenant principal."/><div className="grid gap-5 xl:grid-cols-[320px_1fr]"><Card className="p-6"><div className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold text-white" style={{background:OMNIA_BLUE}}>{getInitials(profile.full_name,profile.email)}</div><h2 className="mt-4 text-xl font-semibold" style={{color:OMNIA_BLUE}}>{profile.full_name||'Votre nom'}</h2><p className="text-sm" style={{color:MUTED}}>{profile.title||'Titre professionnel non renseigné'}</p></Card><Card className="p-6"><div className="grid gap-4 md:grid-cols-2"><EditableField label="Nom complet" value={profile.full_name} onChange={v=>setProfile({...profile,full_name:v})}/><EditableField label="E-mail" value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><EditableField label="Téléphone" value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/><EditableField label="Ville / Pays" value={profile.location} onChange={v=>setProfile({...profile,location:v})}/><EditableField label="Titre professionnel" value={profile.title} onChange={v=>setProfile({...profile,title:v})}/></div><label className="mt-4 block text-sm font-medium" style={{color:OMNIA_BLUE}}>Biographie<textarea value={profile.bio} onChange={e=>setProfile({...profile,bio:e.target.value})} className="mt-1 min-h-28 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}}/></label>{message&&<p className="mt-3 text-sm" style={{color:message.includes('synchronisé')?'#15803d':'#b91c1c'}}>{message}</p>}<button onClick={save} disabled={saving} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:OMNIA_BLUE}}>{saving?'Synchronisation…':'Enregistrer et synchroniser'}</button></Card></div></div>;
 }
 
-function SettingsView({ packs, tokens, user }: { packs: TokenPack[]; tokens: number; user: any }) {
+function SettingsView({ tokens, user }: { tokens: number; user: any }) {
   const [language,setLanguage]=useState(localStorage.getItem('omnia_career_language')||'fr');
   const [notifications,setNotifications]=useState(localStorage.getItem('omnia_career_notifications')!=='false');
   function save(){ localStorage.setItem('omnia_career_language',language); localStorage.setItem('omnia_career_notifications',String(notifications)); window.dispatchEvent(new Event('omnia-career-language-change')); }
