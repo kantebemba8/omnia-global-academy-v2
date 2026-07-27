@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck
+  Shield, Activity, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -38,8 +38,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: GraduationCap },
       { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
-      { path: '/admin/studio-validation', label: 'Validation formations', icon: Eye },
-      { path: '/admin/course-health', label: 'Santé des formations', icon: Activity },
+      { path: '/admin/quality-center', label: 'Centre Qualité', icon: ShieldCheck },
       { path: '/admin/cpd-credits', label: 'Open CPD', icon: Award },
     ],
   },

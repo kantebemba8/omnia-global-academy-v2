@@ -538,7 +538,7 @@ Deno.serve(async(req)=>{
    return json({success:true,...report});
   }
   if(action==="submit_course"){
-   const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version").eq("id",courseId).single();if(error)throw error;
+   const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version,creator_context,creator_id").eq("id",courseId).single();if(error)throw error;
    if(!c.ready_to_submit)return json({success:false,errors:c.quality_report?.errors||["Exécutez le contrôle qualité et corrigez les éléments manquants."],warnings:c.quality_report?.warnings||[]},400);
    if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
    const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
@@ -547,8 +547,31 @@ Deno.serve(async(req)=>{
    const {data:assessments}=await sb.from("course_assessments").select("*").eq("course_id",courseId);
    const snapshot={course_id:courseId,modules:mods||[],lessons:lessons||[],blocks:blocks||[],assessments:assessments||[],captured_at:new Date().toISOString()};
    await sb.from("course_versions").upsert({course_id:courseId,version_label:c.current_version||"1.0",snapshot,status:"submitted",created_by:userId},{onConflict:"course_id,version_label"});
-   await sb.from("courses").update({studio_status:"pending_validation",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);
-   await log(sb,courseId,userId,"course_submitted",{version:c.current_version||"1.0"});return json({success:true,version:c.current_version||"1.0"});
+
+   const accelerated=isAdmin&&(c.creator_context==="super_admin"||c.creator_id===userId);
+   let {data:courseReview}=await sb.from("quality_reviews").select("*").eq("course_id",courseId).in("status",["draft","submitted","in_review","changes_requested"]).order("created_at",{ascending:false}).limit(1).maybeSingle();
+   if(courseReview){
+    const {data,error:reviewUpdateError}=await sb.from("quality_reviews").update({status:"submitted",submitted_by:userId,review_type:accelerated?"fast_track":courseReview.review_type||"initial",accelerated,version_label:c.current_version||"1.0",completed_at:null,decision:null,decision_summary:null}).eq("id",courseReview.id).select("*").single();if(reviewUpdateError)throw reviewUpdateError;courseReview=data;
+   }else{
+    const {data,error:reviewInsertError}=await sb.from("quality_reviews").insert({entity_type:"course",course_id:courseId,review_type:accelerated?"fast_track":"initial",status:"submitted",submitted_by:userId,accelerated,version_label:c.current_version||"1.0"}).select("*").single();if(reviewInsertError)throw reviewInsertError;courseReview=data;
+   }
+   const {data:courseCriteria}=await sb.from("quality_criteria").select("id").eq("active",true).in("entity_type",["course","both"]);
+   if(courseCriteria?.length)await sb.from("quality_review_items").upsert(courseCriteria.map((x:any)=>({review_id:courseReview.id,criterion_id:x.id})),{onConflict:"review_id,criterion_id",ignoreDuplicates:true});
+   await sb.from("quality_review_history").insert({review_id:courseReview.id,course_id:courseId,actor_id:userId,event_type:"submitted",from_status:null,to_status:"submitted",note:accelerated?"Soumission Omnia en procédure accélérée":"Soumission au Centre Qualité",metadata:{version:c.current_version||"1.0",accelerated}});
+
+   for(const assessment of assessments||[]){
+    let {data:assessmentReview}=await sb.from("quality_reviews").select("*").eq("assessment_id",assessment.id).in("status",["draft","submitted","in_review","changes_requested"]).order("created_at",{ascending:false}).limit(1).maybeSingle();
+    if(assessmentReview){
+     const {data,error:assessmentReviewUpdateError}=await sb.from("quality_reviews").update({status:"submitted",submitted_by:userId,review_type:accelerated?"fast_track":assessmentReview.review_type||"initial",accelerated,version_label:c.current_version||"1.0",completed_at:null,decision:null,decision_summary:null}).eq("id",assessmentReview.id).select("*").single();if(assessmentReviewUpdateError)throw assessmentReviewUpdateError;assessmentReview=data;
+    }else{
+     const {data,error:assessmentReviewInsertError}=await sb.from("quality_reviews").insert({entity_type:"assessment",course_id:courseId,assessment_id:assessment.id,review_type:accelerated?"fast_track":"initial",status:"submitted",submitted_by:userId,accelerated,version_label:c.current_version||"1.0"}).select("*").single();if(assessmentReviewInsertError)throw assessmentReviewInsertError;assessmentReview=data;
+    }
+    const {data:assessmentCriteria}=await sb.from("quality_criteria").select("id").eq("active",true).in("entity_type",["assessment","both"]);
+    if(assessmentCriteria?.length)await sb.from("quality_review_items").upsert(assessmentCriteria.map((x:any)=>({review_id:assessmentReview.id,criterion_id:x.id})),{onConflict:"review_id,criterion_id",ignoreDuplicates:true});
+    await sb.from("course_assessments").update({quality_review_id:assessmentReview.id,quality_review_status:"submitted"}).eq("id",assessment.id);
+   }
+   await sb.from("courses").update({studio_status:"pending_validation",quality_review_id:courseReview.id,quality_review_status:"submitted",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);
+   await log(sb,courseId,userId,"course_submitted",{version:c.current_version||"1.0",quality_review_id:courseReview.id,accelerated});return json({success:true,version:c.current_version||"1.0",quality_review_id:courseReview.id,accelerated});
   }
   if(action==="get_change_logs"){const {data,error}=await sb.from("course_studio_logs").select("*,users(full_name)").eq("course_id",courseId).order("created_at",{ascending:false}).limit(100);if(error)throw error;return json({success:true,logs:data||[]})}
   if(action==="prepare_upload"){

@@ -324,9 +324,9 @@ export default function AdminDashboard() {
                   <StatLine label="Prêtes à publier" value={data.formations.pretes_a_publier} />
                   <StatLine label="Publiées" value={data.formations.publiees} />
                 </div>
-                <button onClick={() => navigate('/admin/studio-validation')}
+                <button onClick={() => navigate('/admin/quality-center')}
                   className="mt-3 text-xs font-bold inline-flex items-center gap-1" style={{ color: '#BF8813' }}>
-                  Gérer les formations <ArrowRight size={13} />
+                  Ouvrir le Centre Qualité <ArrowRight size={13} />
                 </button>
               </div>
 

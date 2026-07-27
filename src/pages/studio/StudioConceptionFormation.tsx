@@ -4,6 +4,7 @@ import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
+import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
@@ -138,6 +139,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot
   validated:          { label: 'Validée',                color: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
   published:          { label: 'Publiée',                color: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
   archived:           { label: 'Archivée',               color: '#374151', bg: '#F3F4F6', dot: '#6B7280' },
+  suspended:          { label: 'Suspendue',              color: '#991B1B', bg: '#FEE2E2', dot: '#DC2626' },
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
@@ -650,7 +652,7 @@ export default function StudioConceptionFormation() {
     finally { setAiLoading(false); }
   }
 
-  const locked = ['pending_validation', 'validated', 'published'].includes(course.studio_status || '');
+  const locked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const visibleBlocks = advancedMode ? BLOCK_DEFS : BLOCK_DEFS.filter(b => b.mode === 'simple');
 
@@ -1039,6 +1041,7 @@ export default function StudioConceptionFormation() {
                   <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation avant soumission</h2>
                   <p className="mt-1 text-sm text-gray-500">Configurez en dernier la commercialisation, la saisie assistée et les certifications, puis soumettez la formation.</p>
                 </div>
+                {course.id && <StudioQualityStatusPanel courseId={course.id} />}
                 <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
                   <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>

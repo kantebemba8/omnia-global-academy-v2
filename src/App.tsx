@@ -53,9 +53,8 @@ import AdminForum from './pages/admin/AdminForum';
 import AdminCareerStudio from './pages/admin/AdminCareerStudio';
 import AdminCareerStudioDetail from './pages/admin/AdminCareerStudioDetail';
 import AdminJobOffers from './pages/admin/AdminJobOffers';
-import AdminStudioValidation from './pages/admin/AdminStudioValidation';
 import AdminCoursePricing from './pages/admin/AdminCoursePricing';
-import AdminCourseHealth from './pages/admin/AdminCourseHealth';
+import AdminQualityCenter from './pages/admin/AdminQualityCenter';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
 import ModerateurSupport from './pages/moderateur/ModerateurSupport';
 import ModerateurAnalytique from './pages/moderateur/ModerateurAnalytique';
@@ -436,9 +435,10 @@ export default function App() {
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
-          <Route path="/admin/studio-validation" element={<AdminStudioValidation />} />
+          <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
+          <Route path="/admin/studio-validation" element={<Navigate to="/admin/quality-center" replace />} />
               <Route path="/admin/course-pricing" element={<AdminCoursePricing />} />
-          <Route path="/admin/course-health" element={<AdminCourseHealth />} />
+          <Route path="/admin/course-health" element={<Navigate to="/admin/quality-center" replace />} />
 
         {/* Auth — always accessible even in coming-soon mode */}
         <Route path="/connexion" element={<Login />} />

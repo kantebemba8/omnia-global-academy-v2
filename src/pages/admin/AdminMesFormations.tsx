@@ -264,7 +264,7 @@ export default function AdminMesFormations() {
                       {/* Commentaire admin */}
                       {f.admin_comment && f.studio_status === 'changes_requested' && (
                         <div className="mt-2 px-3 py-1.5 rounded-lg text-xs" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
-                          💬 {f.admin_comment}
+                          {f.admin_comment}
                         </div>
                       )}
                     </div>
@@ -273,27 +273,19 @@ export default function AdminMesFormations() {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {/* Voir dans le panneau de validation si soumise */}
                       {f.studio_status === 'pending_validation' && (
-                        <button onClick={() => navigate('/admin/studio-validation')}
+                        <button onClick={() => navigate('/admin/quality-center')}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
                           style={{ borderColor: '#FDE68A', color: '#92400E', background: '#FFFBEB' }}>
-                          <Eye size={12} /> Voir dans validation
+                          <Eye size={12} /> Ouvrir le Centre Qualité
                         </button>
                       )}
 
-                      {/* Publier directement si validée */}
+                      {/* La publication reste tracée dans le Centre Qualité. */}
                       {f.studio_status === 'validated' && (
-                        <button onClick={async () => {
-                          const res = await fetch(API, {
-                            method: 'POST',
-                            headers: edgeAuthHeaders(),
-                            body: JSON.stringify({ action: 'admin_publish', course_id: f.id }),
-                          });
-                          const data = await res.json();
-                          if (data.success) { showToast('✅ Formation publiée'); load(); }
-                        }}
+                        <button onClick={() => navigate('/admin/quality-center')}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                           style={{ background: '#1E7A52' }}>
-                          <Send size={12} /> Publier
+                          <Send size={12} /> Publier depuis le Centre Qualité
                         </button>
                       )}
 
