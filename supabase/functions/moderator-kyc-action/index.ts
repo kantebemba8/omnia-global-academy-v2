@@ -29,46 +29,33 @@ Deno.serve(async (req: Request) => {
     const modId = await verifyModerator(sb, token);
     if (!modId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions").select("can_validate_professor_kyc,can_validate_establishment_kyc").eq("moderator_user_id", modId).maybeSingle();
+    const { data: permsRow } = await sb.from("moderator_permissions").select("can_validate_professor_kyc").eq("moderator_user_id", modId).maybeSingle();
     const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
 
-    // GET — list pending KYC
+    // GET — list pending professor KYC. Structure validation is reserved for the Super Admin.
     if (req.method === "GET") {
-      const result: Record<string, unknown[]> = { professeurs: [], etablissements: [] };
-
+      const result: Record<string, unknown[]> = { professeurs: [] };
       if (perms.can_validate_professor_kyc) {
         const { data: profs } = await sb.from("professeur_profiles").select("id,user_id,expertise_domain,bio,kyc_status,created_at").eq("kyc_status", "en_attente").order("created_at", { ascending: true });
-        const profUsers = await Promise.all((profs ?? []).map(async (p) => {
-          const pp = p as unknown as { id: string; user_id: string; expertise_domain: string; bio: string; kyc_status: string; created_at: string };
-          const { data: u } = await sb.from("users").select("full_name,email").eq("id", pp.user_id).maybeSingle();
-          return { ...pp, ...(u as unknown as { full_name: string; email: string } | null ?? {}) };
+        result.professeurs = await Promise.all((profs ?? []).map(async (profile) => {
+          const row = profile as { id: string; user_id: string; expertise_domain: string; bio: string; kyc_status: string; created_at: string };
+          const { data: user } = await sb.from("users").select("full_name,email").eq("id", row.user_id).maybeSingle();
+          return { ...row, ...((user as { full_name: string; email: string } | null) ?? {}) };
         }));
-        result.professeurs = profUsers;
       }
-
-      if (perms.can_validate_establishment_kyc) {
-        const { data: etabs } = await sb.from("etablissement_profiles").select("id,user_id,school_name,logo_url,registration_number,director_name,kyc_status,created_at").eq("kyc_status", "en_attente").order("created_at", { ascending: true });
-        const etabUsers = await Promise.all((etabs ?? []).map(async (e) => {
-          const ee = e as unknown as { id: string; user_id: string; school_name: string; logo_url: string; registration_number: string; director_name: string; kyc_status: string; created_at: string };
-          const { data: u } = await sb.from("users").select("email").eq("id", ee.user_id).maybeSingle();
-          return { ...ee, email: (u as unknown as { email: string } | null)?.email ?? "" };
-        }));
-        result.etablissements = etabUsers;
-      }
-      return json(result);
+      return json({ ...result, permissions: { can_validate_professor_kyc: !!perms.can_validate_professor_kyc } });
     }
 
     // POST — KYC action
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
     const body = await req.json();
-    const { user_id, kyc_type, action, reason } = body as { user_id: string; kyc_type: "professeur" | "etablissement"; action: "approve" | "reject"; reason?: string };
+    const { user_id, kyc_type, action, reason } = body as { user_id: string; kyc_type: "professeur"; action: "approve" | "reject"; reason?: string };
     if (!user_id || !kyc_type || !["approve", "reject"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
-    if (kyc_type === "professeur" && !perms.can_validate_professor_kyc) return json({ error: "FORBIDDEN" }, 403);
-    if (kyc_type === "etablissement" && !perms.can_validate_establishment_kyc) return json({ error: "FORBIDDEN" }, 403);
+    if (kyc_type !== "professeur" || !perms.can_validate_professor_kyc) return json({ error: "FORBIDDEN" }, 403);
     if (action === "reject" && !reason) return json({ error: "REASON_REQUIRED" }, 400);
 
     const now = new Date().toISOString();
-    const table = kyc_type === "professeur" ? "professeur_profiles" : "etablissement_profiles";
+    const table = "professeur_profiles";
 
     if (action === "approve") {
       await sb.from(table).update({ kyc_status: "valide", kyc_validated_by: modId, kyc_validated_at: now }).eq("user_id", user_id);
@@ -85,7 +72,7 @@ Deno.serve(async (req: Request) => {
     const brevoKey = Deno.env.get("BREVO_API_KEY");
     if (brevoKey && u) {
       const uu = u as unknown as { email: string; full_name: string };
-      const templateId = action === "approve" ? (kyc_type === "professeur" ? 6 : 7) : 3;
+      const templateId = action === "approve" ? 6 : 3;
       await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: { "api-key": brevoKey, "Content-Type": "application/json" },

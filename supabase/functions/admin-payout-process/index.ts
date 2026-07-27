@@ -55,7 +55,6 @@ function roleLabel(roles: string[]): string {
       [
         "responsable_structure",
         "gestionnaire_partenaire",
-        "etablissement_directeur",
         "structure",
       ].includes(role)
     )

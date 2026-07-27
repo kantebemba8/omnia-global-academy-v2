@@ -15,10 +15,9 @@ interface UserRow {
 interface ModPerms {
   can_see_learners_list?: boolean;
   can_see_professors_list?: boolean;
-  can_validate_establishment_kyc?: boolean;
 }
 
-type TabKey = 'apprenants' | 'professeurs' | 'etablissements';
+type TabKey = 'apprenants' | 'professeurs';
 
 interface RequestModal {
   user: UserRow;
@@ -151,14 +150,13 @@ export default function ModerateurUtilisateurs() {
     (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
 
   const perms: ModPerms = (() => {
-    if (bypassAuth) return { can_see_learners_list: true, can_see_professors_list: true, can_validate_establishment_kyc: true };
+    if (bypassAuth) return { can_see_learners_list: true, can_see_professors_list: true };
     try { return JSON.parse(localStorage.getItem('mod_perms') || '{}') as ModPerms; } catch { return {}; }
   })();
 
   const tabs: { key: TabKey; label: string; type: string }[] = [
     ...(perms.can_see_learners_list ? [{ key: 'apprenants' as TabKey, label: 'Apprenants', type: 'apprenant' }] : []),
     ...(perms.can_see_professors_list ? [{ key: 'professeurs' as TabKey, label: 'Professeurs', type: 'professeur' }] : []),
-    ...(perms.can_validate_establishment_kyc ? [{ key: 'etablissements' as TabKey, label: 'Établissements', type: 'etablissement' }] : []),
   ];
 
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0]?.key ?? 'apprenants');

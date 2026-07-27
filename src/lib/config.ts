@@ -33,7 +33,6 @@ export const ENDPOINTS ={
   courseScorePreview: `${API_BASE_URL}/course-score-preview`,
   payoutRequest: `${API_BASE_URL}/payout-request`,
   // Module 8 — Espace Structure
-  jobOfferCreate: `${API_BASE_URL}/job-offer-create`,
   // Module 9 — Dashboard modérateur
   dashboardModerateur: `${API_BASE_URL}/dashboard-moderateur`,
   moderatorCourseAction: `${API_BASE_URL}/moderator-course-action`,

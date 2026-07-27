@@ -42,14 +42,14 @@ Deno.serve(async (req: Request) => {
     if (!modId) return json({ error: "FORBIDDEN" }, 403);
 
     const { data: permsRow } = await sb.from("moderator_permissions")
-      .select("can_see_learners_list,can_see_professors_list,can_validate_establishment_kyc")
+      .select("can_see_learners_list,can_see_professors_list")
       .eq("moderator_user_id", modId)
       .maybeSingle();
     const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
 
     // GET — list users (never returns email, phone, password_hash, session tokens)
     if (req.method === "GET") {
-      if (!perms.can_see_learners_list && !perms.can_see_professors_list && !perms.can_validate_establishment_kyc) {
+      if (!perms.can_see_learners_list && !perms.can_see_professors_list) {
         return json({ error: "FORBIDDEN" }, 403);
       }
       const url = new URL(req.url);
@@ -61,7 +61,6 @@ Deno.serve(async (req: Request) => {
       const allowedTypes: string[] = [];
       if (perms.can_see_learners_list) allowedTypes.push("apprenant");
       if (perms.can_see_professors_list) allowedTypes.push("professeur");
-      if (perms.can_validate_establishment_kyc) allowedTypes.push("etablissement_directeur", "etablissement_enseignant");
 
       if (userType !== "all" && !allowedTypes.some((t) => t.startsWith(userType))) {
         return json({ users: [] });
@@ -97,15 +96,14 @@ Deno.serve(async (req: Request) => {
         // Double-check: skip if user has a protected role (safety net)
         if (roleList.some((r) => PROTECTED_ROLES.includes(r))) continue;
 
-        // Filter by requested type
+        // Only learner and professor accounts belong to this moderator view.
+        if (!roleList.some((role) => allowedTypes.includes(role))) continue;
         if (userType === "apprenant" && !roleList.includes("apprenant")) continue;
         if (userType === "professeur" && !roleList.includes("professeur")) continue;
-        if (userType === "etablissement" && !roleList.some((r) => r.startsWith("etablissement"))) continue;
 
         // Permission gate per type
         if (roleList.includes("apprenant") && !perms.can_see_learners_list) continue;
         if (roleList.includes("professeur") && !perms.can_see_professors_list) continue;
-        if (roleList.some((r) => r.startsWith("etablissement")) && !perms.can_validate_establishment_kyc) continue;
 
         enriched.push({
           id: uu.id,

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ElementType, ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import {
@@ -12,7 +12,6 @@ interface ModPerms {
   can_reject_course: boolean;
   can_transmit_course_to_admin: boolean;
   can_validate_professor_kyc: boolean;
-  can_validate_establishment_kyc: boolean;
   can_see_learners_list: boolean;
   can_see_professors_list: boolean;
   can_suspend_account: boolean;
@@ -25,14 +24,16 @@ interface ModPerms {
   can_view_financial_summary: boolean;
 }
 
+type ModeratorNavItem = { path: string; label: string; icon: ElementType; exact?: boolean; always: boolean };
+
 function buildModNav(perms: ModPerms) {
-  const items = [
+  const items: ModeratorNavItem[] = [
     { path: '/moderator/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true, always: true },
   ];
   if (perms.can_see_pending_courses || perms.can_reject_course || perms.can_transmit_course_to_admin) {
     items.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen, always: false });
   }
-  if (perms.can_validate_professor_kyc || perms.can_validate_establishment_kyc) {
+  if (perms.can_validate_professor_kyc) {
     items.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield, always: false });
   }
   if (perms.can_see_learners_list || perms.can_see_professors_list || perms.can_suspend_account) {
@@ -69,7 +70,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
           setNavItems(buildModNav({
             can_see_pending_courses: true, can_validate_course_price: true,
             can_reject_course: true, can_transmit_course_to_admin: true,
-            can_validate_professor_kyc: true, can_validate_establishment_kyc: true,
+            can_validate_professor_kyc: true,
             can_see_learners_list: true, can_see_professors_list: true,
             can_suspend_account: true, can_moderate_forum: true,
             can_post_job_offers: true, can_moderate_jobs: true,
