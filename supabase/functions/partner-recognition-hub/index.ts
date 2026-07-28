@@ -1,6 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { corsHeaders } from "../_shared/cors.ts";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 async function session(sb:any,token:string){const {data:s}=await sb.from('user_sessions').select('user_id').eq('session_token',token).gt('expires_at',new Date().toISOString()).maybeSingle();if(!s)return null;const {data:r}=await sb.from('user_roles').select('role').eq('user_id',s.user_id);return {userId:s.user_id,roles:(r||[]).map((x:any)=>x.role)}}
 const clean=(o:any,keys:string[])=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,o[k]]));
