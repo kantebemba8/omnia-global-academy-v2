@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, BriefcaseBusiness,
+  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Route,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -29,7 +29,8 @@ const APPRENANT_NAV = [
   { path: '/dashboard/badges', label: 'Mes badges', icon: BadgeCheck },
   { path: '/dashboard/learning-record', label: 'Learning Record', icon: FileCheck2 },
   { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
-  { path: '/dashboard/project-portfolio', label: 'Portfolio de projets', icon: BriefcaseBusiness },
+  { path: '/dashboard/project-portfolio', label: 'Portfolio de projets', icon: Briefcase },
+  { path: '/dashboard/professional-pathways', label: 'Parcours professionnels', icon: Route },
   { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
   { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },

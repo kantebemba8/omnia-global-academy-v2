@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BriefcaseBusiness, CheckCircle2, Eye, EyeOff, FileCheck2, RefreshCw, Save, ShieldCheck, Star, Users } from 'lucide-react';
+import { Briefcase as BriefcaseBusiness, CheckCircle2, Eye, EyeOff, FileCheck2, RefreshCw, Save, ShieldCheck, Star, Users } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { PortfolioDashboard, PortfolioItem, PortfolioVisibility, projectPortfolioRequest } from '../../lib/projectPortfolioApi';
 
