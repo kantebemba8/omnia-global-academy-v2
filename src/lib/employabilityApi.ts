@@ -1,0 +1,4 @@
+import { API_BASE_URL } from './config';
+import { edgeAuthHeaders } from './edgeAuth';
+export type EmployabilityProfile={user_id:string;status:'draft'|'active'|'paused'|'archived';talent_visibility:'private'|'recruiters'|'public';use_project_evidence:boolean;use_skills_passport:boolean;use_learning_record:boolean;use_career_documents:boolean;allow_opportunity_matching:boolean;allow_recruiter_contact:boolean;target_roles:string[];target_sectors:string[];target_countries:string[];contract_preferences:string[]};
+export async function employabilityRequest<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{const r=await fetch(`${API_BASE_URL}/employability-integration`,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({}));if(!r.ok||d.error)throw new Error(d.error||'EMPLOYABILITY_REQUEST_FAILED');return d as T}

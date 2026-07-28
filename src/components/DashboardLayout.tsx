@@ -31,6 +31,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
   { path: '/dashboard/project-portfolio', label: 'Portfolio de projets', icon: Briefcase },
   { path: '/dashboard/professional-pathways', label: 'Parcours professionnels', icon: Route },
+  { path: '/dashboard/employabilite', label: 'Employabilité intégrée', icon: UserRoundCheck },
   { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
   { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },

@@ -64,6 +64,9 @@ import AdminQualityCenter from './pages/admin/AdminQualityCenter';
 import AdminRecognitionHub from './pages/admin/AdminRecognitionHub';
 import AdminProfessionalPathways from './pages/admin/AdminProfessionalPathways';
 import DashboardProfessionalPathways from './pages/dashboard/DashboardProfessionalPathways';
+import DashboardEmployability from './pages/dashboard/DashboardEmployability';
+import VerifiedTalentCandidates from './pages/talent/VerifiedTalentCandidates';
+import AdminEmployabilityIntegration from './pages/admin/AdminEmployabilityIntegration';
 import AdminAssessmentCenter from './pages/admin/AdminAssessmentCenter';
 import AdminAssessmentGovernance from './pages/admin/AdminAssessmentGovernance';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
@@ -389,6 +392,7 @@ export default function App() {
           <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/competences-verifiees" element={<VerifiedTalentCandidates />} />
           <Route path="/talent/recruteur/favoris" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/candidatures" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/entretiens" element={<RecruiterDashboard />} />
@@ -475,6 +479,7 @@ export default function App() {
           <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
           <Route path="/admin/recognition-hub" element={<AdminRecognitionHub />} />
         <Route path="/admin/professional-pathways" element={<AdminProfessionalPathways />} />
+        <Route path="/admin/employabilite" element={<AdminEmployabilityIntegration />} />
           <Route path="/admin/assessment-center" element={<AdminAssessmentCenter />} />
           <Route path="/admin/assessment-governance" element={<AdminAssessmentGovernance />} />
           <Route path="/admin/studio-validation" element={<Navigate to="/admin/quality-center" replace />} />
@@ -590,6 +595,7 @@ export default function App() {
         <Route path="/dashboard/skills-passport" element={<DashboardSkillsPassport />} />
         <Route path="/dashboard/project-portfolio" element={<DashboardProjectPortfolio />} />
           <Route path="/dashboard/professional-pathways" element={<DashboardProfessionalPathways />} />
+        <Route path="/dashboard/employabilite" element={<DashboardEmployability />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />
