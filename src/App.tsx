@@ -36,6 +36,7 @@ import { DashboardCertificats } from './pages/dashboard/DashboardCertificats';
 import DashboardBadges from './pages/dashboard/DashboardBadges';
 import DashboardLearningRecord from './pages/dashboard/DashboardLearningRecord';
 import DashboardSkillsPassport from './pages/dashboard/DashboardSkillsPassport';
+import DashboardProjectPortfolio from './pages/dashboard/DashboardProjectPortfolio';
 import DashboardCareerStudio from './pages/dashboard/DashboardCareerStudio';
 import CareerStudioEditor from './pages/dashboard/CareerStudioEditor';
 import OmniaCareerStudio from './pages/OmniaCareerStudio';
@@ -230,8 +231,10 @@ import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
 import AdminProfile from './pages/admin/AdminProfile';
 import ProjectsHome from './pages/projects/ProjectsHome';
 import ProjectDetail from './pages/projects/ProjectDetail';
+import PublicProjectPortfolio from './pages/projects/PublicProjectPortfolio';
 import ProjectsWorkspace from './pages/projects/ProjectsWorkspace';
 import ProjectOwnerWorkspace from './pages/projects/ProjectOwnerWorkspace';
+import ProjectRecommendations from './pages/projects/ProjectRecommendations';
 import AdminProjects from './pages/admin/AdminProjects';
 import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
@@ -342,10 +345,12 @@ export default function App() {
           <Route path="/projects/explorer" element={<ProjectsHome />} />
           <Route path="/projects/mes-projets" element={<ProjectsWorkspace />} />
           <Route path="/projects/gestion" element={<ProjectOwnerWorkspace />} />
+          <Route path="/projects/gestion/recommandations" element={<ProjectRecommendations />} />
           <Route path="/professeur/projects" element={<ProjectOwnerWorkspace />} />
           <Route path="/structure/projects" element={<ProjectOwnerWorkspace />} />
           <Route path="/admin/projects" element={<AdminProjects />} />
           <Route path="/admin/projects/gestion" element={<ProjectOwnerWorkspace />} />
+          <Route path="/portfolio/projects/:userId" element={<PublicProjectPortfolio />} />
           <Route path="/projects/:slug" element={<ProjectDetail />} />
           <Route path="/coaching" element={<CoachingCatalogue />} />
           <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
@@ -577,6 +582,7 @@ export default function App() {
         <Route path="/dashboard/badges" element={<DashboardBadges />} />
         <Route path="/dashboard/learning-record" element={<DashboardLearningRecord />} />
         <Route path="/dashboard/skills-passport" element={<DashboardSkillsPassport />} />
+        <Route path="/dashboard/project-portfolio" element={<DashboardProjectPortfolio />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />

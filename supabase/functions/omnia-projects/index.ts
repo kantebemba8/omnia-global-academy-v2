@@ -956,20 +956,29 @@ Deno.serve(async (req: Request) => {
       }).eq("id", deliverable.id).select("*").single();
       if (error) throw error;
       if (status === "accepted") {
-        await sb.from("omnia_project_verified_evidence").upsert({
-          project_id: project.id,
-          user_id: deliverable.submitted_by,
-          team_id: deliverable.team_id,
-          deliverable_id: deliverable.id,
-          evidence_type: "verified_deliverable",
-          title: deliverable.title,
-          summary: text(body.evaluation_feedback, 5000),
-          skill_codes: textArray(body.skill_codes, 100, 160),
-          validation_status: "validated",
-          portfolio_permission: "private",
-          validated_by: session.userId,
-          validated_at: new Date().toISOString(),
-        }, { onConflict: "deliverable_id,user_id,evidence_type" });
+        let recipients = [deliverable.submitted_by];
+        if (deliverable.team_id) {
+          const { data: members } = await sb.from("omnia_project_team_members").select("user_id").eq("team_id", deliverable.team_id).eq("invitation_status", "accepted");
+          recipients = [...new Set([deliverable.submitted_by, ...(members || []).map(member => member.user_id)].filter(Boolean))];
+        }
+        for (const userId of recipients) {
+          await sb.from("omnia_project_verified_evidence").upsert({
+            project_id: project.id,
+            user_id: userId,
+            team_id: deliverable.team_id,
+            deliverable_id: deliverable.id,
+            evidence_type: "verified_deliverable",
+            title: deliverable.title,
+            summary: text(body.evaluation_feedback, 5000),
+            skill_codes: textArray(body.skill_codes, 100, 160),
+            validation_status: "validated",
+            portfolio_permission: "private",
+            issuer_name: project.organization_name || "Omnia Global Academy",
+            evidence_payload: { evaluation_score: score, project_slug: project.slug },
+            validated_by: session.userId,
+            validated_at: new Date().toISOString(),
+          }, { onConflict: "deliverable_id,user_id,evidence_type" });
+        }
       }
       await audit(sb, project.id, session.userId, "deliverable_evaluated", "deliverable", deliverable.id, deliverable, updated, { status, score });
       return json({ success: true, deliverable: updated });

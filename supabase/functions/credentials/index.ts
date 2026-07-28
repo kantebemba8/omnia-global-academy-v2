@@ -1505,6 +1505,37 @@ async function syncPlatformClr(sb: Supabase, userId: string) {
     })) changed++;
   }
 
+  const verifiedProjectEvidence = await optionalSourceRows(
+    sb.from("omnia_project_verified_evidence")
+      .select("*,project:omnia_projects(id,slug,title,organization_name,project_type),deliverable:omnia_project_deliverables(id,title,evaluation_score,evaluation_feedback,evaluated_at)")
+      .eq("user_id", userId).eq("validation_status", "validated"),
+  );
+  for (const row of verifiedProjectEvidence) {
+    const project = jsonRecord(row.project);
+    const deliverable = jsonRecord(row.deliverable);
+    const section = row.evidence_type === "recommendation" ? "recommandations" : row.evidence_type === "demonstrated_skill" ? "competences_verifiees" : "projets";
+    if (await upsertClrSourceEntry(sb, record, {
+      source_type: "omnia_project_evidence",
+      source_id: row.id,
+      section,
+      achievement_type: row.evidence_type === "recommendation" ? "Recommendation" : row.evidence_type === "demonstrated_skill" ? "Competency" : "Project",
+      title: row.title || project.title || "Expérience projet vérifiée",
+      description: row.summary || row.description || deliverable.evaluation_feedback,
+      issued_at: row.validated_at || deliverable.evaluated_at || row.created_at,
+      score: deliverable.evaluation_score,
+      score_max: deliverable.evaluation_score == null ? null : 100,
+      result_label: row.evidence_type === "recommendation" ? "Recommandation vérifiée" : "Preuve d’expérience validée",
+      skills: stringArray(row.skill_codes, 100, 160),
+      external_url: row.portfolio_permission === "public" ? row.evidence_url : null,
+      evidence: [{ type: "omnia_project", project_id: row.project_id, deliverable_id: row.deliverable_id, evidence_id: row.id }],
+      issuer_name: row.issuer_name || project.organization_name || "Omnia Global Academy",
+      visibility: row.portfolio_permission === "public" ? "public" : row.portfolio_permission === "recruiters" ? "recruiters" : "private",
+      metadata: { project_id: row.project_id, project_slug: project.slug, evidence_type: row.evidence_type, portfolio_permission: row.portfolio_permission, evidence_payload: row.evidence_payload || {} },
+      source_updated_at: row.updated_at || row.validated_at,
+    })) changed++;
+    await sb.from("omnia_project_verified_evidence").update({ exported_to_clr_at: new Date().toISOString() }).eq("id", row.id);
+  }
+
   const projects = await optionalSourceRows(
     sb.from("course_assignment_submissions").select("*")
       .eq("learner_id", userId).eq("status", "graded"),
