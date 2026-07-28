@@ -60,6 +60,7 @@ const PARTNER_NAV = [
   { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
   { path: '/partner/dashboard', label: 'Codes & PIN', icon: Key },
   { path: '/partner/dashboard', label: 'Membres', icon: Users },
+  { path: '/partner/recognitions', label: 'Reconnaissances', icon: BadgeCheck },
   { path: '/structure/teachers', label: 'Enseignants', icon: Users },
   { path: '/structure/courses', label: 'Catalogue interne', icon: BookOpen },
   { path: '/structure/payouts', label: 'Retraits', icon: Wallet },

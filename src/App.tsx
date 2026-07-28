@@ -61,6 +61,7 @@ import AdminCareerStudioDetail from './pages/admin/AdminCareerStudioDetail';
 import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminCoursePricing from './pages/admin/AdminCoursePricing';
 import AdminQualityCenter from './pages/admin/AdminQualityCenter';
+import AdminRecognitionHub from './pages/admin/AdminRecognitionHub';
 import AdminAssessmentCenter from './pages/admin/AdminAssessmentCenter';
 import AdminAssessmentGovernance from './pages/admin/AdminAssessmentGovernance';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
@@ -118,6 +119,7 @@ import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
 import StructureRecruitment from './pages/structure/StructureRecruitment';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
+import PartnerRecognitionWorkspace from './pages/partner/PartnerRecognitionWorkspace';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
 import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
 import TalentDirectory from './pages/TalentDirectory';
@@ -469,6 +471,7 @@ export default function App() {
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
           <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
+          <Route path="/admin/recognition-hub" element={<AdminRecognitionHub />} />
           <Route path="/admin/assessment-center" element={<AdminAssessmentCenter />} />
           <Route path="/admin/assessment-governance" element={<AdminAssessmentGovernance />} />
           <Route path="/admin/studio-validation" element={<Navigate to="/admin/quality-center" replace />} />
@@ -601,6 +604,7 @@ export default function App() {
 <Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
 <Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
 <Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/partner/recognitions" element={<PartnerRecognitionWorkspace />} />
 <Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
 <Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
         <Route path="/admin/studio/:courseId/evaluations" element={<StudioEvaluations />} />
