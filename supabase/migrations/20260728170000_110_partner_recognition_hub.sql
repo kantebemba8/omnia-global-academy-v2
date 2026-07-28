@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists recognition_partners (
   id uuid primary key default gen_random_uuid(),
-  linked_organization_id uuid null references partner_organizations(id) on delete set null,
+  linked_organization_id uuid null,
   name text not null,
   slug text not null unique,
   partner_type text not null check (partner_type in ('academic','professional','cpd','institutional','certification','quality','technology','employment','financial','public','ngo','international','other')),
@@ -33,6 +33,26 @@ create table if not exists recognition_partners (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+
+-- La table partner_organizations appartient au socle Structure historique.
+-- Certains exports du dépôt ne contiennent pas sa migration de création :
+-- la contrainte est donc ajoutée uniquement lorsque la table existe déjà.
+do $$
+begin
+  if to_regclass('public.partner_organizations') is not null
+     and not exists (
+       select 1 from pg_constraint
+       where conname = 'recognition_partners_linked_organization_id_fkey'
+         and conrelid = 'public.recognition_partners'::regclass
+     ) then
+    alter table public.recognition_partners
+      add constraint recognition_partners_linked_organization_id_fkey
+      foreign key (linked_organization_id)
+      references public.partner_organizations(id)
+      on delete set null;
+  end if;
+end $$;
 
 create table if not exists recognition_agreements (
   id uuid primary key default gen_random_uuid(),
