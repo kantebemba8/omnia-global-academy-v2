@@ -62,6 +62,8 @@ import AdminJobOffers from './pages/admin/AdminJobOffers';
 import AdminCoursePricing from './pages/admin/AdminCoursePricing';
 import AdminQualityCenter from './pages/admin/AdminQualityCenter';
 import AdminRecognitionHub from './pages/admin/AdminRecognitionHub';
+import AdminProfessionalPathways from './pages/admin/AdminProfessionalPathways';
+import DashboardProfessionalPathways from './pages/dashboard/DashboardProfessionalPathways';
 import AdminAssessmentCenter from './pages/admin/AdminAssessmentCenter';
 import AdminAssessmentGovernance from './pages/admin/AdminAssessmentGovernance';
 import ModerateurOffresEmploi from './pages/moderateur/ModerateurOffresEmploi';
@@ -472,6 +474,7 @@ export default function App() {
         <Route path="/demo/dashboard" element={<DemoDashboard />} />
           <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
           <Route path="/admin/recognition-hub" element={<AdminRecognitionHub />} />
+        <Route path="/admin/professional-pathways" element={<AdminProfessionalPathways />} />
           <Route path="/admin/assessment-center" element={<AdminAssessmentCenter />} />
           <Route path="/admin/assessment-governance" element={<AdminAssessmentGovernance />} />
           <Route path="/admin/studio-validation" element={<Navigate to="/admin/quality-center" replace />} />
@@ -586,6 +589,7 @@ export default function App() {
         <Route path="/dashboard/learning-record" element={<DashboardLearningRecord />} />
         <Route path="/dashboard/skills-passport" element={<DashboardSkillsPassport />} />
         <Route path="/dashboard/project-portfolio" element={<DashboardProjectPortfolio />} />
+          <Route path="/dashboard/professional-pathways" element={<DashboardProfessionalPathways />} />
           <Route path="/dashboard/career-studio" element={<DashboardCareerStudio />} />
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />
