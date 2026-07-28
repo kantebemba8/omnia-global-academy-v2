@@ -228,6 +228,11 @@ import AdminOmniaLiveAudit from './pages/omnia-live/admin/AdminOmniaLiveAudit';
 import OmniaLiveSystemStatus from './pages/omnia-live/system/OmniaLiveSystemStatus';
 import OmniaLiveWatch from './pages/omnia-live/OmniaLiveWatch';
 import AdminProfile from './pages/admin/AdminProfile';
+import ProjectsHome from './pages/projects/ProjectsHome';
+import ProjectDetail from './pages/projects/ProjectDetail';
+import ProjectsWorkspace from './pages/projects/ProjectsWorkspace';
+import ProjectOwnerWorkspace from './pages/projects/ProjectOwnerWorkspace';
+import AdminProjects from './pages/admin/AdminProjects';
 import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
 function MaintenanceNoticeBanner() {
@@ -333,6 +338,15 @@ export default function App() {
         <Route path="/" element={<RootGate />} />
         <Route path="/accueil" element={<LandingPage />} />
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
+          <Route path="/projects" element={<ProjectsHome />} />
+          <Route path="/projects/explorer" element={<ProjectsHome />} />
+          <Route path="/projects/mes-projets" element={<ProjectsWorkspace />} />
+          <Route path="/projects/gestion" element={<ProjectOwnerWorkspace />} />
+          <Route path="/professeur/projects" element={<ProjectOwnerWorkspace />} />
+          <Route path="/structure/projects" element={<ProjectOwnerWorkspace />} />
+          <Route path="/admin/projects" element={<AdminProjects />} />
+          <Route path="/admin/projects/gestion" element={<ProjectOwnerWorkspace />} />
+          <Route path="/projects/:slug" element={<ProjectDetail />} />
           <Route path="/coaching" element={<CoachingCatalogue />} />
           <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
           <Route path="/assessment/jury/:inviteToken" element={<AssessmentJuryAccess />} />

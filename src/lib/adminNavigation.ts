@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck
+  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -82,6 +82,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/monetization', label: 'Abonnements & monétisation', icon: Gift },
       { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },
       { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
+    ],
+  },
+  {
+    id: 'experience-projects',
+    label: 'Expérience & projets',
+    icon: FolderKanban,
+    items: [
+      { path: '/admin/projects', label: 'Gestion Omnia Projects', icon: FolderKanban },
     ],
   },
   {

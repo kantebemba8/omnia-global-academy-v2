@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck,
+  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -31,6 +31,7 @@ const APPRENANT_NAV = [
   { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
   { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
   { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
+  { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
   { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
   { path: '/forum', label: 'Omnia Forum', icon: MessageSquare },
@@ -44,6 +45,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
   { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
   { path: '/professeur/jurys', label: 'Jurys & révisions', icon: Users },
+  { path: '/professeur/projects', label: 'Omnia Projects', icon: FolderKanban },
   { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
