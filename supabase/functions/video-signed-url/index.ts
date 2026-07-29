@@ -38,6 +38,10 @@ Deno.serve(async (req: Request) => {
     if (!enroll) return json({ error: "NOT_ENROLLED", message: "Cette formation n’est pas accessible avec ce compte." }, 403);
     const { data: lesson } = await sb.from("course_lessons").select("id,cloudflare_stream_uid,video_url,duration_seconds,module_id").eq("id", lesson_id).maybeSingle();
     if (!lesson) return json({ error: "LESSON_NOT_FOUND" }, 404);
+    const { data: lessonModule } = await sb.from("course_modules").select("course_id").eq("id", lesson.module_id).maybeSingle();
+    if (!lessonModule || lessonModule.course_id !== course_id) {
+      return json({ error: "LESSON_COURSE_MISMATCH", message: "Cette leçon n’appartient pas à la formation demandée." }, 403);
+    }
 
     if (action === "offline_authorize") {
       if (!body.device_id) return json({ error: "DEVICE_REQUIRED" }, 400);
