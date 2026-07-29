@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
+import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 import {
   AlertCircle,
   ArrowRight,
@@ -91,14 +92,13 @@ export default function JobDetail() {
   const [applied, setApplied] = useState(false);
 
   const isLoggedIn = !!localStorage.getItem('omnia_session_token');
-  const token = localStorage.getItem('omnia_session_token') || '';
   const userData = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}'); } catch { return {}; }
   }, []);
 
   useEffect(() => {
     if (!jobId) return;
-    fetch(`${ENDPOINTS.jobsList}?job_id=${jobId}`)
+    fetch(`${ENDPOINTS.jobsList}?job_id=${jobId}`, { headers: edgeGatewayHeaders(), cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         const loadedJob = d.job || (d.id ? d : null);
@@ -138,7 +138,7 @@ export default function JobDetail() {
     try {
       const res = await fetch(ENDPOINTS.jobApply, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ job_id: jobId, cover_letter: coverLetter, cv_url: cvUrl || null }),
       });
       const d = await res.json();

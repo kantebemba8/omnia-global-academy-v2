@@ -22,7 +22,7 @@ import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 function json(data: unknown, status = 200) {
@@ -40,7 +40,11 @@ function supabaseAdmin() {
 }
 
 function tokenFrom(req: Request) {
-  return (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  return (
+    req.headers.get("x-omnia-session-token")
+    ?? req.headers.get("Authorization")
+    ?? ""
+  ).replace(/^Bearer\s+/i, "").trim();
 }
 
 async function sessionContext(sb: ReturnType<typeof createClient>, token: string) {

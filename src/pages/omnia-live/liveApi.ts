@@ -1,3 +1,4 @@
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
 export type LiveItem = {
@@ -28,7 +29,6 @@ export async function liveApi(
   params: Record<string, string | number | undefined | null> = {},
 ) {
   if (!SUPABASE_URL) throw new Error('Configuration Supabase manquante');
-  const token = localStorage.getItem('omnia_session_token') || '';
   const search = new URLSearchParams({ action });
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && String(value) !== '') search.set(key, String(value));
@@ -36,8 +36,7 @@ export async function liveApi(
   const res = await fetch(`${SUPABASE_URL}/functions/v1/omnia-live?${search.toString()}`, {
     ...options,
     headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...edgeAuthHeaders(),
       ...(options.headers || {}),
     },
   });

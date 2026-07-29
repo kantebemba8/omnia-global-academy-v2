@@ -5,9 +5,17 @@ import { hashSync } from "npm:bcryptjs@2.4.3";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+function sessionToken(req: Request) {
+  return (
+    req.headers.get("x-omnia-session-token")
+    ?? req.headers.get("Authorization")
+    ?? ""
+  ).replace(/^Bearer\s+/i, "").trim();
+}
 
 function temporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#";
@@ -38,7 +46,7 @@ type RecruiterProfile = { recruiter_type: "independent" | "structure"; organizat
 type Session = { userId: string; roles: string[]; organizationId: string | null; isPrimaryManager: boolean; permissions: Record<string, boolean>; recruiterProfile: RecruiterProfile | null };
 
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const token = sessionToken(req);
   if (!token) return null;
   const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!session) return null;
@@ -154,7 +162,7 @@ async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
 }
 
 async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Request, body: any) {
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const token = sessionToken(req);
   if (!token) return json({ error: "SESSION_INVALID" }, 401);
   const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!session) return json({ error: "SESSION_INVALID" }, 401);

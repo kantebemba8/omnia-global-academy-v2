@@ -1,5 +1,5 @@
 import { ENDPOINTS } from '../../lib/config';
-import { getSessionToken } from '../../lib/session';
+import { edgeAuthHeaders, edgeGatewayHeaders } from '../../lib/edgeAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
@@ -101,10 +101,9 @@ export type TalentContact = {
 };
 
 async function recruitmentRequest<T>(action: string, payload: Record<string, unknown> = {}, scope: 'recruiter'|'structure' = 'recruiter'): Promise<T> {
-  const token = getSessionToken();
   const response = await fetch(ENDPOINTS.talentRecruitment, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify({ action, scope, ...payload }),
   });
   const raw = await response.text();
@@ -123,7 +122,7 @@ export async function loadPublicTalents(): Promise<PublicTalent[]> {
   if (!SUPABASE_URL) return [];
   const response = await fetch(`${SUPABASE_URL}/functions/v1/talent-recruitment`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: edgeGatewayHeaders(),
     body: JSON.stringify({ action: 'public_list' }),
   });
   const data = await response.json().catch(() => ({}));
@@ -132,7 +131,7 @@ export async function loadPublicTalents(): Promise<PublicTalent[]> {
 }
 
 export async function loadPublicJobs(): Promise<PublicJob[]> {
-  const response = await fetch(ENDPOINTS.jobsList, { headers: { 'Content-Type': 'application/json' } });
+  const response = await fetch(ENDPOINTS.jobsList, { headers: edgeGatewayHeaders() });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(apiErrorMessage(data, 'Impossible de charger les offres.'));
   return data.jobs || data.offers || [];

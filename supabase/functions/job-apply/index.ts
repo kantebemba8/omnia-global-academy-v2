@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 function json(d: unknown, s = 200) {
@@ -16,7 +16,11 @@ Deno.serve(async (req: Request) => {
 
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+  const token = (
+    req.headers.get("x-omnia-session-token")
+    ?? req.headers.get("Authorization")
+    ?? ""
+  ).replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   const { data: sess } = await sb.from("user_sessions").select("user_id")

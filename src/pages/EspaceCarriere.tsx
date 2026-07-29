@@ -5,6 +5,7 @@ import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { Briefcase, Search, MapPin, Clock, Filter, Eye, Globe, Building2, ExternalLink, Mail, ShieldCheck } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, normalizeApplicationMode } from '../lib/jobApplicationModes';
+import { edgeGatewayHeaders } from '../lib/edgeAuth';
 
 const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance'];
 const CATEGORIES = ['Tech & Digital', 'Finance', 'Marketing', 'Management', 'Santé', 'Education', 'Juridique', 'Autre'];
@@ -68,7 +69,7 @@ export default function EspaceCarriere() {
   const [search, setSearch] = useState(params.get('search') || '');
   const [contractType, setContractType] = useState(params.get('contract_type') || '');
   const [category, setCategory] = useState(params.get('category') || '');
-  const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || 'ML');
+  const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || '');
   const [showFilters, setShowFilters] = useState(false);
   const canPostJob = (() => {
     try {
@@ -88,13 +89,17 @@ export default function EspaceCarriere() {
     try {
       const q = new URLSearchParams({
         page: String(page),
-        country_code: country,
+        ...(country ? { country_code: country } : {}),
         ...(search ? { search } : {}),
         ...(contractType ? { contract_type: contractType } : {}),
         ...(category ? { category } : {}),
       });
-      const res = await fetch(`${ENDPOINTS.jobsList}?${q}`);
-      const d = await res.json();
+      const res = await fetch(`${ENDPOINTS.jobsList}?${q}`, {
+        headers: edgeGatewayHeaders(),
+        cache: 'no-store',
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d?.message || d?.error || 'Impossible de charger les offres.');
       setJobs(d.jobs || []);
       setTotal(d.total || 0);
       setTotalPages(d.total_pages || 1);
@@ -128,6 +133,7 @@ export default function EspaceCarriere() {
                 <Globe className="w-3.5 h-3.5 text-gray-400" />
                 <select value={country} onChange={e => { setCountry(e.target.value); setPage(1); }}
                   className="text-xs text-gray-600 focus:outline-none bg-transparent">
+                  <option value="">Tous les pays</option>
                   {JOB_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </select>
               </div>
