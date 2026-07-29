@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Check, Clock3, FileCheck2, FolderKanban, Mail, RefreshCw, Send, Upload, Users, X } from 'lucide-react';
 import {
   getMyProjectsWorkspace,
+  getProjectsContext,
   getProjectDetail,
   inviteProjectTeamMember,
   ProjectApplication,
@@ -29,6 +30,8 @@ type Membership = { id: string; member_role?: string; team: ProjectTeam };
 type ParticipationOption = { key: string; projectId: string; projectTitle: string; teamId?: string; label: string };
 
 export default function ProjectsWorkspace() {
+  const navigate = useNavigate();
+  const [accessChecked, setAccessChecked] = useState(false);
   const [applications, setApplications] = useState<ProjectApplication[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [invitations, setInvitations] = useState<Array<{ id: string; invited_at: string; team: ProjectTeam }>>([]);
@@ -65,7 +68,34 @@ export default function ProjectsWorkspace() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let active = true;
+    getProjectsContext()
+      .then(context => {
+        if (!active) return;
+        if (context.is_admin || context.roles.includes('super_admin')) {
+          navigate('/admin/projects', { replace: true });
+          return;
+        }
+        if (context.roles.includes('professeur')) {
+          navigate('/professeur/projects', { replace: true });
+          return;
+        }
+        if (context.roles.includes('structure') || context.organization_id) {
+          navigate('/structure/projects', { replace: true });
+          return;
+        }
+        setAccessChecked(true);
+        load();
+      })
+      .catch(() => {
+        if (!active) return;
+        setAccessChecked(true);
+        load();
+      });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
 
   const participationOptions = useMemo<ParticipationOption[]>(() => {
     const options: ParticipationOption[] = [];
@@ -173,6 +203,10 @@ export default function ProjectsWorkspace() {
       setSubmitting(false);
     }
   };
+
+  if (!accessChecked) {
+    return <div className="min-h-[50vh] bg-slate-50" />;
+  }
 
   return (
     <ProjectsWorkspaceFrame>

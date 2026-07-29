@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Briefcase, Building2, CalendarDays, Clock3, Compass, Globe2, Home, LockKeyhole,
@@ -9,23 +9,42 @@ import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { AdminLayout } from '../AdminLayout';
 import {
+  getProjectsContext,
   OmniaProject,
   PROJECT_LEVEL_LABELS,
   PROJECT_STATUS_LABELS,
   PROJECT_TYPE_LABELS,
 } from '../../lib/projectsApi';
 
-const PROJECTS_PUBLIC_NAV = [
-  { label: 'Accueil Projects', path: '/projects', icon: Home, exact: true },
-  { label: 'Explorer les projets', path: '/projects/explorer', icon: Compass },
-  { label: 'Mon espace Projects', path: '/projects/mes-projets', icon: Briefcase },
-];
+function resolveProjectsWorkspacePath(context: { is_admin: boolean; roles: string[]; organization_id: string | null } | null) {
+  if (!context) return '/projects/mes-projets';
+  if (context.is_admin || context.roles.includes('super_admin')) return '/admin/projects';
+  if (context.roles.includes('professeur')) return '/professeur/projects';
+  if (context.roles.includes('structure') || context.organization_id) return '/structure/projects';
+  return '/projects/mes-projets';
+}
 
 export function ProjectsPublicLayout({ children }: { children: ReactNode }) {
+  const [workspacePath, setWorkspacePath] = useState('/projects/mes-projets');
+
+  useEffect(() => {
+    let active = true;
+    getProjectsContext()
+      .then(context => { if (active) setWorkspacePath(resolveProjectsWorkspacePath(context)); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  const navItems = [
+    { label: 'Accueil Projects', path: '/projects', icon: Home, exact: true },
+    { label: 'Explorer les projets', path: '/projects/explorer', icon: Compass },
+    { label: 'Mon espace Projects', path: workspacePath, icon: Briefcase },
+  ];
+
   return (
     <SubspaceHamburgerLayout
       title="Omnia Projects"
-      navItems={PROJECTS_PUBLIC_NAV}
+      navItems={navItems}
       searchPlaceholder="Rechercher un projet, une compétence, une organisation..."
     >
       {children}
@@ -124,44 +143,44 @@ export function ProjectCard({ project, showStatus = false }: { project: OmniaPro
 }
 
 export function ProjectsHero({ compact = false }: { compact?: boolean }) {
+  const [workspacePath, setWorkspacePath] = useState('/projects/mes-projets');
+
+  useEffect(() => {
+    let active = true;
+    getProjectsContext()
+      .then(context => { if (active) setWorkspacePath(resolveProjectsWorkspacePath(context)); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
   return (
-    <section className="border-b bg-white px-5 py-10 md:px-8 md:py-14" style={{ borderColor: '#E4E7EC' }}>
+    <section className={compact ? 'border-b bg-white px-5 py-10 sm:px-8' : 'border-b bg-white px-5 py-10 sm:px-8 md:py-14'} style={{ borderColor: '#E4E7EC' }}>
       <div className="mx-auto max-w-6xl">
-        <div className="max-w-3xl">
+        <div className="max-w-4xl">
           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: 'rgba(191,136,19,.12)', color: '#BF8813' }}>
-            <Sparkles size={14} /> Expérience professionnelle vérifiable
+            <Sparkles size={14} /> Expérience vérifiable
           </span>
-          <h1 className="mt-5 text-3xl font-semibold leading-tight md:text-4xl" style={{ color: '#002050' }}>
+          <h1 className={`${compact ? 'mt-4 text-3xl md:text-4xl' : 'mt-5 text-3xl md:text-4xl'} font-semibold leading-tight`} style={{ color: '#002050' }}>
             Transformez vos compétences en preuves d’expérience.
           </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+          <p className="mt-4 max-w-3xl text-base leading-7 text-gray-600">
             Réalisez des projets réels, relevez des défis et collaborez avec des Structures, entreprises et institutions dans un cadre sécurisé.
           </p>
           {!compact && (
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/projects/explorer" className="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white" style={{ background: '#002050' }}>
-                <Compass size={17} /> Explorer les projets
+                Explorer les projets <ArrowRight size={17} />
               </Link>
-              <Link to="/projects/mes-projets" className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#002050' }}>
-                Mon espace Projects <ArrowRight size={17} />
+              <Link to={workspacePath} className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#002050' }}>
+                Mon espace Projects
               </Link>
             </div>
           )}
         </div>
-
         <div className="mt-10 grid gap-3 sm:grid-cols-3">
-          {[
-            { label: 'Confidentialité définie', icon: ShieldCheck },
-            { label: 'Partenaires de plusieurs pays', icon: Globe2 },
-            { label: 'Missions courtes ou longues', icon: Clock3 },
-          ].map(item => (
-            <div key={item.label} className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold" style={{ color: '#002050' }}>{item.label}</p>
-                <item.icon size={18} color="#BF8813" />
-              </div>
-            </div>
-          ))}
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}><ShieldCheck size={18} style={{ color: '#BF8813' }} /><p className="mt-2 text-sm font-semibold" style={{ color: '#002050' }}>Confidentialité définie</p></div>
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}><Globe2 size={18} style={{ color: '#BF8813' }} /><p className="mt-2 text-sm font-semibold" style={{ color: '#002050' }}>Partenaires multi-pays</p></div>
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}><Clock3 size={18} style={{ color: '#BF8813' }} /><p className="mt-2 text-sm font-semibold" style={{ color: '#002050' }}>Missions courtes ou longues</p></div>
         </div>
       </div>
     </section>

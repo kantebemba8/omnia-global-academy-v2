@@ -54,7 +54,7 @@ export default function ProjectsHome() {
 
   return (
     <ProjectsPublicLayout>
-      <ProjectsHero compact={explorer} />
+      {!explorer && <ProjectsHero />}
 
       {!explorer && (
         <section className="border-b bg-white px-5 py-12 sm:px-8" style={{ borderColor: '#E4E7EC' }}>
@@ -77,6 +77,13 @@ export default function ProjectsHome() {
 
       <section className="bg-slate-50 px-5 py-12 sm:px-8 lg:py-16">
         <div className="mx-auto max-w-6xl">
+          {explorer && (
+            <div className="mb-8 max-w-3xl">
+              <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>Catalogue des projets</p>
+              <h1 className="mt-2 text-3xl font-bold sm:text-4xl" style={{ color: '#002050' }}>Explorez les projets disponibles</h1>
+              <p className="mt-3 leading-7 text-slate-600">Recherchez une mission selon vos compétences, le format du projet et le niveau demandé.</p>
+            </div>
+          )}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>{total} opportunité{total > 1 ? 's' : ''}</p>
