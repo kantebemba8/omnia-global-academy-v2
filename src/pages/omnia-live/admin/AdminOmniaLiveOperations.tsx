@@ -14,8 +14,12 @@ const statusClass=(s:string)=>{
   return 'bg-slate-100 text-slate-700';
 };
 
-export default function AdminOmniaLiveOperations(){
-  const [tab,setTab]=useState<Tab>('refunds');
+type AdminOmniaLiveOperationsProps = {
+  initialTab?: Tab;
+};
+
+export default function AdminOmniaLiveOperations({ initialTab = 'refunds' }: AdminOmniaLiveOperationsProps){
+  const [tab,setTab]=useState<Tab>(initialTab);
   const [refunds,setRefunds]=useState<any[]>([]);
   const [cancellations,setCancellations]=useState<any[]>([]);
   const [reports,setReports]=useState<any[]>([]);
@@ -40,6 +44,10 @@ export default function AdminOmniaLiveOperations(){
       setMessage(e instanceof Error?e.message:'Erreur de chargement');
     }finally{setLoading(false)}
   }
+
+  useEffect(()=>{
+    setTab(initialTab);
+  },[initialTab]);
 
   useEffect(()=>{load(tab)},[tab]);
 

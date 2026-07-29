@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
@@ -36,9 +36,6 @@ export function Login() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'email' | 'phone'>('email');
 
-  useEffect(() => {
-    console.log('Login page loaded');
-  }, []);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,13 +56,11 @@ export function Login() {
   };
 
   const handleSubmit = async () => {
-    console.log('CLICKED', email, password);
     setLoading(true);
     setError('');
 
     try {
       const data = await authFetch<LoginResponse>('auth-login', { email: email.trim(), password });
-      console.log('Response:', data);
 
       if (data.success) {
         localStorage.setItem('omnia_session_token', data.session_token!);
@@ -75,7 +70,6 @@ export function Login() {
         setError(data.message || 'Identifiants incorrects');
       }
     } catch (err) {
-      console.error('Error:', err);
       setError('Une erreur est survenue');
     } finally {
       setLoading(false);

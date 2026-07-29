@@ -186,8 +186,6 @@ import OmniaLiveUpload from './pages/omnia-live/OmniaLiveUpload';
 import OmniaLiveAttendance from './pages/omnia-live/OmniaLiveAttendance';
 import OmniaLiveCheckout from './pages/omnia-live/OmniaLiveCheckout';
 import OmniaLiveOrders from './pages/omnia-live/OmniaLiveOrders';
-import AdminOmniaLiveRefunds from './pages/omnia-live/AdminOmniaLiveRefunds';
-import AdminOmniaLiveCancellations from './pages/omnia-live/AdminOmniaLiveCancellations';
 import OmniaLiveOrganizerFinance from './pages/omnia-live/OmniaLiveOrganizerFinance';
 import OmniaLiveReviews from './pages/omnia-live/OmniaLiveReviews';
 import OmniaLivePrivateAccess from './pages/omnia-live/OmniaLivePrivateAccess';
@@ -432,10 +430,10 @@ export default function App() {
           <Route path="/omnia-live/:liveId/presence" element={<OmniaLiveAttendance />} />
           <Route path="/omnia-live/:liveId/inscription" element={<OmniaLiveCheckout />} />
           <Route path="/omnia-live/mes-achats" element={<OmniaLiveOrders />} />
-          <Route path="/admin/omnia-live/remboursements" element={<AdminOmniaLiveRefunds />} />
+          <Route path="/admin/omnia-live/remboursements" element={<AdminOmniaLiveOperations initialTab="refunds" />} />
           <Route path="/omnia-live/:liveId/avis" element={<OmniaLiveReviews />} />
           <Route path="/omnia-live/revenus" element={<OmniaLiveOrganizerFinance />} />
-          <Route path="/admin/omnia-live/annulations" element={<AdminOmniaLiveCancellations />} />
+          <Route path="/admin/omnia-live/annulations" element={<AdminOmniaLiveOperations initialTab="cancellations" />} />
           <Route path="/omnia-live/acces-prive" element={<OmniaLivePrivateAccess />} />
           <Route path="/omnia-live/profil-organisateur" element={<OmniaLiveOrganizerProfile />} />
           <Route path="/omnia-live/:liveId/statistiques" element={<OmniaLiveAnalytics />} />

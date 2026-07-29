@@ -66,7 +66,6 @@ export default function ModerateurDashboard() {
   const [renderError, setRenderError] = useState<string | null>(null);
   void renderError;
 
-  console.log('ModerateurDashboard render', { loading, data, bypassAuth });
 
   function handlePreviewAction() {
     if (!bypassAuth) return;

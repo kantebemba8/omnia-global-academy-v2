@@ -26,7 +26,6 @@ export function clearSession(): void {
 }
 
 export function redirectByRoles(roles: string[], redirectUrl?: string): void {
-  console.log('[redirectByRoles] roles:', roles, '| redirect_url:', redirectUrl ?? '(none)');
   if (redirectUrl) { window.location.href = redirectUrl; return; }
   if (roles.includes('super_admin')) { window.location.href = '/admin/dashboard'; return; }
   if (roles.includes('moderateur')) { window.location.href = '/moderator/dashboard'; return; }
