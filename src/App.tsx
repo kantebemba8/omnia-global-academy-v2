@@ -66,6 +66,7 @@ import AdminProfessionalPathways from './pages/admin/AdminProfessionalPathways';
 import DashboardProfessionalPathways from './pages/dashboard/DashboardProfessionalPathways';
 import DashboardEmployability from './pages/dashboard/DashboardEmployability';
 import VerifiedTalentCandidates from './pages/talent/VerifiedTalentCandidates';
+import VerifiedTalentCandidateDetail from './pages/talent/VerifiedTalentCandidateDetail';
 import AdminEmployabilityIntegration from './pages/admin/AdminEmployabilityIntegration';
 import AdminAssessmentCenter from './pages/admin/AdminAssessmentCenter';
 import AdminAssessmentGovernance from './pages/admin/AdminAssessmentGovernance';
@@ -104,6 +105,7 @@ import CpdPage from './pages/CpdPage';
 import PublicBadgeVerification from './pages/credentials/PublicBadgeVerification';
 import PublicClrShare from './pages/credentials/PublicClrShare';
 import PublicSkillsPassport from './pages/credentials/PublicSkillsPassport';
+import ProfessionalPathwayCredentialVerify from './pages/credentials/ProfessionalPathwayCredentialVerify';
 import Forum from './pages/Forum';
 import ForumGeneral from './pages/ForumGeneral';
 import ForumPost from './pages/ForumPost';
@@ -361,6 +363,7 @@ export default function App() {
           <Route path="/projects/:slug" element={<ProjectDetail />} />
           <Route path="/coaching" element={<CoachingCatalogue />} />
           <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
+          <Route path="/credentials/pathways/:verificationCode" element={<ProfessionalPathwayCredentialVerify />} />
           <Route path="/assessment/jury/:inviteToken" element={<AssessmentJuryAccess />} />
           <Route path="/credentials/clr/:shareToken" element={<PublicClrShare />} />
           <Route path="/credentials/passports/:shareToken" element={<PublicSkillsPassport />} />
@@ -393,6 +396,7 @@ export default function App() {
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/competences-verifiees" element={<VerifiedTalentCandidates />} />
+          <Route path="/talent/recruteur/competences-verifiees/:userId" element={<VerifiedTalentCandidateDetail />} />
           <Route path="/talent/recruteur/favoris" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/candidatures" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/entretiens" element={<RecruiterDashboard />} />

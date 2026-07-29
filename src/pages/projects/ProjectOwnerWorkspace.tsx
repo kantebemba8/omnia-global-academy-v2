@@ -19,6 +19,9 @@ import {
   ProjectDeliverable,
   ProjectMilestone,
   ProjectTeam,
+  ProjectPartner,
+  saveProjectPartner,
+  removeProjectPartner,
   PROJECT_TYPE_LABELS,
   reviewProjectApplication,
   submitProject,
@@ -114,6 +117,10 @@ export default function ProjectOwnerWorkspace() {
   const [teamName, setTeamName] = useState('');
   const [teamLeaderEmail, setTeamLeaderEmail] = useState('');
   const [teamDescription, setTeamDescription] = useState('');
+  const [partners, setPartners] = useState<ProjectPartner[]>([]);
+  const [partnerName, setPartnerName] = useState('');
+  const [partnerRole, setPartnerRole] = useState<ProjectPartner['partner_role']>('participant');
+  const [partnerNotes, setPartnerNotes] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -208,11 +215,33 @@ export default function ProjectOwnerWorkspace() {
       setMilestones(detailResult.milestones);
       setDeliverables(detailResult.deliverables || []);
       setTeams(detailResult.teams || []);
+      setPartners(detailResult.partners || []);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Candidatures indisponibles.');
     } finally {
       setApplicationsLoading(false);
     }
+  };
+
+  const addPartner = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedProject || !partnerName.trim()) return;
+    setDrawerBusy(true);
+    try {
+      await saveProjectPartner(selectedProject.id, { partner_name: partnerName.trim(), partner_kind: 'external', partner_role: partnerRole, notes: partnerNotes.trim(), status: 'proposed' });
+      setPartnerName(''); setPartnerNotes(''); setPartnerRole('participant');
+      await openApplications(selectedProject);
+      setMessage('Partenaire proposé. Le Super Admin doit le confirmer.');
+    } catch (err) { setMessage(err instanceof Error ? err.message : 'Ajout du partenaire impossible.'); }
+    finally { setDrawerBusy(false); }
+  };
+
+  const withdrawPartner = async (partner: ProjectPartner) => {
+    if (!selectedProject || !window.confirm(`Retirer ${partner.partner_name} de ce projet ?`)) return;
+    setDrawerBusy(true);
+    try { await removeProjectPartner(partner.id); await openApplications(selectedProject); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Retrait impossible.'); }
+    finally { setDrawerBusy(false); }
   };
 
   const review = async (application: ProjectApplication, status: string) => {
@@ -430,6 +459,13 @@ export default function ProjectOwnerWorkspace() {
                 {['published', 'selection'].includes(selectedProject.status) && <button disabled={drawerBusy} onClick={() => moveProject('in_progress')} className="rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#002050' }}>Démarrer le projet</button>}
                 {['published', 'selection', 'in_progress'].includes(selectedProject.status) && <button disabled={drawerBusy} onClick={() => moveProject('closed')} className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#76520A' }}>Clôturer</button>}
               </div>
+            </section>
+
+            <section className="mt-7 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
+              <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><Users size={19} style={{ color: '#BF8813' }} /> Entreprises et institutions participantes</h3>
+              <p className="mt-1 text-sm text-slate-600">Ajoutez les partenaires réellement impliqués. Leur statut officiel doit être confirmé par le Super Admin.</p>
+              <div className="mt-4 divide-y rounded-xl border" style={{borderColor:'#E4E7EC'}}>{partners.length ? partners.map(partner=><div key={partner.id} className="flex items-start justify-between gap-3 p-4"><div><p className="font-semibold text-slate-900">{partner.partner_name}</p><p className="text-xs text-slate-500">{partner.partner_role} · {partner.status}</p>{partner.notes&&<p className="mt-1 text-sm text-slate-600">{partner.notes}</p>}</div>{partner.status!=='withdrawn'&&<button type="button" disabled={drawerBusy} onClick={()=>withdrawPartner(partner)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-bold text-red-700">Retirer</button>}</div>) : <p className="p-4 text-sm text-slate-500">Aucun partenaire supplémentaire.</p>}</div>
+              <form onSubmit={addPartner} className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"><input required value={partnerName} onChange={event=>setPartnerName(event.target.value)} placeholder="Nom de l’entreprise ou institution" className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}/><select value={partnerRole} onChange={event=>setPartnerRole(event.target.value as ProjectPartner['partner_role'])} className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}>{['co_owner','client','sponsor','technical','academic','institutional','mentor','evaluator','participant'].map(role=><option key={role} value={role}>{role}</option>)}</select><textarea value={partnerNotes} onChange={event=>setPartnerNotes(event.target.value)} rows={2} placeholder="Rôle concret, convention ou contribution" className="rounded-lg border bg-white px-3 py-2.5 text-sm sm:col-span-2" style={{borderColor:'#D0D5DD'}}/><button disabled={drawerBusy} className="rounded-lg px-4 py-2.5 text-sm font-bold text-white sm:col-span-2" style={{background:'#002050'}}>Proposer ce partenaire</button></form>
             </section>
 
             <section className="mt-7">

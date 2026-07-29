@@ -8,15 +8,14 @@ const corsHeaders = {
   "X-Content-Type-Options": "nosniff",
 };
 
-const CREATOR_ROLES = new Set([
-  "super_admin",
-  "professeur",
+const STRUCTURE_CREATOR_ROLES = new Set([
   "responsable_structure",
   "structure_admin",
   "gestionnaire_partenaire",
   "directeur",
   "etablissement_directeur",
 ]);
+const PROFESSOR_ROLES = new Set(["professeur", "professor", "teacher", "instructor"]);
 
 const ADMIN_ROLES = new Set(["super_admin"]);
 const PROJECT_STATUSES = new Set([
@@ -137,8 +136,29 @@ function isAdmin(session: Session | null) {
   return Boolean(session?.roles.some((role) => ADMIN_ROLES.has(role)));
 }
 
-function canCreate(session: Session | null) {
-  return Boolean(session?.roles.some((role) => CREATOR_ROLES.has(role)));
+function canUseOwnerWorkspace(session: Session | null) {
+  return Boolean(session && (
+    isAdmin(session)
+    || session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))
+    || session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))
+  ));
+}
+
+async function canCreate(sb: any, session: Session | null, projectType = "") {
+  if (!session) return false;
+  if (isAdmin(session)) return true;
+  if (session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))) return true;
+  if (!session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))) return false;
+
+  const { data: permission } = await sb
+    .from("omnia_project_creator_permissions")
+    .select("status,allowed_project_types,organization_scope_id")
+    .eq("user_id", session.userId)
+    .maybeSingle();
+  if (!permission || permission.status !== "allowed") return false;
+  if (permission.organization_scope_id && String(permission.organization_scope_id) !== String(session.organizationId || "")) return false;
+  if (!projectType) return true;
+  return Array.isArray(permission.allowed_project_types) && permission.allowed_project_types.includes(projectType);
 }
 
 async function projectById(sb: any, projectId: string) {
@@ -150,7 +170,7 @@ async function projectById(sb: any, projectId: string) {
 async function canManageProject(sb: any, session: Session, project: any) {
   if (isAdmin(session)) return true;
   if (String(project.creator_user_id) === session.userId) return true;
-  if (project.organization_id && session.organizationId === String(project.organization_id)) return canCreate(session);
+  if (project.organization_id && session.organizationId === String(project.organization_id)) return canCreate(sb, session, String(project.project_type || ""));
   const { data: projectTeams } = await sb.from("omnia_project_teams").select("id").eq("project_id", project.id);
   const teamIds = (projectTeams || []).map((row: any) => row.id);
   if (!teamIds.length) return false;
@@ -403,7 +423,7 @@ Deno.serve(async (req: Request) => {
         roles: session?.roles || [],
         organization_id: session?.organizationId || null,
         organization_name: session?.organizationName || null,
-        can_create: canCreate(session),
+        can_create: await canCreate(sb, session),
         is_admin: isAdmin(session),
       });
     }
@@ -446,7 +466,7 @@ Deno.serve(async (req: Request) => {
       const privileged = Boolean(session && (isAdmin(session) || await canManageProject(sb, session, project)));
       const { data: detailTeams } = await sb.from("omnia_project_teams").select("id").eq("project_id", project.id);
       const detailTeamIds = (detailTeams || []).map((row: any) => row.id);
-      const [{ data: milestones }, { data: rewards }, { data: ownApplication }, { data: teamMembership }, { data: deliverables }, { data: managedTeams }] = await Promise.all([
+      const [{ data: milestones }, { data: rewards }, { data: ownApplication }, { data: teamMembership }, { data: deliverables }, { data: managedTeams }, { data: partners }] = await Promise.all([
         sb.from("omnia_project_milestones").select("*").eq("project_id", project.id).order("sequence_no"),
         sb.from("omnia_project_rewards").select("id,reward_type,title,description,amount_minor,currency,funding_status,validation_status").eq("project_id", project.id).in("validation_status", privileged ? ["pending", "approved", "delivered", "rejected", "cancelled"] : ["approved", "delivered"]),
         session ? sb.from("omnia_project_applications").select("*").eq("project_id", project.id).eq("applicant_user_id", session.userId).maybeSingle() : Promise.resolve({ data: null }),
@@ -457,8 +477,9 @@ Deno.serve(async (req: Request) => {
         privileged
           ? sb.from("omnia_project_teams").select("*,members:omnia_project_team_members(id,user_id,member_role,invitation_status,user:users!omnia_project_team_members_user_id_fkey(id,full_name,email))").eq("project_id", project.id).order("created_at", { ascending: false })
           : Promise.resolve({ data: [] }),
+        sb.from("omnia_project_partners").select("*").eq("project_id", project.id).in("status", privileged ? ["proposed", "confirmed", "declined", "withdrawn"] : ["confirmed"]).order("created_at", { ascending: true }),
       ]);
-      return json({ project: sanitizeProject(project, privileged), milestones: milestones || [], rewards: rewards || [], own_application: ownApplication || null, memberships: teamMembership || [], deliverables: deliverables || [], teams: managedTeams || [], privileged });
+      return json({ project: sanitizeProject(project, privileged), milestones: milestones || [], rewards: rewards || [], own_application: ownApplication || null, memberships: teamMembership || [], deliverables: deliverables || [], teams: managedTeams || [], partners: partners || [], privileged });
     }
 
     if (action === "my_workspace") {
@@ -475,7 +496,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "owner_dashboard") {
       requireSession(session);
-      if (!canCreate(session)) return json({ error: "FORBIDDEN" }, 403);
+      if (!canUseOwnerWorkspace(session)) return json({ error: "FORBIDDEN" }, 403);
       let query = sb.from("omnia_projects").select("*").order("created_at", { ascending: false });
       if (!isAdmin(session)) {
         if (session.organizationId) query = query.or(`creator_user_id.eq.${session.userId},organization_id.eq.${session.organizationId}`);
@@ -483,12 +504,16 @@ Deno.serve(async (req: Request) => {
       }
       const { data: projects, error } = await query;
       if (error) throw error;
-      return json({ projects: await enrichProjects(sb, projects || [], session), can_create: true });
+      return json({ projects: await enrichProjects(sb, projects || [], session), can_create: await canCreate(sb, session) });
     }
 
     if (action === "create") {
       requireSession(session);
-      if (!canCreate(session)) return json({ error: "CREATOR_ROLE_REQUIRED" }, 403);
+      const requestedType = text(body.project_type, 60) || "real_project";
+      if (!(await canCreate(sb, session, requestedType))) {
+        const professor = session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()));
+        return json({ error: professor ? "PROFESSOR_PROJECT_PERMISSION_REQUIRED" : "CREATOR_ROLE_REQUIRED" }, 403);
+      }
       if (!text(body.title, 180) || !text(body.description, 30000)) return json({ error: "TITLE_AND_DESCRIPTION_REQUIRED" }, 400);
 
       const patch = projectPatch(body);
@@ -1059,6 +1084,101 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       await audit(sb, report.project_id, session.userId, "project_report_updated", "report", report.id, report, updated, { status });
       return json({ success: true, report: updated });
+    }
+
+    if (action === "project_partners") {
+      requireSession(session);
+      const project = await projectById(sb, text(body.project_id, 80));
+      if (!project) return json({ error: "PROJECT_NOT_FOUND" }, 404);
+      if (!(await canManageProject(sb, session, project))) return json({ error: "FORBIDDEN" }, 403);
+      const { data, error } = await sb.from("omnia_project_partners").select("*").eq("project_id", project.id).order("created_at");
+      if (error) throw error;
+      return json({ partners: data || [] });
+    }
+
+    if (action === "save_project_partner") {
+      requireSession(session);
+      const project = await projectById(sb, text(body.project_id, 80));
+      if (!project) return json({ error: "PROJECT_NOT_FOUND" }, 404);
+      if (!(await canManageProject(sb, session, project))) return json({ error: "FORBIDDEN" }, 403);
+      const partnerName = text(body.partner_name, 220);
+      if (!partnerName) return json({ error: "PARTNER_NAME_REQUIRED" }, 400);
+      const partnerKind = ["structure", "recognition_partner", "external"].includes(text(body.partner_kind, 40)) ? text(body.partner_kind, 40) : "external";
+      const partnerRole = ["owner","co_owner","client","sponsor","technical","academic","institutional","mentor","evaluator","participant"].includes(text(body.partner_role, 40)) ? text(body.partner_role, 40) : "participant";
+      const requestedStatus = text(body.status, 30);
+      const status = isAdmin(session) && ["proposed","confirmed","declined","withdrawn"].includes(requestedStatus) ? requestedStatus : "proposed";
+      const patch: Record<string, unknown> = {
+        project_id: project.id,
+        partner_kind: partnerKind,
+        organization_id: body.organization_id ? text(body.organization_id, 80) : null,
+        recognition_partner_id: body.recognition_partner_id ? text(body.recognition_partner_id, 80) : null,
+        partner_name: partnerName,
+        partner_role: partnerRole,
+        status,
+        logo_usage_allowed: isAdmin(session) && Boolean(body.logo_usage_allowed),
+        notes: text(body.notes, 5000) || null,
+      };
+      if (status === "confirmed") Object.assign(patch, { confirmed_by: session.userId, confirmed_at: new Date().toISOString() });
+      let result;
+      if (body.partner_id) {
+        result = await sb.from("omnia_project_partners").update(patch).eq("id", text(body.partner_id, 80)).eq("project_id", project.id).select("*").single();
+      } else {
+        result = await sb.from("omnia_project_partners").insert({ ...patch, created_by: session.userId }).select("*").single();
+      }
+      if (result.error) throw result.error;
+      await audit(sb, project.id, session.userId, body.partner_id ? "project_partner_updated" : "project_partner_added", "project_partner", result.data.id, null, result.data);
+      return json({ success: true, partner: result.data });
+    }
+
+    if (action === "remove_project_partner") {
+      requireSession(session);
+      const { data: partner } = await sb.from("omnia_project_partners").select("*").eq("id", text(body.partner_id, 80)).maybeSingle();
+      if (!partner) return json({ error: "PARTNER_NOT_FOUND" }, 404);
+      const project = await projectById(sb, String(partner.project_id));
+      if (!project || !(await canManageProject(sb, session, project))) return json({ error: "FORBIDDEN" }, 403);
+      const { data, error } = await sb.from("omnia_project_partners").update({ status: "withdrawn" }).eq("id", partner.id).select("*").single();
+      if (error) throw error;
+      await audit(sb, project.id, session.userId, "project_partner_withdrawn", "project_partner", partner.id, partner, data);
+      return json({ success: true, partner: data });
+    }
+
+    if (action === "admin_creator_permissions") {
+      requireSession(session);
+      if (!isAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const { data: roleRows, error: roleError } = await sb.from("user_roles").select("user_id,role").in("role", ["professeur","professor","teacher","instructor"]);
+      if (roleError) throw roleError;
+      const userIds = [...new Set((roleRows || []).map((row: any) => row.user_id))];
+      if (!userIds.length) return json({ professors: [] });
+      const [{ data: users }, { data: permissions }] = await Promise.all([
+        sb.from("users").select("id,full_name,email,status").in("id", userIds).order("full_name"),
+        sb.from("omnia_project_creator_permissions").select("*").in("user_id", userIds),
+      ]);
+      const byUser = new Map((permissions || []).map((row: any) => [String(row.user_id), row]));
+      return json({ professors: (users || []).map((user: any) => ({ ...user, permission: byUser.get(String(user.id)) || null })) });
+    }
+
+    if (action === "admin_set_creator_permission") {
+      requireSession(session);
+      if (!isAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const userId = text(body.user_id, 80);
+      const status = ["allowed","suspended","revoked"].includes(text(body.status, 30)) ? text(body.status, 30) : "allowed";
+      if (!userId) return json({ error: "USER_REQUIRED" }, 400);
+      const allowedTypes = textArray(body.allowed_project_types, 20, 80);
+      const patch: Record<string, unknown> = {
+        user_id: userId,
+        status,
+        allowed_project_types: allowedTypes.length ? allowedTypes : ["real_project","challenge","case_study","short_mission","academic_project","structure_internal","call_for_solutions","hackathon","volunteer_mission","rewarded_project"],
+        organization_scope_id: body.organization_scope_id ? text(body.organization_scope_id, 80) : null,
+        notes: text(body.notes, 3000) || null,
+        granted_by: session.userId,
+        granted_at: new Date().toISOString(),
+        revoked_by: status === "revoked" ? session.userId : null,
+        revoked_at: status === "revoked" ? new Date().toISOString() : null,
+      };
+      const { data, error } = await sb.from("omnia_project_creator_permissions").upsert(patch, { onConflict: "user_id" }).select("*").single();
+      if (error) throw error;
+      await audit(sb, null, session.userId, "project_creator_permission_updated", "creator_permission", data.id, null, data);
+      return json({ success: true, permission: data });
     }
 
     if (action === "admin_list") {

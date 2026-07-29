@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -37,7 +37,7 @@ async function session(sb: any, token: string) {
 
   return {
     userId: String(activeSession.user_id),
-    roles: (roles || []).map((row: any) => String(row.role)),
+    roles: (roles || []).map((row: any) => String(row.role).toLowerCase()),
   };
 }
 
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   try {
-    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
     if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
     const sb = createClient(

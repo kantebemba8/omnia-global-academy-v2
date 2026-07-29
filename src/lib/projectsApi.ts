@@ -244,6 +244,7 @@ export function getProjectDetail(identifier: { project_id?: string; slug?: strin
     memberships: Array<Record<string, unknown>>;
     deliverables: ProjectDeliverable[];
     teams: Array<ProjectTeam & { members?: Array<{ id: string; user_id: string; member_role: string; invitation_status: string; user?: { id: string; full_name: string; email: string } }> }>;
+    partners: ProjectPartner[];
     privileged: boolean;
   }>({ action: 'detail', ...identifier });
 }
@@ -379,3 +380,49 @@ export function getProjectFileUrl(projectId: string, filePath: string) {
   return projectsPost<{ signed_url: string; expires_in: number }>({ action: 'signed_file_url', project_id: projectId, file_path: filePath });
 }
 
+
+export type ProjectPartner = {
+  id: string;
+  project_id: string;
+  partner_kind: 'structure' | 'recognition_partner' | 'external';
+  organization_id?: string | null;
+  recognition_partner_id?: string | null;
+  partner_name: string;
+  partner_role: 'owner' | 'co_owner' | 'client' | 'sponsor' | 'technical' | 'academic' | 'institutional' | 'mentor' | 'evaluator' | 'participant';
+  status: 'proposed' | 'confirmed' | 'declined' | 'withdrawn';
+  logo_usage_allowed: boolean;
+  notes?: string | null;
+  created_at: string;
+};
+
+export type ProjectCreatorPermission = {
+  id: string;
+  user_id: string;
+  status: 'allowed' | 'suspended' | 'revoked';
+  allowed_project_types: ProjectType[];
+  organization_scope_id?: string | null;
+  notes?: string | null;
+  granted_at: string;
+};
+
+export function getProjectPartners(projectId: string) {
+  return projectsPost<{ partners: ProjectPartner[] }>({ action: 'project_partners', project_id: projectId });
+}
+
+export function saveProjectPartner(projectId: string, data: Partial<ProjectPartner> & { partner_name: string; partner_id?: string }) {
+  return projectsPost<{ success: true; partner: ProjectPartner }>({ action: 'save_project_partner', project_id: projectId, ...data });
+}
+
+export function removeProjectPartner(partnerId: string) {
+  return projectsPost<{ success: true; partner: ProjectPartner }>({ action: 'remove_project_partner', partner_id: partnerId });
+}
+
+export function getProjectCreatorPermissions() {
+  return projectsPost<{ professors: Array<{ id: string; full_name: string; email: string; status: string; permission: ProjectCreatorPermission | null }> }>({ action: 'admin_creator_permissions' });
+}
+
+export function setProjectCreatorPermission(userId: string, status: ProjectCreatorPermission['status'], allowedProjectTypes: ProjectType[], notes = '') {
+  return projectsPost<{ success: true; permission: ProjectCreatorPermission }>({
+    action: 'admin_set_creator_permission', user_id: userId, status, allowed_project_types: allowedProjectTypes, notes,
+  });
+}
