@@ -29,19 +29,18 @@ Deno.serve(async (req: Request) => {
   }
   if (job_description.length < 100) return json({ error: "DESCRIPTION_TOO_SHORT", min: 100 }, 422);
 
-  // Upsert recruiter
-  let recruiterId: string | null = null;
-  const { data: existing } = await sb.from("external_recruiters").select("id").eq("contact_email", contact_email).maybeSingle();
-  if (existing) {
-    recruiterId = existing.id;
-  } else {
-    const { data: newRec } = await sb.from("external_recruiters").insert({
+  // Enregistrer le contact recruteur s’il n’existe pas encore.
+  const { data: existing, error: recruiterLookupError } = await sb.from("external_recruiters").select("id").eq("contact_email", contact_email).maybeSingle();
+  if (recruiterLookupError) return json({ error: "RECRUITER_LOOKUP_FAILED", message: recruiterLookupError.message }, 500);
+  if (!existing) {
+    const { error: recruiterError } = await sb.from("external_recruiters").insert({
       company_name, contact_name, contact_email, contact_phone: body.contact_phone || null,
-    }).select("id").single();
-    recruiterId = newRec?.id ?? null;
+    });
+    if (recruiterError) return json({ error: "RECRUITER_CREATION_FAILED", message: recruiterError.message }, 500);
   }
 
-  await sb.from("job_offers").insert({
+  const { error: jobError } = await sb.from("job_offers").insert({
+    posted_by_id: null,
     title: job_title,
     description: job_description,
     location: location || "",
@@ -56,16 +55,28 @@ Deno.serve(async (req: Request) => {
     recruiter_company: company_name,
     recruiter_name: contact_name,
     recruiter_email: contact_email,
+    application_mode: "external_email",
+    external_apply_email: contact_email,
+    application_instructions: "Candidature transmise au contact recruteur après validation de l’offre.",
+    created_by_role: "recruteur_externe",
+    updated_at: new Date().toISOString(),
     views_count: 0,
     applications_count: 0,
   });
+  if (jobError) {
+    console.error("job-create-external", jobError);
+    return json({ error: "JOB_CREATION_FAILED", message: jobError.message }, 500);
+  }
 
-  // Notify moderators
-  const { data: mods } = await sb.from("moderator_permissions").select("user_id").eq("can_moderate_jobs", true);
-  if (mods?.length) {
+  // Notify moderators ayant la permission, ancienne colonne ou matrice JSON.
+  const { data: permissionRows } = await sb.from("moderator_permissions").select("moderator_user_id,can_moderate_jobs,permissions");
+  const moderatorIds = (permissionRows || [])
+    .filter((row: any) => row.can_moderate_jobs === true || row.permissions?.can_moderate_jobs === true)
+    .map((row: any) => String(row.moderator_user_id));
+  if (moderatorIds.length) {
     const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
     if (brevoKey) {
-      const { data: modUsers } = await sb.from("users").select("email").in("id", mods.map((m: { user_id: string }) => m.user_id));
+      const { data: modUsers } = await sb.from("users").select("email").in("id", moderatorIds);
       for (const mu of modUsers ?? []) {
         fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",

@@ -2,167 +2,176 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-// Returns first name + last initial: "Jean-Pierre Bemba" → "Jean-Pierre B."
-function maskName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0];
-  const last = parts[parts.length - 1];
-  const firsts = parts.slice(0, -1).join(" ");
-  return `${firsts} ${last[0]}.`;
-}
-
-// Protected roles — never visible to a moderator
+type SupabaseClient = ReturnType<typeof createClient>;
+type PermissionMap = Record<string, boolean>;
 const PROTECTED_ROLES = ["super_admin", "moderateur"];
 
-async function verifyModerator(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
-  const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as unknown as { user_id: string }).user_id).eq("role", "moderateur").maybeSingle();
-  if (!role) return null;
-  return (sess as unknown as { user_id: string }).user_id;
+function maskName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length <= 1) return parts[0] || "—";
+  return `${parts.slice(0, -1).join(" ")} ${parts.at(-1)?.[0] || ""}.`;
+}
+
+function normalizePermissions(row: Record<string, unknown> | null): PermissionMap {
+  const nested = row?.permissions && typeof row.permissions === "object" && !Array.isArray(row.permissions)
+    ? row.permissions as Record<string, unknown>
+    : {};
+  const value = (canonical: string, legacy?: string) => nested[canonical] === true || row?.[canonical] === true || (!!legacy && (nested[legacy] === true || row?.[legacy] === true));
+  return {
+    can_see_learners_list: value("can_see_learners_list"),
+    can_see_professors_list: value("can_see_professors_list"),
+    can_request_account_suspension: value("can_request_account_suspension", "can_suspend_account"),
+  };
+}
+
+async function verifyModerator(sb: SupabaseClient, token: string) {
+  const { data: session, error: sessionError } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (sessionError || !session) return null;
+
+  const { data: role, error: roleError } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id)
+    .eq("role", "moderateur")
+    .maybeSingle();
+  if (roleError || !role) return null;
+  return String(session.user_id);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const modId = await verifyModerator(sb, token);
-    if (!modId) return json({ error: "FORBIDDEN" }, 403);
+    const url = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!url || !serviceKey) return json({ error: "SERVER_CONFIG_ERROR" }, 500);
+    const sb = createClient(url, serviceKey);
+    const moderatorId = await verifyModerator(sb, token);
+    if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions")
-      .select("can_see_learners_list,can_see_professors_list")
-      .eq("moderator_user_id", modId)
+    const { data: permissionRow, error: permissionError } = await sb
+      .from("moderator_permissions")
+      .select("*")
+      .eq("moderator_user_id", moderatorId)
       .maybeSingle();
-    const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
+    if (permissionError) throw permissionError;
+    const permissions = normalizePermissions(permissionRow as Record<string, unknown> | null);
 
-    // GET — list users (never returns email, phone, password_hash, session tokens)
     if (req.method === "GET") {
-      if (!perms.can_see_learners_list && !perms.can_see_professors_list) {
-        return json({ error: "FORBIDDEN" }, 403);
-      }
-      const url = new URL(req.url);
-      const search = url.searchParams.get("search") || "";
-      const statusFilter = url.searchParams.get("status") || "";
-      const userType = url.searchParams.get("type") || "all";
+      if (!permissions.can_see_learners_list && !permissions.can_see_professors_list) return json({ error: "FORBIDDEN" }, 403);
 
-      // Determine which role types this moderator may see
-      const allowedTypes: string[] = [];
-      if (perms.can_see_learners_list) allowedTypes.push("apprenant");
-      if (perms.can_see_professors_list) allowedTypes.push("professeur");
+      const requestUrl = new URL(req.url);
+      const search = (requestUrl.searchParams.get("search") || "").trim();
+      const statusFilter = (requestUrl.searchParams.get("status") || "").trim();
+      const requestedType = requestUrl.searchParams.get("type") || "all";
+      const allowedTypes = [
+        ...(permissions.can_see_learners_list ? ["apprenant"] : []),
+        ...(permissions.can_see_professors_list ? ["professeur"] : []),
+      ];
+      if (requestedType !== "all" && !allowedTypes.includes(requestedType)) return json({ users: [] });
 
-      if (userType !== "all" && !allowedTypes.some((t) => t.startsWith(userType))) {
-        return json({ users: [] });
-      }
+      const { data: protectedRows, error: protectedError } = await sb.from("user_roles").select("user_id").in("role", PROTECTED_ROLES);
+      if (protectedError) throw protectedError;
+      const protectedIds = [...new Set((protectedRows || []).map((row: { user_id: string }) => String(row.user_id)))];
 
-      // Fetch IDs of protected roles (super_admin, moderateur) — never expose these users
-      const { data: protectedRows } = await sb.from("user_roles")
-        .select("user_id")
-        .in("role", PROTECTED_ROLES);
-      const protectedIds: string[] = (protectedRows ?? []).map((r) => (r as unknown as { user_id: string }).user_id);
-
-      // Build base query — safe fields only (NO email, phone_number, password_hash)
-      let query = sb.from("users")
-        .select("id,full_name,status,country_code,created_at")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      if (protectedIds.length > 0) {
-        query = query.not("id", "in", `(${protectedIds.join(",")})`);
-      }
+      let query = sb.from("users").select("id,full_name,status,country_code,created_at").order("created_at", { ascending: false }).limit(100);
+      if (protectedIds.length) query = query.not("id", "in", `(${protectedIds.join(",")})`);
       if (search) query = query.ilike("full_name", `%${search}%`);
       if (statusFilter) query = query.eq("status", statusFilter);
+      const { data: users, error: usersError } = await query;
+      if (usersError) throw usersError;
 
-      const { data: users } = await query;
-
-      const enriched: unknown[] = [];
-      for (const u of users ?? []) {
-        const uu = u as unknown as { id: string; full_name: string; status: string; country_code: string; created_at: string };
-
-        const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", uu.id);
-        const roleList: string[] = (roles ?? []).map((r) => (r as unknown as { role: string }).role);
-
-        // Double-check: skip if user has a protected role (safety net)
-        if (roleList.some((r) => PROTECTED_ROLES.includes(r))) continue;
-
-        // Only learner and professor accounts belong to this moderator view.
-        if (!roleList.some((role) => allowedTypes.includes(role))) continue;
-        if (userType === "apprenant" && !roleList.includes("apprenant")) continue;
-        if (userType === "professeur" && !roleList.includes("professeur")) continue;
-
-        // Permission gate per type
-        if (roleList.includes("apprenant") && !perms.can_see_learners_list) continue;
-        if (roleList.includes("professeur") && !perms.can_see_professors_list) continue;
-
-        enriched.push({
-          id: uu.id,
-          full_name: maskName(uu.full_name),
-          status: uu.status,
-          country_code: uu.country_code,
-          created_at: uu.created_at,
-          roles: roleList,
-        });
+      const userIds = (users || []).map((user: { id: string }) => String(user.id));
+      const { data: roleRows, error: rolesError } = userIds.length
+        ? await sb.from("user_roles").select("user_id,role").in("user_id", userIds)
+        : { data: [], error: null };
+      if (rolesError) throw rolesError;
+      const rolesByUser = new Map<string, string[]>();
+      for (const row of roleRows || []) {
+        const id = String(row.user_id);
+        rolesByUser.set(id, [...(rolesByUser.get(id) || []), String(row.role)]);
       }
 
-      return json({ users: enriched });
+      const safeUsers = (users || []).flatMap((user: Record<string, unknown>) => {
+        const roles = rolesByUser.get(String(user.id)) || [];
+        if (roles.some((role) => PROTECTED_ROLES.includes(role))) return [];
+        if (!roles.some((role) => allowedTypes.includes(role))) return [];
+        if (requestedType !== "all" && !roles.includes(requestedType)) return [];
+        return [{
+          id: user.id,
+          full_name: maskName(String(user.full_name || "")),
+          status: user.status,
+          country_code: user.country_code,
+          created_at: user.created_at,
+          roles,
+        }];
+      });
+      return json({ users: safeUsers, permissions });
     }
 
-    // POST — action (suspend / reactivate). Moderators can NO longer execute directly.
-    // This path is now only reachable from the Super-admin approval flow (admin_override=true).
-    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
-    const body = await req.json() as { target_user_id: string; action: string; admin_override?: boolean };
-    const { target_user_id, action, admin_override } = body;
-
-    if (!target_user_id || !action) return json({ error: "INVALID_PARAMS" }, 400);
-
-    // Moderators must NOT execute actions directly — require admin_override
-    if (!admin_override) {
-      return json({
-        error: "FORBIDDEN",
-        message: "Les actions directes ne sont pas autorisées. Soumettez une demande au Super-admin.",
-      }, 403);
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if (body.action !== "submit_request") return json({ error: "INVALID_ACTION" }, 400);
+    if (!permissions.can_request_account_suspension) {
+      return json({ error: "FORBIDDEN", message: "Permission de demande d’action sur un compte requise." }, 403);
     }
 
-    // Safety check: never act on a protected account
-    const { data: targetRoles } = await sb.from("user_roles").select("role").eq("user_id", target_user_id);
-    if ((targetRoles ?? []).some((r) => PROTECTED_ROLES.includes((r as unknown as { role: string }).role))) {
-      return json({ error: "FORBIDDEN", message: "Action non autorisée sur ce compte." }, 403);
+    const targetUserId = String(body.target_user_id || "");
+    const requestAction = String(body.request_action || "");
+    const reason = String(body.reason || "").trim();
+    if (!targetUserId || !["suspend", "reactivate", "validate_kyc"].includes(requestAction) || reason.length < 3) {
+      return json({ error: "INVALID_PARAMS", message: "La cible, l’action et un motif sont requis." }, 400);
     }
 
-    if (!["suspend", "reactivate", "validate"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
-
-    if (action === "suspend") {
-      await sb.from("users").update({ status: "suspendu" }).eq("id", target_user_id);
-      await sb.from("user_sessions").update({ expires_at: new Date().toISOString() }).eq("user_id", target_user_id);
-    } else if (action === "reactivate") {
-      await sb.from("users").update({ status: "actif" }).eq("id", target_user_id);
-    } else if (action === "validate") {
-      await sb.from("users").update({ status: "actif" }).eq("id", target_user_id);
+    const { data: targetRoles, error: targetRolesError } = await sb.from("user_roles").select("role").eq("user_id", targetUserId);
+    if (targetRolesError) throw targetRolesError;
+    if ((targetRoles || []).some((row: { role: string }) => PROTECTED_ROLES.includes(row.role))) {
+      return json({ error: "PROTECTED_ACCOUNT", message: "Action interdite sur ce compte." }, 403);
     }
 
-    await sb.from("moderation_log").insert({
-      moderator_id: modId,
-      action_type: `account_${action}`,
-      target_type: "user",
-      target_id: target_user_id,
-      comment: "admin_override",
-    });
+    const { data: existing, error: existingError } = await sb
+      .from("moderator_action_requests")
+      .select("id")
+      .eq("moderator_id", moderatorId)
+      .eq("target_user_id", targetUserId)
+      .eq("action_type", requestAction)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing) return json({ error: "REQUEST_ALREADY_PENDING", message: "Une demande identique est déjà en attente." }, 409);
 
-    return json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+    const { data: created, error: insertError } = await sb.from("moderator_action_requests").insert({
+      moderator_id: moderatorId,
+      action_type: requestAction,
+      target_user_id: targetUserId,
+      reason,
+      status: "pending",
+    }).select("id").single();
+    if (insertError) throw insertError;
+
+    return json({ success: true, request_id: created.id, message: "Demande transmise au Super-admin." }, 201);
+  } catch (error) {
+    console.error("moderator-account-action", error);
+    return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : String(error) }, 500);
   }
 });

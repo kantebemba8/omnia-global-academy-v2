@@ -10,14 +10,61 @@ function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-const EMPTY_PERMS = {
-  can_see_pending_courses: false, can_validate_course_price: false, can_reject_course: false,
-  can_request_course_modification: false, can_approve_transmit_course: false, can_create_assisted_course: false,
-  can_see_learners_list: false, can_see_professors_list: false, can_suspend_account: false,
-  can_validate_professor_kyc: false, can_validate_establishment_kyc: false,
-  can_moderate_forum: false, can_moderate_jobs: false, can_manage_support: false,
-  can_view_ai_conversations: false, can_view_analytics: false,
+const EMPTY_PERMS: Record<string, boolean> = {
+  can_see_pending_courses: false,
+  can_review_course_content: false,
+  can_request_course_modification: false,
+  can_recommend_course_price: false,
+  can_validate_course_price: false,
+  can_reject_course: false,
+  can_approve_transmit_course: false,
+  can_transmit_course_to_admin: false,
+  can_create_assisted_course: false,
+  can_see_learners_list: false,
+  can_see_professors_list: false,
+  can_see_structures_list: false,
+  can_see_organizers_list: false,
+  can_request_account_suspension: false,
+  can_suspend_account: false,
+  can_validate_professor_kyc: false,
+  can_validate_structure_kyc: false,
+  can_validate_establishment_kyc: false,
+  can_moderate_forum: false,
+  can_moderate_jobs: false,
+  can_manage_support: false,
+  can_view_ai_conversations: false,
+  can_manage_reports: false,
+  can_review_live_events: false,
+  can_review_live_reports: false,
+  can_review_live_refunds: false,
+  can_review_live_organizers: false,
+  can_review_structure_requests: false,
+  can_review_structure_codes: false,
+  can_review_structure_benefits: false,
+  can_view_analytics: false,
 };
+
+function normalizePermissions(row: Record<string, unknown> | null) {
+  const nested = row?.permissions && typeof row.permissions === "object" && !Array.isArray(row.permissions)
+    ? row.permissions as Record<string, unknown>
+    : {};
+  const merged: Record<string, boolean> = { ...EMPTY_PERMS };
+  for (const [key, value] of Object.entries(row || {})) {
+    if (key.startsWith("can_") && typeof value === "boolean") merged[key] = value;
+  }
+  for (const [key, value] of Object.entries(nested)) {
+    if (key.startsWith("can_")) merged[key] = value === true;
+  }
+  merged.can_recommend_course_price = merged.can_recommend_course_price || merged.can_validate_course_price;
+  merged.can_validate_course_price = merged.can_recommend_course_price;
+  merged.can_approve_transmit_course = merged.can_approve_transmit_course || merged.can_transmit_course_to_admin;
+  merged.can_transmit_course_to_admin = merged.can_approve_transmit_course;
+  merged.can_validate_structure_kyc = merged.can_validate_structure_kyc || merged.can_validate_establishment_kyc;
+  merged.can_validate_establishment_kyc = merged.can_validate_structure_kyc;
+  merged.can_request_account_suspension = merged.can_request_account_suspension || merged.can_suspend_account;
+  merged.can_suspend_account = merged.can_request_account_suspension;
+  return merged;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -40,14 +87,15 @@ Deno.serve(async (req: Request) => {
     const { data: user } = await sb.from("users").select("id,full_name").eq("id", userId).maybeSingle();
 
     // Load permissions (default all false if no row)
-    const { data: permsRow } = await sb.from("moderator_permissions").select("*").eq("moderator_user_id", userId).maybeSingle();
-    const perms = permsRow ? { ...EMPTY_PERMS, ...permsRow } : { ...EMPTY_PERMS };
+    const { data: permsRow, error: permissionsError } = await sb.from("moderator_permissions").select("*").eq("moderator_user_id", userId).maybeSingle();
+    if (permissionsError) throw permissionsError;
+    const perms = normalizePermissions(permsRow as Record<string, unknown> | null);
 
     // Collect IDs of protected accounts (super_admin + moderateur) for exclusion in KPI counts
     const { data: protectedRows } = await sb.from("user_roles")
       .select("user_id")
       .in("role", ["super_admin", "moderateur"]);
-    const protectedIds: string[] = (protectedRows ?? []).map((r) => (r as unknown as { user_id: string }).user_id);
+    const protectedIds: string[] = (protectedRows ?? []).map((r: Record<string, unknown>) => (r as unknown as { user_id: string }).user_id);
 
     // Dynamic KPIs
     const kpis: Record<string, number> = {};
@@ -55,13 +103,13 @@ Deno.serve(async (req: Request) => {
       const { count } = await sb.from("courses").select("*", { count: "exact", head: true }).eq("status", "en_attente_validation_manuelle");
       kpis.cours_en_attente = count ?? 0;
     }
-    if (perms.can_validate_professor_kyc || perms.can_validate_establishment_kyc) {
+    if (perms.can_validate_professor_kyc || perms.can_validate_structure_kyc) {
       let kyc = 0;
       if (perms.can_validate_professor_kyc) {
         const { count } = await sb.from("professeur_profiles").select("*", { count: "exact", head: true }).eq("kyc_status", "en_attente");
         kyc += count ?? 0;
       }
-      if (perms.can_validate_establishment_kyc) {
+      if (perms.can_validate_structure_kyc) {
         const { count } = await sb.from("etablissement_profiles").select("*", { count: "exact", head: true }).eq("kyc_status", "en_attente");
         kyc += count ?? 0;
       }
@@ -102,42 +150,42 @@ Deno.serve(async (req: Request) => {
 
     if (perms.can_see_pending_courses) {
       const { data: courses } = await sb.from("courses").select("id,title,created_at").eq("status", "en_attente_validation_manuelle").order("created_at", { ascending: true }).limit(5);
-      (courses ?? []).forEach((c) => {
+      (courses ?? []).forEach((c: Record<string, unknown>) => {
         const cc = c as unknown as { id: string; title: string; created_at: string };
         queue.push({ type: "cours", title: cc.title, created_at: cc.created_at, target_id: cc.id, priority: 1 });
       });
     }
     if (perms.can_validate_professor_kyc) {
       const { data: profs } = await sb.from("professeur_profiles").select("id,user_id,expertise_domain,created_at").eq("kyc_status", "en_attente").order("created_at", { ascending: true }).limit(3);
-      (profs ?? []).forEach((p) => {
+      (profs ?? []).forEach((p: Record<string, unknown>) => {
         const pp = p as unknown as { id: string; user_id: string; expertise_domain: string; created_at: string };
         queue.push({ type: "kyc_prof", title: `KYC Professeur - ${pp.expertise_domain || "—"}`, created_at: pp.created_at, target_id: pp.user_id, priority: 2 });
       });
     }
-    if (perms.can_validate_establishment_kyc) {
+    if (perms.can_validate_structure_kyc) {
       const { data: etabs } = await sb.from("etablissement_profiles").select("id,user_id,school_name,created_at").eq("kyc_status", "en_attente").order("created_at", { ascending: true }).limit(3);
-      (etabs ?? []).forEach((e) => {
+      (etabs ?? []).forEach((e: Record<string, unknown>) => {
         const ee = e as unknown as { id: string; user_id: string; school_name: string; created_at: string };
         queue.push({ type: "kyc_etab", title: `KYC Établissement - ${ee.school_name}`, created_at: ee.created_at, target_id: ee.user_id, priority: 2 });
       });
     }
     if (perms.can_moderate_jobs) {
       const { data: jobs } = await sb.from("job_offers").select("id,title,created_at").eq("status", "pending_moderation").order("created_at", { ascending: true }).limit(3);
-      (jobs ?? []).forEach((j) => {
+      (jobs ?? []).forEach((j: Record<string, unknown>) => {
         const jj = j as unknown as { id: string; title: string; created_at: string };
         queue.push({ type: "job", title: jj.title, created_at: jj.created_at, target_id: jj.id, priority: 3 });
       });
     }
     if (perms.can_manage_support) {
       const { data: tickets } = await sb.from("support_tickets").select("id,subject,created_at").eq("status", "open").order("created_at", { ascending: true }).limit(3);
-      (tickets ?? []).forEach((t) => {
+      (tickets ?? []).forEach((t: Record<string, unknown>) => {
         const tt = t as unknown as { id: string; subject: string; created_at: string };
         queue.push({ type: "support", title: tt.subject, created_at: tt.created_at, target_id: tt.id, priority: 4 });
       });
     }
     if (perms.can_moderate_forum) {
       const { data: flagged } = await sb.from("forum_posts").select("id,title,content,created_at").eq("is_flagged", true).order("created_at", { ascending: true }).limit(3);
-      (flagged ?? []).forEach((f) => {
+      (flagged ?? []).forEach((f: Record<string, unknown>) => {
         const ff = f as unknown as { id: string; title: string | null; content: string; created_at: string };
         queue.push({ type: "forum", title: ff.title || ff.content.slice(0, 60), created_at: ff.created_at, target_id: ff.id, priority: 5 });
       });

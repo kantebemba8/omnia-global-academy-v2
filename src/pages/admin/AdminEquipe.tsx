@@ -26,7 +26,7 @@ interface ActionRequest {
   status: string;
   created_at: string;
   moderator: { full_name: string; email: string };
-  target_user: { full_name: string; email: string };
+  target_user: { id: string; full_name: string; email: string };
 }
 
 const PERMISSION_SECTIONS: PermissionSection[] = [
@@ -34,6 +34,7 @@ const PERMISSION_SECTIONS: PermissionSection[] = [
     {key:'can_see_pending_courses',label:'Voir les formations en attente'},
     {key:'can_review_course_content',label:'Contrôler le contenu pédagogique'},
     {key:'can_request_course_modification',label:'Demander des modifications'},
+    {key:'can_reject_course',label:'Rejeter une formation non conforme'},
     {key:'can_recommend_course_price',label:'Proposer une décision de prix'},
     {key:'can_approve_transmit_course',label:'Approuver et transmettre au Super-admin'},
     {key:'can_manage_course_certifications',label:'Contrôler les demandes de certifications et badges'},
@@ -71,14 +72,8 @@ const PERMISSION_SECTIONS: PermissionSection[] = [
   ]},
 ];
 
-const ADMIN_ONLY_PERMISSIONS = new Set([
- 'can_finalize_course_price','can_publish_course','can_delete_course',
- 'can_manage_finance','can_manage_payouts','can_manage_platform_settings',
- 'can_manage_roles','can_manage_moderator_permissions','can_revoke_certificate',
- 'can_validate_live_refund','can_validate_live_payout'
-]);
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export default function AdminEquipe() {
   const [moderators, setModerators] = useState<ModeratorPermissions[]>([]);
@@ -105,7 +100,7 @@ export default function AdminEquipe() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=list`, {
         headers: authHeaders()
       });
       if (!res.ok) { let detail=''; try { const j=await res.json(); detail=j.message||j.error||''; } catch {} throw new Error(detail ? `Chargement impossible : ${detail}` : 'Impossible de charger les modérateurs'); }
@@ -130,23 +125,23 @@ export default function AdminEquipe() {
   useEffect(() => { fetchModerators(); }, []);
 
   // ── Charger les demandes en attente ──────────────────────
-  useEffect(() => {
-    const fetchRequests = async () => {
-      try {
-        setRequestsLoading(true);
-        const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/moderator_action_requests?status=eq.pending&select=id,action_type,reason,status,created_at,moderator:moderator_id(full_name,email),target_user:target_user_id(full_name,email)&order=created_at.desc`,
-          { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token()}` } }
-        );
-        if (res.ok) setActionRequests(await res.json() || []);
-      } catch (err) {
-        console.error('Error fetching action requests:', err);
-      } finally {
-        setRequestsLoading(false);
-      }
-    };
-    fetchRequests();
-  }, []);
+  const fetchRequests = async () => {
+    try {
+      setRequestsLoading(true);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=requests`, {
+        headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || 'Impossible de charger les demandes');
+      setActionRequests(data.requests || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de chargement des demandes');
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchRequests(); }, []);
 
   // ── Toggle permission ─────────────────────────────────────
   const togglePermission = (userId: string, permKey: string) => {
@@ -188,10 +183,10 @@ export default function AdminEquipe() {
   const deleteModerator = async (userId: string) => {
     if (pendingDeleteId !== userId) { setPendingDeleteId(userId); return; }
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=delete`, {
         method: 'POST',
         headers: authHeaders(true),
-        body: JSON.stringify({ moderator_id: userId, action: 'delete' })
+        body: JSON.stringify({ user_id: userId })
       });
       if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la suppression'); }
       setModerators(prev => prev.filter(m => m.user_id !== userId));
@@ -240,26 +235,19 @@ export default function AdminEquipe() {
   const reviewRequest = async (id: string, approve: boolean) => {
     try {
       setReviewingId(id);
-      const req = actionRequests.find(r => r.id === id);
-      if (!req) return;
-      if (approve) {
-        await fetch(`${SUPABASE_URL}/functions/v1/moderator-account-action`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_user_id: req.target_user, action: req.action_type === 'suspend' ? 'suspend' : req.action_type === 'reactivate' ? 'reactivate' : 'validate', admin_override: true }),
-        });
-      }
-      const adminId = (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.id ?? ''; } catch { return ''; } })();
-      await fetch(`${SUPABASE_URL}/rest/v1/moderator_action_requests?id=eq.${id}`, {
-        method: 'PATCH',
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ status: approve ? 'approved' : 'rejected', reviewed_by: adminId || null, reviewed_at: new Date().toISOString() }),
+      setError(null);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=review_request`, {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({ request_id: id, approve }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || 'Impossible de traiter la demande');
       setActionRequests(prev => prev.filter(r => r.id !== id));
       setSuccessMessage(approve ? 'Demande approuvée et action exécutée.' : 'Demande rejetée.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      console.error('Error reviewing request:', err);
+      setError(err instanceof Error ? err.message : 'Erreur pendant la validation');
     } finally {
       setReviewingId(null);
     }

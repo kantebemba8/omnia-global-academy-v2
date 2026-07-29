@@ -11,7 +11,7 @@ interface CourseItem {
 }
 interface CoursesData {
   courses: CourseItem[];
-  permissions: { can_see_pending_courses: boolean; can_validate_course_price: boolean; can_reject_course: boolean; can_transmit_course_to_admin: boolean };
+  permissions: { can_see_pending_courses: boolean; can_review_course_content: boolean; can_recommend_course_price: boolean; can_reject_course: boolean; can_approve_transmit_course: boolean };
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -35,13 +35,20 @@ export default function ModerateurCours() {
   const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
     (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
 
-  function load() {
+  async function load() {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
-    fetch(ENDPOINTS.moderatorCourseAction, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('omnia_session_token');
+      const response = await fetch(ENDPOINTS.moderatorCourseAction, { headers: { Authorization: `Bearer ${token}` } });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || result.error || 'Impossible de charger les formations');
+      setData(result as CoursesData);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -54,18 +61,19 @@ export default function ModerateurCours() {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ course_id: courseId, action, ...extra }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     setSubmitting(false);
     if (d.error === 'CONFLICT_OF_INTEREST') {
-      setToast("Conflit d'intérêt détecté — dossier transmis au Super-admin.");
-    } else if (d.success) {
+      setToast(d.message || "Conflit d'intérêt détecté.");
+    } else if (res.ok && d.success) {
       setToast(d.message ?? 'Action effectuée.');
       setModal(null);
       setReason('');
       setPrice('');
+      setOralJustification('');
       load();
     } else {
-      setToast(d.message ?? "Erreur lors de l'action.");
+      setToast(d.message || d.error || "Erreur lors de l'action.");
     }
     setTimeout(() => setToast(''), 4000);
   }
@@ -158,13 +166,13 @@ export default function ModerateurCours() {
 
                       {/* Actions */}
                       <div className="flex flex-wrap gap-2 pt-1">
-                        {perms?.can_validate_course_price && (
+                        {perms?.can_recommend_course_price && (
                           <button onClick={() => { setModal({ course: c, action: 'price' }); setPrice(String(c.price ?? '')); }}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors">
                             <DollarSign className="w-3.5 h-3.5" style={{ color: '#BF8813' }} /> Modifier le prix
                           </button>
                         )}
-                        {perms?.can_transmit_course_to_admin && c.status === 'en_attente_validation_manuelle' && (
+                        {perms?.can_approve_transmit_course && c.status === 'en_attente_validation_manuelle' && (
                           <button onClick={() => setModal({ course: c, action: 'transmit' })}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                             style={{ backgroundColor: '#1E7A52' }}>
@@ -180,7 +188,7 @@ export default function ModerateurCours() {
                       </div>
 
                       {/* Oral exam workflow */}
-                      {c.category === 'Langues & Linguistique' && c.examen_oral_statut && c.examen_oral_statut !== 'non_propose' && (
+                      {perms?.can_review_course_content && c.category === 'Langues & Linguistique' && c.examen_oral_statut && c.examen_oral_statut !== 'non_propose' && (
                         <div className="rounded-xl p-4 mt-2" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                           <div className="flex items-center gap-2 mb-3">
                             <Mic className="w-4 h-4" style={{ color: '#1E7A52' }} />
@@ -249,7 +257,7 @@ export default function ModerateurCours() {
                     placeholder="Expliquez les raisons du rejet…" />
                   <div className="flex gap-3 justify-end pt-2">
                     <button onClick={() => setModal(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Annuler</button>
-                    <button onClick={() => doAction(modal.course.id, 'reject', { reason })} disabled={submitting || !reason.trim()}
+                    <button onClick={() => doAction(modal.course.id, 'reject', { comment: reason })} disabled={submitting || !reason.trim()}
                       className="px-4 py-2 text-sm rounded-lg text-white font-medium bg-red-600 hover:bg-red-700 disabled:opacity-60">
                       {submitting ? 'En cours…' : 'Rejeter'}
                     </button>
@@ -265,7 +273,7 @@ export default function ModerateurCours() {
                     placeholder="Prix en XOF" />
                   <div className="flex gap-3 justify-end pt-2">
                     <button onClick={() => setModal(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Annuler</button>
-                    <button onClick={() => doAction(modal.course.id, 'set_price', { price: Number(price) })} disabled={submitting || !price}
+                    <button onClick={() => doAction(modal.course.id, 'set_price', { price_xof: Number(price) })} disabled={submitting || !price}
                       className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-60"
                       style={{ backgroundColor: '#BF8813' }}>
                       {submitting ? 'En cours…' : 'Enregistrer le prix'}

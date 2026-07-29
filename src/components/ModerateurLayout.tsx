@@ -8,15 +8,15 @@ import { ENDPOINTS } from '../lib/config';
 
 interface ModPerms {
   can_see_pending_courses: boolean;
-  can_validate_course_price: boolean;
+  can_recommend_course_price: boolean;
   can_reject_course: boolean;
-  can_transmit_course_to_admin: boolean;
+  can_approve_transmit_course: boolean;
   can_validate_professor_kyc: boolean;
+  can_validate_structure_kyc: boolean;
   can_see_learners_list: boolean;
   can_see_professors_list: boolean;
-  can_suspend_account: boolean;
+  can_request_account_suspension: boolean;
   can_moderate_forum: boolean;
-  can_post_job_offers: boolean;
   can_moderate_jobs: boolean;
   can_manage_support: boolean;
   can_view_moderation_log: boolean;
@@ -30,19 +30,19 @@ function buildModNav(perms: ModPerms) {
   const items: ModeratorNavItem[] = [
     { path: '/moderator/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true, always: true },
   ];
-  if (perms.can_see_pending_courses || perms.can_reject_course || perms.can_transmit_course_to_admin) {
+  if (perms.can_see_pending_courses || perms.can_reject_course || perms.can_approve_transmit_course) {
     items.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen, always: false });
   }
   if (perms.can_validate_professor_kyc) {
     items.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield, always: false });
   }
-  if (perms.can_see_learners_list || perms.can_see_professors_list || perms.can_suspend_account) {
+  if (perms.can_see_learners_list || perms.can_see_professors_list || perms.can_request_account_suspension) {
     items.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users, always: false });
   }
   if (perms.can_moderate_forum) {
     items.push({ path: '/moderator/forum', label: 'Forum', icon: MessageSquare, always: false });
   }
-  if (perms.can_moderate_jobs || perms.can_post_job_offers) {
+  if (perms.can_moderate_jobs) {
     items.push({ path: '/moderator/jobs', label: "Offres d'emploi", icon: Briefcase, always: false });
   }
   if (perms.can_manage_support) {
@@ -68,12 +68,12 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
         const u = JSON.parse(stored);
         if (u?.roles?.includes('super_admin')) {
           setNavItems(buildModNav({
-            can_see_pending_courses: true, can_validate_course_price: true,
-            can_reject_course: true, can_transmit_course_to_admin: true,
-            can_validate_professor_kyc: true,
+            can_see_pending_courses: true, can_recommend_course_price: true,
+            can_reject_course: true, can_approve_transmit_course: true,
+            can_validate_professor_kyc: true, can_validate_structure_kyc: true,
             can_see_learners_list: true, can_see_professors_list: true,
-            can_suspend_account: true, can_moderate_forum: true,
-            can_post_job_offers: true, can_moderate_jobs: true,
+            can_request_account_suspension: true, can_moderate_forum: true,
+            can_moderate_jobs: true,
             can_manage_support: true, can_view_moderation_log: true,
             can_view_analytics: true, can_view_financial_summary: true,
           }));
@@ -89,14 +89,17 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
       try {
         const perms = JSON.parse(cached) as ModPerms;
         setNavItems(buildModNav(perms));
-        return;
       } catch { /* fetch fresh */ }
     }
 
     fetch(ENDPOINTS.dashboardModerateur, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.message || data.error || 'Permissions indisponibles');
+        return data;
+      })
       .then((data) => {
         if (data.permissions) {
           localStorage.setItem('mod_perms', JSON.stringify(data.permissions));

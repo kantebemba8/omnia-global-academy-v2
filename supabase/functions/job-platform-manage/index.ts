@@ -173,6 +173,54 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "");
 
+    if (action === "admin_list_jobs") {
+      if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const { data, error } = await sb.from("job_offers").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      const jobs = (data || []).map((job: any) => ({
+        ...job,
+        created_by_role: job.created_by_role || (job.organization_id ? "structure" : job.is_external_recruiter ? "recruteur_externe" : "plateforme"),
+      }));
+      return json({ success: true, jobs });
+    }
+
+    if (action === "admin_decide_job") {
+      if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const jobId = String(body.job_id || "");
+      const decision = String(body.decision || "");
+      const reason = String(body.reason || "").trim();
+      const statusByDecision: Record<string, string> = {
+        approve: "approved",
+        reject: "rejected",
+        changes_requested: "changes_requested",
+        suspend: "suspended",
+        archive: "archived",
+      };
+      if (!jobId || !statusByDecision[decision]) return json({ error: "INVALID_DECISION" }, 400);
+      if (["reject", "changes_requested"].includes(decision) && !reason) {
+        return json({ error: "REASON_REQUIRED", message: "Un commentaire est requis pour cette décision." }, 400);
+      }
+      const now = new Date().toISOString();
+      const { data: job, error } = await sb.from("job_offers").update({
+        status: statusByDecision[decision],
+        moderated_by: session.userId,
+        moderated_at: now,
+        updated_at: now,
+        rejection_reason: ["reject", "changes_requested"].includes(decision) ? reason : null,
+      }).eq("id", jobId).select("*").maybeSingle();
+      if (error) throw error;
+      if (!job) return json({ error: "JOB_NOT_FOUND" }, 404);
+      const { error: logError } = await sb.from("moderation_log").insert({
+        moderator_id: session.userId,
+        action_type: `job_${decision}`,
+        target_type: "job_offer",
+        target_id: jobId,
+        comment: reason || null,
+      });
+      if (logError) console.error("job-platform-manage: moderation log failed", logError.message);
+      return json({ success: true, job });
+    }
+
     if (action === "list_my_jobs") {
       let query = sb.from("job_offers").select("*").order("created_at", { ascending: false });
       if (session.organizationId) query = query.eq("organization_id", session.organizationId);
@@ -204,7 +252,8 @@ Deno.serve(async (req: Request) => {
         ...job,
         posted_by_id: session.userId,
         organization_id: session.organizationId,
-        is_external_recruiter: !session.organizationId,
+        is_external_recruiter: isIndependentRecruiter(session),
+        created_by_role: isSuperAdmin(session) ? "super_admin" : session.organizationId ? "structure" : "recruteur_independant",
         status: "pending_moderation",
         updated_at: new Date().toISOString(),
       }).select("*").single();

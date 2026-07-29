@@ -200,37 +200,27 @@ export default function ModerateurUtilisateurs() {
   async function submitRequest() {
     if (!requestModal || !reason.trim()) return;
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
-    const moderatorRaw = localStorage.getItem('omnia_user');
-    let moderatorId = '';
-    try { moderatorId = JSON.parse(moderatorRaw || '{}')?.id ?? ''; } catch { /* */ }
-
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/moderator_action_requests`,
-      {
+    try {
+      const token = localStorage.getItem('omnia_session_token');
+      const res = await fetch(ENDPOINTS.moderatorAccountAction, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          moderator_id: moderatorId,
-          action_type: requestModal.actionType,
+          action: 'submit_request',
+          request_action: requestModal.actionType,
           target_user_id: requestModal.user.id,
           reason: reason.trim(),
-          status: 'pending',
         }),
-      }
-    );
-    setSubmitting(false);
-    if (res.ok || res.status === 201) {
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || 'Échec de la soumission');
       setRequestModal(null);
       setReason('');
-      showToast('Votre demande a été soumise au Super-admin pour validation.');
-    } else {
-      showToast('Erreur lors de la soumission. Réessayez.', false);
+      showToast(data.message || 'Votre demande a été soumise au Super-admin pour validation.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Erreur lors de la soumission. Réessayez.', false);
+    } finally {
+      setSubmitting(false);
     }
   }
 

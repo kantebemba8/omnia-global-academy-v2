@@ -29,9 +29,11 @@ Deno.serve(async (req: Request) => {
     const modId = await verifyModerator(sb, token);
     if (!modId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions").select("can_moderate_jobs").eq("moderator_user_id", modId).maybeSingle();
-    const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
-    if (!perms.can_moderate_jobs) return json({ error: "FORBIDDEN", message: "Permission can_moderate_jobs requise." }, 403);
+    const { data: permsRow, error: permsError } = await sb.from("moderator_permissions").select("can_moderate_jobs,permissions").eq("moderator_user_id", modId).maybeSingle();
+    if (permsError) throw permsError;
+    const nested = permsRow?.permissions && typeof permsRow.permissions === "object" ? permsRow.permissions as Record<string, unknown> : {};
+    const canModerateJobs = permsRow?.can_moderate_jobs === true || nested.can_moderate_jobs === true;
+    if (!canModerateJobs) return json({ error: "FORBIDDEN", message: "Permission can_moderate_jobs requise." }, 403);
 
     // GET — list job offers
     if (req.method === "GET") {
@@ -40,7 +42,7 @@ Deno.serve(async (req: Request) => {
       const { data: rejected } = await sb.from("job_offers").select("id,title,status,moderated_at").eq("status", "rejected").order("moderated_at", { ascending: false }).limit(20);
 
       // Enrich pending with establishment info
-      const enrichedPending = await Promise.all((pending ?? []).map(async (j) => {
+      const enrichedPending = await Promise.all((pending ?? []).map(async (j: Record<string, unknown>) => {
         const jj = j as unknown as { id: string; title: string; description: string; location: string; contract_type: string; category: string; deadline: string; status: string; posted_by_id: string; establishment_id: string | null; created_at: string };
         let school_name = null;
         if (jj.establishment_id) {
@@ -58,10 +60,20 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { job_id, action, reason } = body as { job_id: string; action: "approve" | "reject"; reason?: string };
     if (!job_id || !["approve", "reject"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
+    if (action === "reject" && !String(reason || "").trim()) return json({ error: "REASON_REQUIRED" }, 400);
 
     const now = new Date().toISOString();
-    await sb.from("job_offers").update({ status: action === "approve" ? "approved" : "rejected", moderated_by: modId, moderated_at: now }).eq("id", job_id);
-    await sb.from("moderation_log").insert({ moderator_id: modId, action_type: action === "approve" ? "job_approved" : "job_rejected", target_type: "job_offer", target_id: job_id, comment: reason ?? null });
+    const { data: job, error: updateError } = await sb.from("job_offers").update({
+      status: action === "approve" ? "approved" : "rejected",
+      moderated_by: modId,
+      moderated_at: now,
+      updated_at: now,
+      rejection_reason: action === "reject" ? String(reason).trim() : null,
+    }).eq("id", job_id).select("id").maybeSingle();
+    if (updateError) throw updateError;
+    if (!job) return json({ error: "JOB_NOT_FOUND" }, 404);
+    const { error: logError } = await sb.from("moderation_log").insert({ moderator_id: modId, action_type: action === "approve" ? "job_approved" : "job_rejected", target_type: "job_offer", target_id: job_id, comment: reason ?? null });
+    if (logError) console.error("moderator-job-action: log failed", logError.message);
 
     return json({ success: true });
   } catch (err) {

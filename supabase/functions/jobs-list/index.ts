@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
   const requiredLevel = url.searchParams.get("required_level") || "";
 
   let query = sb.from("job_offers")
-    .select("id, title, description, location, contract_type, category, salary_range, deadline, is_external_recruiter, recruiter_company, establishment_id, views_count, applications_count, created_at, required_level", { count: "exact" })
+    .select("id,title,description,location,contract_type,category,salary_range,deadline,is_external_recruiter,recruiter_company,establishment_id,views_count,applications_count,created_at,required_level,application_mode", { count: "exact" })
     .eq("status", "approved")
     .order("created_at", { ascending: false });
 

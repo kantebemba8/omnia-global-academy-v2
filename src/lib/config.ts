@@ -58,6 +58,7 @@ export const ENDPOINTS ={
   paymentProviderStatus: `${API_BASE_URL}/payment-provider-status`,
   adminDemoConfigure: `${API_BASE_URL}/admin-demo-configure`,
   adminSchoolSplit: `${API_BASE_URL}/admin-school-split`,
+  coursePricingWorkflow: `${API_BASE_URL}/course-pricing-workflow`,
   // Module 11 — Paiement
   checkoutInit: `${API_BASE_URL}/checkout-init`,
   checkoutValidateCoupon: `${API_BASE_URL}/checkout-validate-coupon`,

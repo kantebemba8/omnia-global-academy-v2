@@ -28,7 +28,7 @@ Deno.serve(async (req: Request) => {
   if (!job_id) return json({ error: "MISSING_JOB_ID" }, 400);
 
   const { data: job } = await sb.from("job_offers")
-    .select("id, title, status, deadline, applications_count, recruiter_email")
+    .select("id,title,status,deadline,applications_count,recruiter_email,application_mode,external_apply_url,external_apply_email")
     .eq("id", job_id).maybeSingle();
   if (!job || job.status !== "approved") return json({ error: "JOB_NOT_FOUND" }, 404);
   if (job.deadline && new Date(job.deadline) < new Date()) return json({ error: "DEADLINE_PASSED" }, 422);
@@ -57,5 +57,10 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return json({ success: true });
+  return json({
+    success: true,
+    application_mode: job.application_mode || "omnia_managed",
+    external_url: job.application_mode === "external_link" ? job.external_apply_url : null,
+    external_email: job.application_mode === "external_email" ? (job.external_apply_email || job.recruiter_email) : null,
+  });
 });

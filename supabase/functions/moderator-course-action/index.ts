@@ -2,146 +2,250 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-async function verifyModerator(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
-  const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as unknown as { user_id: string }).user_id).eq("role", "moderateur").maybeSingle();
-  if (!role) return null;
-  return (sess as unknown as { user_id: string }).user_id;
+type SupabaseClient = ReturnType<typeof createClient>;
+type PermissionMap = Record<string, boolean>;
+
+function normalizePermissions(row: Record<string, unknown> | null): PermissionMap {
+  const nested = row?.permissions && typeof row.permissions === "object" && !Array.isArray(row.permissions)
+    ? row.permissions as Record<string, unknown>
+    : {};
+  const enabled = (canonical: string, legacy?: string) => nested[canonical] === true || row?.[canonical] === true || (!!legacy && (nested[legacy] === true || row?.[legacy] === true));
+  const recommendPrice = enabled("can_recommend_course_price", "can_validate_course_price");
+  const transmit = enabled("can_approve_transmit_course", "can_transmit_course_to_admin");
+  return {
+    can_see_pending_courses: enabled("can_see_pending_courses"),
+    can_review_course_content: enabled("can_review_course_content"),
+    can_request_course_modification: enabled("can_request_course_modification"),
+    can_recommend_course_price: recommendPrice,
+    can_validate_course_price: recommendPrice,
+    can_reject_course: enabled("can_reject_course"),
+    can_approve_transmit_course: transmit,
+    can_transmit_course_to_admin: transmit,
+  };
+}
+
+async function verifyModerator(sb: SupabaseClient, token: string) {
+  const { data: session, error: sessionError } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (sessionError || !session) return null;
+
+  const { data: role, error: roleError } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id)
+    .eq("role", "moderateur")
+    .maybeSingle();
+  if (roleError || !role) return null;
+  return String(session.user_id);
+}
+
+async function notifyInstructor(
+  sb: SupabaseClient,
+  instructorId: string,
+  params: Record<string, string>,
+) {
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
+  if (!brevoKey) return;
+  const { data: instructor } = await sb.from("users").select("email,full_name").eq("id", instructorId).maybeSingle();
+  if (!instructor?.email) return;
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      templateId: 3,
+      to: [{ email: instructor.email, name: instructor.full_name || "Formateur" }],
+      params,
+      sender: { name: "Omnia Global Academy", email: "support@omniaglobalacademy.com" },
+    }),
+  });
+  if (!response.ok) console.error("moderator-course-action: notification failed", response.status);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const modId = await verifyModerator(sb, token);
-    if (!modId) return json({ error: "FORBIDDEN" }, 403);
+    const url = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!url || !serviceKey) return json({ error: "SERVER_CONFIG_ERROR" }, 500);
+    const sb = createClient(url, serviceKey);
+    const moderatorId = await verifyModerator(sb, token);
+    if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions").select("can_see_pending_courses,can_validate_course_price,can_reject_course,can_request_course_modification,can_approve_transmit_course").eq("moderator_user_id", modId).maybeSingle();
-    const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
+    const { data: permissionRow, error: permissionError } = await sb
+      .from("moderator_permissions")
+      .select("*")
+      .eq("moderator_user_id", moderatorId)
+      .maybeSingle();
+    if (permissionError) throw permissionError;
+    const permissions = normalizePermissions(permissionRow as Record<string, unknown> | null);
 
-    // GET — list courses
     if (req.method === "GET") {
-      if (!perms.can_see_pending_courses) return json({ error: "FORBIDDEN", message: "Permission can_see_pending_courses requise." }, 403);
+      if (!permissions.can_see_pending_courses) {
+        return json({ error: "FORBIDDEN", message: "Permission de consultation des formations requise." }, 403);
+      }
 
-      const { data: courses } = await sb.from("courses").select("id,title,category,level,status,score_calcule,prix_provisoire_xof,price_xof,requested_cpd,final_validation_type,instructor_id,created_at,admin_comment,rejection_reason")
+      const { data: courses, error: coursesError } = await sb
+        .from("courses")
+        .select("id,title,description,category,level,status,score_calcule,prix_provisoire_xof,price_xof,requested_cpd,final_validation_type,instructor_id,created_at,admin_comment,rejection_reason,examen_oral_statut,examen_oral_consignes,examen_oral_justification_moderateur")
         .in("status", ["en_attente_validation_manuelle", "validee", "rejetee", "modification_demandee"])
         .order("created_at", { ascending: true });
+      if (coursesError) throw coursesError;
 
-      const enriched = await Promise.all((courses ?? []).map(async (c) => {
-        const cc = c as unknown as Record<string, unknown>;
-        const { data: instr } = await sb.from("users").select("full_name").eq("id", cc.instructor_id as string).maybeSingle();
-        const { data: mods } = await sb.from("modules").select("id,title,position").eq("course_id", cc.id as string).order("position");
-        const moduleIds = (mods ?? []).map((m) => (m as unknown as { id: string }).id);
-        let lessonCount = 0;
-        let modulesWithLessons: unknown[] = [];
-        if (moduleIds.length > 0) {
-          const { data: lessons } = await sb.from("lessons").select("id,title,position,module_id").in("module_id", moduleIds).order("position");
-          lessonCount = lessons?.length ?? 0;
-          modulesWithLessons = (mods ?? []).map((m) => {
-            const mm = m as unknown as { id: string; title: string; position: number };
-            return { ...mm, lessons: (lessons ?? []).filter((l) => (l as unknown as { module_id: string }).module_id === mm.id).map((l) => ({ title: (l as unknown as { title: string }).title })) };
-          });
-        }
-        return { ...cc, instructor_name: (instr as unknown as { full_name: string } | null)?.full_name ?? "—", module_count: mods?.length ?? 0, lesson_count: lessonCount, modules: modulesWithLessons };
+      const instructorIds = [...new Set((courses || []).map((course: Record<string, unknown>) => course.instructor_id).filter(Boolean).map(String))];
+      const { data: instructors, error: instructorsError } = instructorIds.length
+        ? await sb.from("users").select("id,full_name,email").in("id", instructorIds)
+        : { data: [], error: null };
+      if (instructorsError) throw instructorsError;
+      const instructorsById = new Map<string, Record<string, unknown>>((instructors || []).map((user: Record<string, unknown>) => [String(user.id), user]));
+
+      const enriched = await Promise.all((courses || []).map(async (course: Record<string, unknown>) => {
+        const courseId = String(course.id);
+        const { data: modules, error: modulesError } = await sb.from("modules").select("id,title,position").eq("course_id", courseId).order("position");
+        if (modulesError) throw modulesError;
+        const moduleIds = (modules || []).map((module: { id: string }) => String(module.id));
+        const { data: lessons, error: lessonsError } = moduleIds.length
+          ? await sb.from("lessons").select("id,title,position,module_id").in("module_id", moduleIds).order("position")
+          : { data: [], error: null };
+        if (lessonsError) throw lessonsError;
+        const instructor = instructorsById.get(String(course.instructor_id)) || ({} as Record<string, unknown>);
+
+        return {
+          ...course,
+          instructor_name: String(instructor.full_name || "—"),
+          instructor_email: String(instructor.email || "—"),
+          price: course.price_xof ?? course.prix_provisoire_xof ?? null,
+          modules_count: (modules || []).length,
+          lessons_count: (lessons || []).length,
+          modules: (modules || []).map((module: Record<string, unknown>) => ({
+            ...module,
+            lessons: (lessons || []).filter((lesson: Record<string, unknown>) => String(lesson.module_id) === String(module.id)),
+          })),
+        };
       }));
 
-      return json({ courses: enriched });
+      return json({ courses: enriched, permissions });
     }
 
-    // POST — action
-    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-    const body = await req.json();
-    const { course_id, action, price_xof, comment } = body as { course_id: string; action: string; price_xof?: number; comment?: string };
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const courseId = String(body.course_id || "");
+    const action = String(body.action || "");
+    const comment = String(body.comment || "").trim();
+    if (!courseId || !action) return json({ error: "MISSING_FIELDS" }, 400);
 
-    if (!course_id || !action) return json({ error: "MISSING_FIELDS" }, 400);
-
-    // Permission checks per action
-    const permMap: Record<string, string> = {
-      validate: "can_validate_course_price",
+    const requiredPermission: Record<string, string> = {
+      set_price: "can_recommend_course_price",
       reject: "can_reject_course",
       request_modification: "can_request_course_modification",
       transmit_to_admin: "can_approve_transmit_course",
+      confirm_oral_exam: "can_review_course_content",
+      recommend_oral_exam: "can_review_course_content",
     };
-    if (!permMap[action]) return json({ error: "INVALID_ACTION" }, 400);
-    if (!perms[permMap[action]]) return json({ error: "FORBIDDEN", message: `Permission ${permMap[action]} requise.` }, 403);
+    const permissionKey = requiredPermission[action];
+    if (!permissionKey) return json({ error: "INVALID_ACTION" }, 400);
+    if (!permissions[permissionKey]) return json({ error: "FORBIDDEN", message: `Permission ${permissionKey} requise.` }, 403);
 
-    // Anti-conflict of interest
-    const { data: courseRow } = await sb.from("courses").select("id,instructor_id,title").eq("id", course_id).maybeSingle();
-    if (!courseRow) return json({ error: "COURSE_NOT_FOUND" }, 404);
-    const cr = courseRow as unknown as { id: string; instructor_id: string; title: string };
-    if (cr.instructor_id === modId) {
-      return json({ error: "CONFLICT_OF_INTEREST", message: "Vous ne pouvez pas modérer votre propre formation. Dossier réassigné au Super-admin." }, 403);
+    const { data: course, error: courseError } = await sb
+      .from("courses")
+      .select("id,title,instructor_id,status,category,examen_oral_statut")
+      .eq("id", courseId)
+      .maybeSingle();
+    if (courseError) throw courseError;
+    if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
+    if (String(course.instructor_id) === moderatorId) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Vous ne pouvez pas modérer votre propre formation." }, 403);
     }
 
-    let update: Record<string, unknown> = { moderated_by: modId, moderated_at: new Date().toISOString() };
-    let logAction = "";
-    let brevoTemplateParams: Record<string, string> = { COURSE_TITLE: cr.title };
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = { moderated_by: moderatorId, moderated_at: now };
+    let logAction = action;
+    const notificationParams: Record<string, string> = { COURSE_TITLE: String(course.title || "Formation") };
+    let shouldNotify = false;
 
-    if (action === "validate") {
-      update = { ...update, status: "validee", price_xof: price_xof ?? undefined };
-      logAction = "course_approved";
-      brevoTemplateParams.STATUS = "validee";
-      if (price_xof) brevoTemplateParams.PRIX = `${price_xof.toLocaleString()} XOF`;
+    if (action === "set_price") {
+      const price = Number(body.price_xof);
+      if (!Number.isFinite(price) || price < 0) return json({ error: "INVALID_PRICE" }, 400);
+      update.price_xof = Math.round(price);
+      logAction = "course_price_recommended";
     } else if (action === "reject") {
       if (!comment) return json({ error: "COMMENT_REQUIRED" }, 400);
-      update = { ...update, status: "rejetee", rejection_reason: comment };
+      update.status = "rejetee";
+      update.rejection_reason = comment;
       logAction = "course_rejected";
-      brevoTemplateParams.STATUS = "rejetee";
-      brevoTemplateParams.REASON = comment;
+      notificationParams.STATUS = "rejetee";
+      notificationParams.REASON = comment;
+      shouldNotify = true;
     } else if (action === "request_modification") {
       if (!comment) return json({ error: "COMMENT_REQUIRED" }, 400);
-      update = { ...update, status: "modification_demandee", admin_comment: comment };
+      update.status = "modification_demandee";
+      update.admin_comment = comment;
       logAction = "course_modification_requested";
-      brevoTemplateParams.STATUS = "modification_demandee";
-      brevoTemplateParams.COMMENT = comment;
+      notificationParams.STATUS = "modification_demandee";
+      notificationParams.COMMENT = comment;
+      shouldNotify = true;
     } else if (action === "transmit_to_admin") {
+      update.status = "validee";
+      update.rejection_reason = null;
       logAction = "course_transmitted_to_admin";
-      // Do NOT change status — stays 'validee', super-admin publishes
+    } else if (action === "confirm_oral_exam") {
+      if (course.category !== "Langues & Linguistique" || course.examen_oral_statut === "non_propose") {
+        return json({ error: "ORAL_EXAM_NOT_PROPOSED" }, 409);
+      }
+      update.examen_oral_statut = "confirme";
+      logAction = "oral_exam_confirmed";
+    } else if (action === "recommend_oral_exam") {
+      if (course.category !== "Langues & Linguistique") return json({ error: "ORAL_EXAM_NOT_APPLICABLE" }, 409);
+      update.examen_oral_statut = "recommande_par_moderateur";
+      update.examen_oral_justification_moderateur = String(body.justification || "").trim() || null;
+      logAction = "oral_exam_recommended";
     }
 
-    if (Object.keys(update).length > 2) {
-      await sb.from("courses").update(update).eq("id", course_id);
-    }
+    const { error: updateError } = await sb.from("courses").update(update).eq("id", courseId);
+    if (updateError) throw updateError;
 
-    // Log decision
-    await sb.from("moderation_log").insert({ moderator_id: modId, action_type: logAction, target_type: "course", target_id: course_id, comment: comment ?? null });
+    const { error: logError } = await sb.from("moderation_log").insert({
+      moderator_id: moderatorId,
+      action_type: logAction,
+      target_type: "course",
+      target_id: courseId,
+      comment: comment || String(body.justification || "").trim() || null,
+    });
+    if (logError) console.error("moderator-course-action: log failed", logError.message);
 
-    // Notify instructor via Brevo
-    const { data: instructor } = await sb.from("users").select("email,full_name").eq("id", cr.instructor_id).maybeSingle();
-    const brevoKey = Deno.env.get("BREVO_API_KEY");
-    if (brevoKey && instructor && action !== "transmit_to_admin") {
-      const iu = instructor as unknown as { email: string; full_name: string };
-      await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateId: 3,
-          to: [{ email: iu.email, name: iu.full_name }],
-          params: brevoTemplateParams,
-          sender: { name: "Omnia Global Academy", email: "support@omniaglobalacademy.com" },
-        }),
-      });
-    }
+    if (shouldNotify) await notifyInstructor(sb, String(course.instructor_id), notificationParams);
 
-    const message = action === "transmit_to_admin"
-      ? "Formation transmise au Super-admin pour approbation finale et publication."
-      : "Action effectuée avec succès.";
-    return json({ success: true, message });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+    const messages: Record<string, string> = {
+      set_price: "Prix recommandé enregistré.",
+      reject: "Formation rejetée.",
+      request_modification: "Demande de modification envoyée.",
+      transmit_to_admin: "Formation transmise au Super-admin pour décision finale.",
+      confirm_oral_exam: "Examen oral confirmé.",
+      recommend_oral_exam: "Recommandation transmise au Super-admin.",
+    };
+    return json({ success: true, message: messages[action] || "Action effectuée." });
+  } catch (error) {
+    console.error("moderator-course-action", error);
+    return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
