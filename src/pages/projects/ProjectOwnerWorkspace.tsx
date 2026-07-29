@@ -341,7 +341,7 @@ export default function ProjectOwnerWorkspace() {
     try {
       await evaluateProjectDeliverable(deliverable.id, status, feedback.trim(), score);
       await openApplications(selectedProject);
-      setMessage(status === 'accepted' ? 'Livrable validé. La preuve reste privée jusqu’au GM2.' : 'Évaluation du livrable enregistrée.');
+      setMessage(status === 'accepted' ? 'Livrable validé. La preuve reste privée jusqu’à sa validation et à l’accord de publication.' : 'Évaluation du livrable enregistrée.');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Évaluation impossible.');
     } finally {
@@ -380,7 +380,7 @@ export default function ProjectOwnerWorkspace() {
     <ProjectsWorkspaceFrame>
       <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Espace porteur</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Créez des missions structurées et suivez les candidatures.</p><Link to="/projects/gestion/recommandations" className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#76520A' }}>Gérer les recommandations</Link></div>
+          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Espace porteur</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Créez des missions structurées et suivez les candidatures.</p><Link to="/projects/gestion/recommandations" className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#76520A' }}>Recommandations professionnelles</Link></div>
           <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}><Plus size={17} /> Nouveau projet</button>
         </div>
 

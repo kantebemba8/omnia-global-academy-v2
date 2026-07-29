@@ -120,89 +120,70 @@ export function LandingPage() {
       <Navbar />
 
       {/* ── SECTION 2 : HERO ─────────────────────────────────────────── */}
-      <section className="px-6 pt-28 pb-16 md:pt-32 md:pb-20 bg-white">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-10">
-          {/* Left */}
-          <div className="flex-1 md:pr-10">
-            <div
-              className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full mb-5"
-              style={{ backgroundColor: 'rgba(191,136,19,0.10)', color: '#BF8813', letterSpacing: '0.05em' }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-              Nouveau · Certifications CPD
+      <section
+        className="px-6 pb-16 pt-28 md:pb-20 md:pt-32"
+        style={{ background: 'linear-gradient(135deg, #00183E 0%, #002A67 64%, #173E75 100%)' }}
+      >
+        <div className="mx-auto max-w-6xl">
+          <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#E8C76E]">
+            <Award size={17} /> Formation, compétences et opportunités
+          </div>
+
+          <h1
+            className="mt-4 max-w-4xl font-bold leading-tight text-white"
+            style={{ fontSize: 'clamp(34px,5vw,64px)', lineHeight: 1.08 }}
+          >
+            {data.hero.title_fr}
+          </h1>
+          <p className="mt-5 max-w-3xl text-base leading-7 text-blue-100 sm:text-lg">
+            {data.hero.subtitle_fr}
+          </p>
+
+          <form onSubmit={handleSearch} className="mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row">
+            <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/20 bg-white px-4">
+              <Search size={18} className="shrink-0 text-slate-400" />
+              <input
+                className="flex-1 bg-transparent py-3.5 text-sm text-slate-900 outline-none"
+                placeholder="Rechercher une formation..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
             </div>
-
-            <h1
-              className="font-bold leading-tight mb-4"
-              style={{ color: '#002050', fontSize: 'clamp(28px,4vw,52px)', lineHeight: 1.1 }}
+            <button
+              type="submit"
+              className="rounded-xl px-6 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: '#BF8813' }}
             >
-              {data.hero.title_fr}
-            </h1>
-            <p className="mb-8 max-w-lg" style={{ color: '#6B7280', fontSize: '16px', lineHeight: 1.65 }}>
-              {data.hero.subtitle_fr}
-            </p>
+              Rechercher
+            </button>
+          </form>
 
-            {/* Search bar */}
-            <form onSubmit={handleSearch} className="flex gap-0 mb-5 max-w-lg">
-              <div className="flex-1 flex items-center border border-r-0 rounded-l-xl px-4 gap-2" style={{ borderColor: '#E4E7EC' }}>
-                <Search size={17} style={{ color: '#9CA3AF', flexShrink: 0 }} />
-                <input
-                  className="flex-1 py-3.5 text-sm outline-none bg-transparent"
-                  style={{ color: '#111827' }}
-                  placeholder="Rechercher une formation..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <button
-                type="submit"
-                className="px-5 py-3.5 rounded-r-xl text-sm font-semibold text-white transition-opacity hover:opacity-85 flex-shrink-0"
-                style={{ backgroundColor: '#002050' }}
-              >
-                Rechercher
-              </button>
-            </form>
-
-           {/* Stats strip — uniquement les stats visibles et non nulles */}
-            {([
-              ['formations',     'Formations'],
-              ['apprenants',     'Apprenants'],
-              ['pays',           'Pays'],
-              ['formateurs',     'Formateurs'],
-              ['etablissements', 'Établissements partenaires'],
-            ] as [keyof typeof data.stats, string][])
-              .filter(([k]) => data.stats[k] !== null && data.stats_visibility[k as keyof typeof data.stats_visibility])
-              .length > 0 && (
-              <div className="flex flex-wrap gap-6">
-                {([
-                  ['formations',     'Formations'],
-                  ['apprenants',     'Apprenants'],
-                  ['pays',           'Pays'],
-                  ['formateurs',     'Formateurs'],
-                  ['etablissements', 'Établissements partenaires'],
-                ] as [keyof typeof data.stats, string][])
-                  .filter(([k]) => data.stats[k] !== null && data.stats_visibility[k as keyof typeof data.stats_visibility])
-                  .map(([k, label], i) => (
-                    <div key={k} className="flex items-center gap-3">
-                      {i > 0 && <div className="h-8 w-px" style={{ backgroundColor: '#E4E7EC' }} />}
-                      <div>
-                        <p className="font-bold leading-none" style={{ color: '#002050', fontSize: '22px' }}>{data.stats[k]}</p>
-                        <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{label}</p>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {/* Right */}
-          <div className="flex-shrink-0 w-full md:w-[45%] flex justify-center">
-            <img
-              src="/ChatGPT_Image_1_jul_2026,_21_21_28.png"
-              alt="Globe centré sur l'Afrique"
-              className="w-full max-w-md object-contain"
-            />
-          </div>
+          {([
+            ['formations', 'Formations'],
+            ['apprenants', 'Apprenants'],
+            ['pays', 'Pays'],
+            ['formateurs', 'Formateurs'],
+            ['etablissements', 'Structures partenaires'],
+          ] as [keyof typeof data.stats, string][])
+            .filter(([key]) => data.stats[key] !== null && data.stats_visibility[key as keyof typeof data.stats_visibility])
+            .length > 0 && (
+            <div className="mt-9 flex flex-wrap gap-x-8 gap-y-4 text-blue-50">
+              {([
+                ['formations', 'Formations'],
+                ['apprenants', 'Apprenants'],
+                ['pays', 'Pays'],
+                ['formateurs', 'Formateurs'],
+                ['etablissements', 'Structures partenaires'],
+              ] as [keyof typeof data.stats, string][])
+                .filter(([key]) => data.stats[key] !== null && data.stats_visibility[key as keyof typeof data.stats_visibility])
+                .map(([key, label]) => (
+                  <div key={key}>
+                    <p className="text-2xl font-bold text-white">{data.stats[key]}</p>
+                    <p className="mt-1 text-xs text-blue-200">{label}</p>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       </section>
 

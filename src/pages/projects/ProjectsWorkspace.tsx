@@ -249,7 +249,7 @@ export default function ProjectsWorkspace() {
 
             <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
               <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><Upload size={20} style={{ color: '#BF8813' }} /> Déposer un livrable</h2>
-              <p className="mt-1 text-sm text-slate-600">Les fichiers sont enregistrés dans un espace privé. Un livrable validé reste non public jusqu’aux règles du GM2.</p>
+              <p className="mt-1 text-sm text-slate-600">Les fichiers sont enregistrés dans un espace privé. Un livrable validé reste non public tant que les règles de confidentialité et l’accord de publication ne sont pas satisfaits.</p>
               {participationOptions.length ? (
                 <form onSubmit={submitDeliverable} className="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
                   <select required value={participationKey} onChange={event => selectParticipation(event.target.value)} className="rounded-lg border bg-white px-3 py-2.5 text-sm sm:col-span-2" style={{ borderColor: '#D0D5DD' }}><option value="">Choisir le projet et le mode de participation</option>{participationOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select>
