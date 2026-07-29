@@ -13,7 +13,7 @@ const textArray = (value: unknown, max = 100, itemMax = 160) => Array.isArray(va
   : [];
 const normalize = (value: unknown) => text(value, 500).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-type Session = { userId: string; roles: string[]; isAdmin: boolean; isRecruiter: boolean; organizationId: string | null };
+type Session = { userId: string; roles: string[]; isAdmin: boolean; isRecruiter: boolean; isLearner: boolean; organizationId: string | null };
 function tokenFrom(req: Request, bodyToken = "") {
   return (bodyToken || req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
@@ -33,6 +33,7 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
     roles,
     isAdmin: roles.some((role: string) => ["super_admin", "admin"].includes(role)),
     isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)),
+    isLearner: roles.includes("apprenant"),
     organizationId: manager?.organization_id ? String(manager.organization_id) : null,
   };
 }
@@ -151,6 +152,7 @@ Deno.serve(async (req) => {
     requireSession(session);
 
     if (action === "learner_dashboard") {
+      if (!session.isLearner) return json({ error: "ROLE_APPRENANT_REQUIRED" }, 403);
       const profile = await ensureProfile(sb, session.userId);
       const [sources, matchesR, applicationsR, contactsR] = await Promise.all([
         collectSources(sb, session.userId, profile, false),
@@ -162,6 +164,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "save_preferences") {
+      if (!session.isLearner) return json({ error: "ROLE_APPRENANT_REQUIRED" }, 403);
       const current = await ensureProfile(sb, session.userId);
       const requestedStatus = ["draft", "active", "paused", "archived"].includes(text(body.status, 30)) ? text(body.status, 30) : current.status;
       const active = requestedStatus === "active";
@@ -188,6 +191,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "refresh_matches") {
+      if (!session.isLearner) return json({ error: "ROLE_APPRENANT_REQUIRED" }, 403);
       const profile = await ensureProfile(sb, session.userId);
       if (profile.status !== "active" || !profile.allow_opportunity_matching) return json({ error: "MATCHING_NOT_AUTHORIZED" }, 403);
       const sources = await collectSources(sb, session.userId, profile, false);
@@ -304,13 +308,17 @@ Deno.serve(async (req) => {
 
     if (action === "admin_dashboard") {
       if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+      const { data: learnerRoles, error: learnerRolesError } = await sb.from("user_roles").select("user_id").eq("role", "apprenant");
+      if (learnerRolesError) throw learnerRolesError;
+      const learnerIds = [...new Set((learnerRoles || []).map((row: any) => String(row.user_id)).filter(Boolean))];
+      if (!learnerIds.length) return json({ success: true, profiles: [], profile_count: 0, matches: [], access_log: [], contact_requests: [] });
       const [profilesR, matchesR, accessR, contactsR] = await Promise.all([
-        sb.from("employability_profiles").select("*,user:users!employability_profiles_user_id_fkey(id,full_name,email,status)").order("updated_at", { ascending: false }).limit(500),
-        sb.from("employability_opportunity_matches").select("*,user:users!employability_opportunity_matches_user_id_fkey(id,full_name,email),job:job_offers(id,title,status)").order("generated_at", { ascending: false }).limit(500),
-        sb.from("employability_recruiter_access_log").select("*,recruiter:users!employability_recruiter_access_log_recruiter_user_id_fkey(id,full_name,email),talent:users!employability_recruiter_access_log_talent_user_id_fkey(id,full_name,email)").order("created_at", { ascending: false }).limit(500),
-        sb.from("employability_contact_requests").select("*,recruiter:users!employability_contact_requests_recruiter_user_id_fkey(id,full_name,email),talent:users!employability_contact_requests_talent_user_id_fkey(id,full_name,email)").order("requested_at", { ascending: false }).limit(500),
+        sb.from("employability_profiles").select("*,user:users!employability_profiles_user_id_fkey(id,full_name,email,status)").in("user_id", learnerIds).order("updated_at", { ascending: false }).limit(500),
+        sb.from("employability_opportunity_matches").select("*,user:users!employability_opportunity_matches_user_id_fkey(id,full_name,email),job:job_offers(id,title,status)").in("user_id", learnerIds).order("generated_at", { ascending: false }).limit(500),
+        sb.from("employability_recruiter_access_log").select("*,recruiter:users!employability_recruiter_access_log_recruiter_user_id_fkey(id,full_name,email),talent:users!employability_recruiter_access_log_talent_user_id_fkey(id,full_name,email)").in("talent_user_id", learnerIds).order("created_at", { ascending: false }).limit(500),
+        sb.from("employability_contact_requests").select("*,recruiter:users!employability_contact_requests_recruiter_user_id_fkey(id,full_name,email),talent:users!employability_contact_requests_talent_user_id_fkey(id,full_name,email)").in("talent_user_id", learnerIds).order("requested_at", { ascending: false }).limit(500),
       ]);
-      return json({ success: true, profiles: profilesR.data || [], profile_count: profilesR.count || (profilesR.data || []).length, matches: matchesR.data || [], access_log: accessR.data || [], contact_requests: contactsR.data || [] });
+      return json({ success: true, profiles: profilesR.data || [], profile_count: (profilesR.data || []).length, matches: matchesR.data || [], access_log: accessR.data || [], contact_requests: contactsR.data || [] });
     }
 
     return json({ error: "UNKNOWN_ACTION" }, 400);

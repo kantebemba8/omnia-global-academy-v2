@@ -359,7 +359,6 @@ export default function App() {
           <Route path="/structure/projects" element={<ProjectOwnerWorkspace />} />
           <Route path="/admin/projects" element={<AdminProjects />} />
           <Route path="/admin/projects/gestion" element={<ProjectOwnerWorkspace />} />
-          <Route path="/admin/projects/gestion/recommandations" element={<ProjectRecommendations />} />
           <Route path="/portfolio/projects/:userId" element={<PublicProjectPortfolio />} />
           <Route path="/projects/:slug" element={<ProjectDetail />} />
           <Route path="/coaching" element={<CoachingCatalogue />} />

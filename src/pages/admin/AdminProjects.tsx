@@ -3,7 +3,7 @@ import {
   Archive, Ban, CheckCircle2, Eye, FolderKanban, RefreshCw, RotateCcw,
   ShieldAlert, Trash2, XCircle, Users,
 } from 'lucide-react';
-import { AdminProjectsManagementLayout } from '../../components/admin/AdminProjectsManagementLayout';
+import { AdminLayout } from '../../components/AdminLayout';
 import {
   decideProject,
   getAdminProjects,
@@ -134,8 +134,8 @@ export default function AdminProjects() {
   };
 
   return (
-    <AdminProjectsManagementLayout>
-      <div id="overview" className="mx-auto max-w-7xl scroll-mt-6 p-5 sm:p-8">
+    <AdminLayout>
+      <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Super Admin</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Validation, supervision, récompenses, signalements et clôture.</p></div>
           <div className="flex flex-wrap gap-2"><a href="/admin/projects/gestion" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#BF8813' }}>Créer un projet</a><a href="/projects" className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: '#002050', color: '#002050' }}><Eye size={17} /> Aller à Omnia Projects</a></div>
@@ -148,7 +148,7 @@ export default function AdminProjects() {
           {[['À valider', metrics.pending], ['Actifs', metrics.active], ['Financements à vérifier', metrics.funding], ['Signalements ouverts', metrics.reports]].map(([label, value]) => <div key={String(label)} className="border bg-white p-5" style={{ borderColor: '#E4E7EC', borderRadius: 16 }}><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>{value}</p></div>)}
         </div>
 
-        <section id="professor-permissions" className="mt-8 scroll-mt-6 border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
+        <section className="mt-8 border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
           <div className="flex items-start justify-between gap-4"><div><h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><Users size={19}/> Professeurs autorisés à créer des projets</h2><p className="mt-1 text-sm text-slate-600">Une autorisation explicite est désormais obligatoire. Les projets déjà créés restent accessibles à leur auteur.</p></div></div>
           <div className="mt-5 divide-y">{professors.length ? professors.map((professor:any)=><div key={professor.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-slate-900">{professor.full_name || professor.email}</p><p className="text-sm text-slate-500">{professor.email} · {professor.permission?.status || 'non autorisé'}</p></div><div className="flex flex-wrap gap-2"><button onClick={()=>changeProfessorPermission(professor,'allowed')} className="rounded-lg px-3 py-2 text-xs font-bold text-white" style={{background:'#087A55'}}>Autoriser</button><button onClick={()=>changeProfessorPermission(professor,'suspended')} className="rounded-lg border px-3 py-2 text-xs font-bold" style={{borderColor:'#BF8813',color:'#76520A'}}>Suspendre</button><button onClick={()=>changeProfessorPermission(professor,'revoked')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Révoquer</button></div></div>) : <p className="py-5 text-sm text-slate-500">Aucun compte professeur trouvé.</p>}</div>
         </section>
@@ -158,7 +158,7 @@ export default function AdminProjects() {
           <button onClick={() => load()} className="ml-auto rounded-lg p-2 text-slate-500 hover:bg-white"><RefreshCw size={18} /></button>
         </div>
 
-        <section id="projects-list" className="mt-5 scroll-mt-6 overflow-hidden border bg-white" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
+        <section className="mt-5 overflow-hidden border bg-white" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
           {loading ? <div className="h-72 animate-pulse bg-slate-50" /> : projects.length ? <div className="divide-y" style={{ borderColor: '#EEF0F3' }}>{projects.map(project => (
             <button key={project.id} onClick={() => openProject(project)} className="grid w-full gap-4 px-5 py-5 text-left hover:bg-slate-50 lg:grid-cols-[1fr_170px_130px_auto] lg:items-center">
               <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#BF8813' }}>{PROJECT_TYPE_LABELS[project.project_type]}</span><ProjectStatusBadge status={project.status} /></div><h2 className="mt-2 font-bold" style={{ color: '#002050' }}>{project.title}</h2><p className="mt-1 text-sm text-slate-600">{project.organization_name || 'Omnia Global Academy'} · {project.country_code || 'Zone non précisée'}</p></div>
@@ -170,7 +170,7 @@ export default function AdminProjects() {
         </section>
 
         {!!reports.length && (
-          <section id="reports" className="mt-8 scroll-mt-6 border bg-white p-5 sm:p-6" style={{ borderColor: '#F3C8C8', borderRadius: 18 }}>
+          <section className="mt-8 border bg-white p-5 sm:p-6" style={{ borderColor: '#F3C8C8', borderRadius: 18 }}>
             <h2 className="flex items-center gap-2 text-xl font-bold text-red-800"><ShieldAlert size={20} /> Signalements ouverts</h2>
             <div className="mt-5 divide-y">{reports.slice(0, 10).map(report => <div key={report.id} className="py-4 first:pt-0"><p className="font-bold text-slate-900">{report.project?.title || 'Projet'}</p><p className="mt-1 text-sm text-slate-600">{String(report.report_type).split('_').join(' ')} — {report.description}</p><div className="mt-3 flex flex-wrap gap-2"><button disabled={processingReportId === String(report.id)} onClick={() => resolveReport(report, 'under_review')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: '#D0D5DD' }}>Prendre en charge</button><button disabled={processingReportId === String(report.id)} onClick={() => resolveReport(report, 'escalated')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: '#BF8813', color: '#76520A' }}>Escalader</button><button disabled={processingReportId === String(report.id)} onClick={() => resolveReport(report, 'dismissed')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: '#D0D5DD' }}>Classer sans suite</button><button disabled={processingReportId === String(report.id)} onClick={() => resolveReport(report, 'resolved')} className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: '#087A55' }}>Résoudre</button></div></div>)}</div>
           </section>
@@ -198,6 +198,6 @@ export default function AdminProjects() {
           </div>
         </div>
       )}
-    </AdminProjectsManagementLayout>
+    </AdminLayout>
   );
 }
