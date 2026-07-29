@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Award, Star, CheckCircle, X, Clock, ExternalLink, Share2, Linkedin, BadgeCheck, FileText } from 'lucide-react';
 
 interface Certificate {
@@ -16,8 +17,12 @@ interface Certificate {
   cpd_badge_url: string | null;
   cpd_pending: boolean;
   pdf_url: string | null;
+  qr_svg: string | null;
+  verification_url: string | null;
   issued_at: string;
+  expires_at: string | null;
   status: string;
+  validity_status: string | null;
 }
 
 interface FeedbackState {
@@ -31,17 +36,16 @@ function getApiBase() {
   return url ? `${url}/functions/v1` : '/api';
 }
 
-function qrSvg(text: string): string {
-  const size = 80, cell = 8, cells = Math.floor(size / cell);
-  let seed = text.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  let rects = '';
-  for (let r = 0; r < cells; r++) {
-    for (let c = 0; c < cells; c++) {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      if (seed % 3 === 0) rects += `<rect x="${c * cell}" y="${r * cell}" width="${cell}" height="${cell}" fill="#002050"/>`;
-    }
+function certificateState(cert: Certificate) {
+  const status = String(cert.status || '').toLowerCase();
+  const validity = String(cert.validity_status || '').toLowerCase();
+  if (validity === 'revoked' || status === 'revoked' || status === 'revoque') {
+    return { kind: 'revoked' as const, label: 'Certificat révoqué', color: '#DC2626' };
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${rects}</svg>`;
+  if (cert.expires_at && new Date(cert.expires_at).getTime() < Date.now()) {
+    return { kind: 'expired' as const, label: 'Certificat expiré', color: '#BF8813' };
+  }
+  return { kind: 'valid' as const, label: 'Certificat valide', color: '#1E7A52' };
 }
 
 export function DashboardCertificats() {
@@ -59,42 +63,12 @@ export function DashboardCertificats() {
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
-    const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');
-    const userId = userData?.id;
-    if (!token || !userId) { setLoading(false); return; }
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!token) { setLoading(false); return; }
 
     try {
-      // Fetch from certificates table
-      if (supabaseUrl && anonKey) {
-        const certRes = await fetch(
-          `${supabaseUrl}/rest/v1/certificates?user_id=eq.${userId}&order=issued_at.desc&select=id,omnia_certificate_id,course_id,course_title,course_level,course_category,cpd_accredited,cpd_hours,cpd_badge_url,cpd_pending,pdf_url,issued_at,status`,
-          { headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` } }
-        );
-        if (certRes.ok) {
-          const data = await certRes.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setCerts(data);
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      // Fallback: load from dashboard-apprenant
-      const res = await fetch(`${getApiBase()}/dashboard-apprenant`, { headers: { Authorization: `Bearer ${token}` } });
-      const json = await res.json();
-      if (res.ok) {
-        const termines = (json.cours_termines ?? []) as Array<{ course_id: string; title: string; slug: string; enrolled_at: string }>;
-        setCerts(termines.map(c => ({
-          id: c.course_id, omnia_certificate_id: '', course_id: c.course_id,
-          course_title: c.title, course_level: '', course_category: '',
-          cpd_accredited: false, cpd_hours: 0, cpd_badge_url: null,
-          cpd_pending: false, pdf_url: null, issued_at: c.enrolled_at, status: 'passed',
-        })));
-      }
+      const res = await fetch(ENDPOINTS.dashboardApprenant, { headers: edgeAuthHeaders() });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) setCerts(Array.isArray(json.certificates) ? json.certificates : []);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -144,8 +118,10 @@ export function DashboardCertificats() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-4">
-            {certs.map(cert => (
-              <div key={cert.course_id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            {certs.map(cert => {
+              const state = certificateState(cert);
+              return (
+              <div key={cert.id || cert.course_id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 {/* Certificate header */}
                 <div className="p-5" style={{ background: 'linear-gradient(135deg, #002050, #003580)' }}>
                   <div className="flex items-start justify-between gap-3">
@@ -164,13 +140,19 @@ export function DashboardCertificats() {
                         <p className="text-white/40 text-xs font-mono mt-1">{cert.omnia_certificate_id}</p>
                       )}
                     </div>
-                    <div className="flex-shrink-0 bg-white rounded-lg p-1"
-                      dangerouslySetInnerHTML={{ __html: qrSvg(cert.omnia_certificate_id || cert.course_id) }} />
+                    {cert.qr_svg ? (
+                      <div className="flex-shrink-0 bg-white rounded-lg p-1 [&_svg]:h-20 [&_svg]:w-20"
+                        dangerouslySetInnerHTML={{ __html: cert.qr_svg }} />
+                    ) : (
+                      <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-white/10">
+                        <Award className="h-8 w-8" style={{ color: '#BF8813' }} />
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-1.5">
-                    <CheckCircle className="w-3.5 h-3.5" style={{ color: '#1E7A52' }} />
+                    {state.kind === 'valid' ? <CheckCircle className="w-3.5 h-3.5" style={{ color: state.color }} /> : <Clock className="w-3.5 h-3.5" style={{ color: state.color }} />}
                     <span className="text-xs text-white/70">
-                      Validé le {cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                      {state.label} · émis le {cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                     </span>
                   </div>
                 </div>
@@ -226,7 +208,8 @@ export function DashboardCertificats() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { BookOpen, CheckCircle, Clock, ChevronRight, TrendingUp } from 'lucide-react';
 
 interface Course {
@@ -66,7 +67,7 @@ export function DashboardMesCours() {
     if (!token) return;
     try {
       const res = await fetch(`${getApiBase()}/dashboard-apprenant`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
       });
       const json = await res.json();
       if (res.ok) setData(json);

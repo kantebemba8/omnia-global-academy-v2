@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
 import { withLearnerPreview } from '../../lib/learnerPreview';
 import {
@@ -59,7 +60,7 @@ export function DashboardApprenant() {
     if (!token) { setLoading(false); return; }
     try {
       const res = await fetch((ENDPOINTS as Record<string, string>)['dashboardApprenant'] || `${(ENDPOINTS as Record<string, string>)['authRegister'].replace('/auth-register', '')}/dashboard-apprenant`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
       });
       const json = await res.json();
       if (!res.ok) { setError(json.error || 'Erreur'); return; }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   QrCode, Building2, CheckCircle, XCircle, Clock,
   AlertCircle, Search, Users, ChevronRight, Gift, RefreshCw
@@ -48,24 +49,18 @@ export function DashboardStructure() {
   const [codeResult, setCodeResult] = useState<{ success: boolean; message: string; structure_name?: string; display_name?: string; requires_validation?: boolean } | null>(null);
   const [toast, setToast] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
   async function loadMemberships() {
     setLoading(true);
     try {
-      // On utilise dashboard-apprenant pour avoir les memberships
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dashboard-apprenant`, {
-        headers: { Authorization: `Bearer ${token()}` },
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'my_memberships' }),
       });
-      const data = await res.json();
-      // Si dashboard-apprenant retourne les memberships, les utiliser
-      if (data.memberships) {
-        setMemberships(data.memberships);
-      } else {
-        // Sinon tenter via structure-manage
-        setMemberships([]);
-      }
+      const data = await res.json().catch(() => ({}));
+      setMemberships(res.ok && Array.isArray(data.memberships) ? data.memberships : []);
     } catch { setMemberships([]); }
     finally { setLoading(false); }
   }
@@ -78,45 +73,53 @@ export function DashboardStructure() {
     setSubmitting(true);
     setCodeResult(null);
 
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'use_code',
-        code_value: code,
-        pin: pinInput || undefined,
-      }),
-    });
-    const data = await res.json();
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          action: 'use_code',
+          code_value: code,
+          pin: pinInput || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    if (data.success) {
-      setCodeResult({
-        success: true,
-        message: data.message,
-        structure_name: data.structure_name,
-        display_name: data.display_name,
-        requires_validation: data.requires_validation,
-      });
-      setCodeInput('');
-      setPinInput('');
-      setShowPin(false);
-      loadMemberships();
-    } else {
-      const errorMessages: Record<string, string> = {
-        CODE_INVALID:    'Ce code structure est invalide ou inactif.',
-        CODE_EXPIRED:    'Ce code structure a expiré.',
-        QUOTA_REACHED:   'Ce code a atteint son nombre maximum d\'utilisations.',
-        INVALID_PIN:     'Le PIN saisi est incorrect.',
-        ALREADY_MEMBER:  'Vous êtes déjà rattaché(e) à cette structure.',
-        NOT_ENROLLED:    'Vous devez être connecté(e) pour utiliser un code.',
-        SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
-      };
-      setCodeResult({
-        success: false,
-        message: errorMessages[data.error] ?? data.message ?? 'Une erreur est survenue.',
-      });
+      if (res.ok && data.success) {
+        const structureName = data.structure?.name || data.structure_name;
+        const structureType = data.structure?.structure_type || '';
+        setCodeResult({
+          success: true,
+          message: data.message || 'Votre rattachement a été enregistré.',
+          structure_name: structureName,
+          display_name: data.display_name || DISPLAY_NAMES[structureType] || 'Structure',
+          requires_validation: data.status === 'pending' || Boolean(data.requires_validation),
+        });
+        setCodeInput('');
+        setPinInput('');
+        setShowPin(false);
+        await loadMemberships();
+      } else {
+        const errorMessages: Record<string, string> = {
+          INVALID_CODE: 'Ce code structure est invalide.',
+          CODE_NOT_ACTIVE: 'Ce code structure n’est pas actif.',
+          CODE_EXPIRED: 'Ce code structure a expiré.',
+          CODE_QUOTA_REACHED: 'Ce code a atteint son nombre maximum d’utilisations.',
+          INVALID_PIN: 'Le PIN saisi est incorrect.',
+          ALREADY_LINKED: 'Votre compte est déjà rattaché à ce code.',
+          AUTH_REQUIRED: 'Vous devez être connecté(e) pour utiliser un code.',
+          SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
+        };
+        setCodeResult({
+          success: false,
+          message: errorMessages[data.error] ?? data.message ?? 'Une erreur est survenue.',
+        });
+      }
+    } catch {
+      setCodeResult({ success: false, message: 'Connexion au service impossible. Réessayez.' });
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   return (

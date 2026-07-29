@@ -15,7 +15,7 @@ function json(data: unknown, status = 200) {
 }
 
 function authToken(req: Request) {
-  return (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
 function randomPart(length = 6) {
@@ -316,6 +316,43 @@ Deno.serve(async (req: Request) => {
       const organization = await getOrganization(sb, String(link.organization_id));
       if (!organization) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
       return json({ success: true, structure: mapStructure(organization), my_permissions: link.permissions || {}, my_role: link.role_in_org });
+    }
+
+    if (action === "my_memberships") {
+      const { data: links, error: linksError } = await sb.from("partner_code_users")
+        .select("*")
+        .eq("user_id", session.userId)
+        .order("created_at", { ascending: false });
+      if (linksError) throw linksError;
+
+      const organizationIds = [...new Set((links || []).map((row: any) => String(row.organization_id || "")).filter(Boolean))];
+      const { data: organizations, error: organizationsError } = organizationIds.length
+        ? await sb.from("partner_organizations").select("*").in("id", organizationIds)
+        : { data: [], error: null };
+      if (organizationsError) throw organizationsError;
+      const organizationsById = new Map((organizations || []).map((row: any) => [String(row.id), row]));
+
+      const normalizedStatus = (value: unknown) => {
+        const status = String(value || "").toLowerCase();
+        if (["validated", "approved", "active", "actif"].includes(status)) return "approved";
+        if (["refused", "rejected", "refuse"].includes(status)) return "rejected";
+        if (["removed", "revoked", "expired", "inactive", "retire"].includes(status)) return "removed";
+        return "pending";
+      };
+
+      const memberships = (links || []).map((row: any) => {
+        const status = normalizedStatus(row.status);
+        const organization = organizationsById.get(String(row.organization_id));
+        return {
+          id: row.id,
+          status,
+          requested_at: row.created_at || row.updated_at || new Date().toISOString(),
+          approved_at: status === "approved" ? (row.validated_at || row.approved_at || row.updated_at || null) : null,
+          expires_at: row.expires_at || null,
+          structure: organization ? mapStructure(organization) : null,
+        };
+      });
+      return json({ success: true, memberships });
     }
 
     if (action === "get_structure") {

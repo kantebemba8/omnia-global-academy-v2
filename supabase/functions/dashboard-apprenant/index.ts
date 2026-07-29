@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -14,7 +14,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
@@ -46,6 +46,25 @@ Deno.serve(async (req: Request) => {
     const { data: finalAttempts } = finalAssessmentIds.length > 0
       ? await sb.from("assessment_attempts").select("assessment_id,course_id,passed,graded_at,submitted_at").eq("user_id", userId).in("assessment_id", finalAssessmentIds).eq("passed", true)
       : { data: [] };
+
+    // Certificats réellement émis pour l'apprenant. Le tableau de bord ne doit
+    // pas confondre une formation réussie avec un certificat déjà généré.
+    const { data: certificates, error: certificatesError } = await sb.from("certificates")
+      .select("id,omnia_certificate_id,course_id,course_title,course_level,course_category,cpd_accredited,cpd_hours,cpd_badge_url,cpd_pending,pdf_url,qr_svg,verification_url,issued_at,status,validity_status,expires_at")
+      .eq("user_id", userId)
+      .order("issued_at", { ascending: false });
+    if (certificatesError) throw certificatesError;
+
+    const now = Date.now();
+    const validCertificates = (certificates ?? []).filter((row) => {
+      const certificate = row as unknown as { status?: string | null; validity_status?: string | null; expires_at?: string | null };
+      const status = String(certificate.status || "").toLowerCase();
+      const validity = String(certificate.validity_status || "").toLowerCase();
+      const revoked = validity === "revoked" || status === "revoked" || status === "revoque";
+      const expired = Boolean(certificate.expires_at && Date.parse(certificate.expires_at) < now);
+      return !revoked && !expired;
+    });
+    const certifiedCourseIds = new Set(validCertificates.map((row) => String((row as unknown as { course_id: string }).course_id)));
 
     // All lessons per course for progress calculation
     const { data: allLessons } = courseIds.length > 0
@@ -92,7 +111,7 @@ Deno.serve(async (req: Request) => {
         progress_percent: percent,
         lessons_completed: done,
         lessons_total: total,
-        certificate_earned: passedCourses.has(cid),
+        certificate_earned: certifiedCourseIds.has(cid),
       };
 
       if (passedCourses.has(cid)) {
@@ -132,11 +151,12 @@ Deno.serve(async (req: Request) => {
       kpis: {
         formations_en_cours: coursesEnCours.length,
         formations_terminees: coursesTermines.length,
-        certificats_obtenus: passedCourses.size,
+        certificats_obtenus: validCertificates.length,
         jetons_ia_restants: user.ai_tokens ?? 0,
       },
       courses_en_cours: coursesEnCours.slice(0, 6),
       cours_termines: coursesTermines,
+      certificates: certificates ?? [],
       activite_recente: (recentActivity ?? []).map((a) => {
         const act = a as unknown as { lesson_id: string; course_id: string; updated_at: string; course_lessons: { title: string } | null };
         return { lesson_id: act.lesson_id, course_id: act.course_id, lesson_title: act.course_lessons?.title ?? "", completed_at: act.updated_at };

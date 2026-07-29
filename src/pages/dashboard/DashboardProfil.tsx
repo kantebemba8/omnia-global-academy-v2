@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { credentialsRequest, LearnerSkillsPassportResponse, SkillsPassport } from '../../lib/credentialsApi';
 import { isLearnerPreviewMode, previewSkillsPassport } from '../../lib/learnerPreview';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 interface UserData {
   id: string; full_name: string; email: string; phone_number: string;
@@ -97,7 +98,7 @@ export function DashboardProfil() {
     if (!token) { setLoading(false); return; }
     try {
       const [profileResponse, passportResponse] = await Promise.all([
-        fetch(`${getApiBase()}/dashboard-apprenant`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${getApiBase()}/dashboard-apprenant`, { headers: edgeAuthHeaders() }),
         credentialsRequest<LearnerSkillsPassportResponse>('learner_skills_passport').catch(() => null),
       ]);
       const json = await profileResponse.json();
