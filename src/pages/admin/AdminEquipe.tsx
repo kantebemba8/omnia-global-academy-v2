@@ -105,7 +105,7 @@ export default function AdminEquipe() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
         headers: authHeaders()
       });
       if (!res.ok) { let detail=''; try { const j=await res.json(); detail=j.message||j.error||''; } catch {} throw new Error(detail ? `Chargement impossible : ${detail}` : 'Impossible de charger les modérateurs'); }
@@ -168,7 +168,7 @@ export default function AdminEquipe() {
   const savePermissions = async (userId: string) => {
     try {
       setSavingModeratorId(userId);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
         method: 'POST',
         headers: authHeaders(true),
         body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
@@ -188,7 +188,7 @@ export default function AdminEquipe() {
   const deleteModerator = async (userId: string) => {
     if (pendingDeleteId !== userId) { setPendingDeleteId(userId); return; }
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-update`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
         method: 'POST',
         headers: authHeaders(true),
         body: JSON.stringify({ moderator_id: userId, action: 'delete' })
@@ -210,7 +210,7 @@ export default function AdminEquipe() {
     setCreatingMod(true);
     setError(null);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-create`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
         method: 'POST',
         headers: authHeaders(true),
         body: JSON.stringify({
@@ -222,7 +222,7 @@ export default function AdminEquipe() {
       });
       const data = await res.json();
       if (data.error === 'EMAIL_TAKEN') { setError('Cet email est déjà utilisé.'); return; }
-      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la création'); }
+      if (!res.ok) { throw new Error(data.message || data.error || 'Échec de la création'); }
       setSuccessMessage(`Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
       setTimeout(() => setSuccessMessage(null), 6000);
       setShowAddModal(false);
