@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
@@ -17,10 +17,6 @@ const META: Record<string, { title: string; subtitle: string }> = {
   exports: { title: 'Exports CV et LM', subtitle: 'Exports réellement enregistrés pour les apprenants.' },
   tokens: { title: 'Jetons consommés', subtitle: 'Mouvements de débit Career Studio, sans solde, moyen de paiement ni donnée financière sensible.' },
 };
-
-function token() {
-  return localStorage.getItem('omnia_session_token') || '';
-}
 
 function messageFrom(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message && value.message !== '[object Object]') return value.message;
@@ -57,11 +53,7 @@ export default function AdminCareerStudioDetail() {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/career-studio-admin-config`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token()}`,
-          apikey: ANON_KEY,
-          'Content-Type': 'application/json',
-        },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_detail', metric }),
       });
       const text = await response.text();

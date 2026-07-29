@@ -12,8 +12,9 @@ import {
   cacheCareerTemplates,
 } from './careerStudioData';
 
+import { edgeAuthHeaders } from './edgeAuth';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const FUNCTIONS_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '';
 
 function sessionToken() {
@@ -75,11 +76,7 @@ async function functionPost<T>(slug: string, body: unknown): Promise<T> {
   if (!FUNCTIONS_BASE || !sessionToken()) throw new Error('NO_REMOTE_SESSION');
   const res = await fetch(`${FUNCTIONS_BASE}/${slug}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${sessionToken()}`,
-      apikey: ANON_KEY,
-    },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify(body),
   });
   const data = await safeJson<T & { error?: string; message?: string }>(res);

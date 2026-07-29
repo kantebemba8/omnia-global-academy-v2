@@ -37,6 +37,7 @@ import {
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
@@ -205,8 +206,6 @@ export default function DashboardCareerStudio() {
     return [...pages, ...docs, ...models].slice(0, 12);
   }, [searchQuery, documents, cvTemplates, lmTemplates]);
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
-
   function showToast(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(''), 3500);
@@ -216,10 +215,7 @@ export default function DashboardCareerStudio() {
     if (!SUPABASE_URL) return { documents: [], templates: [], user: null };
     const response = await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=list`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token()}`,
-        'Content-Type': 'application/json',
-      },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ doc_type: docType }),
     });
     return response.json();
@@ -298,7 +294,7 @@ export default function DashboardCareerStudio() {
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=save`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'delete', document_id: docId }),
       });
       setDocuments((prev) => prev.filter((item) => item.id !== docId));
@@ -494,7 +490,7 @@ function InterviewView({ jobId }: { jobId?: string }) {
   ];
   const questions=[...questionBank[category]].sort((a,b)=>((a.length+seed)%7)-((b.length+seed)%7));
   function saveAnswer(q:string,value:string){ const next={...answers,[q]:value}; setAnswers(next); localStorage.setItem('omnia_interview_answers',JSON.stringify(next)); }
-  async function submitAi(q:string){ const answer=(answers[q]||'').trim(); if(!answer) return; setAiLoading(q); try { if(!SUPABASE_URL) throw new Error('IA indisponible'); const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:{Authorization:`Bearer ${localStorage.getItem('omnia_session_token')||''}`,'Content-Type':'application/json'},body:JSON.stringify({action:'make_professional',text:`Question d'entretien : ${q}\nRéponse du candidat : ${answer}\nAnalyse cette réponse, donne ses points forts, ce qui manque selon STAR, puis propose une version améliorée.`})}); const data=await res.json(); if(!res.ok||data.error) throw new Error(data.message||data.error); setFeedback(f=>({...f,[q]:data.result||'Correction reçue.'})); } catch(e:any){ setFeedback(f=>({...f,[q]:e?.message||'Le service IA n’est pas disponible.'})); } finally { setAiLoading(null); } }
+  async function submitAi(q:string){ const answer=(answers[q]||'').trim(); if(!answer) return; setAiLoading(q); try { if(!SUPABASE_URL) throw new Error('IA indisponible'); const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'make_professional',text:`Question d'entretien : ${q}\nRéponse du candidat : ${answer}\nAnalyse cette réponse, donne ses points forts, ce qui manque selon STAR, puis propose une version améliorée.`})}); const data=await res.json(); if(!res.ok||data.error) throw new Error(data.message||data.error); setFeedback(f=>({...f,[q]:data.result||'Correction reçue.'})); } catch(e:any){ setFeedback(f=>({...f,[q]:e?.message||'Le service IA n’est pas disponible.'})); } finally { setAiLoading(null); } }
   return <div className="space-y-5"><PageHeader title="Préparation entretien" subtitle="Questions renouvelées, réponses sauvegardées et méthode STAR guidée."/><div className="flex flex-wrap gap-2">{categories.map(c=><button key={c} onClick={()=>{setCategory(c);setSeed(Math.floor(Math.random()*1000));setOpenQuestion(null)}} className="rounded-full px-4 py-2 text-sm font-semibold" style={{background:category===c?OMNIA_BLUE:'#fff',color:category===c?'#fff':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{c}</button>)}<button onClick={()=>setSeed(Math.floor(Math.random()*1000))} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}><RefreshCw size={15}/>Changer les questions</button></div><div className="grid gap-5 xl:grid-cols-[1fr_360px]"><Card className="p-5"><SectionTitle title="Banque de questions"/><div className="space-y-3">{questions.map(q=><div key={q} className="rounded-xl border" style={{borderColor:BORDER}}><button onClick={()=>setOpenQuestion(openQuestion===q?null:q)} className="flex w-full items-center justify-between p-4 text-left text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}<ChevronDown size={16} className={openQuestion===q?'rotate-180':''}/></button>{openQuestion===q&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>Répondez avec un exemple concret. Pour une expérience, structurez votre réponse avec STAR.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-36 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/><button onClick={()=>submitAi(q)} disabled={!answers[q]?.trim()||aiLoading===q} className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_BLUE}}><Sparkles size={16}/>{aiLoading===q?'Correction en cours...':'Soumettre à l’IA'}</button>{feedback[q]&&<div className="mt-3 whitespace-pre-wrap rounded-xl border bg-slate-50 p-4 text-sm leading-6" style={{borderColor:BORDER,color:'#334155'}}>{feedback[q]}</div>}</div>}</div>)}</div></Card><Card className="p-5"><SectionTitle title="Checklist STAR"/><p className="mb-4 text-sm leading-6" style={{color:MUTED}}>STAR vous aide à construire une réponse complète. Validez chaque étape seulement si votre réponse contient réellement l’élément demandé.</p>{star.map((item,index)=><div key={item.letter} className={`mb-3 rounded-xl border p-4 ${index>starStep?'opacity-45':''}`} style={{borderColor:index===starStep?OMNIA_GOLD:BORDER,background:index<starStep?'#F0FDF4':'#fff'}}><div className="flex items-start gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold" style={{background:index<starStep?'#16A34A':OMNIA_GOLD,color:'#fff'}}>{index<starStep?<Check size={16}/>:item.letter}</div><div><div className="font-semibold" style={{color:OMNIA_BLUE}}>{item.name}</div><p className="mt-1 text-sm leading-5" style={{color:MUTED}}>{item.role}</p></div></div>{index===starStep&&<button onClick={()=>setConfirmStep(index)} className="mt-3 w-full rounded-xl px-3 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Cette étape est bien présente</button>}</div>)}<div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>Progression : {starStep}/4</div></Card></div>{confirmStep!==null&&<div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Confirmer l’étape {star[confirmStep].name}</h3><p className="mt-2 text-sm leading-6" style={{color:MUTED}}>Êtes-vous sûr que votre réponse contient bien : {star[confirmStep].role}</p><div className="mt-5 flex justify-end gap-3"><button onClick={()=>setConfirmStep(null)} className="rounded-xl border px-4 py-2 text-sm" style={{borderColor:BORDER}}>Annuler</button><button onClick={()=>{setStarStep(Math.min(4,confirmStep+1));setConfirmStep(null)}} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Confirmer et continuer</button></div></div></div>}</div>;
 }
 
@@ -544,7 +540,7 @@ function ProfileView({ displayName }: { displayName: string }) {
     const payload={full_name:profile.full_name,email:profile.email,phone_number:profile.phone,professional_title:profile.title,location:profile.location,bio:profile.bio};
     try {
       if(token){
-        const res=await fetch(ENDPOINTS.authUpdateProfile,{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
+        const res=await fetch(ENDPOINTS.authUpdateProfile,{method:'PATCH',headers:edgeAuthHeaders(),body:JSON.stringify(payload)});
         const data=await res.json().catch(()=>({}));
         if(!res.ok) throw new Error(data.message||data.error||'Mise à jour impossible');
         const merged={...raw,...payload,...(data.user||{}),phone:payload.phone_number};

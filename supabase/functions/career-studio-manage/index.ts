@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 function json(data: unknown, status = 200) {
@@ -15,7 +15,9 @@ function json(data: unknown, status = 200) {
 }
 
 function tokenFrom(req: Request) {
-  return (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
 }
 
 async function verifySession(sb: ReturnType<typeof createClient>, token: string) {

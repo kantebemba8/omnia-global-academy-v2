@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Building2, FileText, RefreshCw, Send, ShieldCheck, ReceiptText } from 'lucide-react';
 
 const API=`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
 const labels:Record<string,string>={draft:'Brouillon',submitted:'Soumis',changes_requested:'Modifications demandées',accepted:'Accepté',rejected:'Refusé',converted:'Converti',sent:'Envoyé',signed_by_structure:'Signé par la structure',active:'Actif',expired:'Expiré',verified:'Vérifiée',issued:'Émise',paid:'Payée',requested:'Demandé',under_review:'En cours d’examen',approved:'Approuvé'};
 const money=(v:number,c='XOF')=>`${new Intl.NumberFormat('fr-FR').format(Number(v||0))} ${c}`;
-async function call(action:string,payload:Record<string,unknown>={}){const r=await fetch(API,{method:'POST',headers:{Authorization:`Bearer ${localStorage.getItem('omnia_session_token')||''}`,'Content-Type':'application/json'},body:JSON.stringify({action,...payload})});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.error||'Une erreur est survenue');return d;}
+async function call(action:string,payload:Record<string,unknown>={}){const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...payload})});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.error||'Une erreur est survenue');return d;}
 
 export default function StructureB2B(){
  const [data,setData]=useState<any>({quotes:[],contracts:[],proofs:[],invoices:[],renewals:[]});const [plans,setPlans]=useState<any[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [form,setForm]=useState({plan_id:'',tier_id:'',member_count:10,notes:''});

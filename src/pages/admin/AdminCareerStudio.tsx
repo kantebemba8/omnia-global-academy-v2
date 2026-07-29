@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CV_TEMPLATES_META, LM_TEMPLATES_META } from '../../lib/careerStudioData';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   AlertCircle,
   ArrowLeft,
@@ -115,7 +116,6 @@ type AdminStats = {
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 const OMNIA_BLUE = '#002050';
 const OMNIA_GOLD = '#bf8813';
@@ -155,19 +155,11 @@ const SUB_MENUS = [
   { key: 'stats', label: 'Statistiques', icon: BarChart2 },
 ] as { key: SubTab; label: string; icon: typeof BarChart2 }[];
 
-function token() {
-  return localStorage.getItem('omnia_session_token') || '';
-}
-
 async function postAdmin<T>(body: unknown): Promise<T> {
   if (!SUPABASE_URL) throw new Error('VITE_SUPABASE_URL manquant');
   const res = await fetch(`${SUPABASE_URL}/functions/v1/career-studio-admin-config`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token()}`,
-      apikey: ANON_KEY,
-      'Content-Type': 'application/json',
-    },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify(body),
   });
   const text = await res.text();
@@ -178,7 +170,7 @@ async function postAdmin<T>(body: unknown): Promise<T> {
 
 async function postTokenManager<T>(body: unknown): Promise<T> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/career-token-manage`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token()}`, apikey: ANON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || data?.error || `Erreur ${res.status}`);
@@ -233,11 +225,7 @@ async function postTemplateManager<T>(body: unknown): Promise<T> {
   if (!SUPABASE_URL) throw new Error('VITE_SUPABASE_URL manquant');
   const res = await fetch(`${SUPABASE_URL}/functions/v1/career-template-manager`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token()}`,
-      apikey: ANON_KEY,
-    },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
