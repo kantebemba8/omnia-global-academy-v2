@@ -37,23 +37,29 @@ const ROLE_REDIRECT: Record<string, string> = {
   moderateur: "/moderateur/dashboard",
   responsable_structure: "/structure/dashboard",
   gestionnaire_partenaire: "/structure/dashboard",
+  structure_admin: "/structure/dashboard",
   directeur: "/structure/dashboard",
   etablissement_directeur: "/structure/dashboard",
-  etablissement_enseignant: "/structure/dashboard",
-  organizer: "/omnia-live/organisateur",
-  recruteur_independant: "/talent/recruteur/dashboard",
   recruteur_structure: "/structure/recrutement/dashboard",
+  organizer: "/omnia-live/organisateur",
+  organisateur: "/omnia-live/organisateur",
+  recruteur_independant: "/talent/recruteur/dashboard",
   recruteur: "/talent/recruteur/dashboard",
+  etablissement_enseignant: "/professeur/dashboard",
+  enseignant: "/professeur/dashboard",
   professeur: "/professeur/dashboard",
+  formateur: "/professeur/dashboard",
+  coach: "/coach/dashboard",
   apprenant: "/dashboard",
 };
 
 function getRedirectUrl(roles: string[]): string {
- const priority = [
+  const priority = [
     "super_admin", "moderateur", "responsable_structure",
-    "gestionnaire_partenaire", "directeur",
-    "etablissement_directeur", "etablissement_enseignant",
-    "organizer", "recruteur_independant", "recruteur_structure", "recruteur", "professeur", "apprenant",
+    "gestionnaire_partenaire", "structure_admin", "directeur", "etablissement_directeur",
+    "recruteur_structure", "organizer", "organisateur",
+    "recruteur_independant", "recruteur",
+    "etablissement_enseignant", "enseignant", "professeur", "formateur", "coach", "apprenant",
   ];
   for (const r of priority) {
     if (roles.includes(r)) return ROLE_REDIRECT[r];

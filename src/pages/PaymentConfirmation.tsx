@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ENDPOINTS } from '../lib/config';
-import { CheckCircle, FileText, LayoutDashboard, Clock, Mail, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, FileText, LayoutDashboard, Clock, Mail, AlertCircle } from 'lucide-react';
 
 interface OrderStatus {
   status: 'pending' | 'completed' | 'failed';
@@ -56,45 +56,75 @@ export default function PaymentConfirmation() {
   useEffect(() => {
     if (!orderNumber) { navigate('/dashboard'); return; }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { navigate('/connexion'); return; }
+    if (!token) { navigate(`/connexion?redirect=${encodeURIComponent(`/paiement/confirmation?order=${orderNumber}`)}`); return; }
 
-    const poll = async () => {
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let confettiTimeoutId: number | null = null;
+    pollCount.current = 0;
+
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const poll = async (): Promise<boolean> => {
       try {
-        const res = await fetch(`${ENDPOINTS.paymentStatus}?order_number=${orderNumber}`, {
+        const res = await fetch(`${ENDPOINTS.paymentStatus}?order_number=${encodeURIComponent(orderNumber)}`, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         });
-        if (!res.ok) return;
+        if (!res.ok || cancelled) return false;
         const d: OrderStatus = await res.json();
+        if (cancelled) return false;
         setOrder(d);
 
         if (d.status === 'completed') {
+          stopPolling();
           setState('confirmed');
           setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 4000);
+          confettiTimeoutId = window.setTimeout(() => {
+            if (!cancelled) setShowConfetti(false);
+          }, 4000);
           return true;
         }
         if (d.status === 'failed') {
-          navigate(`/paiement/echec?order=${orderNumber}&course=${d.course_id}`);
+          stopPolling();
+          navigate(`/paiement/echec?order=${encodeURIComponent(orderNumber)}&course=${encodeURIComponent(d.course_id)}`, { replace: true });
           return true;
         }
-      } catch { /* continue polling */ }
+      } catch {
+        // Une erreur réseau ponctuelle ne doit pas interrompre la vérification.
+      }
       return false;
     };
 
-    poll().then(done => {
-      if (done) return;
-      const interval = setInterval(async () => {
+    const startPolling = async () => {
+      const done = await poll();
+      if (done || cancelled) return;
+
+      intervalId = window.setInterval(async () => {
+        if (cancelled) return;
         pollCount.current += 1;
         if (pollCount.current >= maxPolls) {
-          clearInterval(interval);
-          setState('pending_manual');
+          stopPolling();
+          if (!cancelled) setState('pending_manual');
           return;
         }
-        const done = await poll();
-        if (done) clearInterval(interval);
+        const completed = await poll();
+        if (completed) stopPolling();
       }, 2000);
-      return () => clearInterval(interval);
-    });
+    };
+
+    void startPolling();
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+      if (confettiTimeoutId !== null) window.clearTimeout(confettiTimeoutId);
+    };
   }, [orderNumber, navigate]);
 
   const fmt = (n: number) => n.toLocaleString('fr-FR');

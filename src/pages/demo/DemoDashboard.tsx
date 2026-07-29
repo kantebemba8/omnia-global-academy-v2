@@ -4,6 +4,7 @@ import { Clock, BookOpen, User, LogOut, ChevronRight, AlertTriangle, GraduationC
 import { ENDPOINTS } from '../../lib/config';
 import DemoExpiredModal from '../../components/DemoExpiredModal';
 import DemoWatermark from '../../components/DemoWatermark';
+import { clearSession } from '../../lib/session';
 
 interface DemoCourse {
   id: string;
@@ -36,6 +37,14 @@ function formatTime(seconds: number) {
   return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':');
 }
 
+function clearDemoMetadata() {
+  localStorage.removeItem('heartbeat_token');
+  localStorage.removeItem('is_demo');
+  localStorage.removeItem('demo_roles');
+  localStorage.removeItem('demo_expires_at');
+  localStorage.removeItem('demo_course_ids');
+}
+
 export default function DemoDashboard() {
   const navigate = useNavigate();
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
@@ -47,11 +56,8 @@ export default function DemoDashboard() {
 
   function handleDemoExpired() {
     setExpired(true);
-    localStorage.removeItem('omnia_session_token');
-    localStorage.removeItem('heartbeat_token');
-    localStorage.removeItem('is_demo');
-    localStorage.removeItem('demo_roles');
-    localStorage.removeItem('demo_expires_at');
+    clearSession();
+    clearDemoMetadata();
   }
 
   async function sendHeartbeat() {
@@ -75,7 +81,8 @@ export default function DemoDashboard() {
   useEffect(() => {
     const token = localStorage.getItem('omnia_session_token');
     const isDemo = localStorage.getItem('is_demo');
-    if (!token || isDemo !== 'true') { navigate('/login'); return; }
+    if (!token) { navigate('/connexion', { replace: true }); return; }
+    if (isDemo !== 'true') { navigate('/dashboard', { replace: true }); return; }
 
     const storedRoles = localStorage.getItem('demo_roles');
     const storedExpiry = localStorage.getItem('demo_expires_at');
@@ -105,7 +112,7 @@ export default function DemoDashboard() {
         if (ids.length > 0) {
           Promise.all(
             ids.map((id) =>
-              fetch(`${ENDPOINTS.courseDetail}?course_id=${id}`, {
+              fetch(`${ENDPOINTS.courseDetail}?id=${encodeURIComponent(id)}`, {
                 headers: { Authorization: `Bearer ${token}` },
               }).then((r) => r.json()).then((d) => d.course ?? null)
             )
@@ -137,8 +144,9 @@ export default function DemoDashboard() {
   }
 
   function handleLogout() {
-    localStorage.clear();
-    navigate('/');
+    clearSession();
+    clearDemoMetadata();
+    navigate('/', { replace: true });
   }
 
   if (expired) return <DemoExpiredModal />;

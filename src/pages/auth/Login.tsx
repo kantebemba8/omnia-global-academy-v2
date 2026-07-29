@@ -1,15 +1,22 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
+import { saveSession } from '../../lib/session';
 
 type LoginResponse = {
   success: boolean;
   message?: string;
   needs_validation?: boolean;
   demo_expired?: boolean;
+  not_found?: boolean;
+  is_demo?: boolean;
+  heartbeat_token?: string;
+  expires_at?: string;
+  demo_roles?: string[];
+  demo_course_ids?: string[];
   session_token?: string;
   redirect_url?: string;
   user?: {
@@ -22,18 +29,30 @@ type LoginResponse = {
   };
 };
 
-type OtpResponse = {
-  success: boolean;
-  message?: string;
-  not_found?: boolean;
-};
-
 const inputCls =
   'w-full px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#002050]/20 focus:border-[#002050] transition-colors';
 const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5';
 
+const DEMO_STORAGE_KEYS = [
+  'heartbeat_token',
+  'is_demo',
+  'demo_roles',
+  'demo_expires_at',
+  'demo_course_ids',
+] as const;
+
+function clearDemoSessionMetadata() {
+  for (const key of DEMO_STORAGE_KEYS) localStorage.removeItem(key);
+}
+
+function safeLocalRedirect(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
+}
+
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState<'email' | 'phone'>('email');
 
 
@@ -55,20 +74,63 @@ export function Login() {
     setNotFound(false);
   };
 
+  const completeLogin = (data: LoginResponse) => {
+    if (!data.session_token || !data.user) {
+      setError('Réponse de connexion incomplète. Veuillez réessayer.');
+      return;
+    }
+
+    saveSession(data.session_token, data.user);
+
+    if (data.is_demo) {
+      localStorage.setItem('is_demo', 'true');
+      if (data.heartbeat_token) localStorage.setItem('heartbeat_token', data.heartbeat_token);
+      if (data.expires_at) localStorage.setItem('demo_expires_at', data.expires_at);
+      localStorage.setItem('demo_roles', JSON.stringify(data.demo_roles ?? data.user.roles ?? []));
+      localStorage.setItem('demo_course_ids', JSON.stringify(data.demo_course_ids ?? []));
+    } else {
+      clearDemoSessionMetadata();
+    }
+
+    if (data.user.force_password_change) {
+      navigate('/changer-mot-de-passe', {
+        replace: true,
+        state: { session_token: data.session_token, user: data.user },
+      });
+      return;
+    }
+
+    const requestedRedirect = safeLocalRedirect(new URLSearchParams(location.search).get('redirect'));
+    navigate(data.is_demo ? (data.redirect_url || '/demo/dashboard') : (requestedRedirect || data.redirect_url || '/dashboard'), { replace: true });
+  };
+
+  const handleLoginFailure = (data: LoginResponse, phoneMode = false) => {
+    if (data.demo_expired) {
+      setDemoExpired(true);
+      setError('');
+      return;
+    }
+    if (data.needs_validation) {
+      navigate('/en-attente-validation', { replace: true });
+      return;
+    }
+    if (phoneMode && data.not_found) {
+      setNotFound(true);
+      setError('');
+      return;
+    }
+    setError(data.message || 'Identifiants incorrects');
+  };
+
   const handleSubmit = async () => {
+    clearErrors();
     setLoading(true);
-    setError('');
 
     try {
       const data = await authFetch<LoginResponse>('auth-login', { email: email.trim(), password });
 
-      if (data.success) {
-        localStorage.setItem('omnia_session_token', data.session_token!);
-        localStorage.setItem('omnia_user', JSON.stringify(data.user));
-        navigate(data.redirect_url || '/dashboard', { replace: true });
-      } else {
-        setError(data.message || 'Identifiants incorrects');
-      }
+      if (data.success) completeLogin(data);
+      else handleLoginFailure(data);
     } catch (err) {
       setError('Une erreur est survenue');
     } finally {
@@ -86,13 +148,8 @@ export function Login() {
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
       const data = await authFetch<LoginResponse>('auth-login', { phone_number, password: phonePassword });
-      if (data.success) {
-        localStorage.setItem('omnia_session_token', data.session_token);
-        localStorage.setItem('omnia_user', JSON.stringify(data.user));
-        navigate(data.redirect_url || '/dashboard', { replace: true });
-      } else {
-        setError(data.message || 'Identifiants incorrects');
-      }
+      if (data.success) completeLogin(data);
+      else handleLoginFailure(data, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
