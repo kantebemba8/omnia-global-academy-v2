@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature,
 } from 'lucide-react';
 
 interface NavItem {
@@ -40,6 +40,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
       { path: '/structure/rattachements', label: 'Demandes de rattachement', icon: UserCheck },
       { path: '/structure/codes', label: 'Codes structure', icon: QrCode },
       { path: '/structure/abonnements', label: 'Abonnements & capacités', icon: CreditCard },
+      { path: '/structure/commerce-b2b', label: 'Commerce B2B & contrats', icon: FileSignature },
       { path: '/structure/equipe', label: 'Équipe de la structure', icon: Shield },
     ],
   },

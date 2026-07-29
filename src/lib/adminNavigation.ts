@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route
+  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -72,6 +72,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
       { path: '/admin/structures', label: 'Structures', icon: Building2 },
+      { path: '/admin/structures/b2b', label: 'Commerce B2B & contrats', icon: FileSignature },
       { path: '/admin/structure-codes', label: 'Codes structure', icon: QrCode },
     ],
   },

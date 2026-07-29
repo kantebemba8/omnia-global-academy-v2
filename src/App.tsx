@@ -94,6 +94,7 @@ import AdminCertificatePreview from './pages/admin/AdminCertificatePreview';
 import AdminMesFormations from './pages/admin/AdminMesFormations';
 import AdminStructures from './pages/admin/AdminStructures';
 import AdminStructureCodes from './pages/admin/AdminStructureCodes';
+import AdminStructureB2B from './pages/admin/AdminStructureB2B';
 import AdminCredentials from './pages/admin/AdminCredentials';
 import StudioConceptionFormation from './pages/studio/StudioConceptionFormation';
 import ProfessorCourseStart from './pages/studio/ProfessorCourseStart';
@@ -125,6 +126,7 @@ import StructureMembres from './pages/structure/StructureMembres';
 import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
 import StructureRecruitment from './pages/structure/StructureRecruitment';
+import StructureB2B from './pages/structure/StructureB2B';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import PartnerRecognitionWorkspace from './pages/partner/PartnerRecognitionWorkspace';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
@@ -562,6 +564,7 @@ export default function App() {
           <Route path="/admin/studio-mes-formations" element={<AdminMesFormations />} />
           <Route path="/admin/structures" element={<AdminStructures />} />
 <Route path="/admin/structure-codes" element={<AdminStructureCodes />} />
+<Route path="/admin/structures/b2b" element={<AdminStructureB2B />} />
 <Route path="/admin/structure-avantages" element={<Navigate to="/admin/monetization" replace />} />
           
         {/* Moderator — always accessible (English + French paths) */}
@@ -642,6 +645,7 @@ export default function App() {
 <Route path="/structure/rattachements" element={<StructureMembres />} />
 <Route path="/structure/avantages" element={<Navigate to="/structure/abonnements" replace />} />
 <Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
+<Route path="/structure/commerce-b2b" element={<StructureB2B />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
 <Route path="/structure/offres-emploi" element={<StructureJobs />} />
 <Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
