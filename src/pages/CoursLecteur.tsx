@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
 import { AssessmentEngine } from '../components/AssessmentEngine';
+import { getResilientDeviceId, loadResilientLesson, queueOfflineSeconds, saveResilientLesson, takeOfflineSeconds } from '../lib/resilientCourseStore';
 interface AiMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -260,8 +261,33 @@ export function CoursLecteur() {
   const [aiError, setAiError] = useState('');
   const aiBottomRef = useRef<HTMLDivElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [dataSaver, setDataSaver] = useState(() => localStorage.getItem('omnia_data_saver') === '1');
+  const [resilientMessage, setResilientMessage] = useState('');
+  const [resilientBusy, setResilientBusy] = useState(false);
+  const [usingLocalCopy, setUsingLocalCopy] = useState(false);
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('omnia_data_saver', dataSaver ? '1' : '0');
+  }, [dataSaver]);
+
+  useEffect(() => {
+    if (isOnline || !user?.id || !courseId || !currentLessonId) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds: 30 }).catch(() => undefined);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [isOnline, user?.id, courseId, currentLessonId]);
 
   useEffect(() => {
     // L'aperçu Super Admin reste accessible avec la session active et ne doit pas
@@ -282,6 +308,25 @@ export function CoursLecteur() {
   }, [sessionToken, courseId, navigate]);
 
   useEffect(() => {
+    if (!isOnline || !user?.id || !courseId || !currentLessonId || !sessionToken) return;
+    takeOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId }).then(async seconds => {
+      if (!seconds) return;
+      try {
+        const response = await fetch(ENDPOINTS.videoSignedUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+          body: JSON.stringify({ action: 'offline_sync', course_id: courseId, lesson_id: currentLessonId, device_id: getResilientDeviceId(), seconds }),
+        });
+        if (!response.ok) throw new Error();
+        setResilientMessage('Progression hors connexion synchronisée.');
+        await loadProgress();
+      } catch {
+        await queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds });
+      }
+    }).catch(() => undefined);
+  }, [isOnline, user?.id, courseId, currentLessonId, sessionToken, loadProgress]);
+
+
+  useEffect(() => {
     if (!sessionToken) return;
     setProgressLoading(true);
     loadProgress().finally(() => setProgressLoading(false));
@@ -294,20 +339,36 @@ export function CoursLecteur() {
   }, [modules, routeLessonId, currentLessonId]);
 
   useEffect(() => {
-    if (!currentLessonId || !courseId || !sessionToken) return;
+    if (!currentLessonId || !courseId || !sessionToken || !user?.id) return;
+    let cancelled = false;
     setLessonLoading(true);
-    setShowSummary(false); setVideoUrl(null); setExternalVisited(false);
+    setShowSummary(false); setVideoUrl(null); setExternalVisited(false); setUsingLocalCopy(false); setResilientMessage('');
     if (videoTimerRef.current) clearInterval(videoTimerRef.current);
-    fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) return;
-        setLessonData(d);
-        if (d.lesson.content_type === 'video') signVideo(currentLessonId);
-      })
-      .finally(() => setLessonLoading(false));
+    (async () => {
+      try {
+        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.message || data.error || 'Chargement impossible');
+        if (cancelled) return;
+        setLessonData(data);
+        if (data.lesson.content_type === 'video' && !dataSaver) signVideo(currentLessonId);
+      } catch {
+        const local = await loadResilientLesson<any>({ userId: user.id, courseId, lessonId: currentLessonId });
+        if (cancelled) return;
+        if (local) {
+          setLessonData(local);
+          setUsingLocalCopy(true);
+          setResilientMessage('Copie locale sécurisée utilisée. La progression sera synchronisée au retour de la connexion.');
+        } else {
+          setResilientMessage('Cette leçon n’est pas disponible hors connexion sur cet appareil.');
+        }
+      } finally {
+        if (!cancelled) setLessonLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLessonId, courseId, sessionToken]);
+  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver]);
 
   const signVideo = useCallback((lid: string) => {
     if (!courseId || !sessionToken) return;
@@ -422,6 +483,31 @@ export function CoursLecteur() {
     }
   }, [aiInput, aiMode, aiLoading, courseId, sessionToken, aiMessages]);
 
+  const saveCurrentLessonForResilientAccess = useCallback(async () => {
+    if (!user?.id || !courseId || !currentLessonId || !sessionToken || !lessonData) return;
+    setResilientBusy(true); setResilientMessage('');
+    try {
+      const response = await fetch(ENDPOINTS.videoSignedUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ action: 'offline_authorize', course_id: courseId, lesson_id: currentLessonId, device_id: getResilientDeviceId() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || data.error || 'Accès résilient refusé.');
+      const safeCopy = {
+        ...lessonData,
+        lesson: { ...lessonData.lesson, video_url: undefined, cloudflare_stream_uid: undefined },
+        blocks: (lessonData.blocks ?? []).map((block: any) => ({
+          ...block,
+          file_url: ['video', 'scorm', 'download'].includes(block.block_type) ? undefined : block.file_url,
+        })),
+      };
+      await saveResilientLesson({ userId: user.id, courseId, lessonId: currentLessonId, expiresAt: data.expires_at, value: safeCopy });
+      setResilientMessage(`Leçon protégée sur cet appareil jusqu’au ${new Date(data.expires_at).toLocaleDateString('fr-FR')}.`);
+    } catch (error) {
+      setResilientMessage(error instanceof Error ? error.message : 'Enregistrement local impossible.');
+    } finally { setResilientBusy(false); }
+  }, [user?.id, courseId, currentLessonId, sessionToken, lessonData]);
+
   const lesson = lessonData?.lesson;
   const prog = lessonData?.progress;
   const isCompleted = prog?.is_completed ?? false;
@@ -493,6 +579,28 @@ export function CoursLecteur() {
             <div className="max-w-3xl mx-auto px-4 py-6">
               <h1 className="font-bold text-xl mb-4" style={{ color: '#002050' }}>{lesson.title}</h1>
 
+              <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#F8FAFC' }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: isOnline ? '#1E7A52' : '#B45309' }}>
+                    {isOnline ? <ShieldCheck size={15}/> : <WifiOff size={15}/>}
+                    {isOnline ? 'Connexion disponible' : 'Mode hors connexion'}
+                    {usingLocalCopy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">copie locale</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setDataSaver(v => !v)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold" style={{ borderColor: dataSaver ? '#BF8813' : '#D1D5DB', color: '#002050', background: dataSaver ? '#FFFBEB' : '#FFF' }}>
+                      <Gauge size={14}/>{dataSaver ? 'Économie de données active' : 'Activer l’économie de données'}
+                    </button>
+                    {!isAdminPreview && isOnline && (
+                      <button disabled={resilientBusy} onClick={saveCurrentLessonForResilientAccess} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ backgroundColor: '#002050' }}>
+                        {resilientBusy ? <RefreshCw size={14} className="animate-spin"/> : <Database size={14}/>}Conserver cette leçon
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">Le stockage local concerne uniquement les contenus autorisés. Les vidéos et fichiers téléchargeables ne sont jamais enregistrés librement.</p>
+                {resilientMessage && <p className="mt-2 text-xs font-semibold" style={{ color: resilientMessage.includes('impossible') || resilientMessage.includes('refusé') || resilientMessage.includes('pas disponible') ? '#B91C1C' : '#1E7A52' }}>{resilientMessage}</p>}
+              </div>
+
               {(lesson.is_external || lesson.content_type === 'external') && lesson.external_url && (
                 <div className="rounded-2xl p-6 mb-5 border-2 text-center space-y-4"
                   style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
@@ -541,7 +649,7 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {lesson.content_type === 'video' && !(lesson.is_external) && (
+              {lesson.content_type === 'video' && !(lesson.is_external) && !dataSaver && isOnline && (
                 <div
                   ref={videoContainerRef}
                   className="rounded-2xl overflow-hidden mb-5"
@@ -554,6 +662,13 @@ export function CoursLecteur() {
                         <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: '#FFF', borderTopColor: 'transparent' }} />
                       </div>
                   }
+                </div>
+              )}
+              {lesson.content_type === 'video' && !(lesson.is_external) && (dataSaver || !isOnline) && (
+                <div className="rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
+                  <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#002050' }}><Gauge size={16}/>Lecture vidéo suspendue pour économiser les données</div>
+                  <p className="mt-2 text-xs text-slate-600">Utilisez le texte, la transcription ou la piste audio lorsqu’elle est disponible. Désactivez l’économie de données pour reprendre la vidéo.</p>
+                  {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" className="mt-3 w-full" src={lesson.audio_url} />}
                 </div>
               )}
               {lesson.content_type === 'audio' && lesson.audio_url && (

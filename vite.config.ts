@@ -12,8 +12,11 @@ export default defineConfig({
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        navigateFallback: null,
-        runtimeCaching: [],
+        navigateFallback: '/offline.html',
+        runtimeCaching: [
+          { urlPattern: ({ request }) => request.destination === 'image', handler: 'CacheFirst', options: { cacheName: 'omnia-images', expiration: { maxEntries: 80, maxAgeSeconds: 604800 } } },
+          { urlPattern: ({ request }) => request.destination === 'font' || request.destination === 'style' || request.destination === 'script', handler: 'StaleWhileRevalidate', options: { cacheName: 'omnia-static-assets', expiration: { maxEntries: 80, maxAgeSeconds: 604800 } } },
+        ],
       },
       manifest: {
         name: 'Omnia Global Academy',
