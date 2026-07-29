@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   CalendarDays, Check, ClipboardList, Edit3, Eye, FileCheck2, FolderKanban, Mail, Plus, RefreshCw,
   Send, Users, X,
@@ -29,6 +28,7 @@ import {
   upsertProjectMilestone,
 } from '../../lib/projectsApi';
 import { ProjectStatusBadge, ProjectsWorkspaceFrame } from '../../components/projects/ProjectUi';
+import { OwnerProjectRecommendationsPanel } from '../../components/projects/ProjectRecommendationsPanel';
 
 const EMPTY_FORM = {
   title: '', short_description: '', description: '', problem_statement: '', objectives: '',
@@ -380,7 +380,7 @@ export default function ProjectOwnerWorkspace() {
     <ProjectsWorkspaceFrame>
       <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Espace porteur</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Créez des missions structurées et suivez les candidatures.</p><Link to="/projects/gestion/recommandations" className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#76520A' }}>Recommandations professionnelles</Link></div>
+          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Gestion de projets</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Créez des missions structurées et suivez les candidatures.</p></div>
           <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}><Plus size={17} /> Nouveau projet</button>
         </div>
 
@@ -400,6 +400,8 @@ export default function ProjectOwnerWorkspace() {
             </div>
           ))}</div> : <div className="px-5 py-14 text-center"><FolderKanban className="mx-auto" size={34} style={{ color: '#BF8813' }} /><h3 className="mt-4 font-bold" style={{ color: '#002050' }}>Aucun projet créé</h3><p className="mt-1 text-sm text-slate-600">Commencez avec un projet réel, un challenge ou une mission.</p></div>}
         </section>
+
+        <OwnerProjectRecommendationsPanel projects={projects} />
       </div>
 
       {showForm && (

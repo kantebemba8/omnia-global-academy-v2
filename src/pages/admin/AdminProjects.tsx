@@ -13,6 +13,7 @@ import {
   getProjectPartners, saveProjectPartner, ProjectPartner, ProjectType,
 } from '../../lib/projectsApi';
 import { ProjectStatusBadge } from '../../components/projects/ProjectUi';
+import { AdminProjectRecommendationsPanel } from '../../components/projects/ProjectRecommendationsPanel';
 
 const FILTERS = [
   ['', 'Tous'],
@@ -168,6 +169,8 @@ export default function AdminProjects() {
             </button>
           ))}</div> : <div className="px-5 py-16 text-center"><FolderKanban className="mx-auto" size={36} style={{ color: '#BF8813' }} /><h2 className="mt-4 font-bold" style={{ color: '#002050' }}>Aucun projet dans cette catégorie</h2></div>}
         </section>
+
+        <AdminProjectRecommendationsPanel />
 
         {!!reports.length && (
           <section className="mt-8 border bg-white p-5 sm:p-6" style={{ borderColor: '#F3C8C8', borderRadius: 18 }}>

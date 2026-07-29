@@ -49,6 +49,13 @@ async function canManageProject(sb: any, session: Session, projectId: string) {
   const { data: project } = await sb.from("omnia_projects").select("creator_user_id,organization_id").eq("id", projectId).maybeSingle();
   return Boolean(project && (String(project.creator_user_id) === session.userId || (session.organizationId && String(project.organization_id) === session.organizationId)));
 }
+
+function canAuthorProjectRecommendation(session: Session) {
+  if (session.isAdmin) return false;
+  return session.roles.some((role) => [
+    "professeur", "structure", "responsable_structure", "directeur", "gestionnaire_partenaire",
+  ].includes(role));
+}
 async function selectedProjectUsers(sb: any, projectId: string) {
   const [{ data: applications }, { data: teams }] = await Promise.all([
     sb.from("omnia_project_applications").select("applicant_user_id,status,user:users!omnia_project_applications_applicant_user_id_fkey(id,full_name,email)").eq("project_id", projectId).eq("status", "selected"),
@@ -194,16 +201,59 @@ Deno.serve(async (req) => {
       return json({ success: true, recommendation: data });
     }
 
+    if (action === "owner_recommendations") {
+      const projectId = text(body.project_id, 80);
+      if (!canAuthorProjectRecommendation(session)) return json({ error: "FORBIDDEN" }, 403);
+      if (!(await canManageProject(sb, session, projectId))) return json({ error: "FORBIDDEN" }, 403);
+      const { data: project } = await sb.from("omnia_projects").select("id,status").eq("id", projectId).maybeSingle();
+      if (!project || project.status !== "closed") return json({ error: "PROJECT_NOT_CLOSED" }, 409);
+      const { data, error } = await sb.from("project_recommendations")
+        .select("*,recipient:users!project_recommendations_recipient_user_id_fkey(id,full_name,email),project:omnia_projects(id,title,status)")
+        .eq("project_id", projectId).eq("author_user_id", session.userId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return json({ success: true, recommendations: data || [] });
+    }
+
+    if (action === "admin_recommendations") {
+      if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+      const { data, error } = await sb.from("project_recommendations")
+        .select("*,recipient:users!project_recommendations_recipient_user_id_fkey(id,full_name,email),project:omnia_projects(id,title,status)")
+        .order("created_at", { ascending: false }).limit(500);
+      if (error) throw error;
+      return json({ success: true, recommendations: data || [] });
+    }
+
+    if (action === "admin_moderate_recommendation") {
+      if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+      const recommendationId = text(body.recommendation_id, 80);
+      const decision = text(body.decision, 30);
+      const reason = text(body.reason, 1000);
+      if (decision !== "revoke" || !reason) return json({ error: "INVALID_MODERATION_DECISION" }, 400);
+      const { data: previous } = await sb.from("project_recommendations").select("*").eq("id", recommendationId).maybeSingle();
+      if (!previous) return json({ error: "RECOMMENDATION_NOT_FOUND" }, 404);
+      const { data, error } = await sb.from("project_recommendations").update({ status: "revoked", revoked_at: new Date().toISOString(), revocation_reason: reason }).eq("id", recommendationId).select("*").single();
+      if (error) throw error;
+      await sb.from("omnia_project_verified_evidence").update({ validation_status: "revoked" }).eq("user_id", previous.recipient_user_id).eq("source_reference", `recommendation:${previous.id}`);
+      await sb.from("omnia_project_audit_log").insert({ project_id: previous.project_id, actor_user_id: session.userId, action: "recommendation_revoked", entity_type: "project_recommendation", entity_id: previous.id, previous_data: previous, new_data: data, metadata: { reason } });
+      return json({ success: true, recommendation: data });
+    }
+
     if (action === "project_candidates") {
       const projectId = text(body.project_id, 80);
+      if (!canAuthorProjectRecommendation(session)) return json({ error: "FORBIDDEN" }, 403);
       if (!(await canManageProject(sb, session, projectId))) return json({ error: "FORBIDDEN" }, 403);
+      const { data: project } = await sb.from("omnia_projects").select("id,status").eq("id", projectId).maybeSingle();
+      if (!project || project.status !== "closed") return json({ error: "PROJECT_NOT_CLOSED" }, 409);
       return json({ success: true, users: [...(await selectedProjectUsers(sb, projectId)).values()] });
     }
 
     if (action === "create_recommendation") {
       const projectId = text(body.project_id, 80);
       const recipient = text(body.recipient_user_id, 80);
+      if (!canAuthorProjectRecommendation(session)) return json({ error: "FORBIDDEN" }, 403);
       if (!(await canManageProject(sb, session, projectId))) return json({ error: "FORBIDDEN" }, 403);
+      const { data: managedProject } = await sb.from("omnia_projects").select("id,status").eq("id", projectId).maybeSingle();
+      if (!managedProject || managedProject.status !== "closed") return json({ error: "PROJECT_NOT_CLOSED" }, 409);
       if (!text(body.recommendation_text, 5000)) return json({ error: "RECOMMENDATION_REQUIRED" }, 400);
       const participants = await selectedProjectUsers(sb, projectId);
       if (!participants.has(recipient)) return json({ error: "RECIPIENT_NOT_PROJECT_PARTICIPANT" }, 409);

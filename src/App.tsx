@@ -243,7 +243,6 @@ import ProjectDetail from './pages/projects/ProjectDetail';
 import PublicProjectPortfolio from './pages/projects/PublicProjectPortfolio';
 import ProjectsWorkspace from './pages/projects/ProjectsWorkspace';
 import ProjectOwnerWorkspace from './pages/projects/ProjectOwnerWorkspace';
-import ProjectRecommendations from './pages/projects/ProjectRecommendations';
 import AdminProjects from './pages/admin/AdminProjects';
 import AdminOmniaLiveCreate from './pages/omnia-live/admin/AdminOmniaLiveCreate';
 
@@ -354,7 +353,6 @@ export default function App() {
           <Route path="/projects/explorer" element={<ProjectsHome />} />
           <Route path="/projects/mes-projets" element={<ProjectsWorkspace />} />
           <Route path="/projects/gestion" element={<ProjectOwnerWorkspace />} />
-          <Route path="/projects/gestion/recommandations" element={<ProjectRecommendations />} />
           <Route path="/professeur/projects" element={<ProjectOwnerWorkspace />} />
           <Route path="/structure/projects" element={<ProjectOwnerWorkspace />} />
           <Route path="/admin/projects" element={<AdminProjects />} />
