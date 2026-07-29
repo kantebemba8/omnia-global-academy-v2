@@ -45,7 +45,7 @@ export default function ProjectsHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [explorer]);
 
-  const title = useMemo(() => explorer ? 'Explorer les projets et challenges' : 'Opportunités récemment publiées', [explorer]);
+  const title = useMemo(() => explorer ? 'Explorer les projets et défis' : 'Opportunités récemment publiées', [explorer]);
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault();

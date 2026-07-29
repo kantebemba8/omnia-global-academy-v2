@@ -116,7 +116,7 @@ export function AdminProjectRecommendationsPanel() {
   async function load() {
     setError('');
     try {
-      const result = await projectPortfolioRequest<{ recommendations: Recommendation[] }>('admin_recommendations');
+      const result = await projectPortfolioRequest<{ recommendations: Recommendation[] }>('admin_list_recommendations');
       setRecommendations(result.recommendations || []);
     } catch (err) { setError(err instanceof Error ? err.message : 'Chargement impossible.'); }
   }
@@ -127,7 +127,7 @@ export function AdminProjectRecommendationsPanel() {
     if (!reason?.trim()) return;
     setBusyId(id); setError(''); setNotice('');
     try {
-      await projectPortfolioRequest('admin_moderate_recommendation', { recommendation_id: id, decision: 'revoke', reason: reason.trim() });
+      await projectPortfolioRequest('admin_revoke_recommendation', { recommendation_id: id, reason: reason.trim() });
       setNotice('Recommandation invalidée.');
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : 'Action impossible.'); }

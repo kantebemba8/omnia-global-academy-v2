@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  ArrowRight, Building2, CalendarDays, Clock3, Globe2, LockKeyhole,
+  ArrowRight, Briefcase, Building2, CalendarDays, Clock3, Compass, Globe2, Home, LockKeyhole,
   MapPin, ShieldCheck, Sparkles, Users,
 } from 'lucide-react';
-import { Navbar } from '../Navbar';
+import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { AdminLayout } from '../AdminLayout';
@@ -15,12 +15,21 @@ import {
   PROJECT_TYPE_LABELS,
 } from '../../lib/projectsApi';
 
+const PROJECTS_PUBLIC_NAV = [
+  { label: 'Accueil Projects', path: '/projects', icon: Home, exact: true },
+  { label: 'Explorer les projets', path: '/projects/explorer', icon: Compass },
+  { label: 'Mon espace Projects', path: '/projects/mes-projets', icon: Briefcase },
+];
+
 export function ProjectsPublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      <main className="pt-16">{children}</main>
-    </div>
+    <SubspaceHamburgerLayout
+      title="Omnia Projects"
+      navItems={PROJECTS_PUBLIC_NAV}
+      searchPlaceholder="Rechercher un projet, une compétence, une organisation..."
+    >
+      {children}
+    </SubspaceHamburgerLayout>
   );
 }
 
@@ -116,31 +125,43 @@ export function ProjectCard({ project, showStatus = false }: { project: OmniaPro
 
 export function ProjectsHero({ compact = false }: { compact?: boolean }) {
   return (
-    <section className={compact ? 'px-5 py-10 sm:px-8' : 'px-5 py-16 sm:px-8 lg:py-20'} style={{ background: 'linear-gradient(135deg, #00183E 0%, #002A67 64%, #173E75 100%)' }}>
+    <section className="border-b bg-white px-5 py-10 md:px-8 md:py-14" style={{ borderColor: '#E4E7EC' }}>
       <div className="mx-auto max-w-6xl">
-        <div className="flex max-w-3xl items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em]" style={{ color: '#E8C76E' }}>
-          <Sparkles size={17} /> Expérience vérifiable
+        <div className="max-w-3xl">
+          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: 'rgba(191,136,19,.12)', color: '#BF8813' }}>
+            <Sparkles size={14} /> Expérience professionnelle vérifiable
+          </span>
+          <h1 className="mt-5 text-3xl font-semibold leading-tight md:text-4xl" style={{ color: '#002050' }}>
+            Transformez vos compétences en preuves d’expérience.
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+            Réalisez des projets réels, relevez des défis et collaborez avec des Structures, entreprises et institutions dans un cadre sécurisé.
+          </p>
+          {!compact && (
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link to="/projects/explorer" className="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white" style={{ background: '#002050' }}>
+                <Compass size={17} /> Explorer les projets
+              </Link>
+              <Link to="/projects/mes-projets" className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#002050' }}>
+                Mon espace Projects <ArrowRight size={17} />
+              </Link>
+            </div>
+          )}
         </div>
-        <h1 className={`${compact ? 'mt-3 text-3xl sm:text-4xl' : 'mt-4 text-4xl sm:text-5xl lg:text-6xl'} max-w-4xl font-bold leading-tight text-white`}>
-          Transformez vos compétences en preuves d’expérience.
-        </h1>
-        <p className="mt-5 max-w-3xl text-base leading-7 text-blue-100 sm:text-lg">
-          Réalisez des projets réels, relevez des challenges et collaborez avec des Structures, entreprises et institutions dans un cadre sécurisé.
-        </p>
-        {!compact && (
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/projects/explorer" className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold" style={{ background: '#BF8813', color: '#FFFFFF' }}>
-              Explorer les projets <ArrowRight size={17} />
-            </Link>
-            <Link to="/projects/mes-projets" className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3 text-sm font-bold text-white">
-              Mon espace Projects
-            </Link>
-          </div>
-        )}
-        <div className="mt-8 grid max-w-3xl grid-cols-1 gap-3 text-sm text-blue-50 sm:grid-cols-3">
-          <div className="flex items-center gap-2"><ShieldCheck size={18} style={{ color: '#E8C76E' }} /> Confidentialité définie</div>
-          <div className="flex items-center gap-2"><Globe2 size={18} style={{ color: '#E8C76E' }} /> Partenaires multi-pays</div>
-          <div className="flex items-center gap-2"><Clock3 size={18} style={{ color: '#E8C76E' }} /> Missions courtes ou longues</div>
+
+        <div className="mt-10 grid gap-3 sm:grid-cols-3">
+          {[
+            { label: 'Confidentialité définie', icon: ShieldCheck },
+            { label: 'Partenaires de plusieurs pays', icon: Globe2 },
+            { label: 'Missions courtes ou longues', icon: Clock3 },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold" style={{ color: '#002050' }}>{item.label}</p>
+                <item.icon size={18} color="#BF8813" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>

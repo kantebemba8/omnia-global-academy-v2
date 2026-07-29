@@ -179,7 +179,7 @@ export type ProjectContext = {
 
 export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   real_project: 'Projet réel',
-  challenge: 'Challenge',
+  challenge: 'Défi',
   case_study: 'Étude de cas',
   short_mission: 'Mission courte',
   academic_project: 'Projet académique',
