@@ -1,149 +1,121 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { checkRateLimit } from "../_shared/security.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+async function sessionUser(sb: any, req: Request) {
+  const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const { data } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  if (data?.user_id) return data.user_id;
+  const { data: authData } = await sb.auth.getUser(token);
+  return authData?.user?.id || null;
 }
 
+const MODE_LABELS: Record<string, string> = {
+  explanation: "expliquer clairement le point demandé",
+  reformulation: "reformuler le contenu avec des mots plus simples sans changer son sens",
+  exercise: "proposer un exercice d'entraînement puis fournir des indications, sans inventer de notions absentes du cours",
+  revision_plan: "construire un plan de révision réaliste à partir des notions présentes dans le cours",
+  recommendation: "recommander les éléments du cours à revoir en priorité",
+  question: "répondre à la question",
+};
+
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  try {
+    const userId = await sessionUser(sb, req);
+    if (!userId) return json({ success: false, error: "AUTH_REQUIRED", message: "Connexion requise." }, 401);
+    const body = await req.json();
+    const courseId = String(body.course_id || "");
+    const message = String(body.message || "").trim();
+    const mode = String(body.mode || "question");
+    const history = Array.isArray(body.conversation_history) ? body.conversation_history.slice(-6) : [];
+    if (!courseId) return json({ success: false, error: "COURSE_ID_REQUIRED", message: "Formation requise." }, 400);
+    if (message.length < 3) return json({ success: false, error: "MESSAGE_TOO_SHORT", message: "Votre demande est trop courte." }, 400);
+    if (message.length > 1200) return json({ success: false, error: "MESSAGE_TOO_LONG", message: "Votre demande est trop longue." }, 400);
 
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
-  if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
+    const [{ data: enrollment }, { data: course }] = await Promise.all([
+      sb.from("user_enrollments").select("id").eq("user_id", userId).eq("course_id", courseId).maybeSingle(),
+      sb.from("courses").select("id,title,creator_id,is_published,quality_review_status").eq("id", courseId).maybeSingle(),
+    ]);
+    if (!course) return json({ success: false, error: "COURSE_NOT_FOUND", message: "Formation introuvable." }, 404);
+    if (!enrollment && course.creator_id !== userId) return json({ success: false, error: "NOT_ENROLLED", message: "Accès refusé à cette formation." }, 403);
+    if (!course.is_published || course.quality_review_status !== "approved") {
+      return json({ success: false, error: "COURSE_NOT_APPROVED", message: "L’assistant est disponible uniquement pour les formations publiées et validées par le Centre Qualité." }, 403);
+    }
 
-  const { data: sess } = await sb.from("user_sessions").select("user_id")
-    .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return json({ error: "SESSION_INVALID" }, 401);
-  const userId = sess.user_id;
+    const [{ data: governance }, { data: courseSetting }] = await Promise.all([
+      sb.from("ai_pedagogical_governance").select("*").eq("id", 1).maybeSingle(),
+      sb.from("ai_pedagogical_course_settings").select("*").eq("course_id", courseId).maybeSingle(),
+    ]);
+    if (governance && governance.enabled === false) return json({ success: false, error: "AI_DISABLED", message: "L’assistant pédagogique est temporairement désactivé par le Centre Qualité." }, 403);
+    if (courseSetting && courseSetting.enabled === false) return json({ success: false, error: "COURSE_AI_DISABLED", message: "L’assistant n’est pas activé pour cette formation." }, 403);
+    const allowedModes = courseSetting?.allowed_modes || governance?.allowed_modes || ["question", "explanation", "reformulation", "exercise", "revision_plan", "recommendation"];
+    if (!allowedModes.includes(mode)) return json({ success: false, error: "MODE_NOT_ALLOWED", message: "Cette fonction n’est pas autorisée par le Centre Qualité." }, 403);
 
-  // Rate limit: 20 messages / hour / user
-  const rateCheck = await sb.from("rate_limit_log")
-    .select("*", { count: "exact", head: true })
-    .eq("rate_key", `rag-chat:${userId}`)
-    .gte("created_at", new Date(Date.now() - 3600_000).toISOString());
-  if ((rateCheck.count ?? 0) >= 20) {
-    return json({ error: "RATE_LIMIT", message: "Limite de 20 questions par heure atteinte. Réessayez plus tard." }, 429);
-  }
-  await sb.from("rate_limit_log").insert({ rate_key: `rag-chat:${userId}`, created_at: new Date().toISOString() });
+    const hourlyLimit = Number(courseSetting?.hourly_limit || governance?.hourly_limit || 20);
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const { count } = await sb.from("ai_pedagogical_usage_logs").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since);
+    if (Number(count || 0) >= hourlyLimit) return json({ success: false, error: "RATE_LIMIT", message: `Limite de ${hourlyLimit} demandes par heure atteinte.` }, 429);
 
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const claudeKey = Deno.env.get("CLAUDE_API_KEY");
+    if (!openaiKey || !claudeKey) return json({ success: false, error: "AI_NOT_CONFIGURED", message: "Le service d’assistance n’est pas encore configuré." }, 503);
 
-  const body = await req.json() as {
-    course_id: string;
-    message: string;
-    conversation_history?: Array<{ role: string; content: string }>;
-  };
+    const embResp = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST", headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: message }),
+    });
+    if (!embResp.ok) throw new Error("EMBEDDING_FAILED");
+    const embData = await embResp.json();
+    const { data: chunks, error: searchError } = await sb.rpc("search_rag_chunks", {
+      query_embedding: embData.data[0].embedding, course_id_filter: courseId,
+      match_count: Number(governance?.max_chunks || 6), match_threshold: Number(governance?.similarity_threshold || 0.72),
+    });
+    if (searchError) throw searchError;
+    const validChunks = chunks || [];
+    const hasContext = validChunks.length > 0;
+    const context = validChunks.map((c: any, i: number) => `[Source ${i + 1}]\n${c.content}`).join("\n\n---\n\n");
+    if (!hasContext) {
+      await sb.from("ai_pedagogical_usage_logs").insert({ user_id: userId, course_id: courseId, mode, question: message, status: "no_context", chunks_used: 0 });
+      return json({ success: true, reply: "Je n’ai pas trouvé de réponse dans le contenu validé de cette formation. Reformulez votre demande ou consultez le forum du cours.", sources_found: false, chunks_used: 0 });
+    }
 
-  const { course_id, message, conversation_history } = body;
-  if (!course_id) return json({ error: "COURSE_ID_REQUIRED" }, 400);
-  if (!message || message.trim().length < 3) return json({ error: "MESSAGE_TOO_SHORT" }, 400);
-  if (message.length > 1000) return json({ error: "MESSAGE_TOO_LONG" }, 400);
-
-  // Check enrollment
-  const { data: enr } = await sb.from("user_enrollments").select("id")
-    .eq("user_id", userId).eq("course_id", course_id).maybeSingle();
-  const { data: course } = await sb.from("courses").select("title, creator_id").eq("id", course_id).maybeSingle();
-  if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
-  if (!enr && course.creator_id !== userId) return json({ error: "NOT_ENROLLED" }, 403);
-
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  const claudeKey = Deno.env.get("CLAUDE_API_KEY");
-  if (!openaiKey || !claudeKey) return json({ error: "AI_NOT_CONFIGURED" }, 500);
-
-  // Fetch AI settings
-  const { data: settings } = await sb.from("site_settings")
-    .select("key, value")
-    .in("key", ["ai_model", "ai_max_tokens_per_response", "ai_conversations_log_enabled"]);
-  const settingsMap: Record<string, string> = {};
-  (settings || []).forEach((s: { key: string; value: string }) => {
-    try { settingsMap[s.key] = JSON.parse(s.value); } catch { settingsMap[s.key] = s.value; }
-  });
-  const aiModel = settingsMap["ai_model"] || "claude-sonnet-4-6";
-  const maxTokens = parseInt(settingsMap["ai_max_tokens_per_response"] || "1000");
-  const logEnabled = settingsMap["ai_conversations_log_enabled"] === "true";
-
-  // Step 1: Embed question
-  const embResp = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: message }),
-  });
-  if (!embResp.ok) return json({ error: "EMBEDDING_FAILED" }, 500);
-  const embData = await embResp.json();
-  const questionEmbedding = embData.data[0].embedding;
-
-  // Step 2: Vector search
-  const { data: chunks } = await sb.rpc("search_rag_chunks", {
-    query_embedding: questionEmbedding,
-    course_id_filter: course_id,
-    match_count: 5,
-    match_threshold: 0.75,
-  });
-
-  const hasContext = chunks && chunks.length > 0;
-  const context = hasContext ? (chunks as Array<{ content: string }>).map(c => c.content).join("\n\n---\n\n") : null;
-
-  // Step 3: Build system prompt
-  const systemPrompt = context
-    ? `Tu es l'assistant pédagogique de la formation "${course.title}" sur Omnia Global Academy.
-
+    const model = String(courseSetting?.model || governance?.model || "claude-sonnet-4-6");
+    const maxTokens = Number(courseSetting?.max_tokens || governance?.max_tokens || 1000);
+    const instruction = MODE_LABELS[mode] || MODE_LABELS.question;
+    const system = `Tu es l’assistant pédagogique gouverné d’Omnia Global Academy pour la formation « ${course.title} ».
+Ta tâche est de ${instruction}.
 RÈGLES ABSOLUES :
-- Réponds UNIQUEMENT en te basant sur le contexte de cours fourni ci-dessous
-- Si la question dépasse ce contexte, réponds : "Cette question sort du périmètre de cette formation. Je ne peux répondre qu'aux questions liées au contenu de ce cours."
-- Ne jamais inventer d'informations
-- Langue de réponse : français
-- Sois pédagogue, encourageant, concis (max ${maxTokens} tokens)
+- utilise uniquement les sources validées fournies ;
+- n’invente aucun fait, notion, référence ou résultat ;
+- indique clairement lorsqu’une information manque ;
+- ne réalise pas à la place de l’apprenant une évaluation notée ni un travail à remettre ;
+- réponds uniquement en français ;
+- reste pédagogique, clair et concis ;
+- termine par « Sources utilisées : » avec les numéros des sources réellement mobilisées.
 
-CONTEXTE DE LA FORMATION :
-${context}`
-    : `Tu es l'assistant pédagogique de la formation "${course.title}" sur Omnia Global Academy.
-La question posée ne correspond à aucun contenu indexé de cette formation. Réponds uniquement : "Je n'ai pas trouvé de réponse dans le contenu de cette formation. Essayez de reformuler votre question ou consultez le forum du cours."`;
+SOURCES VALIDÉES :\n${context}`;
 
-  // Step 4: Call Claude
-  const history = (conversation_history || []).slice(-6).map(m => ({ role: m.role, content: m.content }));
-  const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": claudeKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: aiModel,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [...history, { role: "user", content: message }],
-    }),
-  });
-
-  if (!claudeResp.ok) {
-    const err = await claudeResp.json();
-    console.error("Claude error:", err);
-    return json({ error: "CLAUDE_FAILED" }, 500);
+    const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": claudeKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [...history, { role: "user", content: message }] }),
+    });
+    if (!aiResp.ok) throw new Error(`AI_PROVIDER_${aiResp.status}`);
+    const aiData = await aiResp.json();
+    const reply = aiData.content?.[0]?.text || "Une erreur est survenue.";
+    await sb.from("ai_pedagogical_usage_logs").insert({ user_id: userId, course_id: courseId, mode, question: message, response_excerpt: reply.slice(0, 1000), status: "answered", chunks_used: validChunks.length, model });
+    return json({ success: true, reply, sources_found: true, chunks_used: validChunks.length, mode });
+  } catch (error) {
+    console.error("rag-chat", error);
+    return json({ success: false, error: "SERVER_ERROR", message: "L’assistant pédagogique est momentanément indisponible." }, 500);
   }
-
-  const claudeData = await claudeResp.json();
-  const assistantReply = claudeData.content?.[0]?.text || "Désolé, une erreur est survenue.";
-
-  // Step 5: Log if enabled
-  if (logEnabled) {
-    const newMessages = [
-      ...(conversation_history || []),
-      { role: "user", content: message, created_at: new Date().toISOString() },
-      { role: "assistant", content: assistantReply, created_at: new Date().toISOString() },
-    ];
-    await sb.from("ai_conversations").upsert(
-      { user_id: userId, course_id, messages: newMessages, updated_at: new Date().toISOString() },
-      { onConflict: "user_id,course_id" }
-    );
-  }
-
-  return json({
-    reply: assistantReply,
-    sources_found: hasContext,
-    chunks_used: hasContext ? (chunks as unknown[]).length : 0,
-  });
 });

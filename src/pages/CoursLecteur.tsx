@@ -255,6 +255,7 @@ export function CoursLecteur() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   const [aiInput, setAiInput] = useState('');
+  const [aiMode, setAiMode] = useState('question');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const aiBottomRef = useRef<HTMLDivElement>(null);
@@ -389,9 +390,11 @@ export function CoursLecteur() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  const handleSendAI = useCallback(async () => {
-    if (!aiInput.trim() || aiLoading || !courseId || !sessionToken) return;
-    const userMsg: AiMessage = { id: Date.now().toString(), role: 'user', content: aiInput };
+  const handleSendAI = useCallback(async (requestedMode?: string, suggestedPrompt?: string) => {
+    const message = (suggestedPrompt ?? aiInput).trim();
+    const mode = requestedMode ?? aiMode;
+    if (!message || aiLoading || !courseId || !sessionToken) return;
+    const userMsg: AiMessage = { id: Date.now().toString(), role: 'user', content: message };
     setAiMessages(prev => [...prev, userMsg]);
     setAiInput('');
     setAiLoading(true);
@@ -404,20 +407,20 @@ export function CoursLecteur() {
       const res = await fetch(ENDPOINTS.ragChat, {
         method: 'POST',
         headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course_id: courseId, message: userMsg.content, conversation_history: history }),
+        body: JSON.stringify({ course_id: courseId, message: userMsg.content, mode, conversation_history: history }),
       });
       const d = await res.json();
-      if (d.reply) {
+      if (res.ok && d.reply) {
         setAiMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: d.reply }]);
       } else {
-        setAiError('Désolé, une erreur est survenue. Réessayez dans un instant.');
+        setAiError(d.message || 'Désolé, une erreur est survenue. Réessayez dans un instant.');
       }
     } catch {
       setAiError('Erreur réseau. Réessayez dans un instant.');
     } finally {
       setAiLoading(false);
     }
-  }, [aiInput, aiLoading, courseId, sessionToken, aiMessages]);
+  }, [aiInput, aiMode, aiLoading, courseId, sessionToken, aiMessages]);
 
   const lesson = lessonData?.lesson;
   const prog = lessonData?.progress;
@@ -674,7 +677,7 @@ export function CoursLecteur() {
                 <Bot size={15} style={{ color: '#BF8813' }} />
                 <span className="text-sm font-bold" style={{ color: '#002050' }}>Assistant IA</span>
                 <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#E4F1EA', color: '#1E7A52', fontSize: 10 }}>
-                  Scopé sur ce cours
+                  Contenu validé
                 </span>
               </div>
               <button onClick={() => setAiOpen(false)} className="p-1 rounded-lg hover:bg-gray-100">
@@ -720,27 +723,42 @@ export function CoursLecteur() {
               <div ref={aiBottomRef} />
             </div>
 
-            {/* Input */}
+            {/* Outils et saisie */}
             <div className="flex-shrink-0 p-3" style={{ borderTop: '1px solid #E4E7EC' }}>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
+                {[
+                  ['explanation', 'Expliquer', 'Expliquez clairement le point principal de cette leçon.'],
+                  ['reformulation', 'Simplifier', 'Reformulez les notions principales de cette leçon avec des mots plus simples.'],
+                  ['exercise', 'Exercice', 'Proposez-moi un exercice d’entraînement basé uniquement sur cette leçon.'],
+                  ['revision_plan', 'Plan de révision', 'Préparez un plan de révision concis pour cette formation.'],
+                  ['recommendation', 'À revoir', 'Quels éléments validés de cette formation devrais-je revoir en priorité ?'],
+                ].map(([mode, label, prompt]) => (
+                  <button key={mode} onClick={() => { setAiMode(mode); handleSendAI(mode, prompt); }} disabled={aiLoading}
+                    className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold disabled:opacity-50"
+                    style={{ borderColor: aiMode === mode ? '#BF8813' : '#E4E7EC', color: '#002050', background: aiMode === mode ? '#FFFBEB' : 'white' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2 items-end">
                 <textarea
                   value={aiInput}
                   onChange={e => setAiInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAI(); } }}
-                  placeholder="Posez une question sur ce cours..."
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAI('question'); } }}
+                  placeholder="Posez une question sur le contenu validé..."
                   rows={2}
                   disabled={aiLoading}
                   className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-gray-400 disabled:opacity-50"
                   style={{ lineHeight: '1.5' }}
                 />
-                <button onClick={handleSendAI} disabled={aiLoading || !aiInput.trim()}
+                <button onClick={() => handleSendAI('question')} disabled={aiLoading || !aiInput.trim()}
                   className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-40"
                   style={{ backgroundColor: '#002050' }}>
                   <Send size={13} style={{ color: 'white' }} />
                 </button>
               </div>
               <p className="text-center mt-2" style={{ color: '#9CA3AF', fontSize: 10 }}>
-                ⚡ Réponses basées sur le contenu de ce cours uniquement
+                Réponses limitées aux contenus validés par le Centre Qualité
               </p>
             </div>
           </aside>

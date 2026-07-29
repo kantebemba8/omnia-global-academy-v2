@@ -435,6 +435,67 @@ Deno.serve(async (req) => {
       return json({ success: true, nonconformity: result.data });
     }
 
+    if (action === "admin_ai_governance_get") {
+      if (!isAdmin) return json({ success: false, error: "FORBIDDEN" }, 403);
+      const [{ data: governance, error: governanceError }, { data: logs, error: logsError }] = await Promise.all([
+        sb.from("ai_pedagogical_governance").select("*").eq("id", 1).maybeSingle(),
+        sb.from("ai_pedagogical_usage_logs").select("id,user_id,course_id,mode,status,chunks_used,model,created_at").order("created_at", { ascending: false }).limit(100),
+      ]);
+      if (governanceError) throw governanceError;
+      if (logsError) throw logsError;
+      const courseIds = [...new Set((logs || []).map((x: any) => x.course_id).filter(Boolean))];
+      const userIds = [...new Set((logs || []).map((x: any) => x.user_id).filter(Boolean))];
+      const [{ data: courses }, { data: users }, { data: overrides }] = await Promise.all([
+        courseIds.length ? sb.from("courses").select("id,title").in("id", courseIds) : { data: [] },
+        userIds.length ? sb.from("users").select("id,full_name,email").in("id", userIds) : { data: [] },
+        sb.from("ai_pedagogical_course_settings").select("*,course:courses(id,title)").order("updated_at", { ascending: false }).limit(300),
+      ]);
+      const courseMap = Object.fromEntries((courses || []).map((x: any) => [x.id, x]));
+      const userMap = Object.fromEntries((users || []).map((x: any) => [x.id, x]));
+      return json({ success: true, governance, overrides: overrides || [], logs: (logs || []).map((x: any) => ({ ...x, course: courseMap[x.course_id] || null, user: userMap[x.user_id] || null })) });
+    }
+
+    if (action === "admin_ai_governance_save") {
+      if (!isAdmin) return json({ success: false, error: "FORBIDDEN" }, 403);
+      const payload = {
+        id: 1,
+        enabled: body.enabled !== false,
+        model: String(body.model || "claude-sonnet-4-6"),
+        max_tokens: Math.max(200, Math.min(4000, Number(body.max_tokens || 1000))),
+        hourly_limit: Math.max(1, Math.min(200, Number(body.hourly_limit || 20))),
+        max_chunks: Math.max(1, Math.min(12, Number(body.max_chunks || 6))),
+        similarity_threshold: Math.max(0.3, Math.min(0.95, Number(body.similarity_threshold || 0.72))),
+        allowed_modes: Array.isArray(body.allowed_modes) ? body.allowed_modes : ["question","explanation","reformulation","exercise","revision_plan","recommendation"],
+        log_enabled: body.log_enabled !== false,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await sb.from("ai_pedagogical_governance").upsert(payload).select("*").single();
+      if (error) throw error;
+      return json({ success: true, governance: data });
+    }
+
+    if (action === "admin_ai_course_setting_save") {
+      if (!isAdmin) return json({ success: false, error: "FORBIDDEN" }, 403);
+      const courseId = String(body.course_id || "");
+      if (!courseId) return json({ success: false, error: "COURSE_REQUIRED" }, 400);
+      const payload = {
+        course_id: courseId,
+        enabled: body.enabled !== false,
+        allowed_modes: Array.isArray(body.allowed_modes) ? body.allowed_modes : ["question","explanation","reformulation","exercise","revision_plan","recommendation"],
+        model: body.model || null,
+        max_tokens: body.max_tokens ? Number(body.max_tokens) : null,
+        hourly_limit: body.hourly_limit ? Number(body.hourly_limit) : null,
+        quality_notes: body.quality_notes || null,
+        reviewed_by: userId,
+        reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await sb.from("ai_pedagogical_course_settings").upsert(payload).select("*").single();
+      if (error) throw error;
+      return json({ success: true, setting: data });
+    }
+
     if (action === "prepare_evidence_upload") {
       const courseId = String(body.course_id || "");
       if (!courseId || (!isAdmin && !(await courseOwned(sb, userId, courseId, isAdmin)))) return json({ success: false, error: "FORBIDDEN" }, 403);

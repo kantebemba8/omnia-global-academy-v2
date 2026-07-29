@@ -4,14 +4,14 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   ShieldCheck, RefreshCw, Search, ClipboardCheck, AlertTriangle, CheckCircle2,
   Clock3, FileText, Activity, Plus, X, Save, Send, Ban,
-  CalendarDays, BadgeCheck
+  CalendarDays, BadgeCheck, Bot
 } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quality-center`;
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 
-type Tab = 'queue' | 'criteria' | 'audits' | 'nonconformities';
+type Tab = 'queue' | 'criteria' | 'audits' | 'nonconformities' | 'ai';
 
 type Review = {
   id: string;
@@ -50,6 +50,8 @@ export default function AdminQualityCenter() {
   const [criterionForm, setCriterionForm] = useState<any>(null);
   const [auditForm, setAuditForm] = useState<any>(null);
   const [ncForm, setNcForm] = useState<any>(null);
+  const [aiGovernance, setAiGovernance] = useState<any>(null);
+  const [aiLogs, setAiLogs] = useState<any[]>([]);
 
   async function call(action: string, body: any = {}) {
     const response = await fetch(API, {
@@ -101,6 +103,21 @@ export default function AdminQualityCenter() {
     finally { setLoading(false); }
   }
 
+
+  async function loadAiGovernance() {
+    setLoading(true); setError('');
+    try { const data = await call('admin_ai_governance_get'); setAiGovernance(data.governance || {}); setAiLogs(data.logs || []); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Erreur de chargement'); }
+    finally { setLoading(false); }
+  }
+
+  async function saveAiGovernance() {
+    if (!aiGovernance) return;
+    setBusy('ai-governance');
+    try { const data = await call('admin_ai_governance_save', aiGovernance); setAiGovernance(data.governance); notify('Gouvernance de l’assistant enregistrée.'); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement impossible'); }
+    finally { setBusy(''); }
+  }
   async function loadNonconformities() {
     setLoading(true);
     try { const data = await call('admin_list_nonconformities'); setNonconformities(data.nonconformities || []); }
@@ -113,6 +130,7 @@ export default function AdminQualityCenter() {
     if (tab === 'criteria') loadCriteria();
     if (tab === 'audits') loadAudits();
     if (tab === 'nonconformities') loadNonconformities();
+    if (tab === 'ai') loadAiGovernance();
   }, [tab, statusFilter]);
 
   const filteredReviews = useMemo(() => {
@@ -197,17 +215,39 @@ export default function AdminQualityCenter() {
             <h1 className="text-2xl font-black mt-1" style={{ color: BLUE }}>Centre Qualité</h1>
             <p className="text-sm text-gray-500 mt-1">Contrôles pédagogiques, évaluations, conformité CPD, audits et actions correctives.</p>
           </div>
-          <button onClick={() => tab === 'queue' ? loadQueue() : tab === 'criteria' ? loadCriteria() : tab === 'audits' ? loadAudits() : loadNonconformities()} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>
+          <button onClick={() => tab === 'queue' ? loadQueue() : tab === 'criteria' ? loadCriteria() : tab === 'audits' ? loadAudits() : tab === 'nonconformities' ? loadNonconformities() : loadAiGovernance()} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>
         </div>
 
         <div className="flex flex-wrap gap-2 border-b border-gray-200">
           {[
             ['queue', 'Contrôles', ShieldCheck], ['criteria', 'Grilles de critères', ClipboardCheck],
-            ['audits', 'Audits', Activity], ['nonconformities', 'Non-conformités', AlertTriangle],
+            ['audits', 'Audits', Activity], ['nonconformities', 'Non-conformités', AlertTriangle], ['ai', 'Assistant pédagogique', Bot],
           ].map(([key, label, Icon]: any) => <button key={key} onClick={() => { setTab(key); setSelected(null); }} className="inline-flex items-center gap-2 px-3 py-3 text-sm font-semibold border-b-2" style={{ color: tab === key ? BLUE : '#6B7280', borderColor: tab === key ? GOLD : 'transparent' }}><Icon size={16}/>{label}</button>)}
         </div>
 
         {error && <div className="border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        {tab === 'ai' && <section className="space-y-5">
+          {loading ? <p className="text-sm text-gray-400">Chargement…</p> : aiGovernance && <>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2 border-y border-gray-200 py-5 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div><h2 className="font-black" style={{ color: BLUE }}>Gouvernance de l’assistant pédagogique</h2><p className="mt-1 text-sm text-gray-500">L’assistant répond uniquement à partir des formations publiées et validées. Les réglages ci-dessous s’appliquent à toute la plateforme.</p></div>
+                  <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={aiGovernance.enabled !== false} onChange={(e) => setAiGovernance({ ...aiGovernance, enabled: e.target.checked })}/>Activé</label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="text-xs text-gray-500">Limite par heure<input type="number" min={1} max={200} value={aiGovernance.hourly_limit || 20} onChange={(e) => setAiGovernance({ ...aiGovernance, hourly_limit: Number(e.target.value) })} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm"/></label>
+                  <label className="text-xs text-gray-500">Longueur maximale<input type="number" min={200} max={4000} value={aiGovernance.max_tokens || 1000} onChange={(e) => setAiGovernance({ ...aiGovernance, max_tokens: Number(e.target.value) })} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm"/></label>
+                  <label className="text-xs text-gray-500">Sources consultées<input type="number" min={1} max={12} value={aiGovernance.max_chunks || 6} onChange={(e) => setAiGovernance({ ...aiGovernance, max_chunks: Number(e.target.value) })} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm"/></label>
+                </div>
+                <div><p className="text-xs font-bold uppercase text-gray-500">Fonctions autorisées</p><div className="mt-2 flex flex-wrap gap-3">{[['question','Questions'],['explanation','Explications'],['reformulation','Reformulations'],['exercise','Exercices'],['revision_plan','Plans de révision'],['recommendation','Recommandations']].map(([key,label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={(aiGovernance.allowed_modes || []).includes(key)} onChange={(e) => { const current = aiGovernance.allowed_modes || []; setAiGovernance({ ...aiGovernance, allowed_modes: e.target.checked ? [...new Set([...current,key])] : current.filter((x:string) => x !== key) }); }}/>{label}</label>)}</div></div>
+                <button onClick={saveAiGovernance} disabled={busy === 'ai-governance'} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}><Save size={15}/>{busy === 'ai-governance' ? 'Enregistrement…' : 'Enregistrer la gouvernance'}</button>
+              </div>
+              <div className="border-y border-gray-200 py-5"><ShieldCheck size={22} color={GOLD}/><h3 className="mt-3 font-bold" style={{ color: BLUE }}>Protections actives</h3><div className="mt-3 space-y-2 text-sm text-gray-600"><p>Formation publiée et validée obligatoire.</p><p>Réponses limitées aux sources indexées.</p><p>Refus des évaluations réalisées à la place de l’apprenant.</p><p>Traçabilité des usages pour le Centre Qualité.</p></div></div>
+            </div>
+            <div><h2 className="font-black" style={{ color: BLUE }}>Utilisations récentes</h2><div className="mt-3 overflow-x-auto border-y border-gray-200"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-500"><th className="py-3 pr-4">Utilisateur</th><th className="py-3 pr-4">Formation</th><th className="py-3 pr-4">Fonction</th><th className="py-3 pr-4">Résultat</th><th className="py-3">Date</th></tr></thead><tbody>{aiLogs.length === 0 ? <tr><td colSpan={5} className="py-6 text-gray-400">Aucune utilisation enregistrée.</td></tr> : aiLogs.map((log:any) => <tr key={log.id} className="border-t"><td className="py-3 pr-4">{log.user?.full_name || log.user?.email || 'Utilisateur'}</td><td className="py-3 pr-4">{log.course?.title || 'Formation'}</td><td className="py-3 pr-4">{log.mode}</td><td className="py-3 pr-4">{log.status === 'answered' ? 'Réponse fournie' : log.status === 'no_context' ? 'Source insuffisante' : log.status}</td><td className="py-3">{new Date(log.created_at).toLocaleString('fr-FR')}</td></tr>)}</tbody></table></div></div>
+          </>}
+        </section>}
 
         {tab === 'queue' && <>
           <div className="grid grid-cols-2 lg:grid-cols-6 border-y border-gray-200">
