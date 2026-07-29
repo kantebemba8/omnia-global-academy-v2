@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 function json(data: unknown, status = 200) {
@@ -718,6 +718,245 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await sb.from("partner_codes").update(patch).eq("id", benefitId).select("*").single();
       if (error) throw error;
       return json({ success: true, benefit: mapBenefit(data) });
+    }
+
+
+
+    // Programme 3 / GM2 — organisation, cohortes et formations obligatoires
+    if (action === "gm2_overview") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+
+      const [departmentsRes, groupsRes, cohortsRes, trainingsRes, assignmentsRes, membersRes] = await Promise.all([
+        sb.from("structure_departments").select("*").eq("organization_id", organizationId).order("name"),
+        sb.from("structure_groups").select("*").eq("organization_id", organizationId).order("name"),
+        sb.from("structure_cohorts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+        sb.from("structure_mandatory_trainings").select("*,courses(id,title,cover_image_url)").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+        sb.from("structure_training_assignments").select("*").eq("organization_id", organizationId),
+        sb.from("partner_code_users").select("user_id,status,users(id,full_name,email)").eq("organization_id", organizationId).in("status", ["validated", "approved", "active"]),
+      ]);
+      for (const result of [departmentsRes, groupsRes, cohortsRes, trainingsRes, assignmentsRes, membersRes]) if (result.error) throw result.error;
+      const userIds = (membersRes.data || []).map((m: any) => m.user_id);
+      const { data: organizationRows, error: organizationError } = userIds.length
+        ? await sb.from("structure_member_organization").select("*").eq("organization_id", organizationId).in("user_id", userIds)
+        : { data: [], error: null } as any;
+      if (organizationError) throw organizationError;
+      const orgMap = new Map((organizationRows || []).map((row: any) => [row.user_id, row]));
+      const assignments = assignmentsRes.data || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const normalizedAssignments = assignments.map((row: any) => ({
+        ...row,
+        status: row.status !== "terminée" && row.due_at < today ? "en_retard" : row.status,
+      }));
+      return json({
+        success: true,
+        departments: departmentsRes.data || [],
+        groups: groupsRes.data || [],
+        cohorts: cohortsRes.data || [],
+        trainings: trainingsRes.data || [],
+        assignments: normalizedAssignments,
+        members: (membersRes.data || []).map((m: any) => ({ ...m, organization: orgMap.get(m.user_id) || null })),
+        indicators: {
+          members: (membersRes.data || []).length,
+          departments: (departmentsRes.data || []).length,
+          groups: (groupsRes.data || []).length,
+          cohorts: (cohortsRes.data || []).length,
+          mandatory_trainings: (trainingsRes.data || []).filter((t: any) => t.status === "active").length,
+          overdue: normalizedAssignments.filter((a: any) => a.status === "en_retard").length,
+          completed: normalizedAssignments.filter((a: any) => a.status === "terminée").length,
+        },
+      });
+    }
+
+    if (action === "gm2_list_courses") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const { data, error } = await sb.from("courses").select("id,title,short_description,cover_image_url,level,is_published").eq("is_published", true).order("title");
+      if (error) throw error;
+      return json({ success: true, courses: data || [] });
+    }
+
+    if (["gm2_save_department", "gm2_save_group", "gm2_save_cohort"].includes(action)) {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const name = String(body.name || "").trim();
+      if (!name) return json({ error: "NAME_REQUIRED", message: "Le nom est obligatoire." }, 400);
+      const table = action === "gm2_save_department" ? "structure_departments" : action === "gm2_save_group" ? "structure_groups" : "structure_cohorts";
+      const payload: Record<string, unknown> = {
+        organization_id: organizationId,
+        name,
+        description: String(body.description || "").trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (!body.id) payload.created_by = session.userId;
+      if (table === "structure_groups") payload.department_id = body.department_id || null;
+      if (table === "structure_cohorts") {
+        payload.starts_at = body.starts_at || null;
+        payload.ends_at = body.ends_at || null;
+        payload.status = body.status || "préparation";
+      }
+      const query = body.id
+        ? sb.from(table).update(payload).eq("id", body.id).eq("organization_id", organizationId)
+        : sb.from(table).insert(payload);
+      const { data, error } = await query.select("*").single();
+      if (error) throw error;
+      return json({ success: true, item: data });
+    }
+
+    if (action === "gm2_delete_unit") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const tableMap: Record<string, string> = { department: "structure_departments", group: "structure_groups", cohort: "structure_cohorts" };
+      const table = tableMap[String(body.unit_type || "")];
+      if (!table) return json({ error: "INVALID_UNIT_TYPE" }, 400);
+      const { error } = await sb.from(table).delete().eq("id", body.id).eq("organization_id", organizationId);
+      if (error) throw error;
+      return json({ success: true });
+    }
+
+    if (action === "gm2_update_member") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const userId = String(body.user_id || "");
+      if (!userId) return json({ error: "USER_REQUIRED" }, 400);
+      const { data: membership } = await sb.from("partner_code_users").select("id").eq("organization_id", organizationId).eq("user_id", userId).in("status", ["validated", "approved", "active"]).maybeSingle();
+      if (!membership) return json({ error: "MEMBER_NOT_FOUND" }, 404);
+      const { data, error } = await sb.from("structure_member_organization").upsert({
+        organization_id: organizationId,
+        user_id: userId,
+        department_id: body.department_id || null,
+        group_id: body.group_id || null,
+        employee_reference: String(body.employee_reference || "").trim() || null,
+        job_title: String(body.job_title || "").trim() || null,
+        joined_at: body.joined_at || null,
+        updated_by: session.userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "organization_id,user_id" }).select("*").single();
+      if (error) throw error;
+      if (Array.isArray(body.cohort_ids)) {
+        const { data: orgCohorts } = await sb.from("structure_cohorts").select("id").eq("organization_id", organizationId);
+        const allowed = new Set((orgCohorts || []).map((c: any) => c.id));
+        await sb.from("structure_cohort_members").delete().eq("user_id", userId).in("cohort_id", [...allowed]);
+        const rows = body.cohort_ids.filter((id: string) => allowed.has(id)).map((cohort_id: string) => ({ cohort_id, user_id: userId, added_by: session.userId }));
+        if (rows.length) {
+          const { error: cohortError } = await sb.from("structure_cohort_members").insert(rows);
+          if (cohortError) throw cohortError;
+        }
+      }
+      return json({ success: true, member: data });
+    }
+
+    if (action === "gm2_import_members") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
+      const errors: any[] = [];
+      let successful = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] || {};
+        const email = String(row.email || "").trim().toLowerCase();
+        if (!email) { errors.push({ line: i + 2, email, message: "Adresse e-mail manquante" }); continue; }
+        const { data: user } = await sb.from("users").select("id,email").ilike("email", email).maybeSingle();
+        if (!user) { errors.push({ line: i + 2, email, message: "Aucun compte Omnia correspondant" }); continue; }
+        const { data: membership } = await sb.from("partner_code_users").select("id").eq("organization_id", organizationId).eq("user_id", user.id).in("status", ["validated", "approved", "active"]).maybeSingle();
+        if (!membership) { errors.push({ line: i + 2, email, message: "Le compte n’est pas encore rattaché à la Structure" }); continue; }
+        let departmentId = null;
+        let groupId = null;
+        if (String(row.departement || "").trim()) {
+          const { data: dep, error: depError } = await sb.from("structure_departments").upsert({ organization_id: organizationId, name: String(row.departement).trim(), created_by: session.userId }, { onConflict: "organization_id,name" }).select("id").single();
+          if (depError) throw depError;
+          departmentId = dep.id;
+        }
+        if (String(row.groupe || "").trim()) {
+          const { data: group, error: groupError } = await sb.from("structure_groups").upsert({ organization_id: organizationId, name: String(row.groupe).trim(), department_id: departmentId, created_by: session.userId }, { onConflict: "organization_id,name" }).select("id").single();
+          if (groupError) throw groupError;
+          groupId = group.id;
+        }
+        const { error: upsertError } = await sb.from("structure_member_organization").upsert({
+          organization_id: organizationId,
+          user_id: user.id,
+          department_id: departmentId,
+          group_id: groupId,
+          employee_reference: String(row.reference || "").trim() || null,
+          job_title: String(row.fonction || "").trim() || null,
+          joined_at: row.date_arrivee || null,
+          updated_by: session.userId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "organization_id,user_id" });
+        if (upsertError) { errors.push({ line: i + 2, email, message: upsertError.message }); continue; }
+        successful++;
+      }
+      const { data: imported, error } = await sb.from("structure_member_imports").insert({
+        organization_id: organizationId,
+        imported_by: session.userId,
+        file_name: String(body.file_name || "import.csv"),
+        total_rows: rows.length,
+        successful_rows: successful,
+        failed_rows: errors.length,
+        errors,
+      }).select("*").single();
+      if (error) throw error;
+      return json({ success: true, import: imported, errors });
+    }
+
+    if (action === "gm2_create_mandatory_training") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const courseId = String(body.course_id || "");
+      const dueAt = String(body.due_at || "");
+      if (!courseId || !dueAt) return json({ error: "COURSE_AND_DUE_DATE_REQUIRED", message: "La formation et la date limite sont obligatoires." }, 400);
+      const { data: course } = await sb.from("courses").select("id,title").eq("id", courseId).eq("is_published", true).maybeSingle();
+      if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
+      const targetType = String(body.target_type || "tous");
+      const { data: training, error } = await sb.from("structure_mandatory_trainings").insert({
+        organization_id: organizationId,
+        course_id: courseId,
+        title: String(body.title || course.title),
+        target_type: targetType,
+        target_id: body.target_id || null,
+        starts_at: body.starts_at || null,
+        due_at: dueAt,
+        priority: body.priority || "normale",
+        reminder_days: Array.isArray(body.reminder_days) ? body.reminder_days.map(Number).filter((n: number) => n >= 0) : [30, 7, 1],
+        status: "active",
+        created_by: session.userId,
+      }).select("*").single();
+      if (error) throw error;
+
+      const { data: memberships } = await sb.from("partner_code_users").select("user_id").eq("organization_id", organizationId).in("status", ["validated", "approved", "active"]);
+      let userIds = (memberships || []).map((m: any) => m.user_id);
+      if (targetType === "département" || targetType === "groupe") {
+        const column = targetType === "département" ? "department_id" : "group_id";
+        const { data: targets } = await sb.from("structure_member_organization").select("user_id").eq("organization_id", organizationId).eq(column, body.target_id);
+        userIds = (targets || []).map((m: any) => m.user_id);
+      } else if (targetType === "cohorte") {
+        const { data: targets } = await sb.from("structure_cohort_members").select("user_id").eq("cohort_id", body.target_id);
+        userIds = (targets || []).map((m: any) => m.user_id);
+      } else if (targetType === "membres") {
+        const allowed = new Set(userIds);
+        userIds = (Array.isArray(body.user_ids) ? body.user_ids : []).filter((id: string) => allowed.has(id));
+      }
+      userIds = [...new Set(userIds)];
+      if (userIds.length) {
+        const assignmentRows = userIds.map((user_id: string) => ({ mandatory_training_id: training.id, organization_id: organizationId, user_id, due_at: dueAt }));
+        const { error: assignmentError } = await sb.from("structure_training_assignments").insert(assignmentRows);
+        if (assignmentError) throw assignmentError;
+        const enrollmentRows = userIds.map((user_id: string) => ({ user_id, course_id: courseId }));
+        const { error: enrollmentError } = await sb.from("user_enrollments").upsert(enrollmentRows, { onConflict: "user_id,course_id", ignoreDuplicates: true });
+        if (enrollmentError) throw enrollmentError;
+      }
+      return json({ success: true, training, assigned_count: userIds.length });
+    }
+
+    if (action === "gm2_change_training_status") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const allowed = ["active", "suspendue", "terminée", "archivée"];
+      const status = String(body.status || "");
+      if (!allowed.includes(status)) return json({ error: "INVALID_STATUS" }, 400);
+      const { data, error } = await sb.from("structure_mandatory_trainings").update({ status, updated_at: new Date().toISOString() }).eq("id", body.training_id).eq("organization_id", organizationId).select("*").single();
+      if (error) throw error;
+      return json({ success: true, training: data });
     }
 
     return json({ error: "UNKNOWN_ACTION", action }, 400);

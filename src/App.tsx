@@ -127,6 +127,7 @@ import StructureEquipe from './pages/structure/StructureEquipe';
 import StructureJobs from './pages/structure/StructureJobs';
 import StructureRecruitment from './pages/structure/StructureRecruitment';
 import StructureB2B from './pages/structure/StructureB2B';
+import StructureOrganisation from './pages/structure/StructureOrganisation';
 import { DashboardStructure } from './pages/dashboard/DashboardStructure';
 import PartnerRecognitionWorkspace from './pages/partner/PartnerRecognitionWorkspace';
 import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
@@ -646,6 +647,7 @@ export default function App() {
 <Route path="/structure/avantages" element={<Navigate to="/structure/abonnements" replace />} />
 <Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
 <Route path="/structure/commerce-b2b" element={<StructureB2B />} />
+<Route path="/structure/organisation" element={<StructureOrganisation />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
 <Route path="/structure/offres-emploi" element={<StructureJobs />} />
 <Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
