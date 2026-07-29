@@ -959,6 +959,151 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, training: data });
     }
 
+
+    // Programme 3 / GM3 — suivi RH, conformité, CPD et cartographie des compétences
+    if (action === "gm3_rh_dashboard") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+
+      const [membersRes, orgRes, departmentsRes, groupsRes, cohortsRes, assignmentsRes] = await Promise.all([
+        sb.from("partner_code_users").select("user_id,status,users(id,full_name,email)").eq("organization_id", organizationId).in("status", ["validated", "approved", "active"]),
+        sb.from("structure_member_organization").select("*").eq("organization_id", organizationId),
+        sb.from("structure_departments").select("id,name").eq("organization_id", organizationId).order("name"),
+        sb.from("structure_groups").select("id,name,department_id").eq("organization_id", organizationId).order("name"),
+        sb.from("structure_cohorts").select("id,name,status").eq("organization_id", organizationId).order("name"),
+        sb.from("structure_training_assignments").select("*").eq("organization_id", organizationId),
+      ]);
+      for (const result of [membersRes, orgRes, departmentsRes, groupsRes, cohortsRes, assignmentsRes]) if (result.error) throw result.error;
+      const cohortIds = (cohortsRes.data || []).map((row: any) => row.id);
+      const cohortMembersRes = cohortIds.length
+        ? await sb.from("structure_cohort_members").select("cohort_id,user_id").in("cohort_id", cohortIds)
+        : { data: [], error: null } as any;
+      if (cohortMembersRes.error) throw cohortMembersRes.error;
+
+      const memberships = membersRes.data || [];
+      const userIds = [...new Set(memberships.map((row: any) => row.user_id).filter(Boolean))];
+      if (!userIds.length) return json({ success: true, indicators: { members: 0 }, members: [], departments: departmentsRes.data || [], groups: groupsRes.data || [], cohorts: cohortsRes.data || [], skills: [] });
+
+      const [enrollmentsRes, progressRes, attemptsRes, certificatesRes, badgesRes, clrRes] = await Promise.all([
+        sb.from("user_enrollments").select("user_id,course_id,enrolled_at,completed_at,courses(id,title,cpd_hours,calculated_duration_minutes)").in("user_id", userIds),
+        sb.from("user_lesson_progress").select("user_id,course_id,time_spent_seconds,is_completed,quiz_score").in("user_id", userIds),
+        sb.from("assessment_attempts").select("user_id,course_id,status,score,passed,time_spent_seconds,submitted_at").in("user_id", userIds),
+        sb.from("certificates").select("user_id,course_id,course_title,cpd_hours,status,issued_at,expires_at,validity_status").in("user_id", userIds),
+        sb.from("badge_awards").select("recipient_user_id,status,expires_at,badge_templates(name,achievement_type)").in("recipient_user_id", userIds),
+        sb.from("clr_records").select("id,user_id").in("user_id", userIds),
+      ]);
+      for (const result of [enrollmentsRes, progressRes, attemptsRes, certificatesRes, badgesRes, clrRes]) if (result.error) throw result.error;
+
+      const clrIds = (clrRes.data || []).map((row: any) => row.id);
+      const achievementsRes = clrIds.length
+        ? await sb.from("clr_achievements").select("clr_record_id,title,section,status,payload").in("clr_record_id", clrIds).eq("status", "active")
+        : { data: [], error: null } as any;
+      if (achievementsRes.error) throw achievementsRes.error;
+
+      const departments = departmentsRes.data || [];
+      const groups = groupsRes.data || [];
+      const departmentMap = new Map(departments.map((row: any) => [row.id, row.name]));
+      const groupMap = new Map(groups.map((row: any) => [row.id, row.name]));
+      const organizationMap = new Map((orgRes.data || []).map((row: any) => [row.user_id, row]));
+      const cohortMap = new Map<string, string[]>();
+      for (const row of cohortMembersRes.data || []) cohortMap.set(row.user_id, [...(cohortMap.get(row.user_id) || []), row.cohort_id]);
+      const clrById = new Map((clrRes.data || []).map((row: any) => [row.id, row.user_id]));
+
+      const today = new Date();
+      const round = (value: number, digits = 1) => Number(value.toFixed(digits));
+      const memberRows = memberships.map((membership: any) => {
+        const user = Array.isArray(membership.users) ? membership.users[0] : membership.users;
+        const userId = membership.user_id;
+        const organization = organizationMap.get(userId) || {};
+        const enrollments = (enrollmentsRes.data || []).filter((row: any) => row.user_id === userId);
+        const progress = (progressRes.data || []).filter((row: any) => row.user_id === userId);
+        const attempts = (attemptsRes.data || []).filter((row: any) => row.user_id === userId && row.score !== null);
+        const certificates = (certificatesRes.data || []).filter((row: any) => row.user_id === userId);
+        const validCertificates = certificates.filter((row: any) => !["revoque", "revoked"].includes(String(row.status)) && row.validity_status !== "revoked" && (!row.expires_at || new Date(row.expires_at) >= today));
+        const expiredCertificates = certificates.filter((row: any) => row.expires_at && new Date(row.expires_at) < today).length;
+        const badges = (badgesRes.data || []).filter((row: any) => row.recipient_user_id === userId && row.status === "awarded" && (!row.expires_at || new Date(row.expires_at) >= today));
+        const assignments = (assignmentsRes.data || []).filter((row: any) => row.user_id === userId);
+        const overdueAssignments = assignments.filter((row: any) => row.status !== "terminée" && row.status !== "dispensée" && new Date(`${row.due_at}T23:59:59`) < today).length;
+        const completedAssignments = assignments.filter((row: any) => row.status === "terminée").length;
+        const compliancePercent = assignments.length ? round((completedAssignments / assignments.length) * 100, 0) : 100;
+        const completedEnrollments = enrollments.filter((row: any) => row.completed_at).length;
+        const progressPercent = enrollments.length ? round((completedEnrollments / enrollments.length) * 100, 0) : 0;
+        const averageScore = attempts.length ? round(attempts.reduce((sum: number, row: any) => sum + Number(row.score || 0), 0) / attempts.length, 1) : 0;
+        const recordedSeconds = progress.reduce((sum: number, row: any) => sum + Number(row.time_spent_seconds || 0), 0) + attempts.reduce((sum: number, row: any) => sum + Number(row.time_spent_seconds || 0), 0);
+        const certifiedMinutes = validCertificates.reduce((sum: number, row: any) => {
+          const enrollment = enrollments.find((item: any) => item.course_id === row.course_id);
+          const course = Array.isArray(enrollment?.courses) ? enrollment.courses[0] : enrollment?.courses;
+          return sum + Number(course?.calculated_duration_minutes || 0);
+        }, 0);
+        const trainingHours = round(Math.max(recordedSeconds / 3600, certifiedMinutes / 60), 1);
+        const cpdHours = round(validCertificates.reduce((sum: number, row: any) => sum + Number(row.cpd_hours || 0), 0), 1);
+        return {
+          user_id: userId,
+          full_name: user?.full_name || "Membre",
+          email: user?.email || "",
+          department_id: organization.department_id || null,
+          department_name: departmentMap.get(organization.department_id) || null,
+          group_id: organization.group_id || null,
+          group_name: groupMap.get(organization.group_id) || null,
+          cohort_ids: cohortMap.get(userId) || [],
+          employee_reference: organization.employee_reference || null,
+          job_title: organization.job_title || null,
+          enrollments: enrollments.length,
+          completed_courses: completedEnrollments,
+          progress_percent: progressPercent,
+          average_score: averageScore,
+          training_hours: trainingHours,
+          cpd_hours: cpdHours,
+          certificates: validCertificates.length,
+          expired_certificates: expiredCertificates,
+          badges: badges.length,
+          mandatory_assignments: assignments.length,
+          overdue_assignments: overdueAssignments,
+          compliance_percent: compliancePercent,
+        };
+      });
+
+      const skillCounts = new Map<string, Set<string>>();
+      for (const badge of badgesRes.data || []) {
+        if (badge.status !== "awarded") continue;
+        const template = Array.isArray(badge.badge_templates) ? badge.badge_templates[0] : badge.badge_templates;
+        const name = String(template?.name || "").trim();
+        if (name) skillCounts.set(name, new Set([...(skillCounts.get(name) || []), badge.recipient_user_id]));
+      }
+      for (const achievement of achievementsRes.data || []) {
+        if (!['competences', 'skills', 'competences_verifiees'].includes(String(achievement.section))) continue;
+        const userId = clrById.get(achievement.clr_record_id);
+        const name = String(achievement.title || achievement.payload?.skill_name || "").trim();
+        if (userId && name) skillCounts.set(name, new Set([...(skillCounts.get(name) || []), userId]));
+      }
+      const skills = [...skillCounts.entries()].map(([name, users]) => ({ name, members: users.size, coverage_percent: round((users.size / userIds.length) * 100, 0) })).sort((a, b) => b.members - a.members);
+
+      const total = memberRows.length || 1;
+      const sums = (key: string) => memberRows.reduce((sum: number, row: any) => sum + Number(row[key] || 0), 0);
+      return json({
+        success: true,
+        departments,
+        groups,
+        cohorts: cohortsRes.data || [],
+        members: memberRows,
+        skills,
+        indicators: {
+          members: memberRows.length,
+          average_progress: round(sums("progress_percent") / total, 0),
+          average_score: round(sums("average_score") / total, 1),
+          training_hours: round(sums("training_hours"), 1),
+          cpd_hours: round(sums("cpd_hours"), 1),
+          certificates: sums("certificates"),
+          badges: sums("badges"),
+          overdue: sums("overdue_assignments"),
+          expired_certificates: sums("expired_certificates"),
+          compliance_percent: round(sums("compliance_percent") / total, 0),
+          compliant: memberRows.filter((row: any) => row.compliance_percent === 100 && row.expired_certificates === 0).length,
+          in_progress: memberRows.filter((row: any) => row.compliance_percent > 0 && row.compliance_percent < 100).length,
+        },
+      });
+    }
+
     return json({ error: "UNKNOWN_ACTION", action }, 400);
   } catch (error) {
     console.error("structure-manage", error);

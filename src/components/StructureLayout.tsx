@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart,
 } from 'lucide-react';
 
 interface NavItem {
@@ -38,6 +38,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
       { path: '/structure/profil', label: 'Profil de la structure', icon: Building2 },
       { path: '/structure/membres', label: 'Membres liés', icon: Users },
       { path: '/structure/organisation', label: 'Organisation & obligations', icon: Network },
+      { path: '/structure/suivi-rh', label: 'Suivi RH & conformité', icon: LineChart },
       { path: '/structure/rattachements', label: 'Demandes de rattachement', icon: UserCheck },
       { path: '/structure/codes', label: 'Codes structure', icon: QrCode },
       { path: '/structure/abonnements', label: 'Abonnements & capacités', icon: CreditCard },
