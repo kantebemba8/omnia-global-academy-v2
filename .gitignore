@@ -24,3 +24,5 @@ dist-ssr
 # Local credentials and Supabase CLI state
 login.json
 supabase/.temp/
+
+.oga-backups/
