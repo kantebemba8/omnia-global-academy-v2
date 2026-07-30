@@ -67,14 +67,19 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
 
   useEffect(() => {
     if (!open && !profileOpen) return;
+    const previousOverflow = document.body.style.overflow;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen(false);
         setProfileOpen(false);
       }
     };
+    if (open) document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
   }, [open, profileOpen]);
 
   useEffect(() => {
@@ -91,6 +96,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
             onClick={() => setOpen(v => !v)}
             aria-label={open ? 'Replier le menu' : 'Ouvrir le menu'}
             aria-expanded={open}
+            aria-controls="subspace-navigation-drawer"
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
             style={{ color: open ? GOLD : BLUE }}
           >
@@ -119,7 +125,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
         {showSearch && (
           <div className="mx-5 hidden w-full max-w-[420px] items-center rounded-xl border border-slate-200 bg-white px-3 lg:flex">
             <Search size={17} className="text-slate-400" />
-            <input className="h-10 flex-1 border-0 bg-transparent px-2 text-sm outline-none" placeholder={searchPlaceholder || `Rechercher dans ${title}...`} />
+            <input aria-label={searchPlaceholder || `Rechercher dans ${title}`} className="h-10 flex-1 border-0 bg-transparent px-2 text-sm outline-none focus-visible:ring-0" placeholder={searchPlaceholder || `Rechercher dans ${title}...`} />
           </div>
         )}
 
@@ -155,25 +161,29 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                     className="fixed inset-0 z-40 cursor-default"
                     onClick={() => setProfileOpen(false)}
                   />
-                  <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
-                    <button onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                  <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
+                    <button type="button" role="menuitem" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <UserRound size={17} /> Mon profil
                     </button>
-                    <button onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                    <button type="button" role="menuitem" onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <Bell size={17} /> Notifications
                     </button>
                     <button
+                      type="button"
+                      role="menuitem"
                       onClick={() => navigate(isSuperAdmin ? '/admin/omnia-live' : isOrganizer ? '/omnia-live/organisateur' : '/omnia-live/mes-lives')}
                       className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"
                     >
                       <Radio size={17} />
                       {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
                     </button>
-                    <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                    <button type="button" role="menuitem" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <ArrowLeft size={17} /> Retour au Dashboard
                     </button>
                     <div className="my-1 border-t border-slate-100" />
                     <button
+                      type="button"
+                      role="menuitem"
                       onClick={() => {
                         localStorage.removeItem('omnia_user');
                         localStorage.removeItem('omnia_session_token');
@@ -194,9 +204,9 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
       </header>
 
       {open && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Navigation ${title}`}>
           <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Fermer le menu en cliquant à l’extérieur" />
-          <aside className="absolute left-3 top-[84px] w-[286px] max-w-[86vw] max-h-[calc(100vh-100px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <aside id="subspace-navigation-drawer" className="absolute left-3 top-[84px] w-[286px] max-w-[86vw] max-h-[calc(100vh-100px)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
               <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-12 w-12 rounded-xl object-cover" />
               <div className="min-w-0">
@@ -212,7 +222,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                 const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
                 const Icon = item.icon;
                 return (
-                  <Link key={item.path} to={item.path} onClick={() => setOpen(false)} className="relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: active ? BLUE : '#526074', background: active ? 'rgba(191,136,19,.08)' : undefined }}>
+                  <Link key={item.path} to={item.path} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined} className="relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" style={{ color: active ? BLUE : '#526074', background: active ? 'rgba(191,136,19,.08)' : undefined }}>
                     {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full" style={{ background: GOLD }} />}
                     <Icon size={18} style={{ color: active ? GOLD : '#64748B' }} />
                     <span>{item.label}</span>

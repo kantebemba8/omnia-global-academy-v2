@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Briefcase, Route,
+  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Route, X,
 } from 'lucide-react';
 
 interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -96,6 +96,24 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
   const isSuperAdmin = (() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
@@ -168,14 +186,22 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
 
   const sidebar = (
     <aside className="flex flex-col h-full min-h-0 overflow-hidden" style={{ backgroundColor: '#002050' }}>
-      <div className="px-6 py-5 border-b border-white/10">
-        <Link to="/" className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-6 py-5">
+        <Link to="/" className="flex min-w-0 items-center gap-3">
           <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain" />
           <span className="font-bold leading-tight">
             <span className="block text-white text-base">Omnia</span>
             <span className="block text-sm" style={{ color: '#BF8813' }}>Global Academy</span>
           </span>
         </Link>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
+          aria-label="Fermer le menu du tableau de bord"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
       <nav
         className="oga-sidebar-scroll flex-1 min-h-0 px-3 py-4 overflow-y-auto overscroll-contain"
@@ -196,7 +222,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                     key={group.id}
                     to={buildPath(item.path)}
                     onClick={() => setSidebarOpen(false)}
-                    className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
+                    aria-current={active ? 'page' : undefined}
+                    className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                     style={{
                       backgroundColor: 'transparent',
                       color: active ? '#BF8813' : 'rgba(255,255,255,0.72)'
@@ -215,7 +242,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
+                    aria-expanded={open}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                     style={{
                       backgroundColor: 'transparent',
                       color: containsActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)'
@@ -235,7 +263,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
                             key={item.path}
                             to={buildPath(item.path)}
                             onClick={() => setSidebarOpen(false)}
-                            className="relative flex items-center gap-2.5 px-3 py-2 transition-all duration-150"
+                            aria-current={active ? 'page' : undefined}
+                            className="relative flex items-center gap-2.5 px-3 py-2 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                             style={{
                               backgroundColor: 'transparent',
                               color: active ? '#BF8813' : 'rgba(255,255,255,0.62)'
@@ -260,7 +289,8 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
               const active = isActive(item);
               return (
                 <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
-                  className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150"
+                  aria-current={active ? 'page' : undefined}
+                  className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                   style={{ backgroundColor: 'transparent', color: active ? '#BF8813' : 'rgba(255,255,255,0.65)' }}>
                   {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
                   <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
@@ -288,7 +318,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
           <ExternalLink style={{ width: 18, height: 18 }} />
           <span>Retour à Omnia Global Academy</span>
         </Link>
-        <button onClick={handleLogout}
+        <button type="button" onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all text-sm">
           <LogOut style={{ width: 18, height: 18 }} />
           <span>Déconnexion</span>
@@ -302,20 +332,27 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
       <div className="hidden lg:flex flex-col flex-shrink-0" style={{ width: 260 }}>{sidebar}</div>
 
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-          <div className="relative z-10 flex flex-col" style={{ width: 260 }}>{sidebar}</div>
+        <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation du tableau de bord">
+          <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />
+          <div id="dashboard-mobile-navigation" className="relative z-10 flex flex-col" style={{ width: 260 }}>{sidebar}</div>
         </div>
       )}
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-          <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="p-1.5 rounded-lg text-gray-600 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+            aria-label="Ouvrir le menu du tableau de bord"
+            aria-expanded={sidebarOpen}
+            aria-controls="dashboard-mobile-navigation"
+          >
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-semibold text-sm" style={{ color: '#002050' }}>Omnia Academy</span>
         </div>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto overscroll-contain">
           {children}
         </main>
       </div>

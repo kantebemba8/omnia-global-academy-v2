@@ -10,7 +10,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -24,6 +24,20 @@ const NAV_ITEMS = [
 
 export default function AdminTalentManagementLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
 
   function goTo(hash: string) {
     setOpen(false);
@@ -40,7 +54,7 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
             <div className="truncate text-base" style={{ color: GOLD }}>Talent</div>
           </div>
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-white/80 lg:hidden" aria-label="Fermer le menu"><X size={18} /></button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden" aria-label="Fermer le menu"><X size={18} /></button>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
@@ -70,18 +84,25 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
     <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
       <div className="hidden w-[270px] flex-shrink-0 lg:block">{sidebar}</div>
       {open && (
-        <div className="fixed inset-0 z-[90] flex lg:hidden">
+        <div className="fixed inset-0 z-[90] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation de supervision Omnia Talent">
           <button type="button" className="fixed inset-0 bg-black/55" onClick={() => setOpen(false)} aria-label="Fermer le menu de supervision Talent" />
-          <div className="relative z-10 h-full w-[280px] max-w-[88vw]">{sidebar}</div>
+          <div id="admin-talent-mobile-navigation" className="relative z-10 h-full w-[280px] max-w-[88vw]">{sidebar}</div>
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-          <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+            style={{ color: BLUE }}
+            aria-expanded={open}
+            aria-controls="admin-talent-mobile-navigation"
+          >
             <Menu size={18} /> Supervision Omnia Talent
           </button>
         </div>
-        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>
       </div>
     </div>
   );

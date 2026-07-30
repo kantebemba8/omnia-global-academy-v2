@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, X,
 } from 'lucide-react';
 
 interface NavItem {
@@ -138,6 +138,24 @@ export function StructureLayout({ children, displayName }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   const previewMode = new URLSearchParams(location.search).get('preview') === 'true' && (() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; }
     catch { return false; }
@@ -188,14 +206,22 @@ export function StructureLayout({ children, displayName }: Props) {
 
   const Sidebar = () => (
     <div className="flex h-full flex-col" style={{ background: '#002050' }}>
-      <div className="border-b px-5 py-5" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <Link to="/" className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 border-b px-5 py-5" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <Link to="/" className="flex min-w-0 items-center gap-3">
           <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-10 w-10 flex-shrink-0 object-contain" />
           <div className="font-bold leading-tight">
             <div className="text-base text-white">Omnia</div>
             <div className="text-sm" style={{ color: '#BF8813' }}>Global Academy</div>
           </div>
         </Link>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] md:hidden"
+          aria-label="Fermer le menu de la Structure"
+        >
+          <X size={19} />
+        </button>
       </div>
 
       <nav className="sidebar-scrollbar flex-1 overflow-y-auto px-3 py-3">
@@ -214,7 +240,8 @@ export function StructureLayout({ children, displayName }: Props) {
                   key={group.id}
                   to={buildPath(item.path)}
                   onClick={() => setSidebarOpen(false)}
-                  className="relative flex w-full items-center gap-3 px-3 py-2.5 transition-all"
+                  aria-current={active ? 'page' : undefined}
+                  className="relative flex w-full items-center gap-3 px-3 py-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                   style={{ color: active ? '#BF8813' : 'rgba(255,255,255,0.72)' }}
                 >
                   {active && <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full" style={{ background: '#BF8813' }} />}
@@ -230,7 +257,8 @@ export function StructureLayout({ children, displayName }: Props) {
                 <button
                   type="button"
                   onClick={() => setExpandedGroups(previous => ({ ...previous, [group.id]: !previous[group.id] }))}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 transition-all"
+                  aria-expanded={open}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                   style={{ color: containsActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)' }}
                 >
                   <GroupIcon size={18} />
@@ -248,7 +276,8 @@ export function StructureLayout({ children, displayName }: Props) {
                           key={item.path}
                           to={buildPath(item.path)}
                           onClick={() => setSidebarOpen(false)}
-                          className="relative flex items-center gap-2.5 px-3 py-2 transition-all"
+                          aria-current={active ? 'page' : undefined}
+                          className="relative flex items-center gap-2.5 px-3 py-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
                           style={{ color: active ? '#BF8813' : 'rgba(255,255,255,0.62)' }}
                         >
                           {active && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full" style={{ background: '#BF8813' }} />}
@@ -277,6 +306,7 @@ export function StructureLayout({ children, displayName }: Props) {
           <span>Voir Omnia Global Academy</span>
         </Link>
         <button
+          type="button"
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all hover:bg-white/5"
           style={{ color: 'rgba(255,255,255,0.55)' }}
@@ -295,9 +325,9 @@ export function StructureLayout({ children, displayName }: Props) {
       </aside>
 
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute bottom-0 left-0 top-0 z-50 flex flex-col" style={{ width: 260 }}>
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation de la Structure">
+          <button type="button" className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />
+          <aside id="structure-mobile-navigation" className="absolute bottom-0 left-0 top-0 z-50 flex flex-col" style={{ width: 260 }}>
             <Sidebar />
           </aside>
         </div>
@@ -305,7 +335,15 @@ export function StructureLayout({ children, displayName }: Props) {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center gap-3 border-b bg-white px-4 py-3 md:hidden" style={{ borderColor: '#E4E7EC' }}>
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2" style={{ background: '#F3F4F6' }}>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-lg p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+            style={{ background: '#F3F4F6' }}
+            aria-label="Ouvrir le menu de la Structure"
+            aria-expanded={sidebarOpen}
+            aria-controls="structure-mobile-navigation"
+          >
             <Menu size={18} style={{ color: '#002050' }} />
           </button>
           <div className="flex items-center gap-2">
@@ -316,7 +354,7 @@ export function StructureLayout({ children, displayName }: Props) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto" style={{ background: '#F8F9FA' }}>
+        <main className="flex-1 overflow-y-auto overscroll-contain" style={{ background: '#F8F9FA' }}>
           {children}
         </main>
       </div>
