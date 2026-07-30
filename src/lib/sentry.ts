@@ -10,6 +10,48 @@ const sentryEnabled =
 let modulePromise: Promise<SentryModule | null> | null = null;
 let initializationPromise: Promise<void> | null = null;
 
+const SENSITIVE_PATH_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\/assessment\/jury\/[^/?#]+/gi, '/assessment/jury/[masque]'],
+  [/\/credentials\/clr\/[^/?#]+/gi, '/credentials/clr/[masque]'],
+  [/\/credentials\/passports\/[^/?#]+/gi, '/credentials/passports/[masque]'],
+  [/\/credentials\/pathways\/[^/?#]+/gi, '/credentials/pathways/[masque]'],
+];
+
+function sanitizeTelemetryUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+
+  let sanitized = value.trim();
+
+  try {
+    const parsed = new URL(sanitized, window.location.origin);
+    parsed.search = '';
+    parsed.hash = '';
+    sanitized = parsed.origin === window.location.origin
+      ? parsed.pathname
+      : `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    sanitized = sanitized.split(/[?#]/, 1)[0];
+  }
+
+  for (const [pattern, replacement] of SENSITIVE_PATH_PATTERNS) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+
+  return sanitized;
+}
+
+function sanitizeBreadcrumb<T extends { data?: Record<string, unknown> }>(breadcrumb: T): T {
+  if (!breadcrumb.data) return breadcrumb;
+
+  const data = { ...breadcrumb.data };
+  for (const key of ['url', 'from', 'to']) {
+    const sanitized = sanitizeTelemetryUrl(data[key]);
+    if (sanitized) data[key] = sanitized;
+  }
+
+  return { ...breadcrumb, data };
+}
+
 function loadSentry(): Promise<SentryModule | null> {
   if (!sentryEnabled) return Promise.resolve(null);
 
@@ -34,22 +76,38 @@ export function initSentry(): Promise<void> {
     Sentry.init({
       dsn,
       environment: import.meta.env.MODE,
-      integrations: [
-        Sentry.browserTracingIntegration(),
-        Sentry.replayIntegration({
-          maskAllText: true,
-          blockAllMedia: false,
-        }),
-      ],
-      tracesSampleRate: 0.1,
-      replaysSessionSampleRate: 0.05,
-      replaysOnErrorSampleRate: 1.0,
+
+      // La bêta conserve uniquement le diagnostic d'erreurs. Les replays de
+      // session et le suivi de performance automatique restent désactivés
+      // jusqu'à l'intégration d'un consentement explicite.
+      sendDefaultPii: false,
+      tracesSampleRate: 0,
+
+      beforeBreadcrumb(breadcrumb) {
+        return sanitizeBreadcrumb(breadcrumb);
+      },
+
       beforeSend(event) {
         if (event.request?.headers) {
-          delete event.request.headers['Authorization'];
-          delete event.request.headers['authorization'];
-          delete event.request.headers['api-key'];
+          event.request.headers = {};
         }
+
+        if (event.request?.url) {
+          event.request.url = sanitizeTelemetryUrl(event.request.url);
+        }
+
+        if (event.transaction) {
+          event.transaction = sanitizeTelemetryUrl(event.transaction) ?? event.transaction;
+        }
+
+        if (event.user) {
+          event.user = event.user.id ? { id: event.user.id } : undefined;
+        }
+
+        if (event.breadcrumbs) {
+          event.breadcrumbs = event.breadcrumbs.map(sanitizeBreadcrumb);
+        }
+
         return event;
       },
     });
@@ -68,7 +126,7 @@ async function withSentry(action: (Sentry: SentryModule) => void): Promise<void>
 
 export function setSentryUser(user: { id: string; email: string; roles: string[] }) {
   void withSentry((Sentry) => {
-    Sentry.setUser({ id: user.id, email: user.email });
+    Sentry.setUser({ id: user.id });
     Sentry.setTag('user_roles', user.roles.join(','));
   });
 }
