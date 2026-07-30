@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { beginCronRun, finishCronRun, normalizeCronSecret } from "../_shared/cron-control.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-cron-secret",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-cron-secret, x-cron-force",
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -15,9 +16,9 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 type Supabase = ReturnType<typeof createClient>;
 
 async function authorized(req: Request) {
-  const expected = Deno.env.get("COACHING_CRON_SECRET") || Deno.env.get("CRON_SECRET") || "";
-  const supplied = req.headers.get("x-cron-secret") || "";
-  const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const expected = normalizeCronSecret(Deno.env.get("COACHING_CRON_SECRET") || Deno.env.get("CRON_SECRET"));
+  const supplied = normalizeCronSecret(req.headers.get("x-cron-secret"));
+  const bearer = normalizeCronSecret((req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, ""));
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   return Boolean((expected && supplied === expected) || (service && bearer === service));
 }
@@ -255,8 +256,15 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
   if (!await authorized(req)) return json({ error: "FORBIDDEN" }, 403);
 
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  let lease: Awaited<ReturnType<typeof beginCronRun>> | null = null;
+
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    lease = await beginCronRun(sb, req, "coaching-cron");
+    if (!lease.allowed) {
+      return json({ success: true, skipped: true, reason: lease.reason || "JOB_DISABLED" }, 202);
+    }
+
     const { data: expired, error: expireError } = await sb.rpc("coaching_expire_payment_holds");
     if (expireError) throw expireError;
 
@@ -285,13 +293,36 @@ Deno.serve(async (req: Request) => {
     const { data: advancedReleased, error: advancedReleaseError } = await sb.rpc("coaching_release_advanced_earnings");
     if (advancedReleaseError) throw advancedReleaseError;
     if (Number(advancedReleased || 0) > 0) {
-      const { data: recentAdvanced } = await sb.from("coaching_advanced_earnings").select("coach_user_id,source_type,source_id,net_amount_xof,credited_at").eq("status", "available").gte("credited_at", new Date(Date.now() - 10 * 60000).toISOString());
-      for (const earning of recentAdvanced || []) await dispatch("coaching_advanced_revenue_available", { userId: earning.coach_user_id, source_type: earning.source_type, source_id: earning.source_id, amount_xof: Number(earning.net_amount_xof || 0), action_url: "/coach/revenus" });
+      const { data: recentAdvanced } = await sb.from("coaching_advanced_earnings")
+        .select("coach_user_id,source_type,source_id,net_amount_xof,credited_at")
+        .eq("status", "available")
+        .gte("credited_at", new Date(Date.now() - 10 * 60000).toISOString());
+      for (const earning of recentAdvanced || []) {
+        await dispatch("coaching_advanced_revenue_available", {
+          userId: earning.coach_user_id,
+          source_type: earning.source_type,
+          source_id: earning.source_id,
+          amount_xof: Number(earning.net_amount_xof || 0),
+          action_url: "/coach/revenus",
+        });
+      }
     }
     const jobs = await processJobs(sb);
-    return json({ success: true, expired_payment_holds: Number(expired || 0), expired_advanced_products: advancedExpired || {}, recording_cleanup: recordingCleanup, reconciled_sessions: reconciled, released_earnings: (released || []).length, released_advanced_earnings: Number(advancedReleased || 0), notifications: jobs });
+    const result = {
+      expired_payment_holds: Number(expired || 0),
+      expired_advanced_products: advancedExpired || {},
+      recording_cleanup: recordingCleanup,
+      reconciled_sessions: reconciled,
+      released_earnings: (released || []).length,
+      released_advanced_earnings: Number(advancedReleased || 0),
+      notifications: jobs,
+    };
+    await finishCronRun(sb, lease, true, result);
+    return json({ success: true, run_id: lease.runId, ...result });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("[coaching-cron]", error);
-    return json({ error: "INTERNAL", message: error instanceof Error ? error.message : String(error) }, 500);
+    if (lease) await finishCronRun(sb, lease, false, {}, message);
+    return json({ error: "INTERNAL", message }, 500);
   }
 });

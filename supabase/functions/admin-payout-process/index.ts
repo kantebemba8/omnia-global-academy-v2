@@ -285,16 +285,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const adminNote = String(body.admin_note || "").trim();
+    const providerReference = String(body.provider_reference || "").trim();
+    const failureReason = String(body.failure_reason || adminNote || "").trim();
+
+    if (action === "mark_paid" && !providerReference) {
+      return json({ error: "PROVIDER_REFERENCE_REQUIRED", message: "La référence réelle du paiement est obligatoire." }, 400);
+    }
+    if (action === "reject" && !adminNote) {
+      return json({ error: "ADMIN_REASON_REQUIRED", message: "Le motif du rejet est obligatoire." }, 400);
+    }
+    if (action === "mark_failed" && !failureReason) {
+      return json({ error: "FAILURE_REASON_REQUIRED", message: "Le motif de l’échec est obligatoire." }, 400);
+    }
+
     const { data: newStatus, error: processError } = await sb.rpc(
       "finance_process_payout",
       {
         p_payout_id: payoutId,
         p_action: action,
         p_admin_id: adminId,
-        p_admin_note: body.admin_note || null,
+        p_admin_note: adminNote || null,
         p_provider: body.provider || null,
-        p_provider_reference: body.provider_reference || null,
-        p_failure_reason: body.failure_reason || null,
+        p_provider_reference: providerReference || null,
+        p_failure_reason: failureReason || null,
       },
     );
 

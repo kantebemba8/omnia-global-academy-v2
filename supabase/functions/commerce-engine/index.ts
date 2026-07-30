@@ -227,27 +227,18 @@ async function applyCreatorRevenue(sb: SB, order: Record<string, any>) {
   const gross = Number(order.final_amount_xof || 0);
   const fee = Math.min(gross, Math.round(gross * Number(percent) / 100) + fixedFee);
   const net = Math.max(0, gross - fee);
-  const { data: existingBalance } = await sb.from("commerce_creator_balances").select("*").eq("creator_user_id", offer.creator_user_id).maybeSingle();
-  if (existingBalance) {
-    await sb.from("commerce_creator_balances").update({
-      available_xof: Number(existingBalance.available_xof || 0) + net,
-      lifetime_gross_xof: Number(existingBalance.lifetime_gross_xof || 0) + gross,
-      lifetime_platform_fee_xof: Number(existingBalance.lifetime_platform_fee_xof || 0) + fee,
-    }).eq("creator_user_id", offer.creator_user_id);
-  } else {
-    await sb.from("commerce_creator_balances").insert({
-      creator_user_id: offer.creator_user_id,
-      available_xof: net,
-      lifetime_gross_xof: gross,
-      lifetime_platform_fee_xof: fee,
-    });
-  }
-  await sb.from("commerce_creator_ledger").insert({
-    creator_user_id: offer.creator_user_id, order_id: order.id, entry_type: "sale_available",
-    gross_xof: gross, platform_fee_xof: fee, net_xof: net, balance_bucket: "available",
-    description: `Vente — ${offer.title}`, metadata: { module_key: offer.module_key, platform_percent: Number(percent), fixed_fee_xof: fixedFee },
+  const metadata = { module_key: offer.module_key, platform_percent: Number(percent), fixed_fee_xof: fixedFee };
+  const { data: credited, error: creditError } = await sb.rpc("commerce_credit_creator_sale_once", {
+    p_creator_user_id: offer.creator_user_id,
+    p_order_id: order.id,
+    p_gross_xof: gross,
+    p_platform_fee_xof: fee,
+    p_net_xof: net,
+    p_description: `Vente — ${offer.title}`,
+    p_metadata: metadata,
   });
-  return { creator_user_id: offer.creator_user_id, gross_xof: gross, platform_fee_xof: fee, net_xof: net };
+  if (creditError) throw creditError;
+  return { creator_user_id: offer.creator_user_id, gross_xof: gross, platform_fee_xof: fee, net_xof: net, credited: Boolean(credited) };
 }
 
 async function activateOrder(sb: SB, orderId: string, providerId?: string, providerReference?: string, payload?: unknown) {
@@ -544,11 +535,29 @@ Deno.serve(async (req: Request) => {
       }
       if (action === "creator_payout_request") {
         const amount = Math.round(Number(body.amount_xof || 0));
-        const { data: balance } = await sb.from("commerce_creator_balances").select("*").eq("creator_user_id", ctx.id).maybeSingle();
-        if (amount <= 0 || amount > Number(balance?.available_xof || 0)) return json({ error: "INSUFFICIENT_AVAILABLE_BALANCE" }, 400);
-        const { data: payout } = await sb.from("commerce_payout_requests").insert({ creator_user_id: ctx.id, amount_xof: amount, payout_method: body.payout_method, payout_details: body.payout_details || {}, creator_note: body.creator_note || null }).select("*").single();
-        await sb.from("commerce_creator_balances").update({ available_xof: Number(balance.available_xof) - amount, reserved_xof: Number(balance.reserved_xof || 0) + amount }).eq("creator_user_id", ctx.id);
-        await sb.from("commerce_creator_ledger").insert({ creator_user_id: ctx.id, entry_type: "payout_reserved", net_xof: -amount, balance_bucket: "reserved", description: `Demande de retrait ${payout.id}` });
+        const payoutMethod = String(body.payout_method || "manual");
+        const payoutDetails = body.payout_details && typeof body.payout_details === "object" ? body.payout_details : {};
+        const { data: settingRows } = await sb.from("site_settings").select("key,value").eq("key", "payout_minimum_xof");
+        const minimum = Math.max(1, Number(settingRows?.[0]?.value || 5000));
+        if (!Number.isInteger(amount) || amount < minimum) {
+          return json({ error: "PAYOUT_AMOUNT_TOO_LOW", minimum_xof: minimum }, 400);
+        }
+        const { data: payoutId, error: payoutError } = await sb.rpc("commerce_create_payout_request", {
+          p_creator_user_id: ctx.id,
+          p_amount_xof: amount,
+          p_payout_method: payoutMethod,
+          p_payout_details: payoutDetails,
+          p_creator_note: body.creator_note || null,
+        });
+        if (payoutError) {
+          const message = String(payoutError.message || "");
+          if (message.includes("INSUFFICIENT_AVAILABLE_BALANCE")) return json({ error: "INSUFFICIENT_AVAILABLE_BALANCE" }, 409);
+          if (message.includes("PAYOUT_DETAILS_REQUIRED")) return json({ error: "PAYOUT_DETAILS_REQUIRED" }, 400);
+          if (message.includes("INVALID_PAYOUT_METHOD")) return json({ error: "INVALID_PAYOUT_METHOD" }, 400);
+          throw payoutError;
+        }
+        const { data: payout, error: fetchError } = await sb.from("commerce_payout_requests").select("*").eq("id", payoutId).single();
+        if (fetchError) throw fetchError;
         return json({ payout });
       }
     }
@@ -738,24 +747,32 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "admin_payout_decide") {
-      const id = String(body.id || ""); const decision = String(body.decision || "reject");
-      const { data: current } = await sb.from("commerce_payout_requests").select("*").eq("id", id).single();
-      if (!["pending", "under_review", "approved", "processing"].includes(current.status)) return json({ error: "PAYOUT_ALREADY_FINAL" }, 409);
-      if (decision === "reject") {
-        const { data: balance } = await sb.from("commerce_creator_balances").select("*").eq("creator_user_id", current.creator_user_id).single();
-        await sb.from("commerce_creator_balances").update({ reserved_xof: Math.max(0, Number(balance.reserved_xof || 0) - current.amount_xof), available_xof: Number(balance.available_xof || 0) + current.amount_xof }).eq("creator_user_id", current.creator_user_id);
-        await sb.from("commerce_payout_requests").update({ status: "rejected", admin_reason: body.reason || "Refusé", reviewed_by: ctx.id, reviewed_at: new Date().toISOString() }).eq("id", id);
-        await sb.from("commerce_creator_ledger").insert({ creator_user_id: current.creator_user_id, entry_type: "payout_released", net_xof: current.amount_xof, balance_bucket: "available", description: `Retrait rejeté ${id}`, created_by: ctx.id });
-      } else if (decision === "paid") {
-        const { data: balance } = await sb.from("commerce_creator_balances").select("*").eq("creator_user_id", current.creator_user_id).single();
-        await sb.from("commerce_creator_balances").update({ reserved_xof: Math.max(0, Number(balance.reserved_xof || 0) - current.amount_xof), lifetime_paid_xof: Number(balance.lifetime_paid_xof || 0) + current.amount_xof }).eq("creator_user_id", current.creator_user_id);
-        await sb.from("commerce_payout_requests").update({ status: "paid", admin_reason: body.reason || null, provider_payout_id: body.provider_payout_id || null, reviewed_by: ctx.id, reviewed_at: new Date().toISOString(), paid_at: new Date().toISOString() }).eq("id", id);
-        await sb.from("commerce_creator_ledger").insert({ creator_user_id: current.creator_user_id, entry_type: "payout_completed", net_xof: -current.amount_xof, balance_bucket: "paid", description: `Retrait payé ${id}`, created_by: ctx.id });
-      } else {
-        await sb.from("commerce_payout_requests").update({ status: decision === "approve" ? "approved" : "processing", admin_reason: body.reason || null, reviewed_by: ctx.id, reviewed_at: new Date().toISOString() }).eq("id", id);
+      const id = String(body.id || "");
+      const decision = String(body.decision || "reject");
+      if (!id || !["approve", "processing", "reject", "failed", "cancelled", "paid"].includes(decision)) {
+        return json({ error: "INVALID_PAYOUT_DECISION" }, 400);
       }
-      const { data } = await sb.from("commerce_payout_requests").select("*").eq("id", id).single();
-      await audit(sb, ctx.id, `admin_payout_${decision}`, "payout", id, current, data, body.reason); return json({ payout: data });
+      const { data: current, error: currentError } = await sb.from("commerce_payout_requests").select("*").eq("id", id).maybeSingle();
+      if (currentError) throw currentError;
+      if (!current) return json({ error: "PAYOUT_NOT_FOUND" }, 404);
+      const { data: status, error: processError } = await sb.rpc("commerce_process_payout", {
+        p_payout_id: id,
+        p_decision: decision,
+        p_admin_id: ctx.id,
+        p_reason: body.reason || null,
+        p_provider_payout_id: body.provider_payout_id || null,
+      });
+      if (processError) {
+        const message = String(processError.message || "");
+        if (message.includes("PROVIDER_REFERENCE_REQUIRED")) return json({ error: "PROVIDER_REFERENCE_REQUIRED" }, 400);
+        if (message.includes("ADMIN_REASON_REQUIRED")) return json({ error: "ADMIN_REASON_REQUIRED" }, 400);
+        if (message.includes("INVALID_STATUS_TRANSITION")) return json({ error: "PAYOUT_ALREADY_FINAL" }, 409);
+        throw processError;
+      }
+      const { data, error: fetchError } = await sb.from("commerce_payout_requests").select("*").eq("id", id).single();
+      if (fetchError) throw fetchError;
+      await audit(sb, ctx.id, `admin_payout_${decision}`, "payout", id, current, data, body.reason);
+      return json({ payout: data, status });
     }
 
     if (action === "system_payment_event") {
