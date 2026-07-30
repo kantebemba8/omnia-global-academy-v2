@@ -5,7 +5,9 @@ import { RootGate } from './components/RootGate';
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 
 import { captureError } from './lib/sentry';
+import { isRecoverableChunkError, recoverFromChunkError } from './lib/pwaRecovery';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import { PreviewReturnButton } from './components/PreviewReturnButton';
 import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
 
@@ -343,38 +345,98 @@ function GuardedRoutes() {
 
 interface AppErrorBoundaryState {
   hasError: boolean;
+  recovering: boolean;
+  reference: string;
+}
+
+function createErrorReference(): string {
+  return `OGA-${Date.now().toString(36).toUpperCase()}`;
 }
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { hasError: false };
+  state: AppErrorBoundaryState = { hasError: false, recovering: false, reference: '' };
 
-  static getDerivedStateFromError(): AppErrorBoundaryState {
+  static getDerivedStateFromError(): Partial<AppErrorBoundaryState> {
     return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    captureError(error, { componentStack: info.componentStack });
+    const reference = createErrorReference();
+    captureError(error, { componentStack: info.componentStack, reference });
+    this.setState({ reference });
+
+    if (isRecoverableChunkError(error)) {
+      this.setState({ recovering: true });
+      void recoverFromChunkError().then(reloading => {
+        if (!reloading) this.setState({ recovering: false });
+      });
+    }
   }
 
   render() {
     if (this.state.hasError) {
+      if (this.state.recovering) {
+        return (
+          <main className="flex min-h-screen items-center justify-center bg-slate-50 px-5 py-12">
+            <section className="w-full max-w-lg text-center">
+              <div
+                aria-hidden="true"
+                className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"
+                style={{ borderColor: '#BF8813', borderTopColor: 'transparent' }}
+              />
+              <h1 className="mt-6 text-2xl font-bold text-[#002050]">Mise à jour de la plateforme</h1>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Une nouvelle version est disponible. Omnia recharge les fichiers nécessaires automatiquement.
+              </p>
+            </section>
+          </main>
+        );
+      }
+
       return (
-        <div className="min-h-screen flex items-center justify-center p-8" style={{ backgroundColor: '#F8F9FA' }}>
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h1 className="text-2xl font-bold mb-2" style={{ color: '#002050' }}>Une erreur est survenue</h1>
-            <p className="mb-6 text-sm" style={{ color: '#6B7280' }}>
-              Notre équipe a été automatiquement notifiée. Rechargez la page pour continuer.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 rounded-lg font-semibold text-white"
-              style={{ backgroundColor: '#002050' }}
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-5 py-12">
+          <section className="w-full max-w-xl border-t-4 border-[#BF8813] bg-white px-6 py-10 text-center shadow-sm sm:px-10">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="mx-auto h-12 w-12 text-[#BF8813]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Recharger la page
-            </button>
-          </div>
-        </div>
+              <path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" />
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+            </svg>
+            <h1 className="mt-5 text-2xl font-bold text-[#002050]">La page n’a pas pu être affichée</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Rechargez la page. Si le problème persiste, revenez à l’accueil et communiquez la référence ci-dessous au support.
+            </p>
+            {this.state.reference && (
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                Référence : {this.state.reference}
+              </p>
+            )}
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-lg bg-[#002050] px-5 py-3 text-sm font-semibold text-white hover:bg-[#00183d]"
+              >
+                Recharger la page
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.assign('/accueil')}
+                className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-[#002050] hover:bg-slate-50"
+              >
+                Retour à l’accueil
+              </button>
+            </div>
+          </section>
+        </main>
       );
     }
 
@@ -765,6 +827,7 @@ export default function App() {
         </PlatformRoleGate>
         </SiteModeProvider>
         <PwaInstallBanner />
+        <NetworkStatusBanner />
       </BrowserRouter>
     </AppErrorBoundary>
   );
