@@ -36,8 +36,17 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
   if (startsWithSpace(pathname, '/talent/recruteur')) {
     return { allowedRoles: ['recruteur'], previewRole: 'recruteur' };
   }
-  if (startsWithSpace(pathname, '/omnia-live/organisateur') || pathname === '/omnia-live/revenus') {
-    return { allowedRoles: ['organisateur'], previewRole: 'organisateur' };
+  const isLiveCreatorRoute =
+    startsWithSpace(pathname, '/omnia-live/organisateur') ||
+    pathname === '/omnia-live/revenus' ||
+    startsWithSpace(pathname, '/omnia-live/proposer') ||
+    startsWithSpace(pathname, '/omnia-live/studio') ||
+    /^\/omnia-live\/[^/]+\/(organiser|presence|statistiques)$/.test(pathname);
+  if (isLiveCreatorRoute) {
+    return {
+      allowedRoles: ['organisateur', 'professeur', 'structure', 'super_admin'],
+      previewRole: 'organisateur',
+    };
   }
   if (startsWithSpace(pathname, '/professeur') || startsWithSpace(pathname, '/staff')) {
     return { allowedRoles: ['professeur'], previewRole: 'professeur' };
@@ -65,6 +74,7 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
     '/omnia-live/mes-acces',
     '/omnia-live/checkout',
     '/omnia-live/acces-prive',
+    '/omnia-live/profil-organisateur',
     '/omnia-live/participant',
     '/paiement',
     '/demo/dashboard',

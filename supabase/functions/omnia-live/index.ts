@@ -142,6 +142,47 @@ function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return ctx.roles.some((r) => allowed.has(r));
 }
 
+const ORGANIZER_PREVIEW_EMAIL = "organisateur.test@omniaglobalacademy.com";
+const ORGANIZER_PREVIEW_READ_ACTIONS = new Set([
+  "categories",
+  "get",
+  "studio_get",
+  "organizer_profile_me",
+  "organizer_dashboard",
+  "organizer_events",
+  "organizer_participants",
+  "organizer_media",
+  "organizer_cancellations",
+  "organizer_access_codes",
+  "organizer_analytics",
+  "organizer_ledger_mine",
+  "payout_requests_mine",
+  "analytics_event_kpis",
+  "analytics_event_history",
+  "communication_campaigns_list",
+  "automation_rules_list",
+  "report_exports_list",
+]);
+
+async function organizerPreviewContext(
+  sb: ReturnType<typeof createClient>,
+): Promise<NonNullable<Awaited<ReturnType<typeof sessionContext>>>> {
+  const { data: user, error } = await sb
+    .from("users")
+    .select("id,full_name,email,status")
+    .ilike("email", ORGANIZER_PREVIEW_EMAIL)
+    .maybeSingle();
+  if (error) throw error;
+  if (!user?.id || user.status === "suspendu") {
+    throw new Error("ORGANIZER_PREVIEW_ACCOUNT_MISSING");
+  }
+  return {
+    user,
+    userId: String(user.id),
+    roles: ["organisateur"],
+  };
+}
+
 function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return "user";
   if (ctx.roles.includes("super_admin")) return "omnia";
@@ -8031,8 +8072,31 @@ Deno.serve(async (req: Request) => {
   try {
     const sb = supabaseAdmin();
     const token = tokenFrom(req);
-    const ctx = await sessionContext(sb, token);
-    const action = new URL(req.url).searchParams.get("action") ?? "list";
+    let ctx = await sessionContext(sb, token);
+    const requestUrl = new URL(req.url);
+    const action = requestUrl.searchParams.get("action") ?? "list";
+    const previewRole = requestUrl.searchParams.get("preview_role");
+
+    if (previewRole) {
+      if (previewRole !== "organisateur" || !ctx || !isSuperAdmin(ctx)) {
+        return json({ error: "FORBIDDEN" }, 403);
+      }
+      if (!ORGANIZER_PREVIEW_READ_ACTIONS.has(action)) {
+        return json({
+          error: "PREVIEW_READ_ONLY",
+          message: "Cette action est désactivée dans la prévisualisation Organisateur.",
+        }, 403);
+      }
+      try {
+        ctx = await organizerPreviewContext(sb);
+      } catch (error) {
+        return json({
+          error: "ORGANIZER_PREVIEW_ACCOUNT_MISSING",
+          message: "Le compte de prévisualisation Organisateur est indisponible.",
+          detail: error instanceof Error ? error.message : String(error),
+        }, 503);
+      }
+    }
 
     switch (action) {
       case "list":

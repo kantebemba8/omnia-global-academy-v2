@@ -60,6 +60,7 @@ export default function AdminRoleUsers(){
           {roleKey==='recruteur'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur');navigate('/talent/recruteur/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
           {roleKey==='recruteur_structure'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur_structure');navigate('/structure/recrutement/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur Structure</button>}
           {roleKey==='coach'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','coach');navigate('/coach/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
+          {roleKey==='organisateur'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','organisateur');navigate('/omnia-live/organisateur?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace organisateur</button>}
         </div>
       </div>
 

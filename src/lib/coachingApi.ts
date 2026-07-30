@@ -486,101 +486,6 @@ export type CoachingRecommendation = {
 };
 
 
-const EMPTY_COACH_PREVIEW_PROFILE: CoachProfile = {
-  id: 'coach-preview',
-  user_id: 'coach-preview',
-  public_slug: '',
-  full_name: '',
-  professional_title: '',
-  biography: '',
-  specialties: [],
-  languages: [],
-  country: '',
-  timezone: 'Africa/Bamako',
-  photo_url: null,
-  linkedin_url: null,
-  website_url: null,
-  presentation_video_url: null,
-  preferred_session_modes: ['jitsi'],
-  price_30_xof: null,
-  price_60_xof: null,
-  price_90_xof: null,
-  custom_duration_enabled: false,
-  custom_hourly_price_xof: null,
-  status: 'active',
-  is_featured: false,
-  average_rating: 0,
-  rating_count: 0,
-  completed_sessions_count: 0,
-  badge_override: null,
-  level: null,
-  domains: [],
-  offers: [],
-  ratings: [],
-  groups: [],
-};
-
-function getCoachPreviewResponse(action: string): unknown {
-  switch (action) {
-    case 'coach_dashboard':
-      return {
-        profile: EMPTY_COACH_PREVIEW_PROFILE,
-        recent_sessions: [],
-        metrics: {
-          upcoming_sessions: 0,
-          pending_custom_requests: 0,
-          completed_sessions: 0,
-          average_rating: 0,
-          available_revenue_xof: 0,
-        },
-      };
-    case 'coach_offers':
-      return {
-        success: true,
-        offers: [],
-        domains: [],
-        profile: EMPTY_COACH_PREVIEW_PROFILE,
-        limits: { minimum: 0, maximum: null, commission: 0 },
-      };
-    case 'coach_availability':
-      return {
-        success: true,
-        profile: EMPTY_COACH_PREVIEW_PROFILE,
-        rules: [],
-        exceptions: [],
-        settings: {
-          default_booking_notice_hours: 24,
-          default_max_sessions_per_day: 8,
-          maximum_booking_window_days: 90,
-        },
-      };
-    case 'coach_sessions':
-      return { success: true, sessions: [] };
-    case 'coach_request_availability':
-      return { success: true, slots: [] };
-    case 'coach_ratings':
-      return {
-        success: true,
-        ratings: [],
-        metrics: { average_rating: 0, rating_count: 0, recommendation_percent: 0 },
-      };
-    case 'coach_revenue':
-      return {
-        success: true,
-        earnings: [],
-        advanced_earnings: [],
-        wallet: { balance_xof: 0, reserved_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
-        payouts: [],
-        settings: { payout_minimum_xof: 5000 },
-        metrics: { locked_xof: 0, frozen_xof: 0, available_earnings_xof: 0, lifetime_net_xof: 0 },
-      };
-    case 'coach_advanced_products':
-      return { groups: [], domains: [], group_registrations: [] };
-    default:
-      return null;
-  }
-}
-
 const messages: Record<string, string> = {
   SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
   FORBIDDEN: 'Vous ne disposez pas des droits nécessaires.',
@@ -686,16 +591,17 @@ const messages: Record<string, string> = {
 
 export async function coachingRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   const previewMode = isCoachPreviewMode();
-  if (previewMode) {
-    if (!COACH_PREVIEW_READ_ACTIONS.has(action)) {
-      throw new Error(messages.PREVIEW_READ_ONLY);
-    }
-    return getCoachPreviewResponse(action) as T;
+  if (previewMode && !COACH_PREVIEW_READ_ACTIONS.has(action)) {
+    throw new Error(messages.PREVIEW_READ_ONLY);
   }
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: edgeAuthHeaders(),
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({
+      ...payload,
+      action,
+      ...(previewMode ? { preview_mode: true } : {}),
+    }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {

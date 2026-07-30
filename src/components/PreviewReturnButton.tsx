@@ -28,6 +28,14 @@ function isStoredSuperAdmin(): boolean {
 }
 
 function previewSpace(pathname: string): string | null {
+  const isOrganizerCreatorRoute =
+    pathname === '/omnia-live/revenus'
+    || pathname === '/omnia-live/proposer'
+    || pathname.startsWith('/omnia-live/organisateur')
+    || pathname.startsWith('/omnia-live/studio/')
+    || /^\/omnia-live\/[^/]+\/(organiser|presence|statistiques)$/.test(pathname);
+  if (isOrganizerCreatorRoute) return 'organisateur';
+
   const match = ROLE_SPACE_PREFIXES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   return match?.[1] || null;
 }

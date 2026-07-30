@@ -4,6 +4,7 @@ import {
   LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,CreditCard,Settings2,
   PlusCircle,MessageSquare,KeyRound,Menu,X,ExternalLink,LogOut,ArrowLeft
 } from 'lucide-react';
+import {isOrganizerPreviewMode} from '../liveApi';
 
 const BLUE='#002050';
 const GOLD='#BF8813';
@@ -30,23 +31,37 @@ export default function OrganizerShell({
   const navigate=useNavigate();
   const [mobileOpen,setMobileOpen]=useState(false);
 
-  const previewRequested=new URLSearchParams(location.search).get('preview')==='true';
-  const isSuperAdmin=(()=>{
-    try{
-      const u=JSON.parse(localStorage.getItem('omnia_user')||'{}');
-      return Array.isArray(u?.roles)&&u.roles.includes('super_admin');
-    }catch{return false}
-  })();
-  const preview=previewRequested&&isSuperAdmin;
+  const preview=isOrganizerPreviewMode();
 
   const buildPath=(path:string)=>{
     if(!preview)return path;
     return `${path}${path.includes('?')?'&':'?'}preview=true`;
   };
 
-  useEffect(()=>setMobileOpen(false),[location.pathname]);
+  useEffect(()=>setMobileOpen(false),[location.pathname,location.search]);
+
+  useEffect(()=>{
+    if(!mobileOpen)return;
+    const previousOverflow=document.body.style.overflow;
+    const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileOpen(false)};
+    document.body.style.overflow='hidden';
+    window.addEventListener('keydown',closeOnEscape);
+    return()=>{
+      document.body.style.overflow=previousOverflow;
+      window.removeEventListener('keydown',closeOnEscape);
+    };
+  },[mobileOpen]);
+
+  function exitPreview(){
+    sessionStorage.removeItem('omnia_admin_role_preview');
+    navigate('/admin/dashboard');
+  }
 
   function logout(){
+    if(preview){
+      exitPreview();
+      return;
+    }
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_access_token');
@@ -106,11 +121,12 @@ export default function OrganizerShell({
         <span>Retour à Omnia Global Academy</span>
       </Link>
       <button
+        type="button"
         onClick={logout}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white"
       >
-        <LogOut style={{width:18,height:18}}/>
-        <span>Déconnexion</span>
+        {preview?<ArrowLeft style={{width:18,height:18}}/>:<LogOut style={{width:18,height:18}}/>}
+        <span>{preview?'Retour au Dashboard Super-admin':'Déconnexion'}</span>
       </button>
     </div>
   </aside>;
@@ -122,9 +138,9 @@ export default function OrganizerShell({
     </div>
 
     {/* Mobile only */}
-    {mobileOpen&&<div className="fixed inset-0 z-50 flex lg:hidden">
-      <div className="fixed inset-0 bg-black/50" onClick={()=>setMobileOpen(false)}/>
-      <div className="relative z-10 flex h-full flex-col" style={{width:260}}>
+    {mobileOpen&&<div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation de l’espace Organisateur">
+      <button type="button" className="fixed inset-0 bg-black/50" onClick={()=>setMobileOpen(false)} aria-label="Fermer le menu organisateur"/>
+      <div id="organizer-mobile-navigation" className="relative z-10 flex h-full flex-col" style={{width:260,maxWidth:'88vw'}}>
         <button
           onClick={()=>setMobileOpen(false)}
           className="absolute right-3 top-3 z-20 rounded-lg bg-white/10 p-1.5 text-white"
@@ -139,9 +155,12 @@ export default function OrganizerShell({
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
         <button
+          type="button"
           onClick={()=>setMobileOpen(true)}
-          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
           aria-label="Ouvrir le menu"
+          aria-expanded={mobileOpen}
+          aria-controls="organizer-mobile-navigation"
         >
           <Menu size={20}/>
         </button>
@@ -158,7 +177,7 @@ export default function OrganizerShell({
       {preview&&(
         <button
           type="button"
-          onClick={()=>navigate('/admin/dashboard')}
+          onClick={exitPreview}
           className="fixed bottom-5 z-50 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:opacity-95"
           style={{right:20,left:'auto'}}
         >
