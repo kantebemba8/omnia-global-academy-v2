@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /moderateur/
+Disallow: /moderator/
+Disallow: /professeur/
+Disallow: /structure/
+Disallow: /coach/
+Disallow: /demo/
+
+Sitemap: https://omniaglobalacademy.com/sitemap.xml

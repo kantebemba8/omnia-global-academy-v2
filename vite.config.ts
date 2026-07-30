@@ -49,8 +49,12 @@ export default defineConfig({
         ],
       },
       manifest: {
+        id: '/',
         name: 'Omnia Global Academy',
         short_name: 'Omnia Academy',
+        description: "Plateforme de formation, de certification et d'employabilité conçue pour l'Afrique et ouverte au monde.",
+        lang: 'fr',
+        scope: '/',
         theme_color: '#002050',
         background_color: '#FFFFFF',
         display: 'standalone',
