@@ -1,10 +1,9 @@
-WEBVTT
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#002050" />
   <title>Omnia Global Academy — Hors connexion</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -27,10 +26,16 @@ WEBVTT
       margin-bottom: 28px;
       border-radius: 16px;
     }
-    .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
+    .connection-mark {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 18px;
+      border: 3px solid rgba(255,255,255,.35);
+      border-top-color: #BF8813;
+      border-radius: 50%;
     }
+    .checking .connection-mark { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     h1 {
       font-size: 24px;
       font-weight: 700;
@@ -39,9 +44,9 @@ WEBVTT
     p {
       font-size: 15px;
       line-height: 1.6;
-      color: rgba(255,255,255,0.65);
-      max-width: 340px;
-      margin-bottom: 32px;
+      color: rgba(255,255,255,0.72);
+      max-width: 380px;
+      margin-bottom: 28px;
     }
     button {
       background-color: #BF8813;
@@ -54,17 +59,76 @@ WEBVTT
       cursor: pointer;
       transition: opacity 0.2s;
     }
-    button:hover { opacity: 0.85; }
+    button:hover { opacity: 0.88; }
+    button:disabled { opacity: 0.6; cursor: wait; }
   </style>
 </head>
 <body>
   <img src="/IMG_0349.png" alt="Omnia Global Academy" class="logo" onerror="this.style.display='none'" />
-  <div class="icon">📡</div>
+  <div class="connection-mark" aria-hidden="true"></div>
   <h1>Vous êtes hors connexion</h1>
-  <p>
-    Certains contenus sont disponibles en mode éco-data.
-    Reconnectez-vous à Internet pour continuer votre formation.
+  <p id="status">
+    Reconnectez-vous à Internet, puis réessayez. La plateforme restaurera automatiquement une ancienne configuration PWA bloquée si nécessaire.
   </p>
-  <button onclick="window.location.reload()">Réessayer</button>
+  <button id="retry" type="button">Réessayer</button>
+
+  <script>
+    const retryButton = document.getElementById('retry');
+    const statusText = document.getElementById('status');
+    let recoveryRunning = false;
+
+    async function recoverApplication() {
+      if (recoveryRunning) return;
+
+      if (!navigator.onLine) {
+        statusText.textContent = 'Aucune connexion Internet n’est détectée. Reconnectez-vous, puis réessayez.';
+        return;
+      }
+
+      recoveryRunning = true;
+      document.body.classList.add('checking');
+      retryButton.disabled = true;
+      statusText.textContent = 'Connexion retrouvée. Restauration de la plateforme en cours…';
+
+      try {
+        const response = await fetch('/index.html?omnia-pwa-recovery=' + Date.now(), {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          throw new Error('Le shell principal est indisponible.');
+        }
+
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+        }
+
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(
+            cacheNames
+              .filter((name) => name.startsWith('workbox-') || name.startsWith('omnia-'))
+              .map((name) => caches.delete(name)),
+          );
+        }
+
+        window.location.reload();
+      } catch (error) {
+        recoveryRunning = false;
+        document.body.classList.remove('checking');
+        retryButton.disabled = false;
+        statusText.textContent = 'La connexion n’est pas encore stable. Vérifiez Internet puis réessayez.';
+      }
+    }
+
+    retryButton.addEventListener('click', recoverApplication);
+    window.addEventListener('online', recoverApplication);
+
+    if (navigator.onLine) {
+      window.setTimeout(recoverApplication, 500);
+    }
+  </script>
 </body>
 </html>
