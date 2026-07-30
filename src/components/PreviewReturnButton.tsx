@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
 
 export const PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
 
@@ -80,7 +79,20 @@ export function PreviewReturnButton() {
       style={{ background: '#002050', border: '1px solid rgba(191,136,19,.65)' }}
       aria-label="Retour au tableau de bord Super Admin"
     >
-      <ArrowLeft size={17} />
+      <svg
+        width="17"
+        height="17"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m12 19-7-7 7-7" />
+        <path d="M19 12H5" />
+      </svg>
       <span>Retour au dashboard admin</span>
     </button>
   );

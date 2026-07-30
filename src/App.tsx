@@ -1,15 +1,15 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { RootGate } from './components/RootGate';
 
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 
-import { Sentry } from './lib/sentry';
+import { captureError } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { PreviewReturnButton } from './components/PreviewReturnButton';
 
-import RequireOmniaCareerLearner from './components/auth/RequireOmniaCareerLearner';
-import RequireOmniaCareerAdmin from './components/auth/RequireOmniaCareerAdmin';
+const RequireOmniaCareerLearner = lazy(() => import('./components/auth/RequireOmniaCareerLearner'));
+const RequireOmniaCareerAdmin = lazy(() => import('./components/auth/RequireOmniaCareerAdmin'));
 
 const StudioEvaluations = lazy(() => import('./pages/studio/StudioEvaluations').then((module) => ({ default: module.StudioEvaluations })));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
@@ -339,10 +339,24 @@ function GuardedRoutes() {
   return <Outlet />;
 }
 
-export default function App() {
-  return (
-    <Sentry.ErrorBoundary
-      fallback={({ resetError }) => (
+interface AppErrorBoundaryState {
+  hasError: boolean;
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): AppErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    captureError(error, { componentStack: info.componentStack });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
         <div className="min-h-screen flex items-center justify-center p-8" style={{ backgroundColor: '#F8F9FA' }}>
           <div className="text-center max-w-md">
             <div className="text-6xl mb-4">⚠️</div>
@@ -351,7 +365,7 @@ export default function App() {
               Notre équipe a été automatiquement notifiée. Rechargez la page pour continuer.
             </p>
             <button
-              onClick={resetError}
+              onClick={() => window.location.reload()}
               className="px-6 py-3 rounded-lg font-semibold text-white"
               style={{ backgroundColor: '#002050' }}
             >
@@ -359,8 +373,16 @@ export default function App() {
             </button>
           </div>
         </div>
-      )}
-    >
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  return (
+    <AppErrorBoundary>
       <BrowserRouter>
         <SiteModeProvider>
         <MaintenanceNoticeBanner />
@@ -739,6 +761,6 @@ export default function App() {
         </SiteModeProvider>
         <PwaInstallBanner />
       </BrowserRouter>
-    </Sentry.ErrorBoundary>
+    </AppErrorBoundary>
   );
 }
