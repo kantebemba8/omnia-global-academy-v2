@@ -53,6 +53,19 @@ export default function AdminOmniaLiveOperations({ initialTab = 'refunds' }: Adm
 
   async function refundDecision(row:any,decision:string){
     let amount:number|undefined;
+    let providerReference='';
+    if(decision==='processed'){
+      const p=await omniaDialog({
+        title:'Confirmer le remboursement traité',
+        message:'Saisissez la référence réelle du remboursement effectuée par le fournisseur de paiement.',
+        confirmLabel:'Marquer traité',
+        inputLabel:'Référence du remboursement',
+        inputRequired:true,
+      });
+      if(!p.confirmed)return;
+      providerReference=p.value.trim();
+      if(!providerReference){setMessage('La référence du remboursement est obligatoire.');return}
+    }
     if(decision==='partially_approved'){
       const a=await omniaDialog({
         title:'Remboursement partiel',
@@ -83,7 +96,8 @@ export default function AdminOmniaLiveOperations({ initialTab = 'refunds' }: Adm
 
     try{
       await liveApi('refund_admin_decision',{method:'POST',body:JSON.stringify({
-        refund_id:row.id,decision,approved_amount:amount,decision_reason:reason
+        refund_id:row.id,decision,approved_amount:amount,decision_reason:reason,
+        provider_reference:decision==='processed'?providerReference:null
       })});
       await load('refunds');
     }catch(e){setMessage(e instanceof Error?e.message:'Erreur')}

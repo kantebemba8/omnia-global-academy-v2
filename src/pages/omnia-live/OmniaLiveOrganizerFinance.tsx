@@ -40,7 +40,7 @@ export default function OmniaLiveOrganizerFinance(){
    gross:data?.totals?.gross??currencyEntries.reduce((a:number,x:any)=>a+Number(x.gross_amount||0),0),
    oga:data?.totals?.oga??currencyEntries.reduce((a:number,x:any)=>a+Number(x.oga_amount||0),0),
    organizer:data?.totals?.organizer??currencyEntries.reduce((a:number,x:any)=>a+Number(x.organizer_amount||0),0),
-   available:data?.totals?.available??currencyEntries.filter((x:any)=>x.status==='available').reduce((a:number,x:any)=>a+Number(x.organizer_amount||0),0),
+   available:data?.totals?.available??currencyEntries.reduce((a:number,x:any)=>a+Number(x.available_amount||0),0),
    pending:currencyEntries.filter((x:any)=>x.status==='pending').reduce((a:number,x:any)=>a+Number(x.organizer_amount||0),0),
   };
  },[data,currency]);

@@ -1686,11 +1686,31 @@ async function adminCoachingFinance(sb: Supabase) {
   ]);
   const sessionMap = new Map((sessions || []).map((row: Record<string, unknown>) => [String(row.id), row]));
   const invoiceMap = new Map((invoices || []).map((row: Record<string, unknown>) => [String(row.order_id), row]));
-  const orderRows = (orders || []).map((order: Record<string, unknown>) => ({ ...order, session: sessionMap.get(String(order.session_id)) || null, invoice: invoiceMap.get(String(order.id)) || null }));
+  const processedRefundByOrder = new Map<string, number>();
+  for (const refund of refunds || []) {
+    if (String(refund.status) !== "processed") continue;
+    const orderId = String(refund.order_id || "");
+    processedRefundByOrder.set(orderId, (processedRefundByOrder.get(orderId) || 0) + Number(refund.approved_amount_xof || 0));
+  }
+  const orderRows = (orders || []).map((order: Record<string, unknown>) => {
+    const amount = Number(order.amount_xof || 0);
+    const refunded = Math.min(amount, Math.max(0, processedRefundByOrder.get(String(order.id)) || 0));
+    const netPaid = Math.max(0, amount - refunded);
+    const originalCommission = Number(order.commission_amount_xof || 0);
+    const netCommission = amount > 0 ? Math.max(0, Math.round(originalCommission * netPaid / amount)) : 0;
+    return {
+      ...order,
+      session: sessionMap.get(String(order.session_id)) || null,
+      invoice: invoiceMap.get(String(order.id)) || null,
+      refunded_amount_xof: refunded,
+      net_paid_xof: netPaid,
+      net_commission_xof: netCommission,
+    };
+  });
   const refundRows = (refunds || []).map((refund: Record<string, unknown>) => ({ ...refund, session: sessionMap.get(String(refund.session_id)) || null }));
   return { orders: orderRows, refunds: refundRows, settings, metrics: {
-    paid_xof: orderRows.filter((row: Record<string, unknown>) => ["paid","partially_refunded","refunded"].includes(String(row.payment_status))).reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.amount_xof || 0), 0),
-    commission_xof: orderRows.filter((row: Record<string, unknown>) => String(row.payment_status) === "paid").reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.commission_amount_xof || 0), 0),
+    paid_xof: orderRows.filter((row: Record<string, unknown>) => ["paid","partially_refunded","refunded"].includes(String(row.payment_status))).reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.net_paid_xof || 0), 0),
+    commission_xof: orderRows.filter((row: Record<string, unknown>) => ["paid","partially_refunded","refunded"].includes(String(row.payment_status))).reduce((sum: number, row: Record<string, unknown>) => sum + Number(row.net_commission_xof || 0), 0),
     pending_orders: orderRows.filter((row: Record<string, unknown>) => String(row.payment_status) === "pending").length,
     pending_refunds: refundRows.filter((row: Record<string, unknown>) => ["pending","under_review","approved","partially_approved"].includes(String(row.status))).length,
   } };
@@ -1746,19 +1766,32 @@ async function adminRefundProcessed(sb: Supabase, session: Session, body: Record
   const refundId = asText(body.refund_id, 80);
   const providerReference = asText(body.provider_reference, 200);
   if (!providerReference) throw new Error("PROVIDER_REFERENCE_REQUIRED");
-  const { data: refund, error } = await sb.from("coaching_refund_requests").select("*,order:coaching_payment_orders(*)").eq("id", refundId).maybeSingle();
+
+  const { data, error } = await sb.rpc("coaching_process_refund", {
+    p_refund_id: refundId,
+    p_admin_id: session.userId,
+    p_provider_refund_reference: providerReference,
+  });
   if (error) throw error;
-  if (!refund) throw new Error("REFUND_NOT_FOUND");
-  if (!["approved","partially_approved"].includes(String(refund.status))) throw new Error("REFUND_NOT_APPROVED");
-  const amount = Number(refund.approved_amount_xof || 0);
-  const full = amount >= Number(refund.order?.amount_xof || 0);
-  const now = new Date().toISOString();
-  const result = await sb.from("coaching_refund_requests").update({ status: "processed", provider_refund_reference: providerReference, processed_at: now, decided_by: session.userId }).eq("id", refund.id).select().single();
-  if (result.error) throw result.error;
-  await sb.from("coaching_payment_orders").update({ payment_status: full ? "refunded" : "partially_refunded" }).eq("id", refund.order_id);
-  await sb.from("coaching_sessions").update({ payment_status: full ? "refunded" : "partially_refunded", status: full ? "refunded" : "partially_refunded" }).eq("id", refund.session_id);
-  await invokeNotification("coaching_refund_update", { userId: refund.user_id, status: "processed", amount_xof: amount, session_id: refund.session_id, action_url: "/dashboard/coaching" });
-  return result.data;
+
+  const result = (data || {}) as Record<string, unknown>;
+  const refund = (result.refund || null) as Record<string, unknown> | null;
+  if (!refund) throw new Error("REFUND_PROCESSING_FAILED");
+
+  await invokeNotification("coaching_refund_update", {
+    userId: refund.user_id,
+    status: "processed",
+    amount_xof: Number(refund.approved_amount_xof || 0),
+    session_id: refund.session_id,
+    action_url: "/dashboard/coaching",
+  });
+
+  return {
+    ...refund,
+    wallet_recovered_xof: Number(result.wallet_recovered_xof || 0),
+    full_refund: result.full_refund === true,
+    already_processed: result.already_processed === true,
+  };
 }
 
 function errorResponse(error: unknown) {
@@ -1770,7 +1803,7 @@ function errorResponse(error: unknown) {
     "OFFER_INCOMPLETE", "OFFER_PRICE_OUT_OF_RANGE", "INVALID_SESSION_MODE", "INVALID_AVAILABILITY", "INVALID_AVAILABILITY_RANGE",
     "INVALID_DURATION", "BOOKING_INCOMPLETE", "INVALID_OFFER_TYPE", "CANNOT_BOOK_SELF", "CANNOT_FAVORITE_SELF", "INVALID_DECISION",
     "BOOKING_CANNOT_CANCEL", "PAYMENT_NOT_ALLOWED", "PAYMENT_HOLD_EXPIRED", "PAYMENT_CONFIGURATION_MISSING", "PAYMENT_INIT_FAILED", "PAYMENT_LINK_FAILED",
-    "INVALID_REFUND_AMOUNT", "PROVIDER_REFERENCE_REQUIRED", "REFUND_NOT_APPROVED", "INVALID_FINANCE_SETTINGS",
+    "INVALID_REFUND_AMOUNT", "PROVIDER_REFERENCE_REQUIRED", "REFUND_NOT_APPROVED", "REFUND_ALREADY_PROCESSED", "REFUND_EXCEEDS_ORDER_AMOUNT", "REFUND_PROCESSING_FAILED", "INVALID_FINANCE_SETTINGS",
     "INVALID_MEETING_URL", "INVALID_PRESENCE_ACTION", "INVALID_SESSION_SETTINGS", "SESSION_CANNOT_CLOSE",
     "PACKAGE_INCOMPLETE", "PACKAGE_PRICE_OUT_OF_RANGE", "GROUP_INCOMPLETE", "SUBSCRIPTION_PLAN_INCOMPLETE", "ADVANCED_PRODUCT_REQUIRED",
     "ACTION_PLAN_INCOMPLETE", "ACTION_ITEM_INCOMPLETE", "INVALID_RECORDING_CONSENT", "RECORDING_STORAGE_KEY_REQUIRED", "INVALID_ADVANCED_SETTINGS",
@@ -2456,7 +2489,8 @@ async function coachRevenueDashboard(sb: Supabase, actor: Session) {
   for (const row of settings || []) cfg[String(row.key)] = row.value;
   const rows = earnings || [];
   const advancedRows = advancedEarnings || [];
-  const sum = (status: string) => rows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) + advancedRows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + Number(row.net_amount_xof || 0), 0);
+  const netAfterRefund = (row: Record<string, unknown>) => Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0));
+  const sum = (status: string) => rows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + netAfterRefund(row), 0) + advancedRows.filter((row: Record<string, unknown>) => row.status === status).reduce((total: number, row: Record<string, unknown>) => total + netAfterRefund(row), 0);
   return {
     profile,
     earnings: rows,
@@ -2464,7 +2498,7 @@ async function coachRevenueDashboard(sb: Supabase, actor: Session) {
     wallet: wallet || { balance_xof: 0, reserved_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
     payouts: payouts || [],
     settings: cfg,
-    metrics: { locked_xof: sum("locked"), frozen_xof: sum("frozen"), available_earnings_xof: sum("available"), lifetime_net_xof: rows.reduce((total: number, row: Record<string, unknown>) => total + Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0)), 0) + advancedRows.reduce((total: number, row: Record<string, unknown>) => total + Number(row.net_amount_xof || 0), 0) },
+    metrics: { locked_xof: sum("locked"), frozen_xof: sum("frozen"), available_earnings_xof: sum("available"), lifetime_net_xof: rows.reduce((total: number, row: Record<string, unknown>) => total + netAfterRefund(row), 0) + advancedRows.reduce((total: number, row: Record<string, unknown>) => total + netAfterRefund(row), 0) },
   };
 }
 

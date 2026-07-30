@@ -17,8 +17,8 @@ export default function AdminOmniaLiveCommerce(){
   try{await liveApi('discount_admin_create',{method:'POST',body:JSON.stringify({code,discount_type:'percent',discount_value:value,status:'active'})});setMsg('Code promotionnel créé.');await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
  async function decide(id:string,status:string){
-  const r=await omniaDialog({title:status==='rejected'?'Refuser la demande':status==='paid'?'Marquer comme payée':'Approuver la demande',message:status==='paid'?'Confirmez uniquement après le versement réel.':'Cette décision sera conservée dans l’historique.',confirmLabel:'Confirmer',inputLabel:'Note de décision',inputRequired:status==='rejected',danger:status==='rejected'});if(!r.confirmed)return;
-  try{await liveApi('payout_admin_decision',{method:'POST',body:JSON.stringify({request_id:id,status,decision_note:r.value||''})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
+  const r=await omniaDialog({title:status==='rejected'?'Refuser la demande':status==='paid'?'Marquer comme payée':'Approuver la demande',message:status==='paid'?'Confirmez uniquement après le versement réel et saisissez sa référence.':'Cette décision sera conservée dans l’historique.',confirmLabel:'Confirmer',inputLabel:status==='paid'?'Référence du versement':'Note de décision',inputRequired:status==='paid'||status==='rejected',danger:status==='rejected'});if(!r.confirmed)return;
+  try{await liveApi('payout_admin_decision',{method:'POST',body:JSON.stringify({request_id:id,status,decision_note:status==='paid'?null:(r.value||''),provider_reference:status==='paid'?(r.value||''):null})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
 
  return <AdminOmniaLiveShell title="Commerce Omnia Live" subtitle="Codes promotionnels et payouts des ventes Omnia Live.">{msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}

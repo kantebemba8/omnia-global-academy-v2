@@ -3474,34 +3474,68 @@ async function refundAdminDecision(
     decision?: string;
     approved_amount?: number;
     decision_reason?: string;
+    provider_reference?: string;
   };
 
   if (!body.refund_id || !body.decision) {
     return json({ error: "MISSING_PARAMS" }, 400);
   }
 
-  const { data: refund } = await sb
+  const { data: refund, error: fetchError } = await sb
     .from("live_refund_requests")
     .select("*")
     .eq("id", body.refund_id)
     .maybeSingle();
 
+  if (fetchError) throw fetchError;
   if (!refund) return json({ error: "REFUND_NOT_FOUND" }, 404);
 
-  const allowedDecisions = new Set(["under_review","approved","partially_approved","rejected","processed"]);
+  if (body.decision === "processed") {
+    const providerReference = String(body.provider_reference || "").trim();
+    if (!providerReference) return json({ error: "PROVIDER_REFERENCE_REQUIRED" }, 400);
+
+    const { data, error } = await sb.rpc("omnia_live_process_refund", {
+      p_refund_id: refund.id,
+      p_admin_id: ctx.userId,
+      p_provider_refund_reference: providerReference,
+    });
+    if (error) throw error;
+
+    return json({ success: true, ...(data || {}) });
+  }
+
+  const allowedDecisions = new Set(["under_review", "approved", "partially_approved", "rejected"]);
   if (!allowedDecisions.has(body.decision)) {
     return json({ error: "INVALID_DECISION" }, 400);
   }
 
-  const approvedAmount =
-    body.decision === "approved"
-      ? Number(refund.requested_amount)
-      : body.decision === "partially_approved"
-        ? Number(body.approved_amount || 0)
-        : null;
+  const currentStatus = String(refund.status);
+  const allowedTransition =
+    (body.decision === "under_review" && currentStatus === "pending") ||
+    (["approved", "partially_approved", "rejected"].includes(body.decision) &&
+      ["pending", "under_review"].includes(currentStatus));
+
+  if (!allowedTransition) {
+    return json({ error: "INVALID_STATUS_TRANSITION" }, 409);
+  }
+
+  let approvedAmount: number | null = null;
+  if (body.decision === "approved") {
+    approvedAmount = Number(refund.requested_amount);
+  } else if (body.decision === "partially_approved") {
+    approvedAmount = Number(body.approved_amount || 0);
+    if (
+      !Number.isFinite(approvedAmount) ||
+      approvedAmount <= 0 ||
+      approvedAmount >= Number(refund.requested_amount)
+    ) {
+      return json({ error: "INVALID_REFUND_AMOUNT" }, 400);
+    }
+  } else if (body.decision === "rejected") {
+    approvedAmount = 0;
+  }
 
   const now = new Date().toISOString();
-
   const { data: updated, error } = await sb
     .from("live_refund_requests")
     .update({
@@ -3509,8 +3543,9 @@ async function refundAdminDecision(
       approved_amount: approvedAmount,
       decision_reason: body.decision_reason || null,
       decided_by: ctx.userId,
-      decided_at: ["approved","partially_approved","rejected"].includes(body.decision) ? now : refund.decided_at,
-      processed_at: body.decision === "processed" ? now : refund.processed_at,
+      decided_at: ["approved", "partially_approved", "rejected"].includes(body.decision)
+        ? now
+        : refund.decided_at,
       updated_at: now,
     })
     .eq("id", refund.id)
@@ -3518,34 +3553,6 @@ async function refundAdminDecision(
     .single();
 
   if (error) throw error;
-
-  if (body.decision === "processed") {
-    const amount = Number(refund.approved_amount ?? refund.requested_amount);
-    const { data: order } = await sb
-      .from("live_orders")
-      .select("*")
-      .eq("id", refund.order_id)
-      .maybeSingle();
-
-    if (order) {
-      const fully = amount >= Number(order.amount);
-      await sb
-        .from("live_orders")
-        .update({
-          payment_status: fully ? "refunded" : "partially_refunded",
-          updated_at: now,
-        })
-        .eq("id", order.id);
-
-      if (fully) {
-        await sb
-          .from("live_registrations")
-          .update({ status: "cancelled" })
-          .eq("id", order.registration_id);
-      }
-    }
-  }
-
   return json({ success: true, refund: updated });
 }
 
@@ -3978,7 +3985,22 @@ async function organizerLedgerCreateForOrder(
   const organizerAmount = Math.max(0, gross - ogaAmount);
   const availableAt = new Date(Date.now() + Number(terms?.payout_delay_hours ?? 48) * 3600_000).toISOString();
 
-  const { data, error } = await sb.from("live_organizer_ledger").insert({
+  const idempotencyKey = `live:sale:${order.id}`;
+  const { data: existingSale, error: existingSaleError } = await sb
+    .from("live_organizer_ledger")
+    .select("*")
+    .eq("order_id", order.id)
+    .eq("entry_type", "sale")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existingSaleError) {
+    console.error("organizer ledger existing sale lookup error", existingSaleError);
+    return null;
+  }
+  if (existingSale) return existingSale;
+
+  const { data, error } = await sb.from("live_organizer_ledger").upsert({
     event_id: order.event_id,
     organizer_user_id: ev.owner_user_id,
     order_id: order.id,
@@ -3989,13 +4011,69 @@ async function organizerLedgerCreateForOrder(
     currency: order.currency,
     status: "pending",
     available_at: availableAt,
-  }).select("*").single();
+    idempotency_key: idempotencyKey,
+  }, { onConflict: "idempotency_key", ignoreDuplicates: true }).select("*").maybeSingle();
 
   if (error) {
     console.error("organizer ledger error", error);
     return null;
   }
-  return data;
+  if (data) return data;
+
+  const { data: existing, error: existingError } = await sb
+    .from("live_organizer_ledger")
+    .select("*")
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  if (existingError) {
+    console.error("organizer ledger lookup error", existingError);
+    return null;
+  }
+  return existing;
+}
+
+async function liveLedgerWithAvailability(
+  sb: ReturnType<typeof createClient>,
+  rows: any[],
+) {
+  const ledgerIds = rows.map((row: any) => row.id).filter(Boolean);
+  const allocationMap = new Map<string, { reserved: number; paid: number }>();
+
+  if (ledgerIds.length) {
+    const { data: allocations, error } = await sb
+      .from("live_payout_allocations")
+      .select("ledger_entry_id,allocated_amount,status")
+      .in("ledger_entry_id", ledgerIds)
+      .in("status", ["reserved", "paid"]);
+
+    if (error) throw error;
+
+    for (const allocation of allocations || []) {
+      const key = String(allocation.ledger_entry_id);
+      const current = allocationMap.get(key) || { reserved: 0, paid: 0 };
+      if (allocation.status === "reserved") current.reserved += Number(allocation.allocated_amount || 0);
+      if (allocation.status === "paid") current.paid += Number(allocation.allocated_amount || 0);
+      allocationMap.set(key, current);
+    }
+  }
+
+  return rows.map((row: any) => {
+    const allocated = allocationMap.get(String(row.id)) || { reserved: 0, paid: 0 };
+    const organizerAmount = Number(row.organizer_amount || 0);
+    const availableAmount =
+      row.status === "available"
+        ? organizerAmount > 0
+          ? Math.max(0, organizerAmount - allocated.reserved - allocated.paid)
+          : organizerAmount
+        : 0;
+
+    return {
+      ...row,
+      reserved_amount: allocated.reserved,
+      paid_amount: allocated.paid,
+      available_amount: availableAmount,
+    };
+  });
 }
 
 async function organizerLedgerMine(
@@ -4004,19 +4082,35 @@ async function organizerLedgerMine(
 ) {
   if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  const { data, error } = await sb.from("live_organizer_ledger")
-    .select("*,live_events(title)").eq("organizer_user_id", ctx.userId)
-    .order("created_at",{ascending:false});
+  const { error: refreshError } = await sb.rpc("omnia_live_refresh_ledger_availability", {
+    p_organizer_user_id: ctx.userId,
+  });
+  if (refreshError) throw refreshError;
+
+  const { data, error } = await sb
+    .from("live_organizer_ledger")
+    .select("*,live_events(title)")
+    .eq("organizer_user_id", ctx.userId)
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  const totals = (data ?? []).reduce((a:any,x:any)=>{
-    a.gross += Number(x.gross_amount||0);
-    a.oga += Number(x.oga_amount||0);
-    a.organizer += Number(x.organizer_amount||0);
-    return a;
-  },{gross:0,oga:0,organizer:0});
 
-  return json({ success:true, entries:data??[], totals });
+  const entries = await liveLedgerWithAvailability(sb, data ?? []);
+  const totals = entries.reduce(
+    (acc: any, row: any) => {
+      acc.gross += Number(row.gross_amount || 0);
+      acc.oga += Number(row.oga_amount || 0);
+      acc.organizer += Number(row.organizer_amount || 0);
+      if (row.status === "pending") acc.pending += Number(row.organizer_amount || 0);
+      acc.available += Number(row.available_amount || 0);
+      acc.reserved += Number(row.reserved_amount || 0);
+      acc.paid += Number(row.paid_amount || 0);
+      return acc;
+    },
+    { gross: 0, oga: 0, organizer: 0, pending: 0, available: 0, reserved: 0, paid: 0 },
+  );
+
+  return json({ success: true, entries, totals });
 }
 
 async function replayEntitlementGrantForEvent(
@@ -5310,75 +5404,58 @@ async function adminFinance(
   sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+
+  const { error: refreshError } = await sb.rpc("omnia_live_refresh_ledger_availability", {
+    p_organizer_user_id: null,
+  });
+  if (refreshError) throw refreshError;
 
   const [orders, ledger, payouts, refunds] = await Promise.all([
-    sb.from("live_orders").select("*,live_events(title,organizer_display_name)").order("created_at",{ascending:false}).limit(500),
-    sb.from("live_organizer_ledger").select("*,live_events(title)").order("created_at",{ascending:false}).limit(1000),
-    sb.from("live_payout_batches").select("*").order("created_at",{ascending:false}).limit(500),
-    sb.from("live_refund_requests").select("*").order("created_at",{ascending:false}).limit(500),
+    sb.from("live_orders").select("*,live_events(title,organizer_display_name)").order("created_at", { ascending: false }).limit(500),
+    sb.from("live_organizer_ledger").select("*,live_events(title)").order("created_at", { ascending: false }).limit(1000),
+    sb.from("live_payout_batches").select("*").order("created_at", { ascending: false }).limit(500),
+    sb.from("live_refund_requests").select("*").order("created_at", { ascending: false }).limit(500),
   ]);
 
+  if (orders.error) throw orders.error;
+  if (ledger.error) throw ledger.error;
+  if (payouts.error) throw payouts.error;
+  if (refunds.error) throw refunds.error;
+
+  const ledgerRows = await liveLedgerWithAvailability(sb, ledger.data ?? []);
+
   return json({
-    success:true,
-    orders:orders.data??[],
-    ledger:ledger.data??[],
-    payouts:payouts.data??[],
-    refunds:refunds.data??[],
+    success: true,
+    orders: orders.data ?? [],
+    ledger: ledgerRows,
+    payouts: payouts.data ?? [],
+    refunds: refunds.data ?? [],
   });
 }
 
 async function adminPayoutCreate(
-  req: Request,
-  sb: ReturnType<typeof createClient>,
+  _req: Request,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
-  const body = await req.json().catch(()=>({})) as any;
-  if (!body.organizer_user_id || !body.currency) return json({ error:"MISSING_PARAMS" },400);
-
-  const { data: entries, error: entriesError } = await sb.from("live_organizer_ledger")
-    .select("*").eq("organizer_user_id",body.organizer_user_id).eq("currency",body.currency)
-    .in("status",["pending","available"]);
-
-  if (entriesError) throw entriesError;
-  if (!(entries??[]).length) return json({ error:"NO_PAYABLE_LEDGER_ENTRIES" },409);
-
-  const amount=(entries??[]).reduce((a:any,x:any)=>a+Number(x.organizer_amount||0),0);
-  const batch=`OL-PAYOUT-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`;
-
-  const { data, error } = await sb.from("live_payout_batches").insert({
-    batch_number:batch,organizer_user_id:body.organizer_user_id,currency:body.currency,
-    amount,status:"draft",ledger_entry_ids:(entries??[]).map((x:any)=>x.id),notes:body.notes||null
-  }).select("*").single();
-
-  if (error) throw error;
-  return json({ success:true, payout:data },201);
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+  return json({
+    error: "LEGACY_PAYOUT_WORKFLOW_DISABLED",
+    message: "Créez et traitez les versements depuis les demandes de paiement organisateur.",
+  }, 410);
 }
 
 async function adminPayoutDecision(
-  req: Request,
-  sb: ReturnType<typeof createClient>,
+  _req: Request,
+  _sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if (!ctx || !isSuperAdmin(ctx)) return json({ error:"FORBIDDEN" },403);
-  const body = await req.json().catch(()=>({})) as any;
-  if (!body.payout_id || !body.status) return json({ error:"MISSING_PARAMS" },400);
-  if (!["approved","processing","paid","failed","cancelled"].includes(body.status)) return json({ error:"INVALID_STATUS" },400);
-
-  const now=new Date().toISOString();
-  const patch:any={status:body.status,updated_at:now};
-  if(body.status==="approved"){patch.approved_by=ctx.userId;patch.approved_at=now}
-  if(body.status==="paid"){patch.paid_at=now;patch.provider_reference=body.provider_reference||null}
-
-  const { data, error } = await sb.from("live_payout_batches").update(patch).eq("id",body.payout_id).select("*").single();
-  if(error) throw error;
-
-  if(body.status==="paid" && data?.ledger_entry_ids?.length){
-    await sb.from("live_organizer_ledger").update({status:"paid",paid_at:now})
-      .in("id",data.ledger_entry_ids);
-  }
-  return json({ success:true,payout:data });
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
+  return json({
+    error: "LEGACY_PAYOUT_WORKFLOW_DISABLED",
+    message: "Les lots sont désormais pilotés automatiquement par les demandes de paiement.",
+  }, 410);
 }
 
 async function adminReports(
@@ -7192,34 +7269,26 @@ async function payoutRequestCreate(
   sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if(!ctx) return json({error:"AUTH_REQUIRED"},401);
-  if(!canOrganize(ctx)) return json({error:"ORGANIZER_PERMISSION_REQUIRED"},403);
+  if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
+  if (!canOrganize(ctx)) return json({ error: "ORGANIZER_PERMISSION_REQUIRED" }, 403);
 
-  const body=await req.json().catch(()=>({})) as any;
-  if(!body.currency||!body.requested_amount) return json({error:"MISSING_PARAMS"},400);
+  const body = await req.json().catch(() => ({})) as any;
+  const requestedAmount = Number(body.requested_amount || 0);
+  if (!body.currency || !Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    return json({ error: "MISSING_PARAMS" }, 400);
+  }
 
-  const {data:ledger}=await sb.from("live_organizer_ledger").select("*")
-    .eq("organizer_user_id",ctx.userId)
-    .eq("currency",body.currency)
-    .eq("status","available")
-    .lte("available_at",new Date().toISOString());
+  const { data, error } = await sb.rpc("omnia_live_create_payout_request", {
+    p_organizer_user_id: ctx.userId,
+    p_currency: String(body.currency),
+    p_requested_amount: requestedAmount,
+    p_payout_method: body.payout_method || null,
+    p_payout_details: body.payout_details || {},
+    p_request_note: body.request_note || null,
+  });
 
-  const available=(ledger??[]).reduce((a:any,x:any)=>a+Number(x.organizer_amount||0),0);
-  const requested=Number(body.requested_amount);
-
-  if(requested<=0||requested>available) return json({error:"INVALID_PAYOUT_AMOUNT",available},409);
-
-  const {data,error}=await sb.from("live_payout_requests").insert({
-    organizer_user_id:ctx.userId,
-    currency:body.currency,
-    requested_amount:requested,
-    payout_method:body.payout_method||null,
-    payout_details:body.payout_details||{},
-    request_note:body.request_note||null
-  }).select("*").single();
-
-  if(error) throw error;
-  return json({success:true,request:data,available_balance:available},201);
+  if (error) throw error;
+  return json({ success: true, ...(data || {}) }, 201);
 }
 
 async function payoutRequestsMine(
@@ -7258,81 +7327,28 @@ async function payoutAdminDecision(
   sb: ReturnType<typeof createClient>,
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
-  if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
-  const body=await req.json().catch(()=>({})) as any;
-  if(!body.request_id||!body.status) return json({error:"MISSING_PARAMS"},400);
-  if(!["under_review","approved","rejected","paid","cancelled"].includes(body.status)) return json({error:"INVALID_STATUS"},400);
+  if (!ctx || !isSuperAdmin(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
-  const {data:request}=await sb.from("live_payout_requests").select("*").eq("id",body.request_id).maybeSingle();
-  if(!request) return json({error:"PAYOUT_REQUEST_NOT_FOUND"},404);
-
-  let batchId=request.payout_batch_id;
-
-  if(body.status==="approved"&&!batchId){
-    const {data:entries}=await sb.from("live_organizer_ledger").select("*")
-      .eq("organizer_user_id",request.organizer_user_id)
-      .eq("currency",request.currency)
-      .in("status",["pending","available"])
-      .order("created_at");
-
-    let remaining=Number(request.requested_amount);
-    const selected:any[]=[];
-
-    for(const e of entries??[]){
-      if(remaining<=0) break;
-      selected.push(e);
-      remaining-=Number(e.organizer_amount||0);
-    }
-
-    if(remaining>0.0001) return json({error:"INSUFFICIENT_LEDGER_BALANCE"},409);
-
-    const {data:batch,error}=await sb.from("live_payout_batches").insert({
-      batch_number:`OL-PAYOUT-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0,10).toUpperCase()}`,
-      organizer_user_id:request.organizer_user_id,
-      currency:request.currency,
-      amount:request.requested_amount,
-      status:"approved",
-      payment_method:request.payout_method,
-      ledger_entry_ids:selected.map((x:any)=>x.id),
-      approved_by:ctx.userId,
-      approved_at:new Date().toISOString(),
-      notes:request.request_note
-    }).select("*").single();
-
-    if(error) throw error;
-    batchId=batch.id;
+  const body = await req.json().catch(() => ({})) as any;
+  if (!body.request_id || !body.status) return json({ error: "MISSING_PARAMS" }, 400);
+  if (!["under_review", "approved", "rejected", "paid", "cancelled"].includes(body.status)) {
+    return json({ error: "INVALID_STATUS" }, 400);
   }
 
-  const now=new Date().toISOString();
-  const patch:any={
-    status:body.status,
-    payout_batch_id:batchId||null,
-    decision_note:body.decision_note||null,
-    decided_by:ctx.userId,
-    decided_at:now,
-    updated_at:now
-  };
-
-  const {data:updated,error}=await sb.from("live_payout_requests").update(patch)
-    .eq("id",request.id).select("*").single();
-
-  if(error) throw error;
-
-  if(body.status==="paid"&&batchId){
-    const {data:batch}=await sb.from("live_payout_batches").update({
-      status:"paid",
-      paid_at:now,
-      provider_reference:body.provider_reference||null,
-      updated_at:now
-    }).eq("id",batchId).select("*").single();
-
-    if(batch?.ledger_entry_ids?.length){
-      await sb.from("live_organizer_ledger").update({status:"paid",paid_at:now})
-        .in("id",batch.ledger_entry_ids);
-    }
+  if (body.status === "paid" && !String(body.provider_reference || "").trim()) {
+    return json({ error: "PROVIDER_REFERENCE_REQUIRED" }, 400);
   }
 
-  return json({success:true,request:updated});
+  const { data, error } = await sb.rpc("omnia_live_process_payout", {
+    p_request_id: body.request_id,
+    p_status: body.status,
+    p_admin_id: ctx.userId,
+    p_decision_note: body.decision_note || null,
+    p_provider_reference: body.provider_reference || null,
+  });
+
+  if (error) throw error;
+  return json({ success: true, ...(data || {}) });
 }
 
 async function subscriptionPlansAdmin(

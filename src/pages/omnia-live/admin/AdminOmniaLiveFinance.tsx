@@ -23,9 +23,9 @@ export default function AdminOmniaLiveFinance(){
  useEffect(()=>{load()},[]);
 
  const totals=useMemo(()=>({
-  gross:(d.orders||[]).filter((x:any)=>['paid','partially_refunded'].includes(x.payment_status)).reduce((a:number,x:any)=>a+Number(x.amount||0),0),
-  oga:(d.ledger||[]).filter((x:any)=>x.status!=='reversed').reduce((a:number,x:any)=>a+Number(x.oga_amount||0),0),
-  due:(d.ledger||[]).filter((x:any)=>x.status==='available').reduce((a:number,x:any)=>a+Number(x.organizer_amount||0),0),
+  gross:(d.ledger||[]).filter((x:any)=>!['reversed','cancelled'].includes(x.status)).reduce((a:number,x:any)=>a+Number(x.gross_amount||0),0),
+  oga:(d.ledger||[]).filter((x:any)=>!['reversed','cancelled'].includes(x.status)).reduce((a:number,x:any)=>a+Number(x.oga_amount||0),0),
+  due:(d.ledger||[]).reduce((a:number,x:any)=>a+Number(x.available_amount||0),0),
   pending:(d.ledger||[]).filter((x:any)=>x.status==='pending').reduce((a:number,x:any)=>a+Number(x.organizer_amount||0),0),
  }),[d]);
 
@@ -36,24 +36,24 @@ export default function AdminOmniaLiveFinance(){
    rejected:['Refuser la demande','Indiquez la raison du refus.']
   };
   const [title,message]=labels[status]||['Confirmer','Confirmer cette action.'];
-  const r=await omniaDialog({title,message,confirmLabel:'Confirmer',danger:status==='rejected',inputLabel:'Note de décision',inputRequired:status==='rejected'});
-  if(!r.confirmed)return;
-  try{
-   await liveApi('payout_admin_decision',{method:'POST',body:JSON.stringify({request_id:id,status,decision_note:r.value||null})});
-   await load();
-  }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
- }
-
- async function decideBatch(id:string,status:string){
   const r=await omniaDialog({
-   title:status==='paid'?'Confirmer le versement':'Modifier le lot de paiement',
-   message:status==='paid'?'Cette action doit être utilisée uniquement après le versement réel.':'Confirmez cette action.',
+   title,
+   message,
    confirmLabel:'Confirmer',
-   danger:status==='cancelled'
+   danger:status==='rejected',
+   inputLabel:status==='paid'?'Référence du versement':'Note de décision',
+   inputRequired:status==='paid'||status==='rejected'
   });
   if(!r.confirmed)return;
-  try{await liveApi('admin_payout_decision',{method:'POST',body:JSON.stringify({payout_id:id,status})});await load()}
-  catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
+  try{
+   await liveApi('payout_admin_decision',{method:'POST',body:JSON.stringify({
+    request_id:id,
+    status,
+    decision_note:status==='paid'?null:(r.value||null),
+    provider_reference:status==='paid'?(r.value||null):null
+   })});
+   await load();
+  }catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
 
  return <AdminOmniaLiveShell title="Finance & Payouts" subtitle="Contrôlez les ventes, commissions, soldes disponibles et versements aux organisateurs.">
@@ -94,11 +94,7 @@ export default function AdminOmniaLiveFinance(){
       <div className="font-semibold" style={{color:BLUE}}>{x.batch_number}</div>
       <div>{money(x.amount,x.currency)}</div>
       <div>{liveStatusLabel(x.status)}</div>
-      <div className="flex justify-end gap-3">
-       {x.status==='draft'&&<button onClick={()=>decideBatch(x.id,'approved')} className="font-semibold text-emerald-700">Approuver</button>}
-       {['approved','processing'].includes(x.status)&&<button onClick={()=>decideBatch(x.id,'paid')} className="font-semibold" style={{color:BLUE}}>Marquer payé</button>}
-       {!['paid','cancelled'].includes(x.status)&&<button onClick={()=>decideBatch(x.id,'cancelled')} className="font-semibold text-red-700">Annuler</button>}
-      </div>
+      <div className="text-right text-xs text-slate-500">Piloté par la demande de paiement</div>
      </div>)}
     </div></div>
    ):<div className="border-y border-slate-200 py-9 text-sm text-slate-500">Aucun lot de paiement créé.</div>}
