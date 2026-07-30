@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { User, Mail, Phone, Globe, Lock, Eye, EyeOff, CheckCircle, AlertTriangle, FileText, ExternalLink } from 'lucide-react';
+import { User, Mail, Phone, Globe, Lock, Eye, EyeOff, CheckCircle, AlertTriangle, FileText } from 'lucide-react';
 
 import { CATEGORY_LABELS } from '../../lib/categories';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { saveSession } from '../../lib/session';
 interface ProfUser {
   id: string; full_name: string; email: string; phone_number: string;
   country_code: string; allow_email: boolean; allow_sms: boolean;
@@ -53,17 +55,22 @@ export function ProfesseurProfil() {
     const token = localStorage.getItem('omnia_session_token');
     if (!token && !bypassAuth) { navigate('/connexion'); return; }
     try {
-      const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: edgeAuthHeaders() });
       if (res.status === 403 && !bypassAuth) { navigate('/connexion'); return; }
       const json = await res.json();
       if (res.ok && json.user) {
         const u = json.user as ProfUser;
+        const professor = (json.professeur || null) as (ProfProfile & { signature_url?: string | null }) | null;
         setUser(u);
+        setProfile(professor);
         setForm({ full_name: u.full_name, email: u.email, phone_number: u.phone_number, country_code: u.country_code ?? 'ML' });
         setNotifs({ allow_email: u.allow_email ?? true, allow_sms: u.allow_sms ?? true, allow_push: u.allow_push ?? false, subscribe_newsletter: u.subscribe_newsletter ?? false });
+        setProfForm({
+          bio: professor?.bio ?? '',
+          expertise_domain: professor?.expertise_domain ?? '',
+          signature_url: professor?.signature_url ?? '',
+        });
       }
-      // Try loading professeur_profiles from a separate fetch (using service role via auth-me or similar)
-      // For simplicity, show empty profile form for now
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [navigate, bypassAuth]);
@@ -77,11 +84,16 @@ export function ProfesseurProfil() {
     try {
       const res = await fetch(`${getApiBase()}/auth-update-profile`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, ...notifs }),
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          ...form,
+          ...notifs,
+          professor_profile: { bio: profForm.bio, expertise_domain: profForm.expertise_domain },
+        }),
       });
       const json = await res.json();
       if (!res.ok) { setMsg({ text: json.error || 'Erreur', ok: false }); return; }
+      if (json.professor_profile) setProfile(json.professor_profile as ProfProfile);
       setMsg({ text: 'Profil mis à jour.', ok: true });
       const stored = localStorage.getItem('omnia_user');
       if (stored) { try { localStorage.setItem('omnia_user', JSON.stringify({ ...JSON.parse(stored), ...json.user })); } catch { /* ignore */ } }
@@ -98,11 +110,12 @@ export function ProfesseurProfil() {
     try {
       const res = await fetch(`${getApiBase()}/auth-change-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ current_password: pwForm.current, new_password: pwForm.newPw }),
       });
       const json = await res.json();
-      if (!res.ok) { setPwMsg({ text: json.message || 'Erreur', ok: false }); return; }
+      if (!res.ok || !json.success) { setPwMsg({ text: json.message || 'Erreur', ok: false }); return; }
+      if (json.session_token && json.user) saveSession(json.session_token, json.user);
       setPwMsg({ text: 'Mot de passe modifié.', ok: true });
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch { setPwMsg({ text: 'Erreur réseau', ok: false }); }
@@ -138,12 +151,9 @@ export function ProfesseurProfil() {
               <div>
                 <p className="font-bold text-gray-900">{user?.full_name}</p>
                 <p className="text-gray-500 text-sm">{user?.email}</p>
-                {user && (
-                  <Link to={`/formateur/${user.id}`} target="_blank"
-                    className="mt-1 flex items-center gap-1 text-xs" style={{ color: '#BF8813' }}>
-                    <ExternalLink className="w-3 h-3" /> Voir mon profil public
-                  </Link>
-                )}
+                <p className="mt-1 text-xs" style={{ color: '#BF8813' }}>
+                  Le profil public sera disponible après sa validation dans Omnia Talent.
+                </p>
               </div>
             </div>
 
@@ -215,14 +225,15 @@ export function ProfesseurProfil() {
                         const file=e.target.files?.[0]; if(!file)return;
                         const reader=new FileReader();
                         reader.onload=async()=>{
-                          const token=localStorage.getItem('omnia_session_token')||'';
                           const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin`,{
                             method:'POST',
-                            headers:{'Content-Type':'application/json','x-omnia-session-token':token},
+                            headers:edgeAuthHeaders(),
                             body:JSON.stringify({action:'upload_my_signature',filename:file.name,mime:file.type,data_url:String(reader.result)})
                           });
-                          const data=await res.json();
-                          if(data.url)setProfForm((p)=>({...p,signature_url:data.url}));
+                          const data=await res.json().catch(()=>({}));
+                          if(!res.ok||!data.url){setMsg({text:data.message||data.error||'Téléversement de la signature impossible.',ok:false});return;}
+                          setProfForm((p)=>({...p,signature_url:data.url}));
+                          setMsg({text:'Signature professionnelle enregistrée.',ok:true});
                         };
                         reader.readAsDataURL(file);
                       }}/>

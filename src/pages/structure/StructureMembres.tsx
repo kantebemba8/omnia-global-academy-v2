@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Users, CheckCircle, XCircle, RefreshCw, Search, UserCheck } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -29,8 +30,6 @@ export default function StructureMembres() {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
   async function load(sid?: string) {
@@ -39,7 +38,7 @@ export default function StructureMembres() {
     setLoading(true);
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_members', structure_id: id }),
     });
     const data = await res.json();
@@ -51,7 +50,7 @@ export default function StructureMembres() {
     (async () => {
       const res = await fetch(API, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_structure' }),
       });
       const data = await res.json();
@@ -66,7 +65,7 @@ export default function StructureMembres() {
   async function handleDecision(membershipId: string, decision: 'approve' | 'reject') {
     await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'handle_membership', structure_id: structureId, membership_id: membershipId, decision }),
     });
     showToast(decision === 'approve' ? '✅ Membre accepté' : '❌ Demande refusée');

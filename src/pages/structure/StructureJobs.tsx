@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { APPLICATION_MODE_LABELS, APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, normalizeApplicationMode, labelApplicationStatus } from '../../lib/jobApplicationModes';
-import { AlertCircle, Briefcase, CheckCircle2, ExternalLink, Eye, Mail, Plus, RefreshCw, Send, ShieldCheck, X } from 'lucide-react';
+import { AlertCircle, Briefcase, CheckCircle2, ExternalLink, Eye, Mail, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
 const OMNIA_BLUE = '#002050';
 const OMNIA_GOLD = '#bf8813';
@@ -36,12 +37,11 @@ type JobApplication = {
   job_offers?: { title?: string; application_mode?: string } | null;
 };
 
-function token() { return localStorage.getItem('omnia_session_token') || ''; }
 
 async function postManage<T>(body: unknown): Promise<T> {
   const res = await fetch(ENDPOINTS.jobPlatformManage, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+    headers: edgeAuthHeaders(),
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));

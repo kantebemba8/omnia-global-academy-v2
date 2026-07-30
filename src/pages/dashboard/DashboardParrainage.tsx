@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Users, Copy, CheckCircle, Share2, Clock, Gift } from 'lucide-react';
 
 interface Filleul {
@@ -31,7 +32,7 @@ export function DashboardParrainage() {
     if (!token) return;
     try {
       const res = await fetch(`${getApiBase()}/referral-info`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
       });
       const json = await res.json();
       if (res.ok) setData(json);

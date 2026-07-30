@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Shield, PlusCircle, RefreshCw, XCircle, UserMinus, UserRoundCheck, Ban } from 'lucide-react';
 import { coachingRequest } from '../../lib/coachingApi';
 
@@ -67,8 +68,6 @@ export default function StructureEquipe() {
     internal_role: 'lecture_seule', message: '',
     permissions: {} as Record<string, boolean>,
   });
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
@@ -77,7 +76,7 @@ export default function StructureEquipe() {
     if (!id) return;
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_team', structure_id: id }),
     });
     const data = await res.json();
@@ -115,7 +114,7 @@ export default function StructureEquipe() {
     (async () => {
       const res = await fetch(API, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_structure' }),
       });
       const data = await res.json();
@@ -132,7 +131,7 @@ export default function StructureEquipe() {
     if (!form.email || !form.internal_role) { showToast('Email et rôle requis'); return; }
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'invite_team_member', structure_id: structureId, ...form }),
     });
     const data = await res.json();
@@ -148,7 +147,7 @@ export default function StructureEquipe() {
     if (!confirm('Retirer ce membre de l\'équipe ?')) return;
     await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'remove_team_member', structure_id: structureId, member_id: memberId }),
     });
     showToast('Membre retiré');

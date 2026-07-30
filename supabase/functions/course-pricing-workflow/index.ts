@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token",
 };
 
 const json = (data: unknown, status = 200) =>
@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "METHOD_NOT_ALLOWED" }, 405);
   }
 
-  const token = (req.headers.get("Authorization") ?? "")
+  const token = (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "")
     .replace(/^Bearer\s+/i, "")
     .trim();
 
@@ -156,7 +156,6 @@ Deno.serve(async (req: Request) => {
         .from("courses")
         .update({
           pricing_status: "en_attente_acceptation_prix_professeur",
-          status: "en_attente_acceptation_prix_professeur",
           admin_selected_price_source: body.source,
           admin_selected_price_xof: selectedPrice,
           pricing_admin_decided_at: new Date().toISOString(),
@@ -210,7 +209,6 @@ Deno.serve(async (req: Request) => {
           professor_price_accepted: true,
           professor_price_accepted_at: new Date().toISOString(),
           price_xof: selectedPrice,
-          status: "en_attente_validation_manuelle",
           updated_at: new Date().toISOString(),
         })
         .eq("id", body.course_id);
@@ -219,8 +217,9 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        status: "en_attente_validation_manuelle",
+        pricing_status: "accepted",
         price_xof: selectedPrice,
+        next_action: "submit_course",
       });
     }
 
@@ -234,7 +233,6 @@ Deno.serve(async (req: Request) => {
         .from("courses")
         .update({
           pricing_status: "prix_revision_demandee",
-          status: "prix_revision_demandee",
           pricing_revision_comment:
             body.comment || "Révision demandée par le professeur",
           desired_price_amount: desiredPrice,
@@ -246,7 +244,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         success: true,
-        status: "prix_revision_demandee",
+        pricing_status: "prix_revision_demandee",
       });
     }
 

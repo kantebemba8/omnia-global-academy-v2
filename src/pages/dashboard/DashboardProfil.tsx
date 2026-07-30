@@ -8,6 +8,7 @@ import {
 import { credentialsRequest, LearnerSkillsPassportResponse, SkillsPassport } from '../../lib/credentialsApi';
 import { isLearnerPreviewMode, previewSkillsPassport } from '../../lib/learnerPreview';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { saveSession } from '../../lib/session';
 
 interface UserData {
   id: string; full_name: string; email: string; phone_number: string;
@@ -138,7 +139,7 @@ export function DashboardProfil() {
     if (!token) { setSaving(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/auth-update-profile`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(form),
+        method: 'PATCH', headers: edgeAuthHeaders(), body: JSON.stringify(form),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -190,11 +191,12 @@ export function DashboardProfil() {
     setPwSaving(true); setPwMsg(null);
     try {
       const res = await fetch(`${getApiBase()}/auth-change-password`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        method: 'POST', headers: edgeAuthHeaders(),
         body: JSON.stringify({ current_password: pwForm.current, new_password: pwForm.newPw }),
       });
       const json = await res.json();
-      if (!res.ok) { setPwMsg({ text: json.message || 'Erreur', ok: false }); return; }
+      if (!res.ok || !json.success) { setPwMsg({ text: json.message || 'Erreur', ok: false }); return; }
+      if (json.session_token && json.user) saveSession(json.session_token, json.user);
       setPwMsg({ text: 'Mot de passe modifié avec succès.', ok: true });
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch { setPwMsg({ text: 'Erreur réseau', ok: false }); }
@@ -211,7 +213,7 @@ export function DashboardProfil() {
     if (!token) { setNotifSaving(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/auth-update-profile`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(notifs),
+        method: 'PATCH', headers: edgeAuthHeaders(), body: JSON.stringify(notifs),
       });
       if (!res.ok) throw new Error();
       setNotifMsg({ text: 'Préférences enregistrées.', ok: true });

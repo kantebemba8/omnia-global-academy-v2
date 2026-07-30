@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 function json(data: unknown, status = 200) {
@@ -24,7 +24,7 @@ type Session = {
 };
 
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
 
   const { data: session } = await sb

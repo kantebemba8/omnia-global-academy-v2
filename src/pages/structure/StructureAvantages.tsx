@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Gift, PlusCircle, RefreshCw, XCircle, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -52,8 +53,6 @@ export default function StructureAvantages() {
     starts_at: '', ends_at: '', structure_comment: '',
     free_access: false, omnia_career_access: false, cv_token_bonus: 0,
   });
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
@@ -62,7 +61,7 @@ export default function StructureAvantages() {
     if (!id) return;
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_benefits', structure_id: id }),
     });
     const data = await res.json();
@@ -74,7 +73,7 @@ export default function StructureAvantages() {
     (async () => {
       const res = await fetch(API, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'get_my_structure' }),
       });
       const data = await res.json();
@@ -90,7 +89,7 @@ export default function StructureAvantages() {
     if (!form.benefit_name || !form.benefit_type) { showToast('Nom et type requis'); return; }
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'propose_benefit', structure_id: structureId, ...form }),
     });
     const data = await res.json();

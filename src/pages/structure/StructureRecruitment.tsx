@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
-  ArrowRight, BarChart3, Briefcase, CalendarDays, FileText, Heart,
-  Mail, MessageSquare, Plus, Search, Settings2, Star, UsersRound,
+  ArrowRight, Briefcase, CalendarDays, FileText, Heart,
+  Mail, MessageSquare, Plus, Search, UsersRound,
 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { contactTalent, createStructureRecruiter, loadPublicTalents, loadRecruitmentTeam, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, setStructureRecruiterStatus, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, updateRecruitmentPermissions } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 
@@ -19,7 +20,6 @@ type Favorite = PublicTalent;
 type Job = { id:string; title?:string; status?:string; applications_count?:number; location?:string; contract_type?:string };
 type Application = { id:string; status?:string; tracking_status?:string; users?:{full_name?:string;email?:string}|null; job_offers?:{title?:string}|null };
 
-function getToken(){ return localStorage.getItem('omnia_session_token') || ''; }
 
 function sectionFromPath(path:string):Section {
   const last = path.split('/').filter(Boolean).pop() || 'dashboard';
@@ -29,7 +29,7 @@ function sectionFromPath(path:string):Section {
 async function loadRecruitmentData(){
   const res = await fetch(ENDPOINTS.jobPlatformManage, {
     method:'POST',
-    headers:{ Authorization:`Bearer ${getToken()}`, 'Content-Type':'application/json' },
+    headers:edgeAuthHeaders(),
     body:JSON.stringify({ action:'list_my_jobs' }),
   });
   const jobsData = await res.json().catch(()=>({}));
@@ -37,7 +37,7 @@ async function loadRecruitmentData(){
 
   const appsRes = await fetch(ENDPOINTS.jobPlatformManage, {
     method:'POST',
-    headers:{ Authorization:`Bearer ${getToken()}`, 'Content-Type':'application/json' },
+    headers:edgeAuthHeaders(),
     body:JSON.stringify({ action:'list_applications' }),
   });
   const appsData = await appsRes.json().catch(()=>({}));
@@ -56,7 +56,6 @@ function EmptyState({icon:Icon,title,text,action}:{icon:React.ElementType;title:
 
 export default function StructureRecruitment(){
   const location = useLocation();
-  const navigate = useNavigate();
   const section = sectionFromPath(location.pathname);
   const [talents,setTalents] = useState<PublicTalent[]>([]);
   const [jobs,setJobs] = useState<Job[]>([]);
@@ -175,13 +174,6 @@ function Favorites({favorites,contact}:{favorites:Favorite[];contact:(t:PublicTa
 function Candidates({applications}:{applications:Application[]}){
   if(!applications.length) return <EmptyState icon={FileText} title="Aucun candidat" text="Les candidatures reçues sur les offres de votre Structure apparaîtront ici."/>;
   return <div className="rounded-2xl border bg-white" style={{borderColor:BORDER}}><div className="divide-y">{applications.map(a=><div key={a.id} className="flex flex-wrap items-center gap-3 p-4"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{(a.users?.full_name||a.users?.email||'CA').slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{a.users?.full_name||a.users?.email||'Identité non renseignée'}</p><p className="truncate text-xs" style={{color:MUTED}}>{a.job_offers?.title||'Offre non renseignée'}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:'rgba(191,136,19,.12)',color:GOLD}}>{a.tracking_status||a.status||'Statut non renseigné'}</span></div>)}</div></div>;
-}
-
-function Statistics({jobs,applications,favorites}:{jobs:Job[];applications:Application[];favorites:Favorite[]}){
-  const accepted=applications.filter(a=>['accepted','offer','hired'].includes(a.tracking_status||a.status||'')).length;
-  const interview=applications.filter(a=>(a.tracking_status||a.status)==='interview').length;
-  const metrics=[['Offres totales',jobs.length],['Candidatures',applications.length],['Entretiens',interview],['Acceptées',accepted],['Favoris',favorites.length]];
-  return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{metrics.map(([label,value])=><div key={String(label)} className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>{label}</p><p className="mt-2 text-2xl font-semibold" style={{color:BLUE}}>{value}</p></div>)}</div>;
 }
 
 function Interviews({interviews}:{interviews:TalentInterview[]}){

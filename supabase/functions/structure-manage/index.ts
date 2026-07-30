@@ -480,6 +480,7 @@ Deno.serve(async (req: Request) => {
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_profile"))) {
         return json({ error: "FORBIDDEN" }, 403);
       }
+
       const fieldMap: Record<string, string> = {
         name: "org_name",
         city: "city",
@@ -499,9 +500,33 @@ Deno.serve(async (req: Request) => {
       for (const [input, column] of Object.entries(fieldMap)) {
         if (body[input] !== undefined) patch[column] = body[input] === "" ? null : body[input];
       }
-      const { data, error } = await sb.from("partner_organizations").update(patch).eq("id", organizationId).select("*").single();
-      if (error) throw error;
-      return json({ success: true, structure: mapStructure(data) });
+
+      let uploadedPath: string | null = null;
+      try {
+        if (body.logo_base64) {
+          const uploaded = await uploadStructureAsset(
+            sb,
+            session.userId,
+            "logos",
+            body.logo_base64,
+            body.logo_mime,
+            body.logo_name,
+          );
+          uploadedPath = uploaded.path;
+          patch.logo_url = uploaded.publicUrl;
+        }
+
+        const { data, error } = await sb.from("partner_organizations")
+          .update(patch)
+          .eq("id", organizationId)
+          .select("*")
+          .single();
+        if (error) throw error;
+        return json({ success: true, structure: mapStructure(data) });
+      } catch (error) {
+        if (uploadedPath) await sb.storage.from(STRUCTURE_ASSET_BUCKET).remove([uploadedPath]).catch(() => {});
+        throw error;
+      }
     }
 
     if (action === "admin_list_structures") {

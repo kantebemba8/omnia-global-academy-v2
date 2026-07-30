@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Award, BarChart3, CheckCircle2, Clock3, Download, FileText, GraduationCap, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -12,12 +13,10 @@ export default function StructureRHConformite() {
   const [filters, setFilters] = useState<Filters>({ department_id: '', group_id: '', cohort_id: '', search: '' });
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   async function call(action: string, payload: Record<string, unknown> = {}) {
     const response = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action, structure_id: structureId, ...payload }),
     });
     const body = await response.json().catch(() => ({}));
@@ -35,11 +34,11 @@ export default function StructureRHConformite() {
 
   useEffect(() => { (async () => {
     try {
-      const response = await fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'get_my_structure' }) });
+      const response = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'get_my_structure' }) });
       const body = await response.json();
       if (!body.success) throw new Error(body.message || body.error || 'Structure introuvable');
       setStructureId(body.structure.id);
-      const dashboard = await fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'gm3_rh_dashboard', structure_id: body.structure.id }) }).then(r => r.json());
+      const dashboard = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'gm3_rh_dashboard', structure_id: body.structure.id }) }).then(r => r.json());
       if (!dashboard.success) throw new Error(dashboard.message || dashboard.error || 'Chargement impossible');
       setData(dashboard);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Chargement impossible'); }

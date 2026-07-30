@@ -42,24 +42,40 @@ const PREVIEW_DASHBOARD: DashData = {
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  brouillon:                       { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
-  soumise:                         { label: 'Soumise', color: '#3B82F6', bg: '#EFF6FF' },
-  en_attente_validation_manuelle:  { label: 'En vérification', color: '#F59E0B', bg: '#FFFBEB' },
-  validee:                         { label: 'Validée', color: '#16A34A', bg: '#F0FDF4' },
-  publiee:                         { label: 'Publiée', color: '#1E7A52', bg: '#ECFDF5' },
-  rejetee:                         { label: 'Rejetée', color: '#DC2626', bg: '#FEF2F2' },
-  modification_demandee:           { label: 'Modifications demandées', color: '#EA580C', bg: '#FFF7ED' },
-  suspendue:                       { label: 'Suspendue', color: '#6B7280', bg: '#F9FAFB' },
+  draft:             { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
+  pending_validation:{ label: 'En vérification', color: '#F59E0B', bg: '#FFFBEB' },
+  validated:         { label: 'Validée', color: '#16A34A', bg: '#F0FDF4' },
+  published:         { label: 'Publiée', color: '#1E7A52', bg: '#ECFDF5' },
+  rejected:          { label: 'Rejetée', color: '#DC2626', bg: '#FEF2F2' },
+  changes_requested: { label: 'Modifications demandées', color: '#EA580C', bg: '#FFF7ED' },
+  archived:          { label: 'Archivée', color: '#6B7280', bg: '#F9FAFB' },
+  // Compatibilité des anciennes données uniquement.
+  brouillon: { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
+  soumise: { label: 'En vérification', color: '#F59E0B', bg: '#FFFBEB' },
+  en_attente_validation_manuelle: { label: 'En vérification', color: '#F59E0B', bg: '#FFFBEB' },
+  validee: { label: 'Validée', color: '#16A34A', bg: '#F0FDF4' },
+  publiee: { label: 'Publiée', color: '#1E7A52', bg: '#ECFDF5' },
+  rejetee: { label: 'Rejetée', color: '#DC2626', bg: '#FEF2F2' },
+  modification_demandee: { label: 'Modifications demandées', color: '#EA580C', bg: '#FFF7ED' },
+  suspendue: { label: 'Archivée', color: '#6B7280', bg: '#F9FAFB' },
 };
 
 const FILTER_TABS = [
   { key: '', label: 'Toutes' },
-  { key: 'publiee', label: 'Publiées' },
-  { key: 'en_attente_validation_manuelle', label: 'En attente' },
-  { key: 'brouillon', label: 'Brouillons' },
-  { key: 'rejetee', label: 'Rejetées' },
-  { key: 'modification_demandee', label: 'À modifier' },
+  { key: 'published', label: 'Publiées' },
+  { key: 'pending_validation', label: 'En attente' },
+  { key: 'draft', label: 'Brouillons' },
+  { key: 'rejected', label: 'Rejetées' },
+  { key: 'changes_requested', label: 'À modifier' },
 ];
+
+const STATUS_ALIASES: Record<string, string[]> = {
+  published: ['published', 'publiee'],
+  pending_validation: ['pending_validation', 'soumise', 'en_attente_validation_manuelle'],
+  draft: ['draft', 'brouillon'],
+  rejected: ['rejected', 'rejetee'],
+  changes_requested: ['changes_requested', 'modification_demandee'],
+};
 
 const PAYOUT_STATUS: Record<string, { label: string; color: string }> = {
   pending:                  { label: 'En attente', color: '#F59E0B' },
@@ -121,34 +137,34 @@ export function DashboardProfesseur() {
 
   useEffect(() => { load(); }, [load]);
 
-  const formations = (data?.formations ?? []).filter((f) => !statusFilter || f.status === statusFilter);
+  const formations = (data?.formations ?? []).filter((f) => !statusFilter || (STATUS_ALIASES[statusFilter] || [statusFilter]).includes(f.status));
 
   function actionButton(f: Formation) {
-    if (f.status === 'brouillon') return (
+    if (['draft', 'brouillon'].includes(f.status)) return (
       <Link to={`/professeur/courses/${f.id}/edit`}
         className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ backgroundColor: '#002050' }}>
         Continuer la rédaction
       </Link>
     );
-    if (f.status === 'rejetee') return (
+    if (['rejected', 'rejetee'].includes(f.status)) return (
       <Link to={`/professeur/courses/${f.id}/edit`}
         className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ backgroundColor: '#DC2626' }}>
         Corriger et resoumettre
       </Link>
     );
-    if (f.status === 'modification_demandee') return (
+    if (['changes_requested', 'modification_demandee'].includes(f.status)) return (
       <Link to={`/professeur/courses/${f.id}/edit`}
         className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ backgroundColor: '#EA580C' }}>
         Apporter les modifications
       </Link>
     );
-    if (f.status === 'publiee') return (
+    if (['published', 'publiee'].includes(f.status)) return (
       <Link to={`/professeur/analytics`}
         className="text-xs font-semibold px-3 py-1.5 rounded-lg border flex items-center gap-1" style={{ borderColor: '#002050', color: '#002050' }}>
         <Eye className="w-3.5 h-3.5" /> Statistiques
       </Link>
     );
-    if (['soumise', 'en_attente_validation_manuelle'].includes(f.status)) return (
+    if (['pending_validation', 'soumise', 'en_attente_validation_manuelle', 'validated', 'validee'].includes(f.status)) return (
       <span className="text-xs text-gray-400 italic">En cours de vérification...</span>
     );
     return null;

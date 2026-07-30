@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Building2, CalendarDays, CheckCircle2, Download, FileSpreadsheet, GraduationCap, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -28,10 +29,8 @@ export default function StructureOrganisation() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [unit, setUnit] = useState({ type: 'department', name: '', description: '', department_id: '', starts_at: '', ends_at: '' });
   const [training, setTraining] = useState({ course_id: '', title: '', target_type: 'tous', target_id: '', starts_at: '', due_at: '', priority: 'normale', reminder_days: '30,7,1' });
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   async function request(action: string, payload: Record<string, unknown> = {}) {
-    const res = await fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, structure_id: structureId, ...payload }) });
+    const res = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action, structure_id: structureId, ...payload }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body.success) throw new Error(body.message || body.error || 'Action impossible');
     return body;
@@ -42,7 +41,7 @@ export default function StructureOrganisation() {
     if (!id) return;
     setLoading(true);
     try {
-      const res = await fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'gm2_overview', structure_id: id }) });
+      const res = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'gm2_overview', structure_id: id }) });
       const body = await res.json();
       if (!res.ok || !body.success) throw new Error(body.message || body.error || 'Chargement impossible');
       setData(body);
@@ -52,13 +51,13 @@ export default function StructureOrganisation() {
 
   useEffect(() => { (async () => {
     try {
-      const res = await fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'get_my_structure' }) });
+      const res = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'get_my_structure' }) });
       const body = await res.json();
       if (!body.success) throw new Error(body.message || body.error || 'Structure introuvable');
       setStructureId(body.structure.id);
       const [overview, catalogue] = await Promise.all([
-        fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'gm2_overview', structure_id: body.structure.id }) }).then(r => r.json()),
-        fetch(API, { method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'gm2_list_courses', structure_id: body.structure.id }) }).then(r => r.json()),
+        fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'gm2_overview', structure_id: body.structure.id }) }).then(r => r.json()),
+        fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'gm2_list_courses', structure_id: body.structure.id }) }).then(r => r.json()),
       ]);
       if (overview.success) setData(overview);
       if (catalogue.success) setCourses(catalogue.courses || []);

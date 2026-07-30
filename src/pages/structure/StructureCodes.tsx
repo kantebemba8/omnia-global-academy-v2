@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
-import { QrCode, PlusCircle, Copy, CheckCircle, XCircle, Clock, AlertCircle, Eye, RefreshCw } from 'lucide-react';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { QrCode, PlusCircle, Copy, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
 
@@ -46,8 +47,6 @@ export default function StructureCodes() {
     organisation_internationale: 'Espace Organisation internationale',
     cabinet_formation: 'Espace Cabinet de formation', autre: 'Espace Structure professionnelle',
   };
-
-  const token = () => localStorage.getItem('omnia_session_token') || '';
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3500); }
@@ -56,7 +55,7 @@ export default function StructureCodes() {
     setLoading(true);
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'get_my_structure' }),
     });
     const data = await res.json();
@@ -67,7 +66,7 @@ export default function StructureCodes() {
 
     const codesRes = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_codes', structure_id: sid }),
     });
     const codesData = await codesRes.json();
@@ -81,7 +80,7 @@ export default function StructureCodes() {
     if (!form.code_name) { showToast('Nom du code requis'); return; }
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'create_code', structure_id: structureId, ...form }),
     });
     const data = await res.json();
@@ -96,7 +95,7 @@ export default function StructureCodes() {
   async function handleSubmit(codeId: string) {
     const res = await fetch(API, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'submit_code', structure_id: structureId, code_id: codeId }),
     });
     const data = await res.json();

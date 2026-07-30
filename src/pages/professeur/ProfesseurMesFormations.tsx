@@ -12,10 +12,6 @@ interface Formation {
   prix_provisoire_xof: number | null; price_xof: number | null;
 }
 
-function getApiBase() {
-  const url = import.meta.env.VITE_SUPABASE_URL || '';
-  return url ? `${url}/functions/v1` : '/api';
-}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   brouillon:                      { label: 'Brouillon', color: '#9CA3AF', bg: '#F3F4F6' },
@@ -88,15 +84,24 @@ export function ProfesseurMesFormations() {
     } catch (e) { alert(e instanceof Error ? e.message : 'Suppression impossible'); }
   }
 
-  const filtered = filter ? formations.filter((f) => f.status === filter) : formations;
+  const statusAliases: Record<string, string[]> = {
+    published: ['published', 'publiee'],
+    pending_validation: ['pending_validation', 'soumise', 'en_attente_validation_manuelle'],
+    draft: ['draft', 'brouillon'],
+    rejected: ['rejected', 'rejetee'],
+    changes_requested: ['changes_requested', 'modification_demandee'],
+  };
+  const filtered = filter
+    ? formations.filter((formation) => (statusAliases[filter] || [filter]).includes(formation.status))
+    : formations;
 
   const FILTERS = [
     { key: '', label: `Toutes (${formations.length})` },
-    { key: 'publiee', label: 'Publiées' },
-    { key: 'en_attente_validation_manuelle', label: 'En attente' },
-    { key: 'brouillon', label: 'Brouillons' },
-    { key: 'rejetee', label: 'Rejetées' },
-    { key: 'modification_demandee', label: 'À modifier' },
+    { key: 'published', label: 'Publiées' },
+    { key: 'pending_validation', label: 'En attente' },
+    { key: 'draft', label: 'Brouillons' },
+    { key: 'rejected', label: 'Rejetées' },
+    { key: 'changes_requested', label: 'À modifier' },
   ];
 
   return (

@@ -85,11 +85,10 @@ export function DashboardCertificats() {
   async function submitFeedback() {
     if (fb.would_recommend === null) { setFb(p => ({ ...p, error: 'Répondez à la question de recommandation.' })); return; }
     setFb(p => ({ ...p, submitting: true, error: '' }));
-    const token = localStorage.getItem('omnia_session_token');
     try {
       const res = await fetch(`${getApiBase()}/feedback-submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ course_id: fb.course_id, quality_score: fb.quality_score, would_recommend: fb.would_recommend, suggestions: fb.suggestions }),
       });
       const json = await res.json();
