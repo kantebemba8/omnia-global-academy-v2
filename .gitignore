@@ -26,3 +26,8 @@ login.json
 supabase/.temp/
 
 .oga-backups/
+# Local operational files (never commit or archive)
+/*.ps1
+/OGA_RESULTAT_*.txt
+/ETAT_AUDIT_OGA.txt
+/OGA_BACKUP_*/

@@ -14,6 +14,7 @@ const RequireOmniaCareerAdmin = lazy(() => import('./components/auth/RequireOmni
 
 const StudioEvaluations = lazy(() => import('./pages/studio/StudioEvaluations').then((module) => ({ default: module.StudioEvaluations })));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
+const NotFound = lazy(() => import('./pages/NotFound'));
 const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
 const APropos = lazy(() => import('./pages/APropos').then((module) => ({ default: module.APropos })));
 const Confidentialite = lazy(() => import('./pages/Confidentialite').then((module) => ({ default: module.Confidentialite })));
@@ -758,6 +759,7 @@ export default function App() {
         <Route path="/cours/:id/examen-module/:moduleId" element={<ExamenModule />} />
         <Route path="/cours/:id/validation-finale" element={<ValidationFinale />} />
         </Route>{/* end GuardedRoutes */}
+        <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
         </PlatformRoleGate>
