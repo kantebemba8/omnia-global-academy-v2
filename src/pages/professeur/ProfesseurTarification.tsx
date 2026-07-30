@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Download, Calculator, CheckCircle2, RefreshCcw } from 'lucide-react';
 import { ENDPOINTS } from '../../lib/config';
@@ -48,11 +49,11 @@ export default function ProfesseurTarification(){
             style={{backgroundColor:'#002050'}}>
             <Download className="w-4 h-4"/> Télécharger le guide PDF
           </a>
-          <a href="/professeur/courses/new"
+          <Link to="/professeur/courses/new"
             className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold"
             style={{borderColor:'#BF8813',color:'#BF8813'}}>
             <Calculator className="w-4 h-4"/> Créer une formation
-          </a>
+          </Link>
         </div>
       </div>
 

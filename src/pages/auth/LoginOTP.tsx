@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
@@ -56,9 +56,9 @@ export function LoginOTP() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}{' '}
             {error.includes('inscrire') && (
-              <a href="/inscription" className="font-semibold underline" style={{ color: '#002050' }}>
+              <Link to="/inscription" className="font-semibold underline" style={{ color: '#002050' }}>
                 S'inscrire
-              </a>
+              </Link>
             )}
           </div>
         )}
@@ -92,9 +92,9 @@ export function LoginOTP() {
         </button>
 
         <p className="text-center text-sm" style={{ color: '#6B7280' }}>
-          <a href="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
+          <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
             ← Connexion par mot de passe
-          </a>
+          </Link>
         </p>
       </form>
     </AuthLayout>

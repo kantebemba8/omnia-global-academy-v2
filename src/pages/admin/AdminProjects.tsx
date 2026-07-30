@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Archive, Ban, CheckCircle2, Eye, FolderKanban, RefreshCw, RotateCcw,
   ShieldAlert, Trash2, XCircle, Users,
@@ -139,7 +140,10 @@ export default function AdminProjects() {
       <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Super Admin</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Validation, supervision, récompenses, signalements et clôture.</p></div>
-          <div className="flex flex-wrap gap-2"><a href="/admin/projects/gestion" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#BF8813' }}>Créer un projet</a><a href="/projects" className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: '#002050', color: '#002050' }}><Eye size={17} /> Aller à Omnia Projects</a></div>
+          <div className="flex flex-wrap gap-2">
+            <Link to="/admin/projects/gestion" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#BF8813' }}>Créer un projet</Link>
+            <Link to="/projects" className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: '#002050', color: '#002050' }}><Eye size={17} /> Aller à Omnia Projects</Link>
+          </div>
         </div>
 
         {message && <div className="mt-6 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#E7D4A1', background: '#FFFBF0', color: '#6E4C08' }}>{message}</div>}

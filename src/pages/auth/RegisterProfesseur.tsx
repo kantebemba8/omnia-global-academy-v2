@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
@@ -319,7 +319,7 @@ export function RegisterProfesseur() {
         </button>
 
         <p className="text-center text-sm" style={{ color: '#6B7280' }}>
-          <a href="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</a>
+          <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
         </p>
       </form>
     </AuthLayout>

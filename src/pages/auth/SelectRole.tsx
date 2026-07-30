@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, GraduationCap, Building2, ChevronRight, Radio, UserRoundSearch } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 
@@ -72,9 +72,9 @@ export function SelectRole() {
 
       <p className="mt-6 text-center text-sm" style={{ color: '#6B7280' }}>
         Déjà un compte ?{' '}
-        <a href="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
+        <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
           Se connecter
-        </a>
+        </Link>
       </p>
     </AuthLayout>
   );

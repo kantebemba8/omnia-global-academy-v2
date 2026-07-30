@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Facebook, Instagram, Youtube, Linkedin, MessageCircle, ExternalLink } from 'lucide-react';
 
 interface SocialNetworks {
@@ -92,7 +93,7 @@ export function PageFooter({ socialNetworks = {}, appDownloads = {}, followUsLab
         <div>
           <p className="text-sm font-semibold text-white mb-4">Formations</p>
           {FOOTER_COLS.formations.map(({ label, href }) => (
-            <a key={label} href={href} className={linkCls} style={linkStyle}>{label}</a>
+            <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>
           ))}
         </div>
 
@@ -100,7 +101,11 @@ export function PageFooter({ socialNetworks = {}, appDownloads = {}, followUsLab
         <div>
           <p className="text-sm font-semibold text-white mb-4">Omnia Academy</p>
           {FOOTER_COLS.omnia.map(({ label, href }) => (
-            <a key={label} href={href} className={linkCls} style={linkStyle}>{label}</a>
+            href.startsWith('/') ? (
+              <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>
+            ) : (
+              <a key={label} href={href} className={linkCls} style={linkStyle}>{label}</a>
+            )
           ))}
         </div>
 
@@ -108,7 +113,7 @@ export function PageFooter({ socialNetworks = {}, appDownloads = {}, followUsLab
         <div>
           <p className="text-sm font-semibold text-white mb-4">Informations</p>
           {FOOTER_COLS.legal.map(({ label, href }) => (
-            <a key={label} href={href} className={linkCls} style={linkStyle}>{label}</a>
+            <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>
           ))}
 
           {(appDownloads.app_store || appDownloads.google_play) && (

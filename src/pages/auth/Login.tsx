@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
@@ -221,9 +221,9 @@ export function Login() {
           <div className="relative">
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-sm font-medium text-gray-700">Mot de passe</label>
-              <a href="/mot-de-passe-oublie" className="text-xs font-medium" style={{ color: '#BF8813' }}>
+              <Link to="/mot-de-passe-oublie" className="text-xs font-medium" style={{ color: '#BF8813' }}>
                 Mot de passe oublié ?
-              </a>
+              </Link>
             </div>
             <input
               className={inputCls}
@@ -237,14 +237,14 @@ export function Login() {
               type="button"
               className="absolute right-3 top-9 text-gray-400"
               onClick={() => setShowPwd(v => !v)}
+              aria-label={showPwd ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
             >
               {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
 
           <button
-            type="button"
-            onClick={() => handleSubmit()}
+            type="submit"
             disabled={loading}
             className="w-full py-3 rounded-lg font-semibold text-white transition-all mt-1"
             style={{ backgroundColor: '#002050' }}
@@ -266,9 +266,9 @@ export function Login() {
           {notFound && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               Aucun compte trouvé pour ce numéro.{' '}
-              <a href="/inscription" className="font-semibold underline" style={{ color: '#002050' }}>
+              <Link to="/inscription" className="font-semibold underline" style={{ color: '#002050' }}>
                 Créer un compte
-              </a>
+              </Link>
             </div>
           )}
 
@@ -309,6 +309,7 @@ export function Login() {
               type="button"
               className="absolute right-3 top-9 text-gray-400"
               onClick={() => setShowPhonePwd(v => !v)}
+              aria-label={showPhonePwd ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
             >
               {showPhonePwd ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -327,9 +328,9 @@ export function Login() {
 
       <p className="mt-6 text-center text-sm" style={{ color: '#6B7280' }}>
         Pas encore de compte ?{' '}
-        <a href="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>
+        <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>
           S'inscrire
-        </a>
+        </Link>
       </p>
     </AuthLayout>
   );

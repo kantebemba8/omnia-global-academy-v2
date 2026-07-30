@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../../components/AuthLayout';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
 
@@ -169,9 +169,9 @@ export function ForgotPassword() {
         )}
 
         <p className="text-center text-sm" style={{ color: '#6B7280' }}>
-          <a href="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
+          <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
             ← Retour à la connexion
-          </a>
+          </Link>
         </p>
       </form>
     </AuthLayout>

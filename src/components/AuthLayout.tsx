@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -9,22 +10,22 @@ interface AuthLayoutProps {
 export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-8 sm:py-12"
       style={{ backgroundColor: '#F8F9FA' }}
     >
       <div
-        className="w-full max-w-md bg-white rounded-2xl p-10"
+        className="w-full max-w-md rounded-2xl bg-white p-6 sm:p-10"
         style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
       >
         {/* Logo */}
         <div className="text-center mb-6">
-          <a href="/">
+          <Link to="/accueil" aria-label="Retour à l’accueil">
             <img
               src="/IMG_0349.png"
               alt="Omnia"
               className="h-10 mx-auto object-contain"
             />
-          </a>
+          </Link>
           <div
             className="font-bold mt-2"
             style={{ color: '#002050', fontSize: '16px', letterSpacing: '0.09em' }}

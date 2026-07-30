@@ -1,9 +1,13 @@
+import { Link } from 'react-router-dom';
 import { Clock, Mail, Phone } from 'lucide-react';
 
 export default function DemoExpiredModal() {
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center z-[9999]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="demo-expired-title"
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
     >
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
@@ -14,7 +18,7 @@ export default function DemoExpiredModal() {
           <Clock className="w-8 h-8" style={{ color: '#D97706' }} />
         </div>
 
-        <h2 className="text-xl font-bold mb-2" style={{ color: '#002050' }}>
+        <h2 id="demo-expired-title" className="mb-2 text-xl font-bold" style={{ color: '#002050' }}>
           Session démo expirée
         </h2>
         <p className="text-gray-500 text-sm mb-6">
@@ -45,13 +49,13 @@ export default function DemoExpiredModal() {
           </div>
         </div>
 
-        <a
-          href="/"
+        <Link
+          to="/accueil"
           className="block w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
           style={{ backgroundColor: '#002050' }}
         >
           Retour à l'accueil
-        </a>
+        </Link>
       </div>
     </div>
   );

@@ -67,3 +67,15 @@ body {
 .oga-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
 .oga-sidebar-scroll::-webkit-scrollbar-thumb { background: #BF8813; border-radius: 999px; }
 .oga-sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #D29B2A; }
+
+ /* Repères clavier harmonisés sans modifier l'apparence au clic souris. */
+:where(a, button, [role='button']):focus-visible {
+  outline: 3px solid rgba(191, 136, 19, 0.5);
+  outline-offset: 3px;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+

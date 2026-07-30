@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
@@ -68,9 +68,9 @@ export function ForcePasswordChange() {
     return (
       <AuthLayout title="Session invalide">
         <p className="text-center text-sm mt-4" style={{ color: '#6B7280' }}>
-          <a href="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
+          <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
             Retour à la connexion
-          </a>
+          </Link>
         </p>
       </AuthLayout>
     );

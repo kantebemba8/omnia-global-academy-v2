@@ -1,4 +1,5 @@
 import { Clock, BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { AuthLayout } from '../../components/AuthLayout';
 
 export function PendingValidation() {
@@ -29,20 +30,20 @@ export function PendingValidation() {
           <BookOpen size={18} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
           <p className="text-sm" style={{ color: '#374151' }}>
             En attendant, vous pouvez consulter notre{' '}
-            <a href="/catalogue" className="font-semibold underline" style={{ color: '#002050' }}>
+            <Link to="/catalogue" className="font-semibold underline" style={{ color: '#002050' }}>
               catalogue de formations
-            </a>
+            </Link>
             .
           </p>
         </div>
 
-        <a
-          href="/"
+        <Link
+          to="/accueil"
           className="block w-full py-3 rounded-lg font-semibold text-white transition-all"
           style={{ backgroundColor: '#002050' }}
         >
           Retour à l'accueil
-        </a>
+        </Link>
       </div>
     </AuthLayout>
   );

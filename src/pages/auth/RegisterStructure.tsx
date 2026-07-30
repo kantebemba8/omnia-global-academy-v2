@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Building2, ChevronRight, ChevronLeft, Info, CheckCircle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
@@ -121,7 +121,7 @@ export function RegisterStructure() {
           ))}
         </div>
         <p className="mt-5 text-center text-sm" style={{ color: '#6B7280' }}>
-          <a href="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</a>
+          <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
         </p>
       </AuthLayout>
     );
@@ -521,7 +521,7 @@ export function RegisterStructure() {
         </button>
 
         <p className="text-center text-sm" style={{ color: '#6B7280' }}>
-          <a href="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</a>
+          <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
         </p>
       </form>
     </AuthLayout>
