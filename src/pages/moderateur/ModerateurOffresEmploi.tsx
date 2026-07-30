@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Briefcase, CheckCircle, XCircle, ChevronDown, ChevronUp, MapPin, Clock, Tag } from 'lucide-react';
 
 interface JobOffer {
   id: string; title: string; description: string; location: string;
   contract_type: string; category: string; deadline: string; status: string;
-  posted_by_id: string; establishment_id: string | null; created_at: string;
-  school_name: string | null;
+  posted_by_id: string; organization_id: string | null; establishment_id: string | null; created_at: string;
+  issuer_name: string | null; issuer_logo_url?: string | null;
 }
 interface JobsData {
   pending_jobs: JobOffer[];
@@ -27,27 +28,41 @@ export default function ModerateurOffresEmploi() {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
+  const [error, setError] = useState('');
 
   const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
     (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
 
   function load() {
-    if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
-    fetch(ENDPOINTS.moderatorJobAction, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    if (bypassAuth) {
+      setData({ pending_jobs: [], approved_jobs: [], rejected_jobs: [] });
+      setLoading(false);
+      return;
+    }
+    setError('');
+    fetch(ENDPOINTS.moderatorJobAction, { headers: edgeAuthHeaders() })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || payload.error || 'Offres indisponibles.');
+        return payload as JobsData;
+      })
+      .then((payload) => setData(payload))
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Offres indisponibles.'))
+      .finally(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
 
   async function doAction() {
     if (!modal) return;
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
+    if (modal.action === 'reject' && !reason.trim()) {
+      setToast('Le motif du rejet est obligatoire.');
+      setTimeout(() => setToast(''), 4000);
+      return;
+    }
     const res = await fetch(ENDPOINTS.moderatorJobAction, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ job_id: modal.job.id, action: modal.action, reason }),
     });
     const d = await res.json();
@@ -76,7 +91,12 @@ export default function ModerateurOffresEmploi() {
           <p className="text-gray-500 text-sm mt-1">{pending.length} offre(s) en attente de modération</p>
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5" role="alert">
+            <p className="font-semibold text-red-800">Impossible de charger les offres</p>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-48">
             <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
               style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
@@ -97,7 +117,7 @@ export default function ModerateurOffresEmploi() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-800 truncate">{j.title}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {j.school_name ?? 'Particulier'} · {CONTRACT_LABELS[j.contract_type] ?? j.contract_type}
+                        {j.issuer_name ?? 'Recruteur indépendant'} · {CONTRACT_LABELS[j.contract_type] ?? j.contract_type}
                       </p>
                     </div>
                     <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-amber-50 text-amber-700">En attente</span>
@@ -173,12 +193,12 @@ export default function ModerateurOffresEmploi() {
               {modal.action === 'reject' && (
                 <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
-                  placeholder="Motif du rejet (optionnel)…" />
+                  placeholder="Motif du rejet obligatoire…" aria-label="Motif du rejet obligatoire" />
               )}
               <div className="flex gap-3 justify-end">
                 <button onClick={() => { setModal(null); setReason(''); }}
                   className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Annuler</button>
-                <button onClick={doAction} disabled={submitting}
+                <button onClick={doAction} disabled={submitting || (modal.action === 'reject' && !reason.trim())}
                   className={`px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-60 ${modal.action === 'reject' ? 'bg-red-600 hover:bg-red-700' : ''}`}
                   style={modal.action === 'approve' ? { backgroundColor: '#1E7A52' } : {}}>
                   {submitting ? 'En cours…' : modal.action === 'approve' ? 'Approuver' : 'Rejeter'}

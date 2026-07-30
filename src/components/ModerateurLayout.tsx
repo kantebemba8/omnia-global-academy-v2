@@ -5,6 +5,7 @@ import {
   LayoutDashboard, BookOpen, Users, MessageSquare, Briefcase, HelpCircle, BarChart2, Shield
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
+import { edgeAuthHeaders } from '../lib/edgeAuth';
 
 interface ModPerms {
   can_see_pending_courses: boolean;
@@ -93,7 +94,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
     }
 
     fetch(ENDPOINTS.dashboardModerateur, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: edgeAuthHeaders(),
     })
       .then(async (r) => {
         const data = await r.json().catch(() => ({}));

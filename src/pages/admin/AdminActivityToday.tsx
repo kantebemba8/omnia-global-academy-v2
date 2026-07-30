@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { ArrowLeft, Clock } from 'lucide-react';
 const BLUE='#002050',GOLD='#BF8813';
 
@@ -10,7 +11,7 @@ export default function AdminActivityToday(){
  const [rows,setRows]=useState<any[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
  useEffect(()=>{(async()=>{try{
    const token=localStorage.getItem('omnia_session_token'); if(!token)throw new Error('Session expirée.');
-   const r=await fetch(`${ENDPOINTS.dashboardAdmin}?activity_today_detail=true`,{headers:{Authorization:`Bearer ${token}`}});
+   const r=await fetch(`${ENDPOINTS.dashboardAdmin}?activity_today_detail=true`,{headers:edgeAuthHeaders()});
    const d=await r.json(); if(!r.ok)throw new Error(d.message||d.error||'Chargement impossible');
    setRows(d.activities||[]);
  }catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}})()},[]);

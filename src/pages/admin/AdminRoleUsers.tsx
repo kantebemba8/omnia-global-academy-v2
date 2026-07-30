@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { ArrowLeft, Eye, Users } from 'lucide-react';
 
 const BLUE='#002050', GOLD='#BF8813';
@@ -21,7 +22,7 @@ type Payload={role:string;count:number;members:Member[]};
 const LABELS:Record<string,string>={
   apprenant:'Apprenants',professeur:'Professeurs',structure:'Structures',
   organisateur:'Organisateurs',moderateur:'Modérateurs',
-  recruteur_independant:'Recruteurs indépendants',coach:'Coachs'
+  recruteur:'Recruteurs',recruteur_structure:'Recruteurs Structure',coach:'Coachs'
 };
 
 export default function AdminRoleUsers(){
@@ -37,7 +38,7 @@ export default function AdminRoleUsers(){
       const token=localStorage.getItem('omnia_session_token');
       if(!token)throw new Error('Session expirée.');
       const r=await fetch(`${ENDPOINTS.dashboardAdmin}?role=${encodeURIComponent(roleKey)}`,{
-        headers:{Authorization:`Bearer ${token}`}
+        headers:edgeAuthHeaders()
       });
       const d=await r.json();
       if(!r.ok)throw new Error(d.message||d.error||'Chargement impossible');
@@ -56,7 +57,8 @@ export default function AdminRoleUsers(){
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>{LABELS[roleKey]||data?.role||roleKey}</h1>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-gray-500">Seules les informations administratives minimales sont affichées : nom, e-mail et date d’inscription.</p>
-          {roleKey==='recruteur_independant'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur');navigate('/talent/recruteur/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
+          {roleKey==='recruteur'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur');navigate('/talent/recruteur/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
+          {roleKey==='recruteur_structure'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur_structure');navigate('/structure/recrutement/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur Structure</button>}
           {roleKey==='coach'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','coach');navigate('/coach/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
         </div>
       </div>

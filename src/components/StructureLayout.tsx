@@ -172,8 +172,11 @@ export function StructureLayout({ children, displayName }: Props) {
     } catch { /* ignore */ }
   }, []);
 
-  const recruitmentOnly = Boolean(user?.roles?.includes('recruteur_structure'))
-    && !user?.roles?.some(role => ['responsable_structure', 'gestionnaire_partenaire', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role));
+  const previewRole = previewMode ? sessionStorage.getItem('omnia_admin_role_preview') : null;
+  const recruitmentOnly = previewRole === 'recruteur_structure' || (
+    Boolean(user?.roles?.includes('recruteur_structure'))
+    && !user?.roles?.some(role => ['responsable_structure', 'gestionnaire_partenaire', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role))
+  );
   const visibleGroups = recruitmentOnly ? STRUCTURE_RECRUITER_NAV_GROUPS : STRUCTURE_NAV_GROUPS;
 
   useEffect(() => {

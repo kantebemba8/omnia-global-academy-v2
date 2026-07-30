@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Omnia-Session-Token,X-Client-Info,Apikey",
 };
 
 const json = (data: unknown, status = 200) =>
@@ -74,11 +74,33 @@ function dayKey(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
+function sessionToken(req: Request) {
+  return (
+    req.headers.get("x-omnia-session-token") ??
+    (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "")
+  ).trim();
+}
+
+const ROLE_GROUPS = [
+  { key: "apprenant", label: "Apprenants", aliases: ["apprenant"] },
+  { key: "professeur", label: "Professeurs", aliases: ["professeur", "formateur", "enseignant", "etablissement_enseignant"] },
+  { key: "structure", label: "Structures", aliases: ["structure", "responsable_structure", "gestionnaire_partenaire", "structure_admin", "directeur", "etablissement_directeur"] },
+  { key: "recruteur_structure", label: "Recruteurs Structure", aliases: ["recruteur_structure"] },
+  { key: "organisateur", label: "Organisateurs Omnia Live", aliases: ["organisateur", "organizer"] },
+  { key: "moderateur", label: "Modérateurs", aliases: ["moderateur", "moderator"] },
+  { key: "recruteur", label: "Recruteurs", aliases: ["recruteur", "recruteur_independant"] },
+  { key: "coach", label: "Coachs", aliases: ["coach"] },
+] as const;
+
+function roleGroup(key: string) {
+  return ROLE_GROUPS.find((group) => group.key === key);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = sessionToken(req);
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
@@ -96,35 +118,28 @@ Deno.serve(async (req: Request) => {
     // Aucun mot de passe, téléphone, adresse, KYC ou autre donnée sensible n'est exposé.
     const requestedRole = url.searchParams.get("role");
     if (requestedRole) {
-      if (requestedRole === "super_admin") return json({ error: "FORBIDDEN" }, 403);
-      const roleGroups: Record<string, string[]> = {
-        apprenant: ["apprenant"],
-        professeur: ["professeur"],
-        structure: ["responsable_structure","gestionnaire_partenaire","etablissement_directeur","etablissement_enseignant","structure","recruteur_structure"],
-        organisateur: ["organizer","organisateur"],
-        moderateur: ["moderateur","moderator"],
-        recruteur_independant: ["recruteur_independant","recruteur"],
-        coach: ["coach"],
-      };
-      const keys = roleGroups[requestedRole] ?? [requestedRole];
+      const group = roleGroup(requestedRole);
+      if (!group) return json({ error: "ROLE_NOT_SUPPORTED", message: "Rôle officiel inconnu." }, 404);
+      const keys = [...group.aliases];
       const { data: roleRows, error: roleError } = await sb
         .from("user_roles")
         .select("user_id,role")
         .in("role", keys);
       if (roleError) throw roleError;
-      const ids = [...new Set((roleRows ?? []).map((r:any)=>r.user_id).filter(Boolean))];
+      const ids = [...new Set((roleRows ?? []).map((row:any) => row.user_id).filter(Boolean))];
       const members = ids.length
-        ? await rows(sb, "users", "id,full_name,email,created_at", q => q.in("id", ids).order("created_at", { ascending: false }))
+        ? await rows(sb, "users", "id,full_name,email,created_at", query => query.in("id", ids).order("created_at", { ascending: false }))
         : [];
       return json({
-        role: requestedRole,
+        role: group.label,
+        role_key: group.key,
         role_keys: keys,
         count: members?.length ?? 0,
-        members: (members ?? []).map((u:any)=>({
-          id: u.id,
-          name: u.full_name ?? "",
-          email: u.email ?? "",
-          created_at: u.created_at ?? null,
+        members: (members ?? []).map((user:any) => ({
+          id: user.id,
+          name: user.full_name ?? "",
+          email: user.email ?? "",
+          created_at: user.created_at ?? null,
         })),
       });
     }
@@ -301,63 +316,32 @@ Deno.serve(async (req: Request) => {
       }))
       .sort((a, b) => b.amount_xof - a.amount_xof);
 
-    // Dynamic role dashboard:
-    // - core business roles are always visible, even at 0;
-    // - aliases are grouped under the current product terminology;
-    // - any future/new role appears automatically without code changes.
-    const roleGroups: Record<string, string[]> = {
-      "Apprenants": ["apprenant"],
-      "Professeurs": ["professeur"],
-      "Structures": ["responsable_structure", "gestionnaire_partenaire", "etablissement_directeur", "etablissement_enseignant", "structure", "recruteur_structure"],
-      "Organisateurs": ["organizer", "organisateur"],
-      "Modérateurs": ["moderateur", "moderator"],
-      "Recruteurs indépendants": ["recruteur_independant", "recruteur"],
-      "Coachs": ["coach"],
-    };
-    const groupedKeys = new Set([...Object.values(roleGroups).flat(), "super_admin"]);
-    const allUserIds = [...new Set((userRoles ?? []).map((r:any)=>r.user_id).filter(Boolean))];
+    // Seuls les rôles officiels sont exposés dans le Dashboard.
+    // Les anciens alias restent regroupés silencieusement pour la compatibilité des comptes existants.
+    const allUserIds = [...new Set((userRoles ?? []).map((row:any) => row.user_id).filter(Boolean))];
     const userRows = allUserIds.length
-      ? await rows(sb, "users", "id,full_name,email", q => q.in("id", allUserIds))
+      ? await rows(sb, "users", "id,full_name,email", query => query.in("id", allUserIds))
       : [];
-    const usersById = new Map((userRows ?? []).map((u:any)=>[u.id,u]));
+    const usersById = new Map((userRows ?? []).map((user:any) => [user.id, user]));
 
-    const usersByRole:any[] = [];
-    for (const [label, keys] of Object.entries(roleGroups)) {
-      const ids = [...new Set((userRoles ?? []).filter((r:any)=>keys.includes(r.role)).map((r:any)=>r.user_id).filter(Boolean))];
-      const routeKey = label === "Apprenants" ? "apprenant"
-        : label === "Professeurs" ? "professeur"
-        : label === "Structures" ? "structure"
-        : label === "Organisateurs" ? "organisateur"
-        : label === "Modérateurs" ? "moderateur"
-        : label === "Recruteurs indépendants" ? "recruteur_independant"
-        : label === "Coachs" ? "coach"
-        : keys[0];
-      usersByRole.push({
-        role: label,
-        role_key: routeKey,
-        role_keys: keys,
+    const usersByRole = ROLE_GROUPS.map((group) => {
+      const ids = [...new Set(
+        (userRoles ?? [])
+          .filter((row:any) => group.aliases.includes(row.role))
+          .map((row:any) => row.user_id)
+          .filter(Boolean),
+      )];
+      return {
+        role: group.label,
+        role_key: group.key,
+        role_keys: [...group.aliases],
         count: ids.length,
-        members: ids.map((id:string)=>{
-          const u:any = usersById.get(id);
-          return { id, name: u?.full_name ?? "", email: u?.email ?? "" };
+        members: ids.map((id:string) => {
+          const user:any = usersById.get(id);
+          return { id, name: user?.full_name ?? "", email: user?.email ?? "" };
         }),
-      });
-    }
-
-    const dynamicRoles: string[] = [...new Set<string>((userRoles ?? []).map((r:any)=>String(r.role || "")).filter((role:string)=>role && !groupedKeys.has(role)))];
-    for (const roleKey of dynamicRoles) {
-      const ids = [...new Set((userRoles ?? []).filter((r:any)=>r.role===roleKey).map((r:any)=>r.user_id).filter(Boolean))];
-      usersByRole.push({
-        role: roleKey.split("_").map((p:string)=>p.charAt(0).toUpperCase()+p.slice(1)).join(" "),
-        role_key: roleKey,
-        role_keys: [roleKey],
-        count: ids.length,
-        members: ids.map((id:string)=>{
-          const u:any = usersById.get(id);
-          return { id, name: u?.full_name ?? "", email: u?.email ?? "" };
-        }),
-      });
-    }
+      };
+    });
 
     const settingsMap: Record<string, any> = {};
     for (const row of siteSettings ?? []) settingsMap[row.key] = row.value;

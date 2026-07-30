@@ -14,6 +14,7 @@ import { getStoredUser } from '../../lib/session';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 import { ENDPOINTS } from '../../lib/config';
 import { JobApplicationMode, labelApplicationStatus, normalizeApplicationMode } from '../../lib/jobApplicationModes';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -38,11 +39,10 @@ const EMPTY_JOB = {
   external_apply_url:'', external_apply_email:'', application_instructions:'',
 };
 
-function sessionToken() { return localStorage.getItem('omnia_session_token') || ''; }
 async function manageJobs<T>(payload: Record<string, unknown>): Promise<T> {
   const response = await fetch(ENDPOINTS.jobPlatformManage, {
     method:'POST',
-    headers:{ Authorization:`Bearer ${sessionToken()}`, 'Content-Type':'application/json' },
+    headers:edgeAuthHeaders({ 'Content-Type':'application/json' }),
     body:JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));

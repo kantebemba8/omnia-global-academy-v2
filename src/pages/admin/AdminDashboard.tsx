@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
   Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
@@ -120,7 +121,7 @@ export default function AdminDashboard() {
 
     try {
       const response = await fetch(`${ENDPOINTS.dashboardAdmin}?period=${p}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
       });
       const payload = await response.json();
       if (!response.ok || !payload?.kpis) {
@@ -138,10 +139,11 @@ export default function AdminDashboard() {
 
   const previewSpaces = [
     { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true', role: 'apprenant' },
-    { label: 'Formateur', icon: BookOpen, path: '/professeur/dashboard?preview=true', role: 'professeur' },
+    { label: 'Professeur', icon: BookOpen, path: '/professeur/dashboard?preview=true', role: 'professeur' },
     { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true', role: 'coach' },
     { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true', role: 'organisateur' },
     { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true', role: 'structure' },
+    { label: 'Recruteur Structure', icon: Briefcase, path: '/structure/recrutement/dashboard?preview=true', role: 'recruteur_structure' },
     { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true', role: 'moderateur' },
     { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true', role: 'recruteur' },
   ];

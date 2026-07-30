@@ -12,7 +12,7 @@ type StoredUser = {
   roles?: string[];
 };
 
-type PreviewRole = 'apprenant' | 'professeur' | 'structure' | 'moderateur' | 'coach' | 'recruteur' | 'organisateur';
+type PreviewRole = 'apprenant' | 'professeur' | 'structure' | 'recruteur_structure' | 'moderateur' | 'coach' | 'recruteur' | 'organisateur';
 
 type AccessPolicy = {
   allowedRoles?: readonly CanonicalPlatformRole[];
@@ -43,7 +43,7 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
     return { allowedRoles: ['professeur'], previewRole: 'professeur' };
   }
   if (startsWithSpace(pathname, '/structure/recrutement')) {
-    return { allowedRoles: ['structure', 'recruteur_structure'], previewRole: 'structure' };
+    return { allowedRoles: ['structure', 'recruteur_structure'], previewRole: 'recruteur_structure' };
   }
   if (startsWithSpace(pathname, '/structure') || startsWithSpace(pathname, '/partner') || startsWithSpace(pathname, '/school')) {
     return { allowedRoles: ['structure'], previewRole: 'structure' };

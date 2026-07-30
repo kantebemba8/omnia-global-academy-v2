@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 import {
   BookOpen, Users, Shield, MessageSquare, Briefcase, HelpCircle,
   Clock, CheckCircle, XCircle, Lock, AlertTriangle, BarChart2
 } from 'lucide-react';
 
-interface KPI { label: string; value: number; icon: React.ElementType; color: string }
+interface KPI { key: string; label: string; value: number }
 interface QueueItem {
   id: string; type: string; title: string; created_at: string;
   priority_label: string; link: string;
@@ -25,13 +26,12 @@ interface DashData {
 const TYPE_COLOR: Record<string, string> = {
   course: '#002050',
   kyc_prof: '#1E7A52',
-  kyc_etab: '#1E7A52',
   job: '#BF8813',
   forum: '#c2410c',
   support: '#7c3aed',
 };
 const TYPE_LABEL: Record<string, string> = {
-  course: 'Formation', kyc_prof: 'KYC Prof', kyc_etab: 'KYC Étab',
+  course: 'Formation', kyc_prof: 'KYC Professeur',
   job: "Offre d'emploi", forum: 'Forum', support: 'Support',
 };
 const ACTION_LABELS: Record<string, string> = {
@@ -63,8 +63,7 @@ export default function ModerateurDashboard() {
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewToast, setPreviewToast] = useState(false);
-  const [renderError, setRenderError] = useState<string | null>(null);
-  void renderError;
+  const [error, setError] = useState('');
 
 
   function handlePreviewAction() {
@@ -74,14 +73,43 @@ export default function ModerateurDashboard() {
   }
 
   useEffect(() => {
-    if (bypassAuth) { setLoading(false); return; }
+    if (bypassAuth) {
+      setData({
+        permissions: {
+          can_see_pending_courses: true,
+          can_validate_professor_kyc: true,
+          can_see_learners_list: true,
+          can_request_account_suspension: true,
+          can_moderate_forum: true,
+          can_moderate_jobs: true,
+          can_manage_support: true,
+          can_view_analytics: true,
+        },
+        kpis: [],
+        priority_queue: [],
+        todays_decisions: [],
+        has_any_permission: true,
+      });
+      setLoading(false);
+      return;
+    }
     const token = localStorage.getItem('omnia_session_token');
-    if (!token) { setLoading(false); return; }
-    fetch(ENDPOINTS.dashboardModerateur, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+    if (!token) {
+      setError('Session expirée. Veuillez vous reconnecter.');
+      setLoading(false);
+      return;
+    }
+
+    fetch(ENDPOINTS.dashboardModerateur, { headers: edgeAuthHeaders() })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || payload.error || 'Tableau de bord indisponible.');
+        return payload as DashData;
+      })
+      .then((payload) => setData(payload))
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Tableau de bord indisponible.'))
+      .finally(() => setLoading(false));
+  }, [bypassAuth]);
 
   if (loading) {
     return (
@@ -97,8 +125,11 @@ export default function ModerateurDashboard() {
   if (!loading && !data) {
     return (
       <ModerateurLayout>
-        <div className="p-8">
-          <p>Données non chargées. Vérifiez la console.</p>
+        <div className="p-8 max-w-3xl mx-auto">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5" role="alert">
+            <p className="font-semibold text-red-800">Impossible de charger le tableau de bord</p>
+            <p className="mt-1 text-sm text-red-700">{error || 'Une erreur réseau est survenue.'}</p>
+          </div>
         </div>
       </ModerateurLayout>
     );

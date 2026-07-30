@@ -38,6 +38,9 @@ verify_jwt = false
 [functions.admin-moderator-manage]
 verify_jwt = false
 
+[functions.dashboard-admin]
+verify_jwt = false
+
 [functions.dashboard-moderateur]
 verify_jwt = false
 

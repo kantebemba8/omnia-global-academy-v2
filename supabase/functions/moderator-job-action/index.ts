@@ -3,81 +3,177 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Omnia-Session-Token, X-Client-Info, Apikey",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function sessionToken(req: Request) {
+  return (
+    req.headers.get("x-omnia-session-token") ??
+    (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "")
+  ).trim();
 }
 
 async function verifyModerator(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
-  const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as unknown as { user_id: string }).user_id).eq("role", "moderateur").maybeSingle();
-  if (!role) return null;
-  return (sess as unknown as { user_id: string }).user_id;
+  const { data: session, error: sessionError } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (sessionError) throw sessionError;
+  if (!session) return null;
+
+  const { data: role, error: roleError } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id)
+    .eq("role", "moderateur")
+    .maybeSingle();
+  if (roleError) throw roleError;
+  return role ? String(session.user_id) : null;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = sessionToken(req);
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const modId = await verifyModerator(sb, token);
-    if (!modId) return json({ error: "FORBIDDEN" }, 403);
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    const moderatorId = await verifyModerator(sb, token);
+    if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow, error: permsError } = await sb.from("moderator_permissions").select("can_moderate_jobs,permissions").eq("moderator_user_id", modId).maybeSingle();
-    if (permsError) throw permsError;
-    const nested = permsRow?.permissions && typeof permsRow.permissions === "object" ? permsRow.permissions as Record<string, unknown> : {};
-    const canModerateJobs = permsRow?.can_moderate_jobs === true || nested.can_moderate_jobs === true;
-    if (!canModerateJobs) return json({ error: "FORBIDDEN", message: "Permission can_moderate_jobs requise." }, 403);
-
-    // GET — list job offers
-    if (req.method === "GET") {
-      const { data: pending } = await sb.from("job_offers").select("id,title,description,location,contract_type,category,deadline,status,posted_by_id,establishment_id,created_at").eq("status", "pending_moderation").order("created_at", { ascending: true });
-      const { data: approved } = await sb.from("job_offers").select("id,title,contract_type,category,status,moderated_at").eq("status", "approved").order("moderated_at", { ascending: false }).limit(20);
-      const { data: rejected } = await sb.from("job_offers").select("id,title,status,moderated_at").eq("status", "rejected").order("moderated_at", { ascending: false }).limit(20);
-
-      // Enrich pending with establishment info
-      const enrichedPending = await Promise.all((pending ?? []).map(async (j: Record<string, unknown>) => {
-        const jj = j as unknown as { id: string; title: string; description: string; location: string; contract_type: string; category: string; deadline: string; status: string; posted_by_id: string; establishment_id: string | null; created_at: string };
-        let school_name = null;
-        if (jj.establishment_id) {
-          const { data: etab } = await sb.from("etablissement_profiles").select("school_name,logo_url").eq("id", jj.establishment_id).maybeSingle();
-          school_name = (etab as unknown as { school_name: string } | null)?.school_name;
-        }
-        return { ...jj, school_name };
-      }));
-
-      return json({ pending_jobs: enrichedPending, approved_jobs: approved ?? [], rejected_jobs: rejected ?? [] });
+    const { data: permissionsRow, error: permissionsError } = await sb
+      .from("moderator_permissions")
+      .select("can_moderate_jobs,permissions")
+      .eq("moderator_user_id", moderatorId)
+      .maybeSingle();
+    if (permissionsError) throw permissionsError;
+    const nested = permissionsRow?.permissions && typeof permissionsRow.permissions === "object"
+      ? permissionsRow.permissions as Record<string, unknown>
+      : {};
+    const canModerateJobs = permissionsRow?.can_moderate_jobs === true || nested.can_moderate_jobs === true;
+    if (!canModerateJobs) {
+      return json({ error: "FORBIDDEN", message: "Permission de modération des offres requise." }, 403);
     }
 
-    // POST — approve / reject
-    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-    const body = await req.json();
-    const { job_id, action, reason } = body as { job_id: string; action: "approve" | "reject"; reason?: string };
-    if (!job_id || !["approve", "reject"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
-    if (action === "reject" && !String(reason || "").trim()) return json({ error: "REASON_REQUIRED" }, 400);
+    if (req.method === "GET") {
+      const [{ data: pending, error: pendingError }, { data: approved, error: approvedError }, { data: rejected, error: rejectedError }] = await Promise.all([
+        sb.from("job_offers").select("*").eq("status", "pending_moderation").order("created_at", { ascending: true }),
+        sb.from("job_offers").select("id,title,contract_type,category,status,moderated_at").eq("status", "approved").order("moderated_at", { ascending: false }).limit(20),
+        sb.from("job_offers").select("id,title,status,moderated_at,rejection_reason").eq("status", "rejected").order("moderated_at", { ascending: false }).limit(20),
+      ]);
+      if (pendingError) throw pendingError;
+      if (approvedError) throw approvedError;
+      if (rejectedError) throw rejectedError;
+
+      const organizationIds = [...new Set((pending ?? []).map((job) => job.organization_id).filter(Boolean))] as string[];
+      const establishmentIds = [...new Set((pending ?? []).map((job) => job.establishment_id).filter(Boolean))] as string[];
+
+      const organizationMap = new Map<string, { name: string | null; logo: string | null }>();
+      if (organizationIds.length) {
+        const { data: organizations, error: organizationsError } = await sb
+          .from("partner_organizations")
+          .select("id,org_name,logo_url")
+          .in("id", organizationIds);
+        if (organizationsError) throw organizationsError;
+        for (const organization of organizations ?? []) {
+          organizationMap.set(String(organization.id), {
+            name: organization.org_name ? String(organization.org_name) : null,
+            logo: organization.logo_url ? String(organization.logo_url) : null,
+          });
+        }
+      }
+
+      const legacyMap = new Map<string, { name: string | null; logo: string | null }>();
+      if (establishmentIds.length) {
+        const { data: establishments, error: establishmentsError } = await sb
+          .from("etablissement_profiles")
+          .select("id,school_name,logo_url")
+          .in("id", establishmentIds);
+        if (establishmentsError) {
+          console.warn("[moderator-job-action] legacy establishments unavailable:", establishmentsError.message);
+        } else {
+          for (const establishment of establishments ?? []) {
+            legacyMap.set(String(establishment.id), {
+              name: establishment.school_name ? String(establishment.school_name) : null,
+              logo: establishment.logo_url ? String(establishment.logo_url) : null,
+            });
+          }
+        }
+      }
+
+      const pendingJobs = (pending ?? []).map((job) => {
+        const organization = job.organization_id ? organizationMap.get(String(job.organization_id)) : undefined;
+        const legacy = job.establishment_id ? legacyMap.get(String(job.establishment_id)) : undefined;
+        return {
+          ...job,
+          issuer_name: organization?.name ?? legacy?.name ?? job.recruiter_company ?? null,
+          issuer_logo_url: organization?.logo ?? legacy?.logo ?? null,
+        };
+      });
+
+      return json({
+        pending_jobs: pendingJobs,
+        approved_jobs: approved ?? [],
+        rejected_jobs: rejected ?? [],
+      });
+    }
+
+    if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+
+    const body = await req.json().catch(() => ({}));
+    const jobId = String(body.job_id || "").trim();
+    const action = String(body.action || "");
+    const reason = String(body.reason || "").trim();
+    if (!jobId || !["approve", "reject"].includes(action)) {
+      return json({ error: "INVALID_PARAMS", message: "Action ou offre invalide." }, 400);
+    }
+    if (action === "reject" && !reason) {
+      return json({ error: "REASON_REQUIRED", message: "Le motif du rejet est obligatoire." }, 400);
+    }
 
     const now = new Date().toISOString();
-    const { data: job, error: updateError } = await sb.from("job_offers").update({
-      status: action === "approve" ? "approved" : "rejected",
-      moderated_by: modId,
-      moderated_at: now,
-      updated_at: now,
-      rejection_reason: action === "reject" ? String(reason).trim() : null,
-    }).eq("id", job_id).select("id").maybeSingle();
+    const { data: job, error: updateError } = await sb
+      .from("job_offers")
+      .update({
+        status: action === "approve" ? "approved" : "rejected",
+        moderated_by: moderatorId,
+        moderated_at: now,
+        updated_at: now,
+        rejection_reason: action === "reject" ? reason : null,
+      })
+      .eq("id", jobId)
+      .eq("status", "pending_moderation")
+      .select("id")
+      .maybeSingle();
     if (updateError) throw updateError;
-    if (!job) return json({ error: "JOB_NOT_FOUND" }, 404);
-    const { error: logError } = await sb.from("moderation_log").insert({ moderator_id: modId, action_type: action === "approve" ? "job_approved" : "job_rejected", target_type: "job_offer", target_id: job_id, comment: reason ?? null });
-    if (logError) console.error("moderator-job-action: log failed", logError.message);
+    if (!job) return json({ error: "JOB_NOT_FOUND", message: "Offre introuvable ou déjà traitée." }, 404);
+
+    const { error: logError } = await sb.from("moderation_log").insert({
+      moderator_id: moderatorId,
+      action_type: action === "approve" ? "job_approved" : "job_rejected",
+      target_type: "job_offer",
+      target_id: jobId,
+      comment: action === "reject" ? reason : null,
+    });
+    if (logError) console.error("[moderator-job-action] moderation log:", logError.message);
 
     return json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+  } catch (error) {
+    console.error("[moderator-job-action]", error);
+    return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : String(error) }, 500);
   }
 });

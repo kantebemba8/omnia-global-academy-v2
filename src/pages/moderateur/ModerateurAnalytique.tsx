@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { BarChart2, Lock, TrendingUp, Users, BookOpen, MessageSquare } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -13,6 +14,7 @@ export default function ModerateurAnalytique() {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
+  const [error, setError] = useState('');
 
   const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
     (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
@@ -28,15 +30,25 @@ export default function ModerateurAnalytique() {
     }
 
     const token = localStorage.getItem('omnia_session_token');
-    fetch(ENDPOINTS.dashboardModerateur, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d.analytics ?? null);
-        setHasPermission(!!(d.permissions?.can_view_analytics));
-        setLoading(false);
+    if (!token) {
+      setError('Session expirée. Veuillez vous reconnecter.');
+      setLoading(false);
+      return;
+    }
+
+    fetch(`${ENDPOINTS.dashboardModerateur}?analytics=1`, { headers: edgeAuthHeaders() })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || payload.error || 'Analytique indisponible.');
+        return payload;
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .then((payload) => {
+        setData(payload.analytics ?? null);
+        setHasPermission(!!payload.permissions?.can_view_analytics);
+      })
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Analytique indisponible.'))
+      .finally(() => setLoading(false));
+  }, [bypassAuth]);
 
   if (loading) {
     return (
@@ -68,7 +80,7 @@ export default function ModerateurAnalytique() {
     decisions_by_day?: { date: string; total: number; approved: number; rejected: number }[];
     actions_by_type?: { action: string; count: number }[];
     tickets_by_status?: { status: string; count: number }[];
-    kyc_by_week?: { week: string; professeurs: number; etablissements: number }[];
+    kyc_by_week?: { week: string; professeurs: number }[];
     forum_by_space?: { space: string; posts: number; flagged: number }[];
   } | null;
 
@@ -80,7 +92,12 @@ export default function ModerateurAnalytique() {
           <p className="text-gray-500 text-sm mt-1">Statistiques pédagogiques — aucune donnée financière</p>
         </div>
 
-        {!ana ? (
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5" role="alert">
+            <p className="font-semibold text-red-800">Impossible de charger l’analytique</p>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
+          </div>
+        ) : !ana ? (
           <div className="bg-white rounded-xl p-12 text-center border border-gray-100 shadow-sm">
             <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: '#002050' }} />
             <p className="text-gray-400 text-sm">Données analytiques insuffisantes pour le moment</p>
@@ -163,7 +180,6 @@ export default function ModerateurAnalytique() {
                     <Tooltip />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Bar dataKey="professeurs" fill="#002050" radius={[4, 4, 0, 0]} name="Professeurs" />
-                    <Bar dataKey="etablissements" fill="#BF8813" radius={[4, 4, 0, 0]} name="Établissements" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
