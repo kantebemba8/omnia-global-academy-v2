@@ -79,3 +79,35 @@ button:disabled,
   cursor: not-allowed;
 }
 
+/* Cycle 4 — cohérence des formulaires, tableaux et animations. */
+:where(input, select, textarea):focus-visible {
+  outline: 3px solid rgba(191, 136, 19, 0.38);
+  outline-offset: 1px;
+}
+
+.oga-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  /* Évite le zoom automatique des formulaires sur iOS. */
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #002050;
+  --color-accent: #BF8813;
+  --bg-light: #F8F9FA;
+  --bg-dark: #002050;
+  --text-main: #111827;
+  --text-muted: #6B7280;
+  --bg-white: #FFFFFF;
+  --border: #E4E7EC;
+  --success: #1E7A52;
+  --error: #DC2626;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #FFFFFF;
+  color: var(--text-main);
+}
+
+.font-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+
+/* Scrollbar harmonisée pour tous les sidebars bleus.
+   Elle apparaît automatiquement uniquement lorsque le contenu dépasse la hauteur disponible. */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(191, 136, 19, 0.72) #002050;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: #002050;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(191, 136, 19, 0.72);
+  border-radius: 999px;
+  border: 2px solid #002050;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #BF8813;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-corner {
+  background: #002050;
+}
+
+/* Sidebar OGA — scrollbar validée */
+.oga-sidebar-scroll::-webkit-scrollbar { width: 5px; }
+.oga-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.oga-sidebar-scroll::-webkit-scrollbar-thumb { background: #BF8813; border-radius: 999px; }
+.oga-sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #D29B2A; }
+
+ /* Repères clavier harmonisés sans modifier l'apparence au clic souris. */
+:where(a, button, [role='button']):focus-visible {
+  outline: 3px solid rgba(191, 136, 19, 0.5);
+  outline-offset: 3px;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+

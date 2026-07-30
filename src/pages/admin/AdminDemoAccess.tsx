@@ -391,8 +391,8 @@ export default function AdminDemoAccess() {
               <p className="text-gray-400 text-sm">Aucune configuration enregistrée</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <table className="w-full">
+            <div className="oga-table-scroll bg-white rounded-xl shadow-sm border border-gray-100">
+              <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="border-b border-gray-100">
                     {['Configuré le', 'Par', 'Expiration', 'Rôles'].map((h) => (

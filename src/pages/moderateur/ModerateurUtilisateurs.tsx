@@ -65,8 +65,8 @@ function UserTable({
     );
   }
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <table className="w-full">
+    <div className="oga-table-scroll bg-white rounded-xl shadow-sm border border-gray-100">
+      <table className="w-full min-w-[880px]">
         <thead>
           <tr className="border-b border-gray-100">
             <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Nom</th>
@@ -234,7 +234,7 @@ export default function ModerateurUtilisateurs() {
     <ModerateurLayout>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {toast && (
-          <div className={`fixed top-4 right-4 z-50 shadow-lg rounded-xl px-5 py-3 text-sm font-medium border flex items-center gap-2 ${toast.ok ? 'bg-white border-green-200 text-green-700' : 'bg-white border-red-200 text-red-600'}`}>
+          <div role={toast.ok ? 'status' : 'alert'} aria-live="polite" className={`fixed top-4 right-4 z-50 shadow-lg rounded-xl px-5 py-3 text-sm font-medium border flex items-center gap-2 ${toast.ok ? 'bg-white border-green-200 text-green-700' : 'bg-white border-red-200 text-red-600'}`}>
             {toast.ok ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
             {toast.msg}
           </div>
@@ -297,9 +297,9 @@ export default function ModerateurUtilisateurs() {
       {/* Request modal */}
       {requestModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="moderator-request-title" className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
             <div>
-              <h3 className="font-bold text-lg" style={{ color: '#002050' }}>
+              <h3 id="moderator-request-title" className="font-bold text-lg" style={{ color: '#002050' }}>
                 Soumettre une demande au Super-admin
               </h3>
               <p className="text-sm text-gray-500 mt-1">

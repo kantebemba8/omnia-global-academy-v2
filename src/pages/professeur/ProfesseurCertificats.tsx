@@ -131,7 +131,7 @@ export default function ProfesseurCertificats() {
           <div className="p-4 rounded-lg border"
             style={{ borderColor: '#BF8813', backgroundColor: 'rgba(191,136,19,0.03)' }}>
             <p className="text-sm font-semibold" style={{ color: '#002050' }}>
-              🖊️ Signature autorisée par le Super-admin
+              Signature autorisée par le Super-admin
             </p>
             <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
               Uploadez votre signature depuis votre profil. Elle apparaîtra sur vos certificats.
@@ -163,7 +163,8 @@ export default function ProfesseurCertificats() {
             <p style={{ color: '#6B7280' }}>Aucun certificat délivré pour vos formations</p>
           </div>
         ) : (
-          <table className="w-full">
+          <div className="oga-table-scroll">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr style={{ borderBottom: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
                 {['ID', 'Étudiant', 'Formation', 'Date', 'CPD', 'Statut', ''].map(h => (
@@ -222,6 +223,7 @@ export default function ProfesseurCertificats() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

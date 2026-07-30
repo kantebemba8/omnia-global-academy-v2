@@ -141,8 +141,8 @@ export default function StructureMembres() {
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#E4E7EC' }}>
-            <table className="w-full">
+          <div className="oga-table-scroll bg-white rounded-2xl border" style={{ borderColor: '#E4E7EC' }}>
+            <table className="w-full min-w-[760px]">
               <thead>
                 <tr style={{ background: '#F8F9FA', borderBottom: '1px solid #E4E7EC' }}>
                   {['Membre', 'Code utilisé', 'Date demande', 'Statut', 'Actions'].map(h => (
