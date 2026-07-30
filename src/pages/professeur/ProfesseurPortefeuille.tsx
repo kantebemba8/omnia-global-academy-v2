@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Wallet, TrendingUp, ArrowDownCircle, X, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface WalletData {
-  balance_xof: number; total_earned_xof: number; total_withdrawn_xof: number;
+  balance_xof: number; reserved_xof: number; total_earned_xof: number; total_withdrawn_xof: number;
 }
 
 interface Transaction {
@@ -31,6 +32,8 @@ const PAYOUT_STATUS: Record<string, { label: string; color: string }> = {
   waiting_final_verification: { label: 'Vérification finale', color: '#3B82F6' },
   approved:                   { label: 'Approuvé', color: '#1E7A52' },
   rejected:                   { label: 'Rejeté', color: '#DC2626' },
+  paid:                       { label: 'Payé', color: '#1E7A52' },
+  failed:                     { label: 'Échec', color: '#DC2626' },
 };
 
 type PayoutForm = {
@@ -65,11 +68,12 @@ export function ProfesseurPortefeuille() {
     const token = localStorage.getItem('omnia_session_token');
     if (!token && !bypassAuth) { navigate('/connexion'); return; }
     try {
-      const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: edgeAuthHeaders() });
       if (res.status === 403 && !bypassAuth) { navigate('/connexion'); return; }
       const json = await res.json();
       if (res.ok) {
         setData({ wallet: json.wallet, payout_requests: json.payout_requests ?? [] });
+        setTransactions(json.transactions ?? []);
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -97,7 +101,7 @@ export function ProfesseurPortefeuille() {
       }
       const res = await fetch(`${getApiBase()}/payout-request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify(body),
       });
       const json = await res.json();
@@ -107,6 +111,8 @@ export function ProfesseurPortefeuille() {
     } catch { setSubmitMsg({ text: 'Erreur réseau', ok: false }); }
     finally { setSubmitting(false); }
   }
+
+  const availableBalance = Math.max(0, Number(data?.wallet.balance_xof ?? 0) - Number(data?.wallet.reserved_xof ?? 0));
 
   const filteredTx = transactions.filter((t) => {
     if (txTab === 'ventes') return t.type === 'credit_sale';
@@ -135,7 +141,7 @@ export function ProfesseurPortefeuille() {
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <p className="text-white/60 text-sm mb-1">Solde retirable</p>
-                  <p className="text-white text-4xl font-bold">{(data?.wallet.balance_xof ?? 0).toLocaleString()}<span className="text-2xl ml-2 font-normal opacity-70">XOF</span></p>
+                  <p className="text-white text-4xl font-bold">{availableBalance.toLocaleString()}<span className="text-2xl ml-2 font-normal opacity-70">XOF</span></p>
                 </div>
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
                   <Wallet className="w-6 h-6 text-white" />
@@ -237,7 +243,7 @@ export function ProfesseurPortefeuille() {
                 <input type="number" value={form.amount_xof} onChange={(e) => setForm((p) => ({ ...p, amount_xof: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400"
                   placeholder="Ex: 10000" />
-                <p className="text-xs text-gray-400 mt-1">Minimum : 5 000 XOF · Solde : {(data?.wallet.balance_xof ?? 0).toLocaleString()} XOF</p>
+                <p className="text-xs text-gray-400 mt-1">Minimum : 5 000 XOF · Solde : {availableBalance.toLocaleString()} XOF</p>
               </div>
 
               <div>

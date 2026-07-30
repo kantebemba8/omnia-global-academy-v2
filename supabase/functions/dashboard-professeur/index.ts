@@ -6,131 +6,171 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Omnia-Session-Token",
 };
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-  if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+  if (req.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
-  const token = (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
 
-    const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-    if (!sess) return json({ error: "SESSION_INVALID" }, 401);
-    const userId = sess.user_id;
+    const { data: session, error: sessionError } = await sb
+      .from("user_sessions")
+      .select("user_id")
+      .eq("session_token", token)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (sessionError || !session?.user_id) return json({ error: "SESSION_INVALID" }, 401);
+    const userId = String(session.user_id);
 
-    // Verify role
-    const { data: roleRow } = await sb.from("user_roles").select("role").eq("user_id", userId).eq("role", "professeur").maybeSingle();
+    const { data: roleRow, error: roleError } = await sb
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "professeur")
+      .maybeSingle();
+    if (roleError) throw roleError;
     if (!roleRow) return json({ error: "FORBIDDEN", message: "Rôle professeur requis." }, 403);
 
-    // User info
-    const { data: user } = await sb.from("users").select("id,full_name,email,avatar_url").eq("id", userId).maybeSingle();
+    const [{ data: user, error: userError }, { data: existingWallet, error: walletError }, { data: courses, error: coursesError }] = await Promise.all([
+      sb.from("users")
+        .select("id,full_name,email,avatar_url,phone_number,country_code,allow_email,allow_sms,allow_push,subscribe_newsletter")
+        .eq("id", userId)
+        .maybeSingle(),
+      sb.from("wallets")
+        .select("id,balance_xof,reserved_xof,total_earned_xof,total_withdrawn_xof")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      sb.from("courses")
+        .select("id,title,status,score_calcule,price_xof,prix_provisoire_xof,cover_image_url,category,cpd_accredited,requested_cpd,admin_comment,rejection_reason,created_at,updated_at,final_validation_type")
+        .eq("instructor_id", userId),
+    ]);
+    if (userError) throw userError;
+    if (walletError) throw walletError;
+    if (coursesError) throw coursesError;
 
-    // Ensure wallet exists
-    const { data: existingWallet } = await sb.from("wallets").select("id,balance_xof,total_earned_xof,total_withdrawn_xof").eq("user_id", userId).maybeSingle();
     let wallet = existingWallet;
     if (!wallet) {
-      const { data: newWallet } = await sb.from("wallets").insert({ user_id: userId }).select("id,balance_xof,total_earned_xof,total_withdrawn_xof").single();
-      wallet = newWallet;
+      const { data: createdWallet, error: createWalletError } = await sb
+        .from("wallets")
+        .insert({ user_id: userId })
+        .select("id,balance_xof,reserved_xof,total_earned_xof,total_withdrawn_xof")
+        .single();
+      if (createWalletError) throw createWalletError;
+      wallet = createdWallet;
     }
 
-    // All courses by this professor
-    const { data: courses } = await sb.from("courses").select("id,title,status,score_calcule,price_xof,prix_provisoire_xof,cover_image_url,category,cpd_accredited,requested_cpd,admin_comment,rejection_reason,created_at,updated_at,final_validation_type").eq("instructor_id", userId);
-
-    // Total students across all courses
-    const courseIds = (courses ?? []).map((c) => (c as unknown as { id: string }).id);
+    const courseRows = courses ?? [];
+    const courseIds = courseRows.map((course: { id: string }) => String(course.id));
     let totalStudents = 0;
-    let avgRatings: Record<string, { sum: number; count: number }> = {};
+    const enrollCount: Record<string, number> = {};
+    const projectCount: Record<string, number> = {};
+    const ratings: Record<string, { sum: number; count: number }> = {};
 
     if (courseIds.length > 0) {
-      const { count } = await sb.from("user_enrollments").select("*", { count: "exact", head: true }).in("course_id", courseIds);
-      totalStudents = count ?? 0;
+      const [totalResult, enrollmentsResult, feedbackResult, attemptsResult] = await Promise.all([
+        sb.from("user_enrollments").select("*", { count: "exact", head: true }).in("course_id", courseIds),
+        sb.from("user_enrollments").select("course_id").in("course_id", courseIds),
+        sb.from("course_private_feedback").select("course_id,quality_score").in("course_id", courseIds),
+        sb.from("assessment_attempts").select("course_id").in("course_id", courseIds).in("status", ["submitted", "pending_review"]),
+      ]);
+      for (const result of [totalResult, enrollmentsResult, feedbackResult, attemptsResult]) {
+        if (result.error) throw result.error;
+      }
 
-      // Per-course enrollments
-      const { data: enrollByCourse } = await sb.from("user_enrollments").select("course_id").in("course_id", courseIds);
-      const enrollCount: Record<string, number> = {};
-      (enrollByCourse ?? []).forEach((e) => {
-        const ec = e as unknown as { course_id: string };
-        enrollCount[ec.course_id] = (enrollCount[ec.course_id] ?? 0) + 1;
-      });
-
-      // Ratings per course (from course_private_feedback)
-      const { data: feedbacks } = await sb.from("course_private_feedback").select("course_id,quality_score").in("course_id", courseIds);
-      (feedbacks ?? []).forEach((f) => {
-        const fb = f as unknown as { course_id: string; quality_score: number };
-        if (!avgRatings[fb.course_id]) avgRatings[fb.course_id] = { sum: 0, count: 0 };
-        avgRatings[fb.course_id].sum += fb.quality_score;
-        avgRatings[fb.course_id].count += 1;
-      });
-
-      // Copies ouvertes et travaux à corriger dans le moteur unique.
-      const { data: submittedProjects } = await sb.from("assessment_attempts")
-        .select("course_id")
-        .in("course_id", courseIds)
-        .in("status", ["submitted", "pending_review"]);
-      const projCount: Record<string, number> = {};
-      (submittedProjects ?? []).forEach((p) => {
-        const sp = p as unknown as { course_id: string };
-        projCount[sp.course_id] = (projCount[sp.course_id] ?? 0) + 1;
-      });
-
-      // Augment courses with per-course data
-      const enriched = (courses ?? []).map((c) => {
-        const course = c as unknown as Record<string, unknown>;
-        const cid = course.id as string;
-        const ratingData = avgRatings[cid];
-        return {
-          ...course,
-          total_students: enrollCount[cid] ?? 0,
-          average_rating: ratingData ? Math.round((ratingData.sum / ratingData.count) * 10) / 10 : 0,
-          projets_a_corriger: projCount[cid] ?? 0,
-        };
-      });
-
-      // Global rating
-      let allSum = 0, allCount = 0;
-      Object.values(avgRatings).forEach(({ sum, count }) => { allSum += sum; allCount += count; });
-      const noteGlobale = allCount > 0 ? Math.round((allSum / allCount) * 10) / 10 : 0;
-
-      // Recent payout requests
-      const { data: payouts } = wallet
-        ? await sb.from("payout_requests").select("id,amount_xof,channel,status,requested_at").eq("wallet_id", wallet.id).order("requested_at", { ascending: false }).limit(5)
-        : { data: [] };
-
-      return json({
-        user,
-        kpis: {
-          solde_retirable_xof: wallet?.balance_xof ?? 0,
-          gains_cumules_xof: wallet?.total_earned_xof ?? 0,
-          total_eleves: totalStudents,
-          note_globale: noteGlobale,
-        },
-        formations: enriched,
-        payout_requests: payouts ?? [],
-        wallet: {
-          balance_xof: wallet?.balance_xof ?? 0,
-          total_earned_xof: wallet?.total_earned_xof ?? 0,
-          total_withdrawn_xof: wallet?.total_withdrawn_xof ?? 0,
-        },
-        forum_questions_unanswered: 0,
-      });
+      totalStudents = totalResult.count ?? 0;
+      for (const enrollment of enrollmentsResult.data ?? []) {
+        const courseId = String(enrollment.course_id);
+        enrollCount[courseId] = (enrollCount[courseId] ?? 0) + 1;
+      }
+      for (const feedback of feedbackResult.data ?? []) {
+        const courseId = String(feedback.course_id);
+        const qualityScore = Number(feedback.quality_score || 0);
+        if (!ratings[courseId]) ratings[courseId] = { sum: 0, count: 0 };
+        ratings[courseId].sum += qualityScore;
+        ratings[courseId].count += 1;
+      }
+      for (const attempt of attemptsResult.data ?? []) {
+        const courseId = String(attempt.course_id);
+        projectCount[courseId] = (projectCount[courseId] ?? 0) + 1;
+      }
     }
+
+    const formations = courseRows.map((course: Record<string, unknown>) => {
+      const courseId = String(course.id);
+      const rating = ratings[courseId];
+      return {
+        ...course,
+        total_students: enrollCount[courseId] ?? 0,
+        average_rating: rating?.count ? Math.round((rating.sum / rating.count) * 10) / 10 : 0,
+        projets_a_corriger: projectCount[courseId] ?? 0,
+      };
+    });
+
+    let ratingSum = 0;
+    let ratingCount = 0;
+    for (const rating of Object.values(ratings)) {
+      ratingSum += rating.sum;
+      ratingCount += rating.count;
+    }
+    const globalRating = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+
+    const [payoutResult, transactionResult] = wallet
+      ? await Promise.all([
+        sb.from("payout_requests")
+          .select("id,amount_xof,channel,status,requested_at")
+          .eq("wallet_id", wallet.id)
+          .order("requested_at", { ascending: false })
+          .limit(20),
+        sb.from("wallet_transactions")
+          .select("id,type,amount_xof,description,created_at")
+          .eq("wallet_id", wallet.id)
+          .order("created_at", { ascending: false })
+          .limit(100),
+      ])
+      : [{ data: [], error: null }, { data: [], error: null }];
+    if (payoutResult.error) throw payoutResult.error;
+    if (transactionResult.error) throw transactionResult.error;
+
+    const balance = Number(wallet?.balance_xof || 0);
+    const reserved = Number(wallet?.reserved_xof || 0);
 
     return json({
       user,
-      kpis: { solde_retirable_xof: 0, gains_cumules_xof: 0, total_eleves: 0, note_globale: 0 },
-      formations: [],
-      payout_requests: [],
-      wallet: { balance_xof: 0, total_earned_xof: 0, total_withdrawn_xof: 0 },
+      kpis: {
+        solde_retirable_xof: Math.max(0, balance - reserved),
+        gains_cumules_xof: Number(wallet?.total_earned_xof || 0),
+        total_eleves: totalStudents,
+        note_globale: globalRating,
+      },
+      formations,
+      payout_requests: payoutResult.data ?? [],
+      transactions: transactionResult.data ?? [],
+      wallet: {
+        balance_xof: balance,
+        reserved_xof: reserved,
+        total_earned_xof: Number(wallet?.total_earned_xof || 0),
+        total_withdrawn_xof: Number(wallet?.total_withdrawn_xof || 0),
+      },
       forum_questions_unanswered: 0,
     });
-  } catch (err) {
-    console.error(err);
-    return json({ error: "SERVER_ERROR" }, 500);
+  } catch (error) {
+    console.error("dashboard-professeur", error);
+    return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : "Erreur inconnue" }, 500);
   }
 });
