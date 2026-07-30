@@ -7,6 +7,7 @@ import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 import { captureError } from './lib/sentry';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { PreviewReturnButton } from './components/PreviewReturnButton';
+import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
 
 const RequireOmniaCareerLearner = lazy(() => import('./components/auth/RequireOmniaCareerLearner'));
 const RequireOmniaCareerAdmin = lazy(() => import('./components/auth/RequireOmniaCareerAdmin'));
@@ -387,6 +388,7 @@ export default function App() {
         <SiteModeProvider>
         <MaintenanceNoticeBanner />
         <PreviewReturnButton />
+        <PlatformRoleGate>
         <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
         <Route path="/" element={<RootGate />} />
@@ -651,7 +653,7 @@ export default function App() {
         <Route path="/dashboard/profil" element={<DashboardProfil />} />
           <Route path="/dashboard/structure" element={<DashboardStructure />} />
 
-        {/* Module 7 — Dashboard professeur — always accessible */}
+        {/* Espace Professeur */}
         <Route path="/professeur/dashboard" element={<DashboardProfesseur />} />
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
         <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
@@ -679,7 +681,7 @@ export default function App() {
         <Route path="/professeur/profile" element={<ProfesseurProfil />} />
           <Route path="/professeur/certificats" element={<ProfesseurCertificats />} />
 
-        {/* Module 8 — Dashboard directeur — always accessible */}
+        {/* Espace Structure */}
           <Route path="/structure/dashboard" element={<StructureDashboard />} />
           <Route path="/structure/formations" element={<StructureMesFormations />} />
           <Route path="/structure/profil" element={<StructureProfil />} />
@@ -758,6 +760,7 @@ export default function App() {
         </Route>{/* end GuardedRoutes */}
         </Routes>
         </Suspense>
+        </PlatformRoleGate>
         </SiteModeProvider>
         <PwaInstallBanner />
       </BrowserRouter>
