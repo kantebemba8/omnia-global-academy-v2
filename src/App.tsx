@@ -18,7 +18,6 @@ import { RegisterApprenant } from './pages/auth/RegisterApprenant';
 import { RegisterProfesseur } from './pages/auth/RegisterProfesseur';
 import { RegisterOrganizer } from './pages/auth/RegisterOrganizer';
 import { RegisterRecruiterIndependent } from './pages/auth/RegisterRecruiterIndependent';
-import RegisterOrganisation from './pages/auth/RegisterOrganisation';
 import { RegisterStructure } from './pages/auth/RegisterStructure';
 import { VerifyOTP } from './pages/auth/VerifyOTP';
 import { Login } from './pages/auth/Login';
@@ -413,6 +412,7 @@ export default function App() {
           <Route path="/omnia-live/explorer" element={<CatalogView title="Explorer Omnia Live" subtitle="Explorez les Lives, masterclass, ateliers, conférences et contenus disponibles." />} />
           <Route path="/omnia-live/formations" element={<CatalogView title="Formations Live" subtitle="Des formations synchrones structurées en plusieurs classes et sessions." filter="training" />} />
           <Route path="/omnia-live/videos" element={<CatalogView title="Vidéos & Replays" subtitle="Masterclass enregistrées, vidéos à la demande et replays validés par Omnia." filter="video" />} />
+          <Route path="/omnia-live/replays" element={<Navigate to="/omnia-live/videos" replace />} />
           <Route path="/omnia-live/organisateurs" element={<OmniaLiveOrganizers />} />
           <Route path="/omnia-live/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/proposer" element={<OmniaLivePropose />} />
@@ -447,6 +447,7 @@ export default function App() {
           <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
           <Route path="/omnia-live/participant/notifications" element={<ParticipantNotifications />} />
+          <Route path="/omnia-live/notifications" element={<Navigate to="/omnia-live/participant/notifications" replace />} />
           <Route path="/omnia-live/participant/remboursements" element={<ParticipantRefunds />} />
           <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
           <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />
@@ -499,7 +500,7 @@ export default function App() {
           <Route path="/inscription/organisateur" element={<RegisterOrganizer />} />
           <Route path="/inscription/recruteur" element={<RegisterRecruiterIndependent />} />
           <Route path="/inscription/structure" element={<RegisterStructure />} />
-          <Route path="/inscription/organisation" element={<RegisterOrganisation />} />
+          <Route path="/inscription/organisation" element={<Navigate to="/inscription/structure" replace />} />
         <Route path="/verifier-otp" element={<VerifyOTP />} />
         <Route path="/mot-de-passe-oublie" element={<ForgotPassword />} />
         <Route path="/reinitialiser-mot-de-passe" element={<ResetPassword />} />

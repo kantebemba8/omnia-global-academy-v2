@@ -18,6 +18,79 @@ function authToken(req: Request) {
   return (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
+class ClientError extends Error {
+  status: number;
+  code: string;
+
+  constructor(code: string, message: string, status = 400) {
+    super(message);
+    this.name = "ClientError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const STRUCTURE_ASSET_BUCKET = "omnia-global-academy";
+const LOGO_MIMES = new Set(["image/png", "image/jpeg"]);
+const DOCUMENT_MIMES = new Set(["application/pdf", "image/png", "image/jpeg"]);
+
+function decodeBase64(value: unknown): Uint8Array {
+  const raw = String(value || "").replace(/^data:[^;]+;base64,/, "").trim();
+  if (!raw) throw new ClientError("FILE_EMPTY", "Le fichier transmis est vide.");
+  try {
+    const binary = atob(raw);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    throw new ClientError("FILE_INVALID", "Le fichier transmis est invalide.");
+  }
+}
+
+function extensionFor(mime: string, originalName: string) {
+  const mapped: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "application/pdf": "pdf",
+  };
+  const original = originalName.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+  return mapped[mime] || original || "bin";
+}
+
+async function uploadStructureAsset(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  kind: "logos" | "justificatifs",
+  base64: unknown,
+  mimeValue: unknown,
+  originalNameValue: unknown,
+) {
+  const mime = String(mimeValue || "").toLowerCase();
+  const originalName = String(originalNameValue || "fichier");
+  const allowed = kind === "logos" ? LOGO_MIMES : DOCUMENT_MIMES;
+  const maxBytes = kind === "logos" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+  if (!allowed.has(mime)) {
+    throw new ClientError("FILE_TYPE_NOT_ALLOWED", kind === "logos"
+      ? "Le logo doit être au format PNG ou JPG."
+      : "Le justificatif doit être au format PDF, PNG ou JPG.");
+  }
+
+  const bytes = decodeBase64(base64);
+  if (bytes.byteLength > maxBytes) {
+    throw new ClientError("FILE_TOO_LARGE", kind === "logos"
+      ? "Le logo ne doit pas dépasser 2 MB."
+      : "Le justificatif ne doit pas dépasser 5 MB.");
+  }
+
+  const path = `structures/${kind}/${userId}/${crypto.randomUUID()}.${extensionFor(mime, originalName)}`;
+  const { error } = await sb.storage.from(STRUCTURE_ASSET_BUCKET).upload(path, bytes, {
+    contentType: mime,
+    upsert: false,
+  });
+  if (error) throw new Error(`STORAGE_UPLOAD_FAILED: ${error.message}`);
+
+  const publicUrl = sb.storage.from(STRUCTURE_ASSET_BUCKET).getPublicUrl(path).data.publicUrl;
+  return { path, publicUrl };
+}
+
 function randomPart(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -247,67 +320,105 @@ Deno.serve(async (req: Request) => {
     if (action === "create_structure") {
       const required = ["name", "structure_type", "responsible_name", "responsible_email"];
       if (required.some((key) => !String(body[key] || "").trim())) {
-        return json({ error: "MISSING_REQUIRED_FIELDS" }, 400);
+        return json({ error: "MISSING_REQUIRED_FIELDS", message: "Des informations obligatoires sont manquantes." }, 400);
       }
 
       const existingLink = await managerLink(sb, session.userId);
-      if (existingLink) return json({ error: "STRUCTURE_ALREADY_EXISTS" }, 409);
+      if (existingLink) return json({ error: "STRUCTURE_ALREADY_EXISTS", message: "Une Structure est déjà liée à ce compte." }, 409);
 
-      const { data: organization, error } = await sb.from("partner_organizations").insert({
-        org_name: String(body.name).trim(),
-        org_type: String(body.structure_type).trim(),
-        country: body.country || "ML",
-        city: body.city || null,
-        address: body.address || null,
-        phone: body.phone || null,
-        email: body.professional_email || null,
-        website: body.website || null,
-        description: body.description || null,
-        main_need: body.objective || null,
-        logo_url: body.logo_url || null,
-        justificatif_url: body.justificatif_url || null,
-        contact_name: body.responsible_name || session.user?.full_name || null,
-        contact_function: body.responsible_function || null,
-        contact_email: body.responsible_email || session.user?.email || null,
-        contact_phone: body.responsible_phone || null,
-        status: "pending",
-      }).select("*").single();
-      if (error) throw error;
+      const uploadedPaths: string[] = [];
+      let createdOrganizationId = "";
+      let logoUrl = String(body.logo_url || "").trim() || null;
+      let justificatifUrl = String(body.justificatif_url || "").trim() || null;
 
-      const { error: managerError } = await sb.from("partner_managers").insert({
-        organization_id: organization.id,
-        user_id: session.userId,
-        role_in_org: "responsable_structure",
-        is_primary: true,
-        status: "actif",
-        permissions: {
-          can_manage_structure_profile: true,
-          can_manage_structure_users: true,
-          can_create_courses: true,
-          can_edit_courses: true,
-          can_submit_courses: true,
-          can_assign_trainers: true,
-          can_manage_lessons: true,
-          can_upload_files: true,
-          can_manage_members: true,
-          can_approve_memberships: true,
-          can_manage_structure_codes: true,
-          can_request_structure_benefits: true,
-          can_view_statistics: true,
-          can_view_logs: true,
-          can_manage_notifications: true,
-          can_manage_settings: true,
-        },
-      });
-      if (managerError) {
-        await sb.from("partner_organizations").delete().eq("id", organization.id);
-        throw managerError;
+      try {
+        if (body.logo_base64) {
+          const uploaded = await uploadStructureAsset(
+            sb,
+            session.userId,
+            "logos",
+            body.logo_base64,
+            body.logo_mime,
+            body.logo_name,
+          );
+          uploadedPaths.push(uploaded.path);
+          logoUrl = uploaded.publicUrl;
+        }
+        if (body.justificatif_base64) {
+          const uploaded = await uploadStructureAsset(
+            sb,
+            session.userId,
+            "justificatifs",
+            body.justificatif_base64,
+            body.justificatif_mime,
+            body.justificatif_name,
+          );
+          uploadedPaths.push(uploaded.path);
+          justificatifUrl = uploaded.publicUrl;
+        }
+
+        const { data: organization, error } = await sb.from("partner_organizations").insert({
+          org_name: String(body.name).trim(),
+          org_type: String(body.structure_type).trim(),
+          country: body.country || "ML",
+          city: body.city || null,
+          address: body.address || null,
+          phone: body.phone || null,
+          email: body.professional_email || null,
+          website: body.website || null,
+          description: body.description || null,
+          main_need: body.objective || null,
+          logo_url: logoUrl,
+          justificatif_url: justificatifUrl,
+          contact_name: body.responsible_name || session.user?.full_name || null,
+          contact_function: body.responsible_function || null,
+          contact_email: body.responsible_email || session.user?.email || null,
+          contact_phone: body.responsible_phone || null,
+          status: "pending",
+        }).select("*").single();
+        if (error) throw error;
+        createdOrganizationId = String(organization.id);
+
+        const { error: managerError } = await sb.from("partner_managers").insert({
+          organization_id: organization.id,
+          user_id: session.userId,
+          role_in_org: "responsable_structure",
+          is_primary: true,
+          status: "actif",
+          permissions: {
+            can_manage_structure_profile: true,
+            can_manage_structure_users: true,
+            can_create_courses: true,
+            can_edit_courses: true,
+            can_submit_courses: true,
+            can_assign_trainers: true,
+            can_manage_lessons: true,
+            can_upload_files: true,
+            can_manage_members: true,
+            can_approve_memberships: true,
+            can_manage_structure_codes: true,
+            can_request_structure_benefits: true,
+            can_view_statistics: true,
+            can_view_logs: true,
+            can_manage_notifications: true,
+            can_manage_settings: true,
+          },
+        });
+        if (managerError) throw managerError;
+
+        await addRole(sb, session.userId, "responsable_structure");
+        await sb.from("user_roles").delete().eq("user_id", session.userId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
+
+        return json({ success: true, structure: mapStructure(organization) });
+      } catch (error) {
+        if (createdOrganizationId) {
+          await sb.from("partner_organizations").delete().eq("id", createdOrganizationId).catch(() => {});
+        }
+        if (uploadedPaths.length) {
+          await sb.storage.from(STRUCTURE_ASSET_BUCKET).remove(uploadedPaths).catch(() => {});
+        }
+        throw error;
       }
-
-      await addRole(sb, session.userId, "responsable_structure");
-      await sb.from("user_roles").delete().eq("user_id", session.userId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
-
-      return json({ success: true, structure: mapStructure(organization) });
     }
 
     if (action === "get_my_structure") {
@@ -1322,6 +1433,9 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION", action }, 400);
   } catch (error) {
     console.error("structure-manage", error);
+    if (error instanceof ClientError) {
+      return json({ error: error.code, message: error.message }, error.status);
+    }
     return json({
       error: "SERVER_ERROR",
       message: error instanceof Error ? error.message : String(error),

@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 const DEMO_EMAIL = "test@omniaglobalacademy.com";
@@ -21,7 +21,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
-  const sessionToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const sessionToken = (req.headers.get("x-omnia-session-token") || authHeader)
+    .replace(/^Bearer\s+/i, "")
+    .trim();
 
   if (!sessionToken) {
     return new Response(JSON.stringify({ success: false, message: "Token manquant" }), {

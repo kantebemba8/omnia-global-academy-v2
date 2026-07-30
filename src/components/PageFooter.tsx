@@ -31,8 +31,8 @@ const FOOTER_COLS = {
   omnia: [
     { label: 'À propos',            href: '/a-propos' },
     { label: 'Devenir formateur',   href: '/inscription/professeur' },
-    { label: 'Espace Carrière',     href: '/carrieres' },
-    { label: 'Contact',             href: '/contact' },
+    { label: 'Espace Carrière',     href: '/emploi' },
+    { label: 'Contact',             href: 'mailto:contact@omniaglobalacademy.com' },
   ],
   legal: [
     { label: 'Politique de confidentialité', href: '/confidentialite' },

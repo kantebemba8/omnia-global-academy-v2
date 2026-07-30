@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Building2, ChevronRight, ChevronLeft, Info, CheckCircle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
+import { edgeGatewayHeaders } from '../../lib/edgeAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const API = `${SUPABASE_URL}/functions/v1`;
@@ -58,6 +59,7 @@ export function RegisterStructure() {
   const [showPwd, setShowPwd] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [justifFile, setJustifFile] = useState<File | null>(null);
+  const [registrationSessionToken, setRegistrationSessionToken] = useState('');
 
   const [form, setForm] = useState({
     // Structure
@@ -161,68 +163,46 @@ export function RegisterStructure() {
     setLoading(true);
 
     try {
-      // Upload logo
-      let logo_url = '';
-      let justificatif_url = '';
+      let sessionToken = registrationSessionToken;
 
-      if (logoFile) {
-        const logoB64 = await toBase64(logoFile);
-        const ext = logoFile.name.split('.').pop();
-        const path = `structures/logos/${Date.now()}.${ext}`;
-        const { data: logoData } = await fetch(`${SUPABASE_URL}/storage/v1/object/omnia-global-academy/${path}`, {
+      // Le compte n'est créé qu'une seule fois. Si la création de la fiche
+      // Structure échoue, le jeton temporaire permet de réessayer sans créer
+      // un doublon d'utilisateur.
+      if (!sessionToken) {
+        const regRes = await fetch(`${API}/auth-register`, {
           method: 'POST',
-          headers: {
-            'Content-Type': logoFile.type,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: Uint8Array.from(atob(logoB64), c => c.charCodeAt(0)),
-        }).then(r => r.json()).catch(() => ({ data: null }));
-        if (logoData) logo_url = `${SUPABASE_URL}/storage/v1/object/public/omnia-global-academy/${path}`;
-      }
-
-      if (justifFile) {
-        const justifB64 = await toBase64(justifFile);
-        const ext = justifFile.name.split('.').pop();
-        const path = `structures/justificatifs/${Date.now()}.${ext}`;
-        await fetch(`${SUPABASE_URL}/storage/v1/object/omnia-global-academy/${path}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': justifFile.type,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: Uint8Array.from(atob(justifB64), c => c.charCodeAt(0)),
+          headers: edgeGatewayHeaders(),
+          body: JSON.stringify({
+            email: form.responsible_email,
+            password: form.password,
+            full_name: form.responsible_name,
+            phone_number: `${getPrefix(form.country)}${form.responsible_phone_local}`,
+            country_code: form.country,
+            role: 'responsable_structure',
+            allow_email: form.allow_email,
+            allow_sms: form.allow_sms,
+            subscribe_newsletter: form.subscribe_newsletter,
+          }),
         });
-        justificatif_url = `${SUPABASE_URL}/storage/v1/object/public/omnia-global-academy/${path}`;
+        const regData = await regRes.json().catch(() => ({}));
+        if (!regRes.ok || !regData.success || !regData.session_token) {
+          throw new Error(regData.message ?? 'Erreur lors de la création du compte');
+        }
+        sessionToken = String(regData.session_token);
+        setRegistrationSessionToken(sessionToken);
       }
 
-      // 1. Créer le compte utilisateur
-      const regRes = await fetch(`${API}/auth-register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: form.responsible_email,
-          password: form.password,
-          full_name: form.responsible_name,
-          phone_number: `${getPrefix(form.country)}${form.responsible_phone_local}`,
-          country_code: form.country,
-          role: 'responsable_structure',
-          allow_email: form.allow_email,
-          allow_sms: form.allow_sms,
-          subscribe_newsletter: form.subscribe_newsletter,
-        }),
-      });
-      const regData = await regRes.json();
-      if (!regData.success) throw new Error(regData.message ?? 'Erreur lors de la création du compte');
+      const [logoBase64, justificatifBase64] = await Promise.all([
+        toBase64(logoFile),
+        justifFile ? toBase64(justifFile) : Promise.resolve(''),
+      ]);
 
-      const sessionToken = regData.session_token;
-
-      // 2. Créer la structure
+      // Les documents sont envoyés à l'Edge Function. Elle les contrôle puis
+      // les téléverse avec le rôle serveur, sans exposer de droit d'écriture
+      // Storage au navigateur.
       const structRes = await fetch(`${API}/structure-manage`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${sessionToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: edgeGatewayHeaders({ 'x-omnia-session-token': sessionToken }),
         body: JSON.stringify({
           action: 'create_structure',
           name: form.name,
@@ -239,13 +219,24 @@ export function RegisterStructure() {
           responsible_function: form.responsible_function,
           responsible_email: form.responsible_email,
           responsible_phone: `${getPrefix(form.country)}${form.responsible_phone_local}`,
-          logo_url,
-          justificatif_url,
+          logo_base64: logoBase64,
+          logo_mime: logoFile.type,
+          logo_name: logoFile.name,
+          justificatif_base64: justificatifBase64 || undefined,
+          justificatif_mime: justifFile?.type || undefined,
+          justificatif_name: justifFile?.name || undefined,
         }),
       });
-      const structData = await structRes.json();
-      if (!structData.success) throw new Error(structData.error ?? 'Erreur lors de la création de la structure');
+      const structData = await structRes.json().catch(() => ({}));
+      if (!structRes.ok || !structData.success) {
+        if (structData.error === 'STRUCTURE_ALREADY_EXISTS') {
+          setSuccess(true);
+          return;
+        }
+        throw new Error(structData.message ?? structData.error ?? 'Erreur lors de la création de la structure');
+      }
 
+      setRegistrationSessionToken('');
       setSuccess(true);
     } catch (err) {
       setError((err as Error).message ?? 'Une erreur est survenue');

@@ -1,0 +1,117 @@
+# Omnia Global Academy uses opaque application sessions stored in user_sessions.
+# These functions validate their own Omnia session, public request, webhook
+# signature or scheduled-job secret inside the handler.
+
+[functions.auth-login]
+verify_jwt = false
+
+[functions.auth-register]
+verify_jwt = false
+
+[functions.auth-login-otp]
+verify_jwt = false
+
+[functions.auth-verify-otp]
+verify_jwt = false
+
+[functions.auth-resend-otp]
+verify_jwt = false
+
+[functions.auth-forgot-password]
+verify_jwt = false
+
+[functions.auth-reset-password]
+verify_jwt = false
+
+[functions.auth-change-password]
+verify_jwt = false
+
+[functions.auth-logout]
+verify_jwt = false
+
+[functions.auth-me]
+verify_jwt = false
+
+[functions.structure-manage]
+verify_jwt = false
+
+[functions.admin-moderator-manage]
+verify_jwt = false
+
+[functions.dashboard-moderateur]
+verify_jwt = false
+
+[functions.moderator-account-action]
+verify_jwt = false
+
+[functions.moderator-course-action]
+verify_jwt = false
+
+[functions.moderator-job-action]
+verify_jwt = false
+
+[functions.moderator-kyc-action]
+verify_jwt = false
+
+[functions.moderator-support-action]
+verify_jwt = false
+
+[functions.moderator-forum-action]
+verify_jwt = false
+
+[functions.job-platform-manage]
+verify_jwt = false
+
+[functions.dashboard-apprenant]
+verify_jwt = false
+
+[functions.omnia-live]
+verify_jwt = false
+
+[functions.talent-recruitment]
+verify_jwt = false
+
+[functions.job-apply]
+verify_jwt = false
+
+[functions.jobs-list]
+verify_jwt = false
+
+[functions.career-studio-manage]
+verify_jwt = false
+
+[functions.auth-update-profile]
+verify_jwt = false
+
+[functions.partner-org-manage]
+verify_jwt = false
+
+[functions.partner-code-manage]
+verify_jwt = false
+
+[functions.checkout-init]
+verify_jwt = false
+
+[functions.checkout-validate-coupon]
+verify_jwt = false
+
+[functions.payment-status]
+verify_jwt = false
+
+[functions.omnia-projects]
+verify_jwt = false
+
+[functions.dashboard-professeur]
+verify_jwt = false
+
+[functions.commerce-engine]
+verify_jwt = false
+
+[functions.fedapay-webhook]
+verify_jwt = false
+
+[functions.coaching-cron]
+verify_jwt = false
+
+[functions.credentials]
+verify_jwt = false
