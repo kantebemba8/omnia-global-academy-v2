@@ -1,6 +1,7 @@
+import { lazy } from 'react';
 import { useSiteMode } from '../context/SiteModeContext';
-import { LandingPage } from '../pages/LandingPage';
-import { MaintenancePage } from '../pages/MaintenancePage';
+const LandingPage = lazy(() => import('../pages/LandingPage').then((module) => ({ default: module.LandingPage })));
+const MaintenancePage = lazy(() => import('../pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
 
 function getSuperAdminState(): { isSuperAdmin: boolean } {
   try {
