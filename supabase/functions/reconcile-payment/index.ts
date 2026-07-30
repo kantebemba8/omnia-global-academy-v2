@@ -1,108 +1,94 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
+import { approvedStatus, fedaPayApiBase, retrieveFedaPayTransaction } from "../_shared/fedapay-security.ts";
+import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+  status,
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+});
 
 async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id")
+  const { data: session } = await sb.from("user_sessions").select("user_id")
     .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (!sess) return null;
+  if (!session) return null;
   const { data: role } = await sb.from("user_roles").select("role")
-    .eq("user_id", sess.user_id).eq("role", "super_admin").maybeSingle();
-  if (!role) return null;
-  return sess.user_id;
+    .eq("user_id", session.user_id).eq("role", "super_admin").maybeSingle();
+  return role ? String(session.user_id) : null;
 }
 
-async function processApprovedByReference(sb: ReturnType<typeof createClient>, reference: string, gateway: string) {
-  const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") ?? "";
-  const verifyRes = await fetch(
-    `https://api.fedapay.com/v1/transactions?reference=${encodeURIComponent(reference)}`,
-    { headers: { "Authorization": `Bearer ${fedaKey}` } }
-  );
+async function findFedaPayTransaction(reference: string): Promise<Record<string, any> | null> {
+  if (/^\d+$/.test(reference)) return retrieveFedaPayTransaction(reference);
 
-  if (!verifyRes.ok) return { verified: false, status: "fetch_error" };
-  const data = await verifyRes.json();
-  const txns = data.v1Transactions ?? data.transactions ?? [];
-  if (!txns.length) return { verified: false, status: "not_found" };
-
-  const txn = txns[0];
-  const status = txn.status ?? txn.payment_status;
-
-  if (status !== "approved") return { verified: true, status, order_found: null };
-
-  // Find the order
-  const fedapayId = String(txn.id);
-  let order = null;
-  const { data: byFeda } = await sb.from("orders").select("*").eq("fedapay_transaction_id", fedapayId).maybeSingle();
-  order = byFeda;
-
-  if (!order && txn.metadata?.order_id) {
-    const { data: byMeta } = await sb.from("orders").select("*").eq("id", txn.metadata.order_id).maybeSingle();
-    order = byMeta;
-  }
-
-  if (!order) return { verified: true, status, order_found: null };
-  if (order.payment_status === "completed") return { verified: true, status, order_found: order.id, note: "already_completed" };
-
-  await sb.from("orders").update({
-    payment_status: "completed",
-    fedapay_transaction_id: fedapayId,
-    paid_at: new Date().toISOString(),
-  }).eq("id", order.id);
-
-  const { data: existing } = await sb.from("user_enrollments")
-    .select("id").eq("user_id", order.user_id).eq("course_id", order.course_id).maybeSingle();
-  if (!existing) {
-    await sb.from("user_enrollments").insert({
-      user_id: order.user_id, course_id: order.course_id, enrolled_at: new Date().toISOString(),
-    });
-  }
-
-  return { verified: true, status, order_found: order.id, triggered: true };
+  const secretKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+  if (!secretKey) throw new Error("FEDAPAY_SECRET_KEY_MISSING");
+  const response = await fetch(`${fedaPayApiBase()}/transactions?reference=${encodeURIComponent(reference)}`, {
+    headers: { Authorization: `Bearer ${secretKey}`, Accept: "application/json" },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`FEDAPAY_RECONCILIATION_LOOKUP_FAILED:${response.status}`);
+  const rows = body.v1Transactions || body.transactions || body.data || [];
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const sessionToken = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "")
+      .replace(/^Bearer\s+/i, "").trim();
+    if (!sessionToken) return json({ error: "UNAUTHORIZED" }, 401);
 
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (!token) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const adminId = await verifySuperAdmin(sb, sessionToken);
+    if (!adminId) return json({ error: "FORBIDDEN" }, 403);
 
-    const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return new Response(JSON.stringify({ error: "FORBIDDEN" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const body = await req.json().catch(() => ({}));
+    const externalReference = String(body.external_reference || "").trim();
+    const gateway = String(body.gateway || "fedapay").toLowerCase();
+    if (!externalReference) return json({ error: "MISSING_EXTERNAL_REFERENCE" }, 400);
+    if (gateway !== "fedapay") return json({ error: "UNSUPPORTED_GATEWAY" }, 400);
 
-    const body = await req.json();
-    const { external_reference, gateway } = body;
-    if (!external_reference || !gateway) {
-      return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const transaction = await findFedaPayTransaction(externalReference);
+    if (!transaction) {
+      await sb.from("payment_reconciliations").insert({
+        admin_id: adminId,
+        external_reference: externalReference,
+        gateway,
+        verification_result: { verified: true, status: "not_found" },
+        triggered_webhook: false,
+      });
+      return json({ verified: true, status: "not_found", order_found: null });
     }
 
-    const result = await processApprovedByReference(sb, external_reference, gateway);
+    const order = await resolvePlatformOrder(sb, transaction);
+    let settlement: Record<string, unknown> | null = null;
+    if (approvedStatus(transaction) && order) settlement = await settlePlatformOrder(sb, order, transaction);
 
-    // Log reconciliation
+    const verificationResult = {
+      verified: true,
+      status: String(transaction.status || "unknown"),
+      transaction_id: transaction.id ? String(transaction.id) : null,
+      transaction_reference: transaction.reference ? String(transaction.reference) : null,
+      order_found: order?.id || null,
+      settled: Boolean(settlement),
+      settlement,
+    };
+
     await sb.from("payment_reconciliations").insert({
       admin_id: adminId,
-      external_reference,
+      external_reference: externalReference,
       gateway,
-      order_id: result.order_found ?? null,
-      verification_result: result,
-      triggered_webhook: result.triggered ?? false,
+      order_id: order?.id || null,
+      verification_result: verificationResult,
+      triggered_webhook: Boolean(settlement),
     });
 
-    return new Response(JSON.stringify({
-      verified: result.verified,
-      status: result.status,
-      order_found: result.order_found,
-      triggered_webhook: result.triggered ?? false,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-  } catch (err) {
-    return new Response(JSON.stringify({ error: "INTERNAL", message: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return json(verificationResult);
+  } catch (error) {
+    console.error("Payment reconciliation error", error);
+    return json({ error: "RECONCILIATION_FAILED", message: String(error instanceof Error ? error.message : error) }, 500);
   }
 });

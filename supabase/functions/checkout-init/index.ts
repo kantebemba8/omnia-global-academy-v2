@@ -20,8 +20,8 @@ async function verifySession(sb: ReturnType<typeof createClient>, token: string)
 }
 
 function generateOrderNumber(): string {
-  const year = new Date().getFullYear();
-  const suffix = Math.floor(100000 + Math.random() * 900000).toString();
+  const year = new Date().getUTCFullYear();
+  const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase();
   return `OMN-${year}-${suffix}`;
 }
 
@@ -213,8 +213,60 @@ Deno.serve(async (req: Request) => {
     if (paymentProvider !== "fedapay") {
       return new Response(JSON.stringify({ error: "PAYMENT_PROVIDER_NOT_IMPLEMENTED", message: `Le prestataire ${paymentProvider} n\'est pas encore connecté au checkout.` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+    if (!fedaKey) {
+      return new Response(JSON.stringify({ error: "FEDAPAY_NOT_CONFIGURED", message: "Le paiement est temporairement indisponible." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const mode = (Deno.env.get("FEDAPAY_MODE") || "live").toLowerCase();
+    const fedaBase = mode === "sandbox" || mode === "test" ? "https://sandbox-api.fedapay.com/v1" : "https://api.fedapay.com/v1";
+    const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
+
+    async function checkoutUrlFor(transactionId: string): Promise<string | null> {
+      const response = await fetch(`${fedaBase}/transactions/${encodeURIComponent(transactionId)}/token`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${fedaKey}`, "Content-Type": "application/json" },
+      });
+      if (!response.ok) return null;
+      const tokenData = await response.json().catch(() => ({}));
+      return tokenData.url || tokenData.token_url || tokenData.token || null;
+    }
+
+    const pendingSince = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { data: reusableOrder } = await sb.from("orders")
+      .select("id,order_number,fedapay_transaction_id,gateway_reference")
+      .eq("user_id", user.id)
+      .eq("course_id", course_id)
+      .eq("payment_status", "pending")
+      .eq("final_price_xof", finalPrice)
+      .gte("created_at", pendingSince)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (reusableOrder?.fedapay_transaction_id) {
+      const reusedUrl = await checkoutUrlFor(String(reusableOrder.fedapay_transaction_id));
+      if (reusedUrl) {
+        return new Response(JSON.stringify({
+          order_number: reusableOrder.order_number,
+          order_id: reusableOrder.id,
+          original_price: originalPrice,
+          discount_xof: discountXof,
+          final_price: finalPrice,
+          coupon_applied: couponCodeApplied,
+          subscription_discount_xof: commerceBenefit.discountXof,
+          payment_url: reusedUrl,
+          fedapay_token: String(reusableOrder.fedapay_transaction_id),
+          reused: true,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     const orderNum = generateOrderNumber();
-    const idempotencyKey = await sha256hex(`${user.id}${course_id}${Date.now()}`);
+    const requestedIdempotency = String(req.headers.get("Idempotency-Key") || body.idempotency_key || "").trim();
+    const idempotencyKey = requestedIdempotency
+      ? await sha256hex(`${user.id}:${course_id}:${requestedIdempotency}`)
+      : await sha256hex(`${user.id}:${course_id}:${crypto.randomUUID()}`);
     const { data: order, error: orderErr } = await sb.from("orders").insert({
       order_number: orderNum, user_id: user.id, course_id,
       original_price_xof: originalPrice, discount_xof: discountXof, final_price_xof: finalPrice,
@@ -224,11 +276,6 @@ Deno.serve(async (req: Request) => {
     }).select("id, order_number").single();
     if (orderErr) throw orderErr;
 
-    const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-    const mode = (Deno.env.get("FEDAPAY_MODE") || "live").toLowerCase();
-    const fedaBase = mode === "sandbox" || mode === "test" ? "https://sandbox-api.fedapay.com/v1" : "https://api.fedapay.com/v1";
-    const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const nameParts = (user.full_name || "").trim().split(/\s+/);
     const firstname = nameParts[0] || user.email.split("@")[0];
     const lastname = nameParts.slice(1).join(" ") || "-";
@@ -240,42 +287,41 @@ Deno.serve(async (req: Request) => {
         description: `Formation: ${course.title}`,
         amount: finalPrice,
         currency: { iso: "XOF" },
-        callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`,
-        return_url: `${appUrl}/paiement/confirmation?order=${orderNum}`,
-        cancel_url: `${appUrl}/paiement/echec?order=${orderNum}&course=${course_id}`,
+        callback_url: `${appUrl}/paiement/confirmation?order=${orderNum}`,
+        merchant_reference: order.order_number,
         customer: {
           email: user.email,
           firstname,
           lastname,
-          ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "SN" } } : {}),
+          ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}),
         },
-        metadata: { order_id: order.id, order_number: order.order_number, user_id: user.id, course_id },
+        custom_metadata: { order_id: order.id, order_number: order.order_number, user_id: user.id, course_id },
       }),
     });
 
+    const fedaData = await fedaRes.json().catch(() => ({}));
     if (!fedaRes.ok) {
-      await sb.from("orders").delete().eq("id", order.id);
+      await sb.from("orders").update({ payment_status: "failed", gateway_reference: `init_error:${fedaRes.status}` }).eq("id", order.id);
       return new Response(JSON.stringify({ error: "PAYMENT_INIT_FAILED", message: "Impossible d'initialiser le paiement." }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const fedaData = await fedaRes.json();
     const txn = fedaData.v1Transaction || fedaData.transaction || fedaData;
-    const fedapayId = txn?.id ? String(txn.id) : null;
+    const fedapayId = txn?.id ? String(txn.id) : "";
+    const providerReference = txn?.reference ? String(txn.reference) : null;
+    if (!fedapayId) {
+      await sb.from("orders").update({ payment_status: "failed", gateway_reference: "transaction_id_missing" }).eq("id", order.id);
+      return new Response(JSON.stringify({ error: "PAYMENT_INIT_FAILED", message: "Réponse de paiement incomplète." }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
-    // Get checkout URL via token endpoint
-    let checkoutUrl = `${appUrl}/paiement/echec?order=${orderNum}&course=${course_id}`;
-    if (fedapayId) {
-      try {
-        const tokenRes = await fetch(`${fedaBase}/transactions/${fedapayId}/token`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${fedaKey}`, "Content-Type": "application/json" },
-        });
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json();
-          checkoutUrl = tokenData.url || tokenData.token_url || checkoutUrl;
-        }
-      } catch (_) { /* use fallback */ }
-      await sb.from("orders").update({ fedapay_transaction_id: fedapayId }).eq("id", order.id);
+    await sb.from("orders").update({
+      fedapay_transaction_id: fedapayId,
+      gateway_reference: providerReference,
+    }).eq("id", order.id);
+
+    const checkoutUrl = await checkoutUrlFor(fedapayId);
+    if (!checkoutUrl) {
+      await sb.from("orders").update({ payment_status: "failed" }).eq("id", order.id);
+      return new Response(JSON.stringify({ error: "PAYMENT_LINK_FAILED", message: "Le lien de paiement n'a pas pu être généré." }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     return new Response(JSON.stringify({

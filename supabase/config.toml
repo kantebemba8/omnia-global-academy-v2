@@ -118,3 +118,9 @@ verify_jwt = false
 
 [functions.credentials]
 verify_jwt = false
+
+[functions.reconcile-payment]
+verify_jwt = false
+
+[functions.cron-anti-abandon]
+verify_jwt = false

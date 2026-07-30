@@ -1,238 +1,79 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-demo-heartbeat-token",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-};
+import { corsHeaders } from "../_shared/cors.ts";
+import {
+  approvedStatus,
+  assertTransactionMatches,
+  extractFedaPayTransaction,
+  failedStatus,
+  retrieveFedaPayTransaction,
+  transactionMetadata,
+  verifyFedaPayWebhook,
+} from "../_shared/fedapay-security.ts";
+import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 
-async function hmacHex(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+type SB = ReturnType<typeof createClient>;
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-async function processApprovedPayment(sb: ReturnType<typeof createClient>, order: Record<string, unknown>, fedapayId: string) {
-  // Update order to completed
-  await sb.from("orders").update({
-    payment_status: "completed",
-    fedapay_transaction_id: fedapayId,
-    paid_at: new Date().toISOString(),
-  }).eq("id", order.id);
-
-  // Create enrollment
-  const { data: existing } = await sb.from("user_enrollments")
-    .select("id").eq("user_id", order.user_id).eq("course_id", order.course_id).maybeSingle();
-  if (!existing) {
-    await sb.from("user_enrollments").insert({
-      user_id: order.user_id, course_id: order.course_id, enrolled_at: new Date().toISOString(),
-    });
-  }
-
-  // Consume B2B license seat exactly once after confirmed payment.
-  if (order.license_id) {
-    const { data: usage } = await sb.from("license_usages").select("id").eq("license_id", order.license_id).eq("user_id", order.user_id).maybeSingle();
-    if (!usage) {
-      const { data: license } = await sb.from("group_licenses").select("used_seats,max_seats").eq("id", order.license_id).maybeSingle();
-      if (license && Number(license.used_seats || 0) < Number(license.max_seats || 0)) {
-        await sb.from("license_usages").insert({ license_id: order.license_id, user_id: order.user_id });
-        await sb.from("group_licenses").update({ used_seats: Number(license.used_seats || 0) + 1, updated_at: new Date().toISOString() }).eq("id", order.license_id);
-      }
-    }
-  }
-
-  // Increment course student count
-  const { data: courseRow } = await sb.from("courses")
-    .select("total_students, creator_id, cpd_accredited, is_assisted, creator_type")
-    .eq("id", order.course_id).maybeSingle();
-  if (courseRow) {
-    await sb.from("courses").update({ total_students: (courseRow.total_students || 0) + 1 }).eq("id", order.course_id);
-  }
-
-  // Calculate commissions from site_settings
-  const { data: settings } = await sb.from("site_settings").select("key, value");
-  const cfg: Record<string, string> = {};
-  (settings || []).forEach((r: { key: string; value: string }) => { cfg[r.key] = r.value; });
-
-  let profPercent = 0;
-  if (courseRow?.creator_type === "professeur" || !courseRow?.creator_type) {
-    const finalPrice = Number(order.final_price_xof || 0);
-    const now = new Date().toISOString();
-    const { data: centralRules } = await sb.from("commerce_commission_rules").select("*")
-      .in("module_key", ["courses", "global"]).eq("status", "active")
-      .lte("valid_from", now).or(`valid_until.is.null,valid_until.gte.${now}`)
-      .order("priority", { ascending: true });
-    const centralRule = (centralRules || []).find((row: Record<string, unknown>) =>
-      (!row.creator_user_id || row.creator_user_id === courseRow?.creator_id) &&
-      (!row.offer_type || row.offer_type === "course_sale") &&
-      finalPrice >= Number(row.minimum_amount_xof || 0)
-    );
-
-    let platformPercent = 0;
-    let fixedFee = 0;
-    if (centralRule) {
-      platformPercent = Number(centralRule.platform_percent || 0);
-      fixedFee = Number(centralRule.fixed_fee_xof || 0);
-      profPercent = Math.max(0, 100 - platformPercent);
-    } else {
-      if (courseRow?.cpd_accredited && courseRow?.is_assisted) {
-        profPercent = parseInt(cfg["commission_cpd_assiste_prof"] ?? "60");
-      } else if (courseRow?.cpd_accredited) {
-        profPercent = parseInt(cfg["commission_avec_cpd_prof"] ?? "65");
-      } else if (courseRow?.is_assisted) {
-        profPercent = parseInt(cfg["commission_assiste_prof"] ?? "55");
-      } else {
-        profPercent = parseInt(cfg["commission_sans_cpd_prof"] ?? "70");
-      }
-      platformPercent = 100 - profPercent;
-    }
-
-    const platShare = Math.min(finalPrice, Math.round(finalPrice * platformPercent / 100) + fixedFee);
-    const profShare = Math.max(0, finalPrice - platShare);
-    const effectiveProfPercent = finalPrice > 0 ? Number(((profShare / finalPrice) * 100).toFixed(2)) : 0;
-    const effectivePlatformPercent = finalPrice > 0 ? Number(((platShare / finalPrice) * 100).toFixed(2)) : 0;
-    profPercent = effectiveProfPercent;
-
-    await sb.from("orders").update({
-      professor_share_xof: profShare,
-      platform_share_xof: platShare,
-      professor_percent: effectiveProfPercent,
-      platform_percent: effectivePlatformPercent,
-    }).eq("id", order.id);
-
-    if (courseRow.creator_id && profShare > 0) {
-      const { data: wallet } = await sb.from("wallets").select("id, balance_xof, total_earned_xof")
-        .eq("user_id", courseRow.creator_id).maybeSingle();
-      if (wallet) {
-        await sb.from("wallets").update({
-          balance_xof: (wallet.balance_xof || 0) + profShare,
-          total_earned_xof: (wallet.total_earned_xof || 0) + profShare,
-        }).eq("id", wallet.id);
-      } else {
-        await sb.from("wallets").insert({
-          user_id: courseRow.creator_id, balance_xof: profShare, total_earned_xof: profShare,
-        });
-      }
-
-      const { data: walletRow } = await sb.from("wallets").select("id").eq("user_id", courseRow.creator_id).maybeSingle();
-      if (walletRow) {
-        await sb.from("wallet_transactions").insert({
-          wallet_id: walletRow.id, user_id: courseRow.creator_id,
-          type: "credit_sale", amount_xof: profShare,
-          description: `Vente — commande ${order.order_number}`,
-          reference_id: String(order.id),
-        });
-      }
-    }
-  }
-
-  // Handle coupon usage
-  if (order.coupon_id) {
-    const { data: couponRow } = await sb.from("coupons").select("used_count").eq("id", order.coupon_id).maybeSingle();
-    if (couponRow) {
-      await sb.from("coupons").update({ used_count: (couponRow.used_count || 0) + 1 }).eq("id", order.coupon_id);
-    }
-    const { data: existingUsage } = await sb.from("coupon_usages").select("id")
-      .eq("coupon_id", order.coupon_id).eq("user_id", order.user_id).maybeSingle();
-    if (!existingUsage) {
-      await sb.from("coupon_usages").insert({
-        coupon_id: order.coupon_id, user_id: order.user_id, order_id: order.id,
-        discount_applied_xof: order.discount_xof || 0,
-      });
-    }
-  }
-
-  // Referral — only on first purchase
-  const { data: completedOrders } = await sb.from("orders")
-    .select("id", { count: "exact" }).eq("user_id", order.user_id).eq("payment_status", "completed");
-  const isFirstPurchase = (completedOrders?.length ?? 0) === 1;
-  if (isFirstPurchase) {
-    const { data: referral } = await sb.from("referrals")
-      .select("*").eq("referred_id", order.user_id).eq("status", "pending").maybeSingle();
-    if (referral) {
-      const referrerReward = parseInt(cfg["referral_reward_referrer_xof"] ?? "2000");
-      const referredReward = parseInt(cfg["referral_reward_referred_xof"] ?? "1000");
-
-      await sb.from("referrals").update({
-        status: "rewarded", rewarded_at: new Date().toISOString(),
-      }).eq("id", referral.id);
-
-      // Credit referrer wallet
-      const { data: refWallet } = await sb.from("wallets").select("id, balance_xof, total_earned_xof")
-        .eq("user_id", referral.referrer_id).maybeSingle();
-      if (refWallet) {
-        await sb.from("wallets").update({
-          balance_xof: (refWallet.balance_xof || 0) + referrerReward,
-          total_earned_xof: (refWallet.total_earned_xof || 0) + referrerReward,
-        }).eq("id", refWallet.id);
-        await sb.from("wallet_transactions").insert({
-          wallet_id: refWallet.id, user_id: referral.referrer_id,
-          type: "credit_referral", amount_xof: referrerReward,
-          description: "Bonus parrainage — premier achat du filleul",
-          reference_id: String(order.id),
-        });
-      } else {
-        await sb.from("wallets").insert({ user_id: referral.referrer_id, balance_xof: referrerReward, total_earned_xof: referrerReward });
-      }
-
-      // Credit referred bonus as wallet credit
-      const { data: refWallet2 } = await sb.from("wallets").select("id, balance_xof, total_earned_xof")
-        .eq("user_id", order.user_id).maybeSingle();
-      if (refWallet2 && referredReward > 0) {
-        await sb.from("wallets").update({
-          balance_xof: (refWallet2.balance_xof || 0) + referredReward,
-          total_earned_xof: (refWallet2.total_earned_xof || 0) + referredReward,
-        }).eq("id", refWallet2.id);
-        await sb.from("wallet_transactions").insert({
-          wallet_id: refWallet2.id, user_id: order.user_id,
-          type: "credit_referral", amount_xof: referredReward,
-          description: "Bonus parrainage — bienvenue filleul",
-          reference_id: String(order.id),
-        });
-      }
-    }
-  }
-
-  // Credit AI tokens
-  const aiTokens = parseInt(cfg["ai_token_per_purchase"] ?? "1");
-  if (aiTokens > 0) {
-    const { data: userRow } = await sb.from("users").select("ai_tokens").eq("id", order.user_id).maybeSingle();
-    if (userRow !== null) {
-      await sb.from("users").update({ ai_tokens: (userRow?.ai_tokens || 0) + aiTokens }).eq("id", order.user_id);
-    }
-  }
-
-  // Notify professor of sale (fire-and-forget)
-  if (courseRow?.creator_id) {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const { data: settledOrder } = await sb.from("orders").select("professor_share_xof").eq("id", order.id).maybeSingle();
-    const profShare = Number(settledOrder?.professor_share_xof || 0);
-    const { data: walletAfter } = await sb.from("wallets").select("balance_xof").eq("user_id", courseRow.creator_id).maybeSingle();
-    fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "alerte_vente",
-        payload: {
-          userId: courseRow.creator_id,
-          formation_titre: courseRow.title ?? "",
-          montant_xof: order.final_price_xof,
-          commission_xof: profShare,
-          acheteur_pays: "",
-          solde_total_xof: walletAfter?.balance_xof ?? 0,
-        },
-      }),
-    }).catch(() => {});
-  }
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function reserveWebhookEvent(
+  sb: SB,
+  event: Record<string, any>,
+  rawBody: string,
+  transaction: Record<string, any>,
+) {
+  const eventName = String(event.name || event.type || transaction.status || "unknown");
+  const transactionId = transaction.id ? String(transaction.id) : null;
+  const eventId = String(event.id || `sha256:${await sha256Hex(rawBody)}`);
+  const insert = await sb.from("payment_webhook_events").insert({
+    provider: "fedapay",
+    provider_event_id: eventId,
+    event_type: eventName,
+    provider_transaction_id: transactionId,
+    provider_reference: transaction.reference ? String(transaction.reference) : null,
+    payload: event,
+    processing_status: "processing",
+  }).select("id,processing_status,processing_attempts").maybeSingle();
 
+  if (!insert.error) return { id: insert.data?.id as string, duplicate: false, eventId };
+  if (insert.error.code !== "23505") throw insert.error;
+
+  const { data: existing, error } = await sb.from("payment_webhook_events")
+    .select("id,processing_status,processing_attempts")
+    .eq("provider", "fedapay").eq("provider_event_id", eventId).single();
+  if (error) throw error;
+  if (["processed", "ignored"].includes(String(existing.processing_status))) {
+    return { id: String(existing.id), duplicate: true, eventId };
+  }
+  await sb.from("payment_webhook_events").update({
+    processing_status: "processing",
+    processing_attempts: Number(existing.processing_attempts || 1) + 1,
+    processing_error: null,
+    processed_at: null,
+    payload: event,
+  }).eq("id", existing.id);
+  return { id: String(existing.id), duplicate: false, eventId };
+}
+
+async function finishWebhookEvent(sb: SB, id: string, status: "processed" | "ignored" | "failed", resourceType?: string, resourceId?: string | null, error?: unknown) {
+  await sb.from("payment_webhook_events").update({
+    processing_status: status,
+    resource_type: resourceType || null,
+    resource_id: resourceId || null,
+    processing_error: error ? String(error instanceof Error ? error.message : error).slice(0, 1500) : null,
+    processed_at: new Date().toISOString(),
+  }).eq("id", id);
+}
 async function postInternal(path: string, body: Record<string, unknown>) {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -265,6 +106,8 @@ async function processCoachingWebhook(
   if (!order && !["coaching_session", "coaching_advanced"].includes(String(metadata.resource_type || ""))) return false;
   if (!order) return true;
 
+  assertTransactionMatches(txn, Number(order.amount_xof || 0), String(order.currency || "XOF"));
+
   const providerEventId = String(event.id || `${eventName}:${fedapayId}:${String(txn.updated_at || txn.status || "event")}`);
   const eventInsert = await sb.from("coaching_payment_events").insert({
     provider_event_id: providerEventId,
@@ -274,9 +117,25 @@ async function processCoachingWebhook(
     session_id: order.session_id,
     payload: event,
     processing_status: "received",
-  }).select("id").maybeSingle();
-  if (eventInsert.error && eventInsert.error.code === "23505") return true;
-  const paymentEventId = eventInsert.data?.id;
+  }).select("id,processing_status").maybeSingle();
+
+  let paymentEventId = eventInsert.data?.id as string | undefined;
+  if (eventInsert.error) {
+    if (eventInsert.error.code !== "23505") throw eventInsert.error;
+    const { data: existingEvent, error: existingError } = await sb.from("coaching_payment_events")
+      .select("id,processing_status")
+      .eq("provider_event_id", providerEventId)
+      .single();
+    if (existingError) throw existingError;
+    if (["processed", "ignored"].includes(String(existingEvent.processing_status))) return true;
+    paymentEventId = String(existingEvent.id);
+    await sb.from("coaching_payment_events").update({
+      processing_status: "received",
+      processing_error: null,
+      processed_at: null,
+      payload: event,
+    }).eq("id", paymentEventId);
+  }
 
   try {
     const approved = eventName === "transaction.approved" || txn.status === "approved";
@@ -343,94 +202,104 @@ async function processCoachingWebhook(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  let trackedEventId: string | null = null;
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const rawBody = await req.text();
+    await verifyFedaPayWebhook(
+      rawBody,
+      req.headers.get("x-fedapay-signature"),
+      Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "",
+    );
 
-    const webhookSecret = Deno.env.get("FEDAPAY_WEBHOOK_SECRET") ?? "";
-    const body = await req.text();
+    const incomingEvent = JSON.parse(rawBody) as Record<string, any>;
+    const incomingTransaction = extractFedaPayTransaction(incomingEvent);
+    const incomingTransactionId = String(incomingTransaction.id || "");
+    if (!incomingTransactionId) throw new Error("FEDAPAY_TRANSACTION_ID_MISSING");
 
-    // Validate HMAC signature
-    if (webhookSecret) {
-      const signature = req.headers.get("x-fedapay-signature") ?? "";
-      const expectedHex = await hmacHex(webhookSecret, body);
-      if (signature !== expectedHex) {
-        return new Response("Signature invalide", { status: 401, headers: corsHeaders });
-      }
-    }
+    const authoritativeTransaction = await retrieveFedaPayTransaction(incomingTransactionId);
+    const event: Record<string, any> = { ...incomingEvent, data: authoritativeTransaction };
+    const transaction = authoritativeTransaction;
+    const eventName = String(event.name || event.type || transaction.status || "unknown");
+    const metadata = transactionMetadata(transaction);
 
-    const event = JSON.parse(body);
-    const eventName: string = event.name ?? "";
-    const txn = event.data ?? {};
-    const fedapayId = String(txn.id ?? "");
-    const centralMetadata = txn.custom_metadata ?? txn.metadata ?? {};
+    const reservation = await reserveWebhookEvent(sb, event, rawBody, transaction);
+    trackedEventId = reservation.id;
+    if (reservation.duplicate) return json({ received: true, duplicate: true });
 
-    if (centralMetadata.commerce_order_id || centralMetadata.resource_type === "central_commerce") {
+    if (metadata.commerce_order_id || metadata.resource_type === "central_commerce") {
+      const { data: commerceOrder, error } = await sb.from("commerce_orders")
+        .select("id,final_amount_xof,currency")
+        .eq("id", metadata.commerce_order_id).maybeSingle();
+      if (error) throw error;
+      if (!commerceOrder) throw new Error("CENTRAL_COMMERCE_ORDER_NOT_FOUND");
+      assertTransactionMatches(transaction, Number(commerceOrder.final_amount_xof || 0), String(commerceOrder.currency || "XOF"));
       const response = await postInternal("commerce-engine", { action: "system_payment_event", event });
-      if (!response || !response.ok) {
-        const detail = response ? await response.text().catch(() => "") : "commerce-engine unavailable";
-        throw new Error(`CENTRAL_COMMERCE_WEBHOOK_FAILED:${detail}`);
-      }
-      return new Response(JSON.stringify({ received: true, resource: "central_commerce" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (!response?.ok) throw new Error(`CENTRAL_COMMERCE_WEBHOOK_FAILED:${response ? await response.text().catch(() => "") : "unavailable"}`);
+      await finishWebhookEvent(sb, trackedEventId, "processed", "central_commerce", String(commerceOrder.id));
+      return json({ received: true, resource: "central_commerce" });
     }
 
-    if (await processCoachingWebhook(sb, event, eventName, txn, fedapayId)) {
-      return new Response(JSON.stringify({ received: true, resource: "coaching" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (metadata.omnia_order_id) {
+      const { data: liveOrder, error } = await sb.from("live_orders")
+        .select("id,amount,currency")
+        .eq("id", metadata.omnia_order_id).maybeSingle();
+      if (error) throw error;
+      if (!liveOrder) throw new Error("OMNIA_LIVE_ORDER_NOT_FOUND");
+      assertTransactionMatches(transaction, Number(liveOrder.amount || 0), String(liveOrder.currency || "XOF"));
+      const url = Deno.env.get("SUPABASE_URL") || "";
+      const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      const webhookSecret = Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "";
+      const response = await fetch(`${url}/functions/v1/omnia-live?action=fedapay_webhook`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceRole}`,
+          "Content-Type": "application/json",
+          "x-omnia-webhook-secret": webhookSecret,
+        },
+        body: JSON.stringify(event),
+      });
+      if (!response.ok) throw new Error(`OMNIA_LIVE_WEBHOOK_FAILED:${await response.text().catch(() => "")}`);
+      await finishWebhookEvent(sb, trackedEventId, "processed", "omnia_live", String(liveOrder.id));
+      return json({ received: true, resource: "omnia_live" });
     }
 
-    const metadata = txn.custom_metadata ?? txn.metadata ?? {};
-
-    // Resolve order: try metadata first, then by fedapay transaction id
-    let order: Record<string, unknown> | null = null;
-    if (metadata.order_id) {
-      const { data } = await sb.from("orders").select("*").eq("id", metadata.order_id).maybeSingle();
-      order = data;
-    }
-    if (!order && fedapayId) {
-      const { data } = await sb.from("orders").select("*").eq("fedapay_transaction_id", fedapayId).maybeSingle();
-      order = data;
+    if (await processCoachingWebhook(sb, event, eventName, transaction, incomingTransactionId)) {
+      const coachingId = metadata.coaching_order_id ? String(metadata.coaching_order_id) : null;
+      await finishWebhookEvent(sb, trackedEventId, "processed", "coaching", coachingId);
+      return json({ received: true, resource: "coaching" });
     }
 
+    const order = await resolvePlatformOrder(sb, transaction);
     if (!order) {
-      return new Response(JSON.stringify({ received: true, note: "order_not_found" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      await finishWebhookEvent(sb, trackedEventId, "ignored", "unknown", null);
+      return json({ received: true, note: "order_not_found" });
     }
 
-    if (eventName === "transaction.approved" || txn.status === "approved") {
-      // Idempotence check
-      if (order.payment_status === "completed") {
-        return new Response(JSON.stringify({ received: true, note: "already_completed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+    if (approvedStatus(transaction) || eventName === "transaction.approved") {
+      const result = await settlePlatformOrder(sb, order, transaction);
+      await finishWebhookEvent(sb, trackedEventId, "processed", result.resource_type, String(order.id));
+      return json({ received: true, resource: result.resource_type, order_id: order.id });
+    }
 
-      // ── Achat de jetons CV ──────────────────────────────────────────
-      if (order.order_type === "cv_tokens") {
-        const cvTokensPack = (order.cv_tokens_pack as number) || 0;
-        await sb.from("orders").update({
-          payment_status: "completed",
-          fedapay_transaction_id: fedapayId,
-          paid_at: new Date().toISOString(),
-        }).eq("id", order.id);
-
-        if (cvTokensPack > 0) {
-          const { data: userRow } = await sb.from("users").select("cv_tokens").eq("id", order.user_id).maybeSingle();
-          await sb.from("users").update({
-            cv_tokens: (userRow?.cv_tokens || 0) + cvTokensPack,
-          }).eq("id", order.user_id);
-        }
-      } else {
-        // ── Achat de formation (flux normal) ───────────────────────────
-        await processApprovedPayment(sb, order, fedapayId);
-      }
-
-    } else if (eventName === "transaction.declined" || eventName === "transaction.canceled" ||
-               txn.status === "declined" || txn.status === "canceled") {
-      if (order.payment_status === "pending") {
+    if (failedStatus(transaction) || ["transaction.declined", "transaction.canceled"].includes(eventName)) {
+      if (order.payment_status !== "completed") {
         await sb.from("orders").update({ payment_status: "failed" }).eq("id", order.id);
       }
+      await finishWebhookEvent(sb, trackedEventId, "processed", "order", String(order.id));
+      return json({ received: true, resource: "order", status: "failed" });
     }
 
-    return new Response(JSON.stringify({ received: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err) {
-    console.error("Webhook error:", err);
-    return new Response(JSON.stringify({ error: "INTERNAL" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    await finishWebhookEvent(sb, trackedEventId, "ignored", "order", String(order.id));
+    return json({ received: true, ignored: true });
+  } catch (error) {
+    console.error("FedaPay webhook error", error);
+    if (trackedEventId) await finishWebhookEvent(sb, trackedEventId, "failed", undefined, null, error).catch(() => null);
+    const message = String(error instanceof Error ? error.message : error);
+    const securityError = message.startsWith("FEDAPAY_SIGNATURE") || message === "FEDAPAY_WEBHOOK_SECRET_MISSING";
+    return json({ error: securityError ? "INVALID_WEBHOOK" : "WEBHOOK_PROCESSING_FAILED" }, securityError ? 401 : 500);
   }
 });

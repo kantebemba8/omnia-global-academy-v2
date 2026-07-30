@@ -14,15 +14,20 @@ function json(d: unknown, s = 200) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
+  if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+
   const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (cronSecret && token !== cronSecret) return json({ error: "UNAUTHORIZED" }, 401);
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const headerSecret = (req.headers.get("x-cron-secret") || "").trim();
+  const authorized = Boolean(serviceRoleKey && bearerToken === serviceRoleKey) ||
+    Boolean(cronSecret && (bearerToken === cronSecret || headerSecret === cronSecret));
+  if (!authorized) return json({ error: "UNAUTHORIZED" }, 401);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Find inactive learners (no access in 7+ days, relance not yet sent, course not completed)
     const { data: inactive } = await sb.rpc("get_inactive_learners").catch(() => ({ data: null }));
@@ -97,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
     for (const row of rows) {
       try {
-        await fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
+        const notificationResponse = await fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -111,15 +116,20 @@ Deno.serve(async (req: Request) => {
             },
           }),
         });
+        if (!notificationResponse.ok) {
+          throw new Error(`NOTIFY_DISPATCH_FAILED:${notificationResponse.status}`);
+        }
 
-        // Mark as sent
-        await sb.from("course_last_access")
+        const { error: markError } = await sb.from("course_last_access")
           .update({ anti_abandon_sent: true, anti_abandon_sent_at: new Date().toISOString() })
           .eq("user_id", row.user_id)
           .eq("course_id", row.course_id);
+        if (markError) throw markError;
 
         processed++;
-      } catch { /* continue */ }
+      } catch (error) {
+        console.error("Anti-abandon notification failed", row.user_id, row.course_id, error);
+      }
     }
 
     return json({ success: true, processed, total_inactive: rows.length });
