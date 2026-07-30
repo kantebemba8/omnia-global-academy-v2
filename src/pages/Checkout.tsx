@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { ENDPOINTS } from '../lib/config';
+import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { ShieldCheck, Clock, BadgeCheck, RefreshCw, CheckCircle, XCircle, Tag, Loader2 } from 'lucide-react';
 
 interface CourseInfo {
@@ -57,11 +58,10 @@ export default function Checkout() {
   const applyCode = useCallback(async () => {
     if (!couponInput.trim() || !courseId) return;
     setCouponLoading(true);
-    const token = localStorage.getItem('omnia_session_token');
     try {
       const res = await fetch(ENDPOINTS.checkoutValidateCoupon, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ coupon_code: couponInput.trim(), course_id: courseId }),
       });
       const d = await res.json();
@@ -79,11 +79,10 @@ export default function Checkout() {
     if (!courseId) return;
     setSubmitting(true);
     setError('');
-    const token = localStorage.getItem('omnia_session_token');
     try {
       const res = await fetch(ENDPOINTS.checkoutInit, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({
           course_id: courseId,
           coupon_code: couponResult?.valid ? couponInput.trim() : undefined,

@@ -159,7 +159,20 @@ export default function ProjectDetail() {
   if (loading) return <ProjectsPublicLayout><div className="mx-auto max-w-6xl px-5 py-20"><div className="h-96 animate-pulse rounded-2xl bg-slate-100" /></div></ProjectsPublicLayout>;
   if (error || !project) return <ProjectsPublicLayout><div className="mx-auto max-w-3xl px-5 py-20 text-center"><AlertCircle className="mx-auto" size={38} style={{ color: '#BF8813' }} /><h1 className="mt-4 text-2xl font-bold" style={{ color: '#002050' }}>Projet inaccessible</h1><p className="mt-2 text-slate-600">{error || 'Ce projet n’est pas disponible.'}</p><Link to="/projects" className="mt-6 inline-flex items-center gap-2 font-bold" style={{ color: '#002050' }}><ArrowLeft size={17} /> Retour à Omnia Projects</Link></div></ProjectsPublicLayout>;
 
-  const canApply = ['published', 'selection'].includes(project.status) && !ownApplication;
+  const now = Date.now();
+  const applicationOpensAt = project.application_opens_at ? new Date(project.application_opens_at).getTime() : null;
+  const applicationClosesAt = project.application_closes_at ? new Date(project.application_closes_at).getTime() : null;
+  const applicationsNotOpen = applicationOpensAt !== null && !Number.isNaN(applicationOpensAt) && applicationOpensAt > now;
+  const applicationsClosed = applicationClosesAt !== null && !Number.isNaN(applicationClosesAt) && applicationClosesAt <= now;
+  const canApply = ['published', 'selection'].includes(project.status) && !ownApplication && !applicationsNotOpen && !applicationsClosed;
+  const applicationPeriodLabel = applicationsNotOpen
+    ? `Ouverture le ${formatDate(project.application_opens_at)}`
+    : `Jusqu’au ${formatDate(project.application_closes_at)}`;
+  const applicationUnavailableMessage = applicationsNotOpen
+    ? `Les candidatures ouvriront le ${formatDate(project.application_opens_at)}.`
+    : applicationsClosed
+      ? 'La période de candidature est clôturée.'
+      : 'Les candidatures ne sont pas ouvertes.';
   const reward = getRewardDetails(project);
   const leaderMemberships = memberships.filter(item => item.member_role === 'leader');
 
@@ -181,14 +194,14 @@ export default function ProjectDetail() {
             </div>
             <div className="border border-white/20 bg-white/10 p-5 text-white backdrop-blur-sm" style={{ borderRadius: 18 }}>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-200">Candidatures</p>
-              <p className="mt-2 text-2xl font-bold">Jusqu’au {formatDate(project.application_closes_at)}</p>
+              <p className="mt-2 text-2xl font-bold">{applicationPeriodLabel}</p>
               <p className="mt-2 text-sm text-blue-100">{project.participation_mode === 'individual' ? 'Candidature individuelle' : project.participation_mode === 'team' ? 'Candidature en équipe' : 'Individuel ou équipe'}</p>
               {ownApplication ? (
                 <div className="mt-5 rounded-xl bg-emerald-400/15 px-4 py-3 text-sm font-semibold"><CheckCircle2 size={17} className="mr-2 inline" /> Candidature : {ownApplication.status}</div>
               ) : canApply ? (
                 <button onClick={() => { setApplicationMode(project.participation_mode === 'team' ? 'team' : 'individual'); setShowApply(true); }} className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#BF8813' }}>Candidater</button>
               ) : (
-                <div className="mt-5 rounded-xl bg-white/10 px-4 py-3 text-sm">Les candidatures ne sont pas ouvertes.</div>
+                <div className="mt-5 rounded-xl bg-white/10 px-4 py-3 text-sm">{applicationUnavailableMessage}</div>
               )}
             </div>
           </div>

@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
 Deno.serve(async (req: Request) => {
@@ -15,7 +15,8 @@ Deno.serve(async (req: Request) => {
 
     // Optional auth — get user_id if provided to check prior usage
     let userId: string | null = null;
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "")
+      .replace(/^Bearer\s+/i, "").trim();
     if (token) {
       const { data: sess } = await sb.from("user_sessions").select("user_id")
         .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();

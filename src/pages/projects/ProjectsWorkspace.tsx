@@ -97,6 +97,16 @@ export default function ProjectsWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
+  const pendingProjectInvitations = useMemo(
+    () => projectInvitations.filter(invitation => invitation.status === 'pending'),
+    [projectInvitations],
+  );
+
+  const acceptedProjectInvitations = useMemo(
+    () => projectInvitations.filter(invitation => invitation.status === 'accepted'),
+    [projectInvitations],
+  );
+
   const participationOptions = useMemo<ParticipationOption[]>(() => {
     const options: ParticipationOption[] = [];
     const keys = new Set<string>();
@@ -115,8 +125,21 @@ export default function ProjectsWorkspace() {
         options.push({ key, projectId: item.team.project_id, projectTitle: item.team.project.title, teamId: item.team.id, label: `${item.team.project.title} — équipe ${item.team.name}` });
       }
     });
+    acceptedProjectInvitations.forEach(invitation => {
+      if (!invitation.project || invitation.team_id) return;
+      const key = `invitation:${invitation.project_id}`;
+      if (!keys.has(key)) {
+        keys.add(key);
+        options.push({
+          key,
+          projectId: invitation.project_id,
+          projectTitle: invitation.project.title,
+          label: `${invitation.project.title} — invitation acceptée`,
+        });
+      }
+    });
     return options;
-  }, [applications, memberships]);
+  }, [applications, memberships, acceptedProjectInvitations]);
 
   const selectedParticipation = participationOptions.find(item => item.key === participationKey) || null;
 
@@ -227,15 +250,34 @@ export default function ProjectsWorkspace() {
 
         {loading ? <div className="mt-8 h-72 animate-pulse rounded-2xl bg-white" /> : (
           <div className="mt-8 space-y-8">
-            {!!projectInvitations.length && (
+            {!!pendingProjectInvitations.length && (
               <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#DCE4EF', borderRadius: 18 }}>
                 <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><Mail size={20} style={{ color: '#BF8813' }} /> Invitations à des projets</h2>
                 <p className="mt-1 text-sm text-slate-600">L’accès n’est accordé qu’après votre consentement explicite.</p>
                 <div className="mt-5 space-y-3">
-                  {projectInvitations.map(invitation => (
+                  {pendingProjectInvitations.map(invitation => (
                     <div key={invitation.id} className="flex flex-col gap-4 border-t pt-4 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F3' }}>
                       <div><p className="font-bold text-slate-900">{invitation.project?.title || 'Projet Omnia'}</p><p className="mt-1 text-sm text-slate-600">{invitation.project?.organization_name || 'Organisation partenaire'} · Rôle proposé : {invitation.invitation_role.split('_').join(' ')}</p>{invitation.message && <p className="mt-2 text-sm text-slate-500">{invitation.message}</p>}</div>
                       <div className="flex gap-2"><button onClick={() => respondProject(invitation.id, 'declined')} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}><X size={15} /> Refuser</button><button onClick={() => respondProject(invitation.id, 'accepted')} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#002050' }}><Check size={15} /> Accepter</button></div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+
+            {!!acceptedProjectInvitations.length && (
+              <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#D7E8DE', borderRadius: 18 }}>
+                <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><Check size={20} style={{ color: '#1E7A52' }} /> Projets accessibles sur invitation</h2>
+                <p className="mt-1 text-sm text-slate-600">Ces invitations ont été acceptées et restent accessibles dans votre espace Projects.</p>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  {acceptedProjectInvitations.map(invitation => (
+                    <div key={invitation.id} className="rounded-xl border p-4" style={{ borderColor: '#D7E8DE', background: '#F7FCF9' }}>
+                      <Link to={`/projects/${invitation.project?.slug || ''}`} className="font-bold hover:underline" style={{ color: '#002050' }}>
+                        {invitation.project?.title || 'Projet Omnia'}
+                      </Link>
+                      <p className="mt-1 text-sm text-slate-600">{invitation.project?.organization_name || 'Organisation partenaire'}</p>
+                      <p className="mt-3 text-xs font-semibold text-emerald-700">Accès accepté · {invitation.invitation_role.split('_').join(' ')}</p>
                     </div>
                   ))}
                 </div>

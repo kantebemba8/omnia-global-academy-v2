@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-demo-heartbeat-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-demo-heartbeat-token, x-omnia-session-token",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 };
@@ -93,7 +93,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "")
+      .replace(/^Bearer\s+/i, "").trim();
     if (!token) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const user = await verifySession(sb, token);

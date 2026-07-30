@@ -488,7 +488,7 @@ Deno.serve(async (req: Request) => {
         sb.from("omnia_project_applications").select("*,project:omnia_projects(id,slug,title,project_type,status,starts_at,ends_at,organization_name,cover_url)").eq("applicant_user_id", session.userId).order("submitted_at", { ascending: false }),
         sb.from("omnia_project_team_members").select("*,team:omnia_project_teams(*,project:omnia_projects(id,slug,title,status,starts_at,ends_at))").eq("user_id", session.userId).eq("invitation_status", "accepted").order("created_at", { ascending: false }),
         sb.from("omnia_project_team_members").select("*,team:omnia_project_teams(*,project:omnia_projects(id,slug,title,status))").eq("user_id", session.userId).eq("invitation_status", "pending").order("invited_at", { ascending: false }),
-        sb.from("omnia_project_invitations").select("*,project:omnia_projects(id,slug,title,status,organization_name),team:omnia_project_teams(id,name)").eq("invited_user_id", session.userId).eq("status", "pending").order("invited_at", { ascending: false }),
+        sb.from("omnia_project_invitations").select("*,project:omnia_projects(id,slug,title,status,organization_name),team:omnia_project_teams(id,name)").eq("invited_user_id", session.userId).in("status", ["pending", "accepted"]).order("invited_at", { ascending: false }),
         sb.from("omnia_project_deliverables").select("*,project:omnia_projects(id,slug,title),milestone:omnia_project_milestones(id,title)").eq("submitted_by", session.userId).order("submitted_at", { ascending: false }),
       ]);
       return json({ applications: applications || [], memberships: memberships || [], invitations: invitations || [], project_invitations: projectInvitations || [], deliverables: deliverables || [] });
@@ -582,8 +582,14 @@ Deno.serve(async (req: Request) => {
       const project = await projectById(sb, text(body.project_id, 80));
       if (!project) return json({ error: "PROJECT_NOT_FOUND" }, 404);
       if (!(await hasProjectAccess(sb, session, project))) return json({ error: "PROJECT_ACCESS_DENIED" }, 403);
-      if (!["published", "selection"].includes(project.status)) return json({ error: "APPLICATIONS_CLOSED" }, 409);
-      if (project.application_closes_at && new Date(project.application_closes_at).getTime() < Date.now()) return json({ error: "APPLICATIONS_CLOSED" }, 409);
+      if (!["published", "selection"].includes(project.status)) return json({ error: "APPLICATIONS_CLOSED", message: "Les candidatures ne sont pas ouvertes pour ce projet." }, 409);
+      const now = Date.now();
+      if (project.application_opens_at && new Date(project.application_opens_at).getTime() > now) {
+        return json({ error: "APPLICATIONS_NOT_OPEN", message: "La période de candidature n’a pas encore commencé." }, 409);
+      }
+      if (project.application_closes_at && new Date(project.application_closes_at).getTime() <= now) {
+        return json({ error: "APPLICATIONS_CLOSED", message: "La période de candidature est terminée." }, 409);
+      }
       const mode = text(body.application_mode || "individual", 20);
       if (mode === "team" && project.participation_mode === "individual") return json({ error: "TEAM_APPLICATION_NOT_ALLOWED" }, 400);
       if (mode === "individual" && project.participation_mode === "team") return json({ error: "INDIVIDUAL_APPLICATION_NOT_ALLOWED" }, 400);

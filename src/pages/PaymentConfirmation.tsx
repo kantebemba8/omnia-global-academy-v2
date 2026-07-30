@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ENDPOINTS } from '../lib/config';
+import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { CheckCircle, FileText, LayoutDashboard, Clock, Mail, AlertCircle } from 'lucide-react';
 
 interface OrderStatus {
@@ -73,7 +74,7 @@ export default function PaymentConfirmation() {
     const poll = async (): Promise<boolean> => {
       try {
         const res = await fetch(`${ENDPOINTS.paymentStatus}?order_number=${encodeURIComponent(orderNumber)}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: edgeAuthHeaders(),
           cache: 'no-store',
         });
         if (!res.ok || cancelled) return false;
