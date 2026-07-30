@@ -32,7 +32,7 @@ export function RootGate() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#002050' }}>
         <div className="flex flex-col items-center gap-4">
-          <img src="/logo.png" alt="Omnia" className="h-12 object-contain opacity-90"
+          <img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-12 object-contain opacity-90"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
             style={{ borderColor: '#BF8813', borderTopColor: 'transparent' }} />

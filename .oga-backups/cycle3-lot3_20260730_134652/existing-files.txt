@@ -1,0 +1,15 @@
+﻿vite.config.ts
+public\IMG_0349.png
+public\omnia-sidebar-logo.png
+src\context\SiteModeContext.tsx
+src\hooks\usePublicPageContent.ts
+src\pages\LandingPage.tsx
+src\pages\APropos.tsx
+src\pages\Confidentialite.tsx
+src\pages\LegalDocumentPage.tsx
+src\components\CourseCard.tsx
+src\components\RootGate.tsx
+src\pages\omnia-live\LiveCard.tsx
+src\pages\omnia-live\organizer\OrganizerShell.tsx
+src\pages\talent\TalentExplore.tsx
+src\pages\talent\TalentHome.tsx

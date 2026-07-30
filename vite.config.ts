@@ -57,8 +57,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/IMG_0349.png',
+            src: '/icons/omnia-192.png',
             sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/icons/omnia-512.png',
+            sizes: '512x512',
             type: 'image/png',
           },
         ],

@@ -1,7 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { ENDPOINTS } from '../lib/config';
-
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { getPublicSiteSettings, type PublicSiteSettings } from '../lib/siteSettingsCache';
 
 export interface MaintenanceModules {
   omnia_live: boolean;
@@ -48,7 +46,7 @@ const defaultSchedules: Record<keyof MaintenanceModules, MaintenanceSchedule> = 
   formations: { start: null, end: null },
 };
 
-const SiteModeContext = createContext<SiteMode>({
+const initialSiteMode: SiteMode = {
   loading: true,
   maintenanceActive: false,
   maintenanceMessage: '',
@@ -59,7 +57,9 @@ const SiteModeContext = createContext<SiteMode>({
   maintenanceNoticePlatform: false,
   maintenanceNoticeMessage: '',
   maintenanceNoticeAt: null,
-});
+};
+
+const SiteModeContext = createContext<SiteMode>(initialSiteMode);
 
 export function useSiteMode() {
   return useContext(SiteModeContext);
@@ -69,92 +69,89 @@ function asBool(value: unknown) {
   return value === true || value === 'true';
 }
 
-export function SiteModeProvider({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
-  const [maintenanceActive, setMaintenanceActive] = useState(false);
-  const [maintenanceMessage, setMaintenanceMessage] = useState('');
-  const [maintenanceStartTime, setMaintenanceStartTime] = useState<string | null>(null);
-  const [maintenanceEndTime, setMaintenanceEndTime] = useState<string | null>(null);
-  const [maintenanceModules, setMaintenanceModules] = useState<MaintenanceModules>(defaultModules);
-  const [maintenanceModuleSchedules, setMaintenanceModuleSchedules] = useState(defaultSchedules);
-  const [maintenanceNoticePlatform, setMaintenanceNoticePlatform] = useState(false);
-  const [maintenanceNoticeMessage, setMaintenanceNoticeMessage] = useState('');
-  const [maintenanceNoticeAt, setMaintenanceNoticeAt] = useState<string | null>(null);
+function buildSiteMode(data: PublicSiteSettings): SiteMode {
+  const start = data.maintenance_start_time ? new Date(data.maintenance_start_time).getTime() : null;
+  const end = data.maintenance_end_time ? new Date(data.maintenance_end_time).getTime() : null;
+  const now = Date.now();
+  const scheduledActive = !!start && now >= start && (!end || now < end);
+  const manuallyActive = asBool(data.maintenance_enabled);
 
-  async function fetchSiteMode() {
-    try {
-      const r = await fetch(ENDPOINTS.siteSettings, {
-        headers: { Authorization: `Bearer ${ANON_KEY}` },
-      });
-      const data = await r.json();
+  return {
+    loading: false,
+    maintenanceActive: manuallyActive || scheduledActive,
+    maintenanceMessage: data.maintenance_message_fr ?? '',
+    maintenanceStartTime: data.maintenance_start_time ?? null,
+    maintenanceEndTime: data.maintenance_end_time ?? null,
+    maintenanceModules: {
+      omnia_live: asBool(data.maintenance_module_omnia_live),
+      career: asBool(data.maintenance_module_career),
+      talent: asBool(data.maintenance_module_talent),
+      forum: asBool(data.maintenance_module_forum),
+      payments: asBool(data.maintenance_module_payments),
+      formations: asBool(data.maintenance_module_formations),
+    },
+    maintenanceModuleSchedules: {
+      omnia_live: { start: data.maintenance_module_omnia_live_start_time ?? null, end: data.maintenance_module_omnia_live_end_time ?? null },
+      career: { start: data.maintenance_module_career_start_time ?? null, end: data.maintenance_module_career_end_time ?? null },
+      talent: { start: data.maintenance_module_talent_start_time ?? null, end: data.maintenance_module_talent_end_time ?? null },
+      forum: { start: data.maintenance_module_forum_start_time ?? null, end: data.maintenance_module_forum_end_time ?? null },
+      payments: { start: data.maintenance_module_payments_start_time ?? null, end: data.maintenance_module_payments_end_time ?? null },
+      formations: { start: data.maintenance_module_formations_start_time ?? null, end: data.maintenance_module_formations_end_time ?? null },
+    },
+    maintenanceNoticePlatform: asBool(data.maintenance_notice_platform),
+    maintenanceNoticeMessage: data.maintenance_notice_message_fr ?? '',
+    maintenanceNoticeAt: data.maintenance_notice_at ?? null,
+  };
+}
 
-      const start = data.maintenance_start_time ? new Date(data.maintenance_start_time).getTime() : null;
-      const end = data.maintenance_end_time ? new Date(data.maintenance_end_time).getTime() : null;
-      const now = Date.now();
-      const scheduledActive = !!start && now >= start && (!end || now < end);
-      const manuallyActive = asBool(data.maintenance_enabled);
-
-      setMaintenanceActive(manuallyActive || scheduledActive);
-      setMaintenanceMessage(data.maintenance_message_fr ?? '');
-      setMaintenanceStartTime(data.maintenance_start_time ?? null);
-      setMaintenanceEndTime(data.maintenance_end_time ?? null);
-      setMaintenanceModules({
-        omnia_live: asBool(data.maintenance_module_omnia_live),
-        career: asBool(data.maintenance_module_career),
-        talent: asBool(data.maintenance_module_talent),
-        forum: asBool(data.maintenance_module_forum),
-        payments: asBool(data.maintenance_module_payments),
-        formations: asBool(data.maintenance_module_formations),
-      });
-      setMaintenanceModuleSchedules({
-        omnia_live: { start: data.maintenance_module_omnia_live_start_time ?? null, end: data.maintenance_module_omnia_live_end_time ?? null },
-        career: { start: data.maintenance_module_career_start_time ?? null, end: data.maintenance_module_career_end_time ?? null },
-        talent: { start: data.maintenance_module_talent_start_time ?? null, end: data.maintenance_module_talent_end_time ?? null },
-        forum: { start: data.maintenance_module_forum_start_time ?? null, end: data.maintenance_module_forum_end_time ?? null },
-        payments: { start: data.maintenance_module_payments_start_time ?? null, end: data.maintenance_module_payments_end_time ?? null },
-        formations: { start: data.maintenance_module_formations_start_time ?? null, end: data.maintenance_module_formations_end_time ?? null },
-      });
-      setMaintenanceNoticePlatform(asBool(data.maintenance_notice_platform));
-      setMaintenanceNoticeMessage(data.maintenance_notice_message_fr ?? '');
-      setMaintenanceNoticeAt(data.maintenance_notice_at ?? null);
-
-      if (data.favicon_url) {
-        const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
-        if (link) link.href = data.favicon_url;
-        else {
-          const newLink = document.createElement('link');
-          newLink.rel = 'icon';
-          newLink.href = data.favicon_url;
-          document.head.appendChild(newLink);
-        }
-      }
-    } catch {
-      // Conserver l'état courant en cas d'erreur réseau.
-    } finally {
-      setLoading(false);
-    }
+function applyFavicon(data: PublicSiteSettings) {
+  if (!data.favicon_url) return;
+  const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+  if (link) {
+    if (link.href !== data.favicon_url) link.href = data.favicon_url;
+    return;
   }
+  const newLink = document.createElement('link');
+  newLink.rel = 'icon';
+  newLink.href = data.favicon_url;
+  document.head.appendChild(newLink);
+}
+
+export function SiteModeProvider({ children }: { children: ReactNode }) {
+  const [siteMode, setSiteMode] = useState<SiteMode>(initialSiteMode);
 
   useEffect(() => {
-    fetchSiteMode();
-    const interval = setInterval(fetchSiteMode, 60 * 1000);
-    return () => clearInterval(interval);
+    let active = true;
+
+    const load = async (force = false) => {
+      try {
+        const data = await getPublicSiteSettings({ force, maxAgeMs: 45_000 });
+        if (!active) return;
+        setSiteMode(buildSiteMode(data));
+        applyFavicon(data);
+      } catch {
+        if (active) setSiteMode(previous => ({ ...previous, loading: false }));
+      }
+    };
+
+    const refreshWhenUseful = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        void load(true);
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(refreshWhenUseful, 60_000);
+    document.addEventListener('visibilitychange', refreshWhenUseful);
+    window.addEventListener('online', refreshWhenUseful);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenUseful);
+      window.removeEventListener('online', refreshWhenUseful);
+    };
   }, []);
 
-  return (
-    <SiteModeContext.Provider value={{
-      loading,
-      maintenanceActive,
-      maintenanceMessage,
-      maintenanceStartTime,
-      maintenanceEndTime,
-      maintenanceModules,
-      maintenanceModuleSchedules,
-      maintenanceNoticePlatform,
-      maintenanceNoticeMessage,
-      maintenanceNoticeAt,
-    }}>
-      {children}
-    </SiteModeContext.Provider>
-  );
+  return <SiteModeContext.Provider value={siteMode}>{children}</SiteModeContext.Provider>;
 }

@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
-import { ENDPOINTS } from '../lib/config';
-
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 interface Settings {
   confidentialite_content_fr?: string;
@@ -27,10 +25,11 @@ export function Confidentialite() {
   const [settings, setSettings] = useState<Settings>({});
 
   useEffect(() => {
-    fetch(ENDPOINTS.siteSettings, { headers: { Authorization: `Bearer ${ANON_KEY}` } })
-      .then(r => r.json())
-      .then(d => setSettings(d))
+    let active = true;
+    getPublicSiteSettings()
+      .then(d => { if (active) setSettings(d); })
       .catch(() => {});
+    return () => { active = false; };
   }, []);
 
   const intro = settings.confidentialite_content_fr ?? DEFAULT_CONTENT;

@@ -146,7 +146,7 @@ export default function OrganizerShell({
           <Menu size={20}/>
         </button>
         <Link to={buildPath('/omnia-live')} className="flex items-center gap-2">
-          <img src="/logo.png" alt="Omnia" className="h-8 w-8 object-contain"/>
+          <img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-8 w-8 object-contain"/>
           <span className="text-sm font-bold">
             <span style={{color:BLUE}}>Omnia </span>
             <span style={{color:GOLD}}>Live</span>

@@ -145,7 +145,7 @@ function TalentCard({ talent }: { talent: PublicTalent }) {
     <Link to={`/talent/profil/${talent.id}`} className="rounded-xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-sm" style={{ borderColor: BORDER }}>
       <div className="flex items-start gap-3">
         <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-white" style={{ background: BLUE }}>
-          {talent.photo_url ? <img src={talent.photo_url} alt="" className="h-full w-full object-cover" /> : <UserRound size={20} />}
+          {talent.photo_url ? <img src={talent.photo_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <UserRound size={20} />}
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{talent.full_name}</p>

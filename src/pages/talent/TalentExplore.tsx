@@ -112,7 +112,7 @@ export default function TalentExplore() {
 
 function TalentResult({ talent }: { talent: PublicTalent }) {
   return <Link to={`/talent/profil/${talent.id}`} className="rounded-xl border bg-white p-5 hover:shadow-sm" style={{ borderColor: BORDER }}>
-    <div className="flex gap-3"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-white" style={{ background: BLUE }}>{talent.photo_url ? <img src={talent.photo_url} className="h-full w-full object-cover" alt="" /> : <UserRound size={19} />}</div><div className="min-w-0"><p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{talent.full_name}</p><p className="truncate text-sm text-gray-500">{talent.professional_title || 'Titre non renseigné'}</p><p className="mt-1 text-xs text-gray-400">{talent.location || talent.country || ''}</p></div></div>
+    <div className="flex gap-3"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-white" style={{ background: BLUE }}>{talent.photo_url ? <img src={talent.photo_url} loading="lazy" decoding="async" className="h-full w-full object-cover" alt="" /> : <UserRound size={19} />}</div><div className="min-w-0"><p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{talent.full_name}</p><p className="truncate text-sm text-gray-500">{talent.professional_title || 'Titre non renseigné'}</p><p className="mt-1 text-xs text-gray-400">{talent.location || talent.country || ''}</p></div></div>
     <div className="mt-4 flex flex-wrap gap-2">{(talent.skills || []).slice(0, 5).map(skill => <span key={skill} className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">{skill}</span>)}</div>
   </Link>;
 }

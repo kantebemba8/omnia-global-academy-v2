@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENDPOINTS } from '../lib/config';
+import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 export type PageContentMap = {
   talent?: {
@@ -34,11 +34,15 @@ export type PageContentMap = {
 export function usePublicPageContent() {
   const [content, setContent] = useState<PageContentMap>({});
   useEffect(() => {
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    fetch(ENDPOINTS.siteSettings, { headers: { Authorization: `Bearer ${anon}` } })
-      .then(r => r.json())
-      .then(d => setContent((d && typeof d.page_content === 'object' && d.page_content) ? d.page_content : {}))
-      .catch(() => setContent({}));
+    let active = true;
+    getPublicSiteSettings()
+      .then(d => {
+        if (active) setContent((d && typeof d.page_content === 'object' && d.page_content) ? d.page_content : {});
+      })
+      .catch(() => {
+        if (active) setContent({});
+      });
+    return () => { active = false; };
   }, []);
   return content;
 }

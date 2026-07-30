@@ -54,7 +54,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
       >
         <div className="flex-shrink-0 w-40 relative" style={{ backgroundColor: '#F8F9FA' }}>
           {course.cover_image_url
-            ? <img src={course.cover_image_url} alt={course.title} className="w-full h-full object-cover" style={{ minHeight: '90px' }} />
+            ? <img src={course.cover_image_url} alt={course.title} loading="lazy" decoding="async" className="w-full h-full object-cover" style={{ minHeight: '90px' }} />
             : <div className="w-full h-full flex items-center justify-center" style={{ minHeight: '90px' }}><BookOpen size={24} style={{ color: '#BF8813' }} /></div>
           }
         </div>
@@ -89,7 +89,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
       {/* Cover */}
       <div className="relative flex-shrink-0" style={{ aspectRatio: '16/9', overflow: 'hidden', backgroundColor: '#F8F9FA' }}>
         {course.cover_image_url
-          ? <img src={course.cover_image_url} alt={course.title} className="w-full h-full object-cover" />
+          ? <img src={course.cover_image_url} alt={course.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
           : <div className="w-full h-full flex items-center justify-center"><BookOpen size={32} style={{ color: '#BF8813' }} /></div>
         }
         {/* Badges */}

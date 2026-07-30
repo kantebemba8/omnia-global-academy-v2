@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
-import { ENDPOINTS } from '../lib/config';
+import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 
 function escapeHtml(value: string) {
@@ -37,6 +37,6 @@ const META:Record<string,{title:string,key:string}>={
 export default function LegalDocumentPage(){
  const {doc='cgu'}=useParams();const meta=META[doc]||META.cgu;
  const [content,setContent]=useState(''); const [footer,setFooter]=useState<any>({});
- useEffect(()=>{const anon=import.meta.env.VITE_SUPABASE_ANON_KEY||'';fetch(ENDPOINTS.siteSettings,{headers:{Authorization:`Bearer ${anon}`}}).then(r=>r.json()).then(d=>{setContent(d.legal?.[meta.key]||'Document en cours de publication.');setFooter(d)})},[doc]);
+ useEffect(()=>{let active=true;getPublicSiteSettings().then(d=>{if(!active)return;setContent(d.legal?.[meta.key]||'Document en cours de publication.');setFooter(d)}).catch(()=>{if(active)setContent('Document en cours de publication.')});return()=>{active=false}},[meta.key]);
  return <><Navbar/><main className="max-w-4xl mx-auto px-6 pt-28 pb-16"><h1 className="text-3xl font-bold mb-8" style={{color:'#002050'}}>{meta.title}</h1><article className="prose max-w-none"><div dangerouslySetInnerHTML={{ __html: `<p>${renderMarkdownLike(content)}</p>` }} /></article></main><PageFooter socialNetworks={footer.social_networks} appDownloads={footer.app_downloads}/></>;
 }

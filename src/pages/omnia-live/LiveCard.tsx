@@ -15,7 +15,7 @@ export default function LiveCard({ item }: { item: LiveItem }) {
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="relative aspect-[16/9] bg-slate-100">
-        {item.cover_url ? <img src={item.cover_url} alt="" className="h-full w-full object-cover" /> : (
+        {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : (
           <div className="flex h-full items-center justify-center" style={{ background: 'linear-gradient(135deg,#002050,#103d73)' }}>
             <PlayCircle size={54} className="text-white/90" />
           </div>

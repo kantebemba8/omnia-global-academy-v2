@@ -10,6 +10,7 @@ import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { ENDPOINTS } from '../lib/config';
+import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -104,10 +105,13 @@ export function LandingPage() {
   }, []);
 
   useEffect(() => {
-    fetch(ENDPOINTS.siteSettings, { headers: { Authorization: `Bearer ${ANON_KEY}` } })
-      .then(r => r.json())
-      .then(d => setData(prev => ({ ...prev, public_partners: Array.isArray(d.public_partners) ? d.public_partners : [] })))
+    let active = true;
+    getPublicSiteSettings()
+      .then(d => {
+        if (active) setData(prev => ({ ...prev, public_partners: Array.isArray(d.public_partners) ? d.public_partners : [] }));
+      })
       .catch(() => {});
+    return () => { active = false; };
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -196,7 +200,7 @@ export function LandingPage() {
           <div className="flex flex-wrap justify-center items-center gap-6">
             {(data.fintech_logos?.length > 0)
               ? data.fintech_logos.map((url, i) => (
-                  <img key={i} src={url} alt="logo" style={{ height: '28px', objectFit: 'contain', filter: 'grayscale(100%)', opacity: 0.6 }} />
+                  <img key={i} src={url} alt="logo" loading="lazy" decoding="async" style={{ height: '28px', objectFit: 'contain', filter: 'grayscale(100%)', opacity: 0.6 }} />
                 ))
               : FINTECH_OPERATORS.map(op => (
                   <span
@@ -494,7 +498,7 @@ export function LandingPage() {
             <div className="flex flex-wrap justify-center items-stretch gap-5">
               {(data.public_partners || []).map((partner) => {
                 const content = <div className="w-44 min-h-[120px] rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center text-center bg-white hover:shadow-sm transition">
-                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.name} className="h-12 max-w-[130px] object-contain mb-3" /> : <div className="h-12 flex items-center text-sm font-bold" style={{color:'#002050'}}>{partner.name}</div>}
+                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.name} loading="lazy" decoding="async" className="h-12 max-w-[130px] object-contain mb-3" /> : <div className="h-12 flex items-center text-sm font-bold" style={{color:'#002050'}}>{partner.name}</div>}
                   <p className="text-xs font-semibold" style={{color:'#002050'}}>{partner.name}</p>
                   <p className="text-[10px] text-gray-400 mt-1">{partner.category}</p>
                 </div>;
@@ -502,8 +506,8 @@ export function LandingPage() {
               })}
               {(data.public_partners?.length ?? 0) === 0 && data.collaborations_logos?.map((logo, i) =>
                 logo.link
-                  ? <a key={i} href={logo.link} target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-70"><img src={logo.file_url} alt={logo.name} style={{ height: '48px', objectFit: 'contain' }} /></a>
-                  : <img key={i} src={logo.file_url} alt={logo.name} style={{ height: '48px', objectFit: 'contain' }} />
+                  ? <a key={i} href={logo.link} target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-70"><img src={logo.file_url} alt={logo.name} loading="lazy" decoding="async" style={{ height: '48px', objectFit: 'contain' }} /></a>
+                  : <img key={i} src={logo.file_url} alt={logo.name} loading="lazy" decoding="async" style={{ height: '48px', objectFit: 'contain' }} />
               )}
             </div>
           </div>
