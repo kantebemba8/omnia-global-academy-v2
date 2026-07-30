@@ -1,24 +1,32 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import {
+  consumeRateLimit,
+  createHashedOtp,
+  getClientIP,
+  makeCorsHeaders,
+  sha256Hex,
+} from "../_shared/auth-security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-async function sendSMS(phone: string, otp: string, email?: string, fullName?: string): Promise<void> {
+async function sendSMS(
+  phone: string,
+  otp: string,
+  email?: string,
+  fullName?: string,
+): Promise<void> {
   const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
-  if (!brevoKey) return;
-  const message = `Omnia Academy : Votre code de connexion est ${otp}. Valable 5 minutes. Ne le partagez jamais.`;
+  if (!brevoKey) {
+    console.error("BREVO_API_KEY is missing; OTP delivery was not attempted.");
+    return;
+  }
+
+  const message =
+    `Omnia Academy : Votre code de connexion est ${otp}. Valable 5 minutes. Ne le partagez jamais.`;
+
   const res = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
     method: "POST",
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
       "Content-Type": "application/json",
       "api-key": brevoKey,
     },
@@ -31,16 +39,19 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
   }).catch(() => null);
 
   if ((!res || !res.ok) && email) {
-    const prenom = fullName?.split(" ")[0] || "";
+    const firstName = fullName?.split(" ")[0] || "";
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
-        "Accept": "application/json",
+        Accept: "application/json",
         "Content-Type": "application/json",
         "api-key": brevoKey,
       },
       body: JSON.stringify({
-        sender: { name: "Omnia Global Academy", email: "admission@omniaglobalacademy.com" },
+        sender: {
+          name: "Omnia Global Academy",
+          email: "admission@omniaglobalacademy.com",
+        },
         to: [{ email }],
         subject: "Votre code de connexion — Omnia Academy",
         htmlContent: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px">
@@ -48,17 +59,13 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
             <h2 style="color:#BF8813;margin:0">OMNIA GLOBAL ACADEMY</h2>
           </div>
           <div style="background:#fff;padding:32px;border:1px solid #E4E7EC;text-align:center">
-            <p style="color:#374151">Bonjour ${prenom},</p>
+            <p style="color:#374151">Bonjour ${firstName},</p>
             <p style="color:#374151">SMS indisponible. Voici votre code de connexion :</p>
-            <div style="font-size:36px;font-weight:900;color:#002050;
-              letter-spacing:8px;padding:16px;background:#F8F9FA;
-              border-radius:8px;margin:16px 0">${otp}</div>
+            <div style="font-size:36px;font-weight:900;color:#002050;letter-spacing:8px;padding:16px;background:#F8F9FA;border-radius:8px;margin:16px 0">${otp}</div>
             <p style="color:#6B7280;font-size:13px">Valable 5 minutes. Ne le partagez jamais.</p>
           </div>
           <div style="background:#002050;padding:16px;text-align:center;border-radius:0 0 8px 8px">
-            <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0">
-              admission@omniaglobalacademy.com
-            </p>
+            <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0">admission@omniaglobalacademy.com</p>
           </div>
         </div>`,
       }),
@@ -67,95 +74,107 @@ async function sendSMS(phone: string, otp: string, email?: string, fullName?: st
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = makeCorsHeaders(req);
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ success: false, message: "Method not allowed" }), {
-      status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: false, message: "Method not allowed" }, 405);
   }
 
   try {
-    const { phone_number } = await req.json();
+    const body = await req.json();
+    const phoneNumber = typeof body.phone_number === "string"
+      ? body.phone_number.trim()
+      : "";
 
-    if (!phone_number || phone_number.trim().length < 8) {
-      return new Response(JSON.stringify({ success: false, message: "Numéro de téléphone invalide" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (phoneNumber.length < 8) {
+      return json({ success: false, message: "Numéro de téléphone invalide" }, 400);
     }
 
-    const sanitizedPhone = phone_number.trim();
-    const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null;
-
+    const clientIP = getClientIP(req);
+    const phoneHash = await sha256Hex(phoneNumber);
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: user } = await supabase
-      .from("users").select("id, status").eq("phone_number", sanitizedPhone).maybeSingle();
+    const ipLimit = await consumeRateLimit(
+      supabase,
+      `auth-login-otp:ip:${clientIP}`,
+      10,
+      60 * 60,
+    );
+    const phoneLimit = await consumeRateLimit(
+      supabase,
+      `auth-login-otp:phone:${phoneHash}`,
+      3,
+      60 * 60,
+    );
+
+    if (!ipLimit.allowed || !phoneLimit.allowed) {
+      return json({
+        success: false,
+        message: "Trop de codes demandés. Réessayez plus tard.",
+        retry_after: Math.max(ipLimit.retryAfter, phoneLimit.retryAfter),
+      }, 429);
+    }
+
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id, status, email, full_name")
+      .eq("phone_number", phoneNumber)
+      .maybeSingle();
+    if (userError) throw userError;
 
     if (!user) {
-      return new Response(JSON.stringify({
+      return json({
         success: false,
         not_found: true,
         message: "Aucun compte trouvé. Souhaitez-vous vous inscrire ?",
-      }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      }, 404);
     }
 
     if (user.status !== "actif") {
-      return new Response(JSON.stringify({ success: false, message: "Compte inactif ou en attente de validation" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({
+        success: false,
+        message: "Compte inactif ou en attente de validation",
+      }, 403);
     }
 
-    const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
-    const { count: recentSms } = await supabase
-      .from("sms_rate_limits")
-      .select("*", { count: "exact", head: true })
-      .eq("phone_number", sanitizedPhone)
-      .gte("sent_at", oneHourAgo);
+    await supabase
+      .from("otp_codes")
+      .update({ used: true })
+      .eq("phone_number", phoneNumber)
+      .eq("purpose", "connexion")
+      .eq("used", false);
 
-    if ((recentSms ?? 0) >= 3) {
-      return new Response(JSON.stringify({ success: false, message: "Trop de SMS envoyés. Réessayez dans une heure." }), {
-        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const otp = generateOTP();
-    const { error: otpError } = await supabase.from("otp_codes").insert({
-      phone_number: sanitizedPhone,
-      code: otp,
+    const otp = await createHashedOtp(supabase, {
+      phoneNumber,
       purpose: "connexion",
-      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      ip_address: ipAddress,
-    });
-    if (otpError) throw otpError;
-
-    const { data: userFull } = await supabase
-      .from("users")
-      .select("email, full_name")
-      .eq("phone_number", sanitizedPhone)
-      .maybeSingle();
-    await sendSMS(sanitizedPhone, otp, userFull?.email, userFull?.full_name);
-
-    await supabase.from("sms_rate_limits").insert({
-      phone_number: sanitizedPhone,
-      ip_address: ipAddress,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      ipAddress: clientIP,
     });
 
-    return new Response(JSON.stringify({ success: true, next_step: "enter_otp" }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    await sendSMS(phoneNumber, otp, user.email, user.full_name);
+
+    const { error: smsLogError } = await supabase.from("sms_rate_limits").insert({
+      phone_number: phoneNumber,
+      ip_address: clientIP,
     });
+    if (smsLogError) {
+      console.error("sms_rate_limits insert failed:", smsLogError.message);
+    }
+
+    return json({ success: true, next_step: "enter_otp" });
   } catch (error) {
     console.error("auth-login-otp error:", error);
-    return new Response(JSON.stringify({ success: false, message: "Une erreur est survenue" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: false, message: "Une erreur est survenue" }, 500);
   }
 });

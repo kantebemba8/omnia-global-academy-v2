@@ -1,23 +1,24 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import {
+  consumeRateLimit,
+  generateOpaqueToken,
+  getClientIP,
+  makeCorsHeaders,
+  sha256Hex,
+} from "../_shared/auth-security.ts";
 
 async function sendBrevoWelcome(
   apiKey: string,
   email: string,
-  prenom: string,
+  firstName: string,
   roleName: string,
-  messageSpecifique: string
+  specificMessage: string,
 ): Promise<void> {
   const templateId = parseInt(Deno.env.get("BREVO_WELCOME_TEMPLATE_ID") || "4");
   const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
 
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
       accept: "application/json",
@@ -25,11 +26,11 @@ async function sendBrevoWelcome(
       "api-key": apiKey,
     },
     body: JSON.stringify({
-      to: [{ email, name: prenom }],
+      to: [{ email, name: firstName }],
       templateId,
       params: {
-        PRENOM: prenom,
-        MESSAGE_SPECIFIQUE: messageSpecifique,
+        PRENOM: firstName,
+        MESSAGE_SPECIFIQUE: specificMessage,
         ROLE_NAME: roleName,
         EMAIL: email,
         DASHBOARD_URL: `${appUrl}/dashboard`,
@@ -37,189 +38,248 @@ async function sendBrevoWelcome(
     }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("Brevo welcome email error:", text);
+  if (!response.ok) {
+    console.error("Brevo welcome email error:", await response.text());
   }
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = makeCorsHeaders(req);
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ success: false, message: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: false, message: "Method not allowed" }, 405);
   }
 
   try {
-    const { phone_number, otp_code, purpose } = await req.json();
+    const body = await req.json();
+    const phoneNumber = typeof body.phone_number === "string"
+      ? body.phone_number.trim()
+      : "";
+    const otpCode = String(body.otp_code ?? "").trim();
+    const purpose = typeof body.purpose === "string" ? body.purpose : "";
 
-    if (!phone_number || !otp_code || !purpose) {
-      return new Response(JSON.stringify({ success: false, message: "Champs requis manquants" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!phoneNumber || !/^\d{6}$/.test(otpCode) || !purpose) {
+      return json({ success: false, message: "Champs requis manquants" }, 400);
     }
-
     if (!["inscription", "connexion", "reset_password"].includes(purpose)) {
-      return new Response(JSON.stringify({ success: false, message: "Purpose invalide" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: false, message: "Purpose invalide" }, 400);
     }
 
+    const clientIP = getClientIP(req);
+    const phoneHash = await sha256Hex(phoneNumber);
+    const codeHash = await sha256Hex(otpCode);
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Fetch latest unused OTP for this phone + purpose
-    const { data: otpRecord } = await supabase
-      .from("otp_codes")
-      .select("*")
-      .eq("phone_number", phone_number.trim())
-      .eq("purpose", purpose)
-      .eq("used", false)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!otpRecord) {
-      return new Response(JSON.stringify({ success: false, message: "Aucun code valide trouvé" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const ipLimit = await consumeRateLimit(
+      supabase,
+      `auth-verify-otp:ip:${clientIP}`,
+      20,
+      15 * 60,
+    );
+    const phoneLimit = await consumeRateLimit(
+      supabase,
+      `auth-verify-otp:phone:${purpose}:${phoneHash}`,
+      10,
+      15 * 60,
+    );
+    if (!ipLimit.allowed || !phoneLimit.allowed) {
+      return json({
+        success: false,
+        message: "Trop de tentatives. Réessayez plus tard.",
+        retry_after: Math.max(ipLimit.retryAfter, phoneLimit.retryAfter),
+      }, 429);
     }
 
-    if (new Date(otpRecord.expires_at) < new Date()) {
-      return new Response(JSON.stringify({ success: false, message: "Code expiré" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { data: verificationData, error: verificationError } = await supabase.rpc(
+      "verify_omnia_otp",
+      {
+        p_phone_number: phoneNumber,
+        p_purpose: purpose,
+        p_code: otpCode,
+        p_code_hash: codeHash,
+        p_max_attempts: 5,
+      },
+    );
+    if (verificationError) throw verificationError;
+
+    const verification = Array.isArray(verificationData)
+      ? verificationData[0]
+      : verificationData;
+    const verificationStatus = String(verification?.status ?? "not_found");
+
+    if (verificationStatus !== "verified") {
+      const messages: Record<string, string> = {
+        not_found: "Aucun code valide trouvé",
+        expired: "Code expiré",
+        incorrect: "Code incorrect",
+        locked: "Trop de codes incorrects. Demandez un nouveau code.",
+        invalid_request: "Code invalide",
+      };
+
+      return json({
+        success: false,
+        message: messages[verificationStatus] || "Code invalide",
+        remaining_attempts: Number(verification?.remaining_attempts ?? 0),
+      }, verificationStatus === "locked" ? 429 : 400);
     }
 
-    if (otpRecord.code !== otp_code.toString().trim()) {
-      return new Response(JSON.stringify({ success: false, message: "Code incorrect" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Mark OTP as used
-    await supabase.from("otp_codes").update({ used: true }).eq("id", otpRecord.id);
-
-    // Find user
-    const { data: user } = await supabase
+    const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, email, full_name, phone_number, status, country_code, avatar_url")
-      .eq("phone_number", phone_number.trim())
+      .select("id, email, full_name, phone_number, status, country_code, avatar_url, force_password_change")
+      .eq("phone_number", phoneNumber)
       .maybeSingle();
+    if (userError) throw userError;
 
     if (!user) {
-      return new Response(JSON.stringify({ success: false, message: "Utilisateur introuvable" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: false, message: "Utilisateur introuvable" }, 404);
     }
 
-    // Fetch roles
-    const { data: rolesData } = await supabase
-      .from("user_roles").select("role").eq("user_id", user.id);
-    const userRoles = (rolesData || []).map((r: { role: string }) => r.role);
-    const requiresManualValidation = userRoles.some((r: string) =>
-      ["professeur", "responsable_structure", "recruteur_independant"].includes(r)
+    const { data: rolesData, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+    if (rolesError) throw rolesError;
+
+    const userRoles = (rolesData ?? []).map((row: { role: string }) => row.role);
+    const requiresManualValidation = userRoles.some((role: string) =>
+      ["professeur", "responsable_structure", "recruteur_independant"].includes(role)
     );
 
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     const now = new Date().toISOString();
 
-    // ── INSCRIPTION ────────────────────────────────────────────────
     if (purpose === "inscription") {
       if (!requiresManualValidation) {
-        // Apprenant → activate
-        await supabase.from("users").update({ status: "actif", updated_at: now }).eq("id", user.id);
+        const { error: activationError } = await supabase
+          .from("users")
+          .update({ status: "actif", updated_at: now })
+          .eq("id", user.id);
+        if (activationError) throw activationError;
 
         if (brevoApiKey) {
           try {
             await sendBrevoWelcome(
-              brevoApiKey, user.email, user.full_name, "Apprenant",
-              "Votre compte est actif. Explorez nos formations !"
+              brevoApiKey,
+              user.email,
+              user.full_name,
+              "Apprenant",
+              "Votre compte est actif. Explorez nos formations !",
             );
-          } catch (e) { console.error("Brevo error:", e); }
+          } catch (error) {
+            console.error("Brevo welcome error:", error);
+          }
         }
 
-        const sessionToken = crypto.randomUUID();
-        await supabase.from("user_sessions").insert({
+        const sessionToken = generateOpaqueToken();
+        const { error: sessionError } = await supabase.from("user_sessions").insert({
           user_id: user.id,
           session_token: sessionToken,
+          ip_address: clientIP,
+          user_agent: req.headers.get("user-agent") ?? "",
           expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
         });
+        if (sessionError) throw sessionError;
+
         await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
 
-        return new Response(JSON.stringify({
+        return json({
           success: true,
           session_token: sessionToken,
-          user: { ...user, status: "actif", roles: userRoles },
-        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          user: {
+            ...user,
+            status: "actif",
+            roles: userRoles,
+          },
+        });
       }
 
-      // Professeur / Structure / Recruteur indépendant → validation manuelle
-      const roleDisplay = userRoles.includes("professeur") ? "Professeur"
-        : userRoles.includes("recruteur_independant") ? "Recruteur indépendant"
+      const roleDisplay = userRoles.includes("professeur")
+        ? "Professeur"
+        : userRoles.includes("recruteur_independant")
+        ? "Recruteur indépendant"
         : "Structure";
+
       if (brevoApiKey) {
         try {
           await sendBrevoWelcome(
-            brevoApiKey, user.email, user.full_name, roleDisplay,
-            "Votre dossier est en cours de validation par notre équipe. Vous serez notifié dès que la vérification sera terminée."
+            brevoApiKey,
+            user.email,
+            user.full_name,
+            roleDisplay,
+            "Votre dossier est en cours de validation par notre équipe. Vous serez notifié dès que la vérification sera terminée.",
           );
-        } catch (e) { console.error("Brevo error:", e); }
+        } catch (error) {
+          console.error("Brevo welcome error:", error);
+        }
       }
 
-      return new Response(JSON.stringify({
+      return json({
         success: true,
         needs_validation: true,
         user: { ...user, roles: userRoles },
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
 
-    // ── CONNEXION ──────────────────────────────────────────────────
     if (purpose === "connexion") {
       if (user.status !== "actif") {
-        return new Response(JSON.stringify({ success: false, message: "Compte inactif ou en attente de validation" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return json({
+          success: false,
+          message: "Compte inactif ou en attente de validation",
+        }, 403);
       }
 
-      const sessionToken = crypto.randomUUID();
-      await supabase.from("user_sessions").insert({
+      const sessionToken = generateOpaqueToken();
+      const { error: sessionError } = await supabase.from("user_sessions").insert({
         user_id: user.id,
         session_token: sessionToken,
+        ip_address: clientIP,
+        user_agent: req.headers.get("user-agent") ?? "",
         expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
       });
+      if (sessionError) throw sessionError;
+
       await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
 
-      return new Response(JSON.stringify({
+      return json({
         success: true,
         session_token: sessionToken,
         user: { ...user, roles: userRoles },
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
 
-    // ── RESET_PASSWORD ─────────────────────────────────────────────
-    const resetToken = crypto.randomUUID();
-    await supabase.from("password_reset_tokens").insert({
-      user_id: user.id,
-      reset_token: resetToken,
-      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-    });
+    const rawResetToken = generateOpaqueToken();
+    const tokenHash = await sha256Hex(rawResetToken);
 
-    return new Response(JSON.stringify({ success: true, reset_token: resetToken }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    await supabase
+      .from("password_reset_tokens")
+      .update({ used: true })
+      .eq("user_id", user.id)
+      .eq("used", false);
+
+    const { error: tokenError } = await supabase
+      .from("password_reset_tokens")
+      .insert({
+        user_id: user.id,
+        reset_token: null,
+        token_hash: tokenHash,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      });
+    if (tokenError) throw tokenError;
+
+    return json({ success: true, reset_token: rawResetToken });
   } catch (error) {
     console.error("auth-verify-otp error:", error);
-    return new Response(JSON.stringify({ success: false, message: "Une erreur est survenue" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: false, message: "Une erreur est survenue" }, 500);
   }
 });
