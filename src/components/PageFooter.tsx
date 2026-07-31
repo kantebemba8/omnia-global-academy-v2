@@ -43,13 +43,22 @@ const FOOTER_COLS = {
     { label: 'Formations gratuites', href: '/catalogue?prix=gratuit' },
     { label: 'Certifications CPD', href: '/catalogue?type=cpd' },
     { label: 'Vérifier un certificat', href: '/verify' },
-    { label: 'Nouveautés', href: '/catalogue?tri=recent' },
   ],
-  omnia: [
+  ecosysteme: [
+    { label: 'Omnia Live', href: '/omnia-live' },
+    { label: 'Omnia Projects', href: '/projects' },
+    { label: 'Omnia Coaching', href: '/coaching' },
+    { label: 'Omnia Talent', href: '/talent' },
+    { label: 'Carrière et opportunités', href: '/emploi' },
+    { label: 'Forum', href: '/forum' },
+  ],
+  rejoindre: [
+    { label: 'Devenir professeur', href: '/inscription/professeur' },
+    { label: 'Devenir coach', href: '/coaching/devenir-coach' },
+    { label: 'Devenir organisateur', href: '/inscription/organisateur' },
+    { label: 'Devenir recruteur', href: '/inscription/recruteur' },
+    { label: 'Inscrire une structure', href: '/inscription/structure' },
     { label: 'À propos', href: '/a-propos' },
-    { label: 'Devenir formateur', href: '/inscription/professeur' },
-    { label: 'Espace Carrière', href: '/emploi' },
-    { label: 'Contact', href: 'mailto:contact@omniaglobalacademy.com' },
   ],
   legal: [
     { label: 'Politique de confidentialité', href: '/confidentialite' },
@@ -115,7 +124,7 @@ export function PageFooter({
 
   return (
     <footer style={{ backgroundColor: '#002050', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-14 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-6 py-14 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div>
           <div className="mb-4 flex items-center gap-2.5">
             <img src="/IMG_0349.png" alt="" className="h-9 w-auto object-contain brightness-0 invert" />
@@ -176,10 +185,13 @@ export function PageFooter({
         </div>
 
         <div>
-          <p className="mb-4 text-sm font-semibold text-white">Omnia Academy</p>
-          {FOOTER_COLS.omnia.map(({ label, href }) => href.startsWith('/')
-            ? <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>
-            : <a key={label} href={href} className={linkCls} style={linkStyle}>{label}</a>)}
+          <p className="mb-4 text-sm font-semibold text-white">Écosystème</p>
+          {FOOTER_COLS.ecosysteme.map(({ label, href }) => <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>)}
+        </div>
+
+        <div>
+          <p className="mb-4 text-sm font-semibold text-white">Rejoindre Omnia</p>
+          {FOOTER_COLS.rejoindre.map(({ label, href }) => <Link key={label} to={href} className={linkCls} style={linkStyle}>{label}</Link>)}
         </div>
 
         <div>
@@ -205,7 +217,7 @@ export function PageFooter({
       </div>
 
       <div style={{ backgroundColor: '#001540', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <p className="mx-auto max-w-6xl px-6 py-4 text-center text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
+        <p className="mx-auto max-w-7xl px-6 py-4 text-center text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
           © 2026 Omnia Global Academy. Tous droits réservés. Bamako, Mali.
         </p>
       </div>
