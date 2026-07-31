@@ -152,9 +152,6 @@ verify_jwt = false
 [functions.admin-publish-course]
 verify_jwt = false
 
-[functions.admin-school-split]
-verify_jwt = false
-
 [functions.assessment-center]
 verify_jwt = false
 
@@ -164,10 +161,13 @@ verify_jwt = false
 [functions.brevo-webhook-bounce]
 verify_jwt = false
 
-[functions.career-public-profiles]
+[functions.career-studio-admin-config]
 verify_jwt = false
 
-[functions.career-studio-admin-config]
+[functions.career-studio-export]
+verify_jwt = false
+
+[functions.career-application-track]
 verify_jwt = false
 
 [functions.career-template-manager]
@@ -281,9 +281,6 @@ verify_jwt = false
 [functions.site-settings-public]
 verify_jwt = false
 
-[functions.studio-governance]
-verify_jwt = false
-
 [functions.studio-unified]
 verify_jwt = false
 
@@ -300,10 +297,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.video-signed-url]
-verify_jwt = false
-
-[functions.waitlist-stats]
-verify_jwt = false
-
-[functions.waitlist-subscribe]
 verify_jwt = false

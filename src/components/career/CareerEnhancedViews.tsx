@@ -7,6 +7,12 @@ import {
 import TemplateLiveCard from './TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import {
+  createCareerManualApplication,
+  listCareerApplications,
+  updateCareerApplicationStatus,
+  type CareerTrackedApplication,
+} from '../../lib/careerStudioApi';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -159,10 +165,157 @@ export function EnhancedInterview(){const [tab,setTab]=useState<'questions'|'sim
 function AiAdvice(){const [text,setText]=useState('');const [loading,setLoading]=useState(false);async function generate(){setLoading(true);setText('');try{const user=readJson<any>('omnia_user',{});const answers=readJson<any>('omnia_interview_answers',{});const apps=readJson<any[]>('omnia_manual_applications',[]);setText(await callAi(`Donne des conseils d'entretien personnalisés basés uniquement sur ces données réelles. Profil:${JSON.stringify(user)} Réponses:${JSON.stringify(answers)} Candidatures:${JSON.stringify(apps)}. Si une information manque, indique-le.`))}catch{setText('Le service IA n’est pas disponible pour le moment.')}finally{setLoading(false)}}return <Card className="p-5"><h3 className="font-semibold" style={{color:BLUE}}>Conseils personnalisés</h3><p className="mt-2 text-sm" style={{color:MUTED}}>L’IA analysera votre profil, vos candidatures et vos réponses réelles.</p><button onClick={generate} disabled={loading} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>{loading?'Analyse…':'Générer mes conseils'}</button>{text&&<div className="mt-4 whitespace-pre-wrap rounded-xl border p-4 text-sm leading-6" style={{borderColor:BORDER,color:'#374151'}}>{text}</div>}</Card>}
 
 export function EnhancedApplications({navigate}:{navigate:(path:string)=>void}){
-  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [contract,setContract]=useState('all');const [location,setLocation]=useState('');const [apps,setApps]=useState<any[]>(()=>readJson('omnia_manual_applications',[]));
-  const filtered=apps.filter(a=>{const hay=`${a.company_name||a.job_offers?.recruiter_company||''} ${a.job_title||a.job_offers?.title||''}`.toLowerCase();const s=a.tracking_status||a.status||'draft';const c=a.contract_type||a.job_offers?.contract_type||'';const l=a.location||a.job_offers?.location||'';return hay.includes(query.toLowerCase())&&(status==='all'||s===status)&&(contract==='all'||c===contract)&&l.toLowerCase().includes(location.toLowerCase())});
-  return <div className="space-y-5"><div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Suivi candidatures</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Recherchez et filtrez vos candidatures réelles.</p></div><Card className="p-4"><div className="grid gap-3 md:grid-cols-4"><div className="flex h-11 items-center rounded-xl border px-3" style={{borderColor:BORDER}}><Search size={16} color={MUTED}/><input value={query} onChange={e=>setQuery(e.target.value)} className="ml-2 w-full border-0 text-sm outline-none" placeholder="Rechercher une candidature…"/></div><select value={status} onChange={e=>setStatus(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="all">Tous les statuts</option><option value="draft">Brouillon</option><option value="applied">Envoyée</option><option value="interview">Entretien</option><option value="offer">Offre</option><option value="rejected">Refus</option></select><select value={contract} onChange={e=>setContract(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="all">Tous les contrats</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="Stage">Stage</option><option value="Alternance">Alternance</option></select><input value={location} onChange={e=>setLocation(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Lieu"/></div></Card>{filtered.length?<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map((a,i)=><Card key={a.id||i} className="p-4"><div className="font-semibold" style={{color:BLUE}}>{a.job_title||a.job_offers?.title||'Poste non renseigné'}</div><div className="mt-1 text-sm" style={{color:MUTED}}>{a.company_name||a.job_offers?.recruiter_company||'Entreprise non renseignée'}</div><div className="mt-3 text-xs font-semibold uppercase" style={{color:GOLD}}>{a.tracking_status||a.status||'draft'}</div></Card>)}</div>:<Empty text="Aucune candidature ne correspond à vos filtres."/>}</div>;
+  const [query,setQuery]=useState('');
+  const [status,setStatus]=useState('all');
+  const [contract,setContract]=useState('all');
+  const [location,setLocation]=useState('');
+  const [apps,setApps]=useState<CareerTrackedApplication[]>(()=>readJson('omnia_manual_applications',[]));
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [formOpen,setFormOpen]=useState(false);
+  const [message,setMessage]=useState('');
+  const [form,setForm]=useState({
+    company_name:'',
+    job_title:'',
+    location:'',
+    contract_type:'',
+    job_url:'',
+    status:'draft',
+    notes:'',
+  });
+
+  useEffect(()=>{
+    let active=true;
+    listCareerApplications()
+      .then(({applications})=>{if(active)setApps(applications)})
+      .catch(()=>{if(active)setMessage('Le suivi distant est momentanément indisponible. Les données locales restent affichées.')})
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const filtered=apps.filter(a=>{
+    const hay=`${a.company_name||''} ${a.job_title||''}`.toLowerCase();
+    const currentStatus=a.tracking_status||a.status||'draft';
+    const currentContract=a.contract_type||'';
+    const currentLocation=a.location||'';
+    return hay.includes(query.toLowerCase())
+      &&(status==='all'||currentStatus===status)
+      &&(contract==='all'||currentContract===contract)
+      &&currentLocation.toLowerCase().includes(location.toLowerCase());
+  });
+
+  async function createApplication(){
+    if(!form.company_name.trim()||!form.job_title.trim()){
+      setMessage("L'entreprise et le poste sont obligatoires.");
+      return;
+    }
+    setSaving(true);
+    setMessage('');
+    try{
+      const {application,remote}=await createCareerManualApplication({
+        ...form,
+        company_name:form.company_name.trim(),
+        job_title:form.job_title.trim(),
+      });
+      setApps(current=>[application,...current.filter(item=>item.id!==application.id)]);
+      setForm({company_name:'',job_title:'',location:'',contract_type:'',job_url:'',status:'draft',notes:''});
+      setFormOpen(false);
+      setMessage(remote?'Candidature enregistrée.':'Candidature sauvegardée localement. Elle sera synchronisée lorsque le service sera disponible.');
+    }catch{
+      setMessage("Impossible d'enregistrer la candidature.");
+    }finally{
+      setSaving(false);
+    }
+  }
+
+  async function changeStatus(id:string,nextStatus:string){
+    setMessage('');
+    try{
+      const {application,remote}=await updateCareerApplicationStatus(id,nextStatus);
+      setApps(current=>current.map(item=>item.id===id?application:item));
+      if(!remote)setMessage('Statut sauvegardé localement en attendant la synchronisation.');
+    }catch{
+      setMessage('Impossible de modifier ce statut.');
+    }
+  }
+
+  const statusLabels:Record<string,string>={
+    draft:'Brouillon',
+    prepared:'Préparée',
+    applied:'Envoyée',
+    interview:'Entretien',
+    offer:'Offre',
+    rejected:'Refus',
+    withdrawn:'Retirée',
+    closed:'Clôturée',
+  };
+
+  return <div className="space-y-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold" style={{color:BLUE}}>Suivi candidatures</h1>
+        <p className="mt-1 text-sm" style={{color:MUTED}}>Centralisez les candidatures Omnia et celles envoyées sur des sites externes.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={()=>navigate('/talent')} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Explorer Omnia Talent</button>
+        <button onClick={()=>setFormOpen(value=>!value)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>{formOpen?'Fermer':'Ajouter une candidature'}</button>
+      </div>
+    </div>
+
+    {message&&<div className="rounded-xl border px-4 py-3 text-sm" style={{borderColor:BORDER,color:BLUE,background:'rgba(0,32,80,.04)'}}>{message}</div>}
+
+    {formOpen&&<Card className="p-5">
+      <h2 className="font-semibold" style={{color:BLUE}}>Nouvelle candidature externe</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <input value={form.company_name} onChange={e=>setForm({...form,company_name:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Entreprise *"/>
+        <input value={form.job_title} onChange={e=>setForm({...form,job_title:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Poste *"/>
+        <input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Lieu"/>
+        <select value={form.contract_type} onChange={e=>setForm({...form,contract_type:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}>
+          <option value="">Type de contrat</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="Stage">Stage</option><option value="Alternance">Alternance</option><option value="Freelance">Freelance</option>
+        </select>
+        <input value={form.job_url} onChange={e=>setForm({...form,job_url:e.target.value})} className="h-11 rounded-xl border px-3 text-sm md:col-span-2" style={{borderColor:BORDER}} placeholder="Lien de l'offre"/>
+        <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}>
+          {Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+        </select>
+        <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="h-11 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Note personnelle"/>
+      </div>
+      <button disabled={saving} onClick={createApplication} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>{saving?'Enregistrement…':'Enregistrer la candidature'}</button>
+    </Card>}
+
+    <Card className="p-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="flex h-11 items-center rounded-xl border px-3" style={{borderColor:BORDER}}><Search size={16} color={MUTED}/><input value={query} onChange={e=>setQuery(e.target.value)} className="ml-2 w-full border-0 text-sm outline-none" placeholder="Rechercher une candidature…"/></div>
+        <select value={status} onChange={e=>setStatus(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="all">Tous les statuts</option>{Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+        <select value={contract} onChange={e=>setContract(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}><option value="all">Tous les contrats</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="Stage">Stage</option><option value="Alternance">Alternance</option><option value="Freelance">Freelance</option></select>
+        <input value={location} onChange={e=>setLocation(e.target.value)} className="rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Lieu"/>
+      </div>
+    </Card>
+
+    {loading?<Empty text="Chargement des candidatures…"/>:filtered.length?<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map(a=>{
+      const currentStatus=a.tracking_status||a.status||'draft';
+      return <Card key={a.id} className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-semibold" style={{color:BLUE}}>{a.job_title||'Poste non renseigné'}</div>
+            <div className="mt-1 text-sm" style={{color:MUTED}}>{a.company_name||'Entreprise non renseignée'}</div>
+          </div>
+          <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{background:a.source==='platform'?'rgba(191,136,19,.12)':'rgba(0,32,80,.08)',color:a.source==='platform'?GOLD:BLUE}}>{a.source==='platform'?'Omnia':'Externe'}</span>
+        </div>
+        <div className="mt-3 space-y-1 text-xs" style={{color:MUTED}}>
+          {a.location&&<div>{a.location}</div>}
+          {a.contract_type&&<div>{a.contract_type}</div>}
+        </div>
+        <label className="mt-4 block text-xs font-semibold" style={{color:BLUE}}>Statut
+          <select value={currentStatus} onChange={e=>changeStatus(a.id,e.target.value)} className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}>
+            {Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        {a.job_url&&<a href={a.job_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-semibold" style={{color:GOLD}}>Ouvrir l'offre</a>}
+      </Card>;
+    })}</div>:<Empty text="Aucune candidature ne correspond à vos filtres."/>}
+  </div>;
 }
+
 
 const skillOptions=['Communication','Gestion de projet','Analyse de données','Excel','Leadership','Travail en équipe','Résolution de problèmes','Organisation','Rédaction','Négociation','Qualité','Sécurité','Environnement','Marketing','Développement web','Cybersécurité'];
 const sectors=['Technologie','Finance / Banque','QHSE','Santé','Éducation','Hôtellerie','Commerce','Industrie','Administration','Communication','Développement durable','Transport / Logistique'];

@@ -726,18 +726,14 @@ export default function CareerStudioEditor() {
     if (!document) return;
     if (exportingPdf) return;
 
-    if (document.doc_type === 'cv' && remoteMode && tokens <= 0) {
-      showToast('Jeton insuffisant : le téléchargement PDF du CV nécessite 1 jeton.');
-      return;
-    }
-
     setExportingPdf(true);
     try {
+      let currentDocument = document;
       if (!alreadyNamed) {
         const saved = await saveNow(true, 'pdf');
         if (!saved) { setExportingPdf(false); return; }
+        currentDocument = saved;
       }
-      const currentDocument = document;
       const result = await prepareCareerPdfExport(currentDocument);
       if (typeof result.tokens_remaining === 'number') {
         setTokens(result.tokens_remaining);
@@ -751,7 +747,9 @@ export default function CareerStudioEditor() {
 
       const message = currentDocument.doc_type === 'cv'
         ? result.remote
-          ? `PDF prêt. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
+          ? result.tokens_consumed > 0
+            ? `PDF prêt. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
+            : 'PDF prêt sans nouveau débit : le document est inchangé.'
           : 'PDF prêt en mode test local : aucun jeton consommé.'
         : 'PDF de la lettre prêt. Les lettres ne consomment pas de jeton pour cette étape.';
       showToast(message);

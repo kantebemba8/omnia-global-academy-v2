@@ -89,6 +89,138 @@ async function functionPost<T>(slug: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+
+export type CareerTrackedApplication = {
+  id: string;
+  source: 'platform' | 'manual';
+  source_id?: string;
+  editable?: boolean;
+  job_id?: string | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  job_url?: string | null;
+  location?: string | null;
+  contract_type?: string | null;
+  application_mode?: string | null;
+  status?: string | null;
+  tracking_status?: string | null;
+  applied_at?: string | null;
+  interview_at?: string | null;
+  next_follow_up_at?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+const CAREER_APPLICATIONS_LOCAL_KEY = 'omnia_manual_applications';
+
+function readLocalApplications(): CareerTrackedApplication[] {
+  try {
+    return JSON.parse(localStorage.getItem(CAREER_APPLICATIONS_LOCAL_KEY) || '[]') as CareerTrackedApplication[];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalApplications(applications: CareerTrackedApplication[]) {
+  localStorage.setItem(CAREER_APPLICATIONS_LOCAL_KEY, JSON.stringify(applications));
+}
+
+function replaceLocalApplication(application: CareerTrackedApplication) {
+  const current = readLocalApplications();
+  const next = [
+    application,
+    ...current.filter(item => item.id !== application.id),
+  ];
+  writeLocalApplications(next);
+  return next;
+}
+
+export async function listCareerApplications(): Promise<{
+  applications: CareerTrackedApplication[];
+  remote: boolean;
+}> {
+  try {
+    const data = await functionPost<{ applications?: CareerTrackedApplication[] }>(
+      'career-application-track',
+      { action: 'list' },
+    );
+    const applications = data.applications || [];
+    writeLocalApplications(applications);
+    return { applications, remote: true };
+  } catch {
+    return { applications: readLocalApplications(), remote: false };
+  }
+}
+
+export async function createCareerManualApplication(input: {
+  company_name: string;
+  job_title: string;
+  job_url?: string;
+  location?: string;
+  contract_type?: string;
+  application_mode?: string;
+  status?: string;
+  notes?: string;
+}): Promise<{ application: CareerTrackedApplication; remote: boolean }> {
+  try {
+    const data = await functionPost<{ application: CareerTrackedApplication }>(
+      'career-application-track',
+      { action: 'create_manual', ...input },
+    );
+    replaceLocalApplication(data.application);
+    return { application: data.application, remote: true };
+  } catch {
+    const now = nowIso();
+    const application: CareerTrackedApplication = {
+      id: `manual-local-${Date.now()}`,
+      source: 'manual',
+      source_id: `local-${Date.now()}`,
+      editable: true,
+      company_name: input.company_name,
+      job_title: input.job_title,
+      job_url: input.job_url || null,
+      location: input.location || null,
+      contract_type: input.contract_type || null,
+      application_mode: input.application_mode || 'external_link',
+      status: input.status || 'draft',
+      tracking_status: input.status || 'draft',
+      notes: input.notes || null,
+      created_at: now,
+      updated_at: now,
+    };
+    replaceLocalApplication(application);
+    return { application, remote: false };
+  }
+}
+
+export async function updateCareerApplicationStatus(
+  id: string,
+  status: string,
+): Promise<{ application: CareerTrackedApplication; remote: boolean }> {
+  try {
+    const data = await functionPost<{ application: CareerTrackedApplication }>(
+      'career-application-track',
+      { action: 'update_status', id, status },
+    );
+    replaceLocalApplication(data.application);
+    return { application: data.application, remote: true };
+  } catch {
+    const current = readLocalApplications();
+    const existing = current.find(item => item.id === id);
+    if (!existing) throw new Error('APPLICATION_NOT_FOUND');
+
+    const application: CareerTrackedApplication = {
+      ...existing,
+      status,
+      tracking_status: status,
+      updated_at: nowIso(),
+    };
+    replaceLocalApplication(application);
+    return { application, remote: false };
+  }
+}
+
 export async function listCareerDocuments(docType: CareerDocType): Promise<{
   documents: CareerDocumentSummary[];
   templates: ReturnType<typeof getCareerTemplates>;
@@ -234,6 +366,7 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
       doc_type: document.doc_type,
       title: document.title,
       template_key: document.template_key,
+      request_id: crypto.randomUUID(),
     });
 
     return {
