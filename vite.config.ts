@@ -54,11 +54,36 @@ export default defineConfig({
         short_name: 'Omnia Academy',
         description: "Plateforme de formation, de certification et d'employabilité conçue pour l'Afrique et ouverte au monde.",
         lang: 'fr',
+        dir: 'ltr',
         scope: '/',
         theme_color: '#002050',
         background_color: '#FFFFFF',
         display: 'standalone',
-        start_url: '/',
+        display_override: ['standalone', 'minimal-ui'],
+        orientation: 'any',
+        categories: ['education', 'productivity'],
+        prefer_related_applications: false,
+        start_url: '/accueil',
+        shortcuts: [
+          {
+            name: 'Explorer les formations',
+            short_name: 'Formations',
+            description: 'Consulter les formations publiées sur Omnia.',
+            url: '/catalogue',
+          },
+          {
+            name: 'Omnia Live',
+            short_name: 'Live',
+            description: 'Découvrir les événements et sessions en direct.',
+            url: '/omnia-live',
+          },
+          {
+            name: 'Omnia Talent',
+            short_name: 'Talent',
+            description: 'Accéder aux profils et opportunités professionnelles.',
+            url: '/talent',
+          },
+        ],
         icons: [
           {
             src: '/icons/omnia-192.png',

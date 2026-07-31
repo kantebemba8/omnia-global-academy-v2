@@ -44,6 +44,8 @@ export function Navbar({ transparent = false }: NavbarProps) {
   const navigate = useNavigate();
   const { pathname, hash } = useLocation();
   const navRef = useRef<HTMLElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobilePanelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -61,24 +63,59 @@ export function Navbar({ transparent = false }: NavbarProps) {
     const onPointerDown = (event: MouseEvent) => {
       if (!navRef.current?.contains(event.target as Node)) setOpenMenu(null);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenMenu(null);
+    };
     document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
 
     const previousOverflow = document.body.style.overflow;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const getFocusableElements = () => Array.from(
+      mobilePanelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) || [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKeyDown);
+    window.requestAnimationFrame(() => getFocusableElements()[0]?.focus());
 
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
+      (previousActiveElement || mobileTriggerRef.current)?.focus();
     };
   }, [mobileOpen]);
 
@@ -90,21 +127,21 @@ export function Navbar({ transparent = false }: NavbarProps) {
         type="button"
         onClick={() => setOpenMenu(current => current === key ? null : key)}
         className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]"
+        id={`omnia-menu-trigger-${key}`}
         aria-expanded={openMenu === key}
-        aria-haspopup="menu"
+        aria-controls={`omnia-menu-${key}`}
       >
         {label}
         <ChevronDown className={`h-4 w-4 transition-transform ${openMenu === key ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
       {openMenu === key && (
-        <div role="menu" className="absolute left-1/2 top-[calc(100%+18px)] w-[420px] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/10">
+        <div id={`omnia-menu-${key}`} aria-labelledby={`omnia-menu-trigger-${key}`} className="absolute left-1/2 top-[calc(100%+18px)] w-[420px] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/10">
           <div className="grid gap-1">
             {items.map(item => (
               <Link
                 key={item.label}
                 to={item.href}
-                role="menuitem"
                 className="rounded-xl px-4 py-3 transition-colors hover:bg-slate-50"
               >
                 <span className="block text-sm font-semibold text-[#002050]">{item.label}</span>
@@ -164,8 +201,9 @@ export function Navbar({ transparent = false }: NavbarProps) {
           </div>
 
           <button
+            ref={mobileTriggerRef}
             type="button"
-            className="rounded-lg p-2 transition-colors hover:bg-slate-100 lg:hidden"
+            className="min-h-11 min-w-11 rounded-lg p-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
             onClick={() => setMobileOpen(value => !value)}
             aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
             aria-expanded={mobileOpen}
@@ -186,7 +224,10 @@ export function Navbar({ transparent = false }: NavbarProps) {
           />
 
           <aside
+            ref={mobilePanelRef}
             id="omnia-mobile-navigation"
+            role="dialog"
+            aria-modal="true"
             aria-label="Navigation mobile"
             className="fixed right-0 top-0 z-50 flex h-full w-[min(92vw,360px)] flex-col bg-white shadow-2xl lg:hidden"
           >
@@ -198,7 +239,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
                   <div className="mt-0.5 text-[7px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div>
                 </div>
               </Link>
-              <button type="button" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 hover:bg-slate-100" aria-label="Fermer le menu">
+              <button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Fermer le menu">
                 <X size={20} color="#64748B" />
               </button>
             </div>

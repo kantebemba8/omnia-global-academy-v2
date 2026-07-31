@@ -35,6 +35,7 @@ interface FooterProps {
   mobileAppsV2?: MobileAppItem[];
   partners?: PublicPartner[];
   followUsLabel?: string;
+  managedOnly?: boolean;
 }
 
 const FOOTER_COLS = {
@@ -79,6 +80,11 @@ const SOCIAL_ICON_MAP: Record<string, LucideIcon> = {
   other: Globe2,
 };
 
+
+function isSafeExternalUrl(value: string | null | undefined) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+}
+
 const linkCls = 'mb-2 block text-sm transition-opacity last:mb-0 hover:opacity-80';
 const linkStyle = { color: 'rgba(255,255,255,0.65)' };
 
@@ -113,14 +119,17 @@ export function PageFooter({
   mobileAppsV2 = [],
   partners = [],
   followUsLabel = 'Suivez-nous',
+  managedOnly = false,
 }: FooterProps) {
-  const socialItems = (socialNetworksV2.length > 0 ? socialNetworksV2 : legacySocialItems(socialNetworks))
-    .filter(item => item.enabled && item.show_footer && item.url && (item.logo_url || item.icon_key))
+  const socialSource = managedOnly ? socialNetworksV2 : (socialNetworksV2.length > 0 ? socialNetworksV2 : legacySocialItems(socialNetworks));
+  const appSource = managedOnly ? mobileAppsV2 : (mobileAppsV2.length > 0 ? mobileAppsV2 : legacyApps(appDownloads));
+  const socialItems = socialSource
+    .filter(item => item.enabled && item.show_footer && isSafeExternalUrl(item.url) && (item.logo_url || item.icon_key))
     .sort((a, b) => a.display_order - b.display_order);
-  const appItems = (mobileAppsV2.length > 0 ? mobileAppsV2 : legacyApps(appDownloads))
-    .filter(item => item.enabled && item.show_footer && item.url)
+  const appItems = appSource
+    .filter(item => item.enabled && item.show_footer && isSafeExternalUrl(item.url))
     .sort((a, b) => a.display_order - b.display_order);
-  const footerPartners = partners.filter(partner => partner.show_footer && partner.logo_url);
+  const footerPartners = partners.filter(partner => partner.show_footer && partner.logo_url && (!partner.website_url || isSafeExternalUrl(partner.website_url)));
 
   return (
     <footer style={{ backgroundColor: '#002050', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -154,7 +163,7 @@ export function PageFooter({
                       style={{ backgroundColor: 'rgba(191,136,19,0.18)' }}
                     >
                       {item.logo_url
-                        ? <img src={item.logo_url} alt="" className="h-5 w-5 object-contain" />
+                        ? <img src={item.logo_url} alt="" loading="lazy" decoding="async" className="h-5 w-5 object-contain" />
                         : <Icon size={16} style={{ color: '#BF8813' }} />}
                     </a>
                   );
@@ -218,7 +227,7 @@ export function PageFooter({
 
       <div style={{ backgroundColor: '#001540', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <p className="mx-auto max-w-7xl px-6 py-4 text-center text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          © 2026 Omnia Global Academy. Tous droits réservés. Bamako, Mali.
+          © {new Date().getFullYear()} Omnia Global Academy. Tous droits réservés. Bamako, Mali.
         </p>
       </div>
     </footer>

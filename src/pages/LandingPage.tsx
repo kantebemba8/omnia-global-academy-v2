@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
+import { LandingSeo } from '../components/landing/LandingSeo';
 import { PageFooter } from '../components/PageFooter';
 import {
   LandingExperience,
@@ -76,12 +77,18 @@ export function LandingPage() {
   const location = useLocation();
   const [rawData, setRawData] = useState<LandingDataResponse>(DEFAULT_DATA);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
+
+    setLoading(true);
+    setLoadError(false);
 
     fetch(ENDPOINTS.landingData, {
-      headers: { Authorization: `Bearer ${ANON_KEY}` },
+      headers: ANON_KEY ? { Authorization: `Bearer ${ANON_KEY}` } : undefined,
       signal: controller.signal,
     })
       .then(response => {
@@ -89,6 +96,7 @@ export function LandingPage() {
         return response.json() as Promise<LandingDataResponse>;
       })
       .then(payload => {
+        if (!active) return;
         setRawData({
           ...DEFAULT_DATA,
           ...payload,
@@ -97,20 +105,29 @@ export function LandingPage() {
           social_networks_v2: Array.isArray(payload.social_networks_v2) ? payload.social_networks_v2 : [],
           mobile_apps_v2: Array.isArray(payload.mobile_apps_v2) ? payload.mobile_apps_v2 : [],
         });
+        setLoadError(false);
       })
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         console.error('Impossible de charger les données publiques de la page d’accueil.', error);
+        if (active) setLoadError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
 
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
     if (!location.hash) return;
     const id = decodeURIComponent(location.hash.slice(1));
     const timer = window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      document.getElementById(id)?.scrollIntoView({ behavior, block: 'start' });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [location.hash, rawData.landing_page]);
@@ -133,13 +150,27 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-      <Navbar />
-      <LandingExperience
-        data={experienceData}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        onSearch={handleSearch}
+      <LandingSeo
+        landingPage={experienceData.landingPage}
+        featuredCourses={experienceData.featuredCourses}
+        socialNetworks={experienceData.socialNetworks}
+        partners={experienceData.partners}
       />
+      <a href="#contenu-principal" className="oga-skip-link">Aller au contenu principal</a>
+      <Navbar />
+      {loadError && (
+        <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 z-40 w-[min(92vw,680px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900 shadow-lg">
+          Certaines données en temps réel sont temporairement indisponibles. Les sections concernées restent masquées.
+        </div>
+      )}
+      <div aria-busy={loading}>
+        <LandingExperience
+          data={experienceData}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onSearch={handleSearch}
+        />
+      </div>
       <PageFooter
         socialNetworks={rawData.social_networks || {}}
         socialNetworksV2={experienceData.socialNetworks}
@@ -147,6 +178,7 @@ export function LandingPage() {
         mobileAppsV2={experienceData.mobileApps}
         partners={experienceData.partners}
         followUsLabel={rawData.follow_us_label_fr || 'Suivez-nous'}
+        managedOnly
       />
     </div>
   );

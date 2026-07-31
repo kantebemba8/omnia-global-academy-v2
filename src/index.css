@@ -980,3 +980,63 @@ button:disabled,
     transform: translateZ(220px) rotateX(-4deg) rotateY(-5deg) rotateZ(1deg);
   }
 }
+
+/* Grand bloc 4 — accessibilité, stabilité et performance de la page d'accueil. */
+.oga-skip-link {
+  position: fixed;
+  left: 16px;
+  top: 12px;
+  z-index: 10000;
+  transform: translateY(-160%);
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: #002050;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 12px 30px rgba(0, 32, 80, 0.2);
+  transition: transform 180ms ease;
+}
+
+.oga-skip-link:focus {
+  transform: translateY(0);
+}
+
+#contenu-principal:focus {
+  outline: none;
+}
+
+body {
+  overflow-x: hidden;
+  min-width: 320px;
+}
+
+@supports (content-visibility: auto) {
+  #contenu-principal > section[data-oga-reveal]:not(#accueil) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 760px;
+  }
+}
+
+@media (max-width: 767px) {
+  .oga-skip-link {
+    left: max(10px, env(safe-area-inset-left));
+    top: max(8px, env(safe-area-inset-top));
+  }
+
+  .oga-hero-depth-stage,
+  .oga-journey-depth-stage {
+    max-width: 100%;
+  }
+
+  .oga-journey-step-nav button,
+  [role='tab'] {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oga-skip-link {
+    transition: none;
+  }
+}

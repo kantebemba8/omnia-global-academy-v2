@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -275,6 +275,10 @@ function isExternalHref(href: string) {
   return /^https?:\/\//i.test(href);
 }
 
+function isSafePublicHref(href: string) {
+  return href.startsWith('/') || href.startsWith('#') || isExternalHref(href);
+}
+
 function ActionLink({
   href,
   children,
@@ -286,7 +290,7 @@ function ActionLink({
   variant?: 'primary' | 'secondary' | 'light';
   className?: string;
 }) {
-  if (!href || !children) return null;
+  if (!href || !children || !isSafePublicHref(href)) return null;
 
   const base = 'inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2';
   const variants = {
@@ -345,7 +349,7 @@ function HeroSection({
   ).filter(([key]) => statsVisibility[key] && stats[key]);
 
   return (
-    <section id={SECTION_IDS.hero} data-oga-reveal className="oga-reveal relative overflow-hidden bg-[#002050] px-5 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:pb-24">
+    <section id={SECTION_IDS.hero} aria-labelledby="oga-hero-title" data-oga-reveal className="oga-reveal relative overflow-hidden bg-[#002050] px-5 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:pb-24">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute -right-36 top-20 h-96 w-96 rounded-full border border-white/10" />
         <div className="absolute -right-16 top-40 h-72 w-72 rounded-full border border-[#BF8813]/30" />
@@ -357,7 +361,7 @@ function HeroSection({
           {section.eyebrow && (
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E6BE58]">{section.eyebrow}</p>
           )}
-          <h1 className="mt-5 max-w-4xl text-4xl font-bold leading-[1.06] tracking-[-0.045em] text-white sm:text-5xl lg:text-7xl">
+          <h1 id="oga-hero-title" className="mt-5 max-w-4xl text-4xl font-bold leading-[1.06] tracking-[-0.045em] text-white sm:text-5xl lg:text-7xl">
             {section.title}
           </h1>
           {section.subtitle && (
@@ -375,13 +379,17 @@ function HeroSection({
               <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
               <span className="sr-only">Rechercher une formation</span>
               <input
+                type="search"
+                name="q"
                 value={searchQuery}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchQueryChange(event.target.value)}
                 placeholder="Quelle compétence souhaitez-vous développer ?"
+                autoComplete="off"
+                enterKeyHint="search"
                 className="min-w-0 flex-1 bg-transparent py-3.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
             </label>
-            <button type="submit" className="rounded-xl bg-[#BF8813] px-6 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+            <button type="submit" className="min-h-11 rounded-xl bg-[#BF8813] px-6 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#002050]">
               Rechercher
             </button>
           </form>
@@ -408,26 +416,48 @@ function HeroSection({
 
 function GoalSelectorSection({ section }: { section: LandingSectionConfig }) {
   const [selectedGoal, setSelectedGoal] = useState(GOALS[0].id);
-  const activeGoal = GOALS.find(goal => goal.id === selectedGoal) || GOALS[0];
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const activeIndex = Math.max(0, GOALS.findIndex(goal => goal.id === selectedGoal));
+  const activeGoal = GOALS[activeIndex] || GOALS[0];
   const ActiveIcon = activeGoal.icon;
 
+  const activateGoal = (index: number, focus = false) => {
+    const nextIndex = (index + GOALS.length) % GOALS.length;
+    setSelectedGoal(GOALS[nextIndex].id);
+    if (focus) tabRefs.current[nextIndex]?.focus();
+  };
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') activateGoal(0, true);
+    else if (event.key === 'End') activateGoal(GOALS.length - 1, true);
+    else activateGoal(index + (event.key === 'ArrowDown' ? 1 : -1), true);
+  };
+
   return (
-    <section id={SECTION_IDS.goal_selector} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.goal_selector} aria-label={section.title} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} />
         <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)]">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-            {GOALS.map(goal => {
+          <div role="tablist" aria-label="Choisir son objectif" aria-orientation="vertical" className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+            {GOALS.map((goal, index) => {
               const Icon = goal.icon;
               const active = goal.id === activeGoal.id;
               return (
                 <button
                   key={goal.id}
+                  ref={element => { tabRefs.current[index] = element; }}
+                  id={`goal-tab-${goal.id}`}
                   type="button"
-                  onClick={() => setSelectedGoal(goal.id)}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={`goal-panel-${goal.id}`}
+                  tabIndex={active ? 0 : -1}
+                  onClick={() => activateGoal(index)}
+                  onKeyDown={event => handleTabKeyDown(event, index)}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2"
                   style={{ backgroundColor: active ? '#002050' : 'transparent', color: active ? '#FFFFFF' : '#334155' }}
-                  aria-pressed={active}
                 >
                   <Icon className="h-5 w-5 shrink-0" style={{ color: active ? '#E6BE58' : '#BF8813' }} aria-hidden="true" />
                   <span className="text-sm font-semibold">{goal.label}</span>
@@ -437,7 +467,13 @@ function GoalSelectorSection({ section }: { section: LandingSectionConfig }) {
             })}
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-7 sm:p-10">
+          <div
+            id={`goal-panel-${activeGoal.id}`}
+            role="tabpanel"
+            aria-labelledby={`goal-tab-${activeGoal.id}`}
+            tabIndex={0}
+            className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] sm:p-10"
+          >
             <div aria-hidden="true" className="absolute right-0 top-0 h-40 w-40 translate-x-1/3 -translate-y-1/3 rounded-full border-[28px] border-[#BF8813]/10" />
             <div className="relative max-w-2xl">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F8F2E4] text-[#9A6A08]">
@@ -487,7 +523,8 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
 
   const goToStep = (index: number) => {
     setActiveIndex(index);
-    stepRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    stepRefs.current[index]?.scrollIntoView({ behavior, block: 'center' });
   };
 
   return (
@@ -505,6 +542,7 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
                   onClick={() => goToStep(index)}
                   className={index === activeIndex ? 'is-active' : ''}
                   aria-current={index === activeIndex ? 'step' : undefined}
+                  aria-controls={`journey-step-${index}`}
                 >
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <span>{step.title}</span>
@@ -518,8 +556,10 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
                 return (
                   <article
                     key={step.title}
+                    id={`journey-step-${index}`}
                     ref={element => { stepRefs.current[index] = element; }}
                     data-journey-index={index}
+                    aria-current={index === activeIndex ? 'step' : undefined}
                     className={`oga-journey-step ${index === activeIndex ? 'is-active' : ''}`}
                   >
                     <div className="oga-journey-step__number">{String(index + 1).padStart(2, '0')}</div>
@@ -565,11 +605,26 @@ function FeaturedCoursesSection({ section, courses }: { section: LandingSectionC
 
 function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const active = ECOSYSTEM_ITEMS[activeIndex];
   const ActiveIcon = active.icon;
 
+  const activateTab = (index: number, focus = false) => {
+    const nextIndex = (index + ECOSYSTEM_ITEMS.length) % ECOSYSTEM_ITEMS.length;
+    setActiveIndex(nextIndex);
+    if (focus) tabRefs.current[nextIndex]?.focus();
+  };
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') activateTab(0, true);
+    else if (event.key === 'End') activateTab(ECOSYSTEM_ITEMS.length - 1, true);
+    else activateTab(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+  };
+
   return (
-    <section id={SECTION_IDS.ecosystem} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.ecosystem} aria-label={section.title} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} />
 
@@ -578,11 +633,16 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
             {ECOSYSTEM_ITEMS.map((item, index) => (
               <button
                 key={item.title}
+                ref={element => { tabRefs.current[index] = element; }}
+                id={`ecosystem-tab-${index}`}
                 type="button"
                 role="tab"
                 aria-selected={index === activeIndex}
-                onClick={() => setActiveIndex(index)}
-                className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors"
+                aria-controls={`ecosystem-panel-${index}`}
+                tabIndex={index === activeIndex ? 0 : -1}
+                onClick={() => activateTab(index)}
+                onKeyDown={event => handleTabKeyDown(event, index)}
+                className="min-h-11 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2"
                 style={{
                   backgroundColor: index === activeIndex ? '#002050' : '#F1F5F9',
                   color: index === activeIndex ? '#FFFFFF' : '#475569',
@@ -593,7 +653,13 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
             ))}
           </div>
 
-          <div className="mt-4 grid min-h-[330px] overflow-hidden rounded-2xl bg-[#002050] lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div
+            id={`ecosystem-panel-${activeIndex}`}
+            role="tabpanel"
+            aria-labelledby={`ecosystem-tab-${activeIndex}`}
+            tabIndex={0}
+            className="mt-4 grid min-h-[330px] overflow-hidden rounded-2xl bg-[#002050] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:grid-cols-[minmax(0,1fr)_320px]"
+          >
             <div className="p-7 sm:p-10">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#BF8813] text-white">
                 <ActiveIcon className="h-7 w-7" aria-hidden="true" />
@@ -731,7 +797,7 @@ function StructuresSection({ section }: { section: LandingSectionConfig }) {
 
 function PartnersSection({ section, partners }: { section: LandingSectionConfig; partners: LandingPublicPartner[] }) {
   const visiblePartners = partners
-    .filter(partner => partner.show_homepage && partner.logo_url)
+    .filter(partner => partner.show_homepage && partner.logo_url && (!partner.website_url || isExternalHref(partner.website_url)))
     .sort((a, b) => Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)));
 
   if (visiblePartners.length === 0) return null;
@@ -758,7 +824,7 @@ function PartnersSection({ section, partners }: { section: LandingSectionConfig;
 }
 
 function MobileAppsSection({ section, apps }: { section: LandingSectionConfig; apps: MobileAppItem[] }) {
-  const visibleApps = apps.filter(app => app.enabled && app.show_homepage && app.url).sort((a, b) => a.display_order - b.display_order);
+  const visibleApps = apps.filter(app => app.enabled && app.show_homepage && isExternalHref(app.url)).sort((a, b) => a.display_order - b.display_order);
   if (visibleApps.length === 0) return null;
 
   return (
@@ -789,7 +855,7 @@ function MobileAppsSection({ section, apps }: { section: LandingSectionConfig; a
 
 function SocialNetworksSection({ section, networks }: { section: LandingSectionConfig; networks: SocialNetworkItem[] }) {
   const visibleNetworks = networks
-    .filter(item => item.enabled && item.show_homepage && item.url && (item.logo_url || item.icon_key))
+    .filter(item => item.enabled && item.show_homepage && isExternalHref(item.url) && (item.logo_url || item.icon_key))
     .sort((a, b) => a.display_order - b.display_order);
   if (visibleNetworks.length === 0) return null;
 
@@ -810,7 +876,7 @@ function SocialNetworksSection({ section, networks }: { section: LandingSectionC
                 aria-label={item.alt_text || `${item.name} — Omnia Global Academy`}
               >
                 <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-[#F8F2E4] text-[#9A6A08]">
-                  {item.logo_url ? <img src={item.logo_url} alt="" className="h-5 w-5 object-contain" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
+                  {item.logo_url ? <img src={item.logo_url} alt="" loading="lazy" decoding="async" className="h-5 w-5 object-contain" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
                 </span>
                 {item.name}
               </a>
@@ -863,7 +929,7 @@ export function LandingExperience({ data, searchQuery, onSearchQueryChange, onSe
   useLandingReveals(mainRef, revealKey);
 
   return (
-    <main ref={mainRef}>
+    <main id="contenu-principal" ref={mainRef} tabIndex={-1} aria-label="Contenu principal de la page d’accueil">
       {sections.map(section => {
         switch (section.type) {
           case 'hero':

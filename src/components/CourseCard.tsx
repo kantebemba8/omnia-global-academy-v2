@@ -69,11 +69,13 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
           <p className="mb-1 text-xs uppercase tracking-wide" style={{ color: '#6B7280' }}>{course.category}</p>
           <p className="mb-1 line-clamp-2 text-sm font-semibold" style={{ color: '#002050' }}>{course.title}</p>
           {course.creator_name && <p className="mb-1 text-xs" style={{ color: '#6B7280' }}>Par {course.creator_name}</p>}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Stars rating={rating} />
-            <span className="text-xs font-bold" style={{ color: '#002050' }}>{rating.toFixed(1)}</span>
-            <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews})</span>
-          </div>
+          {course.total_reviews > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Stars rating={rating} />
+              <span className="text-xs font-bold" style={{ color: '#002050' }}>{rating.toFixed(1)}</span>
+              <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews})</span>
+            </div>
+          )}
           <p className="mt-2 text-sm font-bold sm:hidden" style={{ color: course.is_free ? '#1E7A52' : '#002050' }}>
             {course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
           </p>
@@ -118,11 +120,13 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
         <p className="mb-1 text-xs uppercase tracking-wide" style={{ color: '#6B7280' }}>{course.category ?? ''}</p>
         <p className="mb-1 line-clamp-2 flex-1 text-sm font-semibold leading-snug" style={{ color: '#002050' }}>{course.title}</p>
         {course.creator_name && <p className="mb-2 text-xs" style={{ color: '#6B7280' }}>Par {course.creator_name}</p>}
-        <div className="mb-1 flex flex-wrap items-center gap-1.5">
-          <Stars rating={rating} />
-          <span className="text-xs font-bold" style={{ color: '#002050' }}>{rating.toFixed(1)}</span>
-          <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews} avis)</span>
-        </div>
+        {course.total_reviews > 0 && (
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <Stars rating={rating} />
+            <span className="text-xs font-bold" style={{ color: '#002050' }}>{rating.toFixed(1)}</span>
+            <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews} avis)</span>
+          </div>
+        )}
         {(course.cpd_hours ?? 0) > 0 && <p className="text-xs" style={{ color: '#6B7280' }}>CPD · {course.cpd_hours} h</p>}
       </div>
 

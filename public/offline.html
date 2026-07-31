@@ -60,6 +60,7 @@
       transition: opacity 0.2s;
     }
     button:hover { opacity: 0.88; }
+    button:focus-visible { outline: 3px solid #FFFFFF; outline-offset: 4px; }
     button:disabled { opacity: 0.6; cursor: wait; }
   </style>
 </head>
@@ -67,7 +68,7 @@
   <img src="/IMG_0349.png" alt="Omnia Global Academy" class="logo" onerror="this.style.display='none'" />
   <div class="connection-mark" aria-hidden="true"></div>
   <h1>Vous êtes hors connexion</h1>
-  <p id="status">
+  <p id="status" role="status" aria-live="polite">
     Reconnectez-vous à Internet, puis réessayez. La plateforme restaurera automatiquement une ancienne configuration PWA bloquée si nécessaire.
   </p>
   <button id="retry" type="button">Réessayer</button>

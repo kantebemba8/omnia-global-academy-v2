@@ -4,6 +4,8 @@ type NavigatorWithConnection = Navigator & {
   connection?: {
     saveData?: boolean;
     effectiveType?: string;
+    addEventListener?: (type: 'change', listener: () => void) => void;
+    removeEventListener?: (type: 'change', listener: () => void) => void;
   };
 };
 
@@ -27,10 +29,12 @@ export function useEnhancedLandingMotion() {
     update();
     reducedMotion.addEventListener('change', update);
     desktopViewport.addEventListener('change', update);
+    connection?.addEventListener?.('change', update);
 
     return () => {
       reducedMotion.removeEventListener('change', update);
       desktopViewport.removeEventListener('change', update);
+      connection?.removeEventListener?.('change', update);
     };
   }, []);
 
