@@ -22,7 +22,7 @@ type Payload={role:string;count:number;members:Member[]};
 const LABELS:Record<string,string>={
   apprenant:'Apprenants',professeur:'Professeurs',structure:'Structures',
   organisateur:'Organisateurs',moderateur:'Modérateurs',
-  recruteur:'Recruteurs',recruteur_structure:'Recruteurs Structure',coach:'Coachs'
+  recruteur:'Recruteurs',coach:'Coachs'
 };
 
 export default function AdminRoleUsers(){
@@ -32,20 +32,31 @@ export default function AdminRoleUsers(){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
 
-  useEffect(()=>{(async()=>{
-    setLoading(true);setError('');
-    try{
-      const token=localStorage.getItem('omnia_session_token');
-      if(!token)throw new Error('Session expirée.');
-      const r=await fetch(`${ENDPOINTS.dashboardAdmin}?role=${encodeURIComponent(roleKey)}`,{
-        headers:edgeAuthHeaders()
-      });
-      const d=await r.json();
-      if(!r.ok)throw new Error(d.message||d.error||'Chargement impossible');
-      setData(d);
-    }catch(e){setError(e instanceof Error?e.message:'Erreur');}
-    finally{setLoading(false);}
-  })()},[roleKey]);
+  useEffect(()=>{
+    if(roleKey==='recruteur_structure'){
+      navigate('/admin/structures',{replace:true});
+      return;
+    }
+    (async()=>{
+      setLoading(true);setError('');
+      try{
+        const token=localStorage.getItem('omnia_session_token');
+        if(!token)throw new Error('Session expirée.');
+        const r=await fetch(`${ENDPOINTS.dashboardAdmin}?role=${encodeURIComponent(roleKey)}`,{
+          headers:edgeAuthHeaders()
+        });
+        const d=await r.json();
+        if(!r.ok)throw new Error(d.message||d.error||'Chargement impossible');
+        setData(d);
+      }catch(e){setError(e instanceof Error?e.message:'Erreur');}
+      finally{setLoading(false);}
+    })();
+  },[roleKey,navigate]);
+
+  function openPreview(path:string,role:string){
+    sessionStorage.setItem('omnia_admin_role_preview',role);
+    window.location.assign(path);
+  }
 
   return <AdminLayout>
     <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
@@ -57,10 +68,9 @@ export default function AdminRoleUsers(){
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>{LABELS[roleKey]||data?.role||roleKey}</h1>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-gray-500">Seules les informations administratives minimales sont affichées : nom, e-mail et date d’inscription.</p>
-          {roleKey==='recruteur'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur');navigate('/talent/recruteur/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
-          {roleKey==='recruteur_structure'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','recruteur_structure');navigate('/structure/recrutement/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur Structure</button>}
-          {roleKey==='coach'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','coach');navigate('/coach/dashboard?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
-          {roleKey==='organisateur'&&<button type="button" onClick={()=>{sessionStorage.setItem('omnia_admin_role_preview','organisateur');navigate('/omnia-live/organisateur?preview=true')}} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace organisateur</button>}
+          {roleKey==='recruteur'&&<button type="button" onClick={()=>openPreview('/talent/recruteur/dashboard?preview=true','recruteur')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
+          {roleKey==='coach'&&<button type="button" onClick={()=>openPreview('/coach/dashboard?preview=true','coach')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
+          {roleKey==='organisateur'&&<button type="button" onClick={()=>openPreview('/omnia-live/organisateur?preview=true','organisateur')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace organisateur</button>}
         </div>
       </div>
 

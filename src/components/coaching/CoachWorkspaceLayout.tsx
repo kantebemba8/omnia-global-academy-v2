@@ -106,7 +106,8 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
           <ArrowLeft size={18} /> Voir Omnia Coaching
         </Link>
         <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
-          <LogOut size={18} /> Déconnexion
+          {previewMode ? <ArrowLeft size={18} /> : <LogOut size={18} />}
+          {previewMode ? 'Retour au Dashboard Super-admin' : 'Déconnexion'}
         </button>
       </div>
     </aside>

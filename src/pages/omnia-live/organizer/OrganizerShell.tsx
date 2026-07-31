@@ -1,28 +1,50 @@
-import {ReactNode,useEffect,useState} from 'react';
+import {ElementType,ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
   LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,CreditCard,Settings2,
-  PlusCircle,MessageSquare,KeyRound,Menu,X,ExternalLink,LogOut,ArrowLeft
+  PlusCircle,MessageSquare,KeyRound,Menu,X,LogOut,ArrowLeft
 } from 'lucide-react';
 import {isOrganizerPreviewMode} from '../liveApi';
 
 const BLUE='#002050';
 const GOLD='#BF8813';
 
-const NAV=[
-  ['/omnia-live/organisateur','Tableau de bord',LayoutDashboard,true],
-  ['/omnia-live/proposer','Créer un événement',PlusCircle],
-  ['/omnia-live/organisateur/evenements','Mes événements',Radio],
-  ['/omnia-live/organisateur/participants','Participants',Users],
-  ['/omnia-live/organisateur/medias','Médias & Replays',Film],
-  ['/omnia-live/organisateur/communications','Communications',MessageSquare],
-  ['/omnia-live/organisateur/acces-prives','Codes privés',KeyRound],
-  ['/omnia-live/revenus','Revenus & Payouts',Wallet],
-  ['/omnia-live/organisateur/offres','Offres aux participants',CreditCard],
-  ['/omnia-live/organisateur/plan-omnia','Mon plan organisateur',CreditCard],
-  ['/omnia-live/organisateur/statistiques','Analytics',BarChart3],
-  ['/omnia-live/organisateur/parametres','Paramètres',Settings2],
-] as const;
+type OrganizerNavItem={path:string;label:string;icon:ElementType;exact?:boolean};
+type OrganizerNavGroup={label:string;items:OrganizerNavItem[]};
+
+const NAV_GROUPS:OrganizerNavGroup[]=[
+  {
+    label:'Accueil',
+    items:[{path:'/omnia-live/organisateur',label:'Tableau de bord',icon:LayoutDashboard,exact:true}],
+  },
+  {
+    label:'Événements',
+    items:[
+      {path:'/omnia-live/proposer',label:'Créer un événement',icon:PlusCircle},
+      {path:'/omnia-live/organisateur/evenements',label:'Mes événements',icon:Radio},
+      {path:'/omnia-live/organisateur/participants',label:'Participants',icon:Users},
+      {path:'/omnia-live/organisateur/communications',label:'Communications',icon:MessageSquare},
+      {path:'/omnia-live/organisateur/acces-prives',label:'Codes privés',icon:KeyRound},
+      {path:'/omnia-live/organisateur/medias',label:'Médias & Replays',icon:Film},
+    ],
+  },
+  {
+    label:'Pilotage',
+    items:[{path:'/omnia-live/organisateur/statistiques',label:'Analytics',icon:BarChart3}],
+  },
+  {
+    label:'Offres & revenus',
+    items:[
+      {path:'/omnia-live/organisateur/offres',label:'Offres aux participants',icon:CreditCard},
+      {path:'/omnia-live/organisateur/plan-omnia',label:'Mon plan organisateur',icon:CreditCard},
+      {path:'/omnia-live/revenus',label:'Revenus & Payouts',icon:Wallet},
+    ],
+  },
+  {
+    label:'Configuration',
+    items:[{path:'/omnia-live/organisateur/parametres',label:'Paramètres',icon:Settings2}],
+  },
+];
 
 export default function OrganizerShell({
   children,title,subtitle
@@ -71,7 +93,7 @@ export default function OrganizerShell({
 
   const sidebar=<aside className="flex h-full flex-col" style={{backgroundColor:BLUE}}>
     <div className="border-b border-white/10 px-5 py-5">
-      <Link to={buildPath('/')} className="flex items-center gap-3">
+      <Link to={buildPath('/omnia-live')} className="flex items-center gap-3">
         <img
           src="/omnia-sidebar-logo.png"
           alt="Omnia Global Academy"
@@ -88,37 +110,45 @@ export default function OrganizerShell({
       </div>
     </div>
 
-    <nav className="oga-sidebar-scroll flex-1 space-y-1 overflow-y-auto px-3 py-4">
-      {NAV.map(([path,label,Icon,exact])=>
-        <NavLink
-          key={path}
-          to={buildPath(path)}
-          end={Boolean(exact)}
-          className={({isActive})=>
-            `relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition ${
-              isActive
-                ? 'text-white'
-                : 'text-white/75 hover:text-white'
-            }`
-          }
-        >
-          {({isActive})=><>
-            {isActive&&<span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{backgroundColor:GOLD}}/>}
-            <Icon style={{width:18,height:18,flexShrink:0}}/>
-            <span className="flex-1">{label}</span>
-          </>}
-        </NavLink>
-      )}
+    <nav className="oga-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
+      <div className="space-y-5">
+        {NAV_GROUPS.map(group=><section key={group.label}>
+          <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">{group.label}</p>
+          <div className="space-y-1">
+            {group.items.map(item=>{
+              const Icon=item.icon;
+              return <NavLink
+                key={item.path}
+                to={buildPath(item.path)}
+                end={Boolean(item.exact)}
+                className={({isActive})=>
+                  `relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition ${
+                    isActive
+                      ? 'text-white'
+                      : 'text-white/75 hover:text-white'
+                  }`
+                }
+              >
+                {({isActive})=><>
+                  {isActive&&<span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{backgroundColor:GOLD}}/>}
+                  <Icon style={{width:18,height:18,flexShrink:0}}/>
+                  <span className="flex-1">{item.label}</span>
+                </>}
+              </NavLink>;
+            })}
+          </div>
+        </section>)}
+      </div>
     </nav>
 
     <div className="border-t border-white/10 px-3 pb-5 pt-3">
       <Link
-        to={buildPath('/')}
+        to={buildPath('/omnia-live')}
         className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
         style={{color:GOLD}}
       >
-        <ExternalLink style={{width:18,height:18,flexShrink:0}}/>
-        <span>Retour à Omnia Global Academy</span>
+        <ArrowLeft style={{width:18,height:18,flexShrink:0}}/>
+        <span>Retour à Omnia Live</span>
       </Link>
       <button
         type="button"

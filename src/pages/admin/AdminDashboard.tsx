@@ -6,7 +6,7 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
   Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
-  Wallet, Briefcase, MessageSquare, Wrench, AlertCircle, CheckCircle2, UserRoundSearch
+  Wallet, MessageSquare, Wrench, AlertCircle, CheckCircle2, UserRoundSearch
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -143,10 +143,21 @@ export default function AdminDashboard() {
     { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true', role: 'coach' },
     { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true', role: 'organisateur' },
     { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true', role: 'structure' },
-    { label: 'Recruteur Structure', icon: Briefcase, path: '/structure/recrutement/dashboard?preview=true', role: 'recruteur_structure' },
     { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true', role: 'moderateur' },
     { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true', role: 'recruteur' },
   ];
+
+  const visibleRoleRows = (data?.users_by_role || []).filter(row => {
+    const key = row.role_key || row.role;
+    return key !== 'recruteur_structure' && !/recruteur\s+structure/i.test(row.role);
+  });
+
+  function openPreviewSpace(path: string, role: string) {
+    sessionStorage.setItem('omnia_admin_role_preview', role);
+    // Le chargement complet évite les erreurs transitoires de chunk lors du passage
+    // du Dashboard Super-admin vers un espace prévisualisé, notamment Omnia Live.
+    window.location.assign(path);
+  }
 
   return (
     <AdminLayout>
@@ -186,7 +197,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-3 border-y border-gray-200 py-4">
             {previewSpaces.map(item => (
-              <button key={item.path} type="button" onClick={() => { sessionStorage.setItem('omnia_admin_role_preview', item.role); navigate(item.path); }}
+              <button key={item.path} type="button" onClick={() => openPreviewSpace(item.path, item.role)}
                 className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                 style={{ color: '#002050' }}>
                 <item.icon size={16} />
@@ -365,9 +376,9 @@ export default function AdminDashboard() {
               <div>
                 <h2 className="text-lg font-black mb-3" style={{ color: '#002050' }}>Utilisateurs par rôle</h2>
                 <div className="border-y border-gray-200 py-2">
-                  {data.users_by_role.length === 0 ? (
+                  {visibleRoleRows.length === 0 ? (
                     <p className="text-sm text-gray-400 py-3">Aucune donnée disponible.</p>
-                  ) : data.users_by_role.map(row => (
+                  ) : visibleRoleRows.map(row => (
                     <button key={row.role} type="button"
                       onClick={() => navigate(`/admin/dashboard/roles/${encodeURIComponent(row.role_key || row.role)}`)}
                       className="w-full flex justify-between items-center py-2 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50 px-1">

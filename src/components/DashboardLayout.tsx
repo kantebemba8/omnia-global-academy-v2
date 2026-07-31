@@ -57,6 +57,94 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
 ];
 
+
+const APPRENANT_GROUPS: NavGroup[] = [
+  {
+    id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard,
+    items: [{ path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true }],
+  },
+  {
+    id: 'learner-account', label: 'Mon espace', icon: User,
+    items: [
+      { path: '/dashboard/profil', label: 'Mon profil', icon: User },
+      { path: '/dashboard/abonnements', label: 'Abonnements & avantages', icon: CreditCard },
+      { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
+      { path: '/dashboard/structure', label: 'Ma Structure', icon: Building2 },
+    ],
+  },
+  {
+    id: 'learner-learning', label: 'Apprentissage', icon: BookOpen,
+    items: [
+      { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
+      { path: '/dashboard/evaluations', label: 'Mes évaluations', icon: ClipboardCheck },
+      { path: '/dashboard/certificats', label: 'Mes certificats', icon: Award },
+    ],
+  },
+  {
+    id: 'learner-credentials', label: 'Compétences & preuves', icon: BadgeCheck,
+    items: [
+      { path: '/dashboard/badges', label: 'Mes badges', icon: BadgeCheck },
+      { path: '/dashboard/learning-record', label: 'Learning Record', icon: FileCheck2 },
+      { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
+      { path: '/dashboard/project-portfolio', label: 'Portfolio de projets', icon: Briefcase },
+      { path: '/dashboard/professional-pathways', label: 'Parcours professionnels', icon: Route },
+      { path: '/dashboard/employabilite', label: 'Employabilité intégrée', icon: UserRoundCheck },
+    ],
+  },
+  {
+    id: 'learner-career', label: 'Carrière & projets', icon: Briefcase,
+    items: [
+      { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
+      { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
+      { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
+      { path: '/talent', label: 'Omnia Talent', icon: Search },
+      { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
+      { path: '/forum', label: 'Omnia Forum', icon: MessageSquare },
+    ],
+  },
+];
+
+const PROFESSEUR_GROUPS: NavGroup[] = [
+  {
+    id: 'dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard,
+    items: [{ path: '/professeur/dashboard', label: "Vue d'ensemble", icon: LayoutDashboard, exact: true }],
+  },
+  {
+    id: 'professor-account', label: 'Mon espace', icon: User,
+    items: [{ path: '/professeur/profile', label: 'Configuration profil', icon: Settings }],
+  },
+  {
+    id: 'professor-courses', label: 'Formations', icon: BookOpen,
+    items: [
+      { path: '/professeur/courses', label: 'Mes formations', icon: BookOpen },
+      { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
+      { path: '/professeur/certificats', label: 'Mes certificats', icon: Award },
+    ],
+  },
+  {
+    id: 'professor-assessments', label: 'Évaluations & suivi', icon: ClipboardCheck,
+    items: [
+      { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
+      { path: '/professeur/jurys', label: 'Jurys & révisions', icon: Users },
+      { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
+    ],
+  },
+  {
+    id: 'professor-activity', label: 'Projets & revenus', icon: FolderKanban,
+    items: [
+      { path: '/professeur/projects', label: 'Omnia Projects', icon: FolderKanban },
+      { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
+    ],
+  },
+  {
+    id: 'professor-network', label: 'Réseau & communauté', icon: Users,
+    items: [
+      { path: '/talent', label: 'Omnia Talent', icon: Search },
+      { path: '/forum', label: 'Forums & Entraide', icon: MessageSquare },
+    ],
+  },
+];
+
 const PARTNER_NAV = [
   { path: '/partner/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
@@ -164,22 +252,27 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     : role === 'super_admin' ? ADMIN_NAV
     : APPRENANT_NAV
   );
+  const ACTIVE_NAV_GROUPS = navGroups ?? (
+    role === 'professeur' ? PROFESSEUR_GROUPS
+      : role === 'apprenant' ? APPRENANT_GROUPS
+        : undefined
+  );
 
   useEffect(() => {
-    if (!navGroups?.length) return;
-    const activeGroup = navGroups.find(group =>
+    if (!ACTIVE_NAV_GROUPS?.length) return;
+    const activeGroup = ACTIVE_NAV_GROUPS.find(group =>
       group.items.some(item => item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path))
     );
     if (activeGroup) {
       setExpandedGroups(prev => ({ ...prev, [activeGroup.id]: true }));
     }
-  }, [location.pathname, navGroups]);
+  }, [location.pathname, ACTIVE_NAV_GROUPS]);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  function isActive(item: typeof NAV_ITEMS[0]) {
+  function isActive(item: NavItem) {
     if ((item as { exact?: boolean }).exact) return location.pathname === item.path;
     return location.pathname.startsWith(item.path);
   }
@@ -207,9 +300,9 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
         className="oga-sidebar-scroll flex-1 min-h-0 px-3 py-4 overflow-y-auto overscroll-contain"
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#BF8813 transparent' }}
       >
-        {navGroups?.length ? (
+        {ACTIVE_NAV_GROUPS?.length ? (
           <div className="space-y-1">
-            {navGroups.map((group) => {
+            {ACTIVE_NAV_GROUPS.map((group) => {
               const containsActive = group.items.some(item => isActive(item));
               const open = expandedGroups[group.id] ?? containsActive;
               const GroupIcon = group.icon;
