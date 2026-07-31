@@ -23,14 +23,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseAnon = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+    const supabaseService = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 
-    const { data: settings, error } = await supabaseAnon
+    const [{ data: settings, error }, { data: cmsState }] = await Promise.all([
+      supabaseAnon
       .from('site_settings')
-      .select('key, value');
+      .select('key, value'),
+      supabaseService
+        .from('landing_page_cms_state')
+        .select('social_networks,mobile_apps')
+        .eq('id', 1)
+        .maybeSingle(),
+    ]);
 
     if (error) {
       throw error;
@@ -46,6 +52,11 @@ Deno.serve(async (req: Request) => {
       if (value == null) return fallback;
       if (typeof value === "object") return value;
       try { return JSON.parse(value); } catch { return fallback; }
+    };
+
+    const parseArraySetting = (value: any) => {
+      const parsed = parseObjectSetting(value, []);
+      return Array.isArray(parsed) ? parsed : [];
     };
 
     const parseNumberSetting = (value: any, fallback = 0) => {
@@ -82,6 +93,7 @@ Deno.serve(async (req: Request) => {
       maintenance_notice_message_fr: settingsMap.maintenance_notice_message_fr || "",
       maintenance_notice_at: settingsMap.maintenance_notice_at || null,
       page_content: parseObjectSetting(settingsMap.page_content, {}),
+      landing_page: parseObjectSetting(settingsMap.landing_page_published, {}),
       social_networks: parseObjectSetting(settingsMap.social_networks, {
         facebook: null,
         instagram: null,
@@ -90,11 +102,17 @@ Deno.serve(async (req: Request) => {
         indeed: null,
         whatsapp: null,
       }),
+      social_networks_v2: parseArraySetting(cmsState?.social_networks)
+        .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim() && (item.logo_url || item.icon_key))
+        .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
       follow_us_label_fr: settingsMap.follow_us_label_fr || "Suivez-nous",
       app_downloads: parseObjectSetting(settingsMap.app_downloads, {
         google_play: null,
         app_store: null,
       }),
+      mobile_apps_v2: parseArraySetting(cmsState?.mobile_apps)
+        .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim())
+        .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
       collaborations_logos: parseObjectSetting(settingsMap.collaborations_logos, []),
       favicon_url: settingsMap.favicon_url || null,
       site_slogan: settingsMap.site_slogan || null,
@@ -105,8 +123,10 @@ Deno.serve(async (req: Request) => {
 
     const { data: publicPartners } = await supabaseAnon
       .from("public_partners")
-      .select("id,name,category,logo_url,website_url,description,display_order,is_featured")
+      .select("id,name,category,logo_url,website_url,description,display_order,is_featured,status,logo_authorized,show_homepage,show_footer,alt_text")
       .eq("is_active", true)
+      .eq("status", "active")
+      .eq("logo_authorized", true)
       .order("display_order")
       .order("name");
     (publicSettings as any).public_partners = publicPartners ?? [];

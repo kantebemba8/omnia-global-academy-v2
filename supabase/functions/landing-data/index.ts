@@ -13,13 +13,29 @@ const LANDING_KEYS = [
   "landing_testimonials",
   "social_networks",
   "app_downloads",
+  "landing_page_published",
   "collaborations_logos",
  "follow_us_label_fr",
   "stat_formations","stat_apprenants","stat_pays","stat_formateurs","stat_etablissements",
 ];
 
-function parseSetting(value: string): unknown {
-  try { return JSON.parse(value); } catch { return value; }
+function parseSetting(value: unknown): unknown {
+  if (value == null || typeof value === "object") return value;
+  try { return JSON.parse(String(value)); } catch { return value; }
+}
+
+function publicSocialNetworks(value: unknown) {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim() && (item.logo_url || item.icon_key))
+    .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0));
+}
+
+function publicMobileApps(value: unknown) {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim())
+    .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0));
 }
 
 Deno.serve(async (req: Request) => {
@@ -36,7 +52,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const [settingsResult, coursesResult, catResult, statsResult] = await Promise.all([
+    const [settingsResult, coursesResult, catResult, statsResult, cmsStateResult] = await Promise.all([
       supabase.from("site_settings").select("key, value").in("key", LANDING_KEYS),
       supabase
         .from("courses")
@@ -54,6 +70,7 @@ Deno.serve(async (req: Request) => {
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "professeur"),
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "directeur"),
       ]),
+      supabase.from("landing_page_cms_state").select("social_networks,mobile_apps").eq("id", 1).maybeSingle(),
     ]);
 
     const settings: Record<string, unknown> = {};
@@ -125,7 +142,10 @@ Deno.serve(async (req: Request) => {
       },
       fintech_logos:      settings["fintech_logos"]       ?? [],
       social_networks:    settings["social_networks"]     ?? {},
+      social_networks_v2: publicSocialNetworks(cmsStateResult.data?.social_networks),
       app_downloads:      settings["app_downloads"]       ?? {},
+      mobile_apps_v2:     publicMobileApps(cmsStateResult.data?.mobile_apps),
+      landing_page:       settings["landing_page_published"] ?? {},
       collaborations_logos: settings["collaborations_logos"] ?? [],
       follow_us_label_fr: settings["follow_us_label_fr"] ?? "Suivez-nous",
       category_counts: categoryCounts,

@@ -28,6 +28,187 @@ const FORBIDDEN_KEYS = new Set([
   "cron_secret",
 ]);
 
+const GOVERNED_KEYS = new Set([
+  "landing_page_published",
+  "landing_page_publication_meta",
+  "landing_page_draft",
+  "landing_page_previous_published",
+  "social_networks_v2",
+  "mobile_apps_v2",
+]);
+
+
+const LANDING_SECTION_TYPES = new Set([
+  "hero", "goal_selector", "omnia_journey", "featured_courses", "ecosystem",
+  "credentials", "career_recruitment", "structures", "partners", "mobile_apps",
+  "social_networks", "final_cta", "custom_text",
+]);
+const UNIQUE_LANDING_SECTION_TYPES = new Set([
+  "hero", "goal_selector", "omnia_journey", "featured_courses", "ecosystem",
+  "credentials", "career_recruitment", "structures", "partners", "mobile_apps",
+  "social_networks", "final_cta",
+]);
+
+function cleanText(value: unknown, maxLength: number) {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
+function cleanPublicUrl(value: unknown) {
+  const url = cleanText(value, 1000);
+  if (!url) return "";
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:" || parsed.protocol === "mailto:" || parsed.protocol === "tel:") return url;
+  } catch {
+    // L'erreur normalisée ci-dessous est plus claire pour le CMS.
+  }
+  throw new Error("INVALID_PUBLIC_URL");
+}
+
+function cleanExternalUrl(value: unknown) {
+  const url = cleanText(value, 1000);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:") return url;
+  } catch {
+    // L'erreur normalisée ci-dessous est plus claire pour le CMS.
+  }
+  throw new Error("INVALID_EXTERNAL_URL");
+}
+
+function normalizeSocialNetworks(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length > 30) throw new Error("TOO_MANY_SOCIAL_NETWORKS");
+  const ids = new Set<string>();
+  return rows.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("SOCIAL_NETWORK_INVALID");
+    const item = raw as Record<string, unknown>;
+    const id = cleanText(item.id, 120) || `social-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new Error("SOCIAL_NETWORK_ID_DUPLICATE");
+    ids.add(id);
+    const enabled = item.enabled === true;
+    const name = cleanText(item.name, 120);
+    const url = cleanExternalUrl(item.url);
+    const iconKey = cleanText(item.icon_key, 60) || "other";
+    const logoUrl = cleanExternalUrl(item.logo_url);
+    if (enabled && (!name || !url || (!iconKey && !logoUrl))) throw new Error("SOCIAL_NETWORK_PUBLIC_REQUIREMENTS");
+    return {
+      id, name, url, enabled,
+      display_order: Math.trunc(Number(item.display_order || index + 1)),
+      show_homepage: item.show_homepage === true,
+      show_footer: item.show_footer !== false,
+      icon_key: iconKey,
+      logo_url: logoUrl,
+      alt_text: cleanText(item.alt_text, 300),
+    };
+  });
+}
+
+function normalizeMobileApps(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length > 6) throw new Error("TOO_MANY_MOBILE_APPS");
+  const ids = new Set<string>();
+  return rows.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("MOBILE_APP_INVALID");
+    const item = raw as Record<string, unknown>;
+    const id = cleanText(item.id, 120) || `mobile-app-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new Error("MOBILE_APP_ID_DUPLICATE");
+    ids.add(id);
+    const store = item.store === "ios" ? "ios" : "android";
+    const enabled = item.enabled === true;
+    const url = cleanExternalUrl(item.url);
+    if (enabled && !url) throw new Error("MOBILE_APP_URL_REQUIRED");
+    return {
+      id,
+      store,
+      name: cleanText(item.name, 120) || (store === "ios" ? "App Store" : "Google Play"),
+      url,
+      enabled,
+      display_order: Math.trunc(Number(item.display_order || index + 1)),
+      show_homepage: item.show_homepage !== false,
+      show_footer: item.show_footer !== false,
+    };
+  });
+}
+
+function normalizeLandingPage(value: unknown) {
+  if (!value || typeof value !== "object") throw new Error("LANDING_PAGE_REQUIRED");
+  const source = value as Record<string, unknown>;
+  const rawSections = Array.isArray(source.sections) ? source.sections : [];
+  if (rawSections.length === 0 || rawSections.length > 30) throw new Error("LANDING_SECTIONS_INVALID");
+
+  const ids = new Set<string>();
+  const uniqueTypes = new Set<string>();
+  const sections = rawSections.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("LANDING_SECTION_INVALID");
+    const section = raw as Record<string, unknown>;
+    const type = cleanText(section.type, 60);
+    if (!LANDING_SECTION_TYPES.has(type)) throw new Error("LANDING_SECTION_TYPE_INVALID");
+    if (UNIQUE_LANDING_SECTION_TYPES.has(type)) {
+      if (uniqueTypes.has(type)) throw new Error("LANDING_SECTION_DUPLICATE");
+      uniqueTypes.add(type);
+    }
+    const id = cleanText(section.id, 120) || `${type}-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new Error("LANDING_SECTION_ID_DUPLICATE");
+    ids.add(id);
+    return {
+      id,
+      type,
+      internal_name: cleanText(section.internal_name, 160),
+      enabled: section.enabled !== false,
+      order: index + 1,
+      eyebrow: cleanText(section.eyebrow, 180),
+      title: cleanText(section.title, 500),
+      subtitle: cleanText(section.subtitle, 1200),
+      body: cleanText(section.body, 5000),
+      primary_cta_label: cleanText(section.primary_cta_label, 120),
+      primary_cta_url: cleanPublicUrl(section.primary_cta_url),
+      secondary_cta_label: cleanText(section.secondary_cta_label, 120),
+      secondary_cta_url: cleanPublicUrl(section.secondary_cta_url),
+    };
+  });
+
+  return {
+    version: Math.max(1, Math.trunc(Number(source.version || 1))),
+    updated_at: new Date().toISOString(),
+    published_at: source.published_at ? cleanText(source.published_at, 80) : null,
+    sections,
+  };
+}
+
+async function uploadSiteAsset(
+  sb: ReturnType<typeof createClient>,
+  folder: string,
+  fileName: string,
+  mimeType: string,
+  base64: string,
+) {
+  const allowed = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
+  if (!allowed.has(mimeType)) throw new Error("INVALID_IMAGE_TYPE");
+  const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+  if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("FILE_TOO_LARGE");
+  const bucket = "site-assets";
+  const { data: existingBucket } = await sb.storage.getBucket(bucket);
+  if (!existingBucket) {
+    const { error: bucketError } = await sb.storage.createBucket(bucket, {
+      public: true,
+      fileSizeLimit: 2 * 1024 * 1024,
+      allowedMimeTypes: Array.from(allowed),
+    });
+    if (bucketError && !String(bucketError.message || "").toLowerCase().includes("already")) throw bucketError;
+  }
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-80) || "asset.png";
+  const path = `${folder}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await sb.storage.from(bucket).upload(path, bytes, {
+    contentType: mimeType,
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -43,9 +224,19 @@ Deno.serve(async (req: Request) => {
       const { data: settings } = await sb.from("site_settings").select("key,value");
       const { data: pricingTiers } = await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min");
       const { data: partners } = await sb.from("public_partners").select("*").order("display_order").order("name");
+      const { data: landingCms } = await sb.from("landing_page_cms_state")
+        .select("draft,previous_published,published_at,published_by,updated_at,social_networks,mobile_apps")
+        .eq("id", 1)
+        .maybeSingle();
       const { data: multipliers, error: multiplierError } = await sb.from("category_multipliers").select("category_name,multiplier").order("category_name");
       if (multiplierError) return json({ error: "CATEGORY_MULTIPLIERS_READ_FAILED", detail: multiplierError.message }, 500);
-      return json({ settings: settings ?? [], pricing_tiers: pricingTiers ?? [], partners: partners ?? [], category_multipliers: multipliers ?? [] });
+      return json({
+        settings: settings ?? [],
+        pricing_tiers: pricingTiers ?? [],
+        partners: partners ?? [],
+        landing_cms: landingCms ?? null,
+        category_multipliers: multipliers ?? [],
+      });
     }
 
     const body = await req.json() as {
@@ -62,6 +253,9 @@ Deno.serve(async (req: Request) => {
       category_name?: string;
       multiplier?: number;
       multipliers?: Array<{ category_name: string; multiplier: number }>;
+      landing_page?: unknown;
+      social_networks?: unknown;
+      mobile_apps?: unknown;
     };
 
     // Favicon library management
@@ -150,6 +344,12 @@ Deno.serve(async (req: Request) => {
       return json({ success:true, favicon_library:library });
     }
 
+    if (body.action === "upload_social_logo") {
+      if (!body.base64 || !body.file_name || !body.mime_type) return json({ error: "FILE_REQUIRED" }, 400);
+      const logoUrl = await uploadSiteAsset(sb, "social-networks", body.file_name, body.mime_type, body.base64);
+      return json({ success: true, logo_url: logoUrl });
+    }
+
     if (body.action === "upload_partner_logo") {
       if (!body.base64 || !body.file_name || !body.mime_type) return json({ error: "FILE_REQUIRED" }, 400);
       const allowed = new Set(["image/png","image/jpeg","image/webp","image/svg+xml"]);
@@ -170,15 +370,32 @@ Deno.serve(async (req: Request) => {
     if (body.action === "upsert_partner") {
       if (!body.partner) return json({ error: "PARTNER_REQUIRED" }, 400);
       const p = body.partner as any;
+      const status = ["draft", "active", "archived"].includes(String(p.status)) ? String(p.status) : "draft";
       const payload = {
-        name: String(p.name || "").trim(), category: String(p.category || "Autre"),
-        logo_url: p.logo_url || null, website_url: p.website_url || null, description: p.description || null,
-        display_order: Number(p.display_order || 0), is_active: p.is_active !== false, is_featured: !!p.is_featured,
-        updated_at: new Date().toISOString()
+        name: cleanText(p.name, 240),
+        category: cleanText(p.category || "Autre", 120),
+        logo_url: cleanText(p.logo_url, 1000) || null,
+        website_url: cleanPublicUrl(p.website_url) || null,
+        description: cleanText(p.description, 2000) || null,
+        display_order: Math.trunc(Number(p.display_order || 0)),
+        is_active: status === "active" && p.is_active !== false,
+        is_featured: Boolean(p.is_featured),
+        status,
+        logo_authorized: Boolean(p.logo_authorized),
+        show_homepage: p.show_homepage !== false,
+        show_footer: Boolean(p.show_footer),
+        alt_text: cleanText(p.alt_text, 300) || null,
+        updated_at: new Date().toISOString(),
       };
       if (!payload.name) return json({ error: "PARTNER_NAME_REQUIRED" }, 400);
-      if (p.id) await sb.from("public_partners").update(payload).eq("id", p.id);
-      else await sb.from("public_partners").insert(payload);
+      if (payload.status === "active" && (!payload.logo_url || !payload.logo_authorized)) {
+        return json({ error: "PARTNER_PUBLIC_REQUIREMENTS", message: "Un partenaire actif doit avoir un logo autorisé." }, 400);
+      }
+      const query = p.id
+        ? sb.from("public_partners").update(payload).eq("id", p.id)
+        : sb.from("public_partners").insert(payload);
+      const { error: partnerError } = await query;
+      if (partnerError) return json({ error: "PARTNER_SAVE_FAILED", detail: partnerError.message }, 500);
       return json({ success: true });
     }
 
@@ -186,6 +403,115 @@ Deno.serve(async (req: Request) => {
       if (!body.partner_id) return json({ error: "PARTNER_ID_REQUIRED" }, 400);
       await sb.from("public_partners").delete().eq("id", body.partner_id);
       return json({ success: true });
+    }
+
+    if (body.action === "save_public_channels") {
+      const socialNetworks = normalizeSocialNetworks(body.social_networks);
+      const mobileApps = normalizeMobileApps(body.mobile_apps);
+      const { error: channelError } = await sb.from("landing_page_cms_state").upsert({
+        id: 1,
+        social_networks: socialNetworks,
+        mobile_apps: mobileApps,
+        updated_at: new Date().toISOString(),
+        updated_by: adminId,
+      }, { onConflict: "id" });
+      if (channelError) return json({ error: "PUBLIC_CHANNELS_SAVE_FAILED", detail: channelError.message }, 500);
+      return json({ success: true, social_networks: socialNetworks, mobile_apps: mobileApps });
+    }
+
+    if (body.action === "save_landing_draft") {
+      const page = normalizeLandingPage(body.landing_page);
+      await sb.from("landing_page_cms_state").upsert({
+        id: 1,
+        draft: page,
+        updated_at: new Date().toISOString(),
+        updated_by: adminId,
+      }, { onConflict: "id" });
+      await sb.from("landing_page_publication_log").insert({
+        action: "save_draft", draft_snapshot: page, admin_id: adminId,
+      });
+      return json({ success: true, landing_page: page });
+    }
+
+    if (body.action === "publish_landing_page") {
+      const now = new Date().toISOString();
+      const page = normalizeLandingPage(body.landing_page);
+      page.published_at = now;
+      const { data: currentPublishedRow } = await sb.from("site_settings")
+        .select("value").eq("key", "landing_page_published").maybeSingle();
+      const previousPublished = currentPublishedRow?.value ?? null;
+      const meta = { published_at: now, published_by: adminId, previous_available: Boolean(previousPublished) };
+      const [{ error: publicPublishError }, { error: cmsStateError }] = await Promise.all([
+        sb.from("site_settings").upsert([
+          { key: "landing_page_published", value: page, updated_at: now, updated_by_admin_id: adminId },
+          { key: "landing_page_publication_meta", value: meta, updated_at: now, updated_by_admin_id: adminId },
+        ], { onConflict: "key" }),
+        sb.from("landing_page_cms_state").upsert({
+          id: 1,
+          draft: page,
+          previous_published: previousPublished,
+          published_at: now,
+          published_by: adminId,
+          updated_at: now,
+          updated_by: adminId,
+        }, { onConflict: "id" }),
+      ]);
+      const publishError = publicPublishError || cmsStateError;
+      if (publishError) return json({ error: "LANDING_PUBLISH_FAILED", detail: publishError.message }, 500);
+      await sb.from("landing_page_publication_log").insert({
+        action: "publish", draft_snapshot: page, published_snapshot: page,
+        previous_published_snapshot: previousPublished, admin_id: adminId,
+      });
+      return json({ success: true, landing_page: page, publication_meta: meta });
+    }
+
+    if (body.action === "restore_landing_draft") {
+      const { data: publishedRow } = await sb.from("site_settings")
+        .select("value").eq("key", "landing_page_published").maybeSingle();
+      if (!publishedRow?.value) return json({ error: "NO_PUBLISHED_LANDING_PAGE" }, 404);
+      const page = normalizeLandingPage(publishedRow.value);
+      await sb.from("landing_page_cms_state").upsert({
+        id: 1,
+        draft: page,
+        updated_at: new Date().toISOString(),
+        updated_by: adminId,
+      }, { onConflict: "id" });
+      await sb.from("landing_page_publication_log").insert({ action: "restore_draft", draft_snapshot: page, admin_id: adminId });
+      return json({ success: true, landing_page: page });
+    }
+
+    if (body.action === "rollback_landing_publication") {
+      const [{ data: currentRow }, { data: cmsState }] = await Promise.all([
+        sb.from("site_settings").select("value").eq("key", "landing_page_published").maybeSingle(),
+        sb.from("landing_page_cms_state").select("previous_published").eq("id", 1).maybeSingle(),
+      ]);
+      if (!cmsState?.previous_published) return json({ error: "NO_PREVIOUS_LANDING_PUBLICATION" }, 404);
+      const now = new Date().toISOString();
+      const restored = normalizeLandingPage(cmsState.previous_published);
+      restored.published_at = now;
+      const meta = { published_at: now, published_by: adminId, previous_available: Boolean(currentRow?.value) };
+      const [{ error: publicRollbackError }, { error: cmsRollbackError }] = await Promise.all([
+        sb.from("site_settings").upsert([
+          { key: "landing_page_published", value: restored, updated_at: now, updated_by_admin_id: adminId },
+          { key: "landing_page_publication_meta", value: meta, updated_at: now, updated_by_admin_id: adminId },
+        ], { onConflict: "key" }),
+        sb.from("landing_page_cms_state").upsert({
+          id: 1,
+          draft: restored,
+          previous_published: currentRow?.value ?? null,
+          published_at: now,
+          published_by: adminId,
+          updated_at: now,
+          updated_by: adminId,
+        }, { onConflict: "id" }),
+      ]);
+      const rollbackError = publicRollbackError || cmsRollbackError;
+      if (rollbackError) return json({ error: "LANDING_ROLLBACK_FAILED", detail: rollbackError.message }, 500);
+      await sb.from("landing_page_publication_log").insert({
+        action: "rollback", draft_snapshot: restored, published_snapshot: restored,
+        previous_published_snapshot: currentRow?.value ?? null, admin_id: adminId,
+      });
+      return json({ success: true, landing_page: restored, publication_meta: meta });
     }
 
     if (body.action === "save_category_multipliers") {
@@ -268,6 +594,10 @@ Deno.serve(async (req: Request) => {
     const forbidden = updates.filter((u) => FORBIDDEN_KEYS.has(u.key.toLowerCase()));
     if (forbidden.length > 0) {
       return json({ error: "FORBIDDEN_KEY", keys: forbidden.map((u) => u.key) }, 400);
+    }
+    const governed = updates.filter((u) => GOVERNED_KEYS.has(u.key));
+    if (governed.length > 0) {
+      return json({ error: "GOVERNED_KEY_REQUIRES_ACTION", keys: governed.map((u) => u.key) }, 400);
     }
 
     const now = new Date().toISOString();

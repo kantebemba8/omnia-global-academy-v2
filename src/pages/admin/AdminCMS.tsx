@@ -4,11 +4,12 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import {
-  Save, Settings, Eye, EyeOff, Plus, Trash2, AlertTriangle, Send, Mail,
-  MessageSquare, Clock, Bot, Image, Captions, ToggleLeft, ToggleRight,
-  Users, BarChart2, MapPin, TrendingUp, Coins, X, Upload, CheckCircle2,
+  Save, Settings, AlertTriangle, Send, Mail, MessageSquare, Clock, Bot,
+  Image, Captions, ToggleLeft, ToggleRight, Upload, CheckCircle2,
 } from 'lucide-react';
 import { PartnersManager } from '../../components/admin/PartnersManager';
+import { LandingCmsFoundation } from '../../components/admin/LandingCmsFoundation';
+import { PublicChannelsManager } from '../../components/admin/PublicChannelsManager';
 import { PricingRulesManager } from '../../components/admin/PricingRulesManager';
 import { PricingTiersManager } from '../../components/admin/PricingTiersManager';
 
@@ -31,6 +32,9 @@ const CMS_EXCLUDED_KEYS = new Set([
   // Anciennes clés fantômes conservées en base uniquement pour compatibilité historique.
   'ai_tokens_inscription',
   'ai_tokens_per_purchase',
+  // Gouvernance de la page d’accueil : modification uniquement via le constructeur dédié.
+  'landing_page_published',
+  'landing_page_publication_meta',
 ]);
 
 const CMS_FORBIDDEN_KEYS = new Set([
@@ -52,11 +56,6 @@ const FIXED_BRAND_COLORS = {
   success: '#1E7A52',
 };
 
-type SocialNetworks = {
-  facebook: string; instagram: string; youtube: string;
-  linkedin: string; whatsapp: string; indeed: string;
-};
-type AppDownloads = { app_store: string; google_play: string; };
 type FaviconItem = { url: string; name: string; created_at?: string; };
 
 type PublicPageContent = {
@@ -146,10 +145,6 @@ function getDefaultMultipliers(): Record<string, string> { return { ...DEFAULT_C
 export default function AdminCMS() {
   const [settings, setSettings] = useState<Settings>({});
   const [initialSettings, setInitialSettings] = useState<Settings>({});
-  const [socialNetworks, setSocialNetworks] = useState<SocialNetworks>({
-    facebook: '', instagram: '', youtube: '', linkedin: '', whatsapp: '', indeed: '',
-  });
-  const [appDownloads, setAppDownloads] = useState<AppDownloads>({ app_store: '', google_play: '' });
   const [favicons, setFavicons] = useState<FaviconItem[]>([]);
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [pageEditorTarget, setPageEditorTarget] = useState<'landing' | 'talent' | 'omnia_live'>('landing');
@@ -182,35 +177,11 @@ export default function AdminCMS() {
           editableMap.site_slogan = OFFICIAL_SLOGAN;
         }
 
-        const social = parseObject<SocialNetworks>(map.social_networks, {
-          facebook: String(map.social_facebook || ''),
-          instagram: String(map.social_instagram || ''),
-          youtube: String(map.social_youtube || ''),
-          linkedin: String(map.social_linkedin || ''),
-          whatsapp: String(map.social_whatsapp || ''),
-          indeed: String(map.social_indeed || ''),
-        });
-        const apps = parseObject<AppDownloads>(map.app_downloads, {
-          app_store: String(map.app_store_url || ''),
-          google_play: String(map.google_play_url || ''),
-        });
         const faviconLibrary = parseObject<FaviconItem[]>(map.favicon_library, []);
         const loadedPageContent = parseObject<Partial<PublicPageContent>>(map.page_content, {});
 
         setSettings(editableMap);
         setInitialSettings(map);
-        setSocialNetworks({
-          facebook: social.facebook || '',
-          instagram: social.instagram || '',
-          youtube: social.youtube || '',
-          linkedin: social.linkedin || '',
-          whatsapp: social.whatsapp || '',
-          indeed: social.indeed || '',
-        });
-        setAppDownloads({
-          app_store: apps.app_store || '',
-          google_play: apps.google_play || '',
-        });
         setFavicons(Array.isArray(faviconLibrary) ? faviconLibrary : []);
         setPageContent({
           talent: { ...DEFAULT_PAGE_CONTENT.talent, ...(loadedPageContent.talent || {}) },
@@ -254,23 +225,6 @@ export default function AdminCMS() {
 
     if (tab === 'landing') {
       updates.push({ key: 'page_content', value: pageContent });
-    }
-
-    if (tab === 'general') {
-      updates.push(
-        { key: 'social_networks', value: {
-          facebook: socialNetworks.facebook.trim() || null,
-          instagram: socialNetworks.instagram.trim() || null,
-          youtube: socialNetworks.youtube.trim() || null,
-          linkedin: socialNetworks.linkedin.trim() || null,
-          whatsapp: socialNetworks.whatsapp.trim() || null,
-          indeed: socialNetworks.indeed.trim() || null,
-        }},
-        { key: 'app_downloads', value: {
-          app_store: appDownloads.app_store.trim() || null,
-          google_play: appDownloads.google_play.trim() || null,
-        }},
-      );
     }
 
     if (extraUpdates) updates.push(...extraUpdates.filter(u => canCmsWrite(u.key)));
@@ -659,39 +613,8 @@ export default function AdminCMS() {
                 <Field label="Email Support" k="email_support" type="email" placeholder="support@omniaglobalacademy.com" />
                 <Field label="Email Contact" k="email_contact" type="email" placeholder="contact@omniaglobalacademy.com" />
               </div>
-              <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Réseaux sociaux</h3>
-              <p className="text-xs text-gray-400 -mt-2">Une URL enregistrée est automatiquement utilisée par les pages publiques connectées aux réseaux sociaux.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {([
-                  ['facebook','Facebook'], ['instagram','Instagram'], ['youtube','YouTube'],
-                  ['linkedin','LinkedIn'], ['whatsapp','WhatsApp'], ['indeed','Indeed'],
-                ] as const).map(([key,label]) => (
-                  <div key={key}>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-                    <input type="url" value={socialNetworks[key]}
-                      onChange={e => setSocialNetworks(prev => ({...prev,[key]:e.target.value}))}
-                      placeholder={`URL ${label}`}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-                  </div>
-                ))}
-              </div>
-              <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Applications mobiles</h3>
-              <p className="text-xs text-gray-400 -mt-2">Le bouton d’une boutique n’est affiché que lorsque son URL est renseignée.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">App Store (iOS)</label>
-                  <input type="url" value={appDownloads.app_store}
-                    onChange={e => setAppDownloads(prev => ({...prev,app_store:e.target.value}))}
-                    placeholder="https://apps.apple.com/…"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Google Play (Android)</label>
-                  <input type="url" value={appDownloads.google_play}
-                    onChange={e => setAppDownloads(prev => ({...prev,google_play:e.target.value}))}
-                    placeholder="https://play.google.com/…"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
-                </div>
+              <div className="pt-5 border-t border-gray-100">
+                <PublicChannelsManager />
               </div>
 
               <div className="pt-4 border-t border-gray-100">
@@ -744,48 +667,7 @@ export default function AdminCMS() {
               </div>
 
               {pageEditorTarget === 'landing' && (
-                <div className="space-y-5">
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs text-blue-700">
-                    Ces champs pilotent la page d’accueil existante et ses statistiques réelles.
-                  </div>
-                  <h3 className="font-semibold" style={{ color: '#002050' }}>Section Hero</h3>
-                  <Field label="Titre principal" k="landing_hero_title_fr" />
-                  <Field label="Sous-titre" k="landing_hero_subtitle_fr" />
-                  <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Statistiques — Données réelles</h3>
-                  <p className="text-xs text-gray-400 -mt-2">
-                    Les valeurs viennent directement de la base de données. Activez ou désactivez l’affichage de chaque compteur.
-                  </p>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Formations publiées', k: 'stat_formations', showKey: 'stat_show_formations' },
-                      { label: 'Apprenants actifs', k: 'stat_apprenants', showKey: 'stat_show_apprenants' },
-                      { label: 'Pays représentés', k: 'stat_pays', showKey: 'stat_show_pays' },
-                      { label: 'Formateurs', k: 'stat_formateurs', showKey: 'stat_show_formateurs' },
-                      { label: 'Établissements partenaires', k: 'stat_etablissements', showKey: 'stat_show_etablissements' },
-                    ].map(({ label, k, showKey }) => {
-                      const value = settings[k];
-                      const isVisible = settings[showKey] === 'true';
-                      const hasValue = value && value !== '0' && value !== '';
-                      return (
-                        <div key={k} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
-                          <div>
-                            <p className="text-sm font-semibold" style={{color:'#002050'}}>{label}</p>
-                            <p className="text-xs text-gray-400">{hasValue ? `Valeur actuelle : ${value}` : 'Aucune donnée réelle disponible'}</p>
-                          </div>
-                          <button type="button" disabled={!hasValue}
-                            onClick={() => set(showKey, isVisible ? 'false':'true')}
-                            className="relative h-6 w-11 shrink-0 rounded-full p-0.5 disabled:opacity-40"
-                            style={{backgroundColor:isVisible&&hasValue?'#1E7A52':'#D0D5DD'}}>
-                            <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${isVisible&&hasValue?'translate-x-5':'translate-x-0'}`} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <h3 className="font-semibold pt-2" style={{ color: '#002050' }}>Section « Devenir Formateur »</h3>
-                  <Field label="Titre" k="landing_devenir_formateur_title_fr" />
-                  <TextArea label="Description" k="landing_devenir_formateur_desc_fr" rows={3} />
-                </div>
+                <LandingCmsFoundation />
               )}
 
               {pageEditorTarget === 'talent' && (
@@ -1330,7 +1212,7 @@ export default function AdminCMS() {
             </div>
           )}
 
-{tab !== 'newsletter' && (
+{tab !== 'newsletter' && tab !== 'partenaires' && !(tab === 'landing' && pageEditorTarget === 'landing') && (
           <div className="pt-5 flex justify-end">
             <button type="button" onClick={() => save()} disabled={saving}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"

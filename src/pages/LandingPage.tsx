@@ -11,6 +11,7 @@ import { PageFooter } from '../components/PageFooter';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { ENDPOINTS } from '../lib/config';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
+import type { LandingPageConfig, MobileAppItem, SocialNetworkItem } from '../types/landingCms';
 
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -25,9 +26,16 @@ stats: { formations: string | null; apprenants: string | null; pays: string | nu
   devenir_formateur: { title_fr: string; desc_fr: string };
   fintech_logos: string[];
   social_networks: Record<string, string | null>;
+  social_networks_v2: SocialNetworkItem[];
   app_downloads: { google_play?: string | null; app_store?: string | null };
+  mobile_apps_v2: MobileAppItem[];
+  landing_page?: LandingPageConfig;
   collaborations_logos: Array<{ name: string; file_url: string; link?: string | null }>;
-  public_partners?: Array<{ id:string; name:string; category:string; logo_url?:string|null; website_url?:string|null; description?:string|null; is_featured?:boolean }>;
+  public_partners?: Array<{
+    id:string; name:string; category:string; logo_url?:string|null; website_url?:string|null;
+    description?:string|null; is_featured?:boolean; show_homepage?:boolean; show_footer?:boolean;
+    alt_text?:string|null;
+  }>;
   follow_us_label_fr: string;
   category_counts: Record<string, number>;
 }
@@ -62,7 +70,6 @@ const PILIER_ICON_MAP: Record<string, LucideIcon> = {
   Award, Monitor, Globe, Users, Shield, TrendingUp, Check, Brain,
 };
 
-const FINTECH_OPERATORS = ['Wave', 'Orange Money', 'MTN Mobile Money', 'Moov Money', 'Free Money'];
 
 const DEFAULT: LandingData = {
   hero: {
@@ -84,7 +91,9 @@ stats: { formations: null, apprenants: null, pays: null, formateurs: null, etabl
   },
   fintech_logos: [],
   social_networks: {},
+  social_networks_v2: [],
   app_downloads: {},
+  mobile_apps_v2: [],
   collaborations_logos: [],
   public_partners: [],
   follow_us_label_fr: 'Suivez-nous',
@@ -108,7 +117,13 @@ export function LandingPage() {
     let active = true;
     getPublicSiteSettings()
       .then(d => {
-        if (active) setData(prev => ({ ...prev, public_partners: Array.isArray(d.public_partners) ? d.public_partners : [] }));
+        if (active) setData(prev => ({
+          ...prev,
+          public_partners: Array.isArray(d.public_partners) ? d.public_partners : [],
+          social_networks_v2: Array.isArray(d.social_networks_v2) ? d.social_networks_v2 : prev.social_networks_v2,
+          mobile_apps_v2: Array.isArray(d.mobile_apps_v2) ? d.mobile_apps_v2 : prev.mobile_apps_v2,
+          landing_page: d.landing_page && typeof d.landing_page === 'object' ? d.landing_page : prev.landing_page,
+        }));
       })
       .catch(() => {});
     return () => { active = false; };
@@ -191,30 +206,21 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECTION 3 : FINTECH STRIP ────────────────────────────────── */}
-      <section className="px-6 py-5" style={{ backgroundColor: '#F8F9FA', borderTop: '1px solid #E4E7EC', borderBottom: '1px solid #E4E7EC' }}>
-        <div className="max-w-6xl mx-auto">
-          <p className="text-center mb-4" style={{ color: '#6B7280', fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-            Payez avec vos solutions habituelles
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-6">
-            {(data.fintech_logos?.length > 0)
-              ? data.fintech_logos.map((url, i) => (
-                  <img key={i} src={url} alt="logo" loading="lazy" decoding="async" style={{ height: '28px', objectFit: 'contain', filter: 'grayscale(100%)', opacity: 0.6 }} />
-                ))
-              : FINTECH_OPERATORS.map(op => (
-                  <span
-                    key={op}
-                    className="text-sm font-semibold transition-colors cursor-default hover:text-[#002050]"
-                    style={{ color: '#9CA3AF' }}
-                  >
-                    {op}
-                  </span>
-                ))
-            }
+      {/* Moyens de paiement : visibles uniquement avec des logos validés dans le CMS. */}
+      {data.fintech_logos.length > 0 && (
+        <section className="px-6 py-5" style={{ backgroundColor: '#F8F9FA', borderTop: '1px solid #E4E7EC', borderBottom: '1px solid #E4E7EC' }}>
+          <div className="mx-auto max-w-6xl">
+            <p className="mb-4 text-center text-[11px] uppercase tracking-[0.14em] text-gray-500">
+              Moyens de paiement disponibles
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-6">
+              {data.fintech_logos.map((url, index) => (
+                <img key={url || index} src={url} alt="Moyen de paiement disponible" loading="lazy" decoding="async" className="h-7 object-contain grayscale opacity-60" />
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── SECTION 4 : PILIERS ──────────────────────────────────────── */}
       <section className="px-6 py-16 bg-white">
@@ -488,7 +494,7 @@ export function LandingPage() {
         </div>
       </section>
       {/* ── SECTION 8 : PARTENAIRES ─────────────────────────────── */}
-      {((data.public_partners?.length ?? 0) > 0 || data.collaborations_logos?.length > 0) && (
+      {((data.public_partners || []).filter(partner => partner.show_homepage !== false).length > 0) && (
         <section className="px-6 py-12 bg-white" style={{ borderTop: '1px solid #E4E7EC' }}>
           <div className="max-w-6xl mx-auto">
             <h2 className="text-center font-bold mb-3" style={{ color: '#002050', fontSize: '22px' }}>
@@ -496,19 +502,14 @@ export function LandingPage() {
             </h2>
             <p className="text-center text-sm text-gray-500 mb-9">Institutions, entreprises, organismes de certification et partenaires technologiques qui collaborent avec Omnia.</p>
             <div className="flex flex-wrap justify-center items-stretch gap-5">
-              {(data.public_partners || []).map((partner) => {
+              {(data.public_partners || []).filter(partner => partner.show_homepage !== false).map((partner) => {
                 const content = <div className="w-44 min-h-[120px] rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center text-center bg-white hover:shadow-sm transition">
-                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.name} loading="lazy" decoding="async" className="h-12 max-w-[130px] object-contain mb-3" /> : <div className="h-12 flex items-center text-sm font-bold" style={{color:'#002050'}}>{partner.name}</div>}
+                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.alt_text || `Logo ${partner.name}`} loading="lazy" decoding="async" className="h-12 max-w-[130px] object-contain mb-3" /> : <div className="h-12 flex items-center text-sm font-bold" style={{color:'#002050'}}>{partner.name}</div>}
                   <p className="text-xs font-semibold" style={{color:'#002050'}}>{partner.name}</p>
                   <p className="text-[10px] text-gray-400 mt-1">{partner.category}</p>
                 </div>;
                 return partner.website_url ? <a key={partner.id} href={partner.website_url} target="_blank" rel="noopener noreferrer">{content}</a> : <div key={partner.id}>{content}</div>;
               })}
-              {(data.public_partners?.length ?? 0) === 0 && data.collaborations_logos?.map((logo, i) =>
-                logo.link
-                  ? <a key={i} href={logo.link} target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-70"><img src={logo.file_url} alt={logo.name} loading="lazy" decoding="async" style={{ height: '48px', objectFit: 'contain' }} /></a>
-                  : <img key={i} src={logo.file_url} alt={logo.name} loading="lazy" decoding="async" style={{ height: '48px', objectFit: 'contain' }} />
-              )}
             </div>
           </div>
         </section>
@@ -517,7 +518,10 @@ export function LandingPage() {
       {/* ── SECTION 9 : FOOTER ───────────────────────────────────────── */}
       <PageFooter
         socialNetworks={data.social_networks}
+        socialNetworksV2={data.social_networks_v2}
         appDownloads={data.app_downloads}
+        mobileAppsV2={data.mobile_apps_v2}
+        partners={data.public_partners || []}
         followUsLabel={data.follow_us_label_fr}
       />
     </div>
