@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
+import { RoleDashboardActionCard, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 import {
   BookOpen, Users, Shield, MessageSquare, Briefcase, HelpCircle,
-  Clock, CheckCircle, XCircle, Lock, AlertTriangle, BarChart2
+  Clock, CheckCircle, XCircle, Lock, AlertTriangle, Activity
 } from 'lucide-react';
 
 interface KPI { key: string; label: string; value: number }
@@ -33,6 +34,16 @@ const TYPE_COLOR: Record<string, string> = {
 const TYPE_LABEL: Record<string, string> = {
   course: 'Formation', kyc_prof: 'KYC Professeur',
   job: "Offre d'emploi", forum: 'Forum', support: 'Support',
+};
+
+const KPI_PRESENTATION: Record<string, { icon: typeof Activity; accent: string; path: string }> = {
+  courses: { icon: BookOpen, accent: '#002050', path: '/moderator/courses' },
+  professor_kyc: { icon: Shield, accent: '#1E7A52', path: '/moderator/kyc' },
+  learners: { icon: Users, accent: '#7C3AED', path: '/moderator/users' },
+  professors: { icon: Users, accent: '#BF8813', path: '/moderator/users' },
+  forum: { icon: MessageSquare, accent: '#C2410C', path: '/moderator/forum' },
+  jobs: { icon: Briefcase, accent: '#BF8813', path: '/moderator/jobs' },
+  support: { icon: HelpCircle, accent: '#7C3AED', path: '/moderator/support' },
 };
 const ACTION_LABELS: Record<string, string> = {
   course_approved: 'Formation approuvée', course_rejected: 'Formation rejetée',
@@ -171,15 +182,21 @@ export default function ModerateurDashboard() {
           </div>
         )}
 
-        {/* KPIs */}
         {data?.kpis?.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {(data?.kpis ?? []).map((kpi, i) => (
-              <div key={i} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <p className="text-sm text-gray-500">{kpi.label}</p>
-                <p className="text-3xl font-bold mt-1" style={{ color: '#002050' }}>{kpi.value}</p>
-              </div>
-            ))}
+            {(data?.kpis ?? []).map((kpi) => {
+              const presentation = KPI_PRESENTATION[kpi.key] || { icon: Activity, accent: '#002050', path: '/moderator/dashboard' };
+              return (
+                <RoleDashboardStatCard
+                  key={kpi.key}
+                  label={kpi.label}
+                  value={kpi.value}
+                  icon={presentation.icon}
+                  accent={presentation.accent}
+                  to={presentation.path}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -246,34 +263,21 @@ export default function ModerateurDashboard() {
           </div>
         </div>
 
-        {/* Quick access cards */}
         {data?.has_any_permission && (
           <div>
             <h2 className="font-semibold mb-4" style={{ color: '#002050' }}>Accès rapide</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {data.permissions?.can_see_pending_courses && (
-                <Link to="/moderator/courses" className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 shadow-sm border border-gray-100 hover:shadow-md transition-shadow text-center">
-                  <BookOpen className="w-6 h-6" style={{ color: '#002050' }} />
-                  <span className="text-xs font-medium text-gray-700">Formations</span>
-                </Link>
+                <RoleDashboardActionCard to="/moderator/courses" icon={BookOpen} title="Formations" text="Examiner les formations en attente de validation." accent="#002050" />
               )}
               {(data.permissions?.can_validate_professor_kyc || data.permissions?.can_validate_establishment_kyc) && (
-                <Link to="/moderator/kyc" className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 shadow-sm border border-gray-100 hover:shadow-md transition-shadow text-center">
-                  <Shield className="w-6 h-6" style={{ color: '#1E7A52' }} />
-                  <span className="text-xs font-medium text-gray-700">KYC</span>
-                </Link>
+                <RoleDashboardActionCard to="/moderator/kyc" icon={Shield} title="Vérifications KYC" text="Contrôler les dossiers d’identité autorisés." accent="#1E7A52" />
               )}
               {(data.permissions?.can_see_learners_list || data.permissions?.can_suspend_account) && (
-                <Link to="/moderator/users" className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 shadow-sm border border-gray-100 hover:shadow-md transition-shadow text-center">
-                  <Users className="w-6 h-6" style={{ color: '#BF8813' }} />
-                  <span className="text-xs font-medium text-gray-700">Utilisateurs</span>
-                </Link>
+                <RoleDashboardActionCard to="/moderator/users" icon={Users} title="Utilisateurs" text="Consulter les comptes selon vos permissions." accent="#BF8813" />
               )}
               {data.permissions?.can_manage_support && (
-                <Link to="/moderator/support" className="bg-white rounded-xl p-4 flex flex-col items-center gap-2 shadow-sm border border-gray-100 hover:shadow-md transition-shadow text-center">
-                  <HelpCircle className="w-6 h-6" style={{ color: '#7c3aed' }} />
-                  <span className="text-xs font-medium text-gray-700">Support</span>
-                </Link>
+                <RoleDashboardActionCard to="/moderator/support" icon={HelpCircle} title="Support" text="Traiter les demandes d’assistance ouvertes." accent="#7C3AED" />
               )}
             </div>
           </div>

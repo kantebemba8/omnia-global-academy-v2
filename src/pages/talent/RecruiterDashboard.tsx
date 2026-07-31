@@ -5,6 +5,7 @@ import {
   Mail, MessageSquare, Plus, Search, Settings, UserRound, UsersRound, X, Archive,
 } from 'lucide-react';
 import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
+import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import {
   contactTalent, loadPublicTalents, loadTalentConversations, loadTalentDashboard,
   loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation,
@@ -203,7 +204,7 @@ export default function RecruiterDashboard() {
     return <RecruiterLayout title="Espace recruteur indépendant" subtitle="Omnia Talent"><div className="mx-auto max-w-4xl px-6 py-12"><div className="border-y border-gray-200 py-10"><h2 className="text-xl font-semibold" style={{color:BLUE}}>Accès Omnia Talent</h2><p className="mt-3 text-sm leading-6 text-gray-500">{message}</p>{accessState!=='checking'&&<Link to="/talent/recruteurs" className="mt-5 inline-flex items-center gap-2 border-b-2 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}>Consulter mon statut <ArrowRight size={16}/></Link>}</div></div></RecruiterLayout>;
   }
 
-  return <RecruiterLayout title={titleMap[section]} subtitle="Espace recruteur indépendant · Omnia Talent">
+  return <RecruiterLayout title={titleMap[section]} subtitle="Omnia Talent">
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       {error && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
       {section === 'dashboard' && <><div className="mb-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div><DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} /><div className="mt-6"><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="recruiter"/></div></>}
@@ -229,11 +230,28 @@ function DashboardHome({ user, talents, jobs, metrics, loading }: { user: User|n
     { label:'Entretiens à venir', value:metrics.upcoming_interviews, icon:CalendarDays, path:'/talent/recruteur/entretiens' },
   ];
   return <>
-    <div className="border-b border-gray-200 pb-5"><h2 className="text-2xl font-semibold" style={{ color: BLUE }}>Bienvenue, {user?.full_name?.split(' ')[0] || 'Recruteur'}</h2><p className="mt-1 text-sm text-gray-500">Aperçu synchronisé de votre activité de recrutement.</p></div>
-    <div className="grid border-b border-gray-200 sm:grid-cols-2 xl:grid-cols-4">{indicators.map((m,index)=><Link key={m.label} to={m.path} className={`flex items-center justify-between gap-4 px-4 py-5 transition-colors hover:bg-gray-50 ${index ? 'sm:border-l border-gray-200' : ''}`}><div><p className="text-sm text-gray-500">{m.label}</p><p className="mt-1 text-2xl font-semibold" style={{ color:BLUE }}>{loading?'—':m.value}</p></div><m.icon size={20} color={GOLD}/></Link>)}</div>
-    <div className="grid gap-8 py-7 xl:grid-cols-[1.3fr_.7fr]">
-      <section><div className="flex items-center justify-between border-b border-gray-200 pb-3"><h3 className="font-semibold" style={{ color:BLUE }}>Talents récemment visibles</h3><Link to="/talent/recruteur/talents" className="text-sm font-semibold" style={{ color:GOLD }}>Voir tous</Link></div>{talents.length===0?<p className="py-6 text-sm text-gray-500">Aucun profil public disponible.</p>:<div className="divide-y divide-gray-200">{talents.slice(0,5).map(t=><Link key={t.id} to={`/talent/profil/${t.id}`} className="flex items-center gap-3 py-4"><Avatar talent={t}/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{ color:BLUE }}>{t.full_name}</p><p className="truncate text-xs text-gray-500">{t.professional_title || 'Profil professionnel'}{t.location ? ` · ${t.location}` : ''}</p></div><ArrowRight size={16} className="text-gray-400"/></Link>)}</div>}</section>
-      <section><h3 className="border-b border-gray-200 pb-3 font-semibold" style={{ color:BLUE }}>Activité synchronisée</h3><div className="divide-y divide-gray-200 text-sm text-gray-600"><p className="flex justify-between py-4"><span>Prises de contact</span><strong style={{color:BLUE}}>{metrics.contacts}</strong></p><p className="flex justify-between py-4"><span>Talents favoris</span><strong style={{color:BLUE}}>{metrics.favorites}</strong></p><p className="flex justify-between py-4"><span>Entretiens à venir</span><strong style={{color:BLUE}}>{metrics.upcoming_interviews}</strong></p></div></section>
+    <div className="mb-6"><h2 className="text-2xl font-semibold" style={{ color: BLUE }}>Bienvenue, {user?.full_name?.split(' ')[0] || 'Recruteur'}</h2><p className="mt-1 text-sm text-gray-500">Aperçu synchronisé de votre activité de recrutement.</p></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {indicators.map((metric, index) => (
+        <RoleDashboardStatCard
+          key={metric.label}
+          label={metric.label}
+          value={loading ? '—' : metric.value}
+          icon={metric.icon}
+          accent={[BLUE, '#1E7A52', GOLD, '#7C3AED'][index]}
+          to={metric.path}
+        />
+      ))}
+    </div>
+    <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_.7fr]">
+      <RoleDashboardPanel>
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3"><h3 className="font-semibold" style={{ color:BLUE }}>Talents récemment visibles</h3><Link to="/talent/recruteur/talents" className="text-sm font-semibold" style={{ color:GOLD }}>Voir tous</Link></div>
+        {talents.length===0?<p className="py-6 text-sm text-gray-500">Aucun profil public disponible.</p>:<div className="divide-y divide-gray-100">{talents.slice(0,5).map(t=><Link key={t.id} to={`/talent/profil/${t.id}`} className="flex items-center gap-3 py-4"><Avatar talent={t}/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{ color:BLUE }}>{t.full_name}</p><p className="truncate text-xs text-gray-500">{t.professional_title || 'Profil professionnel'}{t.location ? ` · ${t.location}` : ''}</p></div><ArrowRight size={16} className="text-gray-400"/></Link>)}</div>}
+      </RoleDashboardPanel>
+      <RoleDashboardPanel>
+        <h3 className="border-b border-gray-100 pb-3 font-semibold" style={{ color:BLUE }}>Activité synchronisée</h3>
+        <div className="divide-y divide-gray-100 text-sm text-gray-600"><p className="flex justify-between py-4"><span>Prises de contact</span><strong style={{color:BLUE}}>{metrics.contacts}</strong></p><p className="flex justify-between py-4"><span>Talents favoris</span><strong style={{color:BLUE}}>{metrics.favorites}</strong></p><p className="flex justify-between py-4"><span>Entretiens à venir</span><strong style={{color:BLUE}}>{metrics.upcoming_interviews}</strong></p></div>
+      </RoleDashboardPanel>
     </div>
   </>;
 }

@@ -2,10 +2,12 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { RoleDashboardActionCard, RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 
 import {
-  Wallet, TrendingUp, Users, Star, PlusCircle, AlertCircle,
-  ChevronRight, Clock, CheckCircle, XCircle, AlertTriangle, Eye
+  BookOpen, Users, Star, PlusCircle, AlertCircle,
+  ChevronRight, Clock, CheckCircle, XCircle, AlertTriangle, Eye,
+  ClipboardCheck, BarChart3, WalletCards
 } from 'lucide-react';
 
 interface Formation {
@@ -77,27 +79,6 @@ const STATUS_ALIASES: Record<string, string[]> = {
   changes_requested: ['changes_requested', 'modification_demandee'],
 };
 
-const PAYOUT_STATUS: Record<string, { label: string; color: string }> = {
-  pending:                  { label: 'En attente', color: '#F59E0B' },
-  waiting_final_verification: { label: 'Vérification finale', color: '#3B82F6' },
-  approved:                 { label: 'Approuvé', color: '#1E7A52' },
-  rejected:                 { label: 'Rejeté', color: '#DC2626' },
-};
-
-function kpiCard(label: string, value: string, icon: React.ReactNode, color: string) {
-  return (
-    <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex items-center gap-4">
-      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color + '18' }}>
-        <div style={{ color }}>{icon}</div>
-      </div>
-      <div>
-        <p className="text-xl font-bold text-gray-900 leading-tight">{value}</p>
-        <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-      </div>
-    </div>
-  );
-}
-
 export function DashboardProfesseur() {
   const queryPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
   const storedPreview = sessionStorage.getItem('omnia_admin_role_preview') === 'professeur';
@@ -138,6 +119,9 @@ export function DashboardProfesseur() {
   useEffect(() => { load(); }, [load]);
 
   const formations = (data?.formations ?? []).filter((f) => !statusFilter || (STATUS_ALIASES[statusFilter] || [statusFilter]).includes(f.status));
+
+  const publishedCount = (data?.formations ?? []).filter(f => ['published', 'publiee'].includes(f.status)).length;
+  const projectsToReview = (data?.formations ?? []).reduce((sum, formation) => sum + (formation.projets_a_corriger || 0), 0);
 
   function actionButton(f: Formation) {
     if (['draft', 'brouillon'].includes(f.status)) return (
@@ -206,12 +190,11 @@ export function DashboardProfesseur() {
           </div>
         ) : (
           <>
-            {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              {kpiCard('Solde retirable', `${(data?.kpis.solde_retirable_xof ?? 0).toLocaleString()} XOF`, <Wallet className="w-5 h-5" />, '#1E7A52')}
-              {kpiCard('Gains cumulés', `${(data?.kpis.gains_cumules_xof ?? 0).toLocaleString()} XOF`, <TrendingUp className="w-5 h-5" />, '#BF8813')}
-              {kpiCard('Total élèves', String(data?.kpis.total_eleves ?? 0), <Users className="w-5 h-5" />, '#002050')}
-              {kpiCard('Note globale', `★ ${data?.kpis.note_globale ?? 0}/5`, <Star className="w-5 h-5" />, '#BF8813')}
+              <RoleDashboardStatCard label="Formations publiées" value={publishedCount} icon={BookOpen} accent="#002050" to="/professeur/courses" />
+              <RoleDashboardStatCard label="Élèves accompagnés" value={data?.kpis.total_eleves ?? 0} icon={Users} accent="#1E7A52" to="/professeur/analytics" />
+              <RoleDashboardStatCard label="Projets à corriger" value={projectsToReview} icon={ClipboardCheck} accent="#DC2626" to="/professeur/courses" />
+              <RoleDashboardStatCard label="Note globale" value={`${data?.kpis.note_globale ?? 0}/5`} icon={Star} accent="#BF8813" to="/professeur/analytics" />
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
@@ -313,7 +296,7 @@ export function DashboardProfesseur() {
               {/* Right — 35% */}
               <div className="space-y-4">
                 {/* Forum alert */}
-                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+                <RoleDashboardPanel>
                   <h2 className="font-semibold text-gray-900 mb-3 text-sm">Questions forum</h2>
                   {(data?.forum_questions_unanswered ?? 0) > 0 ? (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
@@ -329,61 +312,32 @@ export function DashboardProfesseur() {
                       <CheckCircle className="w-4 h-4" /> Toutes les questions sont répondues
                     </div>
                   )}
-                </div>
+                </RoleDashboardPanel>
 
-                {/* Recent payouts */}
-                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="font-semibold text-gray-900 text-sm">Derniers retraits</h2>
-                    <Link to="/professeur/payouts" className="text-xs" style={{ color: '#BF8813' }}>
-                      Gérer
-                    </Link>
-                  </div>
-                  {(data?.payout_requests ?? []).length === 0 ? (
-                    <p className="text-xs text-gray-400">Aucun retrait effectué</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {data!.payout_requests.slice(0, 3).map((p) => {
-                        const ps = PAYOUT_STATUS[p.status] ?? PAYOUT_STATUS.pending;
-                        return (
-                          <div key={p.id} className="flex items-center justify-between text-xs">
-                            <span className="text-gray-700 font-medium">{p.amount_xof.toLocaleString()} XOF</span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium" style={{ color: ps.color }}>{ps.label}</span>
-                              <span className="text-gray-400">
-                                {new Date(p.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                {/* Accès rapides */}
+                <RoleDashboardActionCard
+                  to="/professeur/analytics"
+                  icon={BarChart3}
+                  title="Analytique élèves"
+                  text="Consulter la progression, l’engagement et les résultats pédagogiques."
+                  accent="#7C3AED"
+                />
 
-                  {/* Wallet summary */}
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                      <span>Solde retirable</span>
-                      <span className="font-bold text-sm" style={{ color: '#1E7A52' }}>
-                        {(data?.wallet.balance_xof ?? 0).toLocaleString()} XOF
-                      </span>
-                    </div>
-                    <Link to="/professeur/payouts"
-                      className="mt-2 block text-center text-xs font-semibold py-2 rounded-lg text-white transition-opacity hover:opacity-90"
-                      style={{ backgroundColor: '#BF8813' }}>
-                      Demander un retrait
-                    </Link>
-                  </div>
-                </div>
+                <RoleDashboardActionCard
+                  to="/professeur/payouts"
+                  icon={WalletCards}
+                  title="Mon portefeuille"
+                  text="Accéder au suivi des revenus et aux demandes de retrait dans l’espace dédié."
+                  accent="#1E7A52"
+                />
 
-                {/* Clock / tips */}
-                <div className="rounded-xl p-4 border" style={{ backgroundColor: '#002050' + '08', borderColor: '#002050' + '20' }}>
+                <RoleDashboardPanel>
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="w-4 h-4" style={{ color: '#002050' }} />
                     <p className="text-xs font-semibold" style={{ color: '#002050' }}>Délai de validation</p>
                   </div>
                   <p className="text-xs text-gray-500">Les formations soumises sont examinées sous 24 à 48 heures ouvrables.</p>
-                </div>
+                </RoleDashboardPanel>
               </div>
             </div>
           </>

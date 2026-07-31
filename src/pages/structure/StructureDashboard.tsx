@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
+import { RoleDashboardActionCard, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import {
-  Users, BookOpen, QrCode, Gift, Clock, CheckCircle,
+  Users, QrCode, Gift, Clock, CheckCircle,
   AlertCircle, PlusCircle, ChevronRight, RefreshCw,
-  Building2, UserCheck, Shield, XCircle,
+  Building2, Shield, XCircle,
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -268,57 +269,22 @@ export default function StructureDashboard() {
           </div>
         )}
 
-        {/* Stats — uniquement si validée */}
         {isValidated && stats && (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[
-              { label: 'Membres liés',       value: stats.members,        icon: Users,   color: '#002050', bg: '#EEF2FF', path: '/structure/membres' },
-              { label: 'Codes actifs',       value: stats.active_codes,   icon: QrCode,  color: '#065F46', bg: '#D1FAE5', path: '/structure/codes' },
-              { label: 'Avantages actifs',   value: stats.active_benefits, icon: Gift,   color: '#78350F', bg: '#FEF3C7', path: '/structure/abonnements' },
-            ].map(stat => {
-              const Icon = stat.icon;
-              return (
-                <button key={stat.label} onClick={() => navigate(stat.path)}
-                  className="p-4 rounded-2xl border text-left transition-all hover:shadow-sm"
-                  style={{ borderColor: '#E4E7EC', background: stat.bg }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <Icon size={18} style={{ color: stat.color }} />
-                    <ChevronRight size={14} style={{ color: stat.color, opacity: 0.5 }} />
-                  </div>
-                  <p className="text-2xl font-black" style={{ color: stat.color }}>{stat.value}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{stat.label}</p>
-                </button>
-              );
-            })}
+            <RoleDashboardStatCard label="Membres liés" value={stats.members} icon={Users} accent="#002050" onClick={() => navigate('/structure/membres')} />
+            <RoleDashboardStatCard label="Codes actifs" value={stats.active_codes} icon={QrCode} accent="#1E7A52" onClick={() => navigate('/structure/codes')} />
+            <RoleDashboardStatCard label="Avantages actifs" value={stats.active_benefits} icon={Gift} accent="#BF8813" onClick={() => navigate('/structure/abonnements')} />
           </div>
         )}
 
-        {/* Actions rapides — uniquement si validée */}
         {isValidated && (
-          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E4E7EC' }}>
+          <div>
             <h2 className="font-bold text-sm mb-4" style={{ color: '#002050' }}>Actions rapides</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Créer une formation',          icon: PlusCircle,  color: '#002050', path: '/structure/formations/nouvelle' },
-                { label: 'Créer un code structure',      icon: QrCode,      color: '#1E7A52', path: '/structure/codes' },
-                { label: 'Voir les membres',             icon: Users,       color: '#7C3AED', path: '/structure/membres' },
-                { label: 'Demander un avantage',         icon: Gift,        color: '#BF8813', path: '/structure/abonnements' },
-              ].map(action => {
-                const Icon = action.icon;
-                return (
-                  <button key={action.label} onClick={() => navigate(action.path)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-xl border text-center transition-all hover:shadow-sm"
-                    style={{ borderColor: '#E4E7EC' }}>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{ background: `${action.color}15` }}>
-                      <Icon size={18} style={{ color: action.color }} />
-                    </div>
-                    <span className="text-xs font-semibold leading-tight" style={{ color: '#374151' }}>
-                      {action.label}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <RoleDashboardActionCard title="Créer une formation" text="Préparer une formation pour les membres de votre structure." icon={PlusCircle} onClick={() => navigate('/structure/formations/nouvelle')} accent="#002050" />
+              <RoleDashboardActionCard title="Créer un code structure" text="Générer un code d’adhésion et suivre son utilisation." icon={QrCode} onClick={() => navigate('/structure/codes')} accent="#1E7A52" />
+              <RoleDashboardActionCard title="Voir les membres" text="Consulter les membres liés et leurs rattachements." icon={Users} onClick={() => navigate('/structure/membres')} accent="#7C3AED" />
+              <RoleDashboardActionCard title="Demander un avantage" text="Accéder aux avantages et aux demandes de validation." icon={Gift} onClick={() => navigate('/structure/abonnements')} accent="#BF8813" />
             </div>
           </div>
         )}

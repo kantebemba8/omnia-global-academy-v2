@@ -91,7 +91,7 @@ export default function DashboardProfessionalPathways() {
       <main className="mx-auto max-w-7xl p-5 md:p-8">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b pb-6">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[.18em]" style={{ color: GOLD }}>Programme 2 · GM4</p>
+            
             <h1 className="mt-2 text-3xl font-black" style={{ color: BLUE }}>Parcours professionnels et certifications</h1>
             <p className="mt-2 max-w-3xl text-sm text-gray-600">Suivez vos formations obligatoires, examens, projets, jurys, relevés professionnels et renouvellements depuis un même espace.</p>
           </div>

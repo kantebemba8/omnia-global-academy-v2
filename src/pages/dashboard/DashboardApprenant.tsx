@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
 import { withLearnerPreview } from '../../lib/learnerPreview';
 import {
-  BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, Users, ArrowRight
+  BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, Users, ArrowRight,
 } from 'lucide-react';
 
 interface DashboardData {
@@ -21,7 +22,6 @@ interface DashboardData {
   parrainage: { total_filleuls: number; total_recompenses_xof: number; referral_link: string };
 }
 
-
 const PREVIEW_DASHBOARD: DashboardData = {
   user: { full_name: '', ai_tokens: 0, member_since: new Date().toISOString() },
   kpis: { formations_en_cours: 0, formations_terminees: 0, certificats_obtenus: 0, jetons_ia_restants: 0 },
@@ -29,21 +29,6 @@ const PREVIEW_DASHBOARD: DashboardData = {
   activite_recente: [],
   parrainage: { total_filleuls: 0, total_recompenses_xof: 0, referral_link: '' },
 };
-
-function kpiCard(label: string, value: number | string, icon: React.ReactNode, color: string) {
-  return (
-    <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex items-center gap-4">
-      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ backgroundColor: color + '18' }}>
-        <div style={{ color }}>{icon}</div>
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
@@ -54,6 +39,7 @@ export function DashboardApprenant() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
   const load = useCallback(async () => {
     if (previewMode) { setData(PREVIEW_DASHBOARD); setLoading(false); return; }
     const token = localStorage.getItem('omnia_session_token');
@@ -65,7 +51,6 @@ export function DashboardApprenant() {
       const json = await res.json();
       if (!res.ok) { setError(json.error || 'Erreur'); return; }
       setData(json);
-      // Refresh user tokens in localStorage
       if (json.user) {
         const stored = localStorage.getItem('omnia_user');
         if (stored) {
@@ -83,9 +68,7 @@ export function DashboardApprenant() {
 
   return (
     <DashboardLayout>
-
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">
             {data?.user.full_name ? `Bonjour, ${data.user.full_name.split(' ')[0]}` : 'Tableau de bord apprenant'}
@@ -105,16 +88,14 @@ export function DashboardApprenant() {
 
         {data && (
           <>
-            {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              {kpiCard('Formations en cours', data.kpis.formations_en_cours, <BookOpen className="w-5 h-5" />, '#002050')}
-              {kpiCard('Formations terminées', data.kpis.formations_terminees, <TrendingUp className="w-5 h-5" />, '#1E7A52')}
-              {kpiCard('Certificats obtenus', data.kpis.certificats_obtenus, <Award className="w-5 h-5" />, '#BF8813')}
-              {kpiCard('Jetons IA restants', data.kpis.jetons_ia_restants, <Sparkles className="w-5 h-5" />, '#7C3AED')}
+              <RoleDashboardStatCard label="Formations en cours" value={data.kpis.formations_en_cours} icon={BookOpen} accent="#002050" to={withLearnerPreview('/dashboard/mes-cours')} />
+              <RoleDashboardStatCard label="Formations terminées" value={data.kpis.formations_terminees} icon={TrendingUp} accent="#1E7A52" to={withLearnerPreview('/dashboard/mes-cours')} />
+              <RoleDashboardStatCard label="Certificats obtenus" value={data.kpis.certificats_obtenus} icon={Award} accent="#BF8813" to={withLearnerPreview('/dashboard/certificats')} />
+              <RoleDashboardStatCard label="Jetons IA restants" value={data.kpis.jetons_ia_restants} icon={Sparkles} accent="#7C3AED" to={withLearnerPreview('/dashboard/career-studio')} />
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
-              {/* Cours en cours — 65% */}
               <div className="lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-semibold text-gray-900">Formations en cours</h2>
@@ -123,18 +104,18 @@ export function DashboardApprenant() {
                   </Link>
                 </div>
                 {data.courses_en_cours.length === 0 ? (
-                  <div className="bg-white rounded-xl p-8 border border-gray-100 text-center">
+                  <RoleDashboardPanel className="text-center py-8">
                     <BookOpen className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                     <p className="text-gray-500 text-sm">Aucune formation en cours</p>
                     <Link to="/catalogue" className="mt-3 inline-block text-sm font-medium hover:opacity-80" style={{ color: '#002050' }}>
                       Explorer le catalogue
                     </Link>
-                  </div>
+                  </RoleDashboardPanel>
                 ) : (
                   data.courses_en_cours.map((c) => (
                     <Link key={c.course_id} to={`/cours/${c.slug}/apprendre`}
-                      className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm flex items-center gap-4 hover:border-gray-200 hover:shadow-md transition-all">
-                      <div className="w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-lg"
+                      className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                      <div className="w-14 h-14 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-lg"
                         style={{ backgroundColor: '#002050' }}>
                         {c.title[0]}
                       </div>
@@ -154,12 +135,10 @@ export function DashboardApprenant() {
                 )}
               </div>
 
-              {/* Right column — 35% */}
               <div className="space-y-4">
-                {/* Activité récente */}
-                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+                <RoleDashboardPanel>
                   <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-gray-400" /> Activité récente
+                    <Clock className="w-4 h-4" style={{ color: '#BF8813' }} /> Activité récente
                   </h2>
                   {data.activite_recente.length === 0 ? (
                     <p className="text-gray-400 text-xs">Aucune activité récente</p>
@@ -176,30 +155,21 @@ export function DashboardApprenant() {
                       ))}
                     </ul>
                   )}
-                </div>
+                </RoleDashboardPanel>
 
-                {/* Parrainage widget */}
-                <div className="rounded-xl p-5 border" style={{ backgroundColor: '#002050', borderColor: '#002050' }}>
+                <RoleDashboardPanel>
                   <div className="flex items-center gap-2 mb-3">
                     <Users className="w-4 h-4" style={{ color: '#BF8813' }} />
-                    <h2 className="font-semibold text-white text-sm">Votre parrainage</h2>
+                    <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>Parrainage</h2>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-white/10 rounded-lg p-3">
-                      <p className="text-2xl font-bold text-white">{data.parrainage.total_filleuls}</p>
-                      <p className="text-xs text-white/60">Filleuls</p>
-                    </div>
-                    <div className="bg-white/10 rounded-lg p-3">
-                      <p className="text-2xl font-bold" style={{ color: '#BF8813' }}>{data.parrainage.total_recompenses_xof.toLocaleString()}</p>
-                      <p className="text-xs text-white/60">XOF gagnés</p>
-                    </div>
-                  </div>
+                  <p className="text-2xl font-black" style={{ color: '#002050' }}>{data.parrainage.total_filleuls}</p>
+                  <p className="text-xs text-slate-500 mt-1">Filleuls inscrits avec votre lien</p>
                   <Link to={withLearnerPreview('/dashboard/parrainage')}
-                    className="block text-center text-xs font-semibold py-2 rounded-lg transition-all hover:opacity-90"
-                    style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-                    Inviter des amis
+                    className="mt-4 inline-flex items-center gap-1 text-sm font-semibold"
+                    style={{ color: '#BF8813' }}>
+                    Inviter des amis <ArrowRight size={15} />
                   </Link>
-                </div>
+                </RoleDashboardPanel>
               </div>
             </div>
           </>

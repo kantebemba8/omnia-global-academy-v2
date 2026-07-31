@@ -79,6 +79,7 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
     [location.search, user?.roles],
   );
   const withPreview = (path: string) => previewMode ? `${path}${path.includes('?') ? '&' : '?'}preview=true` : path;
+  const isDashboardPage = location.pathname === '/talent/recruteur/dashboard';
 
   function logout() {
     clearSession();
@@ -150,7 +151,7 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
       )}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex min-h-[72px] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-6">
+        <header className={`min-h-[72px] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-6 ${isDashboardPage ? 'flex lg:hidden' : 'flex'}`}> 
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <button type="button" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden" onClick={() => setOpen(true)} aria-label="Ouvrir le menu recruteur" aria-expanded={open} aria-controls="recruiter-mobile-navigation">
               <Menu size={21} />
@@ -159,7 +160,7 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
               <img src="/omnia-sidebar-logo.png" alt="Omnia Talent" className="h-9 w-9 rounded-lg object-contain" />
               <div className="min-w-0">
                 <div className="truncate text-lg font-bold" style={{ color: BLUE }}>Omnia <span style={{ color: GOLD }}>Talent</span></div>
-                <div className="truncate text-[11px] font-medium text-slate-500">{previewMode ? 'Prévisualisation Super-admin · compte recruteur de test' : 'Espace recruteur indépendant'}</div>
+                <div className="truncate text-[11px] font-medium text-slate-500">{previewMode ? 'Prévisualisation Super-admin' : 'Espace recruteur indépendant'}</div>
               </div>
             </button>
           </div>
