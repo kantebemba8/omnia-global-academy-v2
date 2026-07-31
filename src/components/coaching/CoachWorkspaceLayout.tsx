@@ -13,7 +13,7 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
+import { withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -34,7 +34,6 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const previewMode = isCoachPreviewMode();
 
   useEffect(() => {
     setOpen(false);
@@ -55,11 +54,7 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
   }, [open]);
 
   function logout() {
-    if (previewMode) {
-      sessionStorage.removeItem('omnia_admin_role_preview');
-      navigate('/admin/dashboard');
-      return;
-    }
+    sessionStorage.removeItem('omnia_admin_role_preview');
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_access_token');
@@ -106,8 +101,8 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
           <ArrowLeft size={18} /> Voir Omnia Coaching
         </Link>
         <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
-          {previewMode ? <ArrowLeft size={18} /> : <LogOut size={18} />}
-          {previewMode ? 'Retour au Dashboard Super-admin' : 'Déconnexion'}
+          <LogOut size={18} />
+          Déconnexion
         </button>
       </div>
     </aside>

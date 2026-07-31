@@ -189,7 +189,7 @@ export function StructureLayout({ children, displayName }: Props) {
   }, [location.pathname, visibleGroups]);
 
   function handleLogout() {
-    if (previewMode) { navigate('/admin/dashboard'); return; }
+    sessionStorage.removeItem('omnia_admin_role_preview');
     const token = localStorage.getItem('omnia_session_token');
     if (token) {
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-logout`, {
@@ -315,7 +315,7 @@ export function StructureLayout({ children, displayName }: Props) {
           style={{ color: 'rgba(255,255,255,0.55)' }}
         >
           <LogOut size={18} />
-          <span>{previewMode ? 'Retour au Dashboard' : 'Déconnexion'}</span>
+          <span>Déconnexion</span>
         </button>
       </div>
     </div>

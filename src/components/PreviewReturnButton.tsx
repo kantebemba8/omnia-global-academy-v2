@@ -74,7 +74,7 @@ export function PreviewReturnButton() {
     }
   }, [isAdmin, queryPreview, currentSpace, storedSpace, location.pathname, location.search, location.hash, navigate]);
 
-  if (!activePreview || currentSpace === 'coach') return null;
+  if (!activePreview) return null;
 
   return (
     <button

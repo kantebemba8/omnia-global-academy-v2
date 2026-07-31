@@ -33,34 +33,22 @@ export default function OrganizerDashboard() {
 
   return (
     <OrganizerShell
-      title="Espace Organisateur"
-      subtitle="Pilotez vos Lives, formations synchrones et vidéos depuis un seul espace."
+      title="Tableau de bord organisateur"
+      subtitle="Suivez vos événements, participants et diffusions depuis un seul espace."
     >
       {err && <div className="mb-6 border-l-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
-      <section>
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold" style={{ color: BLUE }}>Vue d’ensemble</h2>
-            <p className="mt-1 text-sm text-slate-500">Suivi opérationnel de vos événements et participants.</p>
-          </div>
-          <Link to="/omnia-live/organisateur/statistiques" className="text-sm font-semibold" style={{ color: GOLD }}>
-            Voir les statistiques
-          </Link>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {overview.map(item => (
-            <RoleDashboardStatCard
-              key={item.label}
-              label={item.label}
-              value={typeof item.value === 'number' ? item.value.toLocaleString('fr-FR') : item.value}
-              icon={item.icon}
-              accent={item.accent}
-              to={item.to}
-            />
-          ))}
-        </div>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {overview.map(item => (
+          <RoleDashboardStatCard
+            key={item.label}
+            label={item.label}
+            value={typeof item.value === 'number' ? item.value.toLocaleString('fr-FR') : item.value}
+            icon={item.icon}
+            accent={item.accent}
+            to={item.to}
+          />
+        ))}
       </section>
 
       <RoleDashboardPanel className="mt-7">

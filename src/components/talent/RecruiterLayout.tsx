@@ -82,7 +82,10 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
   const isDashboardPage = location.pathname === '/talent/recruteur/dashboard';
 
   function logout() {
+    sessionStorage.removeItem('omnia_admin_role_preview');
     clearSession();
+    localStorage.removeItem('omnia_access_token');
+    localStorage.removeItem('access_token');
     navigate('/connexion');
   }
 
@@ -131,11 +134,9 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
         <Link to="/talent" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ color: GOLD }}>
           <ExternalLink size={18} /> Voir Omnia Talent
         </Link>
-        {!previewMode && (
-          <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
-            <LogOut size={18} /> Déconnexion
-          </button>
-        )}
+        <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
+          <LogOut size={18} /> Déconnexion
+        </button>
       </div>
     </aside>
   );
@@ -171,8 +172,8 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
           </div>
 
           <div className="flex flex-1 items-center justify-end gap-2">
-            <button type="button" onClick={() => navigate(previewMode ? '/admin/dashboard' : '/talent')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex" style={{ color: BLUE }}>
-              <ArrowLeft size={16} /> {previewMode ? 'Retour au Dashboard' : 'Voir Omnia Talent'}
+            <button type="button" onClick={() => navigate('/talent')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex" style={{ color: BLUE }}>
+              <ArrowLeft size={16} /> Voir Omnia Talent
             </button>
             <div className="relative">
               <button type="button" onClick={() => setProfileOpen(value => !value)} className="flex items-center gap-1 rounded-xl px-1.5 py-1 transition hover:bg-slate-100" aria-label="Ouvrir le menu du profil" aria-expanded={profileOpen}>
@@ -184,9 +185,9 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
                   <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu du profil" />
                   <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
                     <button type="button" role="menuitem" onClick={() => navigate(withPreview('/talent/recruteur/profil'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
-                    <button type="button" role="menuitem" onClick={() => navigate(previewMode ? '/admin/dashboard' : '/talent/recruteur/dashboard')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><LayoutDashboard size={17} /> Retour au Dashboard</button>
+                    <button type="button" role="menuitem" onClick={() => navigate(withPreview('/talent/recruteur/dashboard'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><LayoutDashboard size={17} /> Retour au Dashboard recruteur</button>
                     <button type="button" role="menuitem" onClick={() => navigate('/talent')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><ExternalLink size={17} /> Voir Omnia Talent</button>
-                    {!previewMode && <><div className="my-1 border-t border-slate-100" /><button type="button" role="menuitem" onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button></>}
+                    <><div className="my-1 border-t border-slate-100" /><button type="button" role="menuitem" onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button></>
                   </div>
                 </>
               )}

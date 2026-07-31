@@ -74,16 +74,8 @@ export default function OrganizerShell({
     };
   },[mobileOpen]);
 
-  function exitPreview(){
-    sessionStorage.removeItem('omnia_admin_role_preview');
-    navigate('/admin/dashboard');
-  }
-
   function logout(){
-    if(preview){
-      exitPreview();
-      return;
-    }
+    sessionStorage.removeItem('omnia_admin_role_preview');
     localStorage.removeItem('omnia_session_token');
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_access_token');
@@ -155,8 +147,8 @@ export default function OrganizerShell({
         onClick={logout}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white"
       >
-        {preview?<ArrowLeft style={{width:18,height:18}}/>:<LogOut style={{width:18,height:18}}/>}
-        <span>{preview?'Retour au Dashboard Super-admin':'Déconnexion'}</span>
+        <LogOut style={{width:18,height:18}}/>
+        <span>Déconnexion</span>
       </button>
     </div>
   </aside>;
@@ -203,18 +195,6 @@ export default function OrganizerShell({
         </Link>
         <span className="w-8"/>
       </header>
-
-      {preview&&(
-        <button
-          type="button"
-          onClick={exitPreview}
-          className="fixed bottom-5 z-50 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:opacity-95"
-          style={{right:20,left:'auto'}}
-        >
-          <ArrowLeft size={16}/>
-          <span>Retour au dashboard admin</span>
-        </button>
-      )}
 
       <main className="flex-1 overflow-y-auto bg-white">
         <section className="mx-auto max-w-7xl px-4 py-8 md:px-8">
