@@ -111,3 +111,872 @@ button:disabled,
     scroll-behavior: auto !important;
   }
 }
+
+/* Grand bloc 3 — profondeur et mouvements de la page d'accueil. */
+.oga-reveal {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0) scale(0.995);
+  transition:
+    opacity 720ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 820ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.oga-reveal.oga-reveal-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.oga-hero-depth-stage,
+.oga-journey-depth-stage {
+  --oga-scroll: 0;
+  position: relative;
+  isolation: isolate;
+  transform-style: preserve-3d;
+  perspective: 1600px;
+}
+
+.oga-hero-depth-stage {
+  min-height: 600px;
+  width: 100%;
+  perspective-origin: 52% 42%;
+}
+
+.oga-depth-grid,
+.oga-journey-depth-stage__grid {
+  position: absolute;
+  inset: 5% 0 4%;
+  border-radius: 36px;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 82%, transparent);
+  transform: rotateX(64deg) translate3d(0, 12%, -240px) scale(1.08);
+  transform-origin: center bottom;
+  opacity: 0.7;
+}
+
+.oga-depth-light {
+  position: absolute;
+  left: 8%;
+  top: 5%;
+  height: 72%;
+  width: 78%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(191, 136, 19, 0.24), rgba(0, 32, 80, 0) 68%);
+  filter: blur(12px);
+  transform: translate3d(calc(var(--oga-scroll) * 12px), calc(var(--oga-scroll) * -16px), -180px);
+}
+
+.oga-depth-orbit {
+  position: absolute;
+  border: 1px solid rgba(230, 190, 88, 0.28);
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.oga-depth-orbit::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: #E6BE58;
+  box-shadow: 0 0 22px rgba(230, 190, 88, 0.9);
+}
+
+.oga-depth-orbit--one {
+  inset: 6% 5% 13% 8%;
+  transform: rotateX(66deg) rotateZ(calc(-18deg + var(--oga-scroll) * 20deg)) translateZ(-70px);
+}
+
+.oga-depth-orbit--two {
+  inset: 18% 15% 26% 18%;
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: rotateX(72deg) rotateZ(calc(20deg - var(--oga-scroll) * 16deg)) translateZ(-120px);
+}
+
+.oga-interface-window {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  color: #0F172A;
+  box-shadow:
+    0 34px 80px rgba(0, 12, 34, 0.28),
+    0 8px 24px rgba(0, 12, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.oga-interface-window__bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-bottom: 1px solid #E7EAF0;
+  background: rgba(247, 249, 252, 0.94);
+}
+
+.oga-interface-window__mark {
+  height: 5px;
+  width: 5px;
+  border-radius: 999px;
+  background: #CBD5E1;
+}
+
+.oga-interface-window__mark:first-child {
+  background: #BF8813;
+}
+
+.oga-interface-window__brand {
+  margin-left: auto;
+  color: #002050;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.oga-interface-window__body {
+  padding: 16px;
+}
+
+.oga-interface-window__heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.oga-interface-window__heading strong {
+  display: block;
+  margin-top: 2px;
+  color: #002050;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.oga-interface-window__icon {
+  display: flex;
+  height: 36px;
+  width: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: #002050;
+  color: #E6BE58;
+}
+
+.oga-interface-window__eyebrow {
+  display: block;
+  color: #9A6A08;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.oga-interface-copy {
+  margin-top: 13px;
+  color: #64748B;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.oga-interface-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.oga-interface-pills span {
+  border: 1px solid #E2E8F0;
+  border-radius: 999px;
+  background: #F8FAFC;
+  padding: 4px 8px;
+  color: #475569;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.oga-interface-progress {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 0.7fr;
+  gap: 5px;
+  margin-top: 17px;
+}
+
+.oga-interface-progress span {
+  height: 5px;
+  border-radius: 999px;
+  background: #E2E8F0;
+}
+
+.oga-interface-progress span:first-child {
+  background: #BF8813;
+}
+
+.oga-interface-rows {
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.oga-interface-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #EEF1F5;
+  border-radius: 8px;
+  background: #FAFBFC;
+  padding: 6px 8px;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.oga-interface-row svg {
+  color: #BF8813;
+}
+
+.oga-proof-strip {
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.oga-proof-strip span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.oga-proof-strip svg {
+  color: #9A6A08;
+}
+
+.oga-depth-layer {
+  position: absolute;
+  transition:
+    transform 180ms linear,
+    box-shadow 420ms ease,
+    opacity 420ms ease;
+  will-change: transform;
+}
+
+.oga-depth-layer--course {
+  left: 4%;
+  top: 15%;
+  z-index: 5;
+  width: 67%;
+  transform: translate3d(calc(var(--oga-scroll) * -10px), calc(var(--oga-scroll) * -19px), 10px) rotateX(4deg) rotateY(-10deg) rotateZ(-1deg);
+}
+
+.oga-depth-layer--projects {
+  right: 2%;
+  top: 5%;
+  z-index: 7;
+  width: 42%;
+  transform: translate3d(calc(var(--oga-scroll) * 14px), calc(var(--oga-scroll) * -24px), 84px) rotateX(2deg) rotateY(-7deg) rotateZ(2deg);
+}
+
+.oga-depth-layer--credentials {
+  right: 0;
+  top: 38%;
+  z-index: 9;
+  width: 49%;
+  transform: translate3d(calc(var(--oga-scroll) * 24px), calc(var(--oga-scroll) * -6px), 160px) rotateX(-2deg) rotateY(-9deg) rotateZ(1deg);
+}
+
+.oga-depth-layer--career {
+  bottom: 4%;
+  left: 2%;
+  z-index: 8;
+  width: 40%;
+  transform: translate3d(calc(var(--oga-scroll) * -17px), calc(var(--oga-scroll) * 16px), 118px) rotateX(-3deg) rotateY(8deg) rotateZ(-2deg);
+}
+
+.oga-depth-layer--opportunities {
+  bottom: 1%;
+  right: 7%;
+  z-index: 10;
+  width: 47%;
+  transform: translate3d(calc(var(--oga-scroll) * 13px), calc(var(--oga-scroll) * 22px), 220px) rotateX(-4deg) rotateY(-5deg) rotateZ(1deg);
+}
+
+.oga-hero-depth-stage[data-motion='enhanced'] .oga-depth-layer:hover {
+  box-shadow:
+    0 44px 100px rgba(0, 12, 34, 0.34),
+    0 12px 32px rgba(0, 12, 34, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.oga-depth-axis {
+  position: absolute;
+  bottom: 9%;
+  left: 10%;
+  z-index: 1;
+  height: 1px;
+  width: 77%;
+  background: linear-gradient(90deg, transparent, rgba(230, 190, 88, 0.7), transparent);
+  transform: rotateZ(-9deg) translateZ(-20px);
+  box-shadow: 0 0 20px rgba(230, 190, 88, 0.28);
+}
+
+.oga-depth-caption {
+  position: absolute;
+  right: 4%;
+  top: 76%;
+  z-index: 14;
+  display: none;
+  max-width: 210px;
+  border-left: 2px solid #BF8813;
+  padding-left: 12px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 9px;
+}
+
+.oga-depth-caption strong,
+.oga-depth-caption span {
+  display: block;
+}
+
+.oga-depth-caption strong {
+  margin-top: 3px;
+  color: white;
+  font-size: 10px;
+}
+
+/* Parcours en profondeur au défilement. */
+.oga-journey-scroll-layout {
+  display: grid;
+  grid-template-areas: 'copy stage';
+  grid-template-columns: minmax(0, 0.82fr) minmax(420px, 1.18fr);
+  gap: clamp(32px, 6vw, 84px);
+  align-items: start;
+}
+
+.oga-journey-scroll-copy {
+  grid-area: copy;
+  min-width: 0;
+}
+
+.oga-journey-scroll-stage {
+  grid-area: stage;
+  min-width: 0;
+}
+
+.oga-journey-scroll-stage__sticky {
+  position: sticky;
+  top: 90px;
+  display: flex;
+  min-height: calc(100vh - 110px);
+  align-items: center;
+}
+
+.oga-journey-step-nav {
+  position: sticky;
+  top: 78px;
+  z-index: 20;
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  margin-bottom: 18px;
+  padding: 8px;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 16px;
+  background: rgba(247, 248, 250, 0.9);
+  backdrop-filter: blur(14px);
+  scrollbar-width: none;
+}
+
+.oga-journey-step-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.oga-journey-step-nav button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #64748B;
+  font-size: 10px;
+  font-weight: 700;
+  transition: background-color 240ms ease, color 240ms ease, transform 240ms ease;
+}
+
+.oga-journey-step-nav button span:first-child {
+  color: #9A6A08;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+}
+
+.oga-journey-step-nav button.is-active {
+  background: #002050;
+  color: white;
+  transform: translateY(-1px);
+}
+
+.oga-journey-step-nav button.is-active span:first-child {
+  color: #E6BE58;
+}
+
+.oga-journey-step-list {
+  position: relative;
+}
+
+.oga-journey-step {
+  position: relative;
+  display: flex;
+  min-height: 72vh;
+  flex-direction: column;
+  justify-content: center;
+  padding: 70px 8px 70px 74px;
+  opacity: 0.42;
+  transition: opacity 420ms ease, transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.oga-journey-step::before {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, #CBD5E1 16%, #CBD5E1 84%, transparent);
+}
+
+.oga-journey-step.is-active {
+  opacity: 1;
+  transform: translate3d(10px, 0, 0);
+}
+
+.oga-journey-step__number {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  display: flex;
+  height: 56px;
+  width: 56px;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #D8DEE7;
+  border-radius: 50%;
+  background: #F7F8FA;
+  color: #94A3B8;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 320ms ease, background-color 320ms ease, color 320ms ease, box-shadow 320ms ease;
+}
+
+.oga-journey-step.is-active .oga-journey-step__number {
+  border-color: #BF8813;
+  background: #002050;
+  color: #E6BE58;
+  box-shadow: 0 12px 30px rgba(0, 32, 80, 0.18);
+}
+
+.oga-journey-step__icon {
+  display: flex;
+  height: 48px;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: #FFF8E8;
+  color: #9A6A08;
+}
+
+.oga-journey-step__eyebrow {
+  margin-top: 22px;
+  color: #9A6A08;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.oga-journey-step h3 {
+  margin-top: 9px;
+  color: #002050;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.oga-journey-step > p:not(.oga-journey-step__eyebrow) {
+  margin-top: 18px;
+  max-width: 620px;
+  color: #64748B;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.oga-journey-depth-stage {
+  min-height: 620px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 72% 18%, rgba(191, 136, 19, 0.22), transparent 34%),
+    linear-gradient(145deg, #001534, #002050 54%, #001A41);
+  box-shadow:
+    0 42px 100px rgba(0, 32, 80, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  perspective-origin: 54% 42%;
+}
+
+.oga-journey-depth-stage__grid {
+  inset: 10% -6% 4%;
+  transform: rotateX(68deg) translate3d(0, 24%, -250px) scale(1.16);
+  opacity: 0.8;
+}
+
+.oga-journey-depth-stage__halo {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  height: 440px;
+  width: 440px;
+  transform: translate(-50%, -50%) translateZ(-180px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(191, 136, 19, 0.2), rgba(191, 136, 19, 0) 66%);
+  filter: blur(6px);
+}
+
+.oga-journey-depth-stage__rail {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  transform: translateY(-50%);
+}
+
+.oga-journey-depth-stage__rail span {
+  height: 6px;
+  width: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  transition: height 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
+}
+
+.oga-journey-depth-stage__rail span.is-active {
+  height: 30px;
+  background: #E6BE58;
+  box-shadow: 0 0 18px rgba(230, 190, 88, 0.6);
+}
+
+.oga-journey-depth-stage__stack {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.oga-journey-scene {
+  position: absolute;
+  left: 10%;
+  top: 17%;
+  width: 76%;
+  min-height: 330px;
+  transition:
+    transform 820ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 620ms ease,
+    filter 620ms ease,
+    box-shadow 620ms ease;
+  will-change: transform, opacity;
+}
+
+.oga-journey-scene:not(.is-active) {
+  filter: saturate(0.76) brightness(0.78);
+}
+
+.oga-journey-scene.is-active {
+  filter: none;
+  box-shadow:
+    0 58px 120px rgba(0, 8, 26, 0.44),
+    0 16px 42px rgba(0, 8, 26, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+}
+
+.oga-journey-scene .oga-interface-window__body {
+  padding: 24px;
+}
+
+.oga-journey-scene .oga-interface-window__heading strong {
+  font-size: 21px;
+}
+
+.oga-journey-scene .oga-interface-window__eyebrow {
+  font-size: 9px;
+}
+
+.oga-journey-scene .oga-interface-row {
+  padding: 10px 12px;
+  font-size: 11px;
+}
+
+.oga-journey-scene__footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 13px;
+  border-top: 1px solid #E7EAF0;
+  color: #94A3B8;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oga-journey-depth-stage__label {
+  position: absolute;
+  bottom: 24px;
+  left: 26px;
+  z-index: 40;
+  border-left: 2px solid #BF8813;
+  padding-left: 12px;
+}
+
+.oga-journey-depth-stage__label span,
+.oga-journey-depth-stage__label strong {
+  display: block;
+}
+
+.oga-journey-depth-stage__label span {
+  color: rgba(255, 255, 255, 0.6);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.oga-journey-depth-stage__label strong {
+  margin-top: 4px;
+  color: white;
+  font-size: 13px;
+}
+
+@media (min-width: 1280px) {
+  .oga-depth-caption {
+    display: block;
+  }
+}
+
+@media (max-width: 1023px) {
+  .oga-hero-depth-stage {
+    min-height: 540px;
+    max-width: 680px;
+    margin-inline: auto;
+  }
+
+  .oga-journey-scroll-layout {
+    grid-template-areas:
+      'stage'
+      'copy';
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .oga-journey-scroll-stage__sticky {
+    top: 76px;
+    min-height: auto;
+  }
+
+  .oga-journey-depth-stage {
+    min-height: 500px;
+  }
+
+  .oga-journey-step-nav {
+    top: 86px;
+  }
+
+  .oga-journey-step {
+    min-height: 62vh;
+    padding-right: 3%;
+  }
+}
+
+@media (max-width: 767px) {
+  .oga-reveal {
+    transform: translate3d(0, 14px, 0);
+  }
+
+  .oga-hero-depth-stage {
+    min-height: 460px;
+    perspective: 1000px;
+  }
+
+  .oga-depth-grid {
+    inset: 4% -10% 8%;
+    background-size: 24px 24px;
+  }
+
+  .oga-depth-layer {
+    transition-duration: 520ms;
+  }
+
+  .oga-depth-layer--course {
+    left: 1%;
+    top: 11%;
+    width: 76%;
+    transform: rotateX(3deg) rotateY(-7deg) rotateZ(-1deg);
+  }
+
+  .oga-depth-layer--projects,
+  .oga-depth-layer--career {
+    display: none;
+  }
+
+  .oga-depth-layer--credentials {
+    right: 0;
+    top: 39%;
+    width: 58%;
+    transform: translateZ(100px) rotateY(-7deg) rotateZ(1deg);
+  }
+
+  .oga-depth-layer--opportunities {
+    bottom: 2%;
+    right: 5%;
+    width: 65%;
+    transform: translateZ(150px) rotateX(-3deg) rotateY(-4deg);
+  }
+
+  .oga-interface-window__body {
+    padding: 13px;
+  }
+
+  .oga-interface-window__heading strong {
+    font-size: 12px;
+  }
+
+  .oga-journey-scroll-stage__sticky {
+    top: 70px;
+    z-index: 14;
+  }
+
+  .oga-journey-depth-stage {
+    min-height: 390px;
+    border-radius: 24px;
+  }
+
+  .oga-journey-scene {
+    left: 8%;
+    top: 15%;
+    width: 79%;
+    min-height: 250px;
+  }
+
+  .oga-journey-scene .oga-interface-window__body {
+    padding: 16px;
+  }
+
+  .oga-journey-scene .oga-interface-window__heading strong {
+    font-size: 16px;
+  }
+
+  .oga-journey-scene .oga-interface-row {
+    padding: 7px 9px;
+    font-size: 9px;
+  }
+
+  .oga-journey-depth-stage__rail {
+    right: 13px;
+  }
+
+  .oga-journey-depth-stage__label {
+    bottom: 16px;
+    left: 17px;
+  }
+
+  .oga-journey-step-nav {
+    top: 70px;
+    margin-inline: -3px;
+    padding: 6px;
+  }
+
+  .oga-journey-step-nav button {
+    padding: 7px 9px;
+  }
+
+  .oga-journey-step {
+    min-height: auto;
+    padding: 86px 2px 86px 62px;
+  }
+
+  .oga-journey-step::before {
+    left: 22px;
+  }
+
+  .oga-journey-step__number {
+    left: 0;
+    height: 44px;
+    width: 44px;
+  }
+
+  .oga-journey-step.is-active {
+    transform: none;
+  }
+
+  .oga-journey-step h3 {
+    font-size: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oga-reveal,
+  .oga-reveal.oga-reveal-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  .oga-depth-layer,
+  .oga-depth-orbit,
+  .oga-depth-light,
+  .oga-journey-scene,
+  .oga-journey-step,
+  .oga-journey-step-nav button {
+    transition: none !important;
+  }
+
+  .oga-depth-layer--course {
+    transform: rotateX(4deg) rotateY(-10deg) rotateZ(-1deg);
+  }
+
+  .oga-depth-layer--projects {
+    transform: translateZ(84px) rotateX(2deg) rotateY(-7deg) rotateZ(2deg);
+  }
+
+  .oga-depth-layer--credentials {
+    transform: translateZ(160px) rotateX(-2deg) rotateY(-9deg) rotateZ(1deg);
+  }
+
+  .oga-depth-layer--career {
+    transform: translateZ(118px) rotateX(-3deg) rotateY(8deg) rotateZ(-2deg);
+  }
+
+  .oga-depth-layer--opportunities {
+    transform: translateZ(220px) rotateX(-4deg) rotateY(-5deg) rotateZ(1deg);
+  }
+}

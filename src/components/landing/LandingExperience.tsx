@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -31,6 +31,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { CourseCard, type CourseCardData } from '../CourseCard';
+import { OmniaHeroDepthStage, OmniaJourneyDepthStage } from './OmniaDepthExperience';
+import { useLandingReveals } from '../../hooks/useLandingMotion';
 import type {
   LandingPageConfig,
   LandingSectionConfig,
@@ -322,6 +324,7 @@ function HeroSection({
   searchQuery,
   onSearchQueryChange,
   onSearch,
+  featuredCourses,
 }: {
   section: LandingSectionConfig;
   stats: LandingStats;
@@ -329,6 +332,7 @@ function HeroSection({
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  featuredCourses: CourseCardData[];
 }) {
   const visibleStats = (
     [
@@ -341,7 +345,7 @@ function HeroSection({
   ).filter(([key]) => statsVisibility[key] && stats[key]);
 
   return (
-    <section id={SECTION_IDS.hero} className="relative overflow-hidden bg-[#002050] px-5 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:pb-24">
+    <section id={SECTION_IDS.hero} data-oga-reveal className="oga-reveal relative overflow-hidden bg-[#002050] px-5 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:pb-24">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute -right-36 top-20 h-96 w-96 rounded-full border border-white/10" />
         <div className="absolute -right-16 top-40 h-72 w-72 rounded-full border border-[#BF8813]/30" />
@@ -394,29 +398,8 @@ function HeroSection({
           )}
         </div>
 
-        <div className="relative mx-auto w-full max-w-lg lg:max-w-none">
-          <div className="rounded-[2rem] border border-white/15 bg-white/[0.06] p-5 shadow-2xl shadow-black/20 backdrop-blur-sm sm:p-7">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE58]">Le parcours Omnia</p>
-            <div className="mt-6 space-y-1">
-              {JOURNEY_STEPS.map((step, index) => {
-                const Icon = step.icon;
-                return (
-                  <div key={step.title} className="grid grid-cols-[44px_1fr] gap-4">
-                    <div className="flex flex-col items-center">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#BF8813]/60 bg-[#00183E] text-[#E6BE58]">
-                        <Icon className="h-5 w-5" aria-hidden="true" />
-                      </span>
-                      {index < JOURNEY_STEPS.length - 1 && <span className="h-7 w-px bg-gradient-to-b from-[#BF8813]/60 to-white/10" />}
-                    </div>
-                    <div className="pb-5 pt-2">
-                      <p className="text-sm font-semibold text-white">{step.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-blue-100/75">{step.description}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
+          <OmniaHeroDepthStage course={featuredCourses[0]} />
         </div>
       </div>
     </section>
@@ -429,7 +412,7 @@ function GoalSelectorSection({ section }: { section: LandingSectionConfig }) {
   const ActiveIcon = activeGoal.icon;
 
   return (
-    <section id={SECTION_IDS.goal_selector} className="scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.goal_selector} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} />
         <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)]">
@@ -474,59 +457,86 @@ function GoalSelectorSection({ section }: { section: LandingSectionConfig }) {
 
 function JourneySection({ section }: { section: LandingSectionConfig }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const active = JOURNEY_STEPS[activeIndex];
-  const ActiveIcon = active.icon;
+  const stepRefs = useRef<Array<HTMLElement | null>>([]);
+
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        const visible = entries
+          .filter(entry => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (!visible) return;
+        const index = Number((visible.target as HTMLElement).dataset.journeyIndex || 0);
+        setActiveIndex(index);
+      },
+      {
+        threshold: [0.25, 0.45, 0.65],
+        rootMargin: '-18% 0px -34% 0px',
+      },
+    );
+
+    stepRefs.current.forEach(element => {
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const goToStep = (index: number) => {
+    setActiveIndex(index);
+    stepRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   return (
-    <section id={SECTION_IDS.omnia_journey} className="scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.omnia_journey} data-oga-reveal className="oga-reveal scroll-mt-20 overflow-hidden bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} align="center" />
 
-        <div className="mt-12 overflow-hidden rounded-3xl border border-slate-200 bg-white">
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
-            <div className="p-5 sm:p-8 lg:p-10">
-              <ol className="space-y-2">
-                {JOURNEY_STEPS.map((step, index) => {
-                  const Icon = step.icon;
-                  const isActive = index === activeIndex;
-                  return (
-                    <li key={step.title}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveIndex(index)}
-                        aria-pressed={isActive}
-                        className="grid w-full grid-cols-[42px_1fr_auto] items-center gap-4 rounded-2xl border px-4 py-4 text-left transition-all"
-                        style={{
-                          borderColor: isActive ? '#BF8813' : 'transparent',
-                          backgroundColor: isActive ? '#FFF9EC' : 'transparent',
-                        }}
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#002050] text-white">
-                          <Icon className="h-5 w-5" aria-hidden="true" />
-                        </span>
-                        <span>
-                          <span className="block text-xs font-bold uppercase tracking-[0.14em] text-[#9A6A08]">Étape {String(index + 1).padStart(2, '0')}</span>
-                          <span className="mt-1 block text-base font-semibold text-[#002050]">{step.title}</span>
-                        </span>
-                        <ChevronRight className="h-5 w-5 text-slate-400" aria-hidden="true" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
+        <div className="oga-journey-scroll-layout mt-14">
+          <div className="oga-journey-scroll-copy">
+            <nav className="oga-journey-step-nav" aria-label="Étapes du parcours Omnia">
+              {JOURNEY_STEPS.map((step, index) => (
+                <button
+                  key={step.title}
+                  type="button"
+                  onClick={() => goToStep(index)}
+                  className={index === activeIndex ? 'is-active' : ''}
+                  aria-current={index === activeIndex ? 'step' : undefined}
+                >
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <span>{step.title}</span>
+                </button>
+              ))}
+            </nav>
 
-            <div className="relative flex min-h-[360px] flex-col justify-between overflow-hidden bg-[#002050] p-8 text-white sm:p-10">
-              <div aria-hidden="true" className="absolute -right-24 -top-24 h-64 w-64 rounded-full border-[42px] border-white/5" />
-              <div className="relative">
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#BF8813] text-white">
-                  <ActiveIcon className="h-7 w-7" aria-hidden="true" />
-                </span>
-                <p className="mt-8 text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE58]">Étape {activeIndex + 1} sur {JOURNEY_STEPS.length}</p>
-                <h3 className="mt-3 text-3xl font-bold">{active.title}</h3>
-                <p className="mt-4 text-base leading-8 text-blue-100">{active.description}</p>
-              </div>
-              <ActionLink href={active.href} variant="light" className="relative mt-8 self-start">{active.action}</ActionLink>
+            <div className="oga-journey-step-list">
+              {JOURNEY_STEPS.map((step, index) => {
+                const Icon = step.icon;
+                return (
+                  <article
+                    key={step.title}
+                    ref={element => { stepRefs.current[index] = element; }}
+                    data-journey-index={index}
+                    className={`oga-journey-step ${index === activeIndex ? 'is-active' : ''}`}
+                  >
+                    <div className="oga-journey-step__number">{String(index + 1).padStart(2, '0')}</div>
+                    <span className="oga-journey-step__icon"><Icon className="h-6 w-6" aria-hidden="true" /></span>
+                    <p className="oga-journey-step__eyebrow">Étape {index + 1} sur {JOURNEY_STEPS.length}</p>
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                    <ActionLink href={step.href} variant="secondary" className="mt-7">{step.action}</ActionLink>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="oga-journey-scroll-stage">
+            <div className="oga-journey-scroll-stage__sticky">
+              <OmniaJourneyDepthStage activeIndex={activeIndex} />
             </div>
           </div>
         </div>
@@ -539,7 +549,7 @@ function FeaturedCoursesSection({ section, courses }: { section: LandingSectionC
   if (courses.length === 0) return null;
 
   return (
-    <section id={SECTION_IDS.featured_courses} className="scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.featured_courses} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <SectionHeading section={section} />
@@ -559,7 +569,7 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   const ActiveIcon = active.icon;
 
   return (
-    <section id={SECTION_IDS.ecosystem} className="scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.ecosystem} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} />
 
@@ -616,7 +626,7 @@ function CredentialsSection({ section }: { section: LandingSectionConfig }) {
   ];
 
   return (
-    <section id={SECTION_IDS.credentials} className="scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.credentials} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:items-center">
         <div>
           <SectionHeading section={section} />
@@ -647,7 +657,7 @@ function CredentialsSection({ section }: { section: LandingSectionConfig }) {
 
 function CareerRecruitmentSection({ section }: { section: LandingSectionConfig }) {
   return (
-    <section id={SECTION_IDS.career_recruitment} className="scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.career_recruitment} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} align="center" />
         <div className="mt-10 grid gap-5 lg:grid-cols-2">
@@ -693,7 +703,7 @@ function StructuresSection({ section }: { section: LandingSectionConfig }) {
   ];
 
   return (
-    <section id={SECTION_IDS.structures} className="scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.structures} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl overflow-hidden rounded-3xl border border-slate-200 bg-[#002050]">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
           <div className="p-8 sm:p-10 lg:p-12">
@@ -727,7 +737,7 @@ function PartnersSection({ section, partners }: { section: LandingSectionConfig;
   if (visiblePartners.length === 0) return null;
 
   return (
-    <section id={SECTION_IDS.partners} className="scroll-mt-20 bg-[#F7F8FA] px-5 py-16 sm:px-6 lg:py-20">
+    <section id={SECTION_IDS.partners} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-16 sm:px-6 lg:py-20">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} align="center" />
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -752,7 +762,7 @@ function MobileAppsSection({ section, apps }: { section: LandingSectionConfig; a
   if (visibleApps.length === 0) return null;
 
   return (
-    <section id={SECTION_IDS.mobile_apps} className="scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
+    <section id={SECTION_IDS.mobile_apps} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 rounded-3xl border border-slate-200 bg-[#F7F8FA] p-8 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
         <SectionHeading section={section} />
         <div className="flex flex-wrap gap-3">
@@ -784,7 +794,7 @@ function SocialNetworksSection({ section, networks }: { section: LandingSectionC
   if (visibleNetworks.length === 0) return null;
 
   return (
-    <section id={SECTION_IDS.social_networks} className="scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
+    <section id={SECTION_IDS.social_networks} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
       <div className="mx-auto max-w-7xl">
         <SectionHeading section={section} align="center" />
         <div className="mt-9 flex flex-wrap justify-center gap-3">
@@ -814,7 +824,7 @@ function SocialNetworksSection({ section, networks }: { section: LandingSectionC
 
 function FinalCtaSection({ section }: { section: LandingSectionConfig }) {
   return (
-    <section id={SECTION_IDS.final_cta} className="scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section id={SECTION_IDS.final_cta} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[#BF8813] px-7 py-12 text-center sm:px-12 sm:py-16">
         {section.eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#002050]">{section.eyebrow}</p>}
         <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">{section.title}</h2>
@@ -831,7 +841,7 @@ function FinalCtaSection({ section }: { section: LandingSectionConfig }) {
 
 function CustomTextSection({ section }: { section: LandingSectionConfig }) {
   return (
-    <section className="bg-white px-5 py-16 sm:px-6 lg:py-20">
+    <section data-oga-reveal className="oga-reveal bg-white px-5 py-16 sm:px-6 lg:py-20">
       <div className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-[#F7F8FA] p-8 sm:p-10">
         <SectionHeading section={section} />
         <div className="mt-7 flex flex-wrap gap-3">
@@ -848,13 +858,16 @@ export function LandingExperience({ data, searchQuery, onSearchQueryChange, onSe
     () => data.landingPage.sections.filter(section => section.enabled).sort((a, b) => a.order - b.order),
     [data.landingPage.sections],
   );
+  const mainRef = useRef<HTMLElement>(null);
+  const revealKey = `${sections.map(section => section.id).join('|')}|${data.featuredCourses.length}|${data.partners.length}|${data.mobileApps.length}|${data.socialNetworks.length}`;
+  useLandingReveals(mainRef, revealKey);
 
   return (
-    <main>
+    <main ref={mainRef}>
       {sections.map(section => {
         switch (section.type) {
           case 'hero':
-            return <HeroSection key={section.id} section={section} stats={data.stats} statsVisibility={data.statsVisibility} searchQuery={searchQuery} onSearchQueryChange={onSearchQueryChange} onSearch={onSearch} />;
+            return <HeroSection key={section.id} section={section} stats={data.stats} statsVisibility={data.statsVisibility} searchQuery={searchQuery} onSearchQueryChange={onSearchQueryChange} onSearch={onSearch} featuredCourses={data.featuredCourses} />;
           case 'goal_selector':
             return <GoalSelectorSection key={section.id} section={section} />;
           case 'omnia_journey':
