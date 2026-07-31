@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
-import { RoleDashboardActionCard, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import {
   Users, QrCode, Gift, Clock, CheckCircle,
   AlertCircle, PlusCircle, ChevronRight, RefreshCw,
@@ -270,22 +270,11 @@ export default function StructureDashboard() {
         )}
 
         {isValidated && stats && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <RoleDashboardStatCard label="Membres liés" value={stats.members} icon={Users} accent="#002050" onClick={() => navigate('/structure/membres')} />
             <RoleDashboardStatCard label="Codes actifs" value={stats.active_codes} icon={QrCode} accent="#1E7A52" onClick={() => navigate('/structure/codes')} />
             <RoleDashboardStatCard label="Avantages actifs" value={stats.active_benefits} icon={Gift} accent="#BF8813" onClick={() => navigate('/structure/abonnements')} />
-          </div>
-        )}
-
-        {isValidated && (
-          <div>
-            <h2 className="font-bold text-sm mb-4" style={{ color: '#002050' }}>Actions rapides</h2>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <RoleDashboardActionCard title="Créer une formation" text="Préparer une formation pour les membres de votre structure." icon={PlusCircle} onClick={() => navigate('/structure/formations/nouvelle')} accent="#002050" />
-              <RoleDashboardActionCard title="Créer un code structure" text="Générer un code d’adhésion et suivre son utilisation." icon={QrCode} onClick={() => navigate('/structure/codes')} accent="#1E7A52" />
-              <RoleDashboardActionCard title="Voir les membres" text="Consulter les membres liés et leurs rattachements." icon={Users} onClick={() => navigate('/structure/membres')} accent="#7C3AED" />
-              <RoleDashboardActionCard title="Demander un avantage" text="Accéder aux avantages et aux demandes de validation." icon={Gift} onClick={() => navigate('/structure/abonnements')} accent="#BF8813" />
-            </div>
+            <RoleDashboardStatCard label="Demandes de rattachement" value={pendingMembers.length} icon={Clock} accent="#7C3AED" onClick={() => navigate('/structure/demandes')} />
           </div>
         )}
 

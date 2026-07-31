@@ -1,5 +1,6 @@
 import React, { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
@@ -183,6 +184,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [referralEnabled, setReferralEnabled] = useState(false);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -201,6 +203,24 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (role !== 'apprenant') {
+      setReferralEnabled(false);
+      return;
+    }
+
+    let active = true;
+    getPublicSiteSettings()
+      .then(settings => {
+        if (active) setReferralEnabled(settings.referral_enabled === true || settings.referral_enabled === 'true');
+      })
+      .catch(() => {
+        if (active) setReferralEnabled(false);
+      });
+
+    return () => { active = false; };
+  }, [role]);
 
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true';
   const isSuperAdmin = (() => {
@@ -246,17 +266,28 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     navigate('/connexion');
   }
 
-  const NAV_ITEMS = navItems ?? (
+  const filterReferralItems = (items: NavItem[]) =>
+    role === 'apprenant' && !referralEnabled
+      ? items.filter(item => item.path !== '/dashboard/parrainage')
+      : items;
+
+  const NAV_ITEMS = filterReferralItems(navItems ?? (
     role === 'professeur' ? PROFESSEUR_NAV
-   : role === 'directeur' ? PARTNER_NAV
-    : role === 'super_admin' ? ADMIN_NAV
-    : APPRENANT_NAV
-  );
-  const ACTIVE_NAV_GROUPS = navGroups ?? (
+      : role === 'directeur' ? PARTNER_NAV
+        : role === 'super_admin' ? ADMIN_NAV
+          : APPRENANT_NAV
+  ));
+
+  const rawNavGroups = navGroups ?? (
     role === 'professeur' ? PROFESSEUR_GROUPS
       : role === 'apprenant' ? APPRENANT_GROUPS
         : undefined
   );
+
+  const ACTIVE_NAV_GROUPS = rawNavGroups?.map(group => ({
+    ...group,
+    items: filterReferralItems(group.items),
+  })).filter(group => group.items.length > 0);
 
   useEffect(() => {
     if (!ACTIVE_NAV_GROUPS?.length) return;

@@ -48,6 +48,11 @@ Deno.serve(async (req: Request) => {
       try { return JSON.parse(value); } catch { return fallback; }
     };
 
+    const parseNumberSetting = (value: any, fallback = 0) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : fallback;
+    };
+
     // Build the response with only public settings.
     // Coming Soon / liste d'attente globale ont été retirés.
     const publicSettings = {
@@ -93,6 +98,9 @@ Deno.serve(async (req: Request) => {
       collaborations_logos: parseObjectSetting(settingsMap.collaborations_logos, []),
       favicon_url: settingsMap.favicon_url || null,
       site_slogan: settingsMap.site_slogan || null,
+      referral_enabled: settingsMap.referral_enabled === 'true' || settingsMap.referral_enabled === true,
+      referral_reward_referrer_xof: parseNumberSetting(settingsMap.referral_reward_referrer_xof, 0),
+      referral_reward_referred_xof: parseNumberSetting(settingsMap.referral_reward_referred_xof, 0),
     };
 
     const { data: publicPartners } = await supabaseAnon

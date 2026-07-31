@@ -7,7 +7,7 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
 import { withLearnerPreview } from '../../lib/learnerPreview';
 import {
-  BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, Users, ArrowRight,
+  BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, ArrowRight,
 } from 'lucide-react';
 
 interface DashboardData {
@@ -19,7 +19,6 @@ interface DashboardData {
     lessons_completed: number; lessons_total: number;
   }>;
   activite_recente: Array<{ lesson_title: string; course_id: string; completed_at: string }>;
-  parrainage: { total_filleuls: number; total_recompenses_xof: number; referral_link: string };
 }
 
 const PREVIEW_DASHBOARD: DashboardData = {
@@ -27,7 +26,6 @@ const PREVIEW_DASHBOARD: DashboardData = {
   kpis: { formations_en_cours: 0, formations_terminees: 0, certificats_obtenus: 0, jetons_ia_restants: 0 },
   courses_en_cours: [],
   activite_recente: [],
-  parrainage: { total_filleuls: 0, total_recompenses_xof: 0, referral_link: '' },
 };
 
 function formatDate(iso: string) {
@@ -155,20 +153,6 @@ export function DashboardApprenant() {
                       ))}
                     </ul>
                   )}
-                </RoleDashboardPanel>
-
-                <RoleDashboardPanel>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4" style={{ color: '#BF8813' }} />
-                    <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>Parrainage</h2>
-                  </div>
-                  <p className="text-2xl font-black" style={{ color: '#002050' }}>{data.parrainage.total_filleuls}</p>
-                  <p className="text-xs text-slate-500 mt-1">Filleuls inscrits avec votre lien</p>
-                  <Link to={withLearnerPreview('/dashboard/parrainage')}
-                    className="mt-4 inline-flex items-center gap-1 text-sm font-semibold"
-                    style={{ color: '#BF8813' }}>
-                    Inviter des amis <ArrowRight size={15} />
-                  </Link>
                 </RoleDashboardPanel>
               </div>
             </div>

@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
     const ipAddress = getClientIP(req);
 
     // Extract referral code from body or URL
-    const refCode = body.ref_code?.trim() || null;
+    const refCode = String(body.referral_code || body.ref_code || "").trim() || null;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -305,17 +305,28 @@ Deno.serve(async (req: Request) => {
     if (userError) throw userError;
     const userId = newUser.id;
 
-    // Handle referral code
-    if (refCode) {
-      const { data: referrer } = await supabase.from("users").select("id").eq("id", refCode).maybeSingle();
-      if (referrer) {
-        await supabase.from("referrals").insert({
-          referrer_id: refCode,
-          referred_id: userId,
-          status: "pending",
-          reward_referrer_xof: 0,
-          reward_referred_xof: 0,
-        }).then(() => {/* ignore duplicate errors */});
+    // Le parrainage est réservé aux apprenants et reste inactif tant que
+    // le Super-admin ne l'a pas explicitement activé dans les paramètres.
+    if (role === "apprenant" && refCode && refCode !== userId) {
+      const { data: referralSetting } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "referral_enabled")
+        .maybeSingle();
+
+      const referralEnabled = referralSetting?.value === true || referralSetting?.value === "true";
+
+      if (referralEnabled) {
+        const { data: referrer } = await supabase.from("users").select("id").eq("id", refCode).maybeSingle();
+        if (referrer) {
+          await supabase.from("referrals").insert({
+            referrer_id: refCode,
+            referred_id: userId,
+            status: "pending",
+            reward_referrer_xof: 0,
+            reward_referred_xof: 0,
+          }).then(() => {/* ignore duplicate errors */});
+        }
       }
     }
 

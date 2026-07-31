@@ -9,10 +9,9 @@ import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dash
 import {
   contactTalent, loadPublicTalents, loadTalentConversations, loadTalentDashboard,
   loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation,
-  TalentInterview, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, loadRecruiterStatus,
+  TalentInterview, toggleTalentFavorite, loadRecruiterStatus,
 } from './talentApi';
 import { getStoredUser } from '../../lib/session';
-import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 import { ENDPOINTS } from '../../lib/config';
 import { JobApplicationMode, labelApplicationStatus, normalizeApplicationMode } from '../../lib/jobApplicationModes';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -79,8 +78,6 @@ export default function RecruiterDashboard() {
   const [contactTarget, setContactTarget] = useState<PublicTalent | null>(null);
   const [contactMessage, setContactMessage] = useState('');
   const [contactBusy, setContactBusy] = useState(false);
-  const [analytics, setAnalytics] = useState<TalentAnalytics|null>(null);
-  const [periodDays, setPeriodDays] = useState(30);
   const [showJobForm, setShowJobForm] = useState(false);
   const [jobForm, setJobForm] = useState(EMPTY_JOB);
   const [jobSaving, setJobSaving] = useState(false);
@@ -116,7 +113,7 @@ export default function RecruiterDashboard() {
       loadPublicTalents(),
       manageJobs<{jobs:ManagedJob[]}>({ action:'list_my_jobs' }),
       manageJobs<{applications:ManagedApplication[]}>({ action:'list_applications' }),
-      loadTalentFavorites(), loadTalentDashboard(), loadTalentInterviews(), loadTalentConversations(), loadTalentAnalytics('recruiter', periodDays),
+      loadTalentFavorites(), loadTalentDashboard(), loadTalentInterviews(), loadTalentConversations(),
     ]);
     if (results[0].status === 'fulfilled') setTalents(results[0].value); else setError('Les profils publics ne sont pas disponibles pour le moment.');
     if (results[1].status === 'fulfilled') setJobs(results[1].value.jobs || []); else setError(prev => prev || 'Vos offres ne sont pas disponibles pour le moment.');
@@ -125,10 +122,9 @@ export default function RecruiterDashboard() {
     if (results[4].status === 'fulfilled') setMetrics(results[4].value.metrics);
     if (results[5].status === 'fulfilled') setInterviews(results[5].value);
     if (results[6].status === 'fulfilled') setConversations(results[6].value);
-    if (results[7].status === 'fulfilled') setAnalytics(results[7].value.analytics);
     setLoading(false);
   }
-  useEffect(() => { if (accessState === 'allowed') loadAll(); }, [periodDays, accessState]);
+  useEffect(() => { if (accessState === 'allowed') loadAll(); }, [accessState]);
 
   async function toggleFavorite(t: PublicTalent) {
     try {
@@ -207,7 +203,7 @@ export default function RecruiterDashboard() {
   return <RecruiterLayout title={titleMap[section]} subtitle="Omnia Talent">
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       {error && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
-      {section === 'dashboard' && <><div className="mb-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div><DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} /><div className="mt-6"><TalentAnalyticsPanel analytics={analytics} loading={loading} mode="recruiter"/></div></>}
+      {section === 'dashboard' && <DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} />}
       {section === 'talents' && <TalentsSection talents={filteredTalents} loading={loading} query={query} setQuery={setQuery} favorites={favorites} toggleFavorite={toggleFavorite} contact={setContactTarget} />}
       {section === 'favoris' && <FavoritesSection favorites={favorites} contact={setContactTarget} />}
       {section === 'offres' && <OffersSection jobs={jobs} loading={loading} previewMode={previewMode} openForm={()=>setShowJobForm(true)} archiveJob={archiveJob}/>}

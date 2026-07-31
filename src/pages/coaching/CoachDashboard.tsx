@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Package, Star, UsersRound, WalletCards } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Package, Star } from 'lucide-react';
 import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
-import { RoleDashboardActionCard, RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { CoachProfile, CoachingSession, coachingRequest, withCoachPreview } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -10,14 +10,13 @@ const GOLD = '#BF8813';
 
 type DashboardData = {
   profile: CoachProfile;
-  recent_sessions: CoachingSession[];
   metrics: {
     upcoming_sessions: number;
-    pending_custom_requests: number;
     completed_sessions: number;
     average_rating: number;
-    available_revenue_xof: number;
+    pending_custom_requests: number;
   };
+  recent_sessions: CoachingSession[];
 };
 
 export default function CoachDashboard() {
@@ -47,23 +46,20 @@ export default function CoachDashboard() {
           <RoleDashboardStatCard label="Note moyenne" value={Number(metrics?.average_rating || data?.profile?.average_rating || 0).toFixed(1)} icon={Star} accent={GOLD} to={withCoachPreview('/coach/avis')} />
         </div>
 
-        <div className="mt-6 grid gap-5 md:grid-cols-3">
-          <RoleDashboardActionCard to={withCoachPreview('/coach/sessions')} icon={UsersRound} title="Gérer mes sessions" text="Réservations, salles et suivi des apprenants." />
-          <RoleDashboardActionCard to={withCoachPreview('/coach/produits')} icon={Package} title="Coaching collectif" text="Créer et suivre vos sessions collectives." accent="#7C3AED" />
-          <RoleDashboardActionCard to={withCoachPreview('/coach/revenus')} icon={WalletCards} title="Espace revenus" text="Accéder au suivi financier et aux demandes de retrait." accent="#1E7A52" />
-        </div>
-
         <RoleDashboardPanel className="mt-6">
-          <h2 className="font-semibold" style={{ color: BLUE }}>Activité récente</h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="font-semibold" style={{ color: BLUE }}>Activité récente</h2>
+            <Link to={withCoachPreview('/coach/sessions')} className="text-sm font-semibold" style={{ color: GOLD }}>Voir les sessions</Link>
+          </div>
           {data?.recent_sessions?.length ? (
             <div className="mt-4 divide-y divide-slate-100">
-              {data.recent_sessions.slice(0, 5).map(session => (
-                <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+              {data.recent_sessions.slice(0, 6).map(session => (
+                <div key={session.id} className="flex items-center justify-between gap-4 py-3 text-sm">
                   <div>
-                    <p className="font-semibold" style={{ color: BLUE }}>{session.offer_title_snapshot}</p>
-                    <p className="text-xs text-slate-500">{session.status.replace(/_/g, ' ')}</p>
+                    <p className="font-medium" style={{ color: BLUE }}>{session.learner_name || 'Apprenant'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(session.scheduled_at).toLocaleString('fr-FR')}</p>
                   </div>
-                  <Link to={withCoachPreview('/coach/sessions')} className="text-sm font-semibold" style={{ color: GOLD }}>Ouvrir</Link>
+                  <p className="text-xs font-semibold" style={{ color: GOLD }}>{session.status.replace(/_/g, ' ')}</p>
                 </div>
               ))}
             </div>

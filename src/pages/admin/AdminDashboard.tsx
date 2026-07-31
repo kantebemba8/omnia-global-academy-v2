@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import {
-  Activity, ArrowRight, BookOpen, Building2, CircleDollarSign, Clock3,
-  Eye, GraduationCap, Radio, RefreshCw, ShieldCheck, Users, UserCheck,
-  Wallet, MessageSquare, Wrench, AlertCircle, CheckCircle2, UserRoundSearch
+  Activity, ArrowRight, BookOpen, Building2, CircleDollarSign,
+  Eye, GraduationCap, Radio, RefreshCw, Users, UserCheck,
+  Wallet, AlertCircle, CheckCircle2, UserRoundSearch
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -219,19 +220,35 @@ export default function AdminDashboard() {
           </div>
         ) : data && (
           <>
-            <section className="grid grid-cols-2 lg:grid-cols-4 border-y border-gray-200">
-              {[
-                ['CA encaissé', fmt(data.kpis.ca_encaisse_xof, ' XOF'), 'Paiements confirmés sur la période'],
-                ['Revenu Omnia', fmt(data.kpis.revenu_omnia_xof, ' XOF'), 'Part plateforme réellement enregistrée'],
-                ['À reverser', fmt(data.kpis.a_reverser_xof, ' XOF'), 'Soldes et parts disponibles/en attente'],
-                ['Actifs 24 h', fmt(data.kpis.utilisateurs_actifs_24h), 'Utilisateurs distincts connectés'],
-              ].map(([label, value, detail], index) => (
-                <div key={label} className={`py-5 px-4 ${index < 3 ? 'lg:border-r border-gray-200' : ''}`}>
-                  <p className="text-xs text-gray-500">{label}</p>
-                  <p className="text-xl font-black mt-1" style={{ color: '#002050' }}>{value}</p>
-                  <p className="text-xs text-gray-400 mt-1">{detail}</p>
-                </div>
-              ))}
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <RoleDashboardStatCard
+                label="CA encaissé"
+                value={fmt(data.kpis.ca_encaisse_xof, ' XOF')}
+                detail="Paiements confirmés sur la période"
+                icon={CircleDollarSign}
+                accent="#002050"
+              />
+              <RoleDashboardStatCard
+                label="Revenu Omnia"
+                value={fmt(data.kpis.revenu_omnia_xof, ' XOF')}
+                detail="Part plateforme réellement enregistrée"
+                icon={Activity}
+                accent="#1E7A52"
+              />
+              <RoleDashboardStatCard
+                label="À reverser"
+                value={fmt(data.kpis.a_reverser_xof, ' XOF')}
+                detail="Soldes et parts disponibles ou en attente"
+                icon={Wallet}
+                accent="#BF8813"
+              />
+              <RoleDashboardStatCard
+                label="Actifs 24 h"
+                value={fmt(data.kpis.utilisateurs_actifs_24h)}
+                detail="Utilisateurs distincts connectés"
+                icon={Users}
+                accent="#7C3AED"
+              />
             </section>
 
             <section>

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
+import { getPublicSiteSettings } from '../../lib/siteSettingsCache';
 
 type RegisterResponse = {
   success: boolean;
@@ -48,6 +49,26 @@ export function RegisterApprenant() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [referralCode, setReferralCode] = useState('');
+  const [referralEnabled, setReferralEnabled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getPublicSiteSettings()
+      .then(settings => {
+        if (!active) return;
+        const enabled = settings.referral_enabled === true || settings.referral_enabled === 'true';
+        setReferralEnabled(enabled);
+        if (enabled) {
+          const code = new URLSearchParams(window.location.search).get('ref');
+          if (code) setReferralCode(code.trim());
+        }
+      })
+      .catch(() => {
+        if (active) setReferralEnabled(false);
+      });
+
+    return () => { active = false; };
+  }, []);
 
   const set = (field: string, value: unknown) =>
     setForm(f => ({ ...f, [field]: value }));
@@ -77,7 +98,7 @@ export function RegisterApprenant() {
         allow_sms: form.allow_sms,
         allow_push: form.allow_push,
         subscribe_newsletter: form.subscribe_newsletter,
-        referral_code: referralCode || undefined,
+        referral_code: referralEnabled && referralCode ? referralCode : undefined,
       });
       if (!data.success) {
         setError(data.message || 'Une erreur est survenue');
@@ -217,20 +238,18 @@ export function RegisterApprenant() {
           </p>
         </div>
 
-        {/* Code de parrainage */}
-        <div>
-          <label className={labelCls}>Code de parrainage (optionnel)</label>
-          <input
-            type="text"
-            className={inputCls}
-            placeholder="Collez le code de votre parrain"
-            value={referralCode}
-            onChange={e => setReferralCode(e.target.value.trim())}
-          />
-          <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-            Si un ami vous a invité, entrez son code ici et recevez une réduction sur votre 1er achat
-          </p>
-        </div>
+        {referralEnabled && (
+          <div>
+            <label className={labelCls}>Code de parrainage (optionnel)</label>
+            <input
+              type="text"
+              className={inputCls}
+              placeholder="Collez le code de votre parrain"
+              value={referralCode}
+              onChange={e => setReferralCode(e.target.value.trim())}
+            />
+          </div>
+        )}
 
         {/* Consentements */}
         <div className="pt-1 space-y-2">

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CalendarDays, MessageSquare, Users, WalletCards, PlayCircle, ArrowRight,
-  Radio, Clock3, CheckCircle2, Star,
+  CalendarDays, Users, ArrowRight, Radio, CheckCircle2,
 } from 'lucide-react';
-import { RoleDashboardActionCard, RoleDashboardPanel, RoleDashboardStatCard } from '../../../components/dashboard/RoleDashboardCards';
+import { RoleDashboardPanel, RoleDashboardStatCard } from '../../../components/dashboard/RoleDashboardCards';
 import { liveApi } from '../liveApi';
 import OrganizerShell from './OrganizerShell';
 
@@ -27,11 +26,9 @@ export default function OrganizerDashboard() {
 
   const overview = useMemo(() => [
     { label: 'Événements', value: k.total_events ?? 0, icon: CalendarDays, accent: BLUE, to: '/omnia-live/organisateur/evenements' },
-    { label: 'En validation', value: k.pending_review ?? 0, icon: Clock3, accent: GOLD, to: '/omnia-live/organisateur/evenements' },
     { label: 'Publiés', value: k.published ?? 0, icon: CheckCircle2, accent: '#1E7A52', to: '/omnia-live/organisateur/evenements' },
     { label: 'En direct', value: k.live_now ?? 0, icon: Radio, accent: '#DC2626', to: '/omnia-live/organisateur/evenements' },
-    { label: 'Inscriptions', value: k.registrations ?? 0, icon: Users, accent: '#7C3AED', to: '/omnia-live/organisateur/participants' },
-    { label: 'Note moyenne', value: Number(k.average_rating || 0).toFixed(1), icon: Star, accent: GOLD, to: '/omnia-live/organisateur/statistiques' },
+    { label: 'Participants inscrits', value: k.registrations ?? 0, icon: Users, accent: '#7C3AED', to: '/omnia-live/organisateur/participants' },
   ], [k]);
 
   return (
@@ -52,7 +49,7 @@ export default function OrganizerDashboard() {
           </Link>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {overview.map(item => (
             <RoleDashboardStatCard
               key={item.label}
@@ -63,16 +60,6 @@ export default function OrganizerDashboard() {
               to={item.to}
             />
           ))}
-        </div>
-      </section>
-
-      <section className="mt-7">
-        <h2 className="mb-4 text-lg font-bold" style={{ color: BLUE }}>Actions rapides</h2>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <RoleDashboardActionCard to="/omnia-live/proposer" icon={PlayCircle} title="Créer un événement" text="Préparer un Live, une classe virtuelle ou une diffusion." />
-          <RoleDashboardActionCard to="/omnia-live/organisateur/participants" icon={Users} title="Participants" text="Consulter les inscriptions et la présence." accent="#7C3AED" />
-          <RoleDashboardActionCard to="/omnia-live/organisateur/communications" icon={MessageSquare} title="Communications" text="Envoyer les informations utiles aux participants." accent="#1E7A52" />
-          <RoleDashboardActionCard to="/omnia-live/revenus" icon={WalletCards} title="Espace revenus" text="Accéder au suivi financier dans le menu dédié." accent="#1E7A52" />
         </div>
       </section>
 

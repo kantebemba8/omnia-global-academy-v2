@@ -129,12 +129,26 @@ Deno.serve(async (req: Request) => {
       .order("updated_at", { ascending: false })
       .limit(5);
 
-    // Referral info
-    const { data: referralData } = await sb.from("referrals").select("id,status,reward_referrer_xof,rewarded_at").eq("referrer_id", userId);
+    // Le parrainage est invisible et inactif tant que le Super-admin ne l'a
+    // pas activé. Les lignes désactivées ne sont jamais comptées.
+    const { data: referralSetting } = await sb
+      .from("site_settings")
+      .select("value")
+      .eq("key", "referral_enabled")
+      .maybeSingle();
+    const referralEnabled = referralSetting?.value === true || referralSetting?.value === "true";
+
+    const { data: referralData } = referralEnabled
+      ? await sb
+        .from("referrals")
+        .select("id,status,reward_referrer_xof,rewarded_at")
+        .eq("referrer_id", userId)
+        .in("status", ["pending", "rewarded"])
+      : { data: [] };
     const totalFilleuls = (referralData ?? []).length;
-    const totalRewards = (referralData ?? []).reduce((sum, r) => {
-      const ref = r as unknown as { reward_referrer_xof: number };
-      return sum + (ref.reward_referrer_xof ?? 0);
+    const totalRewards = (referralData ?? []).reduce((sum, row) => {
+      const referral = row as unknown as { status: string; reward_referrer_xof: number };
+      return sum + (referral.status === "rewarded" ? (referral.reward_referrer_xof ?? 0) : 0);
     }, 0);
 
     return json({
@@ -162,9 +176,12 @@ Deno.serve(async (req: Request) => {
         return { lesson_id: act.lesson_id, course_id: act.course_id, lesson_title: act.course_lessons?.title ?? "", completed_at: act.updated_at };
       }),
       parrainage: {
-        total_filleuls: totalFilleuls,
-        total_recompenses_xof: totalRewards,
-        referral_link: `${Deno.env.get("SITE_URL") ?? "https://omniaglobalacademy.com"}/inscription?ref=${userId}`,
+        enabled: referralEnabled,
+        total_filleuls: referralEnabled ? totalFilleuls : 0,
+        total_recompenses_xof: referralEnabled ? totalRewards : 0,
+        referral_link: referralEnabled
+          ? `${Deno.env.get("SITE_URL") ?? "https://omniaglobalacademy.com"}/inscription?ref=${userId}`
+          : null,
       },
     });
   } catch (err) {

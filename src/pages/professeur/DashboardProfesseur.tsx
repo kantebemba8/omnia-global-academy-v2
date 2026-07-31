@@ -2,12 +2,12 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { RoleDashboardActionCard, RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 
 import {
   BookOpen, Users, Star, PlusCircle, AlertCircle,
   ChevronRight, Clock, CheckCircle, XCircle, AlertTriangle, Eye,
-  ClipboardCheck, BarChart3, WalletCards
+  ClipboardCheck
 } from 'lucide-react';
 
 interface Formation {
@@ -313,23 +313,6 @@ export function DashboardProfesseur() {
                     </div>
                   )}
                 </RoleDashboardPanel>
-
-                {/* Accès rapides */}
-                <RoleDashboardActionCard
-                  to="/professeur/analytics"
-                  icon={BarChart3}
-                  title="Analytique élèves"
-                  text="Consulter la progression, l’engagement et les résultats pédagogiques."
-                  accent="#7C3AED"
-                />
-
-                <RoleDashboardActionCard
-                  to="/professeur/payouts"
-                  icon={WalletCards}
-                  title="Mon portefeuille"
-                  text="Accéder au suivi des revenus et aux demandes de retrait dans l’espace dédié."
-                  accent="#1E7A52"
-                />
 
                 <RoleDashboardPanel>
                   <div className="flex items-center gap-2 mb-2">

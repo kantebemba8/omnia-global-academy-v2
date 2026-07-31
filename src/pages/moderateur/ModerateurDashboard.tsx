@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
-import { RoleDashboardActionCard, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
@@ -73,15 +73,8 @@ export default function ModerateurDashboard() {
 
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [previewToast, setPreviewToast] = useState(false);
   const [error, setError] = useState('');
 
-
-  function handlePreviewAction() {
-    if (!bypassAuth) return;
-    setPreviewToast(true);
-    setTimeout(() => setPreviewToast(false), 3000);
-  }
 
   useEffect(() => {
     if (bypassAuth) {
@@ -96,7 +89,12 @@ export default function ModerateurDashboard() {
           can_manage_support: true,
           can_view_analytics: true,
         },
-        kpis: [],
+        kpis: [
+          { key: 'courses', label: 'Formations en attente', value: 0 },
+          { key: 'professor_kyc', label: 'Professeurs à vérifier', value: 0 },
+          { key: 'forum', label: 'Signalements Forum', value: 0 },
+          { key: 'jobs', label: 'Offres à valider', value: 0 },
+        ],
         priority_queue: [],
         todays_decisions: [],
         has_any_permission: true,
@@ -154,13 +152,13 @@ export default function ModerateurDashboard() {
     </ModerateurLayout>
   );
 
+  const kpiPriority = ['courses', 'professor_kyc', 'forum', 'jobs', 'support', 'learners', 'professors'];
+  const visibleKpis = [...(data.kpis || [])]
+    .sort((a, b) => kpiPriority.indexOf(a.key) - kpiPriority.indexOf(b.key))
+    .slice(0, 4);
+
   return (
     <ModerateurLayout>
-      {previewToast && (
-        <div className="fixed top-16 right-4 z-50 bg-gray-800 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg">
-          Mode aperçu — Action désactivée
-        </div>
-      )}
       <div className="p-6 max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <div>
@@ -182,9 +180,9 @@ export default function ModerateurDashboard() {
           </div>
         )}
 
-        {data?.kpis?.length > 0 && (
+        {visibleKpis.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {(data?.kpis ?? []).map((kpi) => {
+            {visibleKpis.map((kpi) => {
               const presentation = KPI_PRESENTATION[kpi.key] || { icon: Activity, accent: '#002050', path: '/moderator/dashboard' };
               return (
                 <RoleDashboardStatCard
@@ -262,26 +260,6 @@ export default function ModerateurDashboard() {
             )}
           </div>
         </div>
-
-        {data?.has_any_permission && (
-          <div>
-            <h2 className="font-semibold mb-4" style={{ color: '#002050' }}>Accès rapide</h2>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {data.permissions?.can_see_pending_courses && (
-                <RoleDashboardActionCard to="/moderator/courses" icon={BookOpen} title="Formations" text="Examiner les formations en attente de validation." accent="#002050" />
-              )}
-              {(data.permissions?.can_validate_professor_kyc || data.permissions?.can_validate_establishment_kyc) && (
-                <RoleDashboardActionCard to="/moderator/kyc" icon={Shield} title="Vérifications KYC" text="Contrôler les dossiers d’identité autorisés." accent="#1E7A52" />
-              )}
-              {(data.permissions?.can_see_learners_list || data.permissions?.can_suspend_account) && (
-                <RoleDashboardActionCard to="/moderator/users" icon={Users} title="Utilisateurs" text="Consulter les comptes selon vos permissions." accent="#BF8813" />
-              )}
-              {data.permissions?.can_manage_support && (
-                <RoleDashboardActionCard to="/moderator/support" icon={HelpCircle} title="Support" text="Traiter les demandes d’assistance ouvertes." accent="#7C3AED" />
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Important notice */}
         <div className="rounded-xl p-4 bg-blue-50 border border-blue-100 flex items-start gap-3">

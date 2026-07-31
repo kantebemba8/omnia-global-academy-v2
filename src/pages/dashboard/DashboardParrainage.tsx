@@ -1,16 +1,27 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { Users, Copy, CheckCircle, Share2, Clock, Gift } from 'lucide-react';
+import { Users, Copy, CheckCircle, Share2, Clock, Gift, ArrowLeft } from 'lucide-react';
+import { getPublicSiteSettings } from '../../lib/siteSettingsCache';
 
 interface Filleul {
-  id: string; anonymized_name: string; country_code: string;
-  status: string; reward_xof: number; joined_at: string;
+  id: string;
+  anonymized_name: string;
+  country_code: string;
+  status: string;
+  reward_xof: number;
+  joined_at: string;
 }
 
 interface ReferralData {
-  referral_link: string; total_filleuls: number;
-  total_recompenses_xof: number; filleuls: Filleul[];
+  enabled: boolean;
+  referral_link: string | null;
+  total_filleuls: number;
+  total_recompenses_xof: number;
+  reward_referrer_xof: number;
+  reward_referred_xof: number;
+  filleuls: Filleul[];
 }
 
 function getApiBase() {
@@ -18,32 +29,65 @@ function getApiBase() {
   return url ? `${url}/functions/v1` : '/api';
 }
 
+function formatXof(value: number) {
+  return `${Math.max(0, value || 0).toLocaleString('fr-FR')} XOF`;
+}
+
 export function DashboardParrainage() {
   const [data, setData] = useState<ReferralData | null>(null);
+  const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
-    (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false;
+      } catch {
+        return false;
+      }
+    })();
 
   const load = useCallback(async () => {
-    if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
-    if (!token) return;
+    setLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/referral-info`, {
+      const settings = await getPublicSiteSettings({ force: true });
+      const isEnabled = settings.referral_enabled === true || settings.referral_enabled === 'true';
+      setEnabled(isEnabled);
+
+      if (!isEnabled || bypassAuth) {
+        setData(null);
+        return;
+      }
+
+      const token = localStorage.getItem('omnia_session_token');
+      if (!token) return;
+
+      const response = await fetch(`${getApiBase()}/referral-info`, {
         headers: edgeAuthHeaders(),
       });
-      const json = await res.json();
-      if (res.ok) setData(json);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  }, []);
+      const payload = await response.json().catch(() => ({}));
 
-  useEffect(() => { load(); }, [load]);
+      if (response.ok && payload.enabled === true) {
+        setData(payload as ReferralData);
+      } else {
+        setEnabled(false);
+        setData(null);
+      }
+    } catch {
+      setEnabled(false);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [bypassAuth]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   function copyLink() {
-    if (!data) return;
+    if (!data?.referral_link) return;
     navigator.clipboard.writeText(data.referral_link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -51,9 +95,12 @@ export function DashboardParrainage() {
   }
 
   function shareWhatsApp() {
-    if (!data) return;
-    const msg = encodeURIComponent(`Rejoignez Omnia Global Academy avec mon lien de parrainage et obtenez 1 000 XOF de réduction : ${data.referral_link}`);
-    window.open(`https://wa.me/?text=${msg}`, '_blank');
+    if (!data?.referral_link) return;
+    const benefit = data.reward_referred_xof > 0
+      ? ` et bénéficiez de ${formatXof(data.reward_referred_xof)} après votre premier achat confirmé`
+      : '';
+    const message = encodeURIComponent(`Rejoignez Omnia Global Academy avec mon lien${benefit} : ${data.referral_link}`);
+    window.open(`https://wa.me/?text=${message}`, '_blank');
   }
 
   const statusBadge = (status: string) => {
@@ -61,127 +108,127 @@ export function DashboardParrainage() {
       pending: { bg: '#FEF3C7', text: '#92400E', label: 'En attente' },
       rewarded: { bg: '#D1FAE5', text: '#065F46', label: 'Récompensé' },
     };
-    const s = styles[status] ?? styles.pending;
-    return (
-      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: s.bg, color: s.text }}>{s.label}</span>
-    );
+    const style = styles[status] ?? styles.pending;
+    return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: style.bg, color: style.text }}>{style.label}</span>;
   };
 
   return (
     <DashboardLayout>
-      <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+      <div className="mx-auto max-w-3xl p-6 lg:p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Programme de parrainage</h1>
-          <p className="text-gray-500 text-sm mt-1">Invitez vos amis et gagnez des récompenses</p>
+          <p className="mt-1 text-sm text-gray-500">Le programme est entièrement piloté par le Super-admin.</p>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
+          </div>
+        ) : !enabled || !data ? (
+          <div className="rounded-2xl border bg-white p-8 text-center" style={{ borderColor: '#E4E7EC' }}>
+            <Gift className="mx-auto h-10 w-10 text-gray-300" />
+            <h2 className="mt-4 text-lg font-bold" style={{ color: '#002050' }}>Parrainage actuellement désactivé</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-gray-500">
+              Aucun lien, bonus ou récompense n’est actif pour le moment. Le programme apparaîtra automatiquement lorsque le Super-admin l’activera et définira ses montants.
+            </p>
+            <Link to="/dashboard" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: '#BF8813' }}>
+              <ArrowLeft size={16} /> Retour au tableau de bord
+            </Link>
           </div>
         ) : (
           <>
-            {/* How it works */}
-            <div className="rounded-xl p-5 mb-5 border" style={{ backgroundColor: '#002050' }}>
-              <h2 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <Gift className="w-4 h-4" style={{ color: '#BF8813' }} /> Comment ça marche
+            <div className="mb-5 rounded-xl border p-5" style={{ backgroundColor: '#002050', borderColor: '#002050' }}>
+              <h2 className="mb-4 flex items-center gap-2 font-semibold text-white">
+                <Gift className="h-4 w-4" style={{ color: '#BF8813' }} /> Fonctionnement
               </h2>
-              <div className="grid sm:grid-cols-3 gap-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {[
-                  { step: '1', text: 'Partagez votre lien de parrainage' },
-                  { step: '2', text: 'Votre filleul s\'inscrit et achète une formation' },
-                  { step: '3', text: 'Vous gagnez 2 500 XOF, lui 1 000 XOF' },
-                ].map((s) => (
-                  <div key={s.step} className="bg-white/10 rounded-lg p-3 flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ backgroundColor: '#BF8813', color: '#002050' }}>{s.step}</div>
-                    <p className="text-white/80 text-xs leading-relaxed">{s.text}</p>
+                  'Partagez votre lien personnel.',
+                  'Votre filleul crée son compte et effectue son premier achat confirmé.',
+                  `Le parrain reçoit ${formatXof(data.reward_referrer_xof)} et le filleul ${formatXof(data.reward_referred_xof)}.`,
+                ].map((text, index) => (
+                  <div key={text} className="flex items-start gap-3 rounded-lg bg-white/10 p-3">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ backgroundColor: '#BF8813', color: '#002050' }}>
+                      {index + 1}
+                    </div>
+                    <p className="text-xs leading-relaxed text-white/80">{text}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* KPIs */}
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <Users className="w-4 h-4" style={{ color: '#002050' }} />
+            <div className="mb-5 grid grid-cols-2 gap-4">
+              <div className="rounded-xl border bg-white p-5 shadow-sm" style={{ borderColor: '#E4E7EC' }}>
+                <div className="mb-1 flex items-center gap-2">
+                  <Users className="h-4 w-4" style={{ color: '#002050' }} />
                   <span className="text-xs text-gray-500">Filleuls invités</span>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{data?.total_filleuls ?? 0}</p>
+                <p className="text-3xl font-bold text-gray-900">{data.total_filleuls}</p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <Gift className="w-4 h-4" style={{ color: '#BF8813' }} />
+              <div className="rounded-xl border bg-white p-5 shadow-sm" style={{ borderColor: '#E4E7EC' }}>
+                <div className="mb-1 flex items-center gap-2">
+                  <Gift className="h-4 w-4" style={{ color: '#BF8813' }} />
                   <span className="text-xs text-gray-500">Récompenses gagnées</span>
                 </div>
-                <p className="text-3xl font-bold" style={{ color: '#BF8813' }}>{(data?.total_recompenses_xof ?? 0).toLocaleString()} <span className="text-base font-normal text-gray-400">XOF</span></p>
+                <p className="text-2xl font-bold" style={{ color: '#BF8813' }}>{formatXof(data.total_recompenses_xof)}</p>
               </div>
             </div>
 
-            {/* Referral link */}
-            <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm mb-5">
-              <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Share2 className="w-4 h-4 text-gray-400" /> Votre lien de parrainage
+            <div className="mb-5 rounded-xl border bg-white p-5 shadow-sm" style={{ borderColor: '#E4E7EC' }}>
+              <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900">
+                <Share2 className="h-4 w-4 text-gray-400" /> Votre lien de parrainage
               </h2>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-xs text-gray-600 font-mono truncate">
-                  {data?.referral_link}
+                <div className="flex-1 truncate rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-xs text-gray-600">
+                  {data.referral_link}
                 </div>
-                <button onClick={copyLink} className="flex-shrink-0 px-3 py-2.5 rounded-lg flex items-center gap-1.5 text-sm font-medium transition-all"
-                  style={{ backgroundColor: copied ? '#1E7A52' : '#002050', color: 'white' }}>
-                  {copied ? <><CheckCircle className="w-4 h-4" /> Copié</> : <><Copy className="w-4 h-4" /> Copier</>}
+                <button onClick={copyLink} className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium text-white" style={{ backgroundColor: copied ? '#1E7A52' : '#002050' }}>
+                  {copied ? <><CheckCircle className="h-4 w-4" /> Copié</> : <><Copy className="h-4 w-4" /> Copier</>}
                 </button>
               </div>
               <div className="mt-3 flex gap-2">
-                <button onClick={shareWhatsApp}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: '#25D366' }}>
-                  WhatsApp
-                </button>
-                <button onClick={() => {
-                  if (!data) return;
-                  const sms = `sms:?body=${encodeURIComponent(`Rejoignez Omnia Academy : ${data.referral_link}`)}`;
-                  window.location.href = sms;
-                }}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: '#002050' }}>
+                <button onClick={shareWhatsApp} className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white" style={{ backgroundColor: '#25D366' }}>WhatsApp</button>
+                <button
+                  onClick={() => {
+                    if (!data.referral_link) return;
+                    window.location.href = `sms:?body=${encodeURIComponent(`Rejoignez Omnia Global Academy : ${data.referral_link}`)}`;
+                  }}
+                  className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white"
+                  style={{ backgroundColor: '#002050' }}
+                >
                   SMS
                 </button>
               </div>
             </div>
 
-            {/* Filleul history */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-              <div className="px-5 py-4 border-b border-gray-100">
+            <div className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E4E7EC' }}>
+              <div className="border-b border-gray-100 px-5 py-4">
                 <h2 className="font-semibold text-gray-900">Historique de vos filleuls</h2>
               </div>
-              {(data?.filleuls ?? []).length === 0 ? (
+              {data.filleuls.length === 0 ? (
                 <div className="p-8 text-center">
-                  <Users className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-                  <p className="text-gray-500 text-sm">Aucun filleul pour l'instant</p>
+                  <Users className="mx-auto mb-3 h-10 w-10 text-gray-200" />
+                  <p className="text-sm text-gray-500">Aucun filleul pour le moment</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {data!.filleuls.map((f) => (
-                    <div key={f.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                  {data.filleuls.map(filleul => (
+                    <div key={filleul.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                          style={{ backgroundColor: '#002050' + '15', color: '#002050' }}>
-                          {f.anonymized_name[0]}
+                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ backgroundColor: '#00205015', color: '#002050' }}>
+                          {filleul.anonymized_name[0]}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{f.anonymized_name}</p>
-                          <p className="text-xs text-gray-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {new Date(f.joined_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          <p className="text-sm font-medium text-gray-800">{filleul.anonymized_name}</p>
+                          <p className="flex items-center gap-1 text-xs text-gray-400">
+                            <Clock className="h-3 w-3" />
+                            {new Date(filleul.joined_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        {f.reward_xof > 0 && (
-                          <span className="text-sm font-semibold" style={{ color: '#BF8813' }}>+{f.reward_xof.toLocaleString()} XOF</span>
-                        )}
-                        {statusBadge(f.status)}
+                        {filleul.reward_xof > 0 && <span className="text-sm font-semibold" style={{ color: '#BF8813' }}>+{formatXof(filleul.reward_xof)}</span>}
+                        {statusBadge(filleul.status)}
                       </div>
                     </div>
                   ))}
