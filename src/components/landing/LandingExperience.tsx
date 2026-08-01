@@ -5,6 +5,7 @@ import {
   useState,
   Fragment,
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -19,6 +20,8 @@ import {
   Building2,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   Facebook,
   FileBadge2,
@@ -39,7 +42,7 @@ import {
   Youtube,
   type LucideIcon,
 } from 'lucide-react';
-import { CourseCard, type CourseCardData } from '../CourseCard';
+import type { CourseCardData } from '../CourseCard';
 import { OmniaHeroDepthStage, OmniaJourneyDepthStage } from './OmniaDepthExperience';
 import { useEnhancedLandingMotion, useLandingReveals } from '../../hooks/useLandingMotion';
 import type {
@@ -142,6 +145,13 @@ const IMPACT_TYPES: LandingSectionType[] = [
   'career_recruitment',
   'structures',
 ];
+
+const IMPACT_TAB_LABELS: Partial<Record<LandingSectionType, string>> = {
+  ecosystem: 'Écosystème',
+  credentials: 'Preuves',
+  career_recruitment: 'Carrière',
+  structures: 'Structures',
+};
 
 const CONNECTION_TYPES: LandingSectionType[] = [
   'partners',
@@ -352,9 +362,10 @@ function LearningCompassSection({
   journeySection?: LandingSectionConfig;
 }) {
   const goals = visibleContentItems(goalSection);
-  const steps = visibleContentItems(journeySection);
+  const displayedSteps = visibleContentItems(journeySection).slice(0, 5);
   const [selectedGoal, setSelectedGoal] = useState(goals[0]?.id || '');
   const [activeStep, setActiveStep] = useState(0);
+  const [journeyPlaying, setJourneyPlaying] = useState(false);
   const goalRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const enhancedMotion = useEnhancedLandingMotion();
 
@@ -363,21 +374,25 @@ function LearningCompassSection({
   }, [goals, selectedGoal]);
 
   useEffect(() => {
-    if (activeStep >= Math.max(steps.length, 1)) setActiveStep(0);
-  }, [activeStep, steps.length]);
+    if (activeStep >= Math.max(displayedSteps.length, 1)) setActiveStep(0);
+  }, [activeStep, displayedSteps.length]);
 
   useEffect(() => {
-    if (!enhancedMotion || steps.length < 2) return;
+    setJourneyPlaying(enhancedMotion && displayedSteps.length > 1);
+  }, [enhancedMotion, displayedSteps.length]);
+
+  useEffect(() => {
+    if (!journeyPlaying || displayedSteps.length < 2) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
-      setActiveStep(current => (current + 1) % steps.length);
+      setActiveStep(current => (current + 1) % displayedSteps.length);
     }, 5200);
     return () => window.clearInterval(timer);
-  }, [enhancedMotion, steps.length]);
+  }, [displayedSteps.length, journeyPlaying]);
 
   const activeGoalIndex = Math.max(0, goals.findIndex(goal => goal.id === selectedGoal));
   const activeGoal = goals[activeGoalIndex] || goals[0];
-  const activeJourney = steps[activeStep] || steps[0];
+  const activeJourney = displayedSteps[activeStep] || displayedSteps[0];
   const ActiveGoalIcon = activeGoal ? contentIcon(activeGoal) : GraduationCap;
   const ActiveStepIcon = activeJourney ? contentIcon(activeJourney) : BookOpen;
 
@@ -397,71 +412,52 @@ function LearningCompassSection({
   };
 
   if (!goalSection && !journeySection) return null;
-
   const headingSection = goalSection || journeySection!;
 
   return (
     <section
       id={SECTION_IDS.goal_selector}
       data-oga-reveal
-      className="oga-reveal oga-learning-compass relative scroll-mt-20 overflow-hidden bg-[#F5F7FB] px-5 py-14 sm:px-6 lg:py-16"
+      className="oga-reveal oga-learning-compass relative scroll-mt-20 overflow-hidden bg-[#F5F7FB] px-5 py-12 sm:px-6 lg:py-14"
     >
       <span id={SECTION_IDS.omnia_journey} className="absolute left-0 top-0 scroll-mt-20" aria-hidden="true" />
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.82fr)_minmax(420px,1.18fr)] lg:items-end">
-          <div>
-            <SectionHeading section={headingSection} />
-            {goals.length > 0 && (
-              <div
-                role="tablist"
-                aria-label={goalSection?.title || 'Choisir son objectif'}
-                className="oga-goal-pills mt-7"
-              >
-                {goals.map((goal, index) => {
-                  const Icon = contentIcon(goal);
-                  const active = goal.id === activeGoal?.id;
-                  return (
-                    <button
-                      key={goal.id}
-                      ref={(element: HTMLButtonElement | null) => { goalRefs.current[index] = element; }}
-                      id={`goal-tab-${goal.id}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      aria-controls={`goal-panel-${goal.id}`}
-                      tabIndex={active ? 0 : -1}
-                      onClick={() => activateGoal(index)}
-                      onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleGoalKeyDown(event, index)}
-                      className={active ? 'is-active' : ''}
-                    >
-                      <Icon className="h-4 w-4" aria-hidden="true" />
-                      <span>{goal.label || goal.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {steps.length > 0 && (
-            <div className="oga-journey-rail" aria-label={journeySection?.title || 'Parcours Omnia'}>
-              {steps.slice(0, 5).map((step, index) => (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => setActiveStep(index)}
-                  className={index === activeStep ? 'is-active' : ''}
-                  aria-current={index === activeStep ? 'step' : undefined}
-                >
-                  <span>{String(index + 1).padStart(2, '0')}</span>
-                  <strong>{step.title || step.label}</strong>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="oga-learning-compass__intro">
+          <SectionHeading section={headingSection} />
+          <p>Choisissez votre objectif, puis découvrez le chemin Omnia qui relie apprentissage, preuves et opportunités.</p>
         </div>
 
-        <div className="oga-compass-panel mt-8">
+        {goals.length > 0 && (
+          <div className="oga-learning-toolbar mt-7">
+            <span className="oga-learning-toolbar__label">Votre objectif</span>
+            <div role="tablist" aria-label={goalSection?.title || 'Choisir son objectif'} className="oga-goal-pills">
+              {goals.map((goal, index) => {
+                const Icon = contentIcon(goal);
+                const active = goal.id === activeGoal?.id;
+                return (
+                  <button
+                    key={goal.id}
+                    ref={(element: HTMLButtonElement | null) => { goalRefs.current[index] = element; }}
+                    id={`goal-tab-${goal.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls={`goal-panel-${goal.id}`}
+                    tabIndex={active ? 0 : -1}
+                    onClick={() => activateGoal(index)}
+                    onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleGoalKeyDown(event, index)}
+                    className={active ? 'is-active' : ''}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    <span>{goal.label || goal.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="oga-compass-panel mt-5">
           <div className="oga-compass-panel__copy">
             {activeGoal && (
               <div
@@ -472,16 +468,28 @@ function LearningCompassSection({
                 className="focus-visible:outline-none"
               >
                 <span className="oga-compass-icon"><ActiveGoalIcon className="h-6 w-6" aria-hidden="true" /></span>
-                {activeGoal.label && <p className="oga-compass-eyebrow">{activeGoal.label}</p>}
+                {activeGoal.label && <p className="oga-compass-eyebrow">Objectif · {activeGoal.label}</p>}
                 <h3>{activeGoal.title}</h3>
                 {activeGoal.description && <p className="oga-compass-description">{activeGoal.description}</p>}
-                <ActionLink href={activeGoal.action_url} className="mt-6">{activeGoal.action_label}</ActionLink>
+                <ActionLink href={activeGoal.action_url} className="mt-5">{activeGoal.action_label}</ActionLink>
               </div>
             )}
 
             {activeJourney && (
               <div className="oga-active-milestone">
-                <span><ActiveStepIcon className="h-4 w-4" aria-hidden="true" />Étape {activeStep + 1}</span>
+                <div className="oga-active-milestone__header">
+                  <span><ActiveStepIcon className="h-4 w-4" aria-hidden="true" />Étape {activeStep + 1}</span>
+                  {enhancedMotion && displayedSteps.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setJourneyPlaying(value => !value)}
+                      aria-pressed={journeyPlaying}
+                      className="oga-journey-playback"
+                    >
+                      {journeyPlaying ? 'Suspendre' : 'Animer le parcours'}
+                    </button>
+                  )}
+                </div>
                 <strong>{activeJourney.title || activeJourney.label}</strong>
                 {activeJourney.description && <p>{activeJourney.description}</p>}
                 <ActionLink href={activeJourney.action_url} variant="secondary" className="mt-4">
@@ -489,9 +497,26 @@ function LearningCompassSection({
                 </ActionLink>
               </div>
             )}
+
+            {displayedSteps.length > 0 && (
+              <div className="oga-journey-rail mt-6" aria-label={journeySection?.title || 'Parcours Omnia'}>
+                {displayedSteps.map((step, index) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => { setActiveStep(index); setJourneyPlaying(false); }}
+                    className={index === activeStep ? 'is-active' : ''}
+                    aria-current={index === activeStep ? 'step' : undefined}
+                  >
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                    <strong>{step.title || step.label}</strong>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {steps.length > 0 && (
+          {displayedSteps.length > 0 && (
             <div className="oga-compass-panel__stage">
               <OmniaJourneyDepthStage activeIndex={Math.min(activeStep, 4)} />
             </div>
@@ -509,13 +534,36 @@ function FeaturedCoursesSection({
   section: LandingSectionConfig;
   courses: CourseCardData[];
 }) {
-  if (courses.length === 0) return null;
+  const visibleCourses = courses.slice(0, 4);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (activeIndex >= visibleCourses.length) setActiveIndex(0);
+  }, [activeIndex, visibleCourses.length]);
+
+  if (visibleCourses.length === 0) return null;
+  const activeCourse = visibleCourses[activeIndex] || visibleCourses[0];
+
+  const activate = (index: number, focus = false) => {
+    const next = (index + visibleCourses.length) % visibleCourses.length;
+    setActiveIndex(next);
+    if (focus) cardRefs.current[next]?.focus();
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') activate(0, true);
+    else if (event.key === 'End') activate(visibleCourses.length - 1, true);
+    else activate(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+  };
 
   return (
     <section
       id={SECTION_IDS.featured_courses}
       data-oga-reveal
-      className="oga-reveal scroll-mt-20 bg-white px-5 py-14 sm:px-6 lg:py-16"
+      className="oga-reveal scroll-mt-20 overflow-hidden bg-white px-5 py-12 sm:px-6 lg:py-14"
     >
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -523,12 +571,59 @@ function FeaturedCoursesSection({
           <ActionLink href={section.primary_cta_url} variant="secondary">{section.primary_cta_label}</ActionLink>
         </div>
 
-        <div className="oga-course-rail mt-8">
-          {courses.slice(0, 4).map(course => (
-            <div key={course.id} className="oga-course-rail__item">
-              <CourseCard course={course} />
+        <div className="oga-course-carousel mt-7">
+          <div className="oga-course-carousel__viewport" role="listbox" aria-label="Formations mises en avant">
+            {visibleCourses.map((course, index) => {
+              const offset = index - activeIndex;
+              return (
+                <button
+                  key={course.id}
+                  ref={(element: HTMLButtonElement | null) => { cardRefs.current[index] = element; }}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  onClick={() => activate(index)}
+                  onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleKeyDown(event, index)}
+                  className={`oga-course-3d-card ${index === activeIndex ? 'is-active' : ''}`}
+                  style={{ '--oga-course-offset': offset, '--oga-course-distance': Math.abs(offset) } as CSSProperties}
+                >
+                  <span className="oga-course-3d-card__media">
+                    {course.cover_image_url
+                      ? <img src={course.cover_image_url} alt="" loading="lazy" decoding="async" />
+                      : <span className="oga-course-3d-card__placeholder"><BookOpen className="h-9 w-9" aria-hidden="true" /></span>}
+                    <span className="oga-course-3d-card__level">{course.level}</span>
+                  </span>
+                  <span className="oga-course-3d-card__body">
+                    <small>{course.category || 'Formation'}</small>
+                    <strong>{course.title}</strong>
+                    {course.creator_name && <span>Par {course.creator_name}</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleCourses.length > 1 && (
+            <div className="oga-course-carousel__controls" aria-label="Navigation des formations">
+              <button type="button" onClick={() => activate(activeIndex - 1)} aria-label="Formation précédente"><ChevronLeft className="h-5 w-5" /></button>
+              <span>{activeIndex + 1} / {visibleCourses.length}</span>
+              <button type="button" onClick={() => activate(activeIndex + 1)} aria-label="Formation suivante"><ChevronRight className="h-5 w-5" /></button>
             </div>
-          ))}
+          )}
+
+          <div className="oga-course-carousel__details" aria-live="polite">
+            <div>
+              <p>{activeCourse.category || 'Formation publiée'} · {activeCourse.level}</p>
+              <h3>{activeCourse.title}</h3>
+              {activeCourse.short_description && <span>{activeCourse.short_description}</span>}
+            </div>
+            <div>
+              <strong>{activeCourse.is_free ? 'Gratuit' : `${activeCourse.price_xof.toLocaleString('fr-FR')} XOF`}</strong>
+              <Link to={`/cours/${activeCourse.id}`} className="oga-course-carousel__open">
+                Voir la formation <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -702,6 +797,7 @@ function StructuresPanel({ section }: { section: LandingSectionConfig }) {
 function ImpactHubSection({ sections }: { sections: LandingSectionConfig[] }) {
   const ordered = useMemo(() => sections.slice().sort((a, b) => a.order - b.order), [sections]);
   const [activeType, setActiveType] = useState<LandingSectionType>(ordered[0]?.type || 'ecosystem');
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     if (!ordered.some(section => section.type === activeType)) setActiveType(ordered[0]?.type || 'ecosystem');
@@ -718,8 +814,24 @@ function ImpactHubSection({ sections }: { sections: LandingSectionConfig[] }) {
     return () => window.removeEventListener('hashchange', activateFromHash);
   }, [ordered]);
 
+  const activateTab = (index: number, focus = false) => {
+    if (ordered.length === 0) return;
+    const nextIndex = (index + ordered.length) % ordered.length;
+    setActiveType(ordered[nextIndex].type);
+    if (focus) tabRefs.current[nextIndex]?.focus();
+  };
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') activateTab(0, true);
+    else if (event.key === 'End') activateTab(ordered.length - 1, true);
+    else activateTab(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+  };
+
   if (ordered.length === 0) return null;
-  const active = ordered.find(section => section.type === activeType) || ordered[0];
+  const activeIndex = Math.max(0, ordered.findIndex(section => section.type === activeType));
+  const active = ordered[activeIndex] || ordered[0];
 
   return (
     <section data-oga-reveal className="oga-reveal oga-impact-hub relative overflow-hidden bg-[#071B3D] px-5 py-14 sm:px-6 lg:py-16">
@@ -737,22 +849,33 @@ function ImpactHubSection({ sections }: { sections: LandingSectionConfig[] }) {
           </div>
 
           <div role="tablist" aria-label="Explorer l’écosystème Omnia" className="oga-impact-tabs">
-            {ordered.map(section => (
+            {ordered.map((section, index) => (
               <button
                 key={section.type}
+                ref={(element: HTMLButtonElement | null) => { tabRefs.current[index] = element; }}
+                id={`impact-tab-${section.type}`}
                 type="button"
                 role="tab"
                 aria-selected={section.type === active.type}
-                onClick={() => setActiveType(section.type)}
+                aria-controls={`impact-panel-${section.type}`}
+                tabIndex={section.type === active.type ? 0 : -1}
+                onClick={() => activateTab(index)}
+                onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleTabKeyDown(event, index)}
                 className={section.type === active.type ? 'is-active' : ''}
               >
-                {section.internal_name || section.title}
+                {IMPACT_TAB_LABELS[section.type] || section.title}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="oga-impact-panel mt-7" role="tabpanel" tabIndex={0}>
+        <div
+          id={`impact-panel-${active.type}`}
+          className="oga-impact-panel mt-7"
+          role="tabpanel"
+          aria-labelledby={`impact-tab-${active.type}`}
+          tabIndex={0}
+        >
           <div className="oga-impact-panel__heading">
             {active.eyebrow && <p>{active.eyebrow}</p>}
             <h3>{active.title}</h3>
