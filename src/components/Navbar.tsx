@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, Menu, X } from 'lucide-react';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import {
   createDefaultLandingPage,
   type LandingLinkItem,
@@ -132,6 +133,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
             {directLinks.slice(1).map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]">{item.label}</Link>)}
           </div>
           <div className="hidden items-center gap-3 lg:flex">
+            <LanguageSwitcher compact />
             <button type="button" onClick={() => navigate('/connexion')} className="rounded-xl border border-[#002050] px-4 py-2 text-sm font-semibold text-[#002050] transition-colors hover:bg-slate-50">{config.login_label || fallback.login_label}</button>
             <button type="button" onClick={() => navigate('/inscription')} className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#00183E]">{config.register_label || fallback.register_label}</button>
           </div>
@@ -145,7 +147,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
           {exploreLinks.length > 0 && <div className="mt-6 border-t border-slate-100 pt-5"><p className="px-3 text-xs font-bold uppercase tracking-[0.16em] text-[#9A6A08]">{config.explore_label || fallback.explore_label}</p><div className="mt-2 space-y-1">{exploreLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}</div></div>}
           {professionalLinks.length > 0 && <div className="mt-6 border-t border-slate-100 pt-5"><p className="px-3 text-xs font-bold uppercase tracking-[0.16em] text-[#9A6A08]">{config.professionals_label || fallback.professionals_label}</p><div className="mt-2 space-y-1">{professionalLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}</div></div>}
         </div>
-        <div className="space-y-3 border-t border-slate-100 px-5 pb-7 pt-5"><button type="button" onClick={() => navigate('/connexion')} className="w-full rounded-xl border border-[#002050] py-3 text-sm font-semibold text-[#002050]">{config.login_label || fallback.login_label}</button><button type="button" onClick={() => navigate('/inscription')} className="w-full rounded-xl bg-[#002050] py-3 text-sm font-semibold text-white">{config.register_label || fallback.register_label}</button></div>
+        <div className="space-y-3 border-t border-slate-100 px-5 pb-7 pt-5"><LanguageSwitcher className="w-full" /><button type="button" onClick={() => navigate('/connexion')} className="w-full rounded-xl border border-[#002050] py-3 text-sm font-semibold text-[#002050]">{config.login_label || fallback.login_label}</button><button type="button" onClick={() => navigate('/inscription')} className="w-full rounded-xl bg-[#002050] py-3 text-sm font-semibold text-white">{config.register_label || fallback.register_label}</button></div>
       </aside></>}
     </>
   );

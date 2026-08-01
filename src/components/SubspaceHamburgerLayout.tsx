@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Radio, Search, UserRound } from 'lucide-react';
 
 const BLUE = '#002050';
@@ -131,6 +132,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
 
         <div className="flex flex-shrink-0 items-center gap-3">
           {rightContent}
+          <LanguageSwitcher compact />
           {user ? (
             <button type="button" onClick={() => navigate(dashboardPath)} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
               <ArrowLeft size={16} /> Retour au Dashboard
@@ -230,7 +232,8 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                 );
               })}
             </nav>
-            <div className="mt-auto border-t border-slate-100 px-3 py-4">
+            <div className="border-t border-slate-100 px-3 pt-4"><LanguageSwitcher className="w-full" /></div>
+            <div className="mt-auto px-3 py-4">
               <button type="button" onClick={() => { setOpen(false); navigate(user ? dashboardPath : '/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
                 {user ? <ArrowLeft size={18} /> : <Home size={18} />}
                 {user ? 'Retour au Dashboard' : 'Retour à Omnia Global Academy'}

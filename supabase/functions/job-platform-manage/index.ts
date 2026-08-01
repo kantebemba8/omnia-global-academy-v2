@@ -248,17 +248,22 @@ Deno.serve(async (req: Request) => {
         if (!commercial.allowed) return json({ error: commercial.reason, message: "Un droit de publication recruteur est requis." }, 402);
       }
 
+      const directPublish = isSuperAdmin(session);
+      const now = new Date().toISOString();
       const { data, error } = await sb.from("job_offers").insert({
         ...job,
         posted_by_id: session.userId,
         organization_id: session.organizationId,
         is_external_recruiter: isIndependentRecruiter(session),
-        created_by_role: isSuperAdmin(session) ? "super_admin" : session.organizationId ? "structure" : "recruteur_independant",
-        status: "pending_moderation",
-        updated_at: new Date().toISOString(),
+        created_by_role: directPublish ? "super_admin" : session.organizationId ? "structure" : "recruteur_independant",
+        status: directPublish ? "approved" : "pending_moderation",
+        moderated_by: directPublish ? session.userId : null,
+        moderated_at: directPublish ? now : null,
+        published_at: directPublish ? now : null,
+        updated_at: now,
       }).select("*").single();
       if (error) throw error;
-      return json({ success: true, job: data, message: "Offre transmise au Super-admin pour validation." });
+      return json({ success: true, job: data, message: directPublish ? "Offre publiée par Omnia Global Academy." : "Offre transmise au Super-admin pour validation." });
     }
 
     if (action === "update_job") {
@@ -271,7 +276,9 @@ Deno.serve(async (req: Request) => {
       if (job.title.length < 3 || job.description.length < 20) return json({ error: "INVALID_JOB" }, 400);
       const { data, error } = await sb.from("job_offers").update({
         ...job,
-        status: existing.status === "approved" ? "pending_moderation" : existing.status,
+        status: isSuperAdmin(session) ? existing.status : existing.status === "approved" ? "pending_moderation" : existing.status,
+        moderated_by: isSuperAdmin(session) && existing.status === "approved" ? session.userId : existing.moderated_by,
+        moderated_at: isSuperAdmin(session) && existing.status === "approved" ? new Date().toISOString() : existing.moderated_at,
         updated_at: new Date().toISOString(),
       }).eq("id", jobId).select("*").single();
       if (error) throw error;

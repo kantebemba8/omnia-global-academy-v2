@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertCircle, Award, CheckCircle2, Clock3, ExternalLink, FileText, Loader2,
-  Plus, RefreshCw, Save, ShieldCheck, Users, XCircle, type LucideIcon,
+  Plus, RefreshCw, Save, Settings2, ShieldCheck, Users, XCircle, type LucideIcon,
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { assessmentGovernanceCall } from '../../lib/assessmentGovernanceApi';
@@ -10,10 +10,10 @@ const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
-type Tab = 'experts' | 'panels' | 'appeals' | 'frameworks';
+type Tab = 'thresholds' | 'experts' | 'panels' | 'appeals' | 'frameworks';
 
 export default function AdminAssessmentGovernance() {
-  const [data, setData] = useState<any>({ summary: {}, experts: [], panels: [], appeals: [], frameworks: [] });
+  const [data, setData] = useState<any>({ summary: {}, experts: [], panels: [], appeals: [], frameworks: [], threshold_defaults: {} });
   const [tab, setTab] = useState<Tab>('experts');
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState('');
@@ -25,15 +25,33 @@ export default function AdminAssessmentGovernance() {
   const [frameworkForm, setFrameworkForm] = useState({ code: '', name: '', version: '1.0', description: '' });
   const [levelForm, setLevelForm] = useState({ framework_id: '', level_number: '1', code: 'N1', name: '', description: '' });
   const [competencyForm, setCompetencyForm] = useState({ framework_id: '', code: '', name: '', domain: '', category: '', description: '', validity_months: '', renewal_mode: 'none' });
+  const [thresholdForm, setThresholdForm] = useState({ lesson_passing_score: 80, module_passing_score: 80, final_passing_score: 70, competency_mastery_score: 80, default_retry_cooldown_hours: 24, default_remediation_after_attempts: 3 });
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { setData(await assessmentGovernanceCall('admin_overview')); }
+    try {
+      const result = await assessmentGovernanceCall<any>('admin_overview');
+      setData(result);
+      if (result.threshold_defaults) setThresholdForm(result.threshold_defaults);
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Chargement impossible.'); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function saveThresholdDefaults() {
+    const values = Object.values(thresholdForm);
+    if (values.some(value => !Number.isFinite(Number(value)))) { setError('Tous les paramètres doivent être numériques.'); return; }
+    setWorking('thresholds'); setError(''); setSuccess('');
+    try {
+      const result = await assessmentGovernanceCall<any>('admin_save_threshold_defaults', thresholdForm);
+      setThresholdForm(result.threshold_defaults || thresholdForm);
+      setSuccess('Les seuils par défaut des nouvelles formations ont été enregistrés. Chaque formation peut ensuite les personnaliser.');
+      await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.'); }
+    finally { setWorking(''); }
+  }
 
   async function decideExpert(id: string, status: 'approved' | 'rejected' | 'suspended') {
     if (status !== 'approved' && !notes[id]?.trim()) { setError('Le motif est obligatoire.'); return; }
@@ -127,6 +145,7 @@ export default function AdminAssessmentGovernance() {
   }
 
   const tabs = useMemo(() => [
+    ['thresholds', 'Seuils & tentatives', 6],
     ['experts', 'Experts', data.summary?.pending_experts || 0],
     ['panels', 'Jurys', data.summary?.pending_panels || 0],
     ['appeals', 'Révisions', data.summary?.pending_appeals || 0],
@@ -166,6 +185,20 @@ export default function AdminAssessmentGovernance() {
         </div>
 
         {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin" /></div> : <div className="mt-5 space-y-4">
+          {tab === 'thresholds' && <section className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
+            <div className="flex items-start gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50"><Settings2 size={18} style={{ color: GOLD }} /></div><div><h2 className="font-semibold" style={{ color: BLUE }}>Paramètres par défaut des évaluations</h2><p className="mt-1 text-sm text-gray-500">Ces valeurs sont proposées aux nouvelles formations. Le créateur peut les adapter par formation et par évaluation avant soumission.</p></div></div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <ThresholdField label="Seuil leçon (%)" value={thresholdForm.lesson_passing_score} min={1} max={100} onChange={value => setThresholdForm(current => ({ ...current, lesson_passing_score: value }))} />
+              <ThresholdField label="Seuil module (%)" value={thresholdForm.module_passing_score} min={1} max={100} onChange={value => setThresholdForm(current => ({ ...current, module_passing_score: value }))} />
+              <ThresholdField label="Seuil examen final (%)" value={thresholdForm.final_passing_score} min={1} max={100} onChange={value => setThresholdForm(current => ({ ...current, final_passing_score: value }))} />
+              <ThresholdField label="Maîtrise d’une compétence (%)" value={thresholdForm.competency_mastery_score} min={1} max={100} onChange={value => setThresholdForm(current => ({ ...current, competency_mastery_score: value }))} />
+              <ThresholdField label="Délai entre tentatives (heures)" value={thresholdForm.default_retry_cooldown_hours} min={0} max={720} onChange={value => setThresholdForm(current => ({ ...current, default_retry_cooldown_hours: value }))} />
+              <ThresholdField label="Remédiation après (tentatives)" value={thresholdForm.default_remediation_after_attempts} min={1} max={100} onChange={value => setThresholdForm(current => ({ ...current, default_remediation_after_attempts: value }))} />
+            </div>
+            <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-900"><strong>Règle de gouvernance :</strong> toute modification s’applique comme valeur par défaut aux prochaines créations. Les formations existantes conservent leurs seuils déjà validés afin d’éviter de changer rétroactivement les règles d’évaluation.</div>
+            <button disabled={working === 'thresholds'} onClick={() => void saveThresholdDefaults()} className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{working === 'thresholds' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}Enregistrer les paramètres</button>
+          </section>}
+
           {tab === 'experts' && (data.experts?.length ? data.experts.map((expert: any) => <section key={expert.id} className="rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}>
             <div className="flex flex-wrap justify-between gap-3"><div><p className="font-semibold" style={{ color: BLUE }}>{expert.full_name}</p><p className="mt-1 text-xs text-gray-500">{expert.email} · {expert.organization_name || 'Organisation non indiquée'} · proposé par {expert.proposal_source}</p></div><Badge text={expert.status} good={expert.status === 'approved'} /></div>
             {expert.expertise_domains?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{expert.expertise_domains.map((item: string) => <span key={item} className="rounded-full bg-gray-100 px-3 py-1 text-xs">{item}</span>)}</div>}
@@ -252,6 +285,10 @@ function Stat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; v
 function Badge({ text, good = false }: { text: string; good?: boolean }) { return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${good ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{text}</span>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-xl border bg-white p-12 text-center text-sm text-gray-500" style={{ borderColor: BORDER }}><Clock3 className="mx-auto mb-2 text-gray-300" />{text}</div>; }
 function Action({ label, icon: Icon, onClick, disabled, secondary, danger }: { label: string; icon: LucideIcon; onClick: () => void; disabled?: boolean; secondary?: boolean; danger?: boolean }) { return <button disabled={disabled} onClick={onClick} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ background: secondary ? '#F3F4F6' : danger ? '#FEE2E2' : BLUE, color: secondary ? BLUE : danger ? '#B91C1C' : 'white' }}>{disabled ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}{label}</button>; }
+function ThresholdField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  return <label className="block"><span className="mb-1.5 block text-xs font-semibold text-gray-600">{label}</span><input type="number" min={min} max={max} value={value} onChange={event => onChange(Math.min(max, Math.max(min, Number(event.target.value))))} className="h-11 w-full rounded-xl border px-3 text-sm" style={{ borderColor: BORDER }} /></label>;
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block text-xs font-semibold text-gray-600">{label}<div className="mt-1">{children}</div></label>; }
 function FormCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) { return <section className="space-y-3 rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="flex items-center gap-2 font-semibold" style={{ color: BLUE }}><Icon size={18} color={GOLD} />{title}</h2>{children}</section>; }
 function PrimaryButton({ loading, onClick, children }: { loading?: boolean; onClick: () => void; children: ReactNode }) { return <button disabled={loading} onClick={onClick} className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}{children}</button>; }

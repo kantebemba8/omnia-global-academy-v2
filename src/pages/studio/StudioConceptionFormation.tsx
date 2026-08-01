@@ -5,6 +5,7 @@ import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
+import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
@@ -48,6 +49,7 @@ interface Course {
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
   free_preview_mode?: 'none'|'introduction'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
+  pricing_status?: string; lesson_passing_score?: number; module_passing_score?: number; final_passing_score?: number; learning_design_settings?: Record<string, any>;
 }
 
 const EMPTY_COURSE: Course = {
@@ -81,6 +83,9 @@ const EMPTY_COURSE: Course = {
   quality_status: 'incomplete',
   ready_to_submit: false,
   current_version: '1.0',
+  lesson_passing_score: 80,
+  module_passing_score: 80,
+  final_passing_score: 70,
 };
 
 // ─── Config blocs ─────────────────────────────────────────────
@@ -620,8 +625,13 @@ export default function StudioConceptionFormation() {
     try {
       const data = await api('submit_course', { course_id: course.id });
       if (data.success) {
-        setCourse(c => c ? { ...c, studio_status: 'pending_validation' } : c);
-        showToast('✅ Formation soumise pour validation');
+        if (data.pricing_required) {
+          setCourse(c => c ? { ...c, pricing_status: data.pricing_status } : c);
+          showToast(data.message || 'La tarification a été transmise pour validation.', 'info');
+        } else {
+          setCourse(c => c ? { ...c, studio_status: 'pending_validation' } : c);
+          showToast('✅ Formation soumise pour validation');
+        }
       } else {
         setChecklist({ valid: false, errors: data.errors || [], warnings: data.warnings || [] });
         setShowChecklist(true);
@@ -1042,6 +1052,7 @@ export default function StudioConceptionFormation() {
                   <p className="mt-1 text-sm text-gray-500">Configurez en dernier la commercialisation, la saisie assistée et les certifications, puis soumettez la formation.</p>
                 </div>
                 {course.id && <StudioQualityStatusPanel courseId={course.id} />}
+                <CourseAdvancedSettingsPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
                   <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>

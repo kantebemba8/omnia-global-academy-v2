@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await sb
           .from("courses")
           .select(
-            "id,title,instructor_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+            "id,title,creator_id,instructor_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
           )
           .in("pricing_status", [
             "en_attente_validation_prix_admin",
@@ -103,9 +103,9 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await sb
         .from("courses")
         .select(
-          "id,title,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+          "id,title,creator_id,instructor_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
         )
-        .eq("instructor_id", me.user_id)
+        .or(`instructor_id.eq.${me.user_id},creator_id.eq.${me.user_id}`)
         .in("pricing_status", [
           "en_attente_validation_prix_admin",
           "en_attente_acceptation_prix_professeur",
@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
     const { data: course, error: courseError } = await sb
       .from("courses")
       .select(
-        "id,title,instructor_id,prix_provisoire_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
+        "id,title,creator_id,instructor_id,prix_provisoire_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
       )
       .eq("id", body.course_id)
       .maybeSingle();
@@ -139,14 +139,15 @@ Deno.serve(async (req: Request) => {
         return json({ error: "FORBIDDEN" }, 403);
       }
 
-      if (!["automatic", "professor"].includes(body.source)) {
+      if (!["automatic", "professor", "custom"].includes(body.source)) {
         return json({ error: "INVALID_SOURCE" }, 400);
       }
 
-      const selectedPrice =
-        body.source === "automatic"
-          ? Number(course.prix_provisoire_xof ?? 0)
-          : Number(course.desired_price_amount ?? 0);
+      const selectedPrice = body.source === "automatic"
+        ? Number(course.prix_provisoire_xof ?? 0)
+        : body.source === "professor"
+          ? Number(course.desired_price_amount ?? 0)
+          : Number(body.custom_price_xof ?? 0);
 
       if (!Number.isFinite(selectedPrice) || selectedPrice <= 0) {
         return json({ error: "INVALID_PRICE" }, 400);
@@ -169,11 +170,11 @@ Deno.serve(async (req: Request) => {
 
       await createNotification(
         sb,
-        course.instructor_id,
+        course.instructor_id || course.creator_id,
         "Tarification de votre formation",
         `Omnia a retenu un prix de ${selectedPrice.toLocaleString(
           "fr-FR",
-        )} XOF. Votre validation est requise avant la soumission pédagogique.`,
+        )} XOF (${body.source === "automatic" ? "calcul automatique" : body.source === "professor" ? "proposition du professeur" : "ajustement Omnia"}). Votre validation est requise avant la soumission pédagogique.`,
       );
 
       return json({
@@ -184,7 +185,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (
-      course.instructor_id !== me.user_id &&
+      (course.instructor_id || course.creator_id) !== me.user_id &&
       !me.roles.includes("super_admin")
     ) {
       return json({ error: "FORBIDDEN" }, 403);

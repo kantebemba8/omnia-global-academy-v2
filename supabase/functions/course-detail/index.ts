@@ -36,7 +36,8 @@ Deno.serve(async (req: Request) => {
         "cpd_accredited, cpd_provider_code, average_rating, total_reviews, " +
         "total_students, language, subtitles_available, prerequisites, " +
         "objectives, creator_type, creator_id, establishment_id, " +
-        "total_duration_seconds, is_published"
+        "total_duration_seconds, is_published, learning_design_settings, " +
+        "lesson_passing_score, module_passing_score, final_passing_score"
       )
       .eq("id", courseId)
       .eq("is_published", true)

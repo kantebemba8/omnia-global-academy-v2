@@ -5,16 +5,19 @@ import './index.css';
 import { initSentry } from './lib/sentry';
 import { getRuntimeConfigIssues } from './lib/runtimeConfig';
 import ConfigurationError from './pages/ConfigurationError';
+import { LanguageProvider } from './i18n/LanguageContext';
 
 const runtimeConfigIssues = getRuntimeConfigIssues();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {runtimeConfigIssues.length > 0 ? (
+    <LanguageProvider>
+      {runtimeConfigIssues.length > 0 ? (
       <ConfigurationError issues={runtimeConfigIssues} />
     ) : (
       <App />
-    )}
+      )}
+    </LanguageProvider>
   </StrictMode>
 );
 

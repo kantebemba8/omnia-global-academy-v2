@@ -22,6 +22,7 @@ const APropos = lazy(() => import('./pages/APropos').then((module) => ({ default
 const Confidentialite = lazy(() => import('./pages/Confidentialite').then((module) => ({ default: module.Confidentialite })));
 const LegalDocumentPage = lazy(() => import('./pages/LegalDocumentPage'));
 const Catalogue = lazy(() => import('./pages/Catalogue').then((module) => ({ default: module.Catalogue })));
+const ExternalCourseAccess = lazy(() => import('./pages/ExternalCourseAccess'));
 const CoursDetail = lazy(() => import('./pages/CoursDetail').then((module) => ({ default: module.CoursDetail })));
 const ApercuGratuit = lazy(() => import('./pages/ApercuGratuit').then((module) => ({ default: module.ApercuGratuit })));
 const CoursLecteur = lazy(() => import('./pages/CoursLecteur').then((module) => ({ default: module.CoursLecteur })));
@@ -816,6 +817,7 @@ export default function App() {
               <Route path="/cgv" element={<LegalDocumentPage />} />
               <Route path="/remboursements" element={<LegalDocumentPage />} />
         <Route path="/catalogue" element={<Catalogue />} />
+        <Route path="/formation-externe/:id" element={<ExternalCourseAccess />} />
         <Route path="/cours/:id/apercu" element={<ApercuGratuit />} />
         <Route path="/cours/:id" element={<CoursDetail />} />
         <Route path="/cours/:id/apprendre/:lessonId" element={<CoursLecteur />} />

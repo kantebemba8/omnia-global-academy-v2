@@ -20,6 +20,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface Accreditation {
   organization_name?: string;
@@ -92,22 +94,22 @@ function normalizeResponse(data: VerifyResponse): VerifyResponse {
   };
 }
 
-function formatDate(value?: string | null) {
+function formatDate(value?: string | null, locale = 'fr-FR') {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   }).format(date);
 }
 
-function formatDateTime(value?: string | null) {
+function formatDateTime(value?: string | null, locale = 'fr-FR') {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -164,7 +166,7 @@ function PublicHeader() {
           <Link to="/a-propos" className="text-sm font-medium text-slate-700 hover:text-[#002050]">À propos</Link>
           <Link to="/contact" className="text-sm font-medium text-slate-700 hover:text-[#002050]">Contact</Link>
         </nav>
-        <div className="rounded-lg border border-[#D7B56D] px-3 py-2 text-xs font-semibold text-[#9B6A0A]">FR</div>
+        <LanguageSwitcher />
       </div>
     </header>
   );
@@ -212,6 +214,7 @@ function PublicFooter() {
 }
 
 export default function VerifyCertificate() {
+  const { locale } = useLanguage();
   const { certificateId } = useParams<{ certificateId: string }>();
   const navigate = useNavigate();
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -417,7 +420,7 @@ export default function VerifyCertificate() {
                     <Detail label="Titulaire" value={certificate.student_name || '—'} />
                     <Detail label="Identifiant" value={certificate.id || input || '—'} mono />
                     <Detail label="Formation" value={certificate.course_title || '—'} />
-                    <Detail label="Date d’émission" value={formatDate(certificate.issued_at)} />
+                    <Detail label="Date d’émission" value={formatDate(certificate.issued_at, locale)} />
                     <Detail label="Émetteur" value={certificate.issuer_name || 'Omnia Global Academy'} />
                     <Detail label="Statut" value={status === 'valid' ? 'Valide' : status === 'expired' ? 'Expiré' : 'Révoqué'} accent={statusTheme.text} />
                     {result.revocation_reason && <div className="sm:col-span-2"><Detail label="Motif de révocation" value={result.revocation_reason} /></div>}
@@ -431,7 +434,7 @@ export default function VerifyCertificate() {
                 <div className="grid border-t border-[#EEE8DF] bg-[#FDFBF7] sm:grid-cols-3">
                   <Metric icon={Clock3} label="Durée de la formation" value={formatDuration(certificate.duration_minutes)} />
                   <Metric icon={GraduationCap} label="Type de certification" value={accreditations[0]?.certification_name || 'Certification Omnia'} />
-                  <Metric icon={CalendarDays} label="Vérifié le" value={verifiedAt ? formatDateTime(verifiedAt.toISOString()) : '—'} />
+                  <Metric icon={CalendarDays} label="Vérifié le" value={verifiedAt ? formatDateTime(verifiedAt.toISOString(), locale) : '—'} />
                 </div>
               )}
 

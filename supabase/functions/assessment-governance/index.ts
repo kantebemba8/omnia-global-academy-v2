@@ -349,12 +349,13 @@ Deno.serve(async (req) => {
 
     if (action === "admin_overview") {
       requireAdmin(session);
-      const [{ data: experts }, { data: panels }, { data: members }, { data: cases }, { data: appeals }] = await Promise.all([
+      const [{ data: experts }, { data: panels }, { data: members }, { data: cases }, { data: appeals }, { data: thresholdSetting }] = await Promise.all([
         sb.from("assessment_experts").select("*").order("created_at", { ascending: false }).limit(300),
         sb.from("assessment_jury_panels").select("*,assessment:course_assessments(id,title,course_id),course:courses(id,title)").order("created_at", { ascending: false }).limit(300),
         sb.from("assessment_jury_members").select("*").order("created_at", { ascending: false }).limit(500),
         sb.from("assessment_jury_cases").select("*").order("created_at", { ascending: false }).limit(500),
         sb.from("assessment_grade_appeals").select("*,attempt:assessment_attempts(id,assessment_id,user_id,score,feedback,result_published_at,course_assessments(id,title,course_id),users!assessment_attempts_user_id_fkey(full_name,email))").order("submitted_at", { ascending: false }).limit(300),
+        sb.from("site_settings").select("value").eq("key", "assessment_threshold_defaults").maybeSingle(),
       ]);
       const expertRows = [];
       for (const expert of experts || []) expertRows.push({ ...expert, documents: await signedDocuments(sb, expert.documents) });
@@ -364,6 +365,14 @@ Deno.serve(async (req) => {
         panels: (panels || []).map((panel: any) => ({ ...panel, members: (members || []).filter((member: any) => member.panel_id === panel.id), cases: (cases || []).filter((juryCase: any) => juryCase.panel_id === panel.id) })),
         appeals: await Promise.all((appeals || []).map((appeal: any) => enrichAppeal(sb, appeal, false))),
         frameworks: await frameworkCatalog(sb, true),
+        threshold_defaults: {
+          lesson_passing_score: bounded((thresholdSetting?.value as any)?.lesson_passing_score, 1, 100, 80),
+          module_passing_score: bounded((thresholdSetting?.value as any)?.module_passing_score, 1, 100, 80),
+          final_passing_score: bounded((thresholdSetting?.value as any)?.final_passing_score, 1, 100, 70),
+          competency_mastery_score: bounded((thresholdSetting?.value as any)?.competency_mastery_score, 1, 100, 80),
+          default_retry_cooldown_hours: bounded((thresholdSetting?.value as any)?.default_retry_cooldown_hours, 0, 720, 24),
+          default_remediation_after_attempts: bounded((thresholdSetting?.value as any)?.default_remediation_after_attempts, 1, 100, 3),
+        },
         summary: {
           pending_experts: (experts || []).filter((row: any) => row.status === "pending").length,
           pending_panels: (panels || []).filter((row: any) => row.status === "pending_approval").length,
@@ -372,6 +381,25 @@ Deno.serve(async (req) => {
           published_frameworks: (await frameworkCatalog(sb, false)).length,
         },
       });
+    }
+
+    if (action === "admin_save_threshold_defaults") {
+      requireAdmin(session);
+      const value = {
+        lesson_passing_score: bounded(body.lesson_passing_score, 1, 100, 80),
+        module_passing_score: bounded(body.module_passing_score, 1, 100, 80),
+        final_passing_score: bounded(body.final_passing_score, 1, 100, 70),
+        competency_mastery_score: bounded(body.competency_mastery_score, 1, 100, 80),
+        default_retry_cooldown_hours: bounded(body.default_retry_cooldown_hours, 0, 720, 24),
+        default_remediation_after_attempts: bounded(body.default_remediation_after_attempts, 1, 100, 3),
+      };
+      const { error } = await sb.from("site_settings").upsert({
+        key: "assessment_threshold_defaults",
+        value,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
+      if (error) throw error;
+      return json({ success: true, threshold_defaults: value });
     }
 
     if (action === "creator_overview") {

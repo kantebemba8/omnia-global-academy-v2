@@ -32,6 +32,7 @@ const CREATOR_TYPES = [
   { value: 'professeur',  label: 'Formateur indépendant' },
   { value: 'etablissement', label: 'École / Établissement' },
   { value: 'plateforme',  label: 'Plateforme Omnia' },
+  { value: 'external',    label: 'Formations externes' },
 ];
 
 const TRI_OPTIONS = [
