@@ -24,6 +24,10 @@ import {
   User,
   X,
   Search,
+  Database,
+  Target,
+  ShieldCheck,
+  History,
 } from 'lucide-react';
 import { CvPreview, type DesignOptions, type DocData } from '../../components/career/CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from '../../components/career/LmTemplates';
@@ -40,13 +44,25 @@ import {
   getCareerTemplates,
   getTemplateMeta,
   normalizeTemplateKey,
-  calculateBasicScore,
 } from '../../lib/careerStudioData';
 import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
+import CareerSourcePanel from '../../components/career/CareerSourcePanel';
+import CareerTargetPanel from '../../components/career/CareerTargetPanel';
+import CareerDesignPanel, { type AdvancedCareerDesign } from '../../components/career/CareerDesignPanel';
+import CareerQualityPanel from '../../components/career/CareerQualityPanel';
+import CareerVersionPanel from '../../components/career/CareerVersionPanel';
+import CareerDocumentSurface, { getCareerSurfaceMetrics } from '../../components/career/CareerDocumentSurface';
+import {
+  analyzeCareerDocument,
+  createLinkedLetterFromCv,
+  getCareerMeta,
+  normalizeCareerDocument,
+  type CareerSourceProfile,
+} from '../../lib/careerBuilderV2';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -57,6 +73,7 @@ type AiSuggestion = { title: string; text: string; mode: AiSuggestionMode; targe
 
 type CvSectionKey = 'profile' | 'summary' | 'skills' | 'experiences' | 'education' | 'certifications' | 'languages' | 'projects' | 'interests';
 type LmSectionKey = 'sender' | 'recipient' | 'letter' | 'variables';
+type Workspace = 'content' | 'source' | 'target' | 'design' | 'quality' | 'versions' | 'ai' | 'templates';
 
 const CV_SECTIONS: Array<{ key: CvSectionKey; label: string; subtitle: string; icon: any }> = [
   { key: 'profile', label: 'Profil', subtitle: 'Informations personnelles', icon: User },
@@ -109,7 +126,7 @@ function getLmDesign(document: CareerDocumentFull): LmDesign {
   return document.design_options as LmDesign;
 }
 
-function PreviewFrame({ children, zoom, onZoomChange }: { children: React.ReactNode; zoom: number; onZoomChange: (zoom:number)=>void }) {
+function PreviewFrame({ children, zoom, onZoomChange, width = 794, height = 1123 }: { children: React.ReactNode; zoom: number; onZoomChange: (zoom:number)=>void; width?: number; height?: number }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-center gap-2">
@@ -119,7 +136,7 @@ function PreviewFrame({ children, zoom, onZoomChange }: { children: React.ReactN
         <button type="button" onClick={()=>onZoomChange(.62)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">Ajuster</button>
       </div>
       <div className="mx-auto flex h-[760px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
-        <div style={{ width: 794*zoom, height:1123*zoom }}><div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width:794 }}>{children}</div></div>
+        <div style={{ width: width * zoom, height: height * zoom }}><div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width, height }}>{children}</div></div>
       </div>
     </div>
   );
@@ -366,11 +383,14 @@ export default function CareerStudioEditor() {
   const [personalizeLoading, setPersonalizeLoading] = useState(false);
   const [omniaAdvice, setOmniaAdvice] = useState('');
   const [omniaAdviceLoading, setOmniaAdviceLoading] = useState(false);
+  const [workspace, setWorkspace] = useState<Workspace>('content');
+  const [sourceProfile, setSourceProfile] = useState<CareerSourceProfile>({});
 
-  const score = useMemo(() => {
-    if (!document) return 0;
-    return calculateBasicScore(document.doc_type, document.doc_data);
+  const qualityReport = useMemo(() => {
+    if (!document) return null;
+    return analyzeCareerDocument(document.doc_type, document.doc_data, document.design_options);
   }, [document]);
+  const score = qualityReport?.overall || 0;
 
   const selectedTemplate = useMemo(() => {
     if (!document) return getTemplateMeta(docType, requestedTemplate);
@@ -379,10 +399,18 @@ export default function CareerStudioEditor() {
 
   const manualLayout = useMemo(() => {
     if (!document) return null;
-    return ((document.doc_data as any).manual_layout as ManualLayout | undefined) || createManualLayout(document);
+    const data = document.doc_data as any;
+    const layouts = (data.manual_layouts || {}) as Record<string, ManualLayout>;
+    return layouts[document.template_key] || (data.manual_layout as ManualLayout | undefined) || createManualLayout(document);
   }, [document]);
 
   const isManualMode = Boolean((document?.design_options as any)?.editor_mode === 'manual');
+
+  const previewMetrics = useMemo(() => {
+    if (!document) return { width: 794, height: 1123 };
+    if (isManualMode && manualLayout) return { width: manualLayout.page.width, height: manualLayout.page.height };
+    return getCareerSurfaceMetrics(document.design_options).page;
+  }, [document, isManualMode, manualLayout]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -396,9 +424,12 @@ export default function CareerStudioEditor() {
       setTemplates(list.templates);
       setTokens(list.tokens);
       setRemoteMode(list.remote);
+      setSourceProfile(list.sourceProfile || {});
       const loaded = await getCareerDocument(docType, docId, requestedTemplate);
+      const normalized = normalizeCareerDocument(loaded.document);
       setRemoteMode(loaded.remote);
-      setDocument(loaded.document);
+      setDocument(normalized);
+      setOfferText(getCareerMeta(normalized.doc_data, normalized.doc_type).target.job_description || '');
     } finally {
       setLoading(false);
     }
@@ -440,7 +471,7 @@ export default function CareerStudioEditor() {
       const next = updater(prev);
       return {
         ...next,
-        ats_score: calculateBasicScore(next.doc_type, next.doc_data),
+        ats_score: analyzeCareerDocument(next.doc_type, next.doc_data, next.design_options).ats,
         updated_at: new Date().toISOString(),
       };
     });
@@ -561,12 +592,12 @@ export default function CareerStudioEditor() {
     updateDocument(doc => ({
       ...doc,
       template_key: normalizedTemplateKey,
-      doc_data: { ...(doc.doc_data as any), manual_layout: undefined },
+      doc_data: { ...(doc.doc_data as any) },
       design_options: {
         ...doc.design_options,
         ...preset,
         colors: (preset as any).colors || meta.default_colors || DEFAULT_COLORS,
-        editor_mode: 'template',
+        editor_mode: (doc.doc_data as any)?.manual_layouts?.[normalizedTemplateKey] ? 'manual' : 'template',
       } as DesignOptions | LmDesign,
     }));
   }
@@ -582,11 +613,18 @@ export default function CareerStudioEditor() {
   }
 
   function updateManualLayout(layout: ManualLayout) {
-    updateDocument(doc => ({
-      ...doc,
-      doc_data: { ...(doc.doc_data as any), manual_layout: layout },
-      design_options: { ...(doc.design_options as any), editor_mode: 'manual' },
-    }));
+    updateDocument(doc => {
+      const data = doc.doc_data as any;
+      return {
+        ...doc,
+        doc_data: {
+          ...data,
+          manual_layout: layout,
+          manual_layouts: { ...(data.manual_layouts || {}), [doc.template_key]: layout },
+        },
+        design_options: { ...(doc.design_options as any), editor_mode: 'manual' },
+      };
+    });
   }
 
   function switchToTemplateMode() {
@@ -722,6 +760,53 @@ export default function CareerStudioEditor() {
     showToast('Suggestion appliquée au document');
   }
 
+  async function createAtsVersion() {
+    if (!document) return;
+    try {
+      const now = new Date().toISOString();
+      const atsDocument: CareerDocumentFull = normalizeCareerDocument({
+        ...document,
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: `${document.title || getDefaultDocTitle(document.doc_type)} - ATS`,
+        template_key: document.doc_type === 'cv' ? 'cv_atlas' : 'lm_atlas',
+        is_primary: false,
+        created_at: now,
+        updated_at: now,
+        design_options: {
+          ...document.design_options,
+          document_mode: 'ats',
+          page_format: 'a4',
+          orientation: 'portrait',
+          editor_mode: 'template',
+          ...(document.doc_type === 'cv' ? { photo_enabled: false } : {}),
+          colors: { ...DEFAULT_COLORS, primary: '#16213e', accent: '#4b79a1', sidebar: '#ffffff' },
+          margins: { top: 18, right: 18, bottom: 18, left: 18 },
+          border_width: 0,
+          footer_text: '',
+        } as DesignOptions | LmDesign,
+      });
+      const saved = await saveCareerDocument(atsDocument);
+      showToast('Copie ATS créée sans modifier votre version visuelle.');
+      navigate(`/dashboard/career-studio/editor/${saved.document.id}?type=${saved.document.doc_type}&template=${encodeURIComponent(saved.document.template_key)}`);
+    } catch {
+      showToast('Impossible de créer la copie ATS.');
+    }
+  }
+
+  async function createLinkedLetter() {
+    if (!document || document.doc_type !== 'cv') return;
+    try {
+      const source = isDocumentNamed(document) ? document : { ...document, title: 'CV principal' };
+      const savedCv = await persistDocument(source);
+      const linked = createLinkedLetterFromCv(savedCv);
+      const savedLm = await saveCareerDocument(linked);
+      showToast('Lettre associée créée avec les mêmes preuves et le même poste ciblé.');
+      navigate(`/dashboard/career-studio/editor/${savedLm.document.id}?type=lm&template=${encodeURIComponent(savedLm.document.template_key)}`);
+    } catch {
+      showToast('Impossible de créer la lettre associée. Enregistrez d’abord le CV puis réessayez.');
+    }
+  }
+
   async function handlePdfDownload(alreadyNamed = false) {
     if (!document) return;
     if (exportingPdf) return;
@@ -816,6 +901,9 @@ export default function CareerStudioEditor() {
             <button onClick={() => setPersonalizeOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Sparkles className="h-4 w-4" /> Personnaliser avec IA
             </button>
+            {isCv && <button onClick={createLinkedLetter} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/30 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-[#bf8813]/15">
+              <Mail className="h-4 w-4 text-[#bf8813]" /> Créer la LM associée
+            </button>}
             <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
               <Edit3 className="h-4 w-4" /> Éditeur libre
             </button>
@@ -836,7 +924,7 @@ export default function CareerStudioEditor() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-76px)] grid-cols-[300px_minmax(520px,1fr)_340px] gap-5 p-5">
+      <div className="grid min-h-[calc(100vh-76px)] grid-cols-[300px_minmax(520px,1fr)_390px] gap-5 p-5">
         <aside className={cardClass('h-[calc(100vh-116px)] overflow-hidden p-4')}>
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -891,66 +979,46 @@ export default function CareerStudioEditor() {
           </div>
 
           <div className={cardClass('p-4')}>
-            <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom}>
+            <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom} width={previewMetrics.width} height={previewMetrics.height}>
               <div ref={printRef} data-career-print-source="true">
                 {isManualMode && manualLayout ? (
                   <ManualDocumentCanvas layout={manualLayout} />
-                ) : isCv ? (
-                  <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
                 ) : (
-                  <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                  <CareerDocumentSurface design={document.design_options} title={document.title}>
+                    {isCv ? (
+                      <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
+                    ) : (
+                      <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                    )}
+                  </CareerDocumentSurface>
                 )}
               </div>
             </PreviewFrame>
           </div>
         </main>
 
-        <aside className="h-[calc(100vh-116px)] overflow-y-auto space-y-4 pr-1">
-          <EditorPanel
-            isCv={isCv}
-            cvData={cvData}
-            lmData={lmData}
-            activeCvSection={activeCvSection}
-            activeLmSection={activeLmSection}
-            updateCv={updateCv}
-            updateLm={updateLm}
-            score={score}
-          />
-
-          <AiAssistantPanel
-            isCv={isCv}
-            loading={aiLoading}
-            suggestion={aiSuggestion}
-            offerText={offerText}
-            onOfferTextChange={setOfferText}
-            onRequest={requestAi}
-            onApply={applyAiSuggestion}
-            onDismiss={() => setAiSuggestion(null)}
-          />
-
-          <TemplatePanel
-            docType={document.doc_type}
-            templates={templates.length ? templates : getCareerTemplates(document.doc_type)}
-            selectedTemplate={selectedTemplate}
-            selectedKey={document.template_key}
-            data={document.doc_data}
-            design={document.design_options}
-            onSelect={changeTemplate}
-          />
-
-
-          <div className={cardClass('p-4')}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[#002050]">Score d’optimisation</h3>
-              <span className="text-2xl font-bold text-green-600">{score}/100</span>
+        <aside className="h-[calc(100vh-116px)] overflow-y-auto pr-1">
+          <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+            <div className="grid grid-cols-4 gap-1">
+              {([
+                ['content','Contenu',FileText],['source','Sources',Database],['target','Poste',Target],['design','Design',Palette],
+                ['quality','Qualité',ShieldCheck],['versions','Versions',History],['ai','IA',Sparkles],['templates','Modèles',Settings],
+              ] as Array<[Workspace,string,any]>).map(([value,label,Icon]) => (
+                <button key={value} type="button" onClick={() => setWorkspace(value)} className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition ${workspace === value ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`} aria-pressed={workspace === value}>
+                  <Icon className="h-4 w-4" />{label}
+                </button>
+              ))}
             </div>
-            <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: `${score}%` }} />
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Score local basé sur les sections complétées. Le téléchargement PDF est maintenant activé avec consommation de jeton pour les CV.
-            </p>
           </div>
+
+          {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} updateCv={updateCv} updateLm={updateLm} score={score} />}
+          {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: data }))} />}
+          {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
+          {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
+          {workspace === 'quality' && qualityReport && <CareerQualityPanel report={qualityReport} onCreateAtsVersion={createAtsVersion} />}
+          {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
+          {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loading={aiLoading} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
+          {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
         </aside>
       </div>
 
@@ -976,8 +1044,8 @@ export default function CareerStudioEditor() {
             <button onClick={() => setFullPreviewOpen(false)} className="rounded-xl border border-white/20 p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
           </div>
           <div className="flex flex-1 items-start justify-center overflow-auto rounded-2xl bg-slate-200 p-6">
-            <div style={{ width: 794, minHeight: 1123 }}>
-              {isManualMode && manualLayout ? <ManualDocumentCanvas layout={manualLayout} /> : isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />}
+            <div style={{ width: previewMetrics.width, minHeight: previewMetrics.height }}>
+              {isManualMode && manualLayout ? <ManualDocumentCanvas layout={manualLayout} /> : <CareerDocumentSurface design={document.design_options} title={document.title}>{isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />}</CareerDocumentSurface>}
             </div>
           </div>
         </div>
@@ -1099,11 +1167,18 @@ function AiAssistantPanel({
       </div>
 
       {isCv ? (
-        <div className="grid grid-cols-1 gap-2">
-          <AiButton loading={loading} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
-          <AiButton loading={loading} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
-          <AiButton loading={loading} label="Suggérer des compétences" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
-          <AiButton loading={loading} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
+        <div className="space-y-3">
+          <label className="block">
+            <span className={labelClass()}>Offre d’emploi ou exigences ciblées</span>
+            <textarea className={inputClass('min-h-[92px] resize-y')} placeholder="Collez l’offre pour adapter le CV sans inventer de compétence…" value={offerText} onChange={(e) => onOfferTextChange(e.target.value)} />
+          </label>
+          <div className="grid grid-cols-1 gap-2">
+            <AiButton loading={loading} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
+            <AiButton loading={loading} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
+            <AiButton loading={loading} label="Suggérer des compétences à vérifier" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
+            <AiButton loading={loading} label="Comparer le CV à l’offre" onClick={() => onRequest('analysis', 'adapt_to_offer')} />
+            <AiButton loading={loading} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -1229,11 +1304,21 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
                   {data.photo_url ? 'Remplacer' : 'Ajouter une photo'}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     className="hidden"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (!file) return;
+                      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                        window.alert('Format non accepté. Utilisez une image JPG, PNG ou WebP.');
+                        event.currentTarget.value = '';
+                        return;
+                      }
+                      if (file.size > 2 * 1024 * 1024) {
+                        window.alert('Cette photo dépasse 2 Mo. Compressez-la avant de l’ajouter.');
+                        event.currentTarget.value = '';
+                        return;
+                      }
                       const reader = new FileReader();
                       reader.onload = () => update(d => ({ ...d, photo_url: String(reader.result || '') }));
                       reader.readAsDataURL(file);
@@ -1263,12 +1348,13 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
         <Field label="Téléphone" value={data.contact.phone} onChange={v => update(d => ({ ...d, contact: { ...d.contact, phone: v } }))} />
         <Field label="Ville / Pays" value={data.contact.location} onChange={v => update(d => ({ ...d, contact: { ...d.contact, location: v } }))} />
         <Field label="LinkedIn" value={data.contact.linkedin || ''} onChange={v => update(d => ({ ...d, contact: { ...d.contact, linkedin: v } }))} />
+        <Field label="Portfolio / site professionnel" value={data.contact.portfolio || ''} onChange={v => update(d => ({ ...d, contact: { ...d.contact, portfolio: v } }))} />
       </div>
     );
   }
 
   if (active === 'summary') {
-    return <TextArea label="Résumé professionnel" value={data.summary} rows={8} onChange={v => update(d => ({ ...d, summary: v }))} />;
+    return <div className="space-y-3"><Field label="Objectif professionnel facultatif" value={data.objective || ''} onChange={v => update(d => ({ ...d, objective: v }))} /><TextArea label="Résumé professionnel" value={data.summary} rows={8} onChange={v => update(d => ({ ...d, summary: v }))} /></div>;
   }
 
   if (active === 'skills') {

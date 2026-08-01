@@ -13,6 +13,9 @@ export interface LmData {
   availability: string;
   closing: string;
   signature: string;
+  career_meta?: Record<string, unknown>;
+  manual_layout?: unknown;
+  manual_layouts?: Record<string, unknown>;
 }
 
 export interface LmDesign {
@@ -20,6 +23,19 @@ export interface LmDesign {
   font: string;
   font_size_body: number;
   line_spacing: number;
+  document_mode?: 'creative' | 'balanced' | 'ats';
+  page_format?: 'a4' | 'letter';
+  orientation?: 'portrait' | 'landscape';
+  margins?: { top: number; right: number; bottom: number; left: number };
+  letter_spacing?: number;
+  paragraph_spacing?: number;
+  section_spacing?: number;
+  density?: 'compact' | 'balanced' | 'spacious';
+  page_numbers?: boolean;
+  footer_text?: string;
+  border_width?: number;
+  border_color?: string;
+  editor_mode?: 'template' | 'manual';
 }
 
 function formatDate(d: string) {

@@ -66,6 +66,19 @@ export const DEFAULT_CV_DESIGN: DesignOptions = {
   photo_enabled: false,
   photo_shape: 'round',
   pages: 1,
+  document_mode: 'balanced',
+  page_format: 'a4',
+  orientation: 'portrait',
+  margins: { top: 0, right: 0, bottom: 0, left: 0 },
+  letter_spacing: 0,
+  paragraph_spacing: 8,
+  section_spacing: 14,
+  density: 'balanced',
+  page_numbers: false,
+  footer_text: '',
+  border_width: 0,
+  border_color: '#e2e8f0',
+  editor_mode: 'template',
 };
 
 export const DEFAULT_LM_DESIGN: LmDesign = {
@@ -73,6 +86,19 @@ export const DEFAULT_LM_DESIGN: LmDesign = {
   font: 'inter',
   font_size_body: 10,
   line_spacing: 1.65,
+  document_mode: 'balanced',
+  page_format: 'a4',
+  orientation: 'portrait',
+  margins: { top: 0, right: 0, bottom: 0, left: 0 },
+  letter_spacing: 0,
+  paragraph_spacing: 8,
+  section_spacing: 14,
+  density: 'balanced',
+  page_numbers: false,
+  footer_text: '',
+  border_width: 0,
+  border_color: '#e2e8f0',
+  editor_mode: 'template',
 };
 
 export const DEFAULT_CV_DATA: DocData = {
@@ -255,7 +281,7 @@ export function calculateBasicScore(docType: CareerDocType, data: DocData | LmDa
   if (text(cv.summary).length >= 60) score += 12;
   if (text(cv.contact?.phone)) score += 4;
   if ((cv.skills || []).filter(x => text(typeof x === 'string' ? x : (x as any)?.name)).length >= 4) score += 12;
-  if ((cv.experiences || []).some(x => text(x?.title) && text(x?.company) && text(x?.description).length >= 30)) score += 22;
+  if ((cv.experiences || []).some(x => text(x?.position) && text(x?.company) && text(x?.description).length >= 30)) score += 22;
   if ((cv.education || []).some(x => text(x?.degree) && text(x?.school))) score += 12;
   if ((cv.languages || []).some(x => text(x?.name) && text(x?.level))) score += 6;
   if ((cv.certifications_external || []).some(x => text(x?.name)) || (cv.omnia_formations || []).some((x:any) => text(x?.name || x?.title))) score += 6;

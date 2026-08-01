@@ -13,6 +13,7 @@ import {
 } from './careerStudioData';
 
 import { edgeAuthHeaders } from './edgeAuth';
+import { analyzeCareerDocument, normalizeCareerDocument, type CareerSourceProfile } from './careerBuilderV2';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const FUNCTIONS_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '';
@@ -226,12 +227,16 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
   templates: ReturnType<typeof getCareerTemplates>;
   tokens: number;
   remote: boolean;
+  sourceProfile: CareerSourceProfile;
 }> {
   try {
     const data = await functionPost<{
       documents?: CareerDocumentSummary[];
       templates?: ReturnType<typeof getCareerTemplates>;
-      user?: { cv_tokens?: number };
+      user?: CareerSourceProfile['user'] & { cv_tokens?: number };
+      completed_formations?: CareerSourceProfile['completed_formations'];
+      certificates?: CareerSourceProfile['certificates'];
+      partner_link?: CareerSourceProfile['partner_link'];
     }>('career-studio-manage?action=list', { doc_type: docType });
 
     if (data.templates?.length) cacheCareerTemplates(data.templates as any);
@@ -240,6 +245,12 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       templates: getCareerTemplates(docType),
       tokens: data.user?.cv_tokens ?? 0,
       remote: true,
+      sourceProfile: {
+        user: data.user,
+        completed_formations: data.completed_formations || [],
+        certificates: data.certificates || [],
+        partner_link: data.partner_link || null,
+      },
     };
   } catch {
     const docs = readLocal(docType);
@@ -248,6 +259,7 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       templates: getCareerTemplates(docType),
       tokens: Number(localStorage.getItem('omnia_career_tokens') || 0),
       remote: false,
+      sourceProfile: {},
     };
   }
 }
@@ -262,7 +274,7 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
         action: 'get',
         document_id: documentId,
       });
-      return { document: { ...data.document, template_key: normalizeTemplateKey(data.document.doc_type, data.document.template_key) }, remote: true };
+      return { document: normalizeCareerDocument({ ...data.document, template_key: normalizeTemplateKey(data.document.doc_type, data.document.template_key) }), remote: true };
     } catch {
       // fallback below
     }
@@ -270,49 +282,51 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
 
   let docs = readLocal(docType);
   const existing = documentId && documentId !== 'new' ? docs.find(d => d.id === documentId) : undefined;
-  if (existing) return { document: { ...existing, template_key: normalizeTemplateKey(existing.doc_type, existing.template_key) }, remote: false };
+  if (existing) return { document: normalizeCareerDocument({ ...existing, template_key: normalizeTemplateKey(existing.doc_type, existing.template_key) }), remote: false };
 
   // A new document exists only in memory until the learner explicitly saves it.
   const created = createLocalDocument(docType, templateKey || undefined);
-  return { document: created, remote: false };
+  return { document: normalizeCareerDocument(created), remote: false };
 }
 
 export async function saveCareerDocument(document: CareerDocumentFull): Promise<{ document: CareerDocumentFull; remote: boolean }> {
-  const score = calculateBasicScore(document.doc_type, document.doc_data);
+  const normalizedDocument = normalizeCareerDocument(document);
+  const score = analyzeCareerDocument(normalizedDocument.doc_type, normalizedDocument.doc_data, normalizedDocument.design_options).ats;
   const payload = {
     action: 'save',
     document_id: document.id.startsWith('local_') ? undefined : document.id,
-    doc_type: document.doc_type,
-    title: document.title || getDefaultDocTitle(document.doc_type),
-    template_key: normalizeTemplateKey(document.doc_type, document.template_key || getDefaultTemplateKey(document.doc_type)),
-    language: document.language || 'fr',
-    doc_data: document.doc_data,
-    design_options: document.design_options,
-    target_job: document.target_job,
-    application_type: document.application_type,
+    doc_type: normalizedDocument.doc_type,
+    title: normalizedDocument.title || getDefaultDocTitle(normalizedDocument.doc_type),
+    template_key: normalizeTemplateKey(normalizedDocument.doc_type, normalizedDocument.template_key || getDefaultTemplateKey(normalizedDocument.doc_type)),
+    language: normalizedDocument.language || 'fr',
+    doc_data: normalizedDocument.doc_data,
+    design_options: normalizedDocument.design_options,
+    target_job: normalizedDocument.target_job,
+    target_country: normalizedDocument.target_country,
+    application_type: normalizedDocument.application_type,
     ats_score: score,
-    status: document.status || 'draft',
-    is_primary: document.is_primary ?? true,
+    status: normalizedDocument.status || 'draft',
+    is_primary: normalizedDocument.is_primary ?? true,
   };
 
   try {
     const data = await functionPost<{ document: { id: string; title: string; content_hash?: string } }>('career-studio-manage?action=save', payload);
     const saved: CareerDocumentFull = {
-      ...document,
+      ...normalizedDocument,
       id: data.document.id,
-      template_key: normalizeTemplateKey(document.doc_type, document.template_key),
+      template_key: normalizeTemplateKey(normalizedDocument.doc_type, normalizedDocument.template_key),
       ats_score: score,
       updated_at: nowIso(),
     };
     return { document: saved, remote: true };
   } catch {
-    const docType = document.doc_type;
+    const docType = normalizedDocument.doc_type;
     const docs = readLocal(docType);
     const id = document.id || `local_${Date.now()}`;
     const saved: CareerDocumentFull = {
-      ...document,
+      ...normalizedDocument,
       id,
-      template_key: normalizeTemplateKey(document.doc_type, document.template_key),
+      template_key: normalizeTemplateKey(normalizedDocument.doc_type, normalizedDocument.template_key),
       ats_score: score,
       updated_at: nowIso(),
       created_at: document.created_at || nowIso(),

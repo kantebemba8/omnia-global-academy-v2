@@ -20,6 +20,10 @@ export interface DocData {
   projects: Array<{ id: string; name: string; description: string; technologies?: string; }>;
   interests: string[];
   references?: string;
+  career_meta?: Record<string, unknown>;
+  manual_layout?: unknown;
+  manual_layouts?: Record<string, unknown>;
+  custom_sections?: Array<{ id: string; title: string; content: string; visible?: boolean }>;
 }
 
 export interface DesignOptions {
@@ -31,6 +35,19 @@ export interface DesignOptions {
   photo_enabled: boolean;
   photo_shape: 'round' | 'square' | 'rectangle';
   pages: 1 | 2;
+  document_mode?: 'creative' | 'balanced' | 'ats';
+  page_format?: 'a4' | 'letter';
+  orientation?: 'portrait' | 'landscape';
+  margins?: { top: number; right: number; bottom: number; left: number };
+  letter_spacing?: number;
+  paragraph_spacing?: number;
+  section_spacing?: number;
+  density?: 'compact' | 'balanced' | 'spacious';
+  page_numbers?: boolean;
+  footer_text?: string;
+  border_width?: number;
+  border_color?: string;
+  editor_mode?: 'template' | 'manual';
 }
 
 function fmtDate(s: string) {

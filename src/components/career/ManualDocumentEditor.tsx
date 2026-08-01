@@ -1,4 +1,5 @@
 import React, { RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { sanitizeRichText } from '../../lib/careerBuilderV2';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, BringToFront, Copy, Image as ImageIcon,
   Italic, Layers, Lock, Minus, Move, Plus, Redo2, RotateCcw, SendToBack, Square,
@@ -19,6 +20,9 @@ export interface ManualBlock {
   rotation: number;
   zIndex: number;
   locked?: boolean;
+  hidden?: boolean;
+  name?: string;
+  altText?: string;
   content?: string;
   src?: string;
   style: {
@@ -41,7 +45,7 @@ export interface ManualBlock {
 
 export interface ManualLayout {
   version: 1;
-  page: { width: 794; height: 1123; background: string };
+  page: { width: number; height: number; background: string };
   blocks: ManualBlock[];
 }
 
@@ -67,7 +71,11 @@ const id = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 function normalize(layout: ManualLayout): ManualLayout {
   return {
     version: 1,
-    page: { width: 794, height: 1123, background: layout?.page?.background || '#ffffff' },
+    page: {
+      width: Math.max(320, Math.min(1600, Number(layout?.page?.width) || 794)),
+      height: Math.max(480, Math.min(2200, Number(layout?.page?.height) || 1123)),
+      background: layout?.page?.background || '#ffffff',
+    },
     blocks: Array.isArray(layout?.blocks) ? layout.blocks : [],
   };
 }
@@ -106,6 +114,21 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && selectedId) {
         event.preventDefault();
         duplicateBlock(selectedId);
+      }
+      if (!editing && selectedId && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        const current = layout.blocks.find(block => block.id === selectedId);
+        if (current && !current.locked) {
+          event.preventDefault();
+          const step = event.shiftKey ? 10 : 1;
+          const pageWidth = layout.page.width;
+          const pageHeight = layout.page.height;
+          const deltaX = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+          const deltaY = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+          patchBlock(current.id, {
+            x: Math.max(0, Math.min(pageWidth - current.width, current.x + deltaX)),
+            y: Math.max(0, Math.min(pageHeight - current.height, current.y + deltaY)),
+          });
+        }
       }
       if (!editing && (event.key === 'Delete' || event.key === 'Backspace') && selectedId) {
         event.preventDefault();
@@ -180,13 +203,21 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
   }
 
   function addImage(file: File) {
-    if (!file.type.startsWith('image/')) return;
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedTypes.has(file.type)) {
+      window.alert('Format non accepté. Utilisez une image JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      window.alert('Cette image dépasse 2 Mo. Compressez-la avant de l’ajouter.');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const maxZ = Math.max(0, ...layout.blocks.map(b => b.zIndex));
       const block: ManualBlock = {
         id: id(), type: 'image', x: 90, y: 110, width: 190, height: 190, rotation: 0, zIndex: maxZ + 1,
-        src: String(reader.result), style: { opacity: 1, borderRadius: 0, borderWidth: 0, borderColor: 'transparent' }
+        src: String(reader.result), altText: file.name.replace(/\.[^.]+$/, ''), name: file.name, style: { opacity: 1, borderRadius: 0, borderWidth: 0, borderColor: 'transparent' }
       };
       commit({ ...layout, blocks: [...layout.blocks, block] });
       setSelectedId(block.id);
@@ -245,8 +276,8 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
     const dx = (event.clientX - g.startX) / zoom;
     const dy = (event.clientY - g.startY) / zoom;
     const nextBlock = g.mode === 'drag'
-      ? { ...g.original, x: Math.max(0, Math.min(794 - g.original.width, g.original.x + dx)), y: Math.max(0, Math.min(1123 - g.original.height, g.original.y + dy)) }
-      : { ...g.original, width: Math.max(30, Math.min(794 - g.original.x, g.original.width + dx)), height: Math.max(20, Math.min(1123 - g.original.y, g.original.height + dy)) };
+      ? { ...g.original, x: Math.max(0, Math.min(layout.page.width - g.original.width, g.original.x + dx)), y: Math.max(0, Math.min(layout.page.height - g.original.height, g.original.y + dy)) }
+      : { ...g.original, width: Math.max(30, Math.min(layout.page.width - g.original.x, g.original.width + dx)), height: Math.max(20, Math.min(layout.page.height - g.original.y, g.original.height + dy)) };
     const next = { ...layout, blocks: layout.blocks.map(b => b.id === g.id ? nextBlock : b) };
     setLayout(next); onChange(next);
   }
@@ -306,14 +337,14 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
             <span className="w-16 text-center text-xs font-semibold">{Math.round(zoom*100)}%</span>
             <button onClick={() => setZoom(z => Math.min(1.4, z+.1))} className="rounded-lg bg-white p-2 shadow"><ZoomIn className="h-4 w-4" /></button>
           </div>
-          <div className="mx-auto" style={{ width: 794*zoom, height: 1123*zoom }}>
+          <div className="mx-auto" style={{ width: layout.page.width * zoom, height: layout.page.height * zoom }}>
             <div
               ref={node => { canvasRef.current = node; if (printRef && typeof printRef !== 'function') (printRef as React.MutableRefObject<HTMLDivElement | null>).current = node; }}
               onPointerDown={() => setSelectedId(null)}
               className="relative origin-top-left overflow-hidden bg-white shadow-2xl"
-              style={{ width: 794, height: 1123, transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
+              style={{ width: layout.page.width, height: layout.page.height, transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
             >
-              {layout.blocks.map(block => {
+              {layout.blocks.filter(block => !block.hidden).map(block => {
                 const isSelected = selectedId === block.id;
                 return (
                   <div key={block.id} onPointerDown={e => beginGesture(e, block, 'drag')} className="absolute select-none" style={{ left:block.x, top:block.y, width:block.width, height:block.height, zIndex:block.zIndex, transform:`rotate(${block.rotation}deg)`, opacity:block.style.opacity ?? 1, cursor:block.locked?'default':'move', outline:isSelected?'2px solid #bf8813':'none', outlineOffset:2 }}>
@@ -322,12 +353,12 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
                         contentEditable={!block.locked}
                         suppressContentEditableWarning
                         onPointerDown={e => { e.stopPropagation(); setSelectedId(block.id); }}
-                        onBlur={e => patchBlock(block.id, { content: e.currentTarget.innerHTML }, false)}
-                        dangerouslySetInnerHTML={{ __html: block.content || '' }}
+                        onBlur={e => patchBlock(block.id, { content: sanitizeRichText(e.currentTarget.innerHTML) }, false)}
+                        dangerouslySetInnerHTML={{ __html: sanitizeRichText(block.content || '') }}
                         style={{ width:'100%', height:'100%', overflow:'hidden', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding, whiteSpace:'pre-wrap', wordBreak:'break-word', outline:'none' }}
                       />
                     )}
-                    {block.type === 'image' && <img src={block.src} alt="" draggable={false} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
+                    {block.type === 'image' && <img src={block.src} alt={block.altText || 'Élément visuel du document'} draggable={false} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
                     {block.type === 'shape' && <div style={{ width:'100%', height:'100%', background:block.style.backgroundColor, borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
                     {block.type === 'line' && <div style={{ width:'100%', marginTop:block.height/2, borderTop:`${block.style.borderWidth||3}px solid ${block.style.borderColor||'#002050'}` }} />}
                     {isSelected && !block.locked && <>
@@ -358,6 +389,11 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
                 </div>
                 <label className="block text-xs font-semibold text-slate-600">Couleur du texte<input type="color" value={selected.style.color || '#1f2937'} onChange={e=>patchStyle({color:e.target.value})} className="mt-1 h-10 w-full rounded border"/></label>
               </>}
+              {selected.type === 'image' && <>
+                <label className="block text-xs font-semibold text-slate-600">Texte alternatif<input value={selected.altText || ''} onChange={event => patchBlock(selected.id, { altText: event.target.value })} className="mt-1 w-full rounded-lg border px-2 py-2 text-sm" placeholder="Décrivez l’image pour l’accessibilité" /></label>
+                <label className="block text-xs font-semibold text-slate-600">Coins arrondis<input type="range" min={0} max={120} value={selected.style.borderRadius || 0} onChange={event => patchStyle({ borderRadius: Number(event.target.value) })} className="mt-1 w-full" /></label>
+              </>}
+              <label className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"><span>Masquer cet élément</span><input type="checkbox" checked={Boolean(selected.hidden)} onChange={event => patchBlock(selected.id, { hidden: event.target.checked })} /></label>
               {(selected.type==='shape'||selected.type==='text') && <label className="block text-xs font-semibold text-slate-600">Arrière-plan<input type="color" value={selected.style.backgroundColor==='transparent'?'#ffffff':selected.style.backgroundColor || '#ffffff'} onChange={e=>patchStyle({backgroundColor:e.target.value})} className="mt-1 h-10 w-full rounded border"/></label>}
               <div className="grid grid-cols-2 gap-2"><label className="text-xs font-semibold">X<input type="number" value={Math.round(selected.x)} onChange={e=>patchBlock(selected.id,{x:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-2 py-2"/></label><label className="text-xs font-semibold">Y<input type="number" value={Math.round(selected.y)} onChange={e=>patchBlock(selected.id,{y:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-2 py-2"/></label><label className="text-xs font-semibold">Largeur<input type="number" value={Math.round(selected.width)} onChange={e=>patchBlock(selected.id,{width:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-2 py-2"/></label><label className="text-xs font-semibold">Hauteur<input type="number" value={Math.round(selected.height)} onChange={e=>patchBlock(selected.id,{height:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-2 py-2"/></label></div>
               <label className="block text-xs font-semibold">Rotation<input type="range" min={-180} max={180} value={selected.rotation} onChange={e=>patchBlock(selected.id,{rotation:Number(e.target.value)})} className="mt-1 w-full"/></label>
@@ -374,11 +410,11 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
 export function ManualDocumentCanvas({ layout, className = '' }: { layout: ManualLayout; className?: string }) {
   const safe = normalize(layout);
   return (
-    <div className={`relative overflow-hidden bg-white ${className}`} style={{ width: 794, height: 1123, background: safe.page.background }}>
-      {safe.blocks.map(block => (
+    <div className={`relative overflow-hidden bg-white ${className}`} style={{ width: safe.page.width, height: safe.page.height, background: safe.page.background }}>
+      {safe.blocks.filter(block => !block.hidden).map(block => (
         <div key={block.id} className="absolute" style={{ left:block.x, top:block.y, width:block.width, height:block.height, zIndex:block.zIndex, transform:`rotate(${block.rotation}deg)`, opacity:block.style.opacity ?? 1 }}>
-          {block.type === 'text' && <div dangerouslySetInnerHTML={{__html:block.content || ''}} style={{ width:'100%', height:'100%', overflow:'hidden', whiteSpace:'pre-wrap', wordBreak:'break-word', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding }} />}
-          {block.type === 'image' && <img src={block.src} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
+          {block.type === 'text' && <div dangerouslySetInnerHTML={{__html:sanitizeRichText(block.content || '')}} style={{ width:'100%', height:'100%', overflow:'hidden', whiteSpace:'pre-wrap', wordBreak:'break-word', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding }} />}
+          {block.type === 'image' && <img src={block.src} alt={block.altText || 'Élément visuel du document'} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
           {block.type === 'shape' && <div style={{ width:'100%', height:'100%', background:block.style.backgroundColor, borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
           {block.type === 'line' && <div style={{ width:'100%', marginTop:block.height/2, borderTop:`${block.style.borderWidth||3}px solid ${block.style.borderColor||'#002050'}` }} />}
         </div>
