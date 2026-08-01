@@ -95,7 +95,7 @@ export function PricingTiersManager() {
     </div>
     {tiers.length === 0 && (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
-        Les 4 paliers de base ne sont pas encore présents. Exécutez la migration 083 fournie avec cette correction.
+        Les paliers de base ne sont pas disponibles. Vérifiez la configuration tarifaire avant de continuer.
       </div>
     )}
     {message && <p className="text-xs text-gray-500 text-right">{message}</p>}

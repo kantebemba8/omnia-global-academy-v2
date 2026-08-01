@@ -626,7 +626,7 @@ export default function AdminCareerStudio() {
               </div>
 
               <div className="border-t pt-4" style={{borderColor:BORDER}}>
-                <div className="rounded-2xl border p-4" style={{borderColor:BORDER,background:'#F8FAFC'}}><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Packs Career retirés</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les anciens packs de jetons et leur vente ont été désactivés. Les coûts des actions restent configurables jusqu’à leur intégration dans le futur moteur central.</p><button onClick={()=>setSubTab('packs')} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button></div>
+                <div className="rounded-2xl border p-4" style={{borderColor:BORDER,background:'#F8FAFC'}}><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts Career</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Configurez les coûts associés aux actions Career.</p><button onClick={()=>setSubTab('packs')} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button></div>
               </div>
             </div>
           )}
@@ -644,7 +644,7 @@ export default function AdminCareerStudio() {
               </div>
               <section className="border-y py-4" style={{borderColor:BORDER}}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts en jetons</h3><p className="mt-1 text-sm" style={{color:MUTED}}>La vente des anciens packs est désactivée. Seuls les coûts techniques des actions Career restent configurables avant leur reprise par le moteur central.</p></div>
+                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts en jetons</h3><p className="mt-1 text-sm" style={{color:MUTED}}>Définissez les coûts appliqués aux actions Career.</p></div>
                   <button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button>
                 </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{tokenConfig.map(cfg=><div key={cfg.config_key} className="flex justify-between border-b py-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{cfg.description_fr||cfg.config_key}</span><strong style={{color:OMNIA_BLUE}}>{cfg.config_value} {cfg.value_unit||'jeton(s)'}</strong></div>)}</div>
@@ -675,7 +675,7 @@ export default function AdminCareerStudio() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Coûts des actions en jetons</h2>
-                <p className="mt-1 text-sm" style={{ color: MUTED }}>Les anciens packs vendus aux apprenants ont été retirés. Cette page conserve seulement les coûts des actions Career jusqu’au moteur central de monétisation.</p>
+                <p className="mt-1 text-sm" style={{ color: MUTED }}>Cette page permet de configurer les coûts des actions Career.</p>
               </div>
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                 <div className="mb-4 flex items-center justify-between">
@@ -910,7 +910,7 @@ export default function AdminCareerStudio() {
 
           {!loading && rules.length === 0 && (
             <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
-              <div className="flex items-center gap-3 text-sm" style={{ color: '#92400E' }}><AlertCircle size={17} /> Aucune règle trouvée. Lancez la migration 028 puis redéployez l’edge function.</div>
+              <div className="flex items-center gap-3 text-sm" style={{ color: '#92400E' }}><AlertCircle size={17} /> Aucune règle n’est configurée. Vérifiez les paramètres de Career Studio.</div>
             </div>
           )}
         </main>

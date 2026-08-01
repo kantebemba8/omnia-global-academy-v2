@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
 import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import {
   Users, QrCode, Gift, Clock, CheckCircle,
   AlertCircle, PlusCircle, ChevronRight, RefreshCw,
@@ -202,12 +203,9 @@ export default function StructureDashboard() {
               </div>
             )}
             <div>
-              <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{structure.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: '#EEF2FF', color: '#002050' }}>
-                  {displayName}
-                </span>
+              <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold" style={{ color: '#475467' }}>{structure.name}</span>
                 <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
                   style={{ background: statusInfo.bg, color: statusInfo.color }}>
                   <StatusIcon size={11} />
@@ -242,7 +240,7 @@ export default function StructureDashboard() {
                 Validation en cours
               </p>
               <p className="text-sm mt-0.5" style={{ color: '#78350F' }}>
-                Votre demande est examinée par notre équipe. Vous serez notifié(e) sous 48h ouvrées.
+                Votre demande est examinée par notre équipe. Vous serez notifié(e) après examen de la demande.
               </p>
             </div>
           </div>
@@ -258,7 +256,7 @@ export default function StructureDashboard() {
               </p>
               {structure.admin_comment && (
                 <p className="text-sm mt-1" style={{ color: '#1E40AF' }}>
-                  💬 {structure.admin_comment}
+                  {structure.admin_comment}
                 </p>
               )}
               <button onClick={() => navigate('/structure/profil')}

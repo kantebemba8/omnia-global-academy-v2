@@ -4,6 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import {
   Activity, ArrowRight, BookOpen, Building2, CircleDollarSign,
   Eye, GraduationCap, Radio, RefreshCw, Users, UserCheck,
@@ -165,13 +166,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between border-b border-gray-200 pb-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>
-              Pilotage global
-            </p>
-            <h1 className="text-2xl font-black mt-1" style={{ color: '#002050' }}>Tableau de bord Super-admin</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Données réelles, actions prioritaires et état opérationnel de la plateforme.
-            </p>
+            <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {PERIOD_OPTIONS.map(o => (
@@ -224,28 +219,24 @@ export default function AdminDashboard() {
               <RoleDashboardStatCard
                 label="CA encaissé"
                 value={fmt(data.kpis.ca_encaisse_xof, ' XOF')}
-                detail="Paiements confirmés sur la période"
                 icon={CircleDollarSign}
                 accent="#002050"
               />
               <RoleDashboardStatCard
                 label="Revenu Omnia"
                 value={fmt(data.kpis.revenu_omnia_xof, ' XOF')}
-                detail="Part plateforme réellement enregistrée"
                 icon={Activity}
                 accent="#1E7A52"
               />
               <RoleDashboardStatCard
                 label="À reverser"
                 value={fmt(data.kpis.a_reverser_xof, ' XOF')}
-                detail="Soldes et parts disponibles ou en attente"
                 icon={Wallet}
                 accent="#BF8813"
               />
               <RoleDashboardStatCard
                 label="Actifs 24 h"
                 value={fmt(data.kpis.utilisateurs_actifs_24h)}
-                detail="Utilisateurs distincts connectés"
                 icon={Users}
                 accent="#7C3AED"
               />
@@ -253,10 +244,7 @@ export default function AdminDashboard() {
 
             <section>
               <div className="flex items-center justify-between gap-4 mb-3">
-                <div>
-                  <h2 className="text-lg font-black" style={{ color: '#002050' }}>Actions requises</h2>
-                  <p className="text-sm text-gray-500">Uniquement les éléments qui nécessitent une intervention.</p>
-                </div>
+                <h2 className="text-lg font-black" style={{ color: '#002050' }}>Actions requises</h2>
                 <span className="text-sm font-bold" style={{ color: '#BF8813' }}>
                   {data.actions.reduce((sum, a) => sum + a.count, 0)} à traiter
                 </span>

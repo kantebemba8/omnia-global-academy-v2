@@ -4,7 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { ArrowLeft, Clock } from 'lucide-react';
-const BLUE='#002050',GOLD='#BF8813';
+const BLUE='#002050';
 
 export default function AdminActivityToday(){
  const navigate=useNavigate();
@@ -18,9 +18,7 @@ export default function AdminActivityToday(){
  return <AdminLayout><div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
    <header className="border-b border-gray-200 pb-5">
     <button onClick={()=>navigate('/admin/dashboard')} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 mb-4"><ArrowLeft size={15}/>Retour au tableau de bord</button>
-    <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Tableau de bord · Activité</p>
     <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Activité d’aujourd’hui</h1>
-    <p className="text-sm text-gray-500 mt-1">Détail des événements administratifs et opérationnels enregistrés aujourd’hui.</p>
    </header>
    {error&&<div className="border-l-4 border-red-500 pl-4 text-sm text-red-700">{error}</div>}
    {loading?<div className="py-16 text-center text-gray-400">Chargement…</div>:rows.length===0?<div className="py-16 text-center text-gray-400">Aucune activité enregistrée aujourd’hui.</div>:

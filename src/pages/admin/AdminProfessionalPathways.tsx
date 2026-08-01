@@ -168,7 +168,7 @@ export default function AdminProfessionalPathways() {
     <AdminLayout>
       <main className="mx-auto max-w-7xl p-5 md:p-8">
         <header className="flex flex-col gap-4 border-b pb-6 md:flex-row md:items-end md:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[.18em]" style={{ color: GOLD }}>Programme 2 · GM4</p><h1 className="mt-2 text-3xl font-black" style={{ color: BLUE }}>Parcours professionnels et certifications</h1><p className="mt-2 max-w-3xl text-sm text-gray-600">Orchestration des formations, examens, projets, jurys, certificats, badges, relevés et renouvellements. Le CPD reste optionnel par parcours.</p></div>
+          <div><h1 className="mt-2 text-3xl font-black" style={{ color: BLUE }}>Parcours professionnels et certifications</h1><p className="mt-2 max-w-3xl text-sm text-gray-600">Orchestration des formations, examens, projets, jurys, certificats, badges, relevés et renouvellements. Le CPD reste optionnel par parcours.</p></div>
           <div className="flex gap-2"><button onClick={load} className="flex items-center gap-2 border px-4 py-2 text-sm"><RefreshCw size={16}/>Actualiser</button><button onClick={() => openEditor()} className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white" style={{ background: BLUE }}><Plus size={16}/>Nouveau parcours</button></div>
         </header>
 

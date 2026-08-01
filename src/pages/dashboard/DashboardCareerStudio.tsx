@@ -38,6 +38,7 @@ import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStat
 import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
@@ -385,7 +386,7 @@ function DashboardView({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>Tableau de bord Omnia Career</h1><p className="mt-1 text-sm" style={{ color: MUTED }}>Un aperçu simple de vos documents et de vos prochaines actions.</p></div>
+        <div><h1 className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{dashboardGreeting()}</h1></div>
         <div className="rounded-2xl border bg-white px-4 py-3 shadow-sm" style={{ borderColor: BORDER }}><div className="text-xs" style={{ color: MUTED }}>Jetons disponibles</div><div className="text-2xl font-bold" style={{ color: OMNIA_GOLD }}>{loading ? '…' : tokens}</div></div>
       </div>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">

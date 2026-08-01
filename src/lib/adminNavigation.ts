@@ -23,10 +23,10 @@ export interface AdminNavGroup {
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     id: 'dashboard',
-    label: 'Tableau de bord',
+    label: 'Accueil',
     icon: LayoutDashboard,
     items: [
-      { path: '/admin/dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
+      { path: '/admin/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
     ],
   },
   {

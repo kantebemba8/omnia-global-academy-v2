@@ -24,10 +24,10 @@ interface NavGroup {
 const STRUCTURE_NAV_GROUPS: NavGroup[] = [
   {
     id: 'dashboard',
-    label: 'Tableau de bord',
+    label: 'Accueil',
     icon: LayoutDashboard,
     items: [
-      { path: '/structure/dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
+      { path: '/structure/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
     ],
   },
   {
@@ -64,7 +64,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     icon: Briefcase,
     items: [
       { path: '/structure/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
-      { path: '/structure/recrutement/dashboard', label: 'Vue d’ensemble recrutement', icon: UserRoundSearch, exact: true },
+      { path: '/structure/recrutement/dashboard', label: 'Accueil recrutement', icon: UserRoundSearch, exact: true },
       { path: '/structure/recrutement/talents', label: 'Recherche de talents', icon: Search },
       { path: '/structure/recrutement/favoris', label: 'Talents favoris', icon: Heart },
       { path: '/structure/recrutement/candidats', label: 'Candidats', icon: Users },
@@ -96,10 +96,10 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
 const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
   {
     id: 'dashboard',
-    label: 'Tableau de bord',
+    label: 'Accueil',
     icon: LayoutDashboard,
     items: [
-      { path: '/structure/recrutement/dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
+      { path: '/structure/recrutement/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
     ],
   },
   {

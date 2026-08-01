@@ -27,7 +27,7 @@ type StoredUser = { id?: string; full_name?: string; email?: string; roles?: str
 type Props = { children: ReactNode; title?: string; subtitle?: string };
 
 const NAV = [
-  { path: '/talent/recruteur/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/talent/recruteur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/talent/recruteur/talents', label: 'Rechercher des talents', icon: Search },
   { path: '/talent/recruteur/competences-verifiees', label: 'Compétences vérifiées', icon: ShieldCheck },
   { path: '/talent/recruteur/offres', label: 'Mes offres', icon: Briefcase },

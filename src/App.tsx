@@ -90,6 +90,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminRoleUsers = lazy(() => import('./pages/admin/AdminRoleUsers'));
 const AdminActivityToday = lazy(() => import('./pages/admin/AdminActivityToday'));
 const AdminCMS = lazy(() => import('./pages/admin/AdminCMS'));
+const LandingDraftPreview = lazy(() => import('./pages/admin/LandingDraftPreview'));
 const AdminFintech = lazy(() => import('./pages/admin/AdminFintech'));
 const AdminMonetization = lazy(() => import('./pages/admin/AdminMonetization'));
 const CommerceCatalog = lazy(() => import('./pages/commerce/CommerceCatalog'));
@@ -646,6 +647,7 @@ export default function App() {
         <Route path="/admin/omnia-live/parametres" element={<AdminOmniaLiveSettings />} />
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
+        <Route path="/admin/cms-branding/preview" element={<LandingDraftPreview />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
         <Route path="/admin/monetization" element={<AdminMonetization />} />
         <Route path="/admin/payouts" element={<AdminRetraits />} />

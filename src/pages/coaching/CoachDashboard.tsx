@@ -4,6 +4,7 @@ import { CalendarDays, CheckCircle2, Package, Star } from 'lucide-react';
 import CoachWorkspaceLayout from '../../components/coaching/CoachWorkspaceLayout';
 import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { CoachProfile, CoachingSession, coachingRequest, withCoachPreview } from '../../lib/coachingApi';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -34,9 +35,7 @@ export default function CoachDashboard() {
   return (
     <CoachWorkspaceLayout>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[.18em]" style={{ color: GOLD }}>Espace coach</p>
-        <h1 className="mt-2 text-3xl font-bold" style={{ color: BLUE }}>Tableau de bord coach</h1>
-        <p className="mt-2 text-sm text-slate-500">Suivez vos sessions, demandes et évaluations depuis un seul espace.</p>
+        <h1 className="text-3xl font-bold" style={{ color: BLUE }}>{dashboardGreeting(data?.profile?.full_name)}</h1>
         {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

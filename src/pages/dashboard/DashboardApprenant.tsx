@@ -6,6 +6,7 @@ import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
 import { withLearnerPreview } from '../../lib/learnerPreview';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import {
   BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, ArrowRight,
 } from 'lucide-react';
@@ -68,10 +69,7 @@ export function DashboardApprenant() {
     <DashboardLayout>
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {data?.user.full_name ? `Bonjour, ${data.user.full_name.split(' ')[0]}` : 'Tableau de bord apprenant'}
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">Suivez vos formations, vos réalisations et vos prochaines étapes.</p>
+          <h1 className="text-2xl font-bold text-gray-900">{dashboardGreeting(data?.user.full_name)}</h1>
         </div>
 
         {loading && (

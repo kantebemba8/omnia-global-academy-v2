@@ -64,10 +64,8 @@ export default function AdminRoleUsers(){
         <button onClick={()=>navigate('/admin/dashboard')} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 mb-4">
           <ArrowLeft size={15}/> Retour au tableau de bord
         </button>
-        <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Tableau de bord · Utilisateurs par rôle</p>
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>{LABELS[roleKey]||data?.role||roleKey}</h1>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-gray-500">Seules les informations administratives minimales sont affichées : nom, e-mail et date d’inscription.</p>
           {roleKey==='recruteur'&&<button type="button" onClick={()=>openPreview('/talent/recruteur/dashboard?preview=true','recruteur')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}
           {roleKey==='coach'&&<button type="button" onClick={()=>openPreview('/coach/dashboard?preview=true','coach')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace coach</button>}
           {roleKey==='organisateur'&&<button type="button" onClick={()=>openPreview('/omnia-live/organisateur?preview=true','organisateur')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace organisateur</button>}

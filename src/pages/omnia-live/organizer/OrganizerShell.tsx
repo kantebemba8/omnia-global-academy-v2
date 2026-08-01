@@ -15,7 +15,7 @@ type OrganizerNavGroup={label:string;items:OrganizerNavItem[]};
 const NAV_GROUPS:OrganizerNavGroup[]=[
   {
     label:'Accueil',
-    items:[{path:'/omnia-live/organisateur',label:'Tableau de bord',icon:LayoutDashboard,exact:true}],
+    items:[{path:'/omnia-live/organisateur',label:'Accueil',icon:LayoutDashboard,exact:true}],
   },
   {
     label:'Événements',

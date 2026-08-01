@@ -21,7 +21,7 @@ interface Props {
 
 
 const APPRENANT_NAV = [
-  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/dashboard/profil', label: 'Mon profil', icon: User },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
   { path: '/dashboard/abonnements', label: 'Abonnements & avantages', icon: CreditCard },
@@ -44,7 +44,7 @@ const APPRENANT_NAV = [
 ];
 
 const PROFESSEUR_NAV = [
-  { path: '/professeur/dashboard', label: "Vue d'ensemble", icon: LayoutDashboard, exact: true },
+  { path: '/professeur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/professeur/courses', label: 'Mes formations', icon: BookOpen },
   { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
   { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
@@ -61,8 +61,8 @@ const PROFESSEUR_NAV = [
 
 const APPRENANT_GROUPS: NavGroup[] = [
   {
-    id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard,
-    items: [{ path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true }],
+    id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
+    items: [{ path: '/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
     id: 'learner-account', label: 'Mon espace', icon: User,
@@ -107,8 +107,8 @@ const APPRENANT_GROUPS: NavGroup[] = [
 
 const PROFESSEUR_GROUPS: NavGroup[] = [
   {
-    id: 'dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard,
-    items: [{ path: '/professeur/dashboard', label: "Vue d'ensemble", icon: LayoutDashboard, exact: true }],
+    id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
+    items: [{ path: '/professeur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
     id: 'professor-account', label: 'Mon espace', icon: User,
@@ -147,7 +147,7 @@ const PROFESSEUR_GROUPS: NavGroup[] = [
 ];
 
 const PARTNER_NAV = [
-  { path: '/partner/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/partner/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/partner/dashboard', label: 'Organisation', icon: Building2 },
   { path: '/partner/dashboard', label: 'Codes & PIN', icon: Key },
   { path: '/partner/dashboard', label: 'Membres', icon: Users },
@@ -163,7 +163,7 @@ const PARTNER_NAV = [
 
 
 const ADMIN_NAV = [
-  { path: '/admin/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/admin/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/admin/cms-branding', label: 'Configuration CMS', icon: Settings },
   { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
   { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },

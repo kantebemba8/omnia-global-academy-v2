@@ -2,15 +2,17 @@ import { useState, useEffect } from 'react';
 import { Mail } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
+import type { LandingFooterConfig, MobileAppItem, SocialNetworkItem } from '../types/landingCms';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 interface Settings {
   legal?: {
     confidentialite?: string;
   };
-  social_networks?: Record<string, string | null>;
-  app_downloads?: { google_play?: string | null; app_store?: string | null };
-  follow_us_label_fr?: string;
+  social_networks_v2?: SocialNetworkItem[];
+  mobile_apps_v2?: MobileAppItem[];
+  landing_page?: { footer?: LandingFooterConfig };
+  public_partners?: Array<{ id: string; name: string; logo_url?: string | null; website_url?: string | null; alt_text?: string | null; show_footer?: boolean }>;
 }
 
 const DEFAULT_CONTENT =
@@ -94,9 +96,11 @@ export function Confidentialite() {
       </main>
 
       <PageFooter
-        socialNetworks={settings.social_networks}
-        appDownloads={settings.app_downloads}
-        followUsLabel={settings.follow_us_label_fr}
+        socialNetworksV2={settings.social_networks_v2 || []}
+        mobileAppsV2={settings.mobile_apps_v2 || []}
+        partners={settings.public_partners || []}
+        footerConfig={settings.landing_page?.footer}
+        managedOnly
       />
     </div>
   );

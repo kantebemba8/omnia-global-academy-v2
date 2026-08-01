@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 
 import {
   BookOpen, Users, Star, PlusCircle, AlertCircle,
@@ -164,10 +165,7 @@ export function DashboardProfesseur() {
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {data?.user.full_name ? `Bonjour, ${data.user.full_name.split(' ')[0]}` : 'Tableau de bord professeur'}
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">Espace professeur</p>
+            <h1 className="text-2xl font-bold text-gray-900">{dashboardGreeting(data?.user.full_name)}</h1>
           </div>
           {bypassAuth ? (
             <button onClick={handlePreviewAction}

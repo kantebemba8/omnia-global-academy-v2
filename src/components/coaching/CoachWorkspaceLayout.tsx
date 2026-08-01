@@ -19,7 +19,7 @@ const BLUE = '#002050';
 const GOLD = '#BF8813';
 
 const items = [
-  { path: '/coach/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { path: '/coach/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
   { path: '/coach/offres', label: 'Mes offres', icon: Settings2 },
   { path: '/coach/calendrier', label: 'Mon calendrier', icon: CalendarDays },
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },

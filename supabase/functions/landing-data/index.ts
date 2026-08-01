@@ -11,8 +11,6 @@ const LANDING_KEYS = [
   "landing_devenir_formateur_desc_fr",
   "fintech_logos",
   "landing_testimonials",
-  "social_networks",
-  "app_downloads",
   "landing_page_published",
   "collaborations_logos",
   "follow_us_label_fr",
@@ -41,17 +39,27 @@ function settingIsTrue(value: unknown): boolean {
   return value === true || value === "true";
 }
 
+function isSafeExternalUrl(value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function publicSocialNetworks(value: unknown) {
   const items = Array.isArray(value) ? value : [];
   return items
-    .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim() && (item.logo_url || item.icon_key))
+    .filter((item: any) => item && item.enabled === true && (item.show_homepage === true || item.show_footer === true) && isSafeExternalUrl(item.url) && ((item.icon_key && item.icon_key !== "other") || isSafeExternalUrl(item.logo_url)))
     .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0));
 }
 
 function publicMobileApps(value: unknown) {
   const items = Array.isArray(value) ? value : [];
   return items
-    .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim())
+    .filter((item: any) => item && item.enabled === true && (item.show_homepage === true || item.show_footer === true) && isSafeExternalUrl(item.url))
     .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0));
 }
 
@@ -80,6 +88,7 @@ Deno.serve(async (req: Request) => {
       categoriesResult,
       activeUsersResult,
       rolesResult,
+      structuresResult,
       cmsStateResult,
       partnersResult,
     ] = await Promise.all([
@@ -94,6 +103,7 @@ Deno.serve(async (req: Request) => {
       supabase.from("courses").select("category").eq("is_published", true),
       supabase.from("users").select("id,country_code").eq("status", "actif"),
       supabase.from("user_roles").select("user_id,role").in("role", ["apprenant", "professeur", "structure"]),
+      supabase.from("partner_organizations").select("id", { count: "exact", head: true }).eq("status", "validated"),
       supabase.from("landing_page_cms_state").select("social_networks,mobile_apps").eq("id", 1).maybeSingle(),
       supabase
         .from("public_partners")
@@ -101,6 +111,7 @@ Deno.serve(async (req: Request) => {
         .eq("is_active", true)
         .eq("status", "active")
         .eq("logo_authorized", true)
+        .or("show_homepage.eq.true,show_footer.eq.true")
         .not("logo_url", "is", null)
         .order("display_order")
         .order("name"),
@@ -112,6 +123,7 @@ Deno.serve(async (req: Request) => {
       categoriesResult.error,
       activeUsersResult.error,
       rolesResult.error,
+      structuresResult.error,
       cmsStateResult.error,
       partnersResult.error,
     ].find(Boolean);
@@ -119,6 +131,13 @@ Deno.serve(async (req: Request) => {
 
     const settings: Record<string, unknown> = {};
     for (const row of settingsResult.data ?? []) settings[row.key] = parseSetting(row.value);
+
+    const publicPartners = (partnersResult.data ?? [])
+      .filter((partner: any) => isSafeExternalUrl(partner.logo_url))
+      .map((partner: any) => ({
+        ...partner,
+        website_url: isSafeExternalUrl(partner.website_url) ? partner.website_url : null,
+      }));
 
     const categoryCounts: Record<string, number> = {};
     for (const row of categoriesResult.data ?? []) {
@@ -135,7 +154,7 @@ Deno.serve(async (req: Request) => {
     const formationsCount = Number(coursesResult.count ?? 0);
     const apprenantsCount = uniqueCount(roleUserIds("apprenant"));
     const formateursCount = uniqueCount(roleUserIds("professeur"));
-    const structuresCount = uniqueCount(roleUserIds("structure"));
+    const structuresCount = Number(structuresResult.count ?? 0);
     const distinctCountries = uniqueCount(
       activeUsers
         .map((user: { country_code: string | null }) => user.country_code)
@@ -196,13 +215,11 @@ Deno.serve(async (req: Request) => {
         desc_fr: settings["landing_devenir_formateur_desc_fr"] ?? "",
       },
       fintech_logos: settings["fintech_logos"] ?? [],
-      social_networks: settings["social_networks"] ?? {},
       social_networks_v2: publicSocialNetworks(cmsStateResult.data?.social_networks),
-      app_downloads: settings["app_downloads"] ?? {},
       mobile_apps_v2: publicMobileApps(cmsStateResult.data?.mobile_apps),
       landing_page: settings["landing_page_published"] ?? {},
       collaborations_logos: settings["collaborations_logos"] ?? [],
-      public_partners: partnersResult.data ?? [],
+      public_partners: publicPartners,
       follow_us_label_fr: settings["follow_us_label_fr"] ?? "Suivez-nous",
       category_counts: categoryCounts,
     };

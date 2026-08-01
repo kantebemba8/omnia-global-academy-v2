@@ -26,7 +26,7 @@ export default function VerifiedTalentCandidates() {
 
   return <RecruiterLayout title="Compétences vérifiées" subtitle="Profils autorisés par les talents">
     <main className="mx-auto max-w-7xl p-5 md:p-8">
-      <p className="text-xs font-bold uppercase tracking-[.18em]" style={{color:GOLD}}>Programme 2 · GM5</p>
+      
       <h1 className="mt-2 text-3xl font-black" style={{color:BLUE}}>Rechercher des talents vérifiés</h1>
       <p className="mt-2 max-w-3xl text-sm text-gray-600">Les résultats affichent uniquement les sources et preuves autorisées par chaque talent. Les documents privés restent masqués.</p>
 

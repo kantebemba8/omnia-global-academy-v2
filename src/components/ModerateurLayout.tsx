@@ -29,7 +29,7 @@ type ModeratorNavItem = { path: string; label: string; icon: ElementType; exact?
 
 function buildModNav(perms: ModPerms) {
   const items: ModeratorNavItem[] = [
-    { path: '/moderator/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, exact: true, always: true },
+    { path: '/moderator/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true, always: true },
   ];
   if (perms.can_see_pending_courses || perms.can_reject_course || perms.can_approve_transmit_course) {
     items.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen, always: false });

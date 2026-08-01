@@ -93,12 +93,12 @@ function normalizeSocialNetworks(value: unknown) {
     const url = cleanExternalUrl(item.url);
     const iconKey = cleanText(item.icon_key, 60) || "other";
     const logoUrl = cleanExternalUrl(item.logo_url);
-    if (enabled && (!name || !url || (!iconKey && !logoUrl))) throw new Error("SOCIAL_NETWORK_PUBLIC_REQUIREMENTS");
+    if (enabled && (!name || !url || (iconKey === "other" && !logoUrl))) throw new Error("SOCIAL_NETWORK_PUBLIC_REQUIREMENTS");
     return {
       id, name, url, enabled,
       display_order: Math.trunc(Number(item.display_order || index + 1)),
       show_homepage: item.show_homepage === true,
-      show_footer: item.show_footer !== false,
+      show_footer: item.show_footer === true,
       icon_key: iconKey,
       logo_url: logoUrl,
       alt_text: cleanText(item.alt_text, 300),
@@ -127,8 +127,54 @@ function normalizeMobileApps(value: unknown) {
       url,
       enabled,
       display_order: Math.trunc(Number(item.display_order || index + 1)),
-      show_homepage: item.show_homepage !== false,
-      show_footer: item.show_footer !== false,
+      show_homepage: item.show_homepage === true,
+      show_footer: item.show_footer === true,
+    };
+  });
+}
+
+function normalizeLandingLinks(value: unknown, maxItems = 40) {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length > maxItems) throw new Error("TOO_MANY_LANDING_LINKS");
+  const ids = new Set<string>();
+  return rows.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("LANDING_LINK_INVALID");
+    const item = raw as Record<string, unknown>;
+    const id = cleanText(item.id, 120) || `link-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new Error("LANDING_LINK_ID_DUPLICATE");
+    ids.add(id);
+    return {
+      id,
+      label: cleanText(item.label, 160),
+      href: cleanPublicUrl(item.href),
+      description: cleanText(item.description, 500),
+      enabled: item.enabled !== false,
+      order: index + 1,
+    };
+  });
+}
+
+function normalizeLandingItems(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length > 40) throw new Error("TOO_MANY_LANDING_ITEMS");
+  const ids = new Set<string>();
+  return rows.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("LANDING_ITEM_INVALID");
+    const item = raw as Record<string, unknown>;
+    const id = cleanText(item.id, 120) || `item-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new Error("LANDING_ITEM_ID_DUPLICATE");
+    ids.add(id);
+    return {
+      id,
+      label: cleanText(item.label, 180),
+      title: cleanText(item.title, 500),
+      description: cleanText(item.description, 1500),
+      action_label: cleanText(item.action_label, 160),
+      action_url: cleanPublicUrl(item.action_url),
+      icon_key: cleanText(item.icon_key, 80) || "other",
+      group: cleanText(item.group, 80),
+      enabled: item.enabled !== false,
+      order: index + 1,
     };
   });
 }
@@ -138,7 +184,6 @@ function normalizeLandingPage(value: unknown) {
   const source = value as Record<string, unknown>;
   const rawSections = Array.isArray(source.sections) ? source.sections : [];
   if (rawSections.length === 0 || rawSections.length > 30) throw new Error("LANDING_SECTIONS_INVALID");
-
   const ids = new Set<string>();
   const uniqueTypes = new Set<string>();
   const sections = rawSections.map((raw, index) => {
@@ -154,8 +199,7 @@ function normalizeLandingPage(value: unknown) {
     if (ids.has(id)) throw new Error("LANDING_SECTION_ID_DUPLICATE");
     ids.add(id);
     return {
-      id,
-      type,
+      id, type,
       internal_name: cleanText(section.internal_name, 160),
       enabled: section.enabled !== false,
       order: index + 1,
@@ -167,13 +211,46 @@ function normalizeLandingPage(value: unknown) {
       primary_cta_url: cleanPublicUrl(section.primary_cta_url),
       secondary_cta_label: cleanText(section.secondary_cta_label, 120),
       secondary_cta_url: cleanPublicUrl(section.secondary_cta_url),
+      search_placeholder: cleanText(section.search_placeholder, 300),
+      search_button_label: cleanText(section.search_button_label, 120),
+      items: normalizeLandingItems(section.items),
+    };
+  });
+
+  const navigation = source.navigation && typeof source.navigation === "object" ? source.navigation as Record<string, unknown> : {};
+  const footer = source.footer && typeof source.footer === "object" ? source.footer as Record<string, unknown> : {};
+  const rawColumns = Array.isArray(footer.columns) ? footer.columns : [];
+  if (rawColumns.length > 8) throw new Error("TOO_MANY_FOOTER_COLUMNS");
+  const columns = rawColumns.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new Error("FOOTER_COLUMN_INVALID");
+    const column = raw as Record<string, unknown>;
+    return {
+      id: cleanText(column.id, 120) || `footer-column-${crypto.randomUUID()}`,
+      title: cleanText(column.title, 160),
+      order: index + 1,
+      links: normalizeLandingLinks(column.links, 30),
     };
   });
 
   return {
-    version: Math.max(1, Math.trunc(Number(source.version || 1))),
+    version: Math.max(2, Math.trunc(Number(source.version || 2))),
     updated_at: new Date().toISOString(),
     published_at: source.published_at ? cleanText(source.published_at, 80) : null,
+    navigation: {
+      explore_label: cleanText(navigation.explore_label, 120),
+      professionals_label: cleanText(navigation.professionals_label, 120),
+      login_label: cleanText(navigation.login_label, 120),
+      register_label: cleanText(navigation.register_label, 120),
+      direct_links: normalizeLandingLinks(navigation.direct_links),
+      explore_links: normalizeLandingLinks(navigation.explore_links),
+      professional_links: normalizeLandingLinks(navigation.professional_links),
+    },
+    footer: {
+      description: cleanText(footer.description, 1000),
+      follow_us_label: cleanText(footer.follow_us_label, 160),
+      partner_label: cleanText(footer.partner_label, 160),
+      columns,
+    },
     sections,
   };
 }
@@ -221,21 +298,36 @@ Deno.serve(async (req: Request) => {
     if (!adminId) return json({ error: "FORBIDDEN" }, 403);
 
     if (req.method === "GET") {
-      const { data: settings } = await sb.from("site_settings").select("key,value");
-      const { data: pricingTiers } = await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min");
-      const { data: partners } = await sb.from("public_partners").select("*").order("display_order").order("name");
-      const { data: landingCms } = await sb.from("landing_page_cms_state")
-        .select("draft,previous_published,published_at,published_by,updated_at,social_networks,mobile_apps")
-        .eq("id", 1)
-        .maybeSingle();
-      const { data: multipliers, error: multiplierError } = await sb.from("category_multipliers").select("category_name,multiplier").order("category_name");
-      if (multiplierError) return json({ error: "CATEGORY_MULTIPLIERS_READ_FAILED", detail: multiplierError.message }, 500);
+      const [settingsResult, pricingResult, partnersResult, landingResult, multipliersResult] = await Promise.all([
+        sb.from("site_settings").select("key,value"),
+        sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min"),
+        sb.from("public_partners").select("*").order("display_order").order("name"),
+        sb.from("landing_page_cms_state")
+          .select("draft,previous_published,published_at,published_by,updated_at,social_networks,mobile_apps")
+          .eq("id", 1)
+          .maybeSingle(),
+        sb.from("category_multipliers").select("category_name,multiplier").order("category_name"),
+      ]);
+
+      const readFailure = [
+        ["SITE_SETTINGS_READ_FAILED", settingsResult.error],
+        ["PRICING_TIERS_READ_FAILED", pricingResult.error],
+        ["PARTNERS_READ_FAILED", partnersResult.error],
+        ["LANDING_CMS_READ_FAILED", landingResult.error],
+        ["CATEGORY_MULTIPLIERS_READ_FAILED", multipliersResult.error],
+      ].find(([, error]) => Boolean(error));
+
+      if (readFailure) {
+        const [code, error] = readFailure as [string, { message: string }];
+        return json({ error: code, detail: error.message }, 500);
+      }
+
       return json({
-        settings: settings ?? [],
-        pricing_tiers: pricingTiers ?? [],
-        partners: partners ?? [],
-        landing_cms: landingCms ?? null,
-        category_multipliers: multipliers ?? [],
+        settings: settingsResult.data ?? [],
+        pricing_tiers: pricingResult.data ?? [],
+        partners: partnersResult.data ?? [],
+        landing_cms: landingResult.data ?? null,
+        category_multipliers: multipliersResult.data ?? [],
       });
     }
 
@@ -401,7 +493,8 @@ Deno.serve(async (req: Request) => {
 
     if (body.action === "delete_partner") {
       if (!body.partner_id) return json({ error: "PARTNER_ID_REQUIRED" }, 400);
-      await sb.from("public_partners").delete().eq("id", body.partner_id);
+      const { error: deleteError } = await sb.from("public_partners").delete().eq("id", body.partner_id);
+      if (deleteError) return json({ error: "PARTNER_DELETE_FAILED", detail: deleteError.message }, 500);
       return json({ success: true });
     }
 
@@ -421,97 +514,34 @@ Deno.serve(async (req: Request) => {
 
     if (body.action === "save_landing_draft") {
       const page = normalizeLandingPage(body.landing_page);
-      await sb.from("landing_page_cms_state").upsert({
-        id: 1,
-        draft: page,
-        updated_at: new Date().toISOString(),
-        updated_by: adminId,
-      }, { onConflict: "id" });
-      await sb.from("landing_page_publication_log").insert({
-        action: "save_draft", draft_snapshot: page, admin_id: adminId,
-      });
-      return json({ success: true, landing_page: page });
+      const { data, error: rpcError } = await sb.rpc("oga_landing_save_draft", { p_page: page, p_admin_id: adminId });
+      if (rpcError) return json({ error: "LANDING_DRAFT_SAVE_FAILED", detail: rpcError.message }, 500);
+      return json({ success: true, ...(data || {}), landing_page: (data as any)?.landing_page || page });
     }
 
     if (body.action === "publish_landing_page") {
-      const now = new Date().toISOString();
       const page = normalizeLandingPage(body.landing_page);
-      page.published_at = now;
-      const { data: currentPublishedRow } = await sb.from("site_settings")
-        .select("value").eq("key", "landing_page_published").maybeSingle();
-      const previousPublished = currentPublishedRow?.value ?? null;
-      const meta = { published_at: now, published_by: adminId, previous_available: Boolean(previousPublished) };
-      const [{ error: publicPublishError }, { error: cmsStateError }] = await Promise.all([
-        sb.from("site_settings").upsert([
-          { key: "landing_page_published", value: page, updated_at: now, updated_by_admin_id: adminId },
-          { key: "landing_page_publication_meta", value: meta, updated_at: now, updated_by_admin_id: adminId },
-        ], { onConflict: "key" }),
-        sb.from("landing_page_cms_state").upsert({
-          id: 1,
-          draft: page,
-          previous_published: previousPublished,
-          published_at: now,
-          published_by: adminId,
-          updated_at: now,
-          updated_by: adminId,
-        }, { onConflict: "id" }),
-      ]);
-      const publishError = publicPublishError || cmsStateError;
-      if (publishError) return json({ error: "LANDING_PUBLISH_FAILED", detail: publishError.message }, 500);
-      await sb.from("landing_page_publication_log").insert({
-        action: "publish", draft_snapshot: page, published_snapshot: page,
-        previous_published_snapshot: previousPublished, admin_id: adminId,
-      });
-      return json({ success: true, landing_page: page, publication_meta: meta });
+      const { data, error: rpcError } = await sb.rpc("oga_landing_publish", { p_page: page, p_admin_id: adminId });
+      if (rpcError) return json({ error: "LANDING_PUBLISH_FAILED", detail: rpcError.message }, 500);
+      return json({ success: true, ...(data || {}) });
     }
 
     if (body.action === "restore_landing_draft") {
-      const { data: publishedRow } = await sb.from("site_settings")
-        .select("value").eq("key", "landing_page_published").maybeSingle();
-      if (!publishedRow?.value) return json({ error: "NO_PUBLISHED_LANDING_PAGE" }, 404);
-      const page = normalizeLandingPage(publishedRow.value);
-      await sb.from("landing_page_cms_state").upsert({
-        id: 1,
-        draft: page,
-        updated_at: new Date().toISOString(),
-        updated_by: adminId,
-      }, { onConflict: "id" });
-      await sb.from("landing_page_publication_log").insert({ action: "restore_draft", draft_snapshot: page, admin_id: adminId });
-      return json({ success: true, landing_page: page });
+      const { data, error: rpcError } = await sb.rpc("oga_landing_restore_draft", { p_admin_id: adminId });
+      if (rpcError) {
+        const status = rpcError.message.includes("NO_PUBLISHED") ? 404 : 500;
+        return json({ error: "LANDING_DRAFT_RESTORE_FAILED", detail: rpcError.message }, status);
+      }
+      return json({ success: true, ...(data || {}) });
     }
 
     if (body.action === "rollback_landing_publication") {
-      const [{ data: currentRow }, { data: cmsState }] = await Promise.all([
-        sb.from("site_settings").select("value").eq("key", "landing_page_published").maybeSingle(),
-        sb.from("landing_page_cms_state").select("previous_published").eq("id", 1).maybeSingle(),
-      ]);
-      if (!cmsState?.previous_published) return json({ error: "NO_PREVIOUS_LANDING_PUBLICATION" }, 404);
-      const now = new Date().toISOString();
-      const restored = normalizeLandingPage(cmsState.previous_published);
-      restored.published_at = now;
-      const meta = { published_at: now, published_by: adminId, previous_available: Boolean(currentRow?.value) };
-      const [{ error: publicRollbackError }, { error: cmsRollbackError }] = await Promise.all([
-        sb.from("site_settings").upsert([
-          { key: "landing_page_published", value: restored, updated_at: now, updated_by_admin_id: adminId },
-          { key: "landing_page_publication_meta", value: meta, updated_at: now, updated_by_admin_id: adminId },
-        ], { onConflict: "key" }),
-        sb.from("landing_page_cms_state").upsert({
-          id: 1,
-          draft: restored,
-          previous_published: currentRow?.value ?? null,
-          published_at: now,
-          published_by: adminId,
-          updated_at: now,
-          updated_by: adminId,
-        }, { onConflict: "id" }),
-      ]);
-      const rollbackError = publicRollbackError || cmsRollbackError;
-      if (rollbackError) return json({ error: "LANDING_ROLLBACK_FAILED", detail: rollbackError.message }, 500);
-      await sb.from("landing_page_publication_log").insert({
-        action: "rollback", draft_snapshot: restored, published_snapshot: restored,
-        previous_published_snapshot: currentRow?.value ?? null, admin_id: adminId,
-      });
-      return json({ success: true, landing_page: restored, publication_meta: meta });
+      const { data, error: rpcError } = await sb.rpc("oga_landing_rollback", { p_admin_id: adminId });
+      if (rpcError) {
+        const status = rpcError.message.includes("NO_PREVIOUS") ? 404 : 500;
+        return json({ error: "LANDING_ROLLBACK_FAILED", detail: rpcError.message }, status);
+      }
+      return json({ success: true, ...(data || {}) });
     }
 
     if (body.action === "save_category_multipliers") {

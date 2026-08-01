@@ -6,6 +6,7 @@ import {
 import { RoleDashboardPanel, RoleDashboardStatCard } from '../../../components/dashboard/RoleDashboardCards';
 import { liveApi } from '../liveApi';
 import OrganizerShell from './OrganizerShell';
+import { dashboardGreeting } from '../../../lib/dashboardGreeting';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -32,10 +33,7 @@ export default function OrganizerDashboard() {
   ], [k]);
 
   return (
-    <OrganizerShell
-      title="Tableau de bord organisateur"
-      subtitle="Suivez vos événements, participants et diffusions depuis un seul espace."
-    >
+    <OrganizerShell title={dashboardGreeting()}>
       {err && <div className="mb-6 border-l-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

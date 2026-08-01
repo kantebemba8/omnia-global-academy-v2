@@ -46,9 +46,6 @@ type LandingDataResponse = {
   public_partners?: LandingPublicPartner[];
   social_networks_v2?: SocialNetworkItem[];
   mobile_apps_v2?: MobileAppItem[];
-  social_networks?: Record<string, string | null>;
-  app_downloads?: { google_play?: string | null; app_store?: string | null };
-  follow_us_label_fr?: string;
 };
 
 const DEFAULT_DATA: LandingDataResponse = {
@@ -59,9 +56,6 @@ const DEFAULT_DATA: LandingDataResponse = {
   public_partners: [],
   social_networks_v2: [],
   mobile_apps_v2: [],
-  social_networks: {},
-  app_downloads: {},
-  follow_us_label_fr: 'Suivez-nous',
 };
 
 function mergeStats(value: Partial<LandingStats> | undefined): LandingStats {
@@ -157,7 +151,7 @@ export function LandingPage() {
         partners={experienceData.partners}
       />
       <a href="#contenu-principal" className="oga-skip-link">Aller au contenu principal</a>
-      <Navbar />
+      <Navbar navigation={experienceData.landingPage.navigation} />
       {loadError && (
         <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 z-40 w-[min(92vw,680px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900 shadow-lg">
           Certaines données en temps réel sont temporairement indisponibles. Les sections concernées restent masquées.
@@ -172,12 +166,10 @@ export function LandingPage() {
         />
       </div>
       <PageFooter
-        socialNetworks={rawData.social_networks || {}}
         socialNetworksV2={experienceData.socialNetworks}
-        appDownloads={rawData.app_downloads || {}}
         mobileAppsV2={experienceData.mobileApps}
         partners={experienceData.partners}
-        followUsLabel={rawData.follow_us_label_fr || 'Suivez-nous'}
+        footerConfig={experienceData.landingPage.footer}
         managedOnly
       />
     </div>

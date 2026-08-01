@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
 import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import {
   contactTalent, loadPublicTalents, loadTalentConversations, loadTalentDashboard,
   loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation,
@@ -188,7 +189,7 @@ export default function RecruiterDashboard() {
   }, [talents, query]);
 
   const titleMap: Record<Section,string> = {
-    dashboard:'Tableau de bord recruteur', offres:'Mes offres', talents:'Rechercher des talents', favoris:'Talents favoris', candidatures:'Candidatures', entretiens:'Entretiens', messages:'Messages', profil:'Profil recruteur', parametres:'Paramètres',
+    dashboard:'Accueil', offres:'Mes offres', talents:'Rechercher des talents', favoris:'Talents favoris', candidatures:'Candidatures', entretiens:'Entretiens', messages:'Messages', profil:'Profil recruteur', parametres:'Paramètres',
   };
 
   if (accessState !== 'allowed') {
@@ -226,7 +227,7 @@ function DashboardHome({ user, talents, jobs, metrics, loading }: { user: User|n
     { label:'Entretiens à venir', value:metrics.upcoming_interviews, icon:CalendarDays, path:'/talent/recruteur/entretiens' },
   ];
   return <>
-    <div className="mb-6"><h2 className="text-2xl font-semibold" style={{ color: BLUE }}>Bienvenue, {user?.full_name?.split(' ')[0] || 'Recruteur'}</h2><p className="mt-1 text-sm text-gray-500">Aperçu synchronisé de votre activité de recrutement.</p></div>
+    <div className="mb-6"><h2 className="text-2xl font-semibold" style={{ color: BLUE }}>{dashboardGreeting(user?.full_name)}</h2></div>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {indicators.map((metric, index) => (
         <RoleDashboardStatCard
@@ -239,16 +240,10 @@ function DashboardHome({ user, talents, jobs, metrics, loading }: { user: User|n
         />
       ))}
     </div>
-    <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_.7fr]">
-      <RoleDashboardPanel>
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3"><h3 className="font-semibold" style={{ color:BLUE }}>Talents récemment visibles</h3><Link to="/talent/recruteur/talents" className="text-sm font-semibold" style={{ color:GOLD }}>Voir tous</Link></div>
-        {talents.length===0?<p className="py-6 text-sm text-gray-500">Aucun profil public disponible.</p>:<div className="divide-y divide-gray-100">{talents.slice(0,5).map(t=><Link key={t.id} to={`/talent/profil/${t.id}`} className="flex items-center gap-3 py-4"><Avatar talent={t}/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{ color:BLUE }}>{t.full_name}</p><p className="truncate text-xs text-gray-500">{t.professional_title || 'Profil professionnel'}{t.location ? ` · ${t.location}` : ''}</p></div><ArrowRight size={16} className="text-gray-400"/></Link>)}</div>}
-      </RoleDashboardPanel>
-      <RoleDashboardPanel>
-        <h3 className="border-b border-gray-100 pb-3 font-semibold" style={{ color:BLUE }}>Activité synchronisée</h3>
-        <div className="divide-y divide-gray-100 text-sm text-gray-600"><p className="flex justify-between py-4"><span>Prises de contact</span><strong style={{color:BLUE}}>{metrics.contacts}</strong></p><p className="flex justify-between py-4"><span>Talents favoris</span><strong style={{color:BLUE}}>{metrics.favorites}</strong></p><p className="flex justify-between py-4"><span>Entretiens à venir</span><strong style={{color:BLUE}}>{metrics.upcoming_interviews}</strong></p></div>
-      </RoleDashboardPanel>
-    </div>
+    <RoleDashboardPanel className="mt-6">
+      <div className="flex items-center justify-between border-b border-gray-100 pb-3"><h3 className="font-semibold" style={{ color:BLUE }}>Talents récemment visibles</h3><Link to="/talent/recruteur/talents" className="text-sm font-semibold" style={{ color:GOLD }}>Voir tous</Link></div>
+      {talents.length===0?<p className="py-6 text-sm text-gray-500">Aucun profil public disponible.</p>:<div className="divide-y divide-gray-100">{talents.slice(0,5).map(t=><Link key={t.id} to={`/talent/profil/${t.id}`} className="flex items-center gap-3 py-4"><Avatar talent={t}/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{ color:BLUE }}>{t.full_name}</p><p className="truncate text-xs text-gray-500">{t.professional_title || 'Profil professionnel'}{t.location ? ` · ${t.location}` : ''}</p></div><ArrowRight size={16} className="text-gray-400"/></Link>)}</div>}
+    </RoleDashboardPanel>
   </>;
 }
 

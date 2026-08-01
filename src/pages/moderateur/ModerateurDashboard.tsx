@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
+import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
@@ -160,10 +161,8 @@ export default function ModerateurDashboard() {
   return (
     <ModerateurLayout>
       <div className="p-6 max-w-6xl mx-auto space-y-8">
-        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Tableau de bord Modérateur</h1>
-          <p className="text-gray-500 text-sm mt-1">Aperçu de votre espace de modération</p>
+          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
         </div>
 
         {/* No permissions banner */}

@@ -7,6 +7,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function isSafeExternalUrl(value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -27,7 +37,7 @@ Deno.serve(async (req: Request) => {
     const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '');
     const supabaseService = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 
-    const [{ data: settings, error }, { data: cmsState }] = await Promise.all([
+    const [{ data: settings, error }, { data: cmsState, error: cmsError }] = await Promise.all([
       supabaseAnon
       .from('site_settings')
       .select('key, value'),
@@ -38,9 +48,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle(),
     ]);
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
+    if (cmsError) throw cmsError;
 
     // Transform the array into an object
     const settingsMap: Record<string, any> = {};
@@ -94,24 +103,12 @@ Deno.serve(async (req: Request) => {
       maintenance_notice_at: settingsMap.maintenance_notice_at || null,
       page_content: parseObjectSetting(settingsMap.page_content, {}),
       landing_page: parseObjectSetting(settingsMap.landing_page_published, {}),
-      social_networks: parseObjectSetting(settingsMap.social_networks, {
-        facebook: null,
-        instagram: null,
-        youtube: null,
-        linkedin: null,
-        indeed: null,
-        whatsapp: null,
-      }),
       social_networks_v2: parseArraySetting(cmsState?.social_networks)
-        .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim() && (item.logo_url || item.icon_key))
+        .filter((item: any) => item && item.enabled === true && (item.show_homepage === true || item.show_footer === true) && isSafeExternalUrl(item.url) && ((item.icon_key && item.icon_key !== "other") || isSafeExternalUrl(item.logo_url)))
         .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
       follow_us_label_fr: settingsMap.follow_us_label_fr || "Suivez-nous",
-      app_downloads: parseObjectSetting(settingsMap.app_downloads, {
-        google_play: null,
-        app_store: null,
-      }),
       mobile_apps_v2: parseArraySetting(cmsState?.mobile_apps)
-        .filter((item: any) => item && item.enabled === true && typeof item.url === "string" && item.url.trim())
+        .filter((item: any) => item && item.enabled === true && (item.show_homepage === true || item.show_footer === true) && isSafeExternalUrl(item.url))
         .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
       collaborations_logos: parseObjectSetting(settingsMap.collaborations_logos, []),
       favicon_url: settingsMap.favicon_url || null,
@@ -121,15 +118,22 @@ Deno.serve(async (req: Request) => {
       referral_reward_referred_xof: parseNumberSetting(settingsMap.referral_reward_referred_xof, 0),
     };
 
-    const { data: publicPartners } = await supabaseAnon
+    const { data: publicPartners, error: partnersError } = await supabaseAnon
       .from("public_partners")
       .select("id,name,category,logo_url,website_url,description,display_order,is_featured,status,logo_authorized,show_homepage,show_footer,alt_text")
       .eq("is_active", true)
       .eq("status", "active")
       .eq("logo_authorized", true)
+      .or("show_homepage.eq.true,show_footer.eq.true")
       .order("display_order")
       .order("name");
-    (publicSettings as any).public_partners = publicPartners ?? [];
+    if (partnersError) throw partnersError;
+    (publicSettings as any).public_partners = (publicPartners ?? [])
+      .filter((partner: any) => isSafeExternalUrl(partner.logo_url))
+      .map((partner: any) => ({
+        ...partner,
+        website_url: isSafeExternalUrl(partner.website_url) ? partner.website_url : null,
+      }));
     (publicSettings as any).legal = {
       cgu: settingsMap.cgu_content_fr || "",
       confidentialite: settingsMap.confidentialite_content_fr || "",

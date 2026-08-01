@@ -137,7 +137,7 @@ export default function FormulaireRecruteur() {
             </div>
             <div>
               <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Déposez votre offre d'emploi</h1>
-              <p className="text-sm text-gray-500 mt-1">Accédez à des milliers d'apprenants qualifiés en Afrique. Votre offre sera visible après validation (24-48h).</p>
+              <p className="text-sm text-gray-500 mt-1">Accédez aux profils publics disponibles sur Omnia. Votre offre sera visible après validation.</p>
             </div>
           </div>
         </div>
