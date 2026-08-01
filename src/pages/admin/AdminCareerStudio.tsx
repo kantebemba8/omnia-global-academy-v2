@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CV_TEMPLATES_META, LM_TEMPLATES_META } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import {
   AlertCircle,
   ArrowLeft,
@@ -42,18 +43,7 @@ type CareerRule = {
   display_order: number;
 };
 
-type TokenConfig = {
-  id?: string;
-  config_key: string;
-  config_value: number;
-  description_fr?: string | null;
-  config_group?: string | null;
-  min_value?: number | null;
-  max_value?: number | null;
-  value_unit?: string | null;
-  display_order?: number | null;
-  is_active: boolean;
-};
+type TokenConfig = CareerTokenRuleConfig;
 
 type AiConfig = {
   id?: string;
@@ -146,7 +136,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const SUB_MENUS = [
   { key: 'dashboard', label: 'Tableau de bord', icon: BarChart2 },
   { key: 'rules', label: 'Règles & Prix', icon: Settings },
-  { key: 'packs', label: 'Coûts en jetons', icon: Coins },
+  { key: 'packs', label: 'Gains & dépenses', icon: Coins },
   { key: 'cv_templates', label: 'Modèles CV', icon: FileText },
   { key: 'lm_templates', label: 'Modèles LM', icon: Mail },
   { key: 'ai', label: 'IA & Automatisation', icon: Sparkles },
@@ -284,10 +274,20 @@ export default function AdminCareerStudio() {
       let customTemplates: Template[] = [];
       try {
         const custom = await postTemplateManager<{ templates: Template[] }>({ action: 'list' });
-        customTemplates = (custom.templates || []).filter(t => t.is_custom);
+        customTemplates = custom.templates || [];
       } catch { customTemplates = []; }
-      const builtins = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META].map(t => ({ ...t, is_active: true } as Template));
-      const merged = [...builtins, ...customTemplates.filter(c => !builtins.some(b => b.template_key === c.template_key))];
+
+      const remoteTemplates = [...(data.templates || []), ...customTemplates];
+      const remoteByKey = new Map(remoteTemplates.map(template => [template.template_key, template]));
+      const builtins = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META].map(template => ({
+        ...template,
+        ...(remoteByKey.get(template.template_key) || {}),
+        is_active: remoteByKey.get(template.template_key)?.is_active ?? true,
+      } as Template));
+      const merged = [
+        ...builtins,
+        ...remoteTemplates.filter(template => !builtins.some(builtin => builtin.template_key === template.template_key)),
+      ];
       setCvTemplates(merged.filter(t => t.template_type === 'cv').sort((a,b)=>a.display_order-b.display_order));
       setLmTemplates(merged.filter(t => t.template_type === 'lm').sort((a,b)=>a.display_order-b.display_order));
       setStats(data.stats || stats);
@@ -332,8 +332,11 @@ export default function AdminCareerStudio() {
   async function saveTokenCosts() {
     setSaving(true);
     try {
-      const data = await postTokenManager<{ success: boolean; updated: number }>({ action: 'update_config', configs: tokenConfig });
-      showToast(`${data.updated} coût(s) sauvegardé(s)`);
+      const [tokenData, ruleData] = await Promise.all([
+        postTokenManager<{ success: boolean; updated: number }>({ action: 'update_config', configs: tokenConfig }),
+        postAdmin<{ success: boolean; updated: number }>({ action: 'save_rules', rules }),
+      ]);
+      showToast(`${tokenData.updated} règle(s) de jetons et ${ruleData.updated} paramètre(s) généraux sauvegardés`);
       await loadAll();
     } catch (err) {
       showToast((err as Error).message || 'Erreur de sauvegarde', 'error');
@@ -496,7 +499,7 @@ export default function AdminCareerStudio() {
           <div className="col-span-1">Ordre</div>
           <div className="col-span-4">Modèle</div>
           <div className="col-span-2">Catégorie</div>
-          <div className="col-span-1 text-center">Gratuit</div>
+          <div className="col-span-1 text-center">Premium</div>
           <div className="col-span-1 text-center">Actif</div>
           <div className="col-span-1 text-center">ATS</div>
           <div className="col-span-2 text-right">Action</div>
@@ -524,7 +527,7 @@ export default function AdminCareerStudio() {
             <div className="col-span-2">
               <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium" style={{ color: MUTED }}>{CATEGORY_LABELS[template.category] || template.category}</span>
             </div>
-            <div className="col-span-1 flex justify-center"><Toggle checked={template.is_free} onChange={(v) => setItems((prev) => prev.map((t) => t.template_key === template.template_key ? { ...t, is_free: v } : t))} /></div>
+            <div className="col-span-1 flex justify-center"><Toggle checked={!template.is_free} onChange={(premium) => setItems((prev) => prev.map((t) => t.template_key === template.template_key ? { ...t, is_free: !premium } : t))} /></div>
             <div className="col-span-1 flex justify-center"><Toggle checked={template.is_active} onChange={(v) => setItems((prev) => prev.map((t) => t.template_key === template.template_key ? { ...t, is_active: v } : t))} /></div>
             <div className="col-span-1 flex justify-center">
               <button type="button" onClick={() => setItems((prev) => prev.map((t) => t.template_key === template.template_key ? { ...t, is_ats_compatible: !t.is_ats_compatible } : t))}>
@@ -626,7 +629,7 @@ export default function AdminCareerStudio() {
               </div>
 
               <div className="border-t pt-4" style={{borderColor:BORDER}}>
-                <div className="rounded-2xl border p-4" style={{borderColor:BORDER,background:'#F8FAFC'}}><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts Career</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Configurez les coûts associés aux actions Career.</p><button onClick={()=>setSubTab('packs')} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button></div>
+                <div className="rounded-2xl border p-4" style={{borderColor:BORDER,background:'#F8FAFC'}}><h2 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts Career</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Configurez les coûts associés aux actions Career.</p><button onClick={()=>setSubTab('packs')} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les jetons</button></div>
               </div>
             </div>
           )}
@@ -636,7 +639,7 @@ export default function AdminCareerStudio() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Règles & Prix modifiables</h2>
-                  <p className="mt-1 text-sm" style={{ color: MUTED }}>Ces paramètres contrôlent Omnia Career sans recoder : gratuité, jetons, coût PDF, IA, accès premium et avantages structure.</p>
+                  <p className="mt-1 text-sm" style={{ color: MUTED }}>Ces paramètres contrôlent Omnia Career sans recoder. Les modèles restent accessibles tant que vous ne les marquez pas Premium et que leur mode d’accès n’est pas activé.</p>
                 </div>
                 <button onClick={saveRules} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}>
                   <Save size={15} /> Sauvegarder
@@ -644,10 +647,10 @@ export default function AdminCareerStudio() {
               </div>
               <section className="border-y py-4" style={{borderColor:BORDER}}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Coûts en jetons</h3><p className="mt-1 text-sm" style={{color:MUTED}}>Définissez les coûts appliqués aux actions Career.</p></div>
+                  <div><h3 className="font-semibold" style={{color:OMNIA_BLUE}}>Gains et dépenses en jetons</h3><p className="mt-1 text-sm" style={{color:MUTED}}>Choisissez les méthodes de gain, les plafonds et le coût de chaque action.</p></div>
                   <button onClick={()=>setSubTab('packs')} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Configurer les coûts</button>
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{tokenConfig.map(cfg=><div key={cfg.config_key} className="flex justify-between border-b py-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{cfg.description_fr||cfg.config_key}</span><strong style={{color:OMNIA_BLUE}}>{cfg.config_value} {cfg.value_unit||'jeton(s)'}</strong></div>)}</div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{tokenConfig.filter(cfg => cfg.metadata?.hidden !== true).map(cfg=><div key={cfg.config_key} className="flex justify-between border-b py-2 text-sm" style={{borderColor:BORDER}}><span style={{color:MUTED}}>{cfg.description_fr||cfg.config_key}</span><strong style={{color:OMNIA_BLUE}}>{cfg.config_value} {cfg.value_unit||'jeton(s)'}</strong></div>)}</div>
               </section>
               {Object.entries(groupedRules).map(([group, items]) => (
                 <section key={group} className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
@@ -672,39 +675,28 @@ export default function AdminCareerStudio() {
           )}
 
           {!loading && subTab === 'packs' && (
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Coûts des actions en jetons</h2>
-                <p className="mt-1 text-sm" style={{ color: MUTED }}>Cette page permet de configurer les coûts des actions Career.</p>
-              </div>
-              <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold" style={{ color: OMNIA_BLUE }}>Règles de consommation</h3>
-                    <p className="text-sm" style={{ color: MUTED }}>Exemple : télécharger un CV PDF peut consommer un jeton. Aucun achat de pack n’est disponible.</p>
-                  </div>
-                  <button onClick={saveTokenCosts} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}><Save size={14} /> Sauvegarder les coûts</button>
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {tokenConfig.map((cfg) => (
-                    <div key={cfg.config_key} className="flex items-center justify-between rounded-xl border p-4" style={{ borderColor: BORDER, background: '#F8FAFC' }}>
-                      <div className="min-w-0 flex-1 pr-3">
-                        <p className="truncate text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{cfg.description_fr || cfg.config_key}</p>
-                        <p className="text-xs" style={{ color: MUTED }}>{cfg.config_key}</p>
-                      </div>
-                      <NumberInput value={cfg.config_value} min={cfg.min_value ?? 0} max={cfg.max_value} suffix={cfg.value_unit || 'jeton(s)'} onChange={(v) => setTokenConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: v } : c))} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <CareerTokenGovernancePanel
+              configs={tokenConfig}
+              globalRules={rules.filter(rule => [
+                'career_token_earning_enabled',
+                'career_token_spending_enabled',
+                'career_premium_templates_enabled',
+              ].includes(rule.rule_key)) as CareerTokenGlobalRule[]}
+              saving={saving}
+              onChange={setTokenConfig}
+              onGlobalRulesChange={(globalRules) => setRules(current => current.map(rule =>
+                globalRules.find(globalRule => globalRule.rule_key === rule.rule_key) || rule
+              ))}
+              onSave={saveTokenCosts}
+            />
           )}
+
 
           {!loading && (subTab === 'cv_templates' || subTab === 'lm_templates') && (
             <div className="space-y-5">
               <div>
                 <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>{subTab === 'cv_templates' ? 'Modèles de CV' : 'Modèles de lettres de motivation'}</h2>
-                <p className="mt-1 text-sm" style={{ color: MUTED }}>Activez, désactivez, rendez gratuit/premium et ajustez l’ordre d’affichage.</p>
+                <p className="mt-1 text-sm" style={{ color: MUTED }}>Tous les modèles sont accessibles par défaut. Activez « Premium » uniquement pour les modèles que vous souhaitez réserver à une règle d’accès future, y compris les nouveaux modèles.</p>
               </div>
 
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
@@ -742,7 +734,7 @@ export default function AdminCareerStudio() {
                     </div>
                     <div className="flex flex-wrap gap-4 md:col-span-2">
                       {[['primary','Couleur principale'],['accent','Accent'],['sidebar','Colonne']].map(([key,label])=><label key={key} className="text-xs font-semibold" style={{color:MUTED}}>{label}<input type="color" value={(customTemplate as any)[key]} onChange={e=>setCustomTemplate(v=>({...v,[key]:e.target.value}))} className="ml-2 h-9 w-12 rounded border align-middle" style={{borderColor:BORDER}}/></label>)}
-                      <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={customTemplate.is_free} onChange={e=>setCustomTemplate(v=>({...v,is_free:e.target.checked}))}/> Gratuit</label>
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={!customTemplate.is_free} onChange={e=>setCustomTemplate(v=>({...v,is_free:!e.target.checked}))}/> Premium</label>
                       <label className="flex items-center gap-2 text-xs font-semibold" style={{color:MUTED}}><input type="checkbox" checked={customTemplate.is_ats_compatible} onChange={e=>setCustomTemplate(v=>({...v,is_ats_compatible:e.target.checked}))}/> Compatible ATS</label>
                     </div>
                     <div className="md:col-span-2 flex justify-end"><button type="button" disabled={saving} onClick={()=>createCompatibleTemplate(subTab==='cv_templates'?'cv':'lm')} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{background:OMNIA_BLUE}}>Créer et publier</button></div>

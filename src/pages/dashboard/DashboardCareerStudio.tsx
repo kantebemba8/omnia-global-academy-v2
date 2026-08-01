@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
+import { consumeCareerTokenAction, fetchCareerTemplateCatalog } from '../../lib/careerStudioApi';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
@@ -226,9 +227,16 @@ export default function DashboardCareerStudio() {
   async function loadData() {
     setLoading(true);
     try {
-      const [cvData, lmData] = await Promise.allSettled([loadByType('cv'), loadByType('lm')]);
+      const [cvData, lmData, publicCvTemplates, publicLmTemplates] = await Promise.allSettled([
+        loadByType('cv'),
+        loadByType('lm'),
+        fetchCareerTemplateCatalog('cv'),
+        fetchCareerTemplateCatalog('lm'),
+      ]);
       const cvPayload = cvData.status === 'fulfilled' ? cvData.value : null;
       const lmPayload = lmData.status === 'fulfilled' ? lmData.value : null;
+      const publicCv = publicCvTemplates.status === 'fulfilled' ? publicCvTemplates.value : fallbackCvTemplates;
+      const publicLm = publicLmTemplates.status === 'fulfilled' ? publicLmTemplates.value : fallbackLmTemplates;
 
       const loadedDocs = [
         ...((cvPayload?.documents || []) as CareerDocument[]),
@@ -236,8 +244,8 @@ export default function DashboardCareerStudio() {
       ].sort((a, b) => new Date(b.updated_at || b.created_at || '').getTime() - new Date(a.updated_at || a.created_at || '').getTime());
 
       setDocuments(loadedDocs);
-      const loadedCvTemplates = (((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : fallbackCvTemplates) as Template[];
-      const loadedLmTemplates = (((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : fallbackLmTemplates) as Template[];
+      const loadedCvTemplates = (((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : publicCv) as Template[];
+      const loadedLmTemplates = (((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : publicLm) as Template[];
       setCvTemplates(loadedCvTemplates);
       setLmTemplates(loadedLmTemplates);
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
@@ -279,9 +287,26 @@ export default function DashboardCareerStudio() {
     navigate(`${routes[view]}${query}`);
   }
 
-  function createDoc(docType: DocType, templateKey?: string) {
+  async function createDoc(docType: DocType, templateKey?: string) {
     const templates = docType === 'cv' ? cvTemplates : lmTemplates;
     const chosen = normalizeTemplateKey(docType, templateKey || templates[0]?.template_key || undefined);
+    const selected = templates.find(template => template.template_key === chosen);
+
+    if (selected && selected.is_free === false) {
+      try {
+        const charge = await consumeCareerTokenAction(
+          'spend_premium_template',
+          `new:${docType}:${chosen}`,
+          { template_key: chosen, doc_type: docType, source: 'career_dashboard' },
+        );
+        if (typeof charge.tokens_remaining === 'number') setTokens(charge.tokens_remaining);
+        if (Number(charge.amount || 0) > 0) showToast(`${charge.amount} jeton(s) consommé(s) pour le modèle Premium.`);
+      } catch (error) {
+        showToast((error as Error).message || 'Impossible d’activer ce modèle Premium.');
+        return;
+      }
+    }
+
     navigate(`/dashboard/career-studio/editor/new?type=${docType}&template=${encodeURIComponent(chosen)}`);
   }
 

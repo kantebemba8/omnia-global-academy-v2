@@ -45,7 +45,7 @@ import {
   getTemplateMeta,
   normalizeTemplateKey,
 } from '../../lib/careerStudioData';
-import { getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
+import { consumeCareerTokenAction, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
@@ -585,9 +585,28 @@ export default function CareerStudioEditor() {
     return presets[key] || {};
   }
 
-  function changeTemplate(templateKey: string) {
+  async function changeTemplate(templateKey: string) {
     const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
-    const meta = getTemplateMeta(docType, normalizedTemplateKey);
+    const meta = templates.find(template => template.template_key === normalizedTemplateKey)
+      || getTemplateMeta(docType, normalizedTemplateKey);
+
+    if (!meta.is_free && document?.template_key !== normalizedTemplateKey) {
+      try {
+        const charge = await consumeCareerTokenAction(
+          'spend_premium_template',
+          `${document?.id || 'local'}:${normalizedTemplateKey}`,
+          { template_key: normalizedTemplateKey, doc_type: docType },
+        );
+        if (typeof charge.tokens_remaining === 'number') setTokens(charge.tokens_remaining);
+        if (Number(charge.amount || 0) > 0) {
+          showToast(`${charge.amount} jeton(s) consommé(s) pour le modèle Premium.`);
+        }
+      } catch (error) {
+        showToast((error as Error).message || 'Impossible d’activer ce modèle Premium.');
+        return;
+      }
+    }
+
     const preset = docType === 'cv' ? templatePreset(normalizedTemplateKey) : {};
     updateDocument(doc => ({
       ...doc,
@@ -1636,7 +1655,7 @@ function TemplatePanel({
               <div className="flex flex-wrap gap-2">
                 {[
                   ['all', 'Tous'],
-                  ['free', 'Gratuits'],
+                  ['free', 'Accessibles'],
                   ['premium', 'Premium'],
                   ['ats', 'ATS'],
                 ].map(([key, label]) => (

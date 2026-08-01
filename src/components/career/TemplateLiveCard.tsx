@@ -59,7 +59,7 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-slate-100 p-3">
         <div className="min-w-0"><div className="truncate text-sm font-semibold text-[#002050]">{template.name_fr}</div><div className="mt-0.5 text-[11px] text-slate-500">{template.is_ats_compatible?'Compatible ATS':'Design créatif'}</div></div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${template.is_free?'bg-emerald-50 text-emerald-700':'bg-[#bf8813]/15 text-[#7a570c]'}`}>{template.is_free?'Gratuit':'Premium'}</span>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${template.is_free?'bg-emerald-50 text-emerald-700':'bg-[#bf8813]/15 text-[#7a570c]'}`}>{template.is_free?'Accessible':'Premium'}</span>
       </div>
     </button>
   );

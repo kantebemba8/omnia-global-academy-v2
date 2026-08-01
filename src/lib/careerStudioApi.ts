@@ -12,7 +12,7 @@ import {
   cacheCareerTemplates,
 } from './careerStudioData';
 
-import { edgeAuthHeaders } from './edgeAuth';
+import { edgeAuthHeaders, edgeGatewayHeaders } from './edgeAuth';
 import { analyzeCareerDocument, normalizeCareerDocument, type CareerSourceProfile } from './careerBuilderV2';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -90,6 +90,168 @@ async function functionPost<T>(slug: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+
+
+export type CareerTokenPolicy = {
+  config_key: string;
+  label_fr: string;
+  description_fr?: string | null;
+  rule_type: 'earn' | 'spend';
+  config_value: number;
+  repeat_policy?: string | null;
+  free_uses_per_month?: number | null;
+  is_active: boolean;
+  global_enabled?: boolean;
+};
+
+type CareerTokenActionResult = {
+  success: boolean;
+  applied?: boolean;
+  free_use?: boolean;
+  amount?: number;
+  tokens_remaining?: number;
+  error?: string;
+  message?: string;
+};
+
+const TOKEN_POLICY_CACHE_KEY = 'omnia_career_token_policy_v2';
+let tokenPolicyMemory: CareerTokenPolicy[] | null = null;
+
+function readCachedTokenPolicy(): CareerTokenPolicy[] {
+  if (tokenPolicyMemory) return tokenPolicyMemory;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TOKEN_POLICY_CACHE_KEY) || '[]');
+    tokenPolicyMemory = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    tokenPolicyMemory = [];
+  }
+  return tokenPolicyMemory;
+}
+
+function writeCachedTokenPolicy(policies: CareerTokenPolicy[]) {
+  tokenPolicyMemory = policies;
+  try {
+    localStorage.setItem(TOKEN_POLICY_CACHE_KEY, JSON.stringify(policies));
+  } catch {
+    // Le cache est facultatif.
+  }
+}
+
+export async function fetchCareerTokenPolicies(): Promise<CareerTokenPolicy[]> {
+  if (!SUPABASE_URL) return readCachedTokenPolicy();
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/career_public_token_policy`, {
+      method: 'POST',
+      headers: edgeGatewayHeaders(),
+      body: '{}',
+    });
+    const data = await safeJson<CareerTokenPolicy[] | { message?: string; error?: string }>(res);
+    if (!res.ok || !Array.isArray(data)) throw new Error((data as { message?: string; error?: string }).message || 'TOKEN_POLICY_UNAVAILABLE');
+    const normalized = data.map(policy => ({
+      ...policy,
+      config_value: Number(policy.config_value || 0),
+      free_uses_per_month: Number(policy.free_uses_per_month || 0),
+      is_active: Boolean(policy.is_active),
+      global_enabled: policy.global_enabled !== false,
+    }));
+    writeCachedTokenPolicy(normalized);
+    return normalized;
+  } catch {
+    return readCachedTokenPolicy();
+  }
+}
+
+export async function getCareerTokenPolicy(ruleKey: string): Promise<CareerTokenPolicy | null> {
+  const policies = await fetchCareerTokenPolicies();
+  return policies.find(policy => policy.config_key === ruleKey) || null;
+}
+
+export async function consumeCareerTokenAction(
+  ruleKey: string,
+  referenceKey?: string | null,
+  metadata: Record<string, unknown> = {},
+): Promise<CareerTokenActionResult> {
+  const policy = await getCareerTokenPolicy(ruleKey);
+  if (!policy || !policy.is_active || policy.global_enabled === false || Number(policy.config_value || 0) <= 0) {
+    return { success: true, applied: false, amount: 0 };
+  }
+
+  const token = sessionToken();
+  if (!token || !SUPABASE_URL) {
+    const err = new Error(`Cette action nécessite ${policy.config_value} jeton(s), mais la vérification du solde est indisponible.`);
+    (err as Error & { code?: string }).code = 'TOKEN_CHECK_UNAVAILABLE';
+    throw err;
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/career_consume_token_action`, {
+    method: 'POST',
+    headers: edgeGatewayHeaders(),
+    body: JSON.stringify({
+      p_session_token: token,
+      p_rule_key: ruleKey,
+      p_reference_key: referenceKey || null,
+      p_request_id: crypto.randomUUID(),
+      p_metadata: metadata,
+    }),
+  });
+  const data = await safeJson<CareerTokenActionResult>(res);
+  if (!res.ok || data.success !== true) {
+    const err = new Error(data.message || data.error || `Impossible d'appliquer la règle ${ruleKey}.`);
+    (err as Error & { code?: string; status?: number }).code = data.error || 'TOKEN_ACTION_FAILED';
+    (err as Error & { code?: string; status?: number }).status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+export async function fetchCareerTemplateCatalog(docType: CareerDocType): Promise<ReturnType<typeof getCareerTemplates>> {
+  const localTemplates = getCareerTemplates(docType);
+  if (!SUPABASE_URL) return localTemplates;
+
+  try {
+    const query = new URLSearchParams({
+      select: '*',
+      template_type: `eq.${docType}`,
+      is_active: 'eq.true',
+      order: 'display_order.asc',
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/career_templates?${query.toString()}`, {
+      headers: edgeGatewayHeaders(),
+    });
+    const rows = await safeJson<Array<Record<string, unknown>>>(res);
+    if (!res.ok || !Array.isArray(rows)) throw new Error('TEMPLATE_CATALOG_UNAVAILABLE');
+
+    const remoteByKey = new Map(rows.map(row => [String(row.template_key || ''), row]));
+    const merged = localTemplates.map(template => ({
+      ...template,
+      ...(remoteByKey.get(template.template_key) || {}),
+      is_free: remoteByKey.get(template.template_key)?.is_free ?? template.is_free,
+      is_ats_compatible: remoteByKey.get(template.template_key)?.is_ats_compatible ?? template.is_ats_compatible,
+      display_order: Number(remoteByKey.get(template.template_key)?.display_order ?? template.display_order),
+    }));
+
+    for (const row of rows) {
+      const key = String(row.template_key || '');
+      if (!key || merged.some(template => template.template_key === key)) continue;
+      merged.push(row as unknown as ReturnType<typeof getCareerTemplates>[number]);
+    }
+
+    const sorted = merged.sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0));
+    cacheCareerTemplates(sorted as any);
+    return sorted;
+  } catch {
+    return localTemplates;
+  }
+}
+
+function tokenRuleForAiAction(action: CareerAiAction): string {
+  if (action === 'generate_lm' || action === 'generate_cv_lm') return 'spend_ai_lm';
+  if (action === 'adapt_to_offer') return 'spend_adapt_offer';
+  if (action === 'ats_score') return 'spend_ats_analysis';
+  if (action === 'translate') return 'spend_translation';
+  return 'spend_ai_cv';
+}
 
 export type CareerTrackedApplication = {
   id: string;
@@ -229,6 +391,8 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
   remote: boolean;
   sourceProfile: CareerSourceProfile;
 }> {
+  const publicTemplates = await fetchCareerTemplateCatalog(docType);
+
   try {
     const data = await functionPost<{
       documents?: CareerDocumentSummary[];
@@ -239,10 +403,11 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       partner_link?: CareerSourceProfile['partner_link'];
     }>('career-studio-manage?action=list', { doc_type: docType });
 
-    if (data.templates?.length) cacheCareerTemplates(data.templates as any);
+    const templates = data.templates?.length ? data.templates : publicTemplates;
+    if (templates.length) cacheCareerTemplates(templates as any);
     return {
       documents: data.documents || [],
-      templates: getCareerTemplates(docType),
+      templates,
       tokens: data.user?.cv_tokens ?? 0,
       remote: true,
       sourceProfile: {
@@ -256,8 +421,8 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
     const docs = readLocal(docType);
     return {
       documents: docs.map(({ doc_data, design_options, ...summary }) => summary),
-      templates: getCareerTemplates(docType),
-      tokens: Number(localStorage.getItem('omnia_career_tokens') || 0),
+      templates: publicTemplates,
+      tokens: 0,
       remote: false,
       sourceProfile: {},
     };
@@ -396,7 +561,22 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
     if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402) {
       throw err;
     }
-    return localResult;
+
+    const ruleKey = document.doc_type === 'cv' ? 'spend_pdf_cv' : 'spend_pdf_lm';
+    const charge = await consumeCareerTokenAction(
+      ruleKey,
+      `${document.id || 'local'}:${document.template_key}`,
+      { doc_type: document.doc_type, template_key: document.template_key, local_export: true },
+    );
+
+    return {
+      ...localResult,
+      tokens_consumed: Number(charge.amount || 0),
+      tokens_remaining: charge.tokens_remaining,
+      message: Number(charge.amount || 0) > 0
+        ? `Export local préparé. ${charge.amount} jeton(s) consommé(s).`
+        : localResult.message,
+    };
   }
 }
 
@@ -405,7 +585,7 @@ export async function getCareerTokenHistory(): Promise<{ transactions: unknown[]
     const data = await functionPost<{ transactions?: unknown[]; balance?: number }>('career-token-manage', { action: 'get_history' });
     return { transactions: data.transactions || [], balance: data.balance ?? 0, remote: true };
   } catch {
-    return { transactions: [], balance: Number(localStorage.getItem('omnia_career_tokens') || 0), remote: false };
+    return { transactions: [], balance: 0, remote: false };
   }
 }
 
@@ -529,6 +709,21 @@ export async function runCareerAiAction(payload: CareerAiPayload): Promise<Caree
     if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402 || e.code === 'AI_DISABLED') {
       throw err;
     }
-    return fallbackAiResult(payload);
+
+    const ruleKey = tokenRuleForAiAction(payload.action);
+    const charge = await consumeCareerTokenAction(ruleKey, null, {
+      action: payload.action,
+      doc_type: payload.doc_type,
+      local_fallback: true,
+    });
+    const fallback = fallbackAiResult(payload);
+    return {
+      ...fallback,
+      tokens_consumed: Number(charge.amount || 0),
+      tokens_remaining: charge.tokens_remaining,
+      message: Number(charge.amount || 0) > 0
+        ? `Suggestion locale générée. ${charge.amount} jeton(s) consommé(s).`
+        : fallback.message,
+    };
   }
 }
