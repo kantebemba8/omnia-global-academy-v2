@@ -24,7 +24,7 @@ export function AssessmentRulesCard({
           </p>
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-600">
             <Clock3 size={14} />
-            Durée pédagogique calculée automatiquement : {Math.max(0, durationMinutes)} min. Ce calcul alimente les heures CPD et certifiées.
+            Durée pédagogique calculée automatiquement : {Math.max(0, durationMinutes)} min. Ce calcul alimente les heures pédagogiques et les crédits professionnels éventuels.
           </div>
         </div>
         <button

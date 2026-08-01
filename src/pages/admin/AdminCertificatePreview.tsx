@@ -90,7 +90,7 @@ function CertificateCanvas(props: PreviewProps) {
 
   const headerRight = props.cpd ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', border: `2px solid ${GOLD}`, borderRadius: 20, background: 'rgba(191,136,19,0.05)' }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: GOLD, letterSpacing: '0.1em' }}>CPD CERTIFIED · {props.cpdHours}h</span>
+      <span style={{ fontSize: 9, fontWeight: 700, color: GOLD, letterSpacing: '0.1em' }}>RECONNAISSANCE PROFESSIONNELLE · {props.cpdHours}h</span>
     </div>
   ) : isLive ? (
     <div style={{ padding: '5px 12px', border: `1px solid ${GOLD}`, borderRadius: 20, fontSize: 9, fontWeight: 800, color: GOLD, letterSpacing: '0.12em' }}>OMNIA LIVE</div>
@@ -142,7 +142,7 @@ function CertificateCanvas(props: PreviewProps) {
           <Badge label={isLive ? 'Format' : 'Niveau'} value={props.level} />
           <div style={{ width: 1, height: 32, background: BORDER }} />
           <Badge label="Catégorie" value={props.category} />
-          {props.cpd && <><div style={{ width: 1, height: 32, background: BORDER }} /><Badge label="Durée CPD" value={`${props.cpdHours}h`} /></>}
+          {props.cpd && <><div style={{ width: 1, height: 32, background: BORDER }} /><Badge label="Crédits ou durée reconnus" value={`${props.cpdHours}h`} /></>}
         </div>
 
         <div style={{ display: 'flex', justifyContent: props.template === 'C' ? 'center' : 'space-between', gap: props.template === 'C' ? 80 : 0, alignItems: 'flex-end', width: '100%', paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
@@ -270,7 +270,7 @@ export default function AdminCertificatePreview() {
               </div>
               <label className="mt-4 flex cursor-pointer items-center gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
                 <input type="checkbox" checked={cpd} onChange={(event) => setCpd(event.target.checked)} style={{ accentColor: GOLD }} />
-                <span className="text-sm" style={{ color: BLUE }}>Badge CPD</span>
+                <span className="text-sm" style={{ color: BLUE }}>Mention de reconnaissance</span>
               </label>
             </section>
 
@@ -281,7 +281,7 @@ export default function AdminCertificatePreview() {
                 <TextField label={documentKind.startsWith('live_') ? 'Événement / formation Live' : 'Formation'} value={courseTitle} setValue={setCourseTitle} />
                 <TextField label={documentKind.startsWith('live_') ? 'Format' : 'Niveau'} value={level} setValue={setLevel} />
                 <TextField label="Catégorie" value={category} setValue={setCategory} />
-                {cpd && <TextField label="Heures CPD" value={cpdHours} setValue={setCpdHours} type="number" />}
+                {cpd && <TextField label="Heures ou crédits reconnus" value={cpdHours} setValue={setCpdHours} type="number" />}
                 {template === 'A' && <TextField label={documentKind.startsWith('live_') ? 'Organisateur / formateur' : 'Nom du professeur'} value={professorName} setValue={setProfessorName} />}
                 {template === 'B' && <><TextField label="École / structure" value={schoolName} setValue={setSchoolName} /><TextField label="Responsable" value={directorName} setValue={setDirectorName} /></>}
               </div>
@@ -291,7 +291,7 @@ export default function AdminCertificatePreview() {
           <div className="lg:col-span-2">
             <div className="rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}>
               <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2"><Eye size={16} style={{ color: BLUE }} /><span className="text-sm font-semibold" style={{ color: BLUE }}>Aperçu — {DOCUMENT_COPY[documentKind].label} · Template {template}{cpd ? ' + CPD' : ''}</span></div>
+                <div className="flex items-center gap-2"><Eye size={16} style={{ color: BLUE }} /><span className="text-sm font-semibold" style={{ color: BLUE }}>Aperçu — {DOCUMENT_COPY[documentKind].label} · Template {template}{cpd ? ' + reconnaissance' : ''}</span></div>
               </div>
               <CertificateCanvas {...previewProps} />
             </div>

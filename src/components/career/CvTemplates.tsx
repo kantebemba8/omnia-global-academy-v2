@@ -171,7 +171,7 @@ export function ClassicPro({ data, design }: { data: DocData; design: DesignOpti
           <Section title="Formations Omnia Global Academy" primary={c.primary} accent={c.accent} fs={fs}>
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: c.primary }}>{f.title}</div><div style={{ fontSize: fs - 1, color: c.accent }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: c.primary }}>{f.title}</div><div style={{ fontSize: fs - 1, color: c.accent }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}
@@ -700,7 +700,7 @@ export function AfricaGold({ data, design }: { data: DocData; design: DesignOpti
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div>
                   <div style={{ fontSize: fs, fontWeight: 700, color: sidebarBg }}>{f.title}</div>
-                  <div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div>
+                  <div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div>
                   {f.certificate_id && <div style={{ fontSize: 7, color: '#9CA3AF' }}>Cert. {f.certificate_id}</div>}
                 </div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>

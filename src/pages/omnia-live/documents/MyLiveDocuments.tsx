@@ -7,12 +7,12 @@ const BLUE='#002050';
 const DOC_LABELS:any={
  attendance_certificate:'Certificat de présence',
  completion_certificate:'Certificat de réussite',
- cpd_certificate:'Certificat CPD',
+ cpd_certificate:'Certificat de développement professionnel',
  participation_attestation:'Attestation de participation',
  institutional_document:'Document institutionnel',
  participation:'Attestation de participation',
  success:'Certificat de réussite',
- cpd:'Certificat CPD'
+ cpd:'Certificat de développement professionnel'
 };
 
 export default function MyLiveDocuments(){
@@ -44,7 +44,7 @@ export default function MyLiveDocuments(){
      <div>
       <div className="font-semibold" style={{color:BLUE}}>{DOC_LABELS[d.document_type]||d.title||String(d.document_type||'Document').replaceAll('_',' ')}</div>
       <div className="mt-1 text-xs text-slate-400">N° {d.document_number||'—'} · {d.issue_date||d.issued_at?new Date(d.issue_date||d.issued_at).toLocaleDateString('fr-FR'):'—'}</div>
-      {d.cpd_hours&&<div className="mt-1 text-xs text-slate-500">CPD : {d.cpd_hours} h{d.cpd_points?` · ${d.cpd_points} points`:''}</div>}
+      {d.cpd_hours&&<div className="mt-1 text-xs text-slate-500">Crédits reconnus : {d.cpd_hours} h{d.cpd_points?` · ${d.cpd_points} points`:''}</div>}
      </div>
      <div>{d.event_title||d.live_events?.title||'Événement Omnia Live'}</div>
      <div>{liveStatusLabel(d.status||'issued')}</div>

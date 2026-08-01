@@ -4,7 +4,7 @@ import AdminOmniaLiveShell from '../admin/AdminOmniaLiveShell';
 import {omniaDialog} from '../../../lib/omniaDialog';
 import {liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
-const DOC_LABELS:any={attendance_certificate:'Certificat de présence',completion_certificate:'Certificat de réussite',cpd_certificate:'Certificat CPD',participation_attestation:'Attestation de participation'};
+const DOC_LABELS:any={attendance_certificate:'Certificat de présence',completion_certificate:'Certificat de réussite',cpd_certificate:'Certificat de développement professionnel',participation_attestation:'Attestation de participation'};
 
 export default function AdminLiveDocuments(){
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState('');
@@ -38,7 +38,7 @@ export default function AdminLiveDocuments(){
   }
  }
 
- return <AdminOmniaLiveShell title="Certificats, attestations & CPD" subtitle="Contrôlez l’éligibilité, validez les demandes et émettez les documents Omnia Live.">
+ return <AdminOmniaLiveShell title="Certificats, attestations et reconnaissances" subtitle="Contrôlez l’éligibilité, validez les demandes et émettez les documents Omnia Live.">
   {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
   {rows.length?<div className="overflow-x-auto"><div className="min-w-[980px]">
    <div className="grid grid-cols-[1.2fr_1.3fr_.9fr_.8fr_1.1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Participant</div><div>Événement</div><div>Document</div><div>Statut</div><div className="text-right">Actions</div></div>

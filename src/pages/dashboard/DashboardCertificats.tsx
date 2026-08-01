@@ -130,7 +130,7 @@ export function DashboardCertificats() {
                         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#BF8813' }}>Certificat</span>
                         {cert.cpd_accredited && (
                           <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(191,136,19,0.2)', color: '#BF8813' }}>
-                            <BadgeCheck className="w-3 h-3" /> CPD
+                            <BadgeCheck className="w-3 h-3" /> Reconnaissance
                           </span>
                         )}
                       </div>
@@ -156,11 +156,11 @@ export function DashboardCertificats() {
                   </div>
                 </div>
 
-                {/* CPD pending banner */}
+                {/* Reconnaissance professionnelle en attente */}
                 {cert.cpd_pending && (
                   <div className="px-4 py-2 flex items-center gap-2 border-b border-amber-100" style={{ backgroundColor: '#FFF7ED' }}>
                     <Clock className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#BF8813' }} />
-                    <p className="text-xs" style={{ color: '#BF8813' }}>Badge CPD en attente de crédits</p>
+                    <p className="text-xs" style={{ color: '#BF8813' }}>Reconnaissance en attente de crédits</p>
                   </div>
                 )}
 

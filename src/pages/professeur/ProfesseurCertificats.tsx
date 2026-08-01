@@ -53,7 +53,7 @@ export default function ProfesseurCertificats() {
   const exportCSV = () => {
     const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const csv = [
-      ['ID', 'Étudiant', 'Formation', 'Date', 'CPD', 'Statut'],
+      ['ID', 'Étudiant', 'Formation', 'Date', 'Reconnaissance', 'Statut'],
       ...certificates.map((certificate) => [
         certificate.omnia_certificate_id,
         certificate.student_full_name,
@@ -83,7 +83,7 @@ export default function ProfesseurCertificats() {
           {[
             { label: 'Total délivrés', value: stats.total, icon: Award, color: '#002050' },
             { label: 'Actifs', value: stats.active, icon: CheckCircle, color: '#1E7A52' },
-            { label: 'CPD certifiés', value: stats.cpd, icon: Award, color: '#BF8813' },
+            { label: 'Reconnaissances', value: stats.cpd, icon: Award, color: '#BF8813' },
             { label: 'Révoqués', value: stats.revoked, icon: XCircle, color: '#DC2626' },
           ].map((stat) => (
             <div key={stat.label} className="rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}>
@@ -119,7 +119,7 @@ export default function ProfesseurCertificats() {
             <div className="oga-table-scroll">
               <table className="w-full min-w-[900px]">
                 <thead><tr style={{ borderBottom: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
-                  {['ID', 'Étudiant', 'Formation', 'Date', 'CPD', 'Statut', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: '#6B7280' }}>{heading}</th>)}
+                  {['ID', 'Étudiant', 'Formation', 'Date', 'Reconnaissance', 'Statut', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: '#6B7280' }}>{heading}</th>)}
                 </tr></thead>
                 <tbody>
                   {certificates.map((certificate, index) => (
@@ -128,7 +128,7 @@ export default function ProfesseurCertificats() {
                       <td className="px-4 py-3 text-sm text-gray-700">{certificate.student_full_name}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{certificate.course_title}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{certificate.issued_at ? new Date(certificate.issued_at).toLocaleDateString('fr-FR') : '—'}</td>
-                      <td className="px-4 py-3">{certificate.cpd_accredited ? <span className="text-xs font-semibold" style={{ color: '#BF8813' }}>✓ CPD</span> : <span className="text-xs text-gray-400">—</span>}</td>
+                      <td className="px-4 py-3">{certificate.cpd_accredited ? <span className="text-xs font-semibold" style={{ color: '#BF8813' }}>✓ Reconnue</span> : <span className="text-xs text-gray-400">—</span>}</td>
                       <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isRevoked(certificate.status) ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>{isRevoked(certificate.status) ? 'Révoqué' : 'Actif'}</span></td>
                       <td className="px-4 py-3"><div className="flex gap-2">
                         <a href={`/verify/${certificate.omnia_certificate_id}`} target="_blank" rel="noopener noreferrer" className="rounded p-1.5 hover:bg-gray-100" aria-label="Vérifier le certificat"><Eye size={14} className="text-gray-500" /></a>

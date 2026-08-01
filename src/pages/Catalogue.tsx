@@ -201,7 +201,7 @@ function FilterSidebar({ params, update, reset }: FilterSidebarProps) {
       </FilterSection>
 
       {/* CPD toggle */}
-      <FilterSection title="Certification CPD">
+      <FilterSection title="Certification et reconnaissance">
         <label className="flex items-center gap-3 cursor-pointer">
           <div
             className="relative w-10 h-5 rounded-full transition-colors"
@@ -213,7 +213,7 @@ function FilterSidebar({ params, update, reset }: FilterSidebarProps) {
               style={{ transform: get('cpd_only') === 'true' ? 'translateX(22px)' : 'translateX(2px)' }}
             />
           </div>
-          <span className="text-sm" style={{ color: '#374151' }}>CPD uniquement</span>
+          <span className="text-sm" style={{ color: '#374151' }}>Formations reconnues</span>
         </label>
       </FilterSection>
 

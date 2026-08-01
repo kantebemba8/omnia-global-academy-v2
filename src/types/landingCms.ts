@@ -193,7 +193,7 @@ const DEFAULT_FOOTER: LandingFooterConfig = {
       links: [
         linkItem('footer-catalogue', 1, 'Catalogue complet', '/catalogue'),
         linkItem('footer-free', 2, 'Formations gratuites', '/catalogue?prix=gratuit'),
-        linkItem('footer-cpd', 3, 'Certifications CPD', '/catalogue?type=cpd'),
+        linkItem('footer-cpd', 3, 'Certifications et reconnaissances', '/cpd'),
         linkItem('footer-verify', 4, 'Vérifier un certificat', '/verify'),
       ],
     },
@@ -340,7 +340,7 @@ const SECTION_DEFAULTS: Record<LandingSectionType, Omit<LandingSectionConfig, 'i
       contentItem('structure-members', 1, { title: 'Membres, groupes, départements et cohortes' }),
       contentItem('structure-training', 2, { title: 'Formations obligatoires et dates limites' }),
       contentItem('structure-progress', 3, { title: 'Suivi de progression et compétences' }),
-      contentItem('structure-compliance', 4, { title: 'Certificats, CPD et conformité' }),
+      contentItem('structure-compliance', 4, { title: 'Certificats, reconnaissances et conformité' }),
       contentItem('structure-reporting', 5, { title: 'Rapports et tableaux de bord RH' }),
       contentItem('structure-contracts', 6, { title: 'Commerce B2B, devis et contrats' }),
     ],

@@ -17,10 +17,10 @@ type Settings = Record<string, any>;
 type Tab = 'general' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia' | 'maintenance';
 
 const COMMISSION_KEYS = [
-  { key: 'commission_normal_sans_cpd', label: 'Normale sans CPD (part plateforme %)', row: 'Normale', col: 'Sans CPD' },
-  { key: 'commission_normal_avec_cpd', label: 'Normale avec CPD', row: 'Normale', col: 'Avec CPD' },
-  { key: 'commission_assistee_sans_cpd', label: 'Assistée sans CPD', row: 'Assistée', col: 'Sans CPD' },
-  { key: 'commission_assistee_avec_cpd', label: 'Assistée avec CPD', row: 'Assistée', col: 'Avec CPD' },
+  { key: 'commission_normal_sans_cpd', label: 'Normale sans reconnaissance externe (part plateforme %)', row: 'Normale', col: 'Sans reconnaissance' },
+  { key: 'commission_normal_avec_cpd', label: 'Normale avec reconnaissance externe', row: 'Normale', col: 'Avec reconnaissance' },
+  { key: 'commission_assistee_sans_cpd', label: 'Assistée sans reconnaissance externe', row: 'Assistée', col: 'Sans reconnaissance' },
+  { key: 'commission_assistee_avec_cpd', label: 'Assistée avec reconnaissance externe', row: 'Assistée', col: 'Avec reconnaissance' },
 ];
 
 const CMS_EXCLUDED_KEYS = new Set([
@@ -357,9 +357,9 @@ export default function AdminCMS() {
         body: JSON.stringify({ updates }),
       });
       if (!res.ok) throw new Error('Enregistrement impossible');
-      setToast('Paramètres CPD & Quiz enregistrés.');
+      setToast('Paramètres d’évaluation et de reconnaissance enregistrés.');
     } catch {
-      setToast('Erreur pendant l’enregistrement des paramètres CPD & Quiz.');
+      setToast('Erreur pendant l’enregistrement des paramètres d’évaluation et de reconnaissance.');
     } finally {
       setSaving(false);
       setTimeout(() => setToast(''), 3000);
@@ -805,11 +805,11 @@ export default function AdminCMS() {
                 <p className="text-xs text-gray-400 mt-2">Toute modification est enregistrée dans l'audit log avec l'ancienne et la nouvelle valeur.</p>
               </div>
 
-              {/* CPD settings */}
+              {/* Paramètres d'évaluation et de reconnaissance */}
               <div className="border-t border-gray-100 pt-6">
-                <h3 className="font-semibold mb-1" style={{ color: '#002050' }}>Paramètres CPD & Quiz</h3>
+                <h3 className="font-semibold mb-1" style={{ color: '#002050' }}>Paramètres d’évaluation et de reconnaissance</h3>
                 <p className="text-xs text-gray-400 mb-4">
-                  Seuils de réussite appliqués aux évaluations CPD. Une leçon/module/examen final est validé si le score atteint le seuil configuré.
+                  Seuils de réussite appliqués aux évaluations de formation. Une leçon/module/examen final est validé si le score atteint le seuil configuré.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   {[
@@ -839,7 +839,7 @@ export default function AdminCMS() {
                     style={{ backgroundColor: '#002050' }}
                   >
                     <Save className="w-4 h-4" />
-                    {saving ? 'Enregistrement…' : 'Enregistrer les paramètres CPD & Quiz'}
+                    {saving ? 'Enregistrement…' : 'Enregistrer les paramètres d’évaluation'}
                   </button>
                 </div>
               </div>

@@ -125,7 +125,7 @@ export function BusinessManager({ data, design }: { data: DocData; design: Desig
           <BMMain title="Formations Omnia Global Academy" navy={navy} gold={gold} fs={fs}>
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: navy }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: navy }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}
@@ -350,7 +350,7 @@ export function AcademicCv({ data, design }: { data: DocData; design: DesignOpti
             <AcadSection title="Formations Omnia Global Academy" indigo={indigo} violet={violet} fs={fs}>
               {data.omnia_formations.filter(f => f.show).map(f => (
                 <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7, fontFamily: 'Arial, sans-serif' }}>
-                  <div><div style={{ fontSize: fs, fontWeight: 700, color: indigo }}>{f.title}</div><div style={{ fontSize: 7, color: violet }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                  <div><div style={{ fontSize: fs, fontWeight: 700, color: indigo }}>{f.title}</div><div style={{ fontSize: 7, color: violet }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                   <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
                 </div>
               ))}
@@ -650,7 +650,7 @@ export function ExecutiveOnePage({ data, design }: { data: DocData; design: Desi
             <ExecMain title="Formations Omnia Global Academy" gold={gold} fs={fs} />
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: 'white' }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: 'white' }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}

@@ -20,7 +20,7 @@ export default function AdminAssistedCourses(){
  async function update(id:string,status:string,item?:any){try{await call(tab==='assisted'?'admin_update_assisted_request':'admin_update_course_certification',{id,status,display_on_course:item?.display_on_course!==false,display_on_certificate:item?.display_on_certificate!==false});await load()}catch(e){setError(e instanceof Error?e.message:'Erreur')}}
  return <AdminLayout><div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between border-b border-gray-200 pb-5">
-     <div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Formations & CPD</p>
+     <div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Formations & reconnaissances</p>
        <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Saisie assistée & certifications</h1>
        <p className="text-sm text-gray-500 mt-1">Traitez les demandes reçues depuis le Studio de formation.</p></div>
      <button onClick={load} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>

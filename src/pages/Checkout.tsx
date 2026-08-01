@@ -165,7 +165,7 @@ export default function Checkout() {
                   <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{course.level}</span>
                   {course.cpd_accredited && (
                     <span className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1" style={{ backgroundColor: '#F0FAF5', color: '#1E7A52' }}>
-                      <BadgeCheck className="w-3 h-3" /> Certifié CPD
+                      <BadgeCheck className="w-3 h-3" /> Formation reconnue
                     </span>
                   )}
                 </div>

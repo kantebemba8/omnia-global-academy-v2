@@ -4,7 +4,7 @@ import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
 import {liveApi} from '../liveApi';
 
 const BLUE='#002050';
-const DOC_LABELS:any={attendance_certificate:'Certificat de présence',completion_certificate:'Certificat de réussite',cpd_certificate:'Certificat CPD',participation_attestation:'Attestation de participation',participation:'Attestation de participation',success:'Certificat de réussite',cpd:'Certificat CPD'};
+const DOC_LABELS:any={attendance_certificate:'Certificat de présence',completion_certificate:'Certificat de réussite',cpd_certificate:'Certificat de développement professionnel',participation_attestation:'Attestation de participation',participation:'Attestation de participation',success:'Certificat de réussite',cpd:'Certificat de développement professionnel'};
 
 export default function VerifyLiveDocument(){
  const {code}=useParams();
@@ -28,7 +28,7 @@ export default function VerifyLiveDocument(){
      <p><b>Type :</b> {DOC_LABELS[r.document.document_type]||String(r.document.document_type||'Document').replaceAll('_',' ')}</p>
      <p><b>Numéro :</b> {r.document.document_number}</p>
      <p><b>Date d’émission :</b> {r.document.issue_date?new Date(r.document.issue_date).toLocaleDateString('fr-FR'):'—'}</p>
-     {r.document.cpd_hours&&<p><b>CPD :</b> {r.document.cpd_hours} h{r.document.cpd_points?` · ${r.document.cpd_points} points`:''}</p>}
+     {r.document.cpd_hours&&<p><b>Crédits reconnus :</b> {r.document.cpd_hours} h{r.document.cpd_points?` · ${r.document.cpd_points} points`:''}</p>}
     </div>}
     {r&&!r.valid&&<div className="mt-6 border-l-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">Ce code ne correspond à aucun document actif ou le document a été révoqué.</div>}
    </>}

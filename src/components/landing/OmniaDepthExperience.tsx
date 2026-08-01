@@ -1,22 +1,19 @@
-import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Award,
+  ArrowUpRight,
   BadgeCheck,
   BookOpen,
   Briefcase,
-  CalendarDays,
   Check,
-  FileBadge2,
   FolderKanban,
-  Monitor,
   Network,
   ShieldCheck,
+  Sparkles,
   Target,
 } from 'lucide-react';
 import type { CourseCardData } from '../CourseCard';
-import { useElementScrollProgress, useEnhancedLandingMotion } from '../../hooks/useLandingMotion';
-
-type StageStyle = CSSProperties & Record<'--oga-scroll', number>;
+import { useEnhancedLandingMotion } from '../../hooks/useLandingMotion';
 
 type HeroDepthStageProps = {
   course?: CourseCardData | null;
@@ -26,288 +23,228 @@ type JourneyDepthStageProps = {
   activeIndex: number;
 };
 
-type InterfaceWindowProps = {
-  eyebrow: string;
+type NexusStep = {
+  label: string;
   title: string;
-  icon: ReactNode;
-  children: ReactNode;
-  className?: string;
-  style?: CSSProperties;
+  description: string;
+  href: string;
+  icon: typeof BookOpen;
+  signals: string[];
 };
 
-function InterfaceWindow({
-  eyebrow,
-  title,
-  icon,
-  children,
-  className = '',
-  style,
-}: InterfaceWindowProps) {
-  return (
-    <div className={`oga-interface-window ${className}`} style={style}>
-      <div className="oga-interface-window__bar">
-        <span className="oga-interface-window__mark" />
-        <span className="oga-interface-window__mark" />
-        <span className="oga-interface-window__mark" />
-        <span className="oga-interface-window__brand">Omnia</span>
-      </div>
-      <div className="oga-interface-window__body">
-        <div className="oga-interface-window__heading">
-          <span className="oga-interface-window__icon">{icon}</span>
-          <span>
-            <span className="oga-interface-window__eyebrow">{eyebrow}</span>
-            <strong>{title}</strong>
-          </span>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
+const NEXUS_STEPS: NexusStep[] = [
+  {
+    label: 'Apprendre',
+    title: 'Construire des compétences utiles',
+    description: 'Formations, parcours, évaluations et sessions en direct sont réunis dans un environnement de progression cohérent.',
+    href: '/catalogue',
+    icon: BookOpen,
+    signals: ['Formations', 'Parcours', 'Évaluations'],
+  },
+  {
+    label: 'Pratiquer',
+    title: 'Transformer les acquis en réalisations',
+    description: 'Les projets, missions et livrables donnent une dimension concrète aux connaissances acquises.',
+    href: '/projects',
+    icon: FolderKanban,
+    signals: ['Projets', 'Missions', 'Portfolio'],
+  },
+  {
+    label: 'Prouver',
+    title: 'Rendre les acquis vérifiables',
+    description: 'Certificats, badges et preuves professionnelles structurent une identité de compétences crédible.',
+    href: '/verify',
+    icon: BadgeCheck,
+    signals: ['Certificats', 'Badges', 'Skills Passport'],
+  },
+  {
+    label: 'Se développer',
+    title: 'Préparer la prochaine étape professionnelle',
+    description: 'CV, portfolio, coaching et outils de carrière permettent de convertir les compétences en progression professionnelle.',
+    href: '/coaching',
+    icon: Target,
+    signals: ['Career', 'Coaching', 'Portfolio'],
+  },
+  {
+    label: 'Opportunités',
+    title: 'Relier talents, recruteurs et structures',
+    description: 'Les profils, offres, candidatures et besoins des organisations se rencontrent dans le même écosystème.',
+    href: '/talent',
+    icon: Network,
+    signals: ['Talent', 'Offres', 'Recrutement'],
+  },
+];
 
-function InterfaceRows({ items }: { items: string[] }) {
+function SignalList({ items }: { items: string[] }) {
   return (
-    <div className="oga-interface-rows">
+    <div className="oga-nexus-signals" aria-label="Fonctions disponibles">
       {items.map(item => (
-        <div key={item} className="oga-interface-row">
-          <Check className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>{item}</span>
-        </div>
+        <span key={item}><Check className="h-3.5 w-3.5" aria-hidden="true" />{item}</span>
       ))}
     </div>
   );
 }
 
-function MiniInterfaceCard({
-  title,
-  icon,
-  items,
-  className = '',
-}: {
-  title: string;
-  icon: ReactNode;
-  items: string[];
-  className?: string;
-}) {
-  return (
-    <div className={`oga-depth-tile ${className}`}>
-      <div className="oga-depth-tile__heading">
-        <span className="oga-depth-tile__icon">{icon}</span>
-        <strong>{title}</strong>
-      </div>
-      <div className="oga-depth-tile__items">
-        {items.map(item => <span key={item}>{item}</span>)}
-      </div>
-    </div>
-  );
-}
-
-const LEARNING_ROUTE = [
-  { label: 'Apprendre', icon: BookOpen },
-  { label: 'Pratiquer', icon: FolderKanban },
-  { label: 'Prouver', icon: BadgeCheck },
-  { label: 'Avancer', icon: Briefcase },
-];
-
 export function OmniaHeroDepthStage({ course }: HeroDepthStageProps) {
-  const stageRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const enhancedMotion = useEnhancedLandingMotion();
-  const progress = useElementScrollProgress(stageRef, enhancedMotion);
-  const stageStyle: StageStyle = { '--oga-scroll': progress };
+  const active = NEXUS_STEPS[activeIndex] || NEXUS_STEPS[0];
+  const ActiveIcon = active.icon;
 
-  const courseTitle = course?.title?.trim() || 'Catalogue de formations';
-  const courseMeta = [course?.category, course?.level, course?.language].filter(Boolean) as string[];
+  const activeTitle = useMemo(() => {
+    if (activeIndex === 0 && course?.title?.trim()) return course.title.trim();
+    return active.title;
+  }, [active.title, activeIndex, course?.title]);
+
+  const activeDescription = activeIndex === 0 && course?.short_description?.trim()
+    ? course.short_description.trim()
+    : active.description;
 
   return (
-    <div
-      ref={stageRef}
-      className="oga-hero-depth-stage oga-premium-depth-stage"
-      style={stageStyle}
-      data-motion={enhancedMotion ? 'enhanced' : 'static'}
-      aria-hidden="true"
-    >
-      <div className="oga-depth-grid" />
-      <div className="oga-depth-aurora oga-depth-aurora--gold" />
-      <div className="oga-depth-aurora oga-depth-aurora--blue" />
-      <div className="oga-depth-orbit oga-depth-orbit--one" />
-      <div className="oga-depth-orbit oga-depth-orbit--two" />
-      <div className="oga-depth-orbit oga-depth-orbit--three" />
+    <div className="oga-nexus-stage" data-motion={enhancedMotion ? 'enhanced' : 'static'}>
+      <span className="oga-nexus-stage__layer oga-nexus-stage__layer--back" aria-hidden="true" />
+      <span className="oga-nexus-stage__layer oga-nexus-stage__layer--middle" aria-hidden="true" />
 
-      <div className="oga-learning-route">
-        {LEARNING_ROUTE.map((item, index) => {
-          const Icon = item.icon;
-          return (
-            <span key={item.label} className={`oga-learning-route__node oga-learning-route__node--${index + 1}`}>
-              <Icon className="h-3.5 w-3.5" />
-              <small>{item.label}</small>
-            </span>
-          );
-        })}
-      </div>
-
-      <InterfaceWindow
-        eyebrow={course ? 'Formation publiée' : 'Apprendre'}
-        title={courseTitle}
-        icon={<BookOpen className="h-5 w-5" />}
-        className="oga-depth-layer oga-depth-layer--course oga-academy-core"
-      >
-        {courseMeta.length > 0 ? (
-          <div className="oga-interface-pills">
-            {courseMeta.map(item => <span key={item}>{item}</span>)}
-          </div>
-        ) : (
-          <p className="oga-interface-copy">Les formations publiées apparaissent ici.</p>
-        )}
-
-        <div className="oga-academy-progress">
+      <div className="oga-nexus-stage__surface">
+        <header className="oga-nexus-stage__header">
           <div>
-            <span>Progression</span>
-            <strong>Parcours structuré</strong>
+            <span className="oga-nexus-stage__status"><i aria-hidden="true" />Écosystème connecté</span>
+            <strong>OMNIA NEXUS</strong>
           </div>
-          <span className="oga-academy-progress__ring"><i /></span>
+          <span className="oga-nexus-stage__index">{String(activeIndex + 1).padStart(2, '0')} / 05</span>
+        </header>
+
+        <div className="oga-nexus-stage__body">
+          <nav className="oga-nexus-route" aria-label="Explorer le parcours Omnia">
+            {NEXUS_STEPS.map((step, index) => {
+              const Icon = step.icon;
+              const selected = index === activeIndex;
+              return (
+                <button
+                  key={step.label}
+                  type="button"
+                  className={selected ? 'is-active' : ''}
+                  aria-pressed={selected}
+                  onClick={() => setActiveIndex(index)}
+                  onPointerEnter={() => setActiveIndex(index)}
+                >
+                  <span><Icon className="h-4 w-4" aria-hidden="true" /></span>
+                  <strong>{step.label}</strong>
+                  <i aria-hidden="true" />
+                </button>
+              );
+            })}
+          </nav>
+
+          <section className="oga-nexus-viewport" aria-live="polite">
+            <div className="oga-nexus-viewport__identity">
+              <span><ActiveIcon className="h-7 w-7" aria-hidden="true" /></span>
+              <div>
+                <small>{active.label}</small>
+                <h3 data-no-auto-translate={activeIndex === 0 && Boolean(course?.title) ? 'true' : undefined}>{activeTitle}</h3>
+              </div>
+            </div>
+
+            <p data-no-auto-translate={activeIndex === 0 && Boolean(course?.short_description) ? 'true' : undefined}>{activeDescription}</p>
+            <SignalList items={active.signals} />
+
+            <Link to={active.href} className="oga-nexus-viewport__action">
+              Explorer cet espace <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </section>
         </div>
 
-        <div className="oga-interface-progress" aria-hidden="true">
-          <span /><span /><span />
-        </div>
-
-        <div className="oga-academy-core__footer">
-          <span><Monitor className="h-3.5 w-3.5" />Sessions en direct</span>
-          <span><ShieldCheck className="h-3.5 w-3.5" />Preuves vérifiables</span>
-        </div>
-      </InterfaceWindow>
-
-      <MiniInterfaceCard
-        title="Omnia Projects"
-        icon={<FolderKanban className="h-5 w-5" />}
-        items={['Briefs', 'Livrables', 'Validation']}
-        className="oga-depth-layer oga-depth-layer--projects"
-      />
-
-      <MiniInterfaceCard
-        title="Preuves vérifiées"
-        icon={<BadgeCheck className="h-5 w-5" />}
-        items={['Certificat', 'Badge', 'Skills Passport']}
-        className="oga-depth-layer oga-depth-layer--credentials"
-      />
-
-      <MiniInterfaceCard
-        title="Carrière et coaching"
-        icon={<Target className="h-5 w-5" />}
-        items={['CV', 'Portfolio', 'Coaching']}
-        className="oga-depth-layer oga-depth-layer--career"
-      />
-
-      <MiniInterfaceCard
-        title="Opportunités"
-        icon={<Network className="h-5 w-5" />}
-        items={['Talent', 'Offres', 'Recrutement']}
-        className="oga-depth-layer oga-depth-layer--opportunities"
-      />
-
-      <div className="oga-depth-signal oga-depth-signal--live">
-        <Monitor className="h-4 w-4" />
-        <span><small>Omnia Live</small><strong>Apprendre ensemble</strong></span>
-      </div>
-
-      <div className="oga-depth-signal oga-depth-signal--verified">
-        <ShieldCheck className="h-4 w-4" />
-        <span><small>Vérifiable</small><strong>Compétence prouvée</strong></span>
-      </div>
-
-      <div className="oga-depth-signal oga-depth-signal--calendar">
-        <CalendarDays className="h-4 w-4" />
-        <span><small>Parcours</small><strong>Prochaine étape</strong></span>
-      </div>
-
-      <div className="oga-depth-axis" />
-      <div className="oga-depth-caption">
-        <span>Un seul écosystème</span>
-        <strong>Formation → preuves → opportunités</strong>
+        <footer className="oga-nexus-stage__footer">
+          <span><ShieldCheck className="h-4 w-4" aria-hidden="true" />Identité Omnia</span>
+          <span><Sparkles className="h-4 w-4" aria-hidden="true" />Une progression continue</span>
+          <span><Briefcase className="h-4 w-4" aria-hidden="true" />Des résultats professionnels</span>
+        </footer>
       </div>
     </div>
   );
 }
 
-const JOURNEY_SCENES = [
+const JOURNEY_SCENES: Array<{
+  eyebrow: string;
+  title: string;
+  description: string;
+  icon: typeof BookOpen;
+  rows: string[];
+}> = [
   {
     eyebrow: 'Étape 01',
     title: 'Apprendre',
+    description: 'Choisir une formation ou un parcours, progresser et valider les connaissances.',
     icon: BookOpen,
     rows: ['Formations', 'Parcours', 'Évaluations', 'Omnia Live'],
   },
   {
     eyebrow: 'Étape 02',
     title: 'Pratiquer',
+    description: 'Appliquer les acquis dans des situations concrètes et produire des livrables.',
     icon: FolderKanban,
     rows: ['Projets', 'Missions', 'Livrables', 'Portfolio'],
   },
   {
     eyebrow: 'Étape 03',
     title: 'Prouver',
+    description: 'Rassembler les documents, badges et preuves qui attestent les compétences.',
     icon: BadgeCheck,
     rows: ['Certificats', 'Badges', 'Learning Record', 'Skills Passport'],
   },
   {
     eyebrow: 'Étape 04',
     title: 'Se développer',
+    description: 'Structurer son profil, se faire accompagner et préparer ses prochaines décisions.',
     icon: Target,
-    rows: ['CV', 'Portfolio', 'Coaching', 'Préparation professionnelle'],
+    rows: ['CV', 'Portfolio', 'Coaching', 'Préparation'],
   },
   {
     eyebrow: 'Étape 05',
     title: 'Accéder aux opportunités',
+    description: 'Mettre les compétences en relation avec les recruteurs, structures et missions.',
     icon: Network,
-    rows: ['Omnia Talent', 'Offres', 'Candidatures', 'Recrutement'],
+    rows: ['Omnia Talent', 'Offres', 'Candidatures', 'Structures'],
   },
 ];
 
+function JourneyRow({ children }: { children: ReactNode }) {
+  return <span><Check className="h-3.5 w-3.5" aria-hidden="true" />{children}</span>;
+}
+
 export function OmniaJourneyDepthStage({ activeIndex }: JourneyDepthStageProps) {
-  const normalizedIndex = Math.min(Math.max(activeIndex, 0), JOURNEY_SCENES.length - 1);
-  const activeScene = JOURNEY_SCENES[normalizedIndex];
+  const normalizedIndex = ((activeIndex % JOURNEY_SCENES.length) + JOURNEY_SCENES.length) % JOURNEY_SCENES.length;
+  const active = JOURNEY_SCENES[normalizedIndex];
+  const ActiveIcon = active.icon;
 
   return (
-    <div className="oga-journey-depth-stage oga-premium-journey-stage" aria-hidden="true">
-      <div className="oga-journey-depth-stage__grid" />
-      <div className="oga-journey-depth-stage__halo" />
+    <div className="oga-journey-front-stage">
+      <span className="oga-journey-front-stage__layer oga-journey-front-stage__layer--one" aria-hidden="true" />
+      <span className="oga-journey-front-stage__layer oga-journey-front-stage__layer--two" aria-hidden="true" />
 
-      <div className="oga-journey-path">
-        {JOURNEY_SCENES.map((scene, index) => {
-          const Icon = scene.icon;
-          return (
-            <span key={scene.title} className={index === normalizedIndex ? 'is-active' : ''}>
-              <Icon className="h-3.5 w-3.5" />
-              <small>{index + 1}</small>
-            </span>
-          );
-        })}
-      </div>
+      <div key={active.title} className="oga-journey-front-stage__surface">
+        <div className="oga-journey-front-stage__topline">
+          <span>{active.eyebrow}</span>
+          <strong>{String(normalizedIndex + 1).padStart(2, '0')} / 05</strong>
+        </div>
 
-      <div className="oga-journey-depth-stage__stack">
-        <div className="oga-journey-scene-backdrop oga-journey-scene-backdrop--two" />
-        <div className="oga-journey-scene-backdrop oga-journey-scene-backdrop--one" />
-        <InterfaceWindow
-          eyebrow={activeScene.eyebrow}
-          title={activeScene.title}
-          icon={(() => { const ActiveIcon = activeScene.icon; return <ActiveIcon className="h-5 w-5" />; })()}
-          className="oga-journey-scene is-active"
-        >
-          <InterfaceRows items={activeScene.rows} />
-          <div className="oga-journey-scene__footer">
-            <span>Omnia Global Academy</span>
-            <span>{String(normalizedIndex + 1).padStart(2, '0')} / 05</span>
+        <div className="oga-journey-front-stage__focus">
+          <span className="oga-journey-front-stage__icon"><ActiveIcon className="h-8 w-8" aria-hidden="true" /></span>
+          <h3>{active.title}</h3>
+          <p>{active.description}</p>
+          <div className="oga-journey-front-stage__rows">
+            {active.rows.map(row => <JourneyRow key={row}>{row}</JourneyRow>)}
           </div>
-        </InterfaceWindow>
-      </div>
+        </div>
 
-      <div className="oga-journey-depth-stage__label">
-        <span>Le parcours Omnia</span>
-        <strong>{activeScene.title}</strong>
-      </div>
-
-      <div className="oga-journey-metric">
-        <span>{String(normalizedIndex + 1).padStart(2, '0')}</span>
-        <small>étape active</small>
+        <div className="oga-journey-front-stage__progress" aria-hidden="true">
+          {JOURNEY_SCENES.map((scene, index) => (
+            <span key={scene.title} className={index <= normalizedIndex ? 'is-complete' : ''}>
+              <i />
+              <small>{String(index + 1).padStart(2, '0')}</small>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );

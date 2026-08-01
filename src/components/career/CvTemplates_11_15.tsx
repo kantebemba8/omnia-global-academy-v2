@@ -492,7 +492,7 @@ export function InternationalCv({ data, design }: { data: DocData; design: Desig
           <IntlMain title="Formations Omnia Global Academy" navy={navy} gold={gold} fs={fs}>
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: navy }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: navy }}>{f.title}</div><div style={{ fontSize: 7, color: gold }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}
@@ -607,7 +607,7 @@ export function QhseProfessional({ data, design }: { data: DocData; design: Desi
           <QMain title="Formations Omnia Global Academy" forest={forest} sage={sage} fs={fs}>
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: forest }}>{f.title}</div><div style={{ fontSize: 7, color: sage }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: forest }}>{f.title}</div><div style={{ fontSize: 7, color: sage }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}

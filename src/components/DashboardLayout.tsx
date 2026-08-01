@@ -168,7 +168,7 @@ const ADMIN_NAV = [
   { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
   { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },
   { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
-  { path: '/admin/courses', label: 'Catalogue & CPD', icon: BookOpen },
+  { path: '/admin/courses', label: 'Catalogue & reconnaissances', icon: BookOpen },
   { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
   { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
   { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },

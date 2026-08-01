@@ -207,7 +207,7 @@ export function CoursDetail() {
             {/* Badges */}
             <div className="flex flex-wrap gap-2 mb-4">
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: levelColor }}>{String(course.level)}</span>
-              {course.cpd_accredited && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>CPD ✓</span>}
+              {course.cpd_accredited && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Reconnaissance ✓</span>}
               {course.language && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}>{String(course.language).toUpperCase()}</span>}
               {course.niveau_cecrl && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#1E3A6E', color: '#60A5FA', border: '1px solid rgba(96,165,250,0.35)' }}>CECRL {String(course.niveau_cecrl)}</span>}
               {course.langue_enseignee && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.80)' }}>🌐 {String(course.langue_enseignee)}</span>}
@@ -231,7 +231,7 @@ export function CoursDetail() {
             {creator.school_name && (
               <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>École : <span>{String(creator.school_name)}</span></p>
             )}
-            {cpd > 0 && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ {cpd}h de formation CPD</p>}
+            {cpd > 0 && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ {cpd} h d’apprentissage reconnu</p>}
           </div>
 
           {/* Purchase card */}
@@ -254,7 +254,7 @@ export function CoursDetail() {
                     'Accès illimité à vie',
                     'Certificat à l\'obtention',
                     'Support via le forum du cours',
-                    ...(course.cpd_accredited ? ['Accréditation CPD internationale'] : []),
+                    ...(course.cpd_accredited ? ['Certification ou reconnaissance professionnelle'] : []),
                   ].map(g => (
                     <li key={g} className="flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>
                       <Check size={12} style={{ color: '#1E7A52', flexShrink: 0 }} /> {g}
@@ -471,7 +471,7 @@ export function CoursDetail() {
         {modules.length > 0 && (
           <section>
             <h2 className="font-bold mb-2" style={{ color: '#002050', fontSize: '22px' }}>Programme de la formation</h2>
-            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{modules.length} module{modules.length > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{cpd > 0 ? ` · ${cpd}h CPD` : ''}</p>
+            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{modules.length} module{modules.length > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{cpd > 0 ? ` · ${cpd} h reconnues` : ''}</p>
             <div className="space-y-2">
               {modules.map((mod, mi) => {
                 const mid = mod.id as string;

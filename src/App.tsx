@@ -780,7 +780,7 @@ export default function App() {
         <Route path="/paiement/confirmation" element={<PaymentConfirmation />} />
         <Route path="/paiement/echec" element={<PaymentFailed />} />
 
-        {/* Module 12 — CPD — always accessible */}
+        {/* Reconnaissances professionnelles — accès public */}
         <Route path="/cpd" element={<CpdPage />} />
 
         {/* Module 14 — Forum & Carrière — always accessible */}

@@ -36,13 +36,13 @@ export default function EventDocumentSettings(){
    const score=Number(r.minimum_assessment_score);
    if(!Number.isFinite(score)||score<0||score>100){setMsg('Le score minimal doit être compris entre 0 et 100 %.');return}
   }
-  if(r.cpd_enabled&&Number(r.cpd_hours||0)<=0){setMsg('Renseignez un nombre d’heures CPD supérieur à zéro.');return}
+  if(r.cpd_enabled&&Number(r.cpd_hours||0)<=0){setMsg('Renseignez un nombre d’heures ou de crédits supérieur à zéro.');return}
   try{await liveApi('document_rules_save',{method:'POST',body:JSON.stringify({...r,event_id:liveId})});setMsg('Règles de documents enregistrées.')}
   catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
 
  return <OmniaLiveLayout><section className="mx-auto max-w-5xl px-4 py-10">
-  <h1 className="text-3xl font-black" style={{color:BLUE}}>Certificats, attestations & CPD</h1>
+  <h1 className="text-3xl font-black" style={{color:BLUE}}>Certificats, attestations et reconnaissances</h1>
   <p className="mt-2 text-slate-600">Définissez précisément les conditions d’éligibilité. Une simple inscription ne doit jamais suffire à obtenir automatiquement un certificat.</p>
 
   <div className="mt-7 space-y-7">
@@ -53,7 +53,7 @@ export default function EventDocumentSettings(){
    <section className="border-b border-slate-200 pb-6">
     <h2 className="mb-4 text-lg font-bold" style={{color:BLUE}}>Type de document et présence</h2>
     <div className="grid gap-4 md:grid-cols-2">
-     <label><span className="mb-1 block text-sm font-semibold">Document par défaut</span><select className="w-full rounded-lg border border-slate-300 p-3" value={r.default_document_type} onChange={e=>setR({...r,default_document_type:e.target.value})}><option value="attendance_certificate">Certificat de présence</option><option value="completion_certificate">Certificat de réussite</option><option value="participation_attestation">Attestation de participation</option><option value="cpd_certificate">Certificat CPD</option></select></label>
+     <label><span className="mb-1 block text-sm font-semibold">Document par défaut</span><select className="w-full rounded-lg border border-slate-300 p-3" value={r.default_document_type} onChange={e=>setR({...r,default_document_type:e.target.value})}><option value="attendance_certificate">Certificat de présence</option><option value="completion_certificate">Certificat de réussite</option><option value="participation_attestation">Attestation de participation</option><option value="cpd_certificate">Certificat de développement professionnel</option></select></label>
      <label><span className="mb-1 block text-sm font-semibold">Événement gratuit</span><select className="w-full rounded-lg border border-slate-300 p-3" value={r.free_event_document_policy} onChange={e=>setR({...r,free_event_document_policy:e.target.value})}><option value="attendance_based">Document selon présence</option><option value="none">Aucun document</option><option value="manual_admin">Décision manuelle Super-admin</option></select></label>
      <label><span className="mb-1 block text-sm font-semibold">Présence minimale (%)</span><input type="number" min="0" max="100" className="w-full rounded-lg border border-slate-300 p-3" value={r.minimum_attendance_percent??80} onChange={e=>setR({...r,minimum_attendance_percent:Number(e.target.value)})}/></label>
      <label><span className="mb-1 block text-sm font-semibold">Nombre minimum de sessions suivies</span><input type="number" min="0" className="w-full rounded-lg border border-slate-300 p-3" value={r.minimum_sessions_attended??''} onChange={e=>setR({...r,minimum_sessions_attended:e.target.value===''?null:Number(e.target.value)})} placeholder="Optionnel"/></label>
@@ -69,9 +69,9 @@ export default function EventDocumentSettings(){
    </section>
 
    <section className="border-b border-slate-200 pb-6">
-    <h2 className="mb-4 text-lg font-bold" style={{color:BLUE}}>CPD</h2>
-    <label className="flex items-center gap-3"><input type="checkbox" checked={!!r.cpd_enabled} onChange={e=>setR({...r,cpd_enabled:e.target.checked})}/><span className="font-semibold">Activer les informations CPD</span></label>
-    {r.cpd_enabled&&<div className="mt-4 grid gap-4 md:grid-cols-3"><label><span className="mb-1 block text-sm font-semibold">Heures CPD</span><input type="number" min="0" step="0.25" className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_hours??''} onChange={e=>setR({...r,cpd_hours:Number(e.target.value)})}/></label><label><span className="mb-1 block text-sm font-semibold">Points CPD</span><input type="number" min="0" step="0.25" className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_points??''} onChange={e=>setR({...r,cpd_points:e.target.value===''?null:Number(e.target.value)})}/></label><label><span className="mb-1 block text-sm font-semibold">Référence CPD</span><input className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_reference||''} onChange={e=>setR({...r,cpd_reference:e.target.value})}/></label></div>}
+    <h2 className="mb-4 text-lg font-bold" style={{color:BLUE}}>Reconnaissance professionnelle</h2>
+    <label className="flex items-center gap-3"><input type="checkbox" checked={!!r.cpd_enabled} onChange={e=>setR({...r,cpd_enabled:e.target.checked})}/><span className="font-semibold">Activer les informations de reconnaissance</span></label>
+    {r.cpd_enabled&&<div className="mt-4 grid gap-4 md:grid-cols-3"><label><span className="mb-1 block text-sm font-semibold">Heures ou crédits reconnus</span><input type="number" min="0" step="0.25" className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_hours??''} onChange={e=>setR({...r,cpd_hours:Number(e.target.value)})}/></label><label><span className="mb-1 block text-sm font-semibold">Points ou unités reconnus</span><input type="number" min="0" step="0.25" className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_points??''} onChange={e=>setR({...r,cpd_points:e.target.value===''?null:Number(e.target.value)})}/></label><label><span className="mb-1 block text-sm font-semibold">Référence de reconnaissance</span><input className="w-full rounded-lg border border-slate-300 p-3" value={r.cpd_reference||''} onChange={e=>setR({...r,cpd_reference:e.target.value})}/></label></div>}
    </section>
 
    <section>

@@ -5,7 +5,6 @@ import {
   useState,
   Fragment,
   type ChangeEvent,
-  type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -20,8 +19,6 @@ import {
   Building2,
   CalendarDays,
   Check,
-  ChevronLeft,
-  ChevronRight,
   ClipboardCheck,
   Facebook,
   FileBadge2,
@@ -44,7 +41,7 @@ import {
 } from 'lucide-react';
 import type { CourseCardData } from '../CourseCard';
 import { OmniaHeroDepthStage, OmniaJourneyDepthStage } from './OmniaDepthExperience';
-import { useEnhancedLandingMotion, useLandingReveals } from '../../hooks/useLandingMotion';
+import { useLandingReveals } from '../../hooks/useLandingMotion';
 import type {
   LandingContentItem,
   LandingPageConfig,
@@ -365,9 +362,7 @@ function LearningCompassSection({
   const displayedSteps = visibleContentItems(journeySection).slice(0, 5);
   const [selectedGoal, setSelectedGoal] = useState(goals[0]?.id || '');
   const [activeStep, setActiveStep] = useState(0);
-  const [journeyPlaying, setJourneyPlaying] = useState(false);
   const goalRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const enhancedMotion = useEnhancedLandingMotion();
 
   useEffect(() => {
     if (!goals.some(goal => goal.id === selectedGoal)) setSelectedGoal(goals[0]?.id || '');
@@ -376,19 +371,6 @@ function LearningCompassSection({
   useEffect(() => {
     if (activeStep >= Math.max(displayedSteps.length, 1)) setActiveStep(0);
   }, [activeStep, displayedSteps.length]);
-
-  useEffect(() => {
-    setJourneyPlaying(enhancedMotion && displayedSteps.length > 1);
-  }, [enhancedMotion, displayedSteps.length]);
-
-  useEffect(() => {
-    if (!journeyPlaying || displayedSteps.length < 2) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      setActiveStep(current => (current + 1) % displayedSteps.length);
-    }, 5200);
-    return () => window.clearInterval(timer);
-  }, [displayedSteps.length, journeyPlaying]);
 
   const activeGoalIndex = Math.max(0, goals.findIndex(goal => goal.id === selectedGoal));
   const activeGoal = goals[activeGoalIndex] || goals[0];
@@ -479,16 +461,7 @@ function LearningCompassSection({
               <div className="oga-active-milestone">
                 <div className="oga-active-milestone__header">
                   <span><ActiveStepIcon className="h-4 w-4" aria-hidden="true" />Étape {activeStep + 1}</span>
-                  {enhancedMotion && displayedSteps.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setJourneyPlaying(value => !value)}
-                      aria-pressed={journeyPlaying}
-                      className="oga-journey-playback"
-                    >
-                      {journeyPlaying ? 'Suspendre' : 'Animer le parcours'}
-                    </button>
-                  )}
+                  <small>Navigation manuelle</small>
                 </div>
                 <strong>{activeJourney.title || activeJourney.label}</strong>
                 {activeJourney.description && <p>{activeJourney.description}</p>}
@@ -504,7 +477,7 @@ function LearningCompassSection({
                   <button
                     key={step.id}
                     type="button"
-                    onClick={() => { setActiveStep(index); setJourneyPlaying(false); }}
+                    onClick={() => setActiveStep(index)}
                     className={index === activeStep ? 'is-active' : ''}
                     aria-current={index === activeStep ? 'step' : undefined}
                   >
@@ -535,35 +508,20 @@ function FeaturedCoursesSection({
   courses: CourseCardData[];
 }) {
   const visibleCourses = courses.slice(0, 4);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  useEffect(() => {
-    if (activeIndex >= visibleCourses.length) setActiveIndex(0);
-  }, [activeIndex, visibleCourses.length]);
-
   if (visibleCourses.length === 0) return null;
-  const activeCourse = visibleCourses[activeIndex] || visibleCourses[0];
 
-  const activate = (index: number, focus = false) => {
-    const next = (index + visibleCourses.length) % visibleCourses.length;
-    setActiveIndex(next);
-    if (focus) cardRefs.current[next]?.focus();
-  };
-
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    if (event.key === 'Home') activate(0, true);
-    else if (event.key === 'End') activate(visibleCourses.length - 1, true);
-    else activate(index + (event.key === 'ArrowRight' ? 1 : -1), true);
-  };
+  const [featured, ...others] = visibleCourses;
+  const courseHref = (course: CourseCardData) => course.content_origin === 'external'
+    ? `/formation-externe/${course.id}`
+    : `/cours/${course.id}`;
+  const featuredPrice = featured.is_free ? 'Gratuit' : `${featured.price_xof.toLocaleString('fr-FR')} XOF`;
+  const featuredCreator = featured.content_origin === 'external' ? featured.provider_name : featured.creator_name;
 
   return (
     <section
       id={SECTION_IDS.featured_courses}
       data-oga-reveal
-      className="oga-reveal scroll-mt-20 overflow-hidden bg-white px-5 py-12 sm:px-6 lg:py-14"
+      className="oga-reveal scroll-mt-20 overflow-hidden bg-white px-5 py-14 sm:px-6 lg:py-16"
     >
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -571,59 +529,46 @@ function FeaturedCoursesSection({
           <ActionLink href={section.primary_cta_url} variant="secondary">{section.primary_cta_label}</ActionLink>
         </div>
 
-        <div className="oga-course-carousel mt-7">
-          <div className="oga-course-carousel__viewport" role="listbox" aria-label="Formations mises en avant">
-            {visibleCourses.map((course, index) => {
-              const offset = index - activeIndex;
-              return (
-                <button
-                  key={course.id}
-                  ref={(element: HTMLButtonElement | null) => { cardRefs.current[index] = element; }}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  onClick={() => activate(index)}
-                  onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleKeyDown(event, index)}
-                  className={`oga-course-3d-card ${index === activeIndex ? 'is-active' : ''}`}
-                  style={{ '--oga-course-offset': offset, '--oga-course-distance': Math.abs(offset) } as CSSProperties}
-                >
-                  <span className="oga-course-3d-card__media">
-                    {course.cover_image_url
-                      ? <img src={course.cover_image_url} alt="" loading="lazy" decoding="async" />
-                      : <span className="oga-course-3d-card__placeholder"><BookOpen className="h-9 w-9" aria-hidden="true" /></span>}
-                    <span className="oga-course-3d-card__level">{course.level}</span>
-                  </span>
-                  <span className="oga-course-3d-card__body">
-                    <small>{course.category || 'Formation'}</small>
-                    <strong>{course.title}</strong>
-                    {course.creator_name && <span>Par {course.creator_name}</span>}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div className={`oga-course-showcase mt-8 ${others.length === 0 ? 'is-single' : ''}`}>
+          <Link to={courseHref(featured)} className="oga-course-feature">
+            <span className="oga-course-feature__media">
+              {featured.cover_image_url
+                ? <img src={featured.cover_image_url} alt="" loading="lazy" decoding="async" />
+                : <span className="oga-course-feature__placeholder"><BookOpen className="h-10 w-10" aria-hidden="true" /></span>}
+              <span className="oga-course-feature__number">01</span>
+            </span>
 
-          {visibleCourses.length > 1 && (
-            <div className="oga-course-carousel__controls" aria-label="Navigation des formations">
-              <button type="button" onClick={() => activate(activeIndex - 1)} aria-label="Formation précédente"><ChevronLeft className="h-5 w-5" /></button>
-              <span>{activeIndex + 1} / {visibleCourses.length}</span>
-              <button type="button" onClick={() => activate(activeIndex + 1)} aria-label="Formation suivante"><ChevronRight className="h-5 w-5" /></button>
+            <span className="oga-course-feature__content">
+              <small data-no-auto-translate="true">{featured.category || 'Formation Omnia'}</small>
+              <strong data-no-auto-translate="true">{featured.title}</strong>
+              {featured.short_description && <span data-no-auto-translate="true">{featured.short_description}</span>}
+              <span className="oga-course-feature__meta">
+                <i>{featured.level}</i>
+                {featured.language && <i>{featured.language.toUpperCase()}</i>}
+                {featuredCreator && <i data-no-auto-translate="true">{featuredCreator}</i>}
+              </span>
+              <span className="oga-course-feature__footer">
+                <b>{featuredPrice}</b>
+                <em>Voir la formation <ArrowRight className="h-4 w-4" aria-hidden="true" /></em>
+              </span>
+            </span>
+          </Link>
+
+          {others.length > 0 && (
+            <div className="oga-course-index" aria-label="Autres formations mises en avant">
+              {others.map((course, index) => (
+                <Link key={course.id} to={courseHref(course)} className="oga-course-index__item">
+                  <span>{String(index + 2).padStart(2, '0')}</span>
+                  <div>
+                    <small data-no-auto-translate="true">{course.category || 'Formation Omnia'}</small>
+                    <strong data-no-auto-translate="true">{course.title}</strong>
+                    <p>{course.level}{course.language ? ` · ${course.language.toUpperCase()}` : ''}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              ))}
             </div>
           )}
-
-          <div className="oga-course-carousel__details" aria-live="polite">
-            <div>
-              <p>{activeCourse.category || 'Formation publiée'} · {activeCourse.level}</p>
-              <h3>{activeCourse.title}</h3>
-              {activeCourse.short_description && <span>{activeCourse.short_description}</span>}
-            </div>
-            <div>
-              <strong>{activeCourse.is_free ? 'Gratuit' : `${activeCourse.price_xof.toLocaleString('fr-FR')} XOF`}</strong>
-              <Link to={`/cours/${activeCourse.id}`} className="oga-course-carousel__open">
-                Voir la formation <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -631,7 +576,7 @@ function FeaturedCoursesSection({
 }
 
 function EcosystemPanel({ section }: { section: LandingSectionConfig }) {
-  const items = visibleContentItems(section);
+  const items = visibleContentItems(section).slice(0, 6);
   const [activeIndex, setActiveIndex] = useState(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -650,18 +595,36 @@ function EcosystemPanel({ section }: { section: LandingSectionConfig }) {
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    if (!['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     if (event.key === 'Home') activate(0, true);
     else if (event.key === 'End') activate(items.length - 1, true);
-    else activate(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+    else activate(index + (event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1), true);
   };
 
   return (
-    <div className="oga-impact-ecosystem">
-      <div role="tablist" aria-label={section.title} className="oga-module-tabs">
+    <div className="oga-ecosystem-front">
+      <div className="oga-ecosystem-map" role="tablist" aria-label={section.title}>
+        <svg className="oga-ecosystem-map__connections" viewBox="0 0 620 460" aria-hidden="true">
+          <g>
+            <line x1="310" y1="230" x2="310" y2="58" />
+            <line x1="310" y1="230" x2="510" y2="112" />
+            <line x1="310" y1="230" x2="530" y2="320" />
+            <line x1="310" y1="230" x2="310" y2="408" />
+            <line x1="310" y1="230" x2="90" y2="320" />
+            <line x1="310" y1="230" x2="110" y2="112" />
+          </g>
+        </svg>
+
+        <div className="oga-ecosystem-core" aria-hidden="true">
+          <span><Network className="h-8 w-8" /></span>
+          <strong>OMNIA</strong>
+          <small>Un écosystème</small>
+        </div>
+
         {items.map((item, index) => {
           const Icon = contentIcon(item);
+          const selected = index === activeIndex;
           return (
             <button
               key={item.id}
@@ -669,15 +632,16 @@ function EcosystemPanel({ section }: { section: LandingSectionConfig }) {
               id={`module-tab-${item.id}`}
               type="button"
               role="tab"
-              aria-selected={index === activeIndex}
+              aria-selected={selected}
               aria-controls={`module-panel-${item.id}`}
-              tabIndex={index === activeIndex ? 0 : -1}
+              tabIndex={selected ? 0 : -1}
               onClick={() => activate(index)}
               onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleKeyDown(event, index)}
-              className={index === activeIndex ? 'is-active' : ''}
+              className={`oga-ecosystem-node oga-ecosystem-node--${index + 1} ${selected ? 'is-active' : ''}`}
             >
-              <Icon className="h-4 w-4" aria-hidden="true" />
-              <span>{item.title || item.label}</span>
+              <span><Icon className="h-5 w-5" aria-hidden="true" /></span>
+              <strong>{item.title || item.label}</strong>
+              <small>{String(index + 1).padStart(2, '0')}</small>
             </button>
           );
         })}
@@ -688,21 +652,14 @@ function EcosystemPanel({ section }: { section: LandingSectionConfig }) {
         role="tabpanel"
         aria-labelledby={`module-tab-${active.id}`}
         tabIndex={0}
-        className="oga-module-panel focus-visible:outline-none"
+        className="oga-ecosystem-detail focus-visible:outline-none"
       >
-        <div>
-          <span className="oga-module-panel__icon"><ActiveIcon className="h-7 w-7" aria-hidden="true" /></span>
-          <h3>{active.title || active.label}</h3>
-          {active.description && <p>{active.description}</p>}
-          <ActionLink href={active.action_url} variant="light" className="mt-6">{active.action_label}</ActionLink>
-        </div>
-        <div className="oga-module-orbit" aria-hidden="true">
-          <span className="oga-module-orbit__core"><ActiveIcon className="h-8 w-8" /></span>
-          {items.slice(0, 6).map((item, index) => {
-            const Icon = contentIcon(item);
-            return <span key={item.id} className={`oga-module-orbit__node oga-module-orbit__node--${index + 1}`}><Icon className="h-4 w-4" /></span>;
-          })}
-        </div>
+        <span className="oga-ecosystem-detail__index">{String(activeIndex + 1).padStart(2, '0')} / {String(items.length).padStart(2, '0')}</span>
+        <span className="oga-ecosystem-detail__icon"><ActiveIcon className="h-7 w-7" aria-hidden="true" /></span>
+        <p>Espace Omnia sélectionné</p>
+        <h3>{active.title || active.label}</h3>
+        {active.description && <span>{active.description}</span>}
+        <ActionLink href={active.action_url} variant="light" className="mt-6">{active.action_label}</ActionLink>
       </div>
     </div>
   );
@@ -844,7 +801,7 @@ function ImpactHubSection({ sections }: { sections: LandingSectionConfig[] }) {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E6BE58]">L’écosystème Omnia</p>
             <h2 className="mt-3 max-w-3xl text-3xl font-bold tracking-[-0.035em] text-white sm:text-4xl">
-              Apprendre devient une expérience complète.
+              Un écosystème relié, une progression continue.
             </h2>
           </div>
 
@@ -1168,7 +1125,7 @@ export function LandingExperience({
   useLandingReveals(mainRef, revealKey);
 
   return (
-    <main id="contenu-principal" ref={mainRef} tabIndex={-1} aria-label="Contenu principal de la page d’accueil">
+    <main id="contenu-principal" ref={mainRef} tabIndex={-1} className="oga-landing-root" aria-label="Contenu principal de la page d’accueil">
       {groups.map(group => <Fragment key={group.key}>{group.element}</Fragment>)}
     </main>
   );

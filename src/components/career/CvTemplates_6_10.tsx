@@ -141,7 +141,7 @@ export function TechFuture({ data, design }: { data: DocData; design: DesignOpti
           <TechMainSection title="Certifications Omnia" bg={bg} cyan={cyan} fs={fs}>
             {data.omnia_formations.filter(f => f.show).map(f => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <div><div style={{ fontSize: fs, fontWeight: 700, color: bg }}>{f.title}</div><div style={{ fontSize: 7, color: cyan }}>Omnia Global Academy{f.cpd_accredited ? ' · CPD' : ''}</div></div>
+                <div><div style={{ fontSize: fs, fontWeight: 700, color: bg }}>{f.title}</div><div style={{ fontSize: 7, color: cyan }}>Omnia Global Academy{f.cpd_accredited ? ' · Formation reconnue' : ''}</div></div>
                 <div style={{ fontSize: 8, color: '#9CA3AF' }}>{fmtDate(f.completed_at)}</div>
               </div>
             ))}
@@ -590,7 +590,7 @@ export function NoPhotoAts({ data, design }: { data: DocData; design: DesignOpti
           {data.omnia_formations.filter(f => f.show).map(f => (
             <div key={f.id} style={{ marginBottom: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: fs, color: '#374151' }}>{f.title} — Omnia Global Academy{f.cpd_accredited ? ' (CPD)' : ''}</div>
+                <div style={{ fontSize: fs, color: '#374151' }}>{f.title} — Omnia Global Academy{f.cpd_accredited ? ' (formation reconnue)' : ''}</div>
                 <div style={{ fontSize: 8, color: '#6B7280' }}>{fmtDate(f.completed_at)}</div>
               </div>
               {f.certificate_id && <div style={{ fontSize: 7, color: '#9CA3AF' }}>Certificat : {f.certificate_id}</div>}

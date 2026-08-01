@@ -681,7 +681,7 @@ export function CoursLecteur() {
                     </a>
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                    Ce contenu s'ouvre dans un nouvel onglet et n'est pas comptabilisé dans le timer CPD.
+                    Ce contenu s'ouvre dans un nouvel onglet et n'est pas comptabilisé dans le temps pédagogique.
                   </p>
                   {externalVisited && !isCompleted && (
                     <button

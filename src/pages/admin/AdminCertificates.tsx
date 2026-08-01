@@ -51,7 +51,7 @@ export default function AdminCertificates(){
     <header className="border-b border-gray-200 pb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Certificats & attestations</p>
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Documents délivrés</h1>
-        <p className="text-sm text-gray-500 mt-1">Formations OGA, professeurs, Structures, Omnia Live et Open CPD.</p></div>
+        <p className="text-sm text-gray-500 mt-1">Formations OGA, professeurs, Structures, Omnia Live et organismes partenaires.</p></div>
       <button onClick={load} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>
     </header>
 
@@ -59,7 +59,7 @@ export default function AdminCertificates(){
       <span><strong style={{color:BLUE}}>{rows.length}</strong> délivrés</span>
       <span><strong style={{color:'#1E7A52'}}>{active}</strong> actifs</span>
       <span><strong style={{color:'#B42318'}}>{revoked}</strong> révoqués</span>
-      <span><strong style={{color:GOLD}}>{cpd}</strong> Open CPD / CPD</span>
+      <span><strong style={{color:GOLD}}>{cpd}</strong> avec reconnaissance professionnelle</span>
     </div>
 
     <div className="flex flex-col md:flex-row gap-3">

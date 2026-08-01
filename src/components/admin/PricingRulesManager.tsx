@@ -104,7 +104,7 @@ export function PricingRulesManager() {
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {num('Points par module', 'module_points')}
       {num('Points par leçon', 'lesson_points')}
-      {num('Points par heure CPD', 'hour_points')}
+      {num('Points par heure reconnue', 'hour_points')}
       {num('Examen oral confirmé', 'oral_exam_points')}
     </div>
 

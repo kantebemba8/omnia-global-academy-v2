@@ -120,7 +120,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
           {course.level}
         </span>
         {course.cpd_accredited && (
-          <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>CPD</span>
+          <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Certifiée</span>
         )}
         {isExternal && (
           <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs font-bold shadow" style={{ color: '#002050' }}><ExternalLink size={12} />Externe</span>
@@ -141,7 +141,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
             <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews} avis)</span>
           </div>
         )}
-        {(course.cpd_hours ?? 0) > 0 && <p className="text-xs" style={{ color: '#6B7280' }}>CPD · {course.cpd_hours} h</p>}
+        {(course.cpd_hours ?? 0) > 0 && <p className="text-xs" style={{ color: '#6B7280' }}>Crédits reconnus · {course.cpd_hours} h</p>}
         {isExternal && <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: course.access_mode === 'premium' ? '#8A5F09' : '#6B7280' }}>{course.access_mode === 'premium' ? <LockKeyhole size={12} /> : course.access_mode === 'registered' ? <LogIn size={12} /> : <ExternalLink size={12} />}{accessLabel}{course.is_free ? ' · Gratuit chez le fournisseur' : ''}{course.certificate_available ? ' · Certificat disponible' : ''}</p>}
       </div>
 
