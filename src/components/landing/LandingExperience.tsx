@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  Fragment,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -9,13 +19,14 @@ import {
   Building2,
   CalendarDays,
   Check,
-  ChevronRight,
   ClipboardCheck,
+  Facebook,
   FileBadge2,
   FolderKanban,
   Globe2,
   GraduationCap,
   Heart,
+  Instagram,
   Linkedin,
   MessageCircle,
   Monitor,
@@ -26,17 +37,16 @@ import {
   Target,
   Users,
   Youtube,
-  Facebook,
-  Instagram,
   type LucideIcon,
 } from 'lucide-react';
 import { CourseCard, type CourseCardData } from '../CourseCard';
 import { OmniaHeroDepthStage, OmniaJourneyDepthStage } from './OmniaDepthExperience';
-import { useLandingReveals } from '../../hooks/useLandingMotion';
+import { useEnhancedLandingMotion, useLandingReveals } from '../../hooks/useLandingMotion';
 import type {
   LandingContentItem,
   LandingPageConfig,
   LandingSectionConfig,
+  LandingSectionType,
   MobileAppItem,
   SocialNetworkItem,
 } from '../../types/landingCms';
@@ -111,18 +121,7 @@ const CONTENT_ICON_MAP: Record<string, LucideIcon> = {
   other: Globe2,
 };
 
-function visibleContentItems(section: LandingSectionConfig): LandingContentItem[] {
-  return (section.items || [])
-    .filter(item => item.enabled !== false && (item.title || item.label))
-    .sort((a, b) => a.order - b.order);
-}
-
-function contentIcon(item: LandingContentItem): LucideIcon {
-  return CONTENT_ICON_MAP[item.icon_key] || Globe2;
-}
-
-
-const SECTION_IDS: Partial<Record<LandingSectionConfig['type'], string>> = {
+const SECTION_IDS: Partial<Record<LandingSectionType, string>> = {
   hero: 'accueil',
   goal_selector: 'objectifs',
   omnia_journey: 'parcours-omnia',
@@ -136,6 +135,31 @@ const SECTION_IDS: Partial<Record<LandingSectionConfig['type'], string>> = {
   social_networks: 'reseaux-sociaux',
   final_cta: 'rejoindre-omnia',
 };
+
+const IMPACT_TYPES: LandingSectionType[] = [
+  'ecosystem',
+  'credentials',
+  'career_recruitment',
+  'structures',
+];
+
+const CONNECTION_TYPES: LandingSectionType[] = [
+  'partners',
+  'mobile_apps',
+  'social_networks',
+  'final_cta',
+];
+
+function visibleContentItems(section: LandingSectionConfig | undefined): LandingContentItem[] {
+  if (!section) return [];
+  return (section.items || [])
+    .filter(item => item.enabled !== false && (item.title || item.label))
+    .sort((a, b) => a.order - b.order);
+}
+
+function contentIcon(item: LandingContentItem): LucideIcon {
+  return CONTENT_ICON_MAP[item.icon_key] || Globe2;
+}
 
 function isExternalHref(href: string) {
   return /^https?:\/\//i.test(href);
@@ -153,16 +177,17 @@ function ActionLink({
 }: {
   href: string;
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'light';
+  variant?: 'primary' | 'secondary' | 'light' | 'gold';
   className?: string;
 }) {
   if (!href || !children || !isSafePublicHref(href)) return null;
 
-  const base = 'inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2';
+  const base = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2';
   const variants = {
-    primary: 'bg-[#002050] text-white hover:bg-[#00183e]',
-    secondary: 'border border-[#CBD5E1] bg-white text-[#002050] hover:border-[#BF8813]',
-    light: 'border border-white/30 bg-white/10 text-white hover:bg-white/15',
+    primary: 'bg-[#002050] text-white hover:-translate-y-0.5 hover:bg-[#00183e] hover:shadow-lg',
+    secondary: 'border border-[#CBD5E1] bg-white text-[#002050] hover:-translate-y-0.5 hover:border-[#BF8813] hover:shadow-md',
+    light: 'border border-white/30 bg-white/10 text-white hover:-translate-y-0.5 hover:bg-white/15',
+    gold: 'bg-[#BF8813] text-white hover:-translate-y-0.5 hover:bg-[#A8730F] hover:shadow-lg',
   };
   const classes = `${base} ${variants[variant]} ${className}`;
   const content = <>{children}<ArrowRight className="h-4 w-4" aria-hidden="true" /></>;
@@ -174,14 +199,28 @@ function ActionLink({
   );
 }
 
-function SectionHeading({ section, align = 'left' }: { section: LandingSectionConfig; align?: 'left' | 'center' }) {
+function SectionHeading({
+  section,
+  align = 'left',
+  compact = false,
+}: {
+  section: LandingSectionConfig;
+  align?: 'left' | 'center';
+  compact?: boolean;
+}) {
   return (
     <div className={align === 'center' ? 'mx-auto max-w-3xl text-center' : 'max-w-3xl'}>
       {section.eyebrow && (
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[#9A6A08]">{section.eyebrow}</p>
       )}
-      <h2 className="text-3xl font-bold tracking-[-0.03em] text-[#002050] sm:text-4xl">{section.title}</h2>
-      {section.subtitle && <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">{section.subtitle}</p>}
+      <h2 className={`${compact ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'} font-bold tracking-[-0.035em] text-[#002050]`}>
+        {section.title}
+      </h2>
+      {section.subtitle && (
+        <p className={`${compact ? 'mt-3 text-sm leading-6' : 'mt-4 text-base leading-7 sm:text-lg'} text-slate-600`}>
+          {section.subtitle}
+        </p>
+      )}
       {section.body && <p className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">{section.body}</p>}
     </div>
   );
@@ -206,41 +245,56 @@ function HeroSection({
 }) {
   const visibleStats = (
     [
-      ['formations', 'Formations publiées'],
+      ['formations', 'Formations'],
       ['apprenants', 'Apprenants'],
-      ['pays', 'Pays représentés'],
+      ['pays', 'Pays'],
       ['formateurs', 'Professeurs'],
       ['etablissements', 'Structures'],
     ] as Array<[keyof LandingStats, string]>
   ).filter(([key]) => statsVisibility[key] && stats[key]);
 
   return (
-    <section id={SECTION_IDS.hero} aria-labelledby="oga-hero-title" data-oga-reveal className="oga-reveal relative overflow-hidden bg-[#002050] px-5 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:pb-24">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="absolute -right-36 top-20 h-96 w-96 rounded-full border border-white/10" />
-        <div className="absolute -right-16 top-40 h-72 w-72 rounded-full border border-[#BF8813]/30" />
-        <div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-[#BF8813]/70 to-transparent" />
+    <section
+      id={SECTION_IDS.hero}
+      aria-labelledby="oga-hero-title"
+      data-oga-reveal
+      className="oga-reveal oga-premium-hero relative overflow-hidden bg-[#002050] px-5 pb-14 pt-24 sm:px-6 sm:pb-16 sm:pt-28"
+    >
+      <div aria-hidden="true" className="oga-premium-hero__backdrop">
+        <span className="oga-premium-hero__aurora oga-premium-hero__aurora--one" />
+        <span className="oga-premium-hero__aurora oga-premium-hero__aurora--two" />
+        <span className="oga-premium-hero__line" />
       </div>
 
-      <div className="relative mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
-        <div>
+      <div className="relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[minmax(0,0.94fr)_minmax(440px,1.06fr)] lg:items-center">
+        <div className="relative z-10">
           {section.eyebrow && (
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E6BE58]">{section.eyebrow}</p>
+            <div className="oga-hero-kicker">
+              <span className="oga-hero-kicker__pulse" aria-hidden="true" />
+              <span>{section.eyebrow}</span>
+            </div>
           )}
-          <h1 id="oga-hero-title" className="mt-5 max-w-4xl text-4xl font-bold leading-[1.06] tracking-[-0.045em] text-white sm:text-5xl lg:text-7xl">
+
+          <h1 id="oga-hero-title" className="mt-5 max-w-4xl text-4xl font-bold leading-[1.04] tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl xl:text-[4.5rem]">
             {section.title}
           </h1>
-          {section.subtitle && (
-            <p className="mt-6 max-w-3xl text-base leading-8 text-blue-100 sm:text-lg">{section.subtitle}</p>
-          )}
-          {section.body && <p className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-7 text-blue-100/85">{section.body}</p>}
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <ActionLink href={section.primary_cta_url} variant="secondary">{section.primary_cta_label}</ActionLink>
+          {section.subtitle && (
+            <p className="mt-5 max-w-3xl text-base leading-7 text-blue-100 sm:text-lg sm:leading-8">
+              {section.subtitle}
+            </p>
+          )}
+
+          {section.body && (
+            <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-7 text-blue-100/80">{section.body}</p>
+          )}
+
+          <div className="mt-7 flex flex-wrap gap-3">
+            <ActionLink href={section.primary_cta_url} variant="gold">{section.primary_cta_label}</ActionLink>
             <ActionLink href={section.secondary_cta_url} variant="light">{section.secondary_cta_label}</ActionLink>
           </div>
 
-          <form onSubmit={onSearch} className="mt-8 flex max-w-3xl flex-col gap-3 rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm sm:flex-row">
+          <form onSubmit={onSearch} className="oga-premium-search mt-7 flex max-w-3xl flex-col gap-2 rounded-2xl border border-white/15 bg-white/10 p-2 backdrop-blur-md sm:flex-row">
             <label className="flex flex-1 items-center gap-3 rounded-xl bg-white px-4">
               <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
               <span className="sr-only">Rechercher une formation</span>
@@ -255,24 +309,34 @@ function HeroSection({
                 className="min-w-0 flex-1 bg-transparent py-3.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
             </label>
-            <button type="submit" className="min-h-11 rounded-xl bg-[#BF8813] px-6 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#002050]">
+            <button
+              type="submit"
+              className="min-h-11 rounded-xl bg-[#BF8813] px-6 py-3 text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:bg-[#A8730F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#002050]"
+            >
               {section.search_button_label || 'Rechercher'}
             </button>
           </form>
 
+          <div className="oga-learning-signals mt-7" aria-label="Le parcours Omnia">
+            <span><BookOpen className="h-4 w-4" aria-hidden="true" />Apprendre</span>
+            <span><FolderKanban className="h-4 w-4" aria-hidden="true" />Pratiquer</span>
+            <span><BadgeCheck className="h-4 w-4" aria-hidden="true" />Prouver</span>
+            <span><Briefcase className="h-4 w-4" aria-hidden="true" />Avancer</span>
+          </div>
+
           {visibleStats.length > 0 && (
-            <dl className="mt-9 flex flex-wrap gap-x-9 gap-y-5">
+            <dl className="oga-premium-stats mt-7">
               {visibleStats.map(([key, label]) => (
                 <div key={key}>
-                  <dt className="text-xs text-blue-200">{label}</dt>
-                  <dd className="mt-1 text-2xl font-bold text-white">{stats[key]}</dd>
+                  <dd>{stats[key]}</dd>
+                  <dt>{label}</dt>
                 </div>
               ))}
             </dl>
           )}
         </div>
 
-        <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
+        <div className="relative mx-auto w-full max-w-2xl lg:max-w-none">
           <OmniaHeroDepthStage course={featuredCourses[0]} />
         </div>
       </div>
@@ -280,270 +344,190 @@ function HeroSection({
   );
 }
 
-function GoalSelectorSection({ section }: { section: LandingSectionConfig }) {
-  const items = visibleContentItems(section);
-  const [selectedGoal, setSelectedGoal] = useState(items[0]?.id || '');
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+function LearningCompassSection({
+  goalSection,
+  journeySection,
+}: {
+  goalSection?: LandingSectionConfig;
+  journeySection?: LandingSectionConfig;
+}) {
+  const goals = visibleContentItems(goalSection);
+  const steps = visibleContentItems(journeySection);
+  const [selectedGoal, setSelectedGoal] = useState(goals[0]?.id || '');
+  const [activeStep, setActiveStep] = useState(0);
+  const goalRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const enhancedMotion = useEnhancedLandingMotion();
 
   useEffect(() => {
-    if (!items.some(item => item.id === selectedGoal)) setSelectedGoal(items[0]?.id || '');
-  }, [items, selectedGoal]);
+    if (!goals.some(goal => goal.id === selectedGoal)) setSelectedGoal(goals[0]?.id || '');
+  }, [goals, selectedGoal]);
 
-  if (items.length === 0) return null;
-  const activeIndex = Math.max(0, items.findIndex(item => item.id === selectedGoal));
-  const activeGoal = items[activeIndex] || items[0];
-  const ActiveIcon = contentIcon(activeGoal);
+  useEffect(() => {
+    if (activeStep >= Math.max(steps.length, 1)) setActiveStep(0);
+  }, [activeStep, steps.length]);
+
+  useEffect(() => {
+    if (!enhancedMotion || steps.length < 2) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setActiveStep(current => (current + 1) % steps.length);
+    }, 5200);
+    return () => window.clearInterval(timer);
+  }, [enhancedMotion, steps.length]);
+
+  const activeGoalIndex = Math.max(0, goals.findIndex(goal => goal.id === selectedGoal));
+  const activeGoal = goals[activeGoalIndex] || goals[0];
+  const activeJourney = steps[activeStep] || steps[0];
+  const ActiveGoalIcon = activeGoal ? contentIcon(activeGoal) : GraduationCap;
+  const ActiveStepIcon = activeJourney ? contentIcon(activeJourney) : BookOpen;
 
   const activateGoal = (index: number, focus = false) => {
-    const nextIndex = (index + items.length) % items.length;
-    setSelectedGoal(items[nextIndex].id);
-    if (focus) tabRefs.current[nextIndex]?.focus();
+    if (goals.length === 0) return;
+    const nextIndex = (index + goals.length) % goals.length;
+    setSelectedGoal(goals[nextIndex].id);
+    if (focus) goalRefs.current[nextIndex]?.focus();
   };
 
-  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const handleGoalKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     if (event.key === 'Home') activateGoal(0, true);
-    else if (event.key === 'End') activateGoal(items.length - 1, true);
-    else activateGoal(index + (event.key === 'ArrowDown' ? 1 : -1), true);
+    else if (event.key === 'End') activateGoal(goals.length - 1, true);
+    else activateGoal(index + (event.key === 'ArrowRight' ? 1 : -1), true);
   };
 
-  return (
-    <section id={SECTION_IDS.goal_selector} aria-label={section.title} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
-      <div className="mx-auto max-w-7xl">
-        <SectionHeading section={section} />
-        <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)]">
-          <div role="tablist" aria-label={section.title || 'Choisir son objectif'} aria-orientation="vertical" className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-            {items.map((goal, index) => {
-              const Icon = contentIcon(goal);
-              const active = goal.id === activeGoal.id;
-              return (
-                <button key={goal.id} ref={element => { tabRefs.current[index] = element; }} id={`goal-tab-${goal.id}`} type="button" role="tab" aria-selected={active} aria-controls={`goal-panel-${goal.id}`} tabIndex={active ? 0 : -1} onClick={() => activateGoal(index)} onKeyDown={event => handleTabKeyDown(event, index)} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2" style={{ backgroundColor: active ? '#002050' : 'transparent', color: active ? '#FFFFFF' : '#334155' }}>
-                  <Icon className="h-5 w-5 shrink-0" style={{ color: active ? '#E6BE58' : '#BF8813' }} aria-hidden="true" />
-                  <span className="text-sm font-semibold">{goal.label || goal.title}</span>
-                  <ChevronRight className="ml-auto h-4 w-4 opacity-60" aria-hidden="true" />
-                </button>
-              );
-            })}
-          </div>
-          <div id={`goal-panel-${activeGoal.id}`} role="tabpanel" aria-labelledby={`goal-tab-${activeGoal.id}`} tabIndex={0} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] sm:p-10">
-            <div aria-hidden="true" className="absolute right-0 top-0 h-40 w-40 translate-x-1/3 -translate-y-1/3 rounded-full border-[28px] border-[#BF8813]/10" />
-            <div className="relative max-w-2xl">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F8F2E4] text-[#9A6A08]"><ActiveIcon className="h-6 w-6" aria-hidden="true" /></span>
-              {activeGoal.label && <p className="mt-6 text-sm font-semibold text-[#9A6A08]">{activeGoal.label}</p>}
-              <h3 className="mt-2 text-2xl font-bold tracking-[-0.025em] text-[#002050] sm:text-3xl">{activeGoal.title}</h3>
-              {activeGoal.description && <p className="mt-4 text-base leading-7 text-slate-600">{activeGoal.description}</p>}
-              <ActionLink href={activeGoal.action_url} className="mt-7">{activeGoal.action_label}</ActionLink>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+  if (!goalSection && !journeySection) return null;
 
-function JourneySection({ section }: { section: LandingSectionConfig }) {
-  const items = visibleContentItems(section);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const stepRefs = useRef<Array<HTMLElement | null>>([]);
-
-  useEffect(() => {
-    if (activeIndex >= items.length) setActiveIndex(0);
-  }, [activeIndex, items.length]);
-
-  useEffect(() => {
-    if (!('IntersectionObserver' in window) || items.length === 0) return;
-    const observer = new IntersectionObserver(entries => {
-      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (!visible) return;
-      setActiveIndex(Number((visible.target as HTMLElement).dataset.journeyIndex || 0));
-    }, { threshold: [0.25, 0.45, 0.65], rootMargin: '-18% 0px -34% 0px' });
-    stepRefs.current.forEach(element => element && observer.observe(element));
-    return () => observer.disconnect();
-  }, [items.length]);
-
-  if (items.length === 0) return null;
-  const goToStep = (index: number) => {
-    setActiveIndex(index);
-    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-    stepRefs.current[index]?.scrollIntoView({ behavior, block: 'center' });
-  };
+  const headingSection = goalSection || journeySection!;
 
   return (
-    <section id={SECTION_IDS.omnia_journey} data-oga-reveal className="oga-reveal scroll-mt-20 overflow-hidden bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
+    <section
+      id={SECTION_IDS.goal_selector}
+      data-oga-reveal
+      className="oga-reveal oga-learning-compass relative scroll-mt-20 overflow-hidden bg-[#F5F7FB] px-5 py-14 sm:px-6 lg:py-16"
+    >
+      <span id={SECTION_IDS.omnia_journey} className="absolute left-0 top-0 scroll-mt-20" aria-hidden="true" />
       <div className="mx-auto max-w-7xl">
-        <SectionHeading section={section} align="center" />
-        <div className="oga-journey-scroll-layout mt-14">
-          <div className="oga-journey-scroll-copy">
-            <nav className="oga-journey-step-nav" aria-label={section.title || 'Étapes du parcours Omnia'}>
-              {items.map((step, index) => (
-                <button key={step.id} type="button" onClick={() => goToStep(index)} className={index === activeIndex ? 'is-active' : ''} aria-current={index === activeIndex ? 'step' : undefined} aria-controls={`journey-step-${step.id}`}>
-                  <span>{String(index + 1).padStart(2, '0')}</span><span>{step.title || step.label}</span>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.82fr)_minmax(420px,1.18fr)] lg:items-end">
+          <div>
+            <SectionHeading section={headingSection} />
+            {goals.length > 0 && (
+              <div
+                role="tablist"
+                aria-label={goalSection?.title || 'Choisir son objectif'}
+                className="oga-goal-pills mt-7"
+              >
+                {goals.map((goal, index) => {
+                  const Icon = contentIcon(goal);
+                  const active = goal.id === activeGoal?.id;
+                  return (
+                    <button
+                      key={goal.id}
+                      ref={(element: HTMLButtonElement | null) => { goalRefs.current[index] = element; }}
+                      id={`goal-tab-${goal.id}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      aria-controls={`goal-panel-${goal.id}`}
+                      tabIndex={active ? 0 : -1}
+                      onClick={() => activateGoal(index)}
+                      onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleGoalKeyDown(event, index)}
+                      className={active ? 'is-active' : ''}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      <span>{goal.label || goal.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {steps.length > 0 && (
+            <div className="oga-journey-rail" aria-label={journeySection?.title || 'Parcours Omnia'}>
+              {steps.slice(0, 5).map((step, index) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => setActiveStep(index)}
+                  className={index === activeStep ? 'is-active' : ''}
+                  aria-current={index === activeStep ? 'step' : undefined}
+                >
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <strong>{step.title || step.label}</strong>
                 </button>
               ))}
-            </nav>
-            <div className="oga-journey-step-list">
-              {items.map((step, index) => {
-                const Icon = contentIcon(step);
-                return (
-                  <article key={step.id} id={`journey-step-${step.id}`} ref={element => { stepRefs.current[index] = element; }} data-journey-index={index} aria-current={index === activeIndex ? 'step' : undefined} className={`oga-journey-step ${index === activeIndex ? 'is-active' : ''}`}>
-                    <div className="oga-journey-step__number">{String(index + 1).padStart(2, '0')}</div>
-                    <span className="oga-journey-step__icon"><Icon className="h-6 w-6" aria-hidden="true" /></span>
-                    <p className="oga-journey-step__eyebrow">Étape {index + 1} sur {items.length}</p>
-                    <h3>{step.title || step.label}</h3>
-                    {step.description && <p>{step.description}</p>}
-                    <ActionLink href={step.action_url} variant="secondary" className="mt-7">{step.action_label}</ActionLink>
-                  </article>
-                );
-              })}
             </div>
+          )}
+        </div>
+
+        <div className="oga-compass-panel mt-8">
+          <div className="oga-compass-panel__copy">
+            {activeGoal && (
+              <div
+                id={`goal-panel-${activeGoal.id}`}
+                role="tabpanel"
+                aria-labelledby={`goal-tab-${activeGoal.id}`}
+                tabIndex={0}
+                className="focus-visible:outline-none"
+              >
+                <span className="oga-compass-icon"><ActiveGoalIcon className="h-6 w-6" aria-hidden="true" /></span>
+                {activeGoal.label && <p className="oga-compass-eyebrow">{activeGoal.label}</p>}
+                <h3>{activeGoal.title}</h3>
+                {activeGoal.description && <p className="oga-compass-description">{activeGoal.description}</p>}
+                <ActionLink href={activeGoal.action_url} className="mt-6">{activeGoal.action_label}</ActionLink>
+              </div>
+            )}
+
+            {activeJourney && (
+              <div className="oga-active-milestone">
+                <span><ActiveStepIcon className="h-4 w-4" aria-hidden="true" />Étape {activeStep + 1}</span>
+                <strong>{activeJourney.title || activeJourney.label}</strong>
+                {activeJourney.description && <p>{activeJourney.description}</p>}
+                <ActionLink href={activeJourney.action_url} variant="secondary" className="mt-4">
+                  {activeJourney.action_label}
+                </ActionLink>
+              </div>
+            )}
           </div>
-          <div className="oga-journey-scroll-stage"><div className="oga-journey-scroll-stage__sticky"><OmniaJourneyDepthStage activeIndex={Math.min(activeIndex, 4)} /></div></div>
+
+          {steps.length > 0 && (
+            <div className="oga-compass-panel__stage">
+              <OmniaJourneyDepthStage activeIndex={Math.min(activeStep, 4)} />
+            </div>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function FeaturedCoursesSection({ section, courses }: { section: LandingSectionConfig; courses: CourseCardData[] }) {
+function FeaturedCoursesSection({
+  section,
+  courses,
+}: {
+  section: LandingSectionConfig;
+  courses: CourseCardData[];
+}) {
   if (courses.length === 0) return null;
 
   return (
-    <section id={SECTION_IDS.featured_courses} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
+    <section
+      id={SECTION_IDS.featured_courses}
+      data-oga-reveal
+      className="oga-reveal scroll-mt-20 bg-white px-5 py-14 sm:px-6 lg:py-16"
+    >
       <div className="mx-auto max-w-7xl">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <SectionHeading section={section} />
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeading section={section} compact />
           <ActionLink href={section.primary_cta_url} variant="secondary">{section.primary_cta_label}</ActionLink>
         </div>
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {courses.slice(0, 8).map(course => <CourseCard key={course.id} course={course} />)}
-        </div>
-      </div>
-    </section>
-  );
-}
 
-function EcosystemSection({ section }: { section: LandingSectionConfig }) {
-  const items = visibleContentItems(section);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  useEffect(() => { if (activeIndex >= items.length) setActiveIndex(0); }, [activeIndex, items.length]);
-  if (items.length === 0) return null;
-  const active = items[activeIndex] || items[0];
-  const ActiveIcon = contentIcon(active);
-  const activateTab = (index: number, focus = false) => {
-    const nextIndex = (index + items.length) % items.length; setActiveIndex(nextIndex); if (focus) tabRefs.current[nextIndex]?.focus();
-  };
-  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return; event.preventDefault();
-    if (event.key === 'Home') activateTab(0, true); else if (event.key === 'End') activateTab(items.length - 1, true); else activateTab(index + (event.key === 'ArrowRight' ? 1 : -1), true);
-  };
-  return (
-    <section id={SECTION_IDS.ecosystem} aria-label={section.title} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24">
-      <div className="mx-auto max-w-7xl"><SectionHeading section={section} />
-        <div className="mt-10 rounded-3xl border border-slate-200 bg-white p-4 sm:p-6">
-          <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label={section.title}>
-            {items.map((item, index) => <button key={item.id} ref={element => { tabRefs.current[index] = element; }} id={`ecosystem-tab-${item.id}`} type="button" role="tab" aria-selected={index === activeIndex} aria-controls={`ecosystem-panel-${item.id}`} tabIndex={index === activeIndex ? 0 : -1} onClick={() => activateTab(index)} onKeyDown={event => handleTabKeyDown(event, index)} className="min-h-11 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] focus-visible:ring-offset-2" style={{ backgroundColor: index === activeIndex ? '#002050' : '#F1F5F9', color: index === activeIndex ? '#FFFFFF' : '#475569' }}>{item.title || item.label}</button>)}
-          </div>
-          <div id={`ecosystem-panel-${active.id}`} role="tabpanel" aria-labelledby={`ecosystem-tab-${active.id}`} tabIndex={0} className="mt-4 grid min-h-[330px] overflow-hidden rounded-2xl bg-[#002050] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="p-7 sm:p-10"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#BF8813] text-white"><ActiveIcon className="h-7 w-7" aria-hidden="true" /></span><h3 className="mt-7 text-3xl font-bold text-white">{active.title || active.label}</h3>{active.description && <p className="mt-4 max-w-2xl text-base leading-8 text-blue-100">{active.description}</p>}<ActionLink href={active.action_url} variant="light" className="mt-8">{active.action_label}</ActionLink></div>
-            <div className="relative hidden border-l border-white/10 lg:block" aria-hidden="true"><div className="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#BF8813]/50" /><div className="absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" /><div className="absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[#002050]"><ActiveIcon className="h-9 w-9" /></div></div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CredentialsSection({ section }: { section: LandingSectionConfig }) {
-  const proofItems = visibleContentItems(section);
-  if (proofItems.length === 0) return null;
-  return (
-    <section id={SECTION_IDS.credentials} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
-      <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center">
-        <div><SectionHeading section={section} /><div className="mt-8 flex flex-wrap gap-3"><ActionLink href={section.primary_cta_url}>{section.primary_cta_label}</ActionLink><ActionLink href={section.secondary_cta_url} variant="secondary">{section.secondary_cta_label}</ActionLink></div></div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {proofItems.map(item => { const Icon = contentIcon(item); return <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-6"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F8F2E4] text-[#9A6A08]"><Icon className="h-5 w-5" aria-hidden="true" /></span><h3 className="mt-5 text-lg font-bold text-[#002050]">{item.title || item.label}</h3>{item.description && <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>}</article>; })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CareerRecruitmentSection({ section }: { section: LandingSectionConfig }) {
-  const items = visibleContentItems(section);
-  const group = (name: string) => items.filter(item => item.group === name);
-  const talent = group('talent'); const recruiter = group('recruiter');
-  if (talent.length === 0 && recruiter.length === 0) return null;
-  const talentHeader = talent[0]; const recruiterHeader = recruiter[0];
-  return (
-    <section id={SECTION_IDS.career_recruitment} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-20 sm:px-6 lg:py-24"><div className="mx-auto max-w-7xl"><SectionHeading section={section} align="center" /><div className="mt-10 grid gap-5 lg:grid-cols-2">
-      {talent.length > 0 && <article className="rounded-3xl border border-slate-200 bg-white p-7 sm:p-9"><span className="text-xs font-bold uppercase tracking-[0.18em] text-[#9A6A08]">{talentHeader.label || 'Pour les talents'}</span><h3 className="mt-3 text-2xl font-bold text-[#002050]">{talentHeader.title}</h3>{talentHeader.description && <p className="mt-3 text-sm leading-6 text-slate-600">{talentHeader.description}</p>}<ul className="mt-6 space-y-3">{talent.slice(1).map(item => <li key={item.id} className="flex gap-3 text-sm text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#BF8813]" aria-hidden="true" />{item.title || item.label}</li>)}</ul><ActionLink href={section.secondary_cta_url || '/emploi'} variant="secondary" className="mt-7">{section.secondary_cta_label || 'Développer ma carrière'}</ActionLink></article>}
-      {recruiter.length > 0 && <article className="rounded-3xl bg-[#002050] p-7 text-white sm:p-9"><span className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE58]">{recruiterHeader.label || 'Pour les recruteurs'}</span><h3 className="mt-3 text-2xl font-bold">{recruiterHeader.title}</h3>{recruiterHeader.description && <p className="mt-3 text-sm leading-6 text-blue-100">{recruiterHeader.description}</p>}<ul className="mt-6 space-y-3">{recruiter.slice(1).map(item => <li key={item.id} className="flex gap-3 text-sm text-blue-100"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#E6BE58]" aria-hidden="true" />{item.title || item.label}</li>)}</ul><ActionLink href={section.primary_cta_url || '/talent'} variant="light" className="mt-7">{section.primary_cta_label || 'Découvrir Omnia Talent'}</ActionLink></article>}
-    </div></div></section>
-  );
-}
-
-function StructuresSection({ section }: { section: LandingSectionConfig }) {
-  const features = visibleContentItems(section);
-  return (
-    <section id={SECTION_IDS.structures} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24"><div className="mx-auto max-w-7xl overflow-hidden rounded-3xl border border-slate-200 bg-[#002050]"><div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]"><div className="p-8 sm:p-10 lg:p-12">{section.eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E6BE58]">{section.eyebrow}</p>}<h2 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">{section.title}</h2>{section.subtitle && <p className="mt-5 max-w-3xl text-base leading-8 text-blue-100">{section.subtitle}</p>}{section.body && <p className="mt-4 whitespace-pre-line text-sm leading-7 text-blue-100/85">{section.body}</p>}<ActionLink href={section.primary_cta_url} variant="light" className="mt-8">{section.primary_cta_label}</ActionLink></div>
-      {features.length > 0 && <div className="border-t border-white/10 bg-white/[0.06] p-8 sm:p-10 lg:border-l lg:border-t-0"><ul className="space-y-4">{features.map(feature => <li key={feature.id} className="flex items-start gap-3 text-sm leading-6 text-blue-100"><Check className="mt-1 h-4 w-4 shrink-0 text-[#E6BE58]" aria-hidden="true" />{feature.title || feature.label}</li>)}</ul></div>}
-    </div></div></section>
-  );
-}
-
-function PartnersSection({ section, partners }: { section: LandingSectionConfig; partners: LandingPublicPartner[] }) {
-  const visiblePartners = partners
-    .filter(partner => partner.show_homepage && partner.logo_url && (!partner.website_url || isExternalHref(partner.website_url)))
-    .sort((a, b) => Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)));
-
-  if (visiblePartners.length === 0) return null;
-
-  return (
-    <section id={SECTION_IDS.partners} data-oga-reveal className="oga-reveal scroll-mt-20 bg-[#F7F8FA] px-5 py-16 sm:px-6 lg:py-20">
-      <div className="mx-auto max-w-7xl">
-        <SectionHeading section={section} align="center" />
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          {visiblePartners.map(partner => {
-            const content = (
-              <span className="flex min-h-24 min-w-44 items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-5" title={partner.name}>
-                <img src={partner.logo_url!} alt={partner.alt_text || `Logo ${partner.name}`} loading="lazy" decoding="async" className="max-h-12 max-w-40 object-contain" />
-              </span>
-            );
-            return partner.website_url ? (
-              <a key={partner.id} href={partner.website_url} target="_blank" rel="noopener noreferrer" className="transition-transform hover:-translate-y-0.5">{content}</a>
-            ) : <span key={partner.id}>{content}</span>;
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MobileAppsSection({ section, apps }: { section: LandingSectionConfig; apps: MobileAppItem[] }) {
-  const visibleApps = apps.filter(app => app.enabled && app.show_homepage && isExternalHref(app.url)).sort((a, b) => a.display_order - b.display_order);
-  if (visibleApps.length === 0) return null;
-
-  return (
-    <section id={SECTION_IDS.mobile_apps} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
-      <div className="mx-auto flex max-w-7xl flex-col gap-8 rounded-3xl border border-slate-200 bg-[#F7F8FA] p-8 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
-        <SectionHeading section={section} />
-        <div className="flex flex-wrap gap-3">
-          {visibleApps.map(app => (
-            <a
-              key={app.id}
-              href={app.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-w-52 items-center gap-3 rounded-2xl bg-[#002050] px-5 py-3.5 text-white transition-opacity hover:opacity-90"
-            >
-              <Smartphone className="h-6 w-6 text-[#E6BE58]" aria-hidden="true" />
-              <span>
-                <span className="block text-[11px] text-blue-200">Télécharger sur</span>
-                <span className="block text-sm font-bold">{app.name}</span>
-              </span>
-            </a>
+        <div className="oga-course-rail mt-8">
+          {courses.slice(0, 4).map(course => (
+            <div key={course.id} className="oga-course-rail__item">
+              <CourseCard course={course} />
+            </div>
           ))}
         </div>
       </div>
@@ -551,53 +535,380 @@ function MobileAppsSection({ section, apps }: { section: LandingSectionConfig; a
   );
 }
 
-function SocialNetworksSection({ section, networks }: { section: LandingSectionConfig; networks: SocialNetworkItem[] }) {
-  const visibleNetworks = networks
-    .filter(item => item.enabled && item.show_homepage && isExternalHref(item.url) && (item.logo_url || item.icon_key))
-    .sort((a, b) => a.display_order - b.display_order);
-  if (visibleNetworks.length === 0) return null;
+function EcosystemPanel({ section }: { section: LandingSectionConfig }) {
+  const items = visibleContentItems(section);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (activeIndex >= items.length) setActiveIndex(0);
+  }, [activeIndex, items.length]);
+
+  if (items.length === 0) return null;
+  const active = items[activeIndex] || items[0];
+  const ActiveIcon = contentIcon(active);
+
+  const activate = (index: number, focus = false) => {
+    const next = (index + items.length) % items.length;
+    setActiveIndex(next);
+    if (focus) tabRefs.current[next]?.focus();
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') activate(0, true);
+    else if (event.key === 'End') activate(items.length - 1, true);
+    else activate(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+  };
 
   return (
-    <section id={SECTION_IDS.social_networks} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-16 sm:px-6 lg:py-20">
-      <div className="mx-auto max-w-7xl">
-        <SectionHeading section={section} align="center" />
-        <div className="mt-9 flex flex-wrap justify-center gap-3">
-          {visibleNetworks.map(item => {
-            const Icon = SOCIAL_ICON_MAP[item.icon_key] || Globe2;
-            return (
-              <a
-                key={item.id}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#002050] transition-all hover:border-[#BF8813] hover:shadow-sm"
-                aria-label={item.alt_text || `${item.name} — Omnia Global Academy`}
-              >
-                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-[#F8F2E4] text-[#9A6A08]">
-                  {item.logo_url ? <img src={item.logo_url} alt="" loading="lazy" decoding="async" className="h-5 w-5 object-contain" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
-                </span>
-                {item.name}
-              </a>
-            );
+    <div className="oga-impact-ecosystem">
+      <div role="tablist" aria-label={section.title} className="oga-module-tabs">
+        {items.map((item, index) => {
+          const Icon = contentIcon(item);
+          return (
+            <button
+              key={item.id}
+              ref={(element: HTMLButtonElement | null) => { tabRefs.current[index] = element; }}
+              id={`module-tab-${item.id}`}
+              type="button"
+              role="tab"
+              aria-selected={index === activeIndex}
+              aria-controls={`module-panel-${item.id}`}
+              tabIndex={index === activeIndex ? 0 : -1}
+              onClick={() => activate(index)}
+              onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => handleKeyDown(event, index)}
+              className={index === activeIndex ? 'is-active' : ''}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              <span>{item.title || item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        id={`module-panel-${active.id}`}
+        role="tabpanel"
+        aria-labelledby={`module-tab-${active.id}`}
+        tabIndex={0}
+        className="oga-module-panel focus-visible:outline-none"
+      >
+        <div>
+          <span className="oga-module-panel__icon"><ActiveIcon className="h-7 w-7" aria-hidden="true" /></span>
+          <h3>{active.title || active.label}</h3>
+          {active.description && <p>{active.description}</p>}
+          <ActionLink href={active.action_url} variant="light" className="mt-6">{active.action_label}</ActionLink>
+        </div>
+        <div className="oga-module-orbit" aria-hidden="true">
+          <span className="oga-module-orbit__core"><ActiveIcon className="h-8 w-8" /></span>
+          {items.slice(0, 6).map((item, index) => {
+            const Icon = contentIcon(item);
+            return <span key={item.id} className={`oga-module-orbit__node oga-module-orbit__node--${index + 1}`}><Icon className="h-4 w-4" /></span>;
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CredentialsPanel({ section }: { section: LandingSectionConfig }) {
+  const items = visibleContentItems(section);
+  return (
+    <div className="oga-proof-grid">
+      {items.slice(0, 4).map(item => {
+        const Icon = contentIcon(item);
+        return (
+          <article key={item.id} className="oga-proof-card">
+            <span><Icon className="h-5 w-5" aria-hidden="true" /></span>
+            <div>
+              <h3>{item.title || item.label}</h3>
+              {item.description && <p>{item.description}</p>}
+            </div>
+          </article>
+        );
+      })}
+      <div className="oga-proof-action">
+        <ActionLink href={section.primary_cta_url}>{section.primary_cta_label}</ActionLink>
+        <ActionLink href={section.secondary_cta_url} variant="secondary">{section.secondary_cta_label}</ActionLink>
+      </div>
+    </div>
+  );
+}
+
+function CareerPanel({ section }: { section: LandingSectionConfig }) {
+  const items = visibleContentItems(section);
+  const talent = items.filter(item => item.group === 'talent');
+  const recruiter = items.filter(item => item.group === 'recruiter');
+  const talentHeader = talent[0];
+  const recruiterHeader = recruiter[0];
+
+  return (
+    <div className="oga-career-split">
+      {talent.length > 0 && (
+        <article className="oga-career-card oga-career-card--light">
+          <span>{talentHeader?.label || 'Pour les talents'}</span>
+          <h3>{talentHeader?.title}</h3>
+          {talentHeader?.description && <p>{talentHeader.description}</p>}
+          <ul>
+            {talent.slice(1, 5).map(item => <li key={item.id}><Check className="h-4 w-4" aria-hidden="true" />{item.title || item.label}</li>)}
+          </ul>
+          <ActionLink href={section.secondary_cta_url || '/emploi'} variant="secondary" className="mt-5">
+            {section.secondary_cta_label || 'Découvrir Omnia Career'}
+          </ActionLink>
+        </article>
+      )}
+
+      {recruiter.length > 0 && (
+        <article className="oga-career-card oga-career-card--dark">
+          <span>{recruiterHeader?.label || 'Pour les recruteurs'}</span>
+          <h3>{recruiterHeader?.title}</h3>
+          {recruiterHeader?.description && <p>{recruiterHeader.description}</p>}
+          <ul>
+            {recruiter.slice(1, 5).map(item => <li key={item.id}><Check className="h-4 w-4" aria-hidden="true" />{item.title || item.label}</li>)}
+          </ul>
+          <ActionLink href={section.primary_cta_url || '/talent'} variant="light" className="mt-5">
+            {section.primary_cta_label || 'Découvrir Omnia Talent'}
+          </ActionLink>
+        </article>
+      )}
+    </div>
+  );
+}
+
+function StructuresPanel({ section }: { section: LandingSectionConfig }) {
+  const items = visibleContentItems(section);
+  return (
+    <div className="oga-structure-panel">
+      <div className="oga-structure-panel__visual" aria-hidden="true">
+        <span className="oga-structure-building"><Building2 className="h-9 w-9" /></span>
+        <span className="oga-structure-node oga-structure-node--one"><Users className="h-4 w-4" /></span>
+        <span className="oga-structure-node oga-structure-node--two"><BookOpen className="h-4 w-4" /></span>
+        <span className="oga-structure-node oga-structure-node--three"><ShieldCheck className="h-4 w-4" /></span>
+      </div>
+      <div>
+        <div className="oga-structure-list">
+          {items.slice(0, 6).map(item => (
+            <span key={item.id}><Check className="h-4 w-4" aria-hidden="true" />{item.title || item.label}</span>
+          ))}
+        </div>
+        <ActionLink href={section.primary_cta_url} variant="light" className="mt-6">{section.primary_cta_label}</ActionLink>
+      </div>
+    </div>
+  );
+}
+
+function ImpactHubSection({ sections }: { sections: LandingSectionConfig[] }) {
+  const ordered = useMemo(() => sections.slice().sort((a, b) => a.order - b.order), [sections]);
+  const [activeType, setActiveType] = useState<LandingSectionType>(ordered[0]?.type || 'ecosystem');
+
+  useEffect(() => {
+    if (!ordered.some(section => section.type === activeType)) setActiveType(ordered[0]?.type || 'ecosystem');
+  }, [activeType, ordered]);
+
+  useEffect(() => {
+    const activateFromHash = () => {
+      const hash = window.location.hash.slice(1);
+      const matched = ordered.find(section => SECTION_IDS[section.type] === hash);
+      if (matched) setActiveType(matched.type);
+    };
+    activateFromHash();
+    window.addEventListener('hashchange', activateFromHash);
+    return () => window.removeEventListener('hashchange', activateFromHash);
+  }, [ordered]);
+
+  if (ordered.length === 0) return null;
+  const active = ordered.find(section => section.type === activeType) || ordered[0];
+
+  return (
+    <section data-oga-reveal className="oga-reveal oga-impact-hub relative overflow-hidden bg-[#071B3D] px-5 py-14 sm:px-6 lg:py-16">
+      {ordered.map(section => (
+        <span key={section.type} id={SECTION_IDS[section.type]} className="absolute left-0 top-0 scroll-mt-20" aria-hidden="true" />
+      ))}
+
+      <div className="mx-auto max-w-7xl">
+        <div className="oga-impact-hub__header">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E6BE58]">L’écosystème Omnia</p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-bold tracking-[-0.035em] text-white sm:text-4xl">
+              Apprendre devient une expérience complète.
+            </h2>
+          </div>
+
+          <div role="tablist" aria-label="Explorer l’écosystème Omnia" className="oga-impact-tabs">
+            {ordered.map(section => (
+              <button
+                key={section.type}
+                type="button"
+                role="tab"
+                aria-selected={section.type === active.type}
+                onClick={() => setActiveType(section.type)}
+                className={section.type === active.type ? 'is-active' : ''}
+              >
+                {section.internal_name || section.title}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="oga-impact-panel mt-7" role="tabpanel" tabIndex={0}>
+          <div className="oga-impact-panel__heading">
+            {active.eyebrow && <p>{active.eyebrow}</p>}
+            <h3>{active.title}</h3>
+            {active.subtitle && <span>{active.subtitle}</span>}
+            {active.body && <span>{active.body}</span>}
+          </div>
+
+          <div className="oga-impact-panel__content">
+            {active.type === 'ecosystem' && <EcosystemPanel section={active} />}
+            {active.type === 'credentials' && <CredentialsPanel section={active} />}
+            {active.type === 'career_recruitment' && <CareerPanel section={active} />}
+            {active.type === 'structures' && <StructuresPanel section={active} />}
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function FinalCtaSection({ section }: { section: LandingSectionConfig }) {
+function ConnectionsDockSection({
+  sections,
+  partners,
+  apps,
+  networks,
+}: {
+  sections: LandingSectionConfig[];
+  partners: LandingPublicPartner[];
+  apps: MobileAppItem[];
+  networks: SocialNetworkItem[];
+}) {
+  const byType = new Map(sections.map(section => [section.type, section]));
+  const partnerSection = byType.get('partners');
+  const appSection = byType.get('mobile_apps');
+  const socialSection = byType.get('social_networks');
+  const ctaSection = byType.get('final_cta');
+
+  const visiblePartners = partnerSection
+    ? partners
+        .filter(partner => partner.show_homepage && partner.logo_url && (!partner.website_url || isExternalHref(partner.website_url)))
+        .sort((a, b) => Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)))
+    : [];
+
+  const visibleApps = appSection
+    ? apps
+        .filter(app => app.enabled && app.show_homepage && isExternalHref(app.url))
+        .sort((a, b) => a.display_order - b.display_order)
+    : [];
+
+  const visibleNetworks = socialSection
+    ? networks
+        .filter(item => item.enabled && item.show_homepage && isExternalHref(item.url) && (item.logo_url || item.icon_key))
+        .sort((a, b) => a.display_order - b.display_order)
+    : [];
+
+  if (!ctaSection && visiblePartners.length === 0 && visibleApps.length === 0 && visibleNetworks.length === 0) return null;
+
   return (
-    <section id={SECTION_IDS.final_cta} data-oga-reveal className="oga-reveal scroll-mt-20 bg-white px-5 py-20 sm:px-6 lg:py-24">
-      <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[#BF8813] px-7 py-12 text-center sm:px-12 sm:py-16">
-        {section.eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#002050]">{section.eyebrow}</p>}
-        <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">{section.title}</h2>
-        {section.subtitle && <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/90">{section.subtitle}</p>}
-        {section.body && <p className="mx-auto mt-4 max-w-2xl whitespace-pre-line text-sm leading-7 text-white/85">{section.body}</p>}
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <ActionLink href={section.primary_cta_url} variant="primary">{section.primary_cta_label}</ActionLink>
-          <ActionLink href={section.secondary_cta_url} variant="secondary">{section.secondary_cta_label}</ActionLink>
-        </div>
+    <section data-oga-reveal className="oga-reveal oga-connections-dock relative bg-white px-5 py-14 sm:px-6 lg:py-16">
+      {sections.map(section => (
+        <span key={section.type} id={SECTION_IDS[section.type]} className="absolute left-0 top-0 scroll-mt-20" aria-hidden="true" />
+      ))}
+
+      <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-[#002050] shadow-[0_30px_80px_rgba(0,32,80,0.18)]">
+        {ctaSection && (
+          <div className="oga-connections-dock__cta">
+            <div>
+              {ctaSection.eyebrow && <p>{ctaSection.eyebrow}</p>}
+              <h2>{ctaSection.title}</h2>
+              {ctaSection.subtitle && <span>{ctaSection.subtitle}</span>}
+              {ctaSection.body && <span>{ctaSection.body}</span>}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <ActionLink href={ctaSection.primary_cta_url} variant="gold">{ctaSection.primary_cta_label}</ActionLink>
+              <ActionLink href={ctaSection.secondary_cta_url} variant="light">{ctaSection.secondary_cta_label}</ActionLink>
+            </div>
+          </div>
+        )}
+
+        {(visiblePartners.length > 0 || visibleApps.length > 0 || visibleNetworks.length > 0) && (
+          <div className="oga-connections-dock__resources">
+            {visiblePartners.length > 0 && (
+              <div className="oga-compact-resource oga-compact-resource--partners">
+                <div>
+                  <p>{partnerSection?.eyebrow || 'Partenaires'}</p>
+                  <h3>{partnerSection?.title}</h3>
+                </div>
+                <div className="oga-partner-strip">
+                  {visiblePartners.map(partner => {
+                    const logo = (
+                      <span title={partner.name}>
+                        <img
+                          src={partner.logo_url!}
+                          alt={partner.alt_text || `Logo ${partner.name}`}
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </span>
+                    );
+                    return partner.website_url ? (
+                      <a key={partner.id} href={partner.website_url} target="_blank" rel="noopener noreferrer">{logo}</a>
+                    ) : <span key={partner.id}>{logo}</span>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {(visibleApps.length > 0 || visibleNetworks.length > 0) && (
+              <div className="oga-channel-row">
+                {visibleApps.length > 0 && (
+                  <div className="oga-compact-resource">
+                    <div>
+                      <p>{appSection?.eyebrow || 'Applications'}</p>
+                      <h3>{appSection?.title}</h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {visibleApps.map(app => (
+                        <a key={app.id} href={app.url} target="_blank" rel="noopener noreferrer" className="oga-app-button">
+                          <Smartphone className="h-5 w-5" aria-hidden="true" />
+                          <span><small>Télécharger</small><strong>{app.name}</strong></span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {visibleNetworks.length > 0 && (
+                  <div className="oga-compact-resource">
+                    <div>
+                      <p>{socialSection?.eyebrow || 'Réseaux officiels'}</p>
+                      <h3>{socialSection?.title}</h3>
+                    </div>
+                    <div className="oga-social-strip">
+                      {visibleNetworks.map(item => {
+                        const Icon = SOCIAL_ICON_MAP[item.icon_key] || Globe2;
+                        return (
+                          <a
+                            key={item.id}
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={item.alt_text || `${item.name} — Omnia Global Academy`}
+                            title={item.name}
+                          >
+                            {item.logo_url
+                              ? <img src={item.logo_url} alt="" loading="lazy" decoding="async" />
+                              : <Icon className="h-5 w-5" aria-hidden="true" />}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -605,10 +916,10 @@ function FinalCtaSection({ section }: { section: LandingSectionConfig }) {
 
 function CustomTextSection({ section }: { section: LandingSectionConfig }) {
   return (
-    <section data-oga-reveal className="oga-reveal bg-white px-5 py-16 sm:px-6 lg:py-20">
-      <div className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-[#F7F8FA] p-8 sm:p-10">
-        <SectionHeading section={section} />
-        <div className="mt-7 flex flex-wrap gap-3">
+    <section data-oga-reveal className="oga-reveal bg-white px-5 py-10 sm:px-6 lg:py-12">
+      <div className="mx-auto max-w-5xl rounded-3xl border border-slate-200 bg-[#F7F8FA] p-7 sm:p-9">
+        <SectionHeading section={section} compact />
+        <div className="mt-6 flex flex-wrap gap-3">
           <ActionLink href={section.primary_cta_url}>{section.primary_cta_label}</ActionLink>
           <ActionLink href={section.secondary_cta_url} variant="secondary">{section.secondary_cta_label}</ActionLink>
         </div>
@@ -617,49 +928,125 @@ function CustomTextSection({ section }: { section: LandingSectionConfig }) {
   );
 }
 
-export function LandingExperience({ data, searchQuery, onSearchQueryChange, onSearch }: LandingExperienceProps) {
+type RenderGroup = {
+  key: string;
+  order: number;
+  element: ReactNode;
+};
+
+export function LandingExperience({
+  data,
+  searchQuery,
+  onSearchQueryChange,
+  onSearch,
+}: LandingExperienceProps) {
   const sections = useMemo(
     () => data.landingPage.sections.filter(section => section.enabled).sort((a, b) => a.order - b.order),
     [data.landingPage.sections],
   );
+
+  const sectionByType = useMemo(
+    () => new Map(sections.map(section => [section.type, section])),
+    [sections],
+  );
+
+  const groups = useMemo<RenderGroup[]>(() => {
+    const result: RenderGroup[] = [];
+    const hero = sectionByType.get('hero');
+    const goal = sectionByType.get('goal_selector');
+    const journey = sectionByType.get('omnia_journey');
+    const courses = sectionByType.get('featured_courses');
+    const impactSections = sections.filter(section => IMPACT_TYPES.includes(section.type));
+    const connectionSections = sections.filter(section => CONNECTION_TYPES.includes(section.type));
+    const customSections = sections.filter(section => section.type === 'custom_text');
+
+    if (hero) {
+      result.push({
+        key: 'hero',
+        order: hero.order,
+        element: (
+          <HeroSection
+            section={hero}
+            stats={data.stats}
+            statsVisibility={data.statsVisibility}
+            searchQuery={searchQuery}
+            onSearchQueryChange={onSearchQueryChange}
+            onSearch={onSearch}
+            featuredCourses={data.featuredCourses}
+          />
+        ),
+      });
+    }
+
+    if (goal || journey) {
+      result.push({
+        key: 'learning-compass',
+        order: Math.min(goal?.order ?? Number.MAX_SAFE_INTEGER, journey?.order ?? Number.MAX_SAFE_INTEGER),
+        element: <LearningCompassSection goalSection={goal} journeySection={journey} />,
+      });
+    }
+
+    if (courses) {
+      result.push({
+        key: 'courses',
+        order: courses.order,
+        element: <FeaturedCoursesSection section={courses} courses={data.featuredCourses} />,
+      });
+    }
+
+    if (impactSections.length > 0) {
+      result.push({
+        key: 'impact-hub',
+        order: Math.min(...impactSections.map(section => section.order)),
+        element: <ImpactHubSection sections={impactSections} />,
+      });
+    }
+
+    customSections.forEach(section => {
+      result.push({
+        key: section.id,
+        order: section.order,
+        element: <CustomTextSection section={section} />,
+      });
+    });
+
+    if (connectionSections.length > 0) {
+      result.push({
+        key: 'connections',
+        order: Math.min(...connectionSections.map(section => section.order)),
+        element: (
+          <ConnectionsDockSection
+            sections={connectionSections}
+            partners={data.partners}
+            apps={data.mobileApps}
+            networks={data.socialNetworks}
+          />
+        ),
+      });
+    }
+
+    return result.sort((a, b) => a.order - b.order);
+  }, [
+    data.featuredCourses,
+    data.mobileApps,
+    data.partners,
+    data.socialNetworks,
+    data.stats,
+    data.statsVisibility,
+    onSearch,
+    onSearchQueryChange,
+    searchQuery,
+    sectionByType,
+    sections,
+  ]);
+
   const mainRef = useRef<HTMLElement>(null);
-  const revealKey = `${sections.map(section => section.id).join('|')}|${data.featuredCourses.length}|${data.partners.length}|${data.mobileApps.length}|${data.socialNetworks.length}`;
+  const revealKey = `${groups.map(group => group.key).join('|')}|${data.featuredCourses.length}|${data.partners.length}|${data.mobileApps.length}|${data.socialNetworks.length}`;
   useLandingReveals(mainRef, revealKey);
 
   return (
     <main id="contenu-principal" ref={mainRef} tabIndex={-1} aria-label="Contenu principal de la page d’accueil">
-      {sections.map(section => {
-        switch (section.type) {
-          case 'hero':
-            return <HeroSection key={section.id} section={section} stats={data.stats} statsVisibility={data.statsVisibility} searchQuery={searchQuery} onSearchQueryChange={onSearchQueryChange} onSearch={onSearch} featuredCourses={data.featuredCourses} />;
-          case 'goal_selector':
-            return <GoalSelectorSection key={section.id} section={section} />;
-          case 'omnia_journey':
-            return <JourneySection key={section.id} section={section} />;
-          case 'featured_courses':
-            return <FeaturedCoursesSection key={section.id} section={section} courses={data.featuredCourses} />;
-          case 'ecosystem':
-            return <EcosystemSection key={section.id} section={section} />;
-          case 'credentials':
-            return <CredentialsSection key={section.id} section={section} />;
-          case 'career_recruitment':
-            return <CareerRecruitmentSection key={section.id} section={section} />;
-          case 'structures':
-            return <StructuresSection key={section.id} section={section} />;
-          case 'partners':
-            return <PartnersSection key={section.id} section={section} partners={data.partners} />;
-          case 'mobile_apps':
-            return <MobileAppsSection key={section.id} section={section} apps={data.mobileApps} />;
-          case 'social_networks':
-            return <SocialNetworksSection key={section.id} section={section} networks={data.socialNetworks} />;
-          case 'final_cta':
-            return <FinalCtaSection key={section.id} section={section} />;
-          case 'custom_text':
-            return <CustomTextSection key={section.id} section={section} />;
-          default:
-            return null;
-        }
-      })}
+      {groups.map(group => <Fragment key={group.key}>{group.element}</Fragment>)}
     </main>
   );
 }

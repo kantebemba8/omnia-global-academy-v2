@@ -1040,3 +1040,1813 @@ body {
     transition: none;
   }
 }
+
+
+/* Optimisation premium compacte — page d'accueil avant applications mobiles. */
+.oga-premium-hero {
+  min-height: min(860px, calc(100svh + 72px));
+}
+
+.oga-premium-hero__backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.oga-premium-hero__backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, #000, transparent 92%);
+}
+
+.oga-premium-hero__aurora {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(48px);
+  opacity: 0.46;
+}
+
+.oga-premium-hero__aurora--one {
+  right: 4%;
+  top: 10%;
+  width: min(46vw, 680px);
+  height: min(46vw, 680px);
+  background: rgba(191, 136, 19, 0.2);
+}
+
+.oga-premium-hero__aurora--two {
+  left: -16%;
+  bottom: -34%;
+  width: min(48vw, 720px);
+  height: min(48vw, 720px);
+  background: rgba(34, 96, 180, 0.24);
+}
+
+.oga-premium-hero__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(230, 190, 88, 0.8), transparent);
+}
+
+.oga-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(230, 190, 88, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 8px 12px;
+  color: #E6BE58;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  backdrop-filter: blur(14px);
+}
+
+.oga-hero-kicker__pulse {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #E6BE58;
+  box-shadow: 0 0 18px rgba(230, 190, 88, 0.86);
+}
+
+.oga-hero-kicker__pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid rgba(230, 190, 88, 0.55);
+  border-radius: inherit;
+  animation: oga-premium-pulse 2.4s ease-out infinite;
+}
+
+.oga-premium-search {
+  box-shadow: 0 20px 60px rgba(0, 10, 30, 0.18);
+}
+
+.oga-learning-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oga-learning-signals span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 8px 11px;
+  color: rgba(219, 234, 254, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.oga-learning-signals svg {
+  color: #E6BE58;
+}
+
+.oga-premium-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+}
+
+.oga-premium-stats div {
+  position: relative;
+  min-width: 82px;
+  padding-left: 12px;
+}
+
+.oga-premium-stats div::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: #BF8813;
+}
+
+.oga-premium-stats dd {
+  color: #FFFFFF;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.oga-premium-stats dt {
+  margin-top: 2px;
+  color: rgba(191, 219, 254, 0.78);
+  font-size: 10px;
+}
+
+/* Scène 3D premium du hero. */
+.oga-premium-depth-stage {
+  min-height: 540px;
+  perspective: 1800px;
+  perspective-origin: 50% 42%;
+}
+
+.oga-premium-depth-stage .oga-depth-grid {
+  inset: 6% 0 5%;
+  border-radius: 42px;
+  background-size: 27px 27px;
+  opacity: 0.58;
+  transform: rotateX(65deg) translate3d(0, 17%, -280px) scale(1.16);
+}
+
+.oga-depth-aurora {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(30px);
+  transform-style: preserve-3d;
+}
+
+.oga-depth-aurora--gold {
+  left: 18%;
+  top: 10%;
+  width: 66%;
+  height: 62%;
+  background: radial-gradient(circle, rgba(230, 190, 88, 0.24), transparent 68%);
+  transform: translate3d(calc(var(--oga-scroll) * -14px), calc(var(--oga-scroll) * -18px), -160px);
+}
+
+.oga-depth-aurora--blue {
+  right: 2%;
+  bottom: 4%;
+  width: 60%;
+  height: 56%;
+  background: radial-gradient(circle, rgba(87, 147, 233, 0.18), transparent 68%);
+  transform: translate3d(calc(var(--oga-scroll) * 18px), calc(var(--oga-scroll) * 12px), -220px);
+}
+
+.oga-premium-depth-stage .oga-depth-orbit--one {
+  inset: 7% 4% 10% 7%;
+}
+
+.oga-premium-depth-stage .oga-depth-orbit--two {
+  inset: 17% 13% 22% 16%;
+}
+
+.oga-depth-orbit--three {
+  inset: 27% 24% 33% 27%;
+  border-color: rgba(230, 190, 88, 0.16);
+  transform: rotateX(75deg) rotateZ(calc(-10deg + var(--oga-scroll) * 12deg)) translateZ(-165px);
+}
+
+.oga-premium-depth-stage .oga-interface-window {
+  border-color: rgba(255, 255, 255, 0.66);
+  box-shadow:
+    0 38px 90px rgba(0, 9, 28, 0.34),
+    0 10px 30px rgba(0, 10, 32, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.oga-academy-core {
+  overflow: visible;
+}
+
+.oga-academy-core::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: 21px;
+  background: linear-gradient(135deg, rgba(230, 190, 88, 0.66), rgba(255, 255, 255, 0.3), rgba(83, 133, 205, 0.48));
+  filter: blur(8px);
+  opacity: 0.42;
+}
+
+.oga-academy-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid #E8EDF4;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #FBFCFE, #F5F8FC);
+  padding: 10px 11px;
+}
+
+.oga-academy-progress > div span,
+.oga-academy-progress > div strong {
+  display: block;
+}
+
+.oga-academy-progress > div span {
+  color: #94A3B8;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.oga-academy-progress > div strong {
+  margin-top: 2px;
+  color: #002050;
+  font-size: 10px;
+}
+
+.oga-academy-progress__ring {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: conic-gradient(#BF8813 0 72%, #E8EDF4 72% 100%);
+}
+
+.oga-academy-progress__ring i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #FFFFFF;
+}
+
+.oga-academy-core__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.oga-academy-core__footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  background: #F1F5F9;
+  padding: 5px 7px;
+  color: #475569;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.oga-academy-core__footer svg {
+  color: #9A6A08;
+}
+
+.oga-premium-depth-stage .oga-depth-layer--course {
+  left: 9%;
+  top: 17%;
+  z-index: 9;
+  width: 62%;
+  transform: translate3d(calc(var(--oga-scroll) * -11px), calc(var(--oga-scroll) * -17px), 72px) rotateX(3deg) rotateY(-9deg) rotateZ(-1deg);
+}
+
+.oga-premium-depth-stage .oga-depth-layer--projects {
+  right: 1%;
+  top: 8%;
+  z-index: 11;
+  width: 37%;
+  transform: translate3d(calc(var(--oga-scroll) * 17px), calc(var(--oga-scroll) * -22px), 158px) rotateX(1deg) rotateY(-8deg) rotateZ(2deg);
+}
+
+.oga-premium-depth-stage .oga-depth-layer--credentials {
+  right: -1%;
+  top: 39%;
+  z-index: 13;
+  width: 43%;
+  transform: translate3d(calc(var(--oga-scroll) * 24px), calc(var(--oga-scroll) * -4px), 245px) rotateX(-2deg) rotateY(-8deg) rotateZ(1deg);
+}
+
+.oga-premium-depth-stage .oga-depth-layer--career {
+  left: 1%;
+  bottom: 6%;
+  z-index: 12;
+  width: 38%;
+  transform: translate3d(calc(var(--oga-scroll) * -18px), calc(var(--oga-scroll) * 15px), 190px) rotateX(-3deg) rotateY(8deg) rotateZ(-2deg);
+}
+
+.oga-premium-depth-stage .oga-depth-layer--opportunities {
+  right: 7%;
+  bottom: 1%;
+  z-index: 14;
+  width: 43%;
+  transform: translate3d(calc(var(--oga-scroll) * 13px), calc(var(--oga-scroll) * 20px), 300px) rotateX(-4deg) rotateY(-5deg) rotateZ(1deg);
+}
+
+.oga-learning-route {
+  position: absolute;
+  left: 9%;
+  right: 8%;
+  bottom: 9%;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  transform: rotateZ(-7deg) translateZ(-32px);
+}
+
+.oga-learning-route::before {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(230, 190, 88, 0.15), rgba(230, 190, 88, 0.8), rgba(230, 190, 88, 0.15));
+  box-shadow: 0 0 18px rgba(230, 190, 88, 0.24);
+}
+
+.oga-learning-route__node {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 1px solid rgba(230, 190, 88, 0.6);
+  border-radius: 50%;
+  background: #002050;
+  color: #E6BE58;
+  box-shadow: 0 0 18px rgba(230, 190, 88, 0.18);
+}
+
+.oga-learning-route__node small {
+  position: absolute;
+  top: 34px;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oga-depth-signal {
+  position: absolute;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 8px 10px;
+  color: #002050;
+  box-shadow: 0 16px 38px rgba(0, 12, 36, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.oga-depth-signal > svg {
+  color: #BF8813;
+}
+
+.oga-depth-signal span small,
+.oga-depth-signal span strong {
+  display: block;
+}
+
+.oga-depth-signal span small {
+  color: #9A6A08;
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.oga-depth-signal span strong {
+  margin-top: 1px;
+  font-size: 8px;
+}
+
+.oga-depth-signal--live {
+  left: 1%;
+  top: 3%;
+  transform: translate3d(calc(var(--oga-scroll) * -8px), calc(var(--oga-scroll) * -16px), 285px) rotateZ(-2deg);
+}
+
+.oga-depth-signal--verified {
+  right: 2%;
+  top: 67%;
+  transform: translate3d(calc(var(--oga-scroll) * 10px), calc(var(--oga-scroll) * 9px), 360px) rotateZ(2deg);
+}
+
+.oga-depth-signal--calendar {
+  left: 30%;
+  bottom: -1%;
+  transform: translate3d(calc(var(--oga-scroll) * -4px), calc(var(--oga-scroll) * 12px), 330px);
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer {
+  animation: oga-premium-float 7.5s ease-in-out infinite;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer--projects {
+  animation-delay: -1.8s;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer--credentials {
+  animation-delay: -3.6s;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer--career {
+  animation-delay: -5.2s;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer--opportunities {
+  animation-delay: -2.7s;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-signal {
+  animation: oga-premium-signal 5.8s ease-in-out infinite;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-signal--verified {
+  animation-delay: -2s;
+}
+
+.oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-signal--calendar {
+  animation-delay: -4s;
+}
+
+/* Bloc compact objectifs + parcours. */
+.oga-learning-compass {
+  background-image:
+    radial-gradient(circle at 8% 20%, rgba(191, 136, 19, 0.08), transparent 30%),
+    radial-gradient(circle at 92% 76%, rgba(0, 32, 80, 0.08), transparent 34%);
+}
+
+.oga-goal-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.oga-goal-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.oga-goal-pills button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  border: 1px solid #DDE3EC;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 9px 13px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+  scroll-snap-align: start;
+  transition: border-color 220ms ease, background-color 220ms ease, color 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+}
+
+.oga-goal-pills button svg {
+  color: #BF8813;
+}
+
+.oga-goal-pills button:hover {
+  border-color: rgba(191, 136, 19, 0.65);
+  transform: translateY(-1px);
+}
+
+.oga-goal-pills button.is-active {
+  border-color: #002050;
+  background: #002050;
+  color: #FFFFFF;
+  box-shadow: 0 10px 28px rgba(0, 32, 80, 0.16);
+}
+
+.oga-goal-pills button.is-active svg {
+  color: #E6BE58;
+}
+
+.oga-journey-rail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  border: 1px solid rgba(0, 32, 80, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 7px;
+  box-shadow: 0 15px 44px rgba(0, 32, 80, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.oga-journey-rail button {
+  position: relative;
+  min-height: 60px;
+  border-radius: 12px;
+  padding: 9px 8px;
+  text-align: left;
+  color: #64748B;
+  transition: background-color 240ms ease, color 240ms ease, transform 240ms ease;
+}
+
+.oga-journey-rail button span,
+.oga-journey-rail button strong {
+  display: block;
+}
+
+.oga-journey-rail button span {
+  color: #9A6A08;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+}
+
+.oga-journey-rail button strong {
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.oga-journey-rail button.is-active {
+  background: #002050;
+  color: #FFFFFF;
+  transform: translateY(-2px);
+}
+
+.oga-journey-rail button.is-active span {
+  color: #E6BE58;
+}
+
+.oga-compass-panel {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(0, 32, 80, 0.1);
+  border-radius: 30px;
+  background: #FFFFFF;
+  box-shadow: 0 28px 80px rgba(0, 32, 80, 0.1);
+}
+
+.oga-compass-panel__copy {
+  position: relative;
+  z-index: 2;
+  padding: 28px;
+}
+
+.oga-compass-panel__copy::after {
+  content: '';
+  position: absolute;
+  right: -60px;
+  top: 10%;
+  z-index: -1;
+  width: 180px;
+  height: 180px;
+  border: 30px solid rgba(191, 136, 19, 0.07);
+  border-radius: 50%;
+}
+
+.oga-compass-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: #F8F2E4;
+  color: #9A6A08;
+  box-shadow: inset 0 0 0 1px rgba(191, 136, 19, 0.14);
+}
+
+.oga-compass-eyebrow {
+  margin-top: 18px;
+  color: #9A6A08;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oga-compass-panel__copy h3 {
+  margin-top: 7px;
+  max-width: 560px;
+  color: #002050;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.oga-compass-description {
+  margin-top: 13px;
+  max-width: 600px;
+  color: #64748B;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.oga-active-milestone {
+  margin-top: 25px;
+  border-top: 1px solid #E7EAF0;
+  padding-top: 20px;
+}
+
+.oga-active-milestone > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #9A6A08;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.oga-active-milestone > strong {
+  display: block;
+  margin-top: 7px;
+  color: #002050;
+  font-size: 18px;
+}
+
+.oga-active-milestone > p {
+  margin-top: 7px;
+  max-width: 600px;
+  color: #64748B;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.oga-compass-panel__stage {
+  min-width: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 68% 36%, rgba(230, 190, 88, 0.18), transparent 36%),
+    linear-gradient(145deg, #001A43, #002050 56%, #071B3D);
+}
+
+.oga-premium-journey-stage {
+  min-height: 450px;
+  width: 100%;
+  perspective: 1500px;
+}
+
+.oga-premium-journey-stage .oga-journey-depth-stage__grid {
+  inset: 6% 4% 7%;
+}
+
+.oga-premium-journey-stage .oga-journey-depth-stage__stack {
+  position: absolute;
+  inset: 13% 10% 14%;
+}
+
+.oga-premium-journey-stage .oga-journey-scene {
+  top: 9%;
+  left: 11%;
+  width: 76%;
+}
+
+.oga-journey-path {
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  bottom: 8%;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+}
+
+.oga-journey-path::before {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 17px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.oga-journey-path span {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 50%;
+  background: #002050;
+  color: rgba(255, 255, 255, 0.66);
+  transition: transform 260ms ease, border-color 260ms ease, background-color 260ms ease, color 260ms ease;
+}
+
+.oga-journey-path span small {
+  position: absolute;
+  top: 39px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7px;
+}
+
+.oga-journey-path span.is-active {
+  border-color: #E6BE58;
+  background: #BF8813;
+  color: #FFFFFF;
+  transform: translateY(-3px) scale(1.08);
+  box-shadow: 0 0 24px rgba(230, 190, 88, 0.34);
+}
+
+.oga-journey-metric {
+  position: absolute;
+  right: 5%;
+  top: 7%;
+  z-index: 35;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(0, 18, 48, 0.7);
+  padding: 8px 10px;
+  backdrop-filter: blur(10px);
+}
+
+.oga-journey-metric span,
+.oga-journey-metric small {
+  display: block;
+}
+
+.oga-journey-metric span {
+  color: #E6BE58;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.oga-journey-metric small {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Formations condensées en un seul rail. */
+.oga-course-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.oga-course-rail__item {
+  min-width: 0;
+  transition: transform 260ms ease;
+}
+
+.oga-course-rail__item:hover {
+  transform: translateY(-4px);
+}
+
+/* Hub compact : écosystème, preuves, carrière et structures dans une seule section. */
+.oga-impact-hub::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(to bottom, transparent, #000 15%, #000 84%, transparent);
+  pointer-events: none;
+}
+
+.oga-impact-hub::after {
+  content: '';
+  position: absolute;
+  right: -12%;
+  top: -35%;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(191, 136, 19, 0.18), transparent 68%);
+  pointer-events: none;
+}
+
+.oga-impact-hub__header {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 24px;
+}
+
+.oga-impact-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 6px;
+  scrollbar-width: none;
+  backdrop-filter: blur(12px);
+}
+
+.oga-impact-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.oga-impact-tabs button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  border-radius: 11px;
+  padding: 9px 13px;
+  color: rgba(219, 234, 254, 0.72);
+  font-size: 11px;
+  font-weight: 750;
+  transition: background-color 220ms ease, color 220ms ease, transform 220ms ease;
+}
+
+.oga-impact-tabs button.is-active {
+  background: #FFFFFF;
+  color: #002050;
+  transform: translateY(-1px);
+}
+
+.oga-impact-panel {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 28px 80px rgba(0, 8, 28, 0.22);
+  backdrop-filter: blur(16px);
+}
+
+.oga-impact-panel__heading {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 24px 26px 20px;
+}
+
+.oga-impact-panel__heading > p {
+  color: #E6BE58;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.oga-impact-panel__heading h3 {
+  margin-top: 5px;
+  color: #FFFFFF;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.oga-impact-panel__heading > span {
+  display: block;
+  margin-top: 8px;
+  max-width: 850px;
+  color: rgba(219, 234, 254, 0.75);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.oga-impact-panel__content {
+  padding: 22px;
+}
+
+.oga-module-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  scrollbar-width: none;
+}
+
+.oga-module-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.oga-module-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 12px;
+  color: rgba(219, 234, 254, 0.72);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.oga-module-tabs button svg {
+  color: #E6BE58;
+}
+
+.oga-module-tabs button.is-active {
+  border-color: rgba(230, 190, 88, 0.6);
+  background: rgba(191, 136, 19, 0.24);
+  color: #FFFFFF;
+}
+
+.oga-module-panel {
+  position: relative;
+  display: grid;
+  min-height: 330px;
+  overflow: hidden;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 82% 30%, rgba(230, 190, 88, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(0, 32, 80, 0.96), rgba(10, 43, 92, 0.9));
+  padding: 28px;
+}
+
+.oga-module-panel > div:first-child {
+  position: relative;
+  z-index: 3;
+  align-self: center;
+  max-width: 620px;
+}
+
+.oga-module-panel__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #BF8813;
+  color: #FFFFFF;
+  box-shadow: 0 12px 32px rgba(191, 136, 19, 0.24);
+}
+
+.oga-module-panel h3 {
+  margin-top: 18px;
+  color: #FFFFFF;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.oga-module-panel p {
+  margin-top: 10px;
+  max-width: 640px;
+  color: rgba(219, 234, 254, 0.76);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.oga-module-orbit {
+  position: absolute;
+  right: 3%;
+  top: 50%;
+  width: 300px;
+  height: 300px;
+  border: 1px solid rgba(230, 190, 88, 0.28);
+  border-radius: 50%;
+  transform: translateY(-50%) rotateX(62deg);
+}
+
+.oga-module-orbit::before,
+.oga-module-orbit::after {
+  content: '';
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+}
+
+.oga-module-orbit::before {
+  inset: 18%;
+}
+
+.oga-module-orbit::after {
+  inset: 36%;
+}
+
+.oga-module-orbit__core,
+.oga-module-orbit__node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #FFFFFF;
+  color: #002050;
+  box-shadow: 0 14px 40px rgba(0, 10, 32, 0.25);
+  transform: rotateX(-62deg);
+}
+
+.oga-module-orbit__core {
+  left: 50%;
+  top: 50%;
+  width: 72px;
+  height: 72px;
+  margin: -36px;
+  color: #BF8813;
+}
+
+.oga-module-orbit__node {
+  width: 38px;
+  height: 38px;
+}
+
+.oga-module-orbit__node--1 { left: 5%; top: 43%; }
+.oga-module-orbit__node--2 { left: 25%; top: 4%; }
+.oga-module-orbit__node--3 { right: 18%; top: 8%; }
+.oga-module-orbit__node--4 { right: 3%; top: 50%; }
+.oga-module-orbit__node--5 { right: 23%; bottom: 4%; }
+.oga-module-orbit__node--6 { left: 24%; bottom: 7%; }
+
+.oga-proof-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.oga-proof-card {
+  display: flex;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 17px;
+  transition: transform 240ms ease, background-color 240ms ease, border-color 240ms ease;
+}
+
+.oga-proof-card:hover {
+  border-color: rgba(230, 190, 88, 0.42);
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-3px);
+}
+
+.oga-proof-card > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: rgba(191, 136, 19, 0.22);
+  color: #E6BE58;
+}
+
+.oga-proof-card h3 {
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.oga-proof-card p {
+  margin-top: 5px;
+  color: rgba(219, 234, 254, 0.68);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.oga-proof-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.oga-career-split {
+  display: grid;
+  gap: 14px;
+}
+
+.oga-career-card {
+  border-radius: 20px;
+  padding: 22px;
+}
+
+.oga-career-card > span {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.oga-career-card h3 {
+  margin-top: 7px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.oga-career-card > p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.oga-career-card ul {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.oga-career-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.oga-career-card li svg {
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+
+.oga-career-card--light {
+  background: #FFFFFF;
+  color: #334155;
+}
+
+.oga-career-card--light > span,
+.oga-career-card--light li svg {
+  color: #9A6A08;
+}
+
+.oga-career-card--light h3 {
+  color: #002050;
+}
+
+.oga-career-card--light > p,
+.oga-career-card--light li {
+  color: #64748B;
+}
+
+.oga-career-card--dark {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #002050;
+  color: #FFFFFF;
+}
+
+.oga-career-card--dark > span,
+.oga-career-card--dark li svg {
+  color: #E6BE58;
+}
+
+.oga-career-card--dark > p,
+.oga-career-card--dark li {
+  color: rgba(219, 234, 254, 0.76);
+}
+
+.oga-structure-panel {
+  display: grid;
+  gap: 24px;
+  min-height: 320px;
+  align-items: center;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(0, 32, 80, 0.92), rgba(20, 57, 109, 0.85));
+  padding: 24px;
+}
+
+.oga-structure-panel__visual {
+  position: relative;
+  min-height: 210px;
+}
+
+.oga-structure-panel__visual::before,
+.oga-structure-panel__visual::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid rgba(230, 190, 88, 0.26);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.oga-structure-panel__visual::before {
+  width: 190px;
+  height: 190px;
+}
+
+.oga-structure-panel__visual::after {
+  width: 125px;
+  height: 125px;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.oga-structure-building,
+.oga-structure-node {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: 0 16px 40px rgba(0, 10, 32, 0.24);
+}
+
+.oga-structure-building {
+  left: 50%;
+  top: 50%;
+  width: 78px;
+  height: 78px;
+  background: #FFFFFF;
+  color: #002050;
+  transform: translate(-50%, -50%);
+}
+
+.oga-structure-node {
+  width: 42px;
+  height: 42px;
+  background: #BF8813;
+  color: #FFFFFF;
+}
+
+.oga-structure-node--one { left: 12%; top: 27%; }
+.oga-structure-node--two { right: 12%; top: 24%; }
+.oga-structure-node--three { left: 50%; bottom: 1%; transform: translateX(-50%); }
+
+.oga-structure-list {
+  display: grid;
+  gap: 9px;
+}
+
+.oga-structure-list span {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 10px 11px;
+  color: rgba(219, 234, 254, 0.82);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.oga-structure-list svg {
+  margin-top: 1px;
+  flex: 0 0 auto;
+  color: #E6BE58;
+}
+
+/* Partenaires, applications et réseaux dans un seul dock final. */
+.oga-connections-dock__cta {
+  display: grid;
+  gap: 24px;
+  align-items: center;
+  padding: 34px;
+  background:
+    radial-gradient(circle at 88% 22%, rgba(230, 190, 88, 0.17), transparent 28%),
+    linear-gradient(130deg, #002050, #071B3D);
+}
+
+.oga-connections-dock__cta > div:first-child > p {
+  color: #E6BE58;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.oga-connections-dock__cta h2 {
+  max-width: 760px;
+  color: #FFFFFF;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.oga-connections-dock__cta > div:first-child > span {
+  display: block;
+  margin-top: 10px;
+  max-width: 720px;
+  color: rgba(219, 234, 254, 0.75);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.oga-connections-dock__resources {
+  display: grid;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oga-compact-resource {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+  background: rgba(0, 19, 55, 0.9);
+  padding: 22px 26px;
+}
+
+.oga-compact-resource p {
+  color: #E6BE58;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.oga-compact-resource h3 {
+  margin-top: 4px;
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.oga-partner-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.oga-partner-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.oga-partner-strip > span,
+.oga-partner-strip a > span {
+  display: grid;
+  place-items: center;
+  min-width: 120px;
+  height: 58px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 10px 14px;
+  scroll-snap-align: start;
+}
+
+.oga-partner-strip img {
+  max-width: 94px;
+  max-height: 34px;
+  object-fit: contain;
+}
+
+.oga-channel-row {
+  display: grid;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oga-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 156px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 9px 11px;
+  color: #FFFFFF;
+  transition: background-color 220ms ease, transform 220ms ease;
+}
+
+.oga-app-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.oga-app-button > svg {
+  color: #E6BE58;
+}
+
+.oga-app-button small,
+.oga-app-button strong {
+  display: block;
+}
+
+.oga-app-button small {
+  color: rgba(219, 234, 254, 0.55);
+  font-size: 7px;
+}
+
+.oga-app-button strong {
+  margin-top: 1px;
+  font-size: 11px;
+}
+
+.oga-social-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oga-social-strip a {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #E6BE58;
+  transition: background-color 220ms ease, transform 220ms ease;
+}
+
+.oga-social-strip a:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+}
+
+.oga-social-strip img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* Animations premium à faible coût. */
+@keyframes oga-premium-pulse {
+  0% { opacity: 0.8; transform: scale(0.8); }
+  70%, 100% { opacity: 0; transform: scale(1.7); }
+}
+
+@keyframes oga-premium-float {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -7px; }
+}
+
+@keyframes oga-premium-signal {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -5px; }
+}
+
+@media (min-width: 768px) {
+  .oga-compass-panel {
+    grid-template-columns: minmax(0, 0.88fr) minmax(400px, 1.12fr);
+  }
+
+  .oga-proof-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oga-proof-action {
+    grid-column: 1 / -1;
+  }
+
+  .oga-career-split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oga-structure-panel {
+    grid-template-columns: minmax(250px, 0.75fr) minmax(0, 1.25fr);
+  }
+
+  .oga-connections-dock__cta {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 40px 44px;
+  }
+
+  .oga-compact-resource {
+    grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1.65fr);
+  }
+
+  .oga-channel-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .oga-impact-hub__header {
+    grid-template-columns: minmax(0, 0.85fr) minmax(520px, 1.15fr);
+    align-items: end;
+  }
+
+  .oga-module-panel {
+    grid-template-columns: minmax(0, 1fr) 330px;
+    align-items: center;
+    padding: 34px;
+  }
+
+  .oga-module-orbit {
+    display: block;
+  }
+}
+
+@media (max-width: 1023px) {
+  .oga-premium-hero {
+    min-height: auto;
+  }
+
+  .oga-premium-depth-stage {
+    min-height: 510px;
+    max-width: 660px;
+    margin-inline: auto;
+  }
+
+  .oga-journey-rail {
+    margin-top: 4px;
+  }
+
+  .oga-module-orbit {
+    opacity: 0.58;
+    right: -80px;
+  }
+
+  .oga-module-panel > div:first-child {
+    max-width: 70%;
+  }
+
+  .oga-course-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .oga-premium-hero {
+    padding-top: 92px;
+  }
+
+  .oga-premium-depth-stage {
+    min-height: 440px;
+    margin-top: -8px;
+    transform: scale(0.98);
+    transform-origin: top center;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--course {
+    left: 5%;
+    top: 17%;
+    width: 67%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--projects {
+    right: 0;
+    width: 42%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--credentials {
+    right: -3%;
+    top: 42%;
+    width: 46%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--career {
+    left: 0;
+    bottom: 8%;
+    width: 42%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--opportunities {
+    right: 5%;
+    bottom: 3%;
+    width: 47%;
+  }
+
+  .oga-depth-signal--calendar,
+  .oga-learning-route {
+    display: none;
+  }
+
+  .oga-depth-signal--live {
+    left: 0;
+  }
+
+  .oga-depth-signal--verified {
+    right: 0;
+    top: 70%;
+  }
+
+  .oga-journey-rail {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .oga-journey-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .oga-journey-rail button {
+    flex: 0 0 112px;
+    scroll-snap-align: start;
+  }
+
+  .oga-compass-panel__copy {
+    padding: 24px 21px;
+  }
+
+  .oga-premium-journey-stage {
+    min-height: 390px;
+  }
+
+  .oga-premium-journey-stage .oga-journey-depth-stage__stack {
+    inset: 12% 5% 16%;
+  }
+
+  .oga-premium-journey-stage .oga-journey-scene {
+    left: 5%;
+    width: 88%;
+  }
+
+  .oga-journey-path {
+    left: 6%;
+    right: 6%;
+  }
+
+  .oga-journey-depth-stage__label {
+    left: 5%;
+  }
+
+  .oga-course-rail {
+    display: flex;
+    gap: 13px;
+    overflow-x: auto;
+    margin-right: -20px;
+    padding-right: 20px;
+    padding-bottom: 8px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .oga-course-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .oga-course-rail__item {
+    flex: 0 0 min(82vw, 320px);
+    scroll-snap-align: start;
+  }
+
+  .oga-impact-panel__heading {
+    padding: 21px 20px 18px;
+  }
+
+  .oga-impact-panel__content {
+    padding: 16px;
+  }
+
+  .oga-module-panel {
+    min-height: 350px;
+    padding: 22px;
+  }
+
+  .oga-module-panel > div:first-child {
+    max-width: 100%;
+  }
+
+  .oga-module-orbit {
+    right: -120px;
+    top: 66%;
+    opacity: 0.22;
+  }
+
+  .oga-proof-grid,
+  .oga-career-split {
+    grid-template-columns: 1fr;
+  }
+
+  .oga-structure-panel {
+    padding: 18px;
+  }
+
+  .oga-structure-panel__visual {
+    min-height: 185px;
+  }
+
+  .oga-connections-dock__cta {
+    padding: 28px 22px;
+  }
+
+  .oga-compact-resource {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .oga-premium-depth-stage {
+    min-height: 405px;
+    transform: scale(0.93);
+    margin-bottom: -28px;
+  }
+
+  .oga-depth-signal {
+    display: none;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--course {
+    width: 72%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--projects {
+    width: 44%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--credentials {
+    width: 49%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--career {
+    width: 44%;
+  }
+
+  .oga-premium-depth-stage .oga-depth-layer--opportunities {
+    width: 49%;
+  }
+
+  .oga-hero-kicker {
+    max-width: 100%;
+    font-size: 8px;
+    line-height: 1.4;
+  }
+
+  .oga-learning-signals span {
+    font-size: 10px;
+  }
+
+  .oga-premium-stats {
+    gap: 12px 18px;
+  }
+
+  .oga-premium-stats div {
+    min-width: 72px;
+  }
+
+  .oga-compass-panel__copy h3 {
+    font-size: 25px;
+  }
+
+  .oga-premium-journey-stage {
+    min-height: 350px;
+  }
+
+  .oga-journey-path span {
+    width: 29px;
+    height: 29px;
+  }
+
+  .oga-journey-path::before {
+    top: 14px;
+  }
+
+  .oga-journey-path span small {
+    top: 34px;
+  }
+
+  .oga-journey-metric {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oga-hero-kicker__pulse::after,
+  .oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-layer,
+  .oga-premium-depth-stage[data-motion='enhanced'] .oga-depth-signal {
+    animation: none !important;
+  }
+
+  .oga-course-rail__item:hover,
+  .oga-proof-card:hover,
+  .oga-app-button:hover,
+  .oga-social-strip a:hover,
+  .oga-goal-pills button:hover {
+    transform: none;
+  }
+}
+
+@supports (content-visibility: auto) {
+  #contenu-principal > section[data-oga-reveal]:not(#accueil) {
+    contain-intrinsic-size: auto 620px;
+  }
+}
