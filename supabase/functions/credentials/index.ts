@@ -582,6 +582,16 @@ async function uploadBadgeTemplateImage(sb: Supabase, session: Session, body: Js
   return { url: data.publicUrl, storage_path: storagePath };
 }
 
+
+function xmlEscape(value:unknown){return String(value??"").replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[character]||character));}
+async function generateAutomaticBadgeImage(sb:Supabase,session:Session,name:string,metadata:JsonRecord){
+ const primary=/^#[0-9a-f]{6}$/i.test(String(metadata.primary_color||""))?String(metadata.primary_color):"#002050";
+ const accent=/^#[0-9a-f]{6}$/i.test(String(metadata.accent_color||""))?String(metadata.accent_color):"#BF8813";
+ const symbol=text(metadata.symbol,8)||"✓";const shortName=name.length>28?`${name.slice(0,25)}…`:name;
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="${xmlEscape(name)}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${primary}"/><stop offset="1" stop-color="#00152f"/></linearGradient></defs><circle cx="256" cy="256" r="238" fill="url(#g)"/><circle cx="256" cy="256" r="206" fill="none" stroke="${accent}" stroke-width="14"/><path d="M132 390 92 492l108-52 56 72 56-72 108 52-40-102" fill="${accent}" opacity=".96"/><circle cx="256" cy="218" r="92" fill="#fff" opacity=".98"/><text x="256" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="92" font-weight="700" fill="${primary}">${xmlEscape(symbol)}</text><rect x="92" y="334" width="328" height="82" rx="28" fill="#fff"/><text x="256" y="372" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="700" fill="${primary}">${xmlEscape(shortName)}</text><text x="256" y="397" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="700" letter-spacing="3" fill="${accent}">OMNIA GLOBAL ACADEMY</text></svg>`;
+ const bytes=new TextEncoder().encode(svg);const storagePath=`badge-templates/${session.userId}/automatic-${crypto.randomUUID()}.svg`;const {error}=await sb.storage.from("credential-assets").upload(storagePath,bytes,{contentType:"image/svg+xml",cacheControl:"31536000",upsert:false});if(error)throw error;const {data}=sb.storage.from("credential-assets").getPublicUrl(storagePath);if(!data.publicUrl)throw new Error("BADGE_IMAGE_PUBLIC_URL_UNAVAILABLE");return data.publicUrl;
+}
+
 async function saveTemplate(sb: Supabase, session: Session, body: JsonRecord) {
   const id = nullableText(body.id, 80);
   const name = text(body.name, 160);
@@ -589,7 +599,10 @@ async function saveTemplate(sb: Supabase, session: Session, body: JsonRecord) {
   const criteriaNarrative = text(body.criteria_narrative, 3000);
   const categoryId = text(body.category_id, 80);
   const issuerId = text(body.issuer_id, 80);
-  const imageUrl = nullableText(body.image_url, 1000);
+  const metadata:JsonRecord=typeof body.metadata === "object" && body.metadata !== null ? body.metadata as JsonRecord : {};
+  const designMode=text(metadata.design_mode,30)||"upload";
+  let imageUrl = nullableText(body.image_url, 1000);
+  if(designMode==="automatic"&&!imageUrl)imageUrl=await generateAutomaticBadgeImage(sb,session,name,metadata);
   if (!name || !description || !criteriaNarrative || !categoryId || !issuerId || !validHttpUrl(imageUrl)) throw new Error("TEMPLATE_INCOMPLETE");
   const code = slugify(text(body.code, 120) || name);
   const achievementUri = nullableText(body.achievement_uri, 1000) || `https://omniaglobalacademy.com/credentials/achievements/${code}`;
@@ -619,7 +632,7 @@ async function saveTemplate(sb: Supabase, session: Session, body: JsonRecord) {
     automatic_enabled: bool(body.automatic_enabled),
     status,
     achievement_uri: achievementUri,
-    metadata: typeof body.metadata === "object" && body.metadata !== null ? body.metadata : {},
+    metadata,
     updated_by: session.userId,
     ...(id ? {} : { created_by: session.userId }),
   };

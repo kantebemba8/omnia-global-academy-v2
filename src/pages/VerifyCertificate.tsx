@@ -5,9 +5,8 @@ import {
   Award,
   BadgeCheck,
   CalendarDays,
-  Camera,
-  CheckCircle2,
   Clock3,
+  Download,
   FileCheck2,
   GraduationCap,
   Image as ImageIcon,
@@ -51,6 +50,9 @@ interface CertificateDetails {
   verification_url?: string;
   pdf_url?: string;
   course_version?: string;
+  pdf_mime_type?: string;
+  pdf_sha256?: string;
+  template_version?: number;
 }
 
 interface VerifyResponse {
@@ -134,7 +136,7 @@ function extractCertificateId(raw: string) {
     const url = new URL(text);
     const parts = url.pathname.split('/').filter(Boolean);
     const verifyIndex = parts.findIndex(part => part === 'verify');
-    return decodeURIComponent(parts[verifyIndex + 1] || parts.at(-1) || '').toUpperCase();
+    return decodeURIComponent(parts[verifyIndex + 1] || parts[parts.length - 1] || '').toUpperCase();
   } catch {
     return text.toUpperCase();
   }
@@ -220,13 +222,7 @@ export default function VerifyCertificate() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState(certificateId ?? '');
   const [activeTab, setActiveTab] = useState<'id' | 'qr'>('id');
-  useEffect(() => {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/certificate-admin?action=public_settings`)
-      .then(r => r.json()).then(d => setPublicSettings(d.settings || {})).catch(() => {});
-  }, []);
-
   const [result, setResult] = useState<VerifyResponse | null>(null);
-  const [publicSettings, setPublicSettings] = useState<Record<string,string>>({});
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -423,6 +419,8 @@ export default function VerifyCertificate() {
                     <Detail label="Date d’émission" value={formatDate(certificate.issued_at, locale)} />
                     <Detail label="Émetteur" value={certificate.issuer_name || 'Omnia Global Academy'} />
                     <Detail label="Statut" value={status === 'valid' ? 'Valide' : status === 'expired' ? 'Expiré' : 'Révoqué'} accent={statusTheme.text} />
+                    {certificate.pdf_sha256 && <Detail label="Empreinte PDF" value={certificate.pdf_sha256.slice(0, 20) + '…'} mono />}
+                    {certificate.pdf_url && status === 'valid' && <div className="sm:col-span-2"><a href={certificate.pdf_url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}><Download className="h-4 w-4" /> Télécharger le certificat PDF</a></div>}
                     {result.revocation_reason && <div className="sm:col-span-2"><Detail label="Motif de révocation" value={result.revocation_reason} /></div>}
                   </div>
                 ) : (

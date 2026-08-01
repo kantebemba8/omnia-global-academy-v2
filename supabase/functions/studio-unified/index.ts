@@ -89,6 +89,78 @@ const defaults:Record<string,any>={
  heading:{text:"Nouveau titre",level:1,alignment:"left"},subheading:{text:"Sous-titre",level:2,alignment:"left"},text:{html:"<p>Saisissez votre texte ici...</p>"},separator:{style:"line"},callout:{type:"info",content:"Information importante..."},remember:{title:"À retenir",points:[""]},objective:{title:"Objectif pédagogique",html:"<p>À la fin de cette leçon, vous serez capable de...</p>"},example:{title:"Exemple",html:"<p>Décrivez ici un exemple concret...</p>"},summary:{title:"Résumé",html:"<p>Dans cette leçon, vous avez appris...</p>"},image:{url:"",alt:"",caption:""},video:{url:"",eco_data:true},audio:{url:"",description:"",transcription:""},pdf:{url:"",title:"",description:"",downloadable:true},word:{url:"",title:"",description:""},excel:{url:"",title:"",sheet:"",preview_rows:[]},scorm:{url:"",title:"",package_type:"scorm_12",duration_min:0},download:{url:"",title:"",description:""},qcm:{question:"",options:["","","",""],correctIndex:0,explanation:""},true_false:{statement:"",answer:true,explanation:""},open_question:{question:"",guidance:"",expected_answer:"",points:10,required:true},exercise:{title:"Exercice",instructions:"",task:"",resources:[],accepted_types:["pdf","doc","docx","xls","xlsx"],learner_upload_required:true,points:20},accordion:{items:[{id:crypto.randomUUID(),title:"Section 1",content:""}]},flashcards:{cards:[{id:crypto.randomUUID(),front:"Recto",back:"Verso"}]},interactive_table:{headers:["Colonne 1","Colonne 2"],rows:[["",""]],style:"table"},timeline:{steps:[{id:crypto.randomUUID(),title:"Étape 1",description:""}]},columns:{columns:[{id:crypto.randomUUID(),content:""},{id:crypto.randomUUID(),content:""}]},important:{title:"Important",html:"<p>Saisissez l’information importante...</p>"},case_study:{context:"",data:"",task:"",questions:[]},definition:{term:"",definition:"",example:""},correction:{title:"Correction",html:"<p>Saisissez ici la correction détaillée...</p>",key_points:[]},bullet_list:{items:[""]},numbered_list:{items:[""]},quote:{text:"Citation ou témoignage",author:""},code:{language:"text",code:""},checklist:{items:[{id:crypto.randomUUID(),text:"Action à réaliser",checked:false}]},link_button:{label:"Ouvrir le lien",url:"",open_new_tab:true},embed:{url:"",title:"Contenu intégré"},gallery:{images:[]},formula:{latex:""},chart:{chart_type:"bar",labels:["A","B"],values:[0,0]},assignment_upload:{title:"Travail à remettre",instructions:"",accepted_types:["pdf","docx"],max_size_mb:10},rubric:{criteria:[{name:"Critère 1",description:"",points:10}]}
 };
 
+
+type RegistryAssetResolution = {
+ organization_id?: string | null;
+ recognition_partner_id?: string | null;
+ recognition_program_id?: string | null;
+ logo_permission_id?: string | null;
+ certification_type: string;
+ organization_name: string;
+ certification_name: string;
+ credit_value?: number | null;
+ credit_unit?: string | null;
+ logo_url?: string | null;
+ badge_url?: string | null;
+ signature_url?: string | null;
+ stamp_url?: string | null;
+ verification_url?: string | null;
+ partner_website_url?: string | null;
+ partner_description?: string | null;
+ course_logo_authorized: boolean;
+ certificate_logo_authorized: boolean;
+ permission_snapshot: Record<string, unknown>;
+};
+
+function permissionIsCurrent(row:any){
+ const today=new Date().toISOString().slice(0,10);
+ return row?.status==='authorized'&&(!row.valid_from||row.valid_from<=today)&&(!row.valid_until||row.valid_until>=today);
+}
+
+async function certificationOrganizationOptions(sb:any,courseId:string){
+ const options:any[]=[];
+ const {data:organizations}=await sb.from('certification_organizations').select('*').eq('is_active',true).order('name');
+ for(const org of organizations||[]){
+  options.push({key:`organization:${org.id}`,source:'certification_organization',organization_id:org.id,name:org.name,type:org.organization_type||'other',logo_url:org.logo_authorized&&org.course_display_authorized?org.logo_url:null,badge_url:org.logo_authorized&&org.certificate_display_authorized?org.badge_url:null,signature_url:org.certificate_display_authorized?org.signature_url:null,stamp_url:org.certificate_display_authorized?org.stamp_url:null,website_url:org.website_url||org.verification_url||null,description:org.description||null,course_logo_authorized:!!(org.logo_authorized&&org.course_display_authorized),certificate_logo_authorized:!!(org.logo_authorized&&org.certificate_display_authorized),default_certification_name:org.organization_type==='omnia'?'Certification Omnia':null});
+ }
+ const {data:partners}=await sb.from('recognition_partners').select('*').eq('status','active').order('name');
+ for(const partner of partners||[]){
+  const {data:programs}=await sb.from('recognition_programs').select('*').eq('partner_id',partner.id).eq('status','approved').or(`course_id.eq.${courseId},course_id.is.null`).order('course_id',{ascending:false}).order('created_at',{ascending:false});
+  const {data:permissions}=await sb.from('recognition_logo_permissions').select('*').eq('partner_id',partner.id).in('scope',['course','certificate']);
+  const current=(permissions||[]).filter(permissionIsCurrent);
+  const basePrograms=(programs||[]).length?programs:[null];
+  for(const program of basePrograms){
+   const relevant=current.filter((perm:any)=>!perm.program_id||!program?.id||perm.program_id===program.id);
+   const coursePermission=relevant.find((perm:any)=>perm.scope==='course');
+   const certificatePermission=relevant.find((perm:any)=>perm.scope==='certificate');
+   options.push({key:`partner:${partner.id}:${program?.id||'general'}`,source:'recognition_partner',recognition_partner_id:partner.id,recognition_program_id:program?.id||null,name:partner.name,type:partner.partner_type==='cpd'?'cpd':'partner',logo_url:coursePermission?partner.logo_url:null,badge_url:certificatePermission?partner.logo_url:null,website_url:partner.website||null,description:partner.description||null,course_logo_authorized:!!coursePermission,certificate_logo_authorized:!!certificatePermission,default_certification_name:program?.certificate_label||program?.title||null,credit_value:program?.credit_value??null,credit_unit:program?.credit_unit||null});
+  }
+ }
+ return options;
+}
+
+async function resolveCertificationRegistry(sb:any,courseId:string,input:any):Promise<RegistryAssetResolution>{
+ const organizationId=String(input.organization_id||'').trim();
+ if(organizationId){
+  const {data:org,error}=await sb.from('certification_organizations').select('*').eq('id',organizationId).eq('is_active',true).maybeSingle();
+  if(error)throw error;if(!org)throw new Error('CERTIFICATION_ORGANIZATION_NOT_FOUND');
+  const courseAuthorized=!!(org.logo_authorized&&org.course_display_authorized);
+  const certificateAuthorized=!!(org.logo_authorized&&org.certificate_display_authorized);
+  return {organization_id:org.id,recognition_partner_id:org.recognition_partner_id||null,certification_type:org.organization_type||input.type||'other',organization_name:org.name,certification_name:String(input.certification_name||'').trim(),credit_value:input.credit_value==null?null:Number(input.credit_value),credit_unit:input.credit_unit||null,logo_url:courseAuthorized?org.logo_url:null,badge_url:certificateAuthorized?(org.badge_url||org.logo_url):null,signature_url:certificateAuthorized?org.signature_url:null,stamp_url:certificateAuthorized?org.stamp_url:null,verification_url:String(input.verification_url||org.verification_url||org.website_url||'').trim()||null,partner_website_url:org.website_url||null,partner_description:org.description||null,course_logo_authorized:courseAuthorized,certificate_logo_authorized:certificateAuthorized,permission_snapshot:{source:'certification_organization',organization_id:org.id,logo_authorized:!!org.logo_authorized,course_display_authorized:!!org.course_display_authorized,certificate_display_authorized:!!org.certificate_display_authorized,authorization_snapshot:org.authorization_snapshot||{}}};
+ }
+ const partnerId=String(input.recognition_partner_id||'').trim();
+ if(partnerId){
+  const {data:partner,error}=await sb.from('recognition_partners').select('*').eq('id',partnerId).eq('status','active').maybeSingle();if(error)throw error;if(!partner)throw new Error('RECOGNITION_PARTNER_NOT_FOUND');
+  const programId=String(input.recognition_program_id||'').trim();let program:any=null;
+  if(programId){const result=await sb.from('recognition_programs').select('*').eq('id',programId).eq('partner_id',partnerId).eq('status','approved').maybeSingle();if(result.error)throw result.error;program=result.data;if(!program)throw new Error('RECOGNITION_PROGRAM_NOT_APPROVED');if(program.course_id&&program.course_id!==courseId)throw new Error('RECOGNITION_PROGRAM_COURSE_MISMATCH');}
+  const {data:permissions}=await sb.from('recognition_logo_permissions').select('*').eq('partner_id',partnerId).in('scope',['course','certificate']);
+  const relevant=(permissions||[]).filter((perm:any)=>permissionIsCurrent(perm)&&(!perm.program_id||!programId||perm.program_id===programId));
+  const coursePermission=relevant.find((perm:any)=>perm.scope==='course');const certificatePermission=relevant.find((perm:any)=>perm.scope==='certificate');
+  return {recognition_partner_id:partner.id,recognition_program_id:program?.id||null,logo_permission_id:(certificatePermission||coursePermission)?.id||null,certification_type:partner.partner_type==='cpd'?'cpd':String(input.type||'partner'),organization_name:partner.name,certification_name:String(input.certification_name||program?.certificate_label||program?.title||'').trim(),credit_value:input.credit_value==null?(program?.credit_value??null):Number(input.credit_value),credit_unit:input.credit_unit||program?.credit_unit||null,logo_url:coursePermission?partner.logo_url:null,badge_url:certificatePermission?partner.logo_url:null,verification_url:String(input.verification_url||partner.website||'').trim()||null,partner_website_url:partner.website||null,partner_description:partner.description||null,course_logo_authorized:!!coursePermission,certificate_logo_authorized:!!certificatePermission,permission_snapshot:{source:'recognition_partner',partner_id:partner.id,program_id:program?.id||null,course_permission:coursePermission||null,certificate_permission:certificatePermission||null,captured_at:new Date().toISOString()}};
+ }
+ return {certification_type:String(input.type||'other'),organization_name:String(input.organization_name||'').trim(),certification_name:String(input.certification_name||'').trim(),credit_value:input.credit_value==null?null:Number(input.credit_value),credit_unit:input.credit_unit||null,logo_url:null,badge_url:null,signature_url:null,stamp_url:null,verification_url:String(input.verification_url||'').trim()||null,partner_website_url:null,partner_description:null,course_logo_authorized:false,certificate_logo_authorized:false,permission_snapshot:{source:'custom_request',assets_blocked_until_admin_validation:true,captured_at:new Date().toISOString()}};
+}
+
 Deno.serve(async(req)=>{
  if(req.method==="OPTIONS")return new Response(null,{headers:cors});
  try{
@@ -528,8 +600,8 @@ Deno.serve(async(req)=>{
    const {data:course}=await sb.from("courses").select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount,is_assisted,assisted_status,assisted_request_id,certification_requested").eq("id",courseId).single();
    const {data:settings}=await sb.from("site_settings").select("key,value").in("key",["commission_normal_sans_cpd","commission_normal_avec_cpd","commission_assistee_sans_cpd","commission_assistee_avec_cpd"]);
    const revenueRules:any={};for(const row of settings||[]){try{revenueRules[row.key]=typeof row.value==="string"?JSON.parse(row.value):row.value}catch{revenueRules[row.key]=row.value}}
-   const {data:certifications}=await sb.from("course_certifications").select("*").eq("course_id",courseId).order("created_at");
-   return json({success:true,course,revenue_rules:revenueRules,certifications:certifications||[]});
+   const [{data:certifications},organizationOptions]=await Promise.all([sb.from("course_certifications").select("*").eq("course_id",courseId).order("created_at"),certificationOrganizationOptions(sb,courseId)]);
+   return json({success:true,course,revenue_rules:revenueRules,certifications:certifications||[],organization_options:organizationOptions});
   }
   if(action==="save_commercialization"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
@@ -557,9 +629,10 @@ Deno.serve(async(req)=>{
   }
   if(action==="save_course_certification_request"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);const c=b.certification||{};
-   if(!String(c.organization_name||"").trim()||!String(c.certification_name||"").trim())return json({success:false,error:"MISSING_CERTIFICATION_FIELDS"},400);
-   const row:any={course_id:courseId,certification_type:c.type||"other",organization_name:c.organization_name,certification_name:c.certification_name,certification_code:c.code||null,credit_value:c.credit_value?Number(c.credit_value):null,credit_unit:c.credit_unit||null,badge_url:c.badge_url||null,logo_url:c.logo_url||null,signature_url:c.signature_url||null,stamp_url:c.stamp_url||null,verification_url:c.verification_url||null,evidence_url:c.evidence_url||null,valid_from:c.valid_from||null,expires_at:c.expires_at||null,status:"pending",requested_by:userId};
-   const {data,error}=await sb.from("course_certifications").insert(row).select("*").single();if(error)throw error;await sb.from("courses").update({certification_requested:true,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"certification_requested",{certification_id:data.id,type:data.certification_type});return json({success:true,certification:data});
+   const resolved=await resolveCertificationRegistry(sb,courseId,c);
+   if(!resolved.organization_name||!resolved.certification_name)return json({success:false,error:"MISSING_CERTIFICATION_FIELDS"},400);
+   const row:any={course_id:courseId,organization_id:resolved.organization_id||null,recognition_partner_id:resolved.recognition_partner_id||null,recognition_program_id:resolved.recognition_program_id||null,logo_permission_id:resolved.logo_permission_id||null,certification_type:resolved.certification_type,organization_name:resolved.organization_name,certification_name:resolved.certification_name,certification_code:c.code||null,credit_value:resolved.credit_value??null,credit_unit:resolved.credit_unit||null,badge_url:resolved.badge_url||null,logo_url:resolved.logo_url||null,signature_url:resolved.signature_url||null,stamp_url:resolved.stamp_url||null,verification_url:resolved.verification_url||null,evidence_url:c.evidence_url||null,valid_from:c.valid_from||null,expires_at:c.expires_at||null,partner_website_url:resolved.partner_website_url||null,partner_description:resolved.partner_description||null,display_on_course:c.display_on_course!==false,display_on_certificate:c.display_on_certificate!==false,immutable_asset_snapshot:{permission:resolved.permission_snapshot,course_logo_authorized:resolved.course_logo_authorized,certificate_logo_authorized:resolved.certificate_logo_authorized,requested_at:new Date().toISOString()},status:"pending",requested_by:userId};
+   const {data,error}=await sb.from("course_certifications").insert(row).select("*").single();if(error)throw error;await sb.from("courses").update({certification_requested:true,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"certification_requested",{certification_id:data.id,type:data.certification_type,registry_source:resolved.permission_snapshot.source});return json({success:true,certification:data});
   }
   if(action==="admin_list_course_certifications"){
    const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
@@ -567,8 +640,13 @@ Deno.serve(async(req)=>{
   }
   if(action==="admin_update_course_certification"){
    const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);const status=String(b.status||"");if(!["pending","validated","rejected","expired","revoked"].includes(status))return json({success:false,error:"INVALID_STATUS"},400);
-   const patch:any={status,admin_comment:b.admin_comment||null,updated_at:new Date().toISOString()};if(status==="validated"){patch.validated_by=userId;patch.validated_at=new Date().toISOString()}
-   const {data,error}=await sb.from("course_certifications").update(patch).eq("id",b.id).select("*").single();if(error)throw error;return json({success:true,item:data});
+   const {data:current,error:currentError}=await sb.from("course_certifications").select("*").eq("id",b.id).maybeSingle();if(currentError)throw currentError;if(!current)return json({success:false,error:"NOT_FOUND"},404);
+   const patch:any={status,admin_comment:b.admin_comment||null,display_on_course:b.display_on_course===undefined?current.display_on_course:!!b.display_on_course,display_on_certificate:b.display_on_certificate===undefined?current.display_on_certificate:!!b.display_on_certificate,updated_at:new Date().toISOString()};
+   if(status==="validated"){
+    const resolved=await resolveCertificationRegistry(sb,current.course_id,{...current,type:current.certification_type,organization_id:current.organization_id,recognition_partner_id:current.recognition_partner_id,recognition_program_id:current.recognition_program_id,certification_name:current.certification_name,credit_value:current.credit_value,credit_unit:current.credit_unit,verification_url:current.verification_url});
+    patch.validated_by=userId;patch.validated_at=new Date().toISOString();patch.organization_name=resolved.organization_name;patch.certification_name=resolved.certification_name;patch.logo_url=resolved.course_logo_authorized?resolved.logo_url:null;patch.badge_url=resolved.certificate_logo_authorized?(resolved.badge_url||resolved.logo_url):null;patch.signature_url=resolved.certificate_logo_authorized?resolved.signature_url:null;patch.stamp_url=resolved.certificate_logo_authorized?resolved.stamp_url:null;patch.partner_website_url=resolved.partner_website_url||null;patch.partner_description=resolved.partner_description||null;patch.logo_permission_id=resolved.logo_permission_id||null;patch.immutable_asset_snapshot={organization_name:resolved.organization_name,certification_name:resolved.certification_name,logo_url:patch.logo_url,badge_url:patch.badge_url,signature_url:patch.signature_url,stamp_url:patch.stamp_url,verification_url:resolved.verification_url,partner_website_url:resolved.partner_website_url,permission:resolved.permission_snapshot,display_on_course:patch.display_on_course,display_on_certificate:patch.display_on_certificate,captured_at:new Date().toISOString(),validated_by:userId};
+   }
+   const {data,error}=await sb.from("course_certifications").update(patch).eq("id",b.id).select("*").single();if(error)throw error;await log(sb,current.course_id,userId,"course_certification_status_updated",{certification_id:current.id,status});return json({success:true,item:data});
   }
   if(action==="validate_checklist"){
    const errors:string[]=[],warnings:string[]=[];

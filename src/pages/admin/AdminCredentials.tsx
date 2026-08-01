@@ -315,10 +315,14 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400';
 
 function TemplateModal({ draft, issuers, categories, levels, onClose, onDone }: { draft: TemplateDraft; issuers: CredentialIssuer[]; categories: BadgeCategory[]; levels: BadgeLevel[]; onClose: () => void; onDone: (message: string) => void }) {
-  const [form, setForm] = useState<TemplateDraft>(draft);
+  const initialMetadata = (draft.metadata || {}) as Record<string, unknown>;
+  const [form, setForm] = useState<TemplateDraft>({ ...draft, metadata: { design_mode: 'upload', primary_color: BLUE, accent_color: GOLD, symbol: '✓', ...initialMetadata } });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const metadata = (form.metadata || {}) as Record<string, unknown>;
+  const designMode = String(metadata.design_mode || 'upload');
+  const updateMeta = (patch: Record<string, unknown>) => setForm(current => ({ ...current, metadata: { ...((current.metadata || {}) as Record<string, unknown>), ...patch } }));
 
   async function uploadImage(file?: File) {
     if (!file) return;
@@ -327,25 +331,30 @@ function TemplateModal({ draft, issuers, categories, levels, onClose, onDone }: 
     if (file.size > 5 * 1024 * 1024) { setError(humanCredentialsError('BADGE_IMAGE_TOO_LARGE')); return; }
     setUploading(true);
     try {
-      const response = await credentialsRequest<{ success: true; url: string }>('admin_upload_badge_image', {
-        file_name: file.name,
-        mime_type: file.type,
-        base64: await fileToBase64(file),
-      });
-      setForm(current => ({ ...current, image_url: response.url }));
-    } catch (cause) {
-      setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Téléversement impossible.'));
-    } finally { setUploading(false); }
+      const response = await credentialsRequest<{ success: true; url: string }>('admin_upload_badge_image', { file_name: file.name, mime_type: file.type, base64: await fileToBase64(file) });
+      setForm(current => ({ ...current, image_url: response.url, metadata: { ...((current.metadata || {}) as Record<string, unknown>), design_mode: 'upload' } }));
+    } catch (cause) { setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Téléversement impossible.')); }
+    finally { setUploading(false); }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError('');
     try {
-      await credentialsRequest('admin_save_template', { ...form, source_types: String(form.source_types_text || '').split(',').map(value => value.trim()).filter(Boolean) });
+      const sourceTypes = String(form.source_types_text || '').split(',').map(value => value.trim()).filter(Boolean);
+      const cleanMetadata = { ...metadata,
+        course_ids: String(metadata.course_ids_text || '').split(',').map(value => value.trim()).filter(Boolean),
+        categories: String(metadata.categories_text || '').split(',').map(value => value.trim()).filter(Boolean),
+        levels: String(metadata.levels_text || '').split(',').map(value => value.trim()).filter(Boolean),
+        certification_types: String(metadata.certification_types_text || '').split(',').map(value => value.trim()).filter(Boolean),
+      };
+      delete cleanMetadata['course_ids_text']; delete cleanMetadata['categories_text']; delete cleanMetadata['levels_text']; delete cleanMetadata['certification_types_text'];
+      await credentialsRequest('admin_save_template', { ...form, source_types: sourceTypes, metadata: cleanMetadata, image_url: designMode === 'automatic' ? null : form.image_url });
       onDone(form.id ? 'Modèle modifié.' : 'Modèle créé.');
     } catch (cause) { setError(humanCredentialsError(cause instanceof Error ? cause.message : 'Enregistrement impossible.')); }
     finally { setSaving(false); }
   }
+
+  const automaticPreview = <div className="relative flex h-full w-full items-center justify-center rounded-full" style={{ background: String(metadata.primary_color || BLUE), border: `5px solid ${String(metadata.accent_color || GOLD)}` }}><span className="text-4xl font-black text-white">{String(metadata.symbol || '✓').slice(0, 2)}</span><span className="absolute bottom-2 left-2 right-2 truncate rounded-full bg-white px-2 py-1 text-center text-[9px] font-bold" style={{ color: String(metadata.primary_color || BLUE) }}>{form.name || 'Badge OGA'}</span></div>;
 
   return <Modal title={form.id ? 'Modifier le modèle' : 'Nouveau modèle de badge'} onClose={onClose}><form onSubmit={submit} className="space-y-4 p-5">
     <div className="grid gap-4 sm:grid-cols-2">
@@ -358,25 +367,25 @@ function TemplateModal({ draft, issuers, categories, levels, onClose, onDone }: 
     </div>
     <Field label="Description"><textarea required rows={3} className={inputClass} value={form.description || ''} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} /></Field>
     <Field label="Critères d’obtention"><textarea required rows={3} className={inputClass} value={form.criteria_narrative || ''} onChange={event => setForm(current => ({ ...current, criteria_narrative: event.target.value }))} /></Field>
+
     <div className="rounded-xl border border-slate-200 p-4">
+      <div className="mb-4 flex gap-3"><button type="button" onClick={() => updateMeta({ design_mode: 'automatic' })} className={`rounded-lg px-3 py-2 text-sm font-semibold ${designMode === 'automatic' ? 'text-white' : 'border'}`} style={designMode === 'automatic' ? { background: BLUE } : undefined}><Sparkles size={14} className="mr-1 inline" />Génération OGA</button><button type="button" onClick={() => updateMeta({ design_mode: 'upload' })} className={`rounded-lg px-3 py-2 text-sm font-semibold ${designMode === 'upload' ? 'text-white' : 'border'}`} style={designMode === 'upload' ? { background: BLUE } : undefined}><Upload size={14} className="mr-1 inline" />Design personnalisé</button></div>
       <div className="flex flex-wrap items-start gap-4">
-        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
-          {form.image_url ? <img src={form.image_url} alt="Aperçu du badge" className="h-full w-full object-contain" /> : <ImageIcon className="text-slate-400" />}
-        </div>
+        <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">{designMode === 'automatic' ? automaticPreview : form.image_url ? <img src={form.image_url} alt="Aperçu du badge" className="h-full w-full object-contain" /> : <ImageIcon className="text-slate-400" />}</div>
         <div className="min-w-0 flex-1 space-y-3">
-          <Field label="URL de l’image"><input className={inputClass} value={form.image_url || ''} onChange={event => setForm(current => ({ ...current, image_url: event.target.value }))} placeholder="https://…" /></Field>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Upload size={15} />{uploading ? 'Téléversement…' : 'Joindre une image'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} className="hidden" onChange={event => { void uploadImage(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
-          <p className="text-xs text-slate-500">PNG, JPEG ou WEBP · 5 Mo maximum. Le fichier est enregistré dans le stockage sécurisé des credentials.</p>
+          {designMode === 'automatic' ? <div className="grid gap-3 sm:grid-cols-3"><Field label="Couleur principale"><input type="color" className="h-10 w-full rounded-lg border" value={String(metadata.primary_color || BLUE)} onChange={event => updateMeta({ primary_color: event.target.value })} /></Field><Field label="Couleur accent"><input type="color" className="h-10 w-full rounded-lg border" value={String(metadata.accent_color || GOLD)} onChange={event => updateMeta({ accent_color: event.target.value })} /></Field><Field label="Symbole"><input className={inputClass} maxLength={2} value={String(metadata.symbol || '✓')} onChange={event => updateMeta({ symbol: event.target.value })} /></Field><p className="sm:col-span-3 text-xs text-slate-500">Le visuel SVG est généré automatiquement et conservé dans les assets du badge.</p></div> : <><Field label="URL de l’image"><input className={inputClass} value={form.image_url || ''} onChange={event => setForm(current => ({ ...current, image_url: event.target.value }))} placeholder="https://…" /></Field><label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: GOLD }}><Upload size={15} />{uploading ? 'Téléversement…' : 'Joindre une image'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} className="hidden" onChange={event => { void uploadImage(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label><p className="text-xs text-slate-500">PNG, JPEG ou WEBP · 5 Mo maximum.</p></>}
         </div>
       </div>
     </div>
+
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Sources autorisées"><input className={inputClass} value={form.source_types_text || ''} onChange={event => setForm(current => ({ ...current, source_types_text: event.target.value }))} placeholder="manual, course, assessment" /></Field>
+      <Field label="Sources autorisées"><input className={inputClass} value={form.source_types_text || ''} onChange={event => setForm(current => ({ ...current, source_types_text: event.target.value }))} placeholder="manual, course_certificate" /></Field>
       <Field label="Visibilité par défaut"><select className={inputClass} value={form.default_visibility || 'oga'} onChange={event => setForm(current => ({ ...current, default_visibility: event.target.value as BadgeTemplate['default_visibility'] }))}>{['private','oga','recruiters','structure','public'].map(value => <option key={value}>{value}</option>)}</select></Field>
       <Field label="Statut"><select className={inputClass} value={form.status || 'draft'} onChange={event => setForm(current => ({ ...current, status: event.target.value as BadgeTemplate['status'] }))}>{['draft','pending_validation','active','inactive','archived'].map(value => <option key={value}>{value}</option>)}</select></Field>
       <Field label="Validité en jours"><input type="number" min="1" className={inputClass} value={form.validity_days || ''} onChange={event => setForm(current => ({ ...current, validity_days: event.target.value ? Number(event.target.value) : null }))} /></Field>
     </div>
-    <div className="flex flex-wrap gap-5 text-sm"><Check label="Preuve obligatoire" checked={Boolean(form.evidence_required)} onChange={value => setForm(current => ({ ...current, evidence_required: value }))} /><Check label="Badge interne" checked={Boolean(form.internal_only)} onChange={value => setForm(current => ({ ...current, internal_only: value }))} /><Check label="Attribution automatique" checked={Boolean(form.automatic_enabled)} onChange={value => setForm(current => ({ ...current, automatic_enabled: value }))} /></div>
+    {form.automatic_enabled && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">Conditions de l’attribution automatique</p><p className="mt-1 text-xs text-amber-800">Laissez un filtre vide pour accepter toutes les formations correspondantes.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="IDs de formations"><input className={inputClass} value={String(metadata.course_ids_text ?? (Array.isArray(metadata.course_ids) ? metadata.course_ids.join(', ') : ''))} onChange={event => updateMeta({ course_ids_text: event.target.value })} placeholder="uuid1, uuid2" /></Field><Field label="Catégories"><input className={inputClass} value={String(metadata.categories_text ?? (Array.isArray(metadata.categories) ? metadata.categories.join(', ') : ''))} onChange={event => updateMeta({ categories_text: event.target.value })} placeholder="Finance, Management" /></Field><Field label="Niveaux"><input className={inputClass} value={String(metadata.levels_text ?? (Array.isArray(metadata.levels) ? metadata.levels.join(', ') : ''))} onChange={event => updateMeta({ levels_text: event.target.value })} placeholder="debutant, avance" /></Field><Field label="Types de certification"><input className={inputClass} value={String(metadata.certification_types_text ?? (Array.isArray(metadata.certification_types) ? metadata.certification_types.join(', ') : ''))} onChange={event => updateMeta({ certification_types_text: event.target.value })} placeholder="cpd, partner" /></Field></div></div>}
+    <div className="flex flex-wrap gap-5 text-sm"><Check label="Preuve obligatoire" checked={Boolean(form.evidence_required)} onChange={value => setForm(current => ({ ...current, evidence_required: value }))} /><Check label="Badge interne" checked={Boolean(form.internal_only)} onChange={value => setForm(current => ({ ...current, internal_only: value }))} /><Check label="Attribution automatique après certificat" checked={Boolean(form.automatic_enabled)} onChange={value => setForm(current => ({ ...current, automatic_enabled: value, source_types_text: value && !String(current.source_types_text || '').includes('course_certificate') ? `${current.source_types_text || ''}, course_certificate`.replace(/^,\s*/, '') : current.source_types_text }))} /></div>
     {error && <Message kind="error" text={error} />}<Submit saving={saving || uploading} />
   </form></Modal>;
 }

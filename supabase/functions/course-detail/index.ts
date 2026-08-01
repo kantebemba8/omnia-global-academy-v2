@@ -156,6 +156,42 @@ Deno.serve(async (req: Request) => {
       pct: totalRatings > 0 ? Math.round(((dist[s] ?? 0) / totalRatings) * 100) : 0,
     }));
 
+    // ── Validated certifications and partners ───────────────────────────────
+    const { data: certifications, error: certificationsError } = await supabase
+      .from("course_certifications")
+      .select(
+        "id,certification_type,organization_name,certification_name,certification_code," +
+        "credit_value,credit_unit,logo_url,badge_url,verification_url,partner_website_url," +
+        "display_on_course,display_on_certificate,immutable_asset_snapshot,valid_from,expires_at"
+      )
+      .eq("course_id", courseId)
+      .eq("status", "validated")
+      .eq("display_on_course", true)
+      .order("created_at");
+
+    if (certificationsError) throw certificationsError;
+
+    const publicCertifications = (certifications ?? []).map((item: Record<string, unknown>) => {
+      const snapshot = (item.immutable_asset_snapshot && typeof item.immutable_asset_snapshot === "object")
+        ? item.immutable_asset_snapshot as Record<string, unknown>
+        : {};
+      return {
+        id: item.id,
+        certification_type: item.certification_type,
+        organization_name: item.organization_name,
+        certification_name: item.certification_name,
+        certification_code: item.certification_code,
+        credit_value: item.credit_value,
+        credit_unit: item.credit_unit,
+        logo_url: snapshot.course_logo_url || snapshot.logo_url || item.logo_url || item.badge_url || null,
+        verification_url: item.verification_url || null,
+        website_url: snapshot.website_url || item.partner_website_url || null,
+        valid_from: item.valid_from,
+        expires_at: item.expires_at,
+        display_on_certificate: item.display_on_certificate !== false,
+      };
+    });
+
     // ── Enrollment check ─────────────────────────────────────────────────────
     let isEnrolled = false;
     if (sessionToken) {
@@ -185,6 +221,7 @@ Deno.serve(async (req: Request) => {
       is_enrolled: isEnrolled,
       free_preview_lesson_id: freePrevLessonId,
       free_preview_lesson: freePrevLesson,
+      certifications: publicCertifications,
     });
   } catch (err) {
     console.error("course-detail error:", err);

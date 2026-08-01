@@ -29,6 +29,25 @@ async function uploadBase64(sb:any,folder:string,filename:string,mime:string,dat
   return sb.storage.from("certificates").getPublicUrl(path).data.publicUrl;
 }
 
+
+function color(value:unknown,fallback:string){const text=String(value||"");return /^#[0-9a-f]{6}$/i.test(text)?text:fallback;}
+function sanitizeLayout(input:any){
+ const allowedStyles=["classic","modern","minimal"];
+ return {
+  style:allowedStyles.includes(String(input?.style))?String(input.style):"classic",
+  primary_color:color(input?.primary_color,"#002050"),
+  accent_color:color(input?.accent_color,"#BF8813"),
+  title:String(input?.title||"CERTIFICAT DE RÉUSSITE").trim().slice(0,120),
+  show_oga_logo:input?.show_oga_logo!==false,
+  show_creator_logo:input?.show_creator_logo!==false,
+  show_partner_logos:input?.show_partner_logos!==false,
+  show_signatures:input?.show_signatures!==false,
+  show_stamps:input?.show_stamps!==false,
+  show_qr:input?.show_qr!==false,
+  show_credits:input?.show_credits!==false,
+ };
+}
+
 Deno.serve(async req=>{
   if(req.method==="OPTIONS")return new Response(null,{headers:cors});
   const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -94,10 +113,16 @@ Deno.serve(async req=>{
         issuer_scope:t.issuer_scope||"platform",
         language_code:t.language_code||"fr",
         is_default:Boolean(t.is_default),is_active:t.is_active!==false,
-        layout_json:t.layout_json||{},
+        layout_json:sanitizeLayout(t.layout_json||{}),
         updated_at:new Date().toISOString(),
         created_by:c.user_id
       };
+      if(payload.is_default){
+        await sb.from("certificate_templates").update({is_default:false,updated_at:new Date().toISOString()})
+          .eq("document_type",payload.document_type).eq("source_type",payload.source_type)
+          .eq("issuer_scope",payload.issuer_scope).eq("language_code",payload.language_code)
+          .neq("id",t.id||"00000000-0000-0000-0000-000000000000");
+      }
       if(t.id){
         const {data,error}=await sb.from("certificate_templates").update(payload).eq("id",t.id).select("*").single();
         if(error)throw error;return json({success:true,template:data});

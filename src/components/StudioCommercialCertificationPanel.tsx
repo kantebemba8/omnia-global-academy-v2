@@ -1,13 +1,12 @@
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Building2, FileUp, HandHelping, Save, ShieldCheck, Wallet } from 'lucide-react';
+import { BadgeCheck, Building2, ExternalLink, FileUp, HandHelping, Save, ShieldCheck, Wallet } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
-function authToken(){ return localStorage.getItem('omnia_session_token') || ''; }
 async function call(action:string, body:Record<string,unknown>={}){
   const res = await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...body})});
   const data = await res.json().catch(()=>({success:false,error:'INVALID_RESPONSE'}));
@@ -15,12 +14,21 @@ async function call(action:string, body:Record<string,unknown>={}){
   return data;
 }
 
-type Props={
-  course:any;
-  locked?:boolean;
-  onPatch:(patch:Record<string,unknown>)=>void;
-  onSaved?:(message:string)=>void;
+type Props={course:any;locked?:boolean;onPatch:(patch:Record<string,unknown>)=>void;onSaved?:(message:string)=>void};
+type OrganizationOption={
+  key:string;source:'certification_organization'|'recognition_partner';organization_id?:string|null;
+  recognition_partner_id?:string|null;recognition_program_id?:string|null;name:string;type:string;
+  logo_url?:string|null;badge_url?:string|null;signature_url?:string|null;stamp_url?:string|null;
+  website_url?:string|null;description?:string|null;course_logo_authorized:boolean;
+  certificate_logo_authorized:boolean;default_certification_name?:string|null;credit_value?:number|null;credit_unit?:string|null;
 };
+
+type CertDraft={registry_key:string;type:string;organization_id:string;recognition_partner_id:string;recognition_program_id:string;
+  organization_name:string;certification_name:string;code:string;credit_value:string;credit_unit:string;expires_at:string;
+  verification_url:string;logo_url:string;badge_url:string;signature_url:string;stamp_url:string;
+  display_on_course:boolean;display_on_certificate:boolean;use_registry_assets:boolean};
+
+const emptyCert:CertDraft={registry_key:'custom',type:'other',organization_id:'',recognition_partner_id:'',recognition_program_id:'',organization_name:'',certification_name:'',code:'',credit_value:'',credit_unit:'heures de formation',expires_at:'',verification_url:'',logo_url:'',badge_url:'',signature_url:'',stamp_url:'',display_on_course:true,display_on_certificate:true,use_registry_assets:true};
 
 export default function StudioCommercialCertificationPanel({course,locked=false,onPatch,onSaved}:Props){
   const isProfessor = typeof window !== 'undefined' && window.location.pathname.includes('/professeur/');
@@ -30,48 +38,37 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
   const [instructions,setInstructions]=useState('');
   const [assistedType,setAssistedType]=useState<'with_certification'|'without_certification'>('without_certification');
   const [certifications,setCertifications]=useState<any[]>([]);
-  const [newCert,setNewCert]=useState({type:'omnia',organization_name:'Omnia Global Academy',certification_name:'Certification Omnia',code:'',credit_value:'',credit_unit:'heures de formation',expires_at:'',verification_url:'',badge_url:'',signature_url:'',stamp_url:''});
+  const [organizations,setOrganizations]=useState<OrganizationOption[]>([]);
+  const [newCert,setNewCert]=useState<CertDraft>({...emptyCert,registry_key:'omnia',type:'omnia',organization_name:'Omnia Global Academy',certification_name:'Certification Omnia'});
 
-  useEffect(()=>{ if(!course?.id) return; call('get_commercialization',{course_id:course.id}).then(d=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]); if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
+  useEffect(()=>{ if(!course?.id) return; call('get_commercialization',{course_id:course.id}).then(d=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]);setOrganizations(d.organization_options||[]); if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
 
+  const selectedOrganization=useMemo(()=>organizations.find(item=>item.key===newCert.registry_key)||null,[organizations,newCert.registry_key]);
   const professorShare=useMemo(()=>{
     if(!rules) return null;
     const key=course.is_assisted?(course.certification_requested?'commission_assistee_avec_cpd':'commission_assistee_sans_cpd'):(course.certification_requested?'commission_normal_avec_cpd':'commission_normal_sans_cpd');
     return rules[key]||null;
   },[rules,course.is_assisted,course.certification_requested]);
 
+  function chooseOrganization(key:string){
+    const option=organizations.find(item=>item.key===key);
+    if(!option){setNewCert({...emptyCert,registry_key:'custom'});return;}
+    setNewCert(current=>({...current,registry_key:key,type:option.type||'partner',organization_id:option.organization_id||'',recognition_partner_id:option.recognition_partner_id||'',recognition_program_id:option.recognition_program_id||'',organization_name:option.name,certification_name:option.default_certification_name||current.certification_name||`Certification ${option.name}`,credit_value:option.credit_value==null?'':String(option.credit_value),credit_unit:option.credit_unit||current.credit_unit,verification_url:option.website_url||'',logo_url:option.logo_url||'',badge_url:option.badge_url||'',signature_url:option.signature_url||'',stamp_url:option.stamp_url||'',use_registry_assets:true}));
+  }
+
   async function saveCommercial(){
     if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon de la formation.');
-    setSaving(true);
-    try{
-      const d=await call('save_commercialization',{course_id:course.id,sale_mode:course.sale_mode||'paid',desired_price_amount:Number(course.desired_price_amount||0),sale_currency:course.sale_currency||'XOF',promotion_price_amount:course.promotion_price_amount?Number(course.promotion_price_amount):null,structure_payment_mode:course.structure_payment_mode||'free',structure_fixed_amount:course.structure_fixed_amount?Number(course.structure_fixed_amount):null});
-      onPatch(d.course||{});onSaved?.('Commercialisation enregistrée.');
-    }catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+    setSaving(true);try{const d=await call('save_commercialization',{course_id:course.id,sale_mode:course.sale_mode||'paid',desired_price_amount:Number(course.desired_price_amount||0),sale_currency:course.sale_currency||'XOF',promotion_price_amount:course.promotion_price_amount?Number(course.promotion_price_amount):null,structure_payment_mode:course.structure_payment_mode||'free',structure_fixed_amount:course.structure_fixed_amount?Number(course.structure_fixed_amount):null});onPatch(d.course||{});onSaved?.('Commercialisation enregistrée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
   async function requestAssistance(){
     if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon.');
-    setSaving(true);
-    try{
-      const uploaded:any[]=[];
-      for(const file of files){
-        const ext=file.name.split('.').pop()||'bin'; const path=`${course.id}/assisted/${crypto.randomUUID()}.${ext}`;
-        const signed=await call('prepare_upload',{course_id:course.id,bucket_name:'course-resources',storage_path:path});
-        await fetch(signed.signedUrl,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-        uploaded.push({name:file.name,size:file.size,mime:file.type,url:`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/course-resources/${path}`});
-      }
-      const d=await call('request_assisted_entry',{course_id:course.id,service_type:assistedType,instructions,documents:uploaded});
-      onPatch({is_assisted:true,assisted_status:d.request.status,assisted_request_id:d.request.id});setFiles([]);onSaved?.('Demande de saisie assistée envoyée.');
-    }catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+    setSaving(true);try{const uploaded:any[]=[];for(const file of files){const ext=file.name.split('.').pop()||'bin';const path=`${course.id}/assisted/${crypto.randomUUID()}.${ext}`;const signed=await call('prepare_upload',{course_id:course.id,bucket_name:'course-resources',storage_path:path});await fetch(signed.signedUrl,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});uploaded.push({name:file.name,size:file.size,mime:file.type,url:`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/course-resources/${path}`});}const d=await call('request_assisted_entry',{course_id:course.id,service_type:assistedType,instructions,documents:uploaded});onPatch({is_assisted:true,assisted_status:d.request.status,assisted_request_id:d.request.id});setFiles([]);onSaved?.('Demande de saisie assistée envoyée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
   async function addCertification(){
     if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon.');
-    setSaving(true);
-    try{
-      const d=await call('save_course_certification_request',{course_id:course.id,certification:newCert});
-      setCertifications((v)=>[...v,d.certification]);onPatch({certification_requested:true});onSaved?.('Certification ajoutée et envoyée à validation.');
-    }catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+    setSaving(true);try{const d=await call('save_course_certification_request',{course_id:course.id,certification:{...newCert,credit_value:newCert.credit_value?Number(newCert.credit_value):null}});setCertifications(v=>[...v,d.certification]);onPatch({certification_requested:true});setNewCert({...emptyCert});onSaved?.('Certification ajoutée et envoyée à validation.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
   return <div className="space-y-4">
@@ -88,35 +85,36 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       <button disabled={saving||locked} onClick={saveCommercial} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={14}/>Enregistrer la commercialisation</button>
     </div>
 
-    {!isProfessor && (<>
-    <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+    {!isProfessor&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
       <div className="flex items-center gap-2"><HandHelping size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Saisie assistée par Omnia</h3></div>
       <p className="mt-1 text-xs text-gray-500">Envoyez vos documents et consignes. Omnia saisira la formation dans votre Studio, puis vous la retrouverez prête à valider.</p>
-      <div className="mt-3 grid gap-3 md:grid-cols-2"><select value={assistedType} onChange={e=>{setAssistedType(e.target.value as any); if(e.target.value==='without_certification') setInstructions('')}} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="without_certification">Sans certification externe</option><option value="with_certification">Avec certification externe</option></select><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><FileUp size={15}/>Ajouter PDF, Word, PowerPoint, Excel ou ZIP<input multiple type="file" className="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,image/*" onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label></div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2"><select value={assistedType} onChange={e=>{setAssistedType(e.target.value as any);if(e.target.value==='without_certification')setInstructions('')}} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="without_certification">Sans certification externe</option><option value="with_certification">Avec certification externe</option></select><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><FileUp size={15}/>Ajouter des documents<input multiple type="file" className="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,image/*" onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label></div>
       {files.length>0&&<p className="mt-2 text-xs text-gray-500">{files.map(f=>f.name).join(', ')}</p>}
-      <p className="mt-2 text-xs text-gray-500">{assistedType==='without_certification'?'Aucune explication n’est exigée. Ajoutez vos documents puis validez la demande.':'Une explication est obligatoire pour préciser la certification externe souhaitée.'}</p>
-      {assistedType==='with_certification'&&<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} rows={3} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Expliquez la certification externe demandée, l’organisme, les contraintes et les consignes particulières."/>}
-      <button disabled={saving||locked||(assistedType==='with_certification'&&!instructions.trim())} onClick={requestAssistance} className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:GOLD}}>{assistedType==='with_certification'?'Envoyer la demande':'Valider la demande'}</button>
+      {assistedType==='with_certification'&&<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} rows={3} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Organisme, certification et contraintes particulières."/>}
+      <button disabled={saving||locked||(assistedType==='with_certification'&&!instructions.trim())} onClick={requestAssistance} className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:GOLD}}>Envoyer la demande</button>
       {course.assisted_status&&<span className="ml-3 text-xs text-gray-500">Statut : {course.assisted_status}</span>}
-    </div>
-    </>)}
+    </div>}
 
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certification de la formation</h3></div>
-      <p className="mt-1 text-xs text-gray-500">Une formation peut recevoir la certification Omnia, CPD ou une autre reconnaissance. Le Super Admin valide toujours les références avant affichage.</p>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        <select value={newCert.type} onChange={e=>setNewCert(v=>({...v,type:e.target.value,organization_name:e.target.value==='omnia'?'Omnia Global Academy':v.organization_name}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="omnia">Certification Omnia</option><option value="cpd">CPD</option><option value="partner">Organisme partenaire</option><option value="other">Autre certification</option></select>
-        <input value={newCert.organization_name} onChange={e=>setNewCert(v=>({...v,organization_name:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Organisme certificateur"/>
-        <input value={newCert.certification_name} onChange={e=>setNewCert(v=>({...v,certification_name:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Nom de la certification"/>
-        <input value={newCert.code} onChange={e=>setNewCert(v=>({...v,code:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Code / numéro"/>
-        <input value={newCert.credit_value} onChange={e=>setNewCert(v=>({...v,credit_value:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Valeur (ex. 12)"/>
-        <input value={newCert.credit_unit} onChange={e=>setNewCert(v=>({...v,credit_unit:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Unité (heures CPD, crédits...)"/>
-        <input value={newCert.badge_url} onChange={e=>setNewCert(v=>({...v,badge_url:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="URL badge/logo"/>
-        <input value={newCert.signature_url} onChange={e=>setNewCert(v=>({...v,signature_url:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="URL signature"/>
-        <input value={newCert.stamp_url} onChange={e=>setNewCert(v=>({...v,stamp_url:e.target.value}))} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="URL tampon/cachet"/>
+      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certifications et partenaires</h3></div>
+      <p className="mt-1 text-xs text-gray-500">Choisissez de préférence un organisme déjà validé. Ses logos et autorisations seront repris automatiquement après validation Super-admin.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="text-xs font-medium text-gray-600 md:col-span-2">Organisme validé<select disabled={locked} value={newCert.registry_key} onChange={e=>chooseOrganization(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="custom">Nouvel organisme / saisie manuelle</option>{organizations.map(o=><option key={o.key} value={o.key}>{o.name}{o.default_certification_name?` — ${o.default_certification_name}`:''}</option>)}</select></label>
+        <label className="text-xs font-medium text-gray-600">Type<select disabled={locked} value={newCert.type} onChange={e=>setNewCert({...newCert,type:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="omnia">OGA</option><option value="cpd">CPD</option><option value="structure">Structure</option><option value="professor">Professeur</option><option value="partner">Partenaire</option><option value="other">Autre</option></select></label>
+        <label className="text-xs font-medium text-gray-600">Organisme<input disabled={locked||newCert.registry_key!=='custom'} value={newCert.organization_name} onChange={e=>setNewCert({...newCert,organization_name:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600 md:col-span-2">Nom de la certification<input disabled={locked} value={newCert.certification_name} onChange={e=>setNewCert({...newCert,certification_name:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600">Code / référence<input disabled={locked} value={newCert.code} onChange={e=>setNewCert({...newCert,code:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600">Crédits / heures<input disabled={locked} type="number" min="0" value={newCert.credit_value} onChange={e=>setNewCert({...newCert,credit_value:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600">Unité<input disabled={locked} value={newCert.credit_unit} onChange={e=>setNewCert({...newCert,credit_unit:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600">Expiration<input disabled={locked} type="date" value={newCert.expires_at} onChange={e=>setNewCert({...newCert,expires_at:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>
+        <label className="text-xs font-medium text-gray-600 md:col-span-2">Lien de vérification ou site officiel<input disabled={locked} type="url" value={newCert.verification_url} onChange={e=>setNewCert({...newCert,verification_url:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="https://…"/></label>
       </div>
-      <button disabled={saving||locked||!newCert.organization_name.trim()||!newCert.certification_name.trim()} onClick={addCertification} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><BadgeCheck size={14}/>Ajouter et soumettre à validation</button>
-      <div className="mt-3 space-y-2">{certifications.map(c=><div key={c.id} className="flex items-center justify-between rounded-lg border p-3 text-xs" style={{borderColor:BORDER}}><div><b>{c.certification_name}</b><div className="text-gray-500">{c.organization_name} · {c.credit_value||''} {c.credit_unit||''}</div></div><span className="rounded-full bg-gray-100 px-2 py-1">{c.status}</span></div>)}</div>
+      {selectedOrganization&&<div className="mt-3 flex items-start gap-3 rounded-xl border bg-slate-50 p-3" style={{borderColor:BORDER}}>{selectedOrganization.logo_url?<img src={selectedOrganization.logo_url} alt={selectedOrganization.name} className="h-12 w-20 object-contain"/>:<Building2 className="mt-1 text-slate-400"/>}<div className="min-w-0 text-xs text-slate-600"><p className="font-semibold" style={{color:BLUE}}>{selectedOrganization.name}</p><p>Logo page formation : {selectedOrganization.course_logo_authorized?'autorisé':'non autorisé'} · Logo certificat : {selectedOrganization.certificate_logo_authorized?'autorisé':'non autorisé'}</p>{selectedOrganization.website_url&&<a href={selectedOrganization.website_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[#002050]">Voir le site officiel <ExternalLink size={11}/></a>}</div></div>}
+      {newCert.registry_key==='custom'&&<div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Un nouvel organisme peut être proposé, mais aucun logo ne sera affiché avant validation de son identité et de l’autorisation d’usage par le Super-admin.</div>}
+      <div className="mt-3 flex flex-wrap gap-5 text-xs text-gray-700"><label className="flex items-center gap-2"><input type="checkbox" checked={newCert.display_on_course} onChange={e=>setNewCert({...newCert,display_on_course:e.target.checked})}/>Afficher sur la page de formation</label><label className="flex items-center gap-2"><input type="checkbox" checked={newCert.display_on_certificate} onChange={e=>setNewCert({...newCert,display_on_certificate:e.target.checked})}/>Afficher sur le certificat</label></div>
+      <button disabled={saving||locked||!newCert.organization_name.trim()||!newCert.certification_name.trim()} onClick={addCertification} className="mt-4 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><BadgeCheck size={14}/>Ajouter et soumettre</button>
+
+      <div className="mt-5 space-y-2">{certifications.map(cert=><div key={cert.id} className="flex items-center gap-3 rounded-lg border p-3" style={{borderColor:BORDER}}>{(cert.immutable_asset_snapshot?.logo_url||cert.logo_url||cert.badge_url)?<img src={cert.immutable_asset_snapshot?.logo_url||cert.logo_url||cert.badge_url} alt="" className="h-10 w-16 object-contain"/>:<Building2 size={18} className="text-slate-400"/>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold" style={{color:BLUE}}>{cert.certification_name}</p><p className="text-xs text-gray-500">{cert.organization_name} · {cert.status}</p></div><div className="text-right text-[11px] text-gray-500"><p>{cert.display_on_course?'Page formation':'Masqué page'}</p><p>{cert.display_on_certificate?'Certificat':'Masqué certificat'}</p></div></div>)}</div>
     </div>
   </div>;
 }

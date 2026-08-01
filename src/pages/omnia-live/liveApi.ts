@@ -67,6 +67,7 @@ export type LiveItem = {
   level?: string | null;
   replay_enabled?: boolean | null;
   organizer_display_name?: string | null;
+  featured?: boolean | null;
 };
 
 export async function liveApi(

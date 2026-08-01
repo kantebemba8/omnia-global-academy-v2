@@ -1,355 +1,126 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import QRCode from "npm:qrcode@1.5.3";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token"};
+const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
+const BLUE="#002050",GOLD="#BF8813",WHITE="#FFFFFF",GREY="#667085";
 
-async function verifySession(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id")
-    .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
-  return sess?.user_id ?? null;
+type AssetSnapshot={original_url:string|null;snapshot_url:string|null;storage_path:string|null;mime_type:string|null;sha256:string|null;bytes?:Uint8Array|null};
+type AccreditationSnapshot={id:string;organization_name:string;certification_name:string;certification_code?:string|null;credit_value?:number|null;credit_unit?:string|null;verification_url?:string|null;logo?:AssetSnapshot|null;signature?:AssetSnapshot|null;stamp?:AssetSnapshot|null;display_order:number;permission_snapshot:Record<string,unknown>};
+
+async function verifySession(sb:any,token:string){
+ const normalized=token.replace(/^Bearer\s+/i,"").trim();if(!normalized)return null;
+ const {data:sess}=await sb.from("user_sessions").select("user_id").eq("session_token",normalized).gt("expires_at",new Date().toISOString()).maybeSingle();
+ if(sess?.user_id)return sess.user_id;
+ const {data}=await sb.auth.getUser(normalized);return data?.user?.id||null;
+}
+async function sha256(bytes:Uint8Array){const hash=await crypto.subtle.digest("SHA-256",bytes);return Array.from(new Uint8Array(hash)).map(v=>v.toString(16).padStart(2,"0")).join("");}
+async function uniqueCertId(sb:any){const year=new Date().getFullYear();const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";for(let i=0;i<30;i++){const suffix=Array.from({length:10},()=>chars[Math.floor(Math.random()*chars.length)]).join("");const id=`CERT-${year}-${suffix}`;const {data}=await sb.from("certificates").select("id").eq("omnia_certificate_id",id).maybeSingle();if(!data)return id;}throw new Error("CERTIFICATE_ID_GENERATION_FAILED");}
+function safeText(value:unknown){return String(value??"").replace(/[\r\n\t]+/g," ").replace(/\s+/g," ").trim();}
+function hex(value:unknown,fallback:string){const text=String(value||"");return /^#[0-9a-f]{6}$/i.test(text)?text:fallback;}
+function pdfColor(value:string){const v=hex(value,BLUE).slice(1);return rgb(parseInt(v.slice(0,2),16)/255,parseInt(v.slice(2,4),16)/255,parseInt(v.slice(4,6),16)/255);}
+function extForMime(mime:string){if(mime.includes("png"))return"png";if(mime.includes("jpeg")||mime.includes("jpg"))return"jpg";if(mime.includes("webp"))return"webp";if(mime.includes("svg"))return"svg";return"bin";}
+function resolveUrl(raw:string,appUrl:string){if(!raw)return"";if(/^https?:\/\//i.test(raw))return raw;if(raw.startsWith("/"))return`${appUrl.replace(/\/$/,"")}${raw}`;return raw;}
+async function snapshotAsset(sb:any,rawUrl:unknown,certificateUuid:string,label:string,appUrl:string):Promise<AssetSnapshot|null>{
+ const original=resolveUrl(safeText(rawUrl),appUrl);if(!original)return null;
+ try{
+  const response=await fetch(original,{signal:AbortSignal.timeout(12000)});if(!response.ok)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
+  const bytes=new Uint8Array(await response.arrayBuffer());if(!bytes.length||bytes.length>8*1024*1024)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
+  const mime=(response.headers.get("content-type")||"application/octet-stream").split(";")[0].toLowerCase();const digest=await sha256(bytes);const path=`snapshots/${certificateUuid}/${label}-${digest.slice(0,12)}.${extForMime(mime)}`;
+  const {error}=await sb.storage.from("certificates").upload(path,bytes,{contentType:mime,upsert:true});if(error)throw error;
+  const snapshotUrl=sb.storage.from("certificates").getPublicUrl(path).data.publicUrl;
+  return{original_url:original,snapshot_url:snapshotUrl,storage_path:path,mime_type:mime,sha256:digest,bytes};
+ }catch{return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};}
+}
+async function embedAsset(pdf:PDFDocument,asset?:AssetSnapshot|null){if(!asset?.bytes||!asset.mime_type)return null;try{if(asset.mime_type.includes("png"))return await pdf.embedPng(asset.bytes);if(asset.mime_type.includes("jpeg")||asset.mime_type.includes("jpg"))return await pdf.embedJpg(asset.bytes);}catch{}return null;}
+function fontText(font:any,value:unknown){const source=safeText(value).replace(/[’‘]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/•/g,'-');let output="";for(const char of Array.from(source)){try{font.encodeText(char);output+=char;}catch{const fallback=char.normalize("NFD").replace(/[\u0300-\u036f]/g,"");if(fallback&&fallback!==char){for(const candidate of Array.from(fallback)){try{font.encodeText(candidate);output+=candidate;}catch{output+="?";}}}else output+="?";}}return output;}
+function fitSize(font:any,text:string,maxWidth:number,start:number,min=8){const clean=fontText(font,text);let size=start;while(size>min&&font.widthOfTextAtSize(clean,size)>maxWidth)size-=.5;return size;}
+function drawCentered(page:any,font:any,text:string,y:number,maxWidth:number,size:number,color:any){const clean=fontText(font,text);const finalSize=fitSize(font,clean,maxWidth,size);const width=font.widthOfTextAtSize(clean,finalSize);page.drawText(clean,{x:(page.getWidth()-width)/2,y,size:finalSize,font,color});}
+async function resolveTemplate(sb:any,course:any,language:string,issuerScope:string){
+ const {data:templates,error}=await sb.from("certificate_templates").select("*").eq("document_type","completion_certificate").eq("source_type","course").eq("is_active",true);if(error)throw error;
+ const {data:assignments}=await sb.from("certificate_template_assignments").select("*").order("priority");
+ const matching=(assignments||[]).filter((a:any)=>(!a.course_id||a.course_id===course.id)&&(!a.creator_role||a.creator_role===issuerScope)&&(!a.structure_id||a.structure_id===course.establishment_id));
+ for(const assignment of matching){const template=(templates||[]).find((t:any)=>t.id===assignment.template_id);if(template&&(template.language_code===language||template.language_code==='fr'))return template;}
+ return (templates||[]).find((t:any)=>t.issuer_scope===issuerScope&&t.language_code===language)||
+  (templates||[]).find((t:any)=>t.issuer_scope===issuerScope&&t.language_code==='fr')||
+  (templates||[]).find((t:any)=>t.issuer_scope==='platform'&&t.language_code===language&&t.is_default)||
+  (templates||[]).find((t:any)=>t.issuer_scope==='platform'&&t.language_code==='fr'&&t.is_default)||
+  (templates||[])[0]||null;
+}
+async function buildPdf(input:any){
+ const pdf=await PDFDocument.create();pdf.setTitle(input.course_title);pdf.setAuthor("Omnia Global Academy");pdf.setSubject(`Certificat ${input.certificate_id}`);pdf.setCreator("Omnia Global Academy");
+ const page=pdf.addPage([841.89,595.28]);const regular=await pdf.embedFont(StandardFonts.Helvetica);const bold=await pdf.embedFont(StandardFonts.HelveticaBold);const primary=pdfColor(input.layout.primary_color||BLUE),accent=pdfColor(input.layout.accent_color||GOLD),grey=pdfColor(GREY);
+ page.drawRectangle({x:14,y:14,width:813.89,height:567.28,borderColor:accent,borderWidth:3});page.drawRectangle({x:20,y:20,width:801.89,height:555.28,borderColor:primary,borderWidth:.8});
+ const ogaImage=await embedAsset(pdf,input.oga_logo);if(ogaImage&&input.layout.show_oga_logo!==false){const scale=Math.min(70/ogaImage.width,52/ogaImage.height);page.drawImage(ogaImage,{x:52,y:500,width:ogaImage.width*scale,height:ogaImage.height*scale});}
+ page.drawText("OMNIA GLOBAL ACADEMY",{x:130,y:535,size:16,font:bold,color:primary});page.drawText(fontText(regular,input.issuer_name),{x:130,y:516,size:10,font:regular,color:grey});
+ const creatorImage=await embedAsset(pdf,input.creator_logo);if(creatorImage&&input.layout.show_creator_logo!==false){const scale=Math.min(100/creatorImage.width,52/creatorImage.height);page.drawImage(creatorImage,{x:740-creatorImage.width*scale,y:500,width:creatorImage.width*scale,height:creatorImage.height*scale});}
+ const title=input.layout.title||((input.language==='en')?'CERTIFICATE OF COMPLETION':'CERTIFICAT DE RÉUSSITE');drawCentered(page,bold,title,462,700,17,accent);
+ drawCentered(page,regular,input.language==='en'?'This certificate is awarded to':'Ce certificat est décerné à',425,650,11,grey);drawCentered(page,bold,input.student_name,378,700,31,primary);
+ drawCentered(page,regular,input.completion_text,342,720,12,grey);drawCentered(page,bold,input.course_title,304,730,19,primary);
+ page.drawLine({start:{x:120,y:278},end:{x:722,y:278},thickness:.7,color:accent});
+ const details=[input.course_level&&`${input.language==='en'?'Level':'Niveau'} : ${input.course_level}`,input.course_category&&`${input.language==='en'?'Category':'Catégorie'} : ${input.course_category}`,input.duration_label&&`${input.language==='en'?'Duration':'Durée'} : ${input.duration_label}`].filter(Boolean);drawCentered(page,regular,details.join("   •   "),252,720,10,grey);
+ if(input.layout.show_partner_logos!==false&&input.accreditations.length){let x=85;for(const acc of input.accreditations.slice(0,5)){const img=await embedAsset(pdf,acc.logo);if(img){const scale=Math.min(72/img.width,34/img.height);page.drawImage(img,{x,y:182,width:img.width*scale,height:img.height*scale});}page.drawText(fontText(bold,acc.organization_name).slice(0,28),{x,y:168,size:7,font:bold,color:primary});if(acc.credit_value)page.drawText(fontText(regular,`${acc.credit_value} ${acc.credit_unit||''}`).slice(0,24),{x,y:157,size:6.5,font:regular,color:grey});x+=145;}}
+ const creatorSig=await embedAsset(pdf,input.creator_signature);const ogaSig=await embedAsset(pdf,input.oga_signature);const signatureY=80;
+ if(input.layout.show_signatures!==false&&creatorSig){const scale=Math.min(105/creatorSig.width,42/creatorSig.height);page.drawImage(creatorSig,{x:105,y:signatureY+18,width:creatorSig.width*scale,height:creatorSig.height*scale});}
+ page.drawLine({start:{x:85,y:signatureY+14},end:{x:235,y:signatureY+14},thickness:.7,color:primary});page.drawText(fontText(bold,input.creator_name||input.issuer_name).slice(0,32),{x:95,y:signatureY,size:9,font:bold,color:primary});page.drawText(fontText(regular,input.issuer_type==='structure'?'Responsable de la Structure':input.issuer_type==='professor'?'Formateur':'Émetteur'),{x:105,y:signatureY-12,size:7.5,font:regular,color:grey});
+ if(input.layout.show_signatures!==false&&ogaSig){const scale=Math.min(105/ogaSig.width,42/ogaSig.height);page.drawImage(ogaSig,{x:600,y:signatureY+18,width:ogaSig.width*scale,height:ogaSig.height*scale});}
+ page.drawLine({start:{x:585,y:signatureY+14},end:{x:735,y:signatureY+14},thickness:.7,color:primary});page.drawText("Omnia Global Academy",{x:606,y:signatureY,size:9,font:bold,color:primary});page.drawText(fontText(regular,input.institution_signature_label||"Direction académique"),{x:612,y:signatureY-12,size:7.5,font:regular,color:grey});
+ const qr=await embedAsset(pdf,input.qr_asset);if(qr&&input.layout.show_qr!==false){page.drawImage(qr,{x:382,y:62,width:78,height:78});page.drawText(fontText(regular,input.certificate_id),{x:366,y:48,size:7,font:regular,color:grey});}
+ if(input.layout.show_stamps!==false){let stampX=250;for(const acc of input.accreditations.slice(0,3)){const stamp=await embedAsset(pdf,acc.stamp);if(stamp){const scale=Math.min(48/stamp.width,48/stamp.height);page.drawImage(stamp,{x:stampX,y:94,width:stamp.width*scale,height:stamp.height*scale});stampX+=55;}}}
+ page.drawText(fontText(regular,`${input.language==='en'?'Issued on':'Délivré le'} ${input.issued_label}`),{x:52,y:36,size:7.5,font:regular,color:grey});page.drawText(fontText(regular,input.verify_url),{x:530,y:36,size:7.5,font:regular,color:grey});
+ return new Uint8Array(await pdf.save());
+}
+function matchBadgeTemplate(template:any,course:any,accreditations:any[]){const meta=template.metadata||{};const courseIds=Array.isArray(meta.course_ids)?meta.course_ids:[];const categories=Array.isArray(meta.categories)?meta.categories:[];const levels=Array.isArray(meta.levels)?meta.levels:[];const certificationTypes=Array.isArray(meta.certification_types)?meta.certification_types:[];if(courseIds.length&&!courseIds.includes(course.id))return false;if(categories.length&&!categories.includes(course.category))return false;if(levels.length&&!levels.includes(course.level))return false;if(certificationTypes.length&&!accreditations.some(a=>certificationTypes.includes(a.certification_type)))return false;return true;}
+async function awardAutomaticBadges(sb:any,user:any,course:any,certificate:any,accreditations:any[],appUrl:string){
+ const {data:settings}=await sb.from("certificate_settings").select("value").eq("key","certificate_auto_badges_enabled").maybeSingle();if(settings&&String(settings.value)!=='true')return[];
+ const {data:templates}=await sb.from("badge_templates").select("*").eq("status","active").eq("automatic_enabled",true);const awards:any[]=[];
+ for(const template of (templates||[]).filter((t:any)=>Array.isArray(t.source_types)&&t.source_types.some((s:string)=>['course','course_completion','course_certificate'].includes(s))&&matchBadgeTemplate(t,course,accreditations))){
+  const {data:existing}=await sb.from("badge_awards").select("*").eq("template_id",template.id).eq("recipient_user_id",user.id).eq("source_type","course_certificate").eq("source_id",certificate.id).neq("status","revoked").maybeSingle();if(existing){awards.push(existing);continue;}
+  const awardId=crypto.randomUUID(),credentialUuid=crypto.randomUUID(),verificationCode=`OGA-${crypto.randomUUID().replace(/-/g,'').slice(0,16).toUpperCase()}`;const issuedAt=new Date().toISOString();const expiresAt=template.validity_days?new Date(Date.now()+Number(template.validity_days)*86400000).toISOString():null;const credentialJson={"@context":["https://www.w3.org/ns/credentials/v2","https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json"],id:`${appUrl}/credentials/${credentialUuid}`,type:["VerifiableCredential","OpenBadgeCredential"],issuer:{id:`${appUrl}/issuers/${template.issuer_id}`},validFrom:issuedAt,credentialSubject:{id:`${appUrl}/learners/${user.id}`,type:["AchievementSubject"],achievement:{id:template.achievement_uri||`${appUrl}/achievements/${template.id}`,type:["Achievement"],name:template.name,description:template.description,criteria:{narrative:template.criteria_narrative},image:template.image_url?{id:template.image_url,type:"Image"}:undefined}},evidence:[{id:certificate.verification_url,type:["Evidence"],name:course.title,description:`Certificat ${certificate.omnia_certificate_id}`}]};
+  const {data:award,error}=await sb.from("badge_awards").insert({id:awardId,credential_uuid:credentialUuid,verification_code:verificationCode,template_id:template.id,issuer_id:template.issuer_id,recipient_user_id:user.id,awarded_by:null,source_type:"course_certificate",source_id:certificate.id,status:"awarded",visibility:template.default_visibility||"oga",evidence_summary:`Réussite de la formation ${course.title}`,issued_at:issuedAt,expires_at:expiresAt,recipient_subject_id:user.id,standards_status:"ob3_draft",credential_json:credentialJson}).select("*").single();if(error){console.warn("automatic_badge_failed",template.id,error.message);continue;}
+  let {data:record}=await sb.from("clr_records").select("*").eq("user_id",user.id).maybeSingle();if(!record){const created=await sb.from("clr_records").insert({user_id:user.id,title:"Omnia Learning Record",status:"active",default_visibility:"oga",standards_status:"clr2_draft",last_built_at:issuedAt}).select("*").single();record=created.data;}
+  if(record){await sb.from("clr_achievements").insert({clr_record_id:record.id,award_id:award.id,source_type:"course_certificate",source_id:certificate.id,title:template.name,description:template.description,achievement_type:template.achievement_type||"Achievement",section:"badges",status:"active",visibility:template.default_visibility||"oga",issued_at:issuedAt,payload:credentialJson});}
+  awards.push(award);
+ }
+ return awards;
 }
 
-async function generateUniqueCertId(sb: ReturnType<typeof createClient>): Promise<string> {
-  const year = new Date().getFullYear();
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  while (true) {
-    const suffix = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-    const id = `CERT-${year}-${suffix}`;
-    const { data } = await sb.from("certificates").select("id").eq("omnia_certificate_id", id).maybeSingle();
-    if (!data) return id;
-  }
-}
-
-async function generateQrSvg(url: string): Promise<string> {
-  try {
-    const QRCode = (await import("npm:qrcode@1.5.3")).default;
-    const svg: string = await QRCode.toString(url, {
-      type: "svg", width: 80, margin: 1,
-      color: { dark: "#002050", light: "#FFFFFF" },
-    });
-    return svg;
-  } catch {
-    // Fallback deterministic pseudo-QR SVG
-    const size = 80, cell = 8, cells = Math.floor(size / cell);
-    let seed = url.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-    let rects = "";
-    for (let r = 0; r < cells; r++) {
-      for (let c = 0; c < cells; c++) {
-        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-        if (seed % 3 === 0) rects += `<rect x="${c * cell}" y="${r * cell}" width="${cell}" height="${cell}" fill="#002050"/>`;
-      }
-    }
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${rects}</svg>`;
-  }
-}
-
-function buildTemplateA(d: Record<string, unknown>, qrSvg: string): string {
-  const certDate = new Date(d.issued_at as string).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.border-outer{position:absolute;inset:12px;border:3px solid #BF8813;border-radius:8px}
-.border-inner{position:absolute;inset:18px;border:1px solid rgba(191,136,19,.35);border-radius:6px}
-.corner{position:absolute;width:60px;height:60px}
-.corner svg{width:100%;height:100%}
-.corner-tl{top:24px;left:24px}.corner-tr{top:24px;right:24px;transform:rotate(90deg)}.corner-bl{bottom:24px;left:24px;transform:rotate(-90deg)}.corner-br{bottom:24px;right:24px;transform:rotate(180deg)}
-.content{position:absolute;inset:40px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 60px}
-.header{display:flex;align-items:center;gap:16px;width:100%}
-.brand-name{font-size:20px;font-weight:900;color:#002050;letter-spacing:.12em}
-.brand-sub{font-size:10px;font-weight:600;color:#BF8813;letter-spacing:.22em}
-.cert-title{font-size:13px;font-weight:600;color:#BF8813;letter-spacing:.25em;text-transform:uppercase;border-bottom:1px solid #BF8813;padding-bottom:8px}
-.student-name{font-size:42px;font-weight:900;color:#002050;text-align:center;line-height:1.1}
-.course-name{font-weight:700;color:#002050;font-size:18px}
-.completion{font-size:15px;color:#374151;text-align:center;line-height:1.6;max-width:700px}
-.badges{display:flex;gap:24px;align-items:center}
-.badge{display:flex;flex-direction:column;align-items:center;gap:4px}
-.badge-label{font-size:10px;color:#6B7280;letter-spacing:.1em;text-transform:uppercase}
-.badge-value{font-size:13px;font-weight:700;color:#002050}
-.sep{width:1px;height:40px;background:#E4E7EC}
-.cpd-badge{display:flex;align-items:center;gap:8px;padding:6px 14px;border:2px solid #BF8813;border-radius:24px;background:rgba(191,136,19,.05)}
-.cpd-text{font-size:11px;font-weight:700;color:#BF8813;letter-spacing:.08em}
-.footer{display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding-top:14px;border-top:1px solid #E4E7EC}
-.sig-block{display:flex;flex-direction:column;align-items:center;gap:4px}
-.sig-line{width:140px;height:1px;background:#002050}
-.sig-name{font-size:11px;font-weight:600;color:#002050}
-.sig-title{font-size:10px;color:#6B7280}
-.qr-block{display:flex;flex-direction:column;align-items:center;gap:3px}
-.cert-id{font-size:8px;font-family:monospace;color:#9CA3AF;letter-spacing:.08em}
-.qr-label{font-size:8px;color:#6B7280}
-</style>
-</head>
-<body>
-<div class="border-outer"></div>
-<div class="border-inner"></div>
-<div class="corner corner-tl"><svg viewBox="0 0 60 60" fill="none"><path d="M2 2 L2 30 M2 2 L30 2" stroke="#BF8813" stroke-width="3" stroke-linecap="round"/><path d="M8 8 L8 24 M8 8 L24 8" stroke="#BF8813" stroke-width="1" stroke-linecap="round" opacity="0.4"/></svg></div>
-<div class="corner corner-tr"><svg viewBox="0 0 60 60" fill="none"><path d="M2 2 L2 30 M2 2 L30 2" stroke="#BF8813" stroke-width="3" stroke-linecap="round"/><path d="M8 8 L8 24 M8 8 L24 8" stroke="#BF8813" stroke-width="1" stroke-linecap="round" opacity="0.4"/></svg></div>
-<div class="corner corner-bl"><svg viewBox="0 0 60 60" fill="none"><path d="M2 2 L2 30 M2 2 L30 2" stroke="#BF8813" stroke-width="3" stroke-linecap="round"/><path d="M8 8 L8 24 M8 8 L24 8" stroke="#BF8813" stroke-width="1" stroke-linecap="round" opacity="0.4"/></svg></div>
-<div class="corner corner-br"><svg viewBox="0 0 60 60" fill="none"><path d="M2 2 L2 30 M2 2 L30 2" stroke="#BF8813" stroke-width="3" stroke-linecap="round"/><path d="M8 8 L8 24 M8 8 L24 8" stroke="#BF8813" stroke-width="1" stroke-linecap="round" opacity="0.4"/></svg></div>
-
-<div class="content">
-  <div class="header">
-    ${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
-<div>
-  <div class="brand-name">OMNIA</div>
-  <div class="brand-sub">GLOBAL ACADEMY</div>
-</div>
-    ${d.cpd_accredited ? `<div style="margin-left:auto"><div class="cpd-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#BF8813" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="#BF8813" stroke-width="2" stroke-linecap="round"/></svg><span class="cpd-text">CPD CERTIFIED</span></div><div style="font-size:9px;color:#6B7280;text-align:center;margin-top:4px">${d.cpd_hours}h · ${d.cpd_provider_code || "Omnia CPD"}</div></div>` : ""}
-  </div>
-  <div style="text-align:center">
-    <div class="cert-title">CERTIFICAT DE RÉUSSITE</div>
-    <div style="margin:14px 0 8px;font-size:13px;color:#6B7280">Ce certificat est décerné à</div>
-    <div class="student-name">${d.student_full_name}</div>
-  </div>
-  <div class="completion">pour avoir complété avec succès la formation<br/><span class="course-name">${d.course_title}</span></div>
-  <div class="badges">
-    <div class="badge"><span class="badge-label">Niveau</span><span class="badge-value">${d.course_level}</span></div>
-    <div class="sep"></div>
-    <div class="badge"><span class="badge-label">Catégorie</span><span class="badge-value">${d.course_category}</span></div>
-    ${d.cpd_hours ? `<div class="sep"></div><div class="badge"><span class="badge-label">Durée CPD</span><span class="badge-value">${d.cpd_hours} heures</span></div>` : ""}
-  </div>
-  <div class="footer">
-    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">${d.creator_name}</div><div class="sig-title">Formateur</div></div>
-    <div class="qr-block">${qrSvg}<div class="cert-id">${d.omnia_certificate_id}</div><div class="qr-label">Vérifier l'authenticité</div><div style="font-size:9px;color:#6B7280">${certDate}</div></div>
-    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">Administration</div><div class="sig-title">Omnia Global Academy</div></div>
-  </div>
-</div>
-</body></html>`;
-}
-
-function buildTemplateB(d: Record<string, unknown>, qrSvg: string): string {
-  const certDate = new Date(d.issued_at as string).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.border-outer{position:absolute;inset:12px;border:3px solid #002050;border-radius:8px}
-.border-inner{position:absolute;inset:18px;border:1px solid rgba(0,32,80,.2);border-radius:6px}
-.content{position:absolute;inset:40px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 60px}
-.header{display:flex;align-items:center;justify-content:space-between;width:100%;border-bottom:2px solid #002050;padding-bottom:16px}
-.logo-block{display:flex;align-items:center;gap:12px}
-.brand-name{font-size:18px;font-weight:900;color:#002050;letter-spacing:.1em}
-.brand-sub{font-size:9px;font-weight:600;color:#BF8813;letter-spacing:.2em}
-.est-name{font-size:14px;font-weight:700;color:#002050;text-align:right}
-.est-sub{font-size:10px;color:#6B7280;text-align:right}
-.cert-title{font-size:13px;font-weight:600;color:#BF8813;letter-spacing:.25em;text-transform:uppercase;border-bottom:1px solid #BF8813;padding-bottom:8px}
-.student-name{font-size:40px;font-weight:900;color:#002050;text-align:center;line-height:1.1}
-.course-name{font-weight:700;color:#002050;font-size:18px}
-.footer{display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding-top:14px;border-top:1px solid #E4E7EC}
-.sig-block{display:flex;flex-direction:column;align-items:center;gap:4px}
-.sig-line{width:140px;height:1px;background:#002050}
-.sig-name{font-size:11px;font-weight:600;color:#002050}
-.sig-title{font-size:10px;color:#6B7280}
-.qr-block{display:flex;flex-direction:column;align-items:center;gap:3px}
-.cert-id{font-size:8px;font-family:monospace;color:#9CA3AF;letter-spacing:.08em}
-</style>
-</head>
-<body>
-<div class="border-outer"></div>
-<div class="border-inner"></div>
-<div class="content">
-  <div class="header">
-    <div class="logo-block">${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
-<div>
-  <div class="brand-name">OMNIA</div>
-  <div class="brand-sub">GLOBAL ACADEMY</div>
-</div>
-    <div style="display:flex;align-items:center;gap:12px">${d.establishment_logo_url ? `<img src="${d.establishment_logo_url}" style="height:40px;object-fit:contain" alt="">` : ""}<div><div class="est-name">${d.establishment_name}</div><div class="est-sub">Établissement partenaire</div></div></div>
-  </div>
-  <div style="text-align:center">
-    <div class="cert-title">CERTIFICAT DE RÉUSSITE</div>
-    <div style="margin:14px 0 8px;font-size:13px;color:#6B7280">Ce certificat est décerné à</div>
-    <div class="student-name">${d.student_full_name}</div>
-  </div>
-  <div style="font-size:15px;color:#374151;text-align:center;line-height:1.6;max-width:700px">pour avoir complété avec succès la formation<br/><span class="course-name">${d.course_title}</span></div>
-  <div style="display:flex;gap:24px;align-items:center">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Niveau</span><span style="font-size:13px;font-weight:700;color:#002050">${d.course_level}</span></div>
-    <div style="width:1px;height:40px;background:#E4E7EC"></div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Catégorie</span><span style="font-size:13px;font-weight:700;color:#002050">${d.course_category}</span></div>
-  </div>${d.external_accreditation_logo ? `
-  <div style="display:flex;align-items:center;gap:12px;padding:8px 16px;border:1px solid #E4E7EC;border-radius:8px;margin-bottom:8px">
-    <img src="${d.external_accreditation_logo}" style="height:32px;object-fit:contain" alt="Accréditation"/>
-    <div>
-      <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Accréditation</div>
-      <div style="font-size:12px;font-weight:700;color:#002050">${d.external_accreditation_number || ""}</div>
-    </div>
-  </div>` : ""}
-  <div class="footer">
-    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">${d.director_name || "Le Directeur"}</div><div class="sig-title">${d.establishment_name}</div></div>
-    <div class="qr-block">${qrSvg}<div class="cert-id">${d.omnia_certificate_id}</div><div style="font-size:8px;color:#6B7280">Vérifier l'authenticité</div><div style="font-size:9px;color:#6B7280">${certDate}</div></div>
-    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">Administration</div><div class="sig-title">Omnia Global Academy</div></div>
-  </div>
-</div>
-</body></html>`;
-}
-function buildTemplateC(d: Record<string, unknown>, qrSvg: string): string {
-  const certDate = new Date(d.issued_at as string).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:1122px;height:794px;font-family:'Inter',sans-serif;background:#fff;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.border-outer{position:absolute;inset:12px;border:3px solid #002050;border-radius:8px}
-.border-inner{position:absolute;inset:18px;border:1px solid rgba(0,32,80,.2);border-radius:6px}
-.content{position:absolute;inset:40px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 60px}
-.header{display:flex;align-items:center;justify-content:center;width:100%;border-bottom:2px solid #002050;padding-bottom:16px;gap:16px}
-.brand-name{font-size:22px;font-weight:900;color:#002050;letter-spacing:.1em}
-.brand-sub{font-size:9px;font-weight:600;color:#BF8813;letter-spacing:.2em}
-.cert-title{font-size:13px;font-weight:600;color:#BF8813;letter-spacing:.25em;text-transform:uppercase;border-bottom:1px solid #BF8813;padding-bottom:8px}
-.student-name{font-size:40px;font-weight:900;color:#002050;text-align:center;line-height:1.1}
-.course-name{font-weight:700;color:#002050;font-size:18px}
-.platform-mention{font-size:13px;color:#6B7280;font-style:italic;text-align:center;margin-top:8px}
-.footer{display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding-top:14px;border-top:1px solid #E4E7EC}
-.sig-block{display:flex;flex-direction:column;align-items:center;gap:4px}
-.sig-line{width:140px;height:1px;background:#002050}
-.sig-name{font-size:11px;font-weight:600;color:#002050}
-.sig-title{font-size:10px;color:#6B7280}
-.qr-block{display:flex;flex-direction:column;align-items:center;gap:3px}
-.cert-id{font-size:8px;font-family:monospace;color:#9CA3AF;letter-spacing:.08em}
-.cpd-badge{display:flex;align-items:center;gap:8px;padding:6px 14px;border:2px solid #BF8813;border-radius:24px;background:rgba(191,136,19,.05)}
-.cpd-text{font-size:11px;font-weight:700;color:#BF8813;letter-spacing:.08em}
-</style>
-</head>
-<body>
-<div class="border-outer"></div>
-<div class="border-inner"></div>
-<div class="content">
-  <div class="header">
-    <div style="text-align:center">
-     ${d.logo_url && !d.logo_url.startsWith('/') ? `<img src="${d.logo_url}" style="height:40px;object-fit:contain;margin-right:10px" alt="Omnia"/>` : ''}
-<div>
-  <div class="brand-name">OMNIA</div>
-  <div class="brand-sub">GLOBAL ACADEMY</div>
-</div>
-    ${d.cpd_accredited ? `<div class="cpd-badge">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="10" stroke="#BF8813" stroke-width="2"/>
-        <path d="M8 12l3 3 5-5" stroke="#BF8813" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <span class="cpd-text">CPD CERTIFIED</span>
-    </div>
-    <div style="font-size:9px;color:#6B7280;text-align:center;margin-top:4px">
-      ${d.cpd_hours}h · ${d.cpd_provider_code || "Omnia CPD"}
-    </div>` : ""}
-  </div>
-  <div style="text-align:center">
-    <div class="cert-title">CERTIFICAT DE RÉUSSITE</div>
-    <div style="margin:14px 0 8px;font-size:13px;color:#6B7280">Ce certificat est décerné à</div>
-    <div class="student-name">${d.student_full_name}</div>
-  </div>
-  <div style="font-size:15px;color:#374151;text-align:center;line-height:1.6;max-width:700px">
-    pour avoir complété avec succès la formation<br/>
-    <span class="course-name">${d.course_title}</span>
-  </div>
-  <div class="platform-mention">Formation certifiée par Omnia Global Academy</div>
-  <div style="display:flex;gap:24px;align-items:center">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Niveau</span>
-      <span style="font-size:13px;font-weight:700;color:#002050">${d.course_level}</span>
-    </div>
-    <div style="width:1px;height:40px;background:#E4E7EC"></div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Catégorie</span>
-      <span style="font-size:13px;font-weight:700;color:#002050">${d.course_category}</span>
-    </div>
-    ${d.cpd_hours ? `<div style="width:1px;height:40px;background:#E4E7EC"></div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <span style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Durée CPD</span>
-      <span style="font-size:13px;font-weight:700;color:#002050">${d.cpd_hours} heures</span>
-    </div>` : ""}
-  </div>
-  <div class="footer">
-    <div style="width:140px"></div>
-    <div class="qr-block">
-      ${qrSvg}
-      <div class="cert-id">${d.omnia_certificate_id}</div>
-      <div style="font-size:8px;color:#6B7280">Vérifier l'authenticité</div>
-      <div style="font-size:9px;color:#6B7280">${certDate}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">Administration</div>
-      <div class="sig-title">Omnia Global Academy</div>
-    </div>
-  </div>
-</div>
-</body></html>`;
-}
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null,{status:200,headers:corsHeaders});
-  const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
-  try {
-    const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
-    const sb=createClient(Deno.env.get("SUPABASE_URL")!,serviceKey);
-    const body=await req.json().catch(()=>({}));
-    const token=req.headers.get("Authorization")?.replace(/^Bearer\s+/i,"").trim()||"";
-    const internalRequest=Boolean(serviceKey&&token===serviceKey&&body.internal_request===true);
-    let callerId=internalRequest?String(body.user_id||""):token?await verifySession(sb,token):null;
-    if(!callerId&&token&&!internalRequest){const {data}=await sb.auth.getUser(token);callerId=data.user?.id||null;}
-    if(!callerId)return json({error:"UNAUTHORIZED"},401);
-    const userId=String(body.user_id||callerId),courseId=String(body.course_id||"");
-    if(!courseId)return json({error:"MISSING_FIELDS"},400);
-    if(userId!==callerId&&!internalRequest){const {data:r}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!r)return json({error:"FORBIDDEN"},403);}
-
-    const {data:assessments}=await sb.from("course_assessments").select("id,title,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);
-    const missing:string[]=[];
-    if(!(assessments||[]).length)missing.push("required_assessments_missing");
-    for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score,passed,status,result_status").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).eq("result_status","published").order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||1))missing.push(`${a.scope}:${a.id}`);}
-    const {data:attemptIds}=await sb.from("assessment_attempts").select("id").eq("course_id",courseId).eq("user_id",userId);
-    if(attemptIds?.length){const {count}=await sb.from("assessment_answers").select("id",{count:"exact",head:true}).eq("review_status","pending").in("attempt_id",attemptIds.map((x:any)=>x.id));if((count||0)>0)missing.push("manual_reviews_pending");}
-    const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle();
-    const {data:user}=await sb.from("users").select("full_name,email").eq("id",userId).maybeSingle();
-    if(!course||!user)return json({error:"NOT_FOUND"},404);
-    const {data:progress}=await sb.from("user_lesson_progress").select("is_completed,time_spent_seconds").eq("user_id",userId).eq("course_id",courseId);
-    if((progress||[]).some((x:any)=>!x.is_completed))missing.push("lessons_incomplete");
-    const lessonSeconds=(progress||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0);
-    const {data:attemptTimes}=await sb.from("assessment_attempts").select("time_spent_seconds").eq("course_id",courseId).eq("user_id",userId);
-    const assessmentSeconds=(attemptTimes||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0);
-    const spent=lessonSeconds+assessmentSeconds;
-    const requiredSeconds=Number(course.calculated_duration_minutes||0)*60;
-    if(requiredSeconds>0&&spent<requiredSeconds)missing.push("minimum_time_not_reached");
-    if(missing.length){await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,result:"blocked",missing_conditions:missing,source:body.source||"automatic"});return json({error:"CONDITIONS_NOT_MET",missing},422);}
-
-    const {data:existing}=await sb.from("certificates").select("id,omnia_certificate_id,pdf_url,cpd_pending,verification_url").eq("user_id",userId).eq("course_id",courseId).maybeSingle();
-    if(existing)return json({certificate_id:existing.omnia_certificate_id,pdf_url:existing.pdf_url,verification_url:existing.verification_url,cpd_pending:existing.cpd_pending,existing:true});
-
-    const {data:accreditations}=await sb.from("course_certifications").select("*").eq("course_id",courseId).eq("status","validated").order("created_at");
-    const certId=await generateUniqueCertId(sb); const appUrl=Deno.env.get("PUBLIC_APP_URL")||Deno.env.get("APP_URL")||"https://omniaglobalacademy.com"; const verifyUrl=`${appUrl}/verify/${certId}`; const qrSvg=await generateQrSvg(verifyUrl);
-    const {data:settingsRows}=await sb.from("certificate_settings").select("key,value"); const settings:Record<string,string>={}; for(const r of settingsRows||[])settings[r.key]=r.value;
-    let creatorName="",establishmentName="",establishmentLogoUrl="",directorName="",directorSigUrl="";
-    if(course.establishment_id){const {data:e}=await sb.from("etablissement_profiles").select("school_name,logo_url,director_name,signature_url").eq("id",course.establishment_id).maybeSingle();if(e){establishmentName=e.school_name||"";establishmentLogoUrl=e.logo_url||"";directorName=e.director_name||"";directorSigUrl=e.signature_url||"";}}
-    if(course.creator_id){const {data:p}=await sb.from("users").select("full_name").eq("id",course.creator_id).maybeSingle();creatorName=p?.full_name||"";}
-    const issuerType=course.establishment_id?"structure":course.creator_type==="plateforme"?"omnia":"professor";
-    const issuerName=establishmentName||creatorName||"Omnia Global Academy";
-    const cpd=(accreditations||[]).find((a:any)=>a.certification_type==="cpd");
-    const certData:any={omnia_certificate_id:certId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_accredited:!!cpd||!!course.cpd_accredited,cpd_hours:Number(cpd?.credit_value||course.cpd_hours||0),cpd_provider_code:cpd?.certification_code||"",logo_url:settings.certificate_logo_url||"/IMG_0349.png",certificate_text:(String(course.language||"fr").toLowerCase().startsWith("en")?settings.certificate_text_en:String(course.language||"fr").toLowerCase().startsWith("es")?settings.certificate_text_es:settings.certificate_text_fr)||"pour avoir complété avec succès la formation",creator_name:creatorName,establishment_name:establishmentName,establishment_logo_url:establishmentLogoUrl,director_name:directorName,issued_at:new Date().toISOString()};
-    const isB=!!course.establishment_id,isC=course.creator_type==="plateforme"&&!course.establishment_id;
-    let html=isC?buildTemplateC(certData,qrSvg):isB?buildTemplateB(certData,qrSvg):buildTemplateA(certData,qrSvg);
-    const badges=(accreditations||[]).map((a:any)=>`<div style="display:flex;align-items:center;gap:5px">${a.badge_url||a.logo_url?`<img src="${a.badge_url||a.logo_url}" style="height:28px;max-width:80px;object-fit:contain"/>`:''}<span style="font-size:9px;color:#002050;font-weight:600">${a.organization_name}${a.credit_value?` · ${a.credit_value} ${a.credit_unit||''}`:''}</span></div>`).join('');
-    if(badges)html=html.replace('</body>',`<div style="position:absolute;left:180px;right:180px;bottom:18px;display:flex;justify-content:center;gap:18px;align-items:center">${badges}</div></body>`);
-    const filename=`certificates/${userId}/${certId}.html`; const {error:upErr}=await sb.storage.from("certificates").upload(filename,html,{contentType:"text/html; charset=utf-8",upsert:true});if(upErr)throw upErr; const pdfUrl=sb.storage.from("certificates").getPublicUrl(filename).data.publicUrl;
-    const {data:cert,error:certErr}=await sb.from("certificates").insert({omnia_certificate_id:certId,user_id:userId,course_id:courseId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_hours:certData.cpd_hours,template_type:isC?"C":isB?"B":"A",creator_name:creatorName||null,establishment_name:establishmentName||null,establishment_logo_url:establishmentLogoUrl||null,director_name:directorName||null,director_signature_url:directorSigUrl||null,cpd_accredited:certData.cpd_accredited,cpd_provider_code:certData.cpd_provider_code||null,pdf_url:pdfUrl,validity_status:"valid",verification_url:verifyUrl,qr_svg:qrSvg,duration_minutes:Number(course.calculated_duration_minutes||0),course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language_code:String(course.language||"fr").slice(0,2).toLowerCase(),document_type:"completion_certificate",source_type:"course",issuance_snapshot:{student_full_name:user.full_name,course_title:course.title,course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language:String(course.language||"fr"),template_type:isC?"C":isB?"B":"A",generated_at:new Date().toISOString(),accreditations:accreditations||[]},metadata:{assessment_thresholds:Object.fromEntries((assessments||[]).map((a:any)=>[a.id,{title:a.title,scope:a.scope,passing_score:Number(a.passing_score||0)}])),time_spent_seconds:spent}}).select("*").single();if(certErr)throw certErr;
-    if(accreditations?.length)await sb.from("certificate_accreditations").insert(accreditations.map((a:any)=>({certificate_id:cert.id,course_certification_id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,badge_url:a.badge_url,logo_url:a.logo_url,signature_url:a.signature_url,stamp_url:a.stamp_url,verification_url:a.verification_url,valid_from:a.valid_from,expires_at:a.expires_at,status:a.expires_at&&new Date(a.expires_at)<new Date()?"expired":"valid"})));
-    const creditSummary=(accreditations||[]).map((a:any)=>({organization:a.organization_name,value:a.credit_value,unit:a.credit_unit}));
-    await sb.from("user_profile_certifications").upsert({user_id:userId,certificate_id:cert.id,course_id:courseId,title:course.title,issuer:issuerName,credential_id:certId,verification_url:verifyUrl,issued_at:cert.issued_at,expires_at:null,hours_or_credits:creditSummary,status:"valid",updated_at:new Date().toISOString()},{onConflict:"user_id,certificate_id"});
-    await sb.from("user_enrollments").update({completed_at:new Date().toISOString()}).eq("user_id",userId).eq("course_id",courseId);
-    await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,certificate_id:cert.id,result:"generated",source:body.source||"automatic"});
-    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`,{method:"POST",headers:{Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({type:"certificat_genere",payload:{userId,formation_titre:course.title,certificate_id:certId,verify_url:verifyUrl,pdf_url:pdfUrl}})}).catch(()=>{});
-    return json({certificate_id:certId,pdf_url:pdfUrl,verification_url:verifyUrl,accreditations:creditSummary});
-  } catch(err){return json({error:"INTERNAL",message:(err as Error).message},500);}
+Deno.serve(async(req:Request)=>{
+ if(req.method==="OPTIONS")return new Response(null,{status:200,headers:corsHeaders});
+ try{
+  const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);const body=await req.json();
+  const headerToken=req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"";const callerId=await verifySession(sb,headerToken);const internal=body.internal_request===true&&headerToken.replace(/^Bearer\s+/i,"")===Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!callerId&&!internal)return json({error:"UNAUTHORIZED"},401);
+  const userId=String(body.user_id||callerId||""),courseId=String(body.course_id||"");if(!userId||!courseId)return json({error:"MISSING_FIELDS"},400);
+  if(callerId&&userId!==callerId&&!internal){const {data:role}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!role)return json({error:"FORBIDDEN"},403);}
+  const {data:assessments}=await sb.from("course_assessments").select("id,title,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);const missing:string[]=[];
+  if(!(assessments||[]).length)missing.push("required_assessments_missing");for(const a of assessments||[]){const {data:best}=await sb.from("assessment_attempts").select("score").eq("assessment_id",a.id).eq("user_id",userId).eq("passed",true).eq("result_status","published").order("score",{ascending:false}).limit(1).maybeSingle();if(!best||Number(best.score||0)<Number(a.passing_score||1))missing.push(`${a.scope}:${a.id}`);}
+  const {data:attemptIds}=await sb.from("assessment_attempts").select("id").eq("course_id",courseId).eq("user_id",userId);if(attemptIds?.length){const {count}=await sb.from("assessment_answers").select("id",{count:"exact",head:true}).eq("review_status","pending").in("attempt_id",attemptIds.map((x:any)=>x.id));if((count||0)>0)missing.push("manual_reviews_pending");}
+  const [{data:course},{data:user},{data:progress},{data:attemptTimes}]=await Promise.all([sb.from("courses").select("*").eq("id",courseId).maybeSingle(),sb.from("users").select("id,full_name,email").eq("id",userId).maybeSingle(),sb.from("user_lesson_progress").select("is_completed,time_spent_seconds").eq("user_id",userId).eq("course_id",courseId),sb.from("assessment_attempts").select("time_spent_seconds").eq("course_id",courseId).eq("user_id",userId)]);if(!course||!user)return json({error:"NOT_FOUND"},404);
+  if((progress||[]).some((x:any)=>!x.is_completed))missing.push("lessons_incomplete");const spent=(progress||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0)+(attemptTimes||[]).reduce((n:number,x:any)=>n+Number(x.time_spent_seconds||0),0);const requiredSeconds=Number(course.calculated_duration_minutes||0)*60;if(requiredSeconds>0&&spent<requiredSeconds)missing.push("minimum_time_not_reached");
+  if(missing.length){await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,result:"blocked",missing_conditions:missing,source:body.source||"automatic"});return json({error:"CONDITIONS_NOT_MET",missing},422);}
+  const {data:existing}=await sb.from("certificates").select("id,omnia_certificate_id,pdf_url,cpd_pending,verification_url,pdf_sha256").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(existing)return json({certificate_id:existing.omnia_certificate_id,pdf_url:existing.pdf_url,verification_url:existing.verification_url,pdf_sha256:existing.pdf_sha256,cpd_pending:existing.cpd_pending,existing:true});
+  const {data:accreditations}=await sb.from("course_certifications").select("*").eq("course_id",courseId).eq("status","validated").eq("display_on_certificate",true).order("created_at");
+  const appUrl=Deno.env.get("PUBLIC_APP_URL")||Deno.env.get("APP_URL")||"https://omniaglobalacademy.com",certificateUuid=crypto.randomUUID(),certId=await uniqueCertId(sb),verifyUrl=`${appUrl}/verify/${certId}`,language=String(course.language||"fr").slice(0,2).toLowerCase();
+  const {data:settingsRows}=await sb.from("certificate_settings").select("key,value");const settings:Record<string,string>={};for(const row of settingsRows||[])settings[row.key]=row.value;
+  let creatorName="",creatorLogo="",creatorSignature="",issuerType="professor",issuerName="Omnia Global Academy";
+  if(course.establishment_id){const {data:e}=await sb.from("etablissement_profiles").select("school_name,logo_url,director_name,signature_url").eq("id",course.establishment_id).maybeSingle();if(e){issuerType="structure";issuerName=e.school_name||issuerName;creatorName=e.director_name||issuerName;creatorLogo=e.logo_url||"";creatorSignature=e.signature_url||"";}}
+  else if(course.creator_type==="plateforme"){issuerType="platform";issuerName=settings.institution_name||"Omnia Global Academy";creatorName=issuerName;}
+  else if(course.creator_id){const [{data:p},{data:pp}]=await Promise.all([sb.from("users").select("full_name,avatar_url").eq("id",course.creator_id).maybeSingle(),sb.from("professeur_profiles").select("signature_url").eq("user_id",course.creator_id).maybeSingle()]);creatorName=p?.full_name||"Formateur";issuerName=creatorName;creatorSignature=pp?.signature_url||"";creatorLogo=p?.avatar_url||"";}
+  const template=await resolveTemplate(sb,course,language,issuerType==='professor'?'professeur':issuerType);const layout={style:"classic",primary_color:BLUE,accent_color:GOLD,title:language==='en'?"CERTIFICATE OF COMPLETION":"CERTIFICAT DE RÉUSSITE",show_oga_logo:true,show_creator_logo:true,show_partner_logos:true,show_signatures:true,show_stamps:true,show_qr:true,show_credits:true,...(template?.layout_json||{})};
+  const ogaLogo=await snapshotAsset(sb,settings.certificate_logo_url||"/IMG_0349.png",certificateUuid,"oga-logo",appUrl),creatorLogoSnapshot=await snapshotAsset(sb,creatorLogo,certificateUuid,"creator-logo",appUrl),creatorSignatureSnapshot=await snapshotAsset(sb,creatorSignature,certificateUuid,"creator-signature",appUrl),ogaSignature=await snapshotAsset(sb,settings.institution_signature_url,certificateUuid,"oga-signature",appUrl);
+  const accSnapshots:AccreditationSnapshot[]=[];for(const [index,a] of (accreditations||[]).entries()){const source=a.immutable_asset_snapshot||{};const logo=await snapshotAsset(sb,source.badge_url||source.logo_url||a.badge_url||a.logo_url,certificateUuid,`partner-${index+1}-logo`,appUrl);const signature=await snapshotAsset(sb,source.signature_url||a.signature_url,certificateUuid,`partner-${index+1}-signature`,appUrl);const stamp=await snapshotAsset(sb,source.stamp_url||a.stamp_url,certificateUuid,`partner-${index+1}-stamp`,appUrl);accSnapshots.push({id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,verification_url:a.verification_url,logo,signature,stamp,display_order:index,permission_snapshot:source.permission||source});}
+  const qrData=await QRCode.toDataURL(verifyUrl,{width:240,margin:1,color:{dark:BLUE,light:WHITE}});const qrBytes=Uint8Array.from(atob(qrData.split(",")[1]),c=>c.charCodeAt(0));const qrAsset:AssetSnapshot={original_url:verifyUrl,snapshot_url:null,storage_path:null,mime_type:"image/png",sha256:await sha256(qrBytes),bytes:qrBytes};
+  const issuedAt=new Date();const issuedLabel=issuedAt.toLocaleDateString(language==='en'?'en-GB':'fr-FR',{day:'2-digit',month:'long',year:'numeric'});const completionText=language==='en'?(settings.certificate_text_en||"for successfully completing the course"):(settings.certificate_text_fr||"pour avoir complété avec succès la formation");const durationMinutes=Number(course.calculated_duration_minutes||0);const durationLabel=durationMinutes>=60?`${Math.floor(durationMinutes/60)} h${durationMinutes%60?` ${durationMinutes%60} min`:''}`:`${durationMinutes} min`;
+  const pdfBytes=await buildPdf({certificate_id:certId,student_name:user.full_name,course_title:course.title,course_level:course.level,course_category:course.category,duration_label:durationMinutes?durationLabel:null,completion_text:completionText,issuer_name:issuerName,issuer_type:issuerType,creator_name:creatorName,language,issued_label:issuedLabel,verify_url:verifyUrl,layout,oga_logo:ogaLogo,creator_logo:creatorLogoSnapshot,creator_signature:creatorSignatureSnapshot,oga_signature:ogaSignature,accreditations:accSnapshots,qr_asset:qrAsset,institution_signature_label:settings.institution_signature_label});const pdfHash=await sha256(pdfBytes),pdfPath=`certificates/${userId}/${certId}.pdf`;
+  const {error:uploadError}=await sb.storage.from("certificates").upload(pdfPath,pdfBytes,{contentType:"application/pdf",upsert:false});if(uploadError)throw uploadError;const pdfUrl=sb.storage.from("certificates").getPublicUrl(pdfPath).data.publicUrl;
+  const issuerSnapshot={type:issuerType,name:issuerName,creator_name:creatorName,oga_logo:ogaLogo,creator_logo:creatorLogoSnapshot,captured_at:issuedAt.toISOString()};const signatureSnapshot={creator:creatorSignatureSnapshot,omnia:ogaSignature,captured_at:issuedAt.toISOString()};const accreditationSnapshot=accSnapshots.map(({logo,signature,stamp,...rest})=>({...rest,logo,signature,stamp}));
+  const {data:cert,error:certError}=await sb.from("certificates").insert({id:certificateUuid,omnia_certificate_id:certId,user_id:userId,course_id:courseId,student_full_name:user.full_name,course_title:course.title,course_level:course.level||"",course_category:course.category||"",cpd_hours:(accreditations||[]).filter((a:any)=>a.certification_type==='cpd').reduce((n:number,a:any)=>n+Number(a.credit_value||0),0),template_type:layout.style||"classic",creator_name:creatorName||null,establishment_name:issuerType==='structure'?issuerName:null,establishment_logo_url:creatorLogoSnapshot?.snapshot_url||null,director_name:issuerType==='structure'?creatorName:null,director_signature_url:creatorSignatureSnapshot?.snapshot_url||null,cpd_accredited:(accreditations||[]).some((a:any)=>a.certification_type==='cpd'),cpd_provider_code:(accreditations||[]).find((a:any)=>a.certification_type==='cpd')?.certification_code||null,pdf_url:pdfUrl,pdf_storage_path:pdfPath,pdf_mime_type:"application/pdf",pdf_sha256:pdfHash,validity_status:"valid",verification_url:verifyUrl,qr_svg:null,duration_minutes:durationMinutes,course_version:String(course.current_version||"1.0"),issuer_type:issuerType,issuer_name:issuerName,language_code:language,document_type:"completion_certificate",source_type:"course",template_id:template?.id||null,template_version:template?.version||null,issuance_snapshot:{student_full_name:user.full_name,course_title:course.title,course_version:String(course.current_version||"1.0"),issuer:issuerSnapshot,template:{id:template?.id||null,version:template?.version||null,layout},accreditations:accreditationSnapshot,generated_at:issuedAt.toISOString()},issuer_snapshot:issuerSnapshot,accreditation_snapshot:accreditationSnapshot,signature_snapshot:signatureSnapshot,metadata:{assessment_thresholds:Object.fromEntries((assessments||[]).map((a:any)=>[a.id,{title:a.title,scope:a.scope,passing_score:Number(a.passing_score||0)}])),time_spent_seconds:spent}}).select("*").single();if(certError)throw certError;
+  if(accSnapshots.length){const rows=accSnapshots.map((a,index)=>({certificate_id:cert.id,course_certification_id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,badge_url:a.logo?.snapshot_url||null,logo_url:a.logo?.snapshot_url||null,signature_url:a.signature?.snapshot_url||null,stamp_url:a.stamp?.snapshot_url||null,verification_url:a.verification_url,valid_from:null,expires_at:null,status:"valid",partner_snapshot:{organization_name:a.organization_name,certification_name:a.certification_name,assets:{logo:a.logo,signature:a.signature,stamp:a.stamp},captured_at:issuedAt.toISOString()},logo_permission_snapshot:a.permission_snapshot,display_order:index}));const {error}=await sb.from("certificate_accreditations").insert(rows);if(error)throw error;}
+  const awards=await awardAutomaticBadges(sb,user,course,cert,accreditations||[],appUrl);if(awards.length)await sb.from("certificates").update({badge_awards_snapshot:awards.map((a:any)=>({id:a.id,template_id:a.template_id,credential_uuid:a.credential_uuid,verification_code:a.verification_code,issued_at:a.issued_at}))}).eq("id",cert.id);
+  const creditSummary=(accreditations||[]).map((a:any)=>({organization:a.organization_name,value:a.credit_value,unit:a.credit_unit}));await sb.from("user_profile_certifications").upsert({user_id:userId,certificate_id:cert.id,course_id:courseId,title:course.title,issuer:issuerName,credential_id:certId,verification_url:verifyUrl,issued_at:cert.issued_at,expires_at:null,hours_or_credits:creditSummary,status:"valid",updated_at:new Date().toISOString()},{onConflict:"user_id,certificate_id"});await sb.from("user_enrollments").update({completed_at:new Date().toISOString()}).eq("user_id",userId).eq("course_id",courseId);await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,certificate_id:cert.id,result:"generated",source:body.source||"automatic"});
+  fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`,{method:"POST",headers:{Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({type:"certificat_genere",payload:{userId,formation_titre:course.title,certificate_id:certId,verify_url:verifyUrl,pdf_url:pdfUrl}})}).catch(()=>{});
+  return json({certificate_id:certId,pdf_url:pdfUrl,pdf_sha256:pdfHash,verification_url:verifyUrl,accreditations:creditSummary,automatic_badges:awards.length});
+ }catch(error){console.error("certificate-generate",error);return json({error:"INTERNAL",message:error instanceof Error?error.message:String(error)},500);}
 });

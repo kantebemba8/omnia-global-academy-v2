@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
@@ -31,6 +31,7 @@ interface LessonContent {
   lesson_summary?: string; duration_seconds: number; cloudflare_stream_uid?: string;
   is_external?: boolean; external_url?: string; external_partner?: string;
   course_category?: string;
+  has_blocks?: boolean;
   exercices_auto?: Array<{
     type: 'flashcards_vocabulaire' | 'texte_a_trous' | 'dictee_audio';
     mots?: string[];
@@ -254,6 +255,7 @@ export function CoursLecteur() {
   const [showSummary, setShowSummary] = useState(false);
   const [externalVisited, setExternalVisited] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [programOpen, setProgramOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiMode, setAiMode] = useState('question');
@@ -534,6 +536,16 @@ export function CoursLecteur() {
           <ArrowLeft size={18} style={{ color: '#FFFFFF' }} />
           {isAdminPreview && <span className="hidden sm:inline text-xs font-semibold text-white">Dashboard Super Admin</span>}
         </button>
+        <button
+          type="button"
+          onClick={() => setProgramOpen(true)}
+          className="md:hidden inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
+          aria-label="Ouvrir le programme de la formation"
+          aria-expanded={programOpen}
+        >
+          <Menu size={18} className="text-white" />
+          <span className="hidden sm:inline text-xs font-semibold text-white">Programme</span>
+        </button>
         <div className="flex-1 flex items-center gap-3">
           <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.15)' }}>
             <div className="h-full rounded-full transition-all" style={{ width: `${progressPct}%`, backgroundColor: '#BF8813' }} />
@@ -553,6 +565,53 @@ export function CoursLecteur() {
           </div>
         )}
       </header>
+
+      {/* Programme mobile */}
+      {programOpen && (
+        <div className="fixed inset-0 z-[120] md:hidden" role="dialog" aria-modal="true" aria-label="Programme de la formation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55"
+            onClick={() => setProgramOpen(false)}
+            aria-label="Fermer le programme"
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[88vw] max-w-sm flex-col bg-white shadow-2xl">
+            <div className="flex h-14 items-center justify-between border-b px-4" style={{ borderColor: '#E4E7EC' }}>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[.12em]" style={{ color: '#BF8813' }}>Formation</p>
+                <h2 className="text-sm font-black" style={{ color: '#002050' }}>Programme et progression</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProgramOpen(false)}
+                className="rounded-lg p-2 hover:bg-slate-100"
+                aria-label="Fermer le programme"
+              >
+                <X size={19} style={{ color: '#002050' }} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <CourseSidebar
+                modules={modules}
+                currentLessonId={currentLessonId}
+                onSelectLesson={(lessonId) => {
+                  setProgramOpen(false);
+                  goToLesson(lessonId);
+                }}
+                onGoExam={(modId) => {
+                  setProgramOpen(false);
+                  navigate(`/cours/${courseId}/examen-module/${modId}`);
+                }}
+                onGoFinal={() => {
+                  setProgramOpen(false);
+                  navigate(`/cours/${courseId}/validation-finale`);
+                }}
+                finalUnlocked={finalUnlocked}
+              />
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">

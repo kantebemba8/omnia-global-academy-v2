@@ -60,6 +60,7 @@ export type BadgeTemplate = {
   automatic_enabled: boolean;
   status: 'draft' | 'pending_validation' | 'active' | 'inactive' | 'archived';
   achievement_uri?: string | null;
+  metadata?: Record<string, unknown>;
   issuer?: CredentialIssuer | null;
   category?: BadgeCategory | null;
   level?: BadgeLevel | null;

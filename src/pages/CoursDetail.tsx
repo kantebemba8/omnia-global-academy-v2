@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
@@ -127,6 +127,21 @@ export function CoursDetail() {
   const reviews = (detail.reviews ?? []) as Record<string, unknown>[];
   const ratingDist = (detail.rating_distribution ?? []) as { stars: number; count: number; pct: number }[];
   const freePreviewId = detail.free_preview_lesson_id as string | null;
+  const certifications = (detail.certifications ?? []) as Array<{
+    id: string;
+    certification_type?: string | null;
+    organization_name?: string | null;
+    certification_name?: string | null;
+    certification_code?: string | null;
+    credit_value?: number | null;
+    credit_unit?: string | null;
+    logo_url?: string | null;
+    verification_url?: string | null;
+    website_url?: string | null;
+    valid_from?: string | null;
+    expires_at?: string | null;
+    display_on_certificate?: boolean;
+  }>;
 
   const totalLessons = modules.reduce((s, m) => s + ((m.lessons as unknown[])?.length ?? 0), 0);
   const cpd = course.cpd_hours as number ?? 0;
@@ -286,6 +301,71 @@ export function CoursDetail() {
                   <span className="text-sm" style={{ color: '#374151' }}>{obj}</span>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Certifications and recognized partners */}
+        {certifications.length > 0 && (
+          <section>
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Reconnaissance vérifiée</p>
+                <h2 className="mt-1 font-bold" style={{ color: '#002050', fontSize: '22px' }}>Certifications et partenaires</h2>
+                <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                  Seuls les organismes et logos validés par Omnia sont affichés. Les reconnaissances applicables seront reprises sur le certificat final.
+                </p>
+              </div>
+              <BadgeCheck size={30} style={{ color: '#BF8813', flexShrink: 0 }} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {certifications.map((certification) => {
+                const content = (
+                  <div className="flex h-full items-start gap-4 rounded-xl border bg-white p-4 transition hover:shadow-sm" style={{ borderColor: '#E4E7EC' }}>
+                    {certification.logo_url ? (
+                      <img
+                        src={certification.logo_url}
+                        alt={`Logo ${certification.organization_name || 'organisme partenaire'}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-14 w-20 flex-shrink-0 rounded-lg border border-slate-100 bg-white object-contain p-1.5"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50">
+                        <Building2 size={24} style={{ color: '#BF8813' }} />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black" style={{ color: '#002050' }}>{certification.organization_name || 'Organisme partenaire'}</p>
+                      <p className="mt-1 text-sm text-gray-600">{certification.certification_name || 'Reconnaissance associée'}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {certification.certification_code && (
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            {certification.certification_code}
+                          </span>
+                        )}
+                        {(certification.credit_value || certification.credit_unit) && (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                            {certification.credit_value ?? ''} {certification.credit_unit ?? ''}
+                          </span>
+                        )}
+                        {certification.display_on_certificate !== false && (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                            Mention sur le certificat
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {(certification.verification_url || certification.website_url) && <ExternalLink size={15} className="flex-shrink-0 text-slate-400" />}
+                  </div>
+                );
+                const href = certification.verification_url || certification.website_url;
+                return href ? (
+                  <a key={certification.id} href={href} target="_blank" rel="noopener noreferrer" className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400">
+                    {content}
+                  </a>
+                ) : <div key={certification.id}>{content}</div>;
+              })}
             </div>
           </section>
         )}
