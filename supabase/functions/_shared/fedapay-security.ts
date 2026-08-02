@@ -62,11 +62,69 @@ export async function verifyFedaPayWebhook(
   }
 }
 
+const FEDAPAY_SANDBOX_BASE = "https://sandbox-api.fedapay.com/v1";
+const FEDAPAY_LIVE_BASE = "https://api.fedapay.com/v1";
+
+export type FedaPayEnvironment = "sandbox" | "live";
+
+export type FedaPayConfiguration = {
+  requested_mode: FedaPayEnvironment;
+  effective_mode: FedaPayEnvironment;
+  api_base: string;
+  live_enabled: boolean;
+  live_blocked: boolean;
+};
+
+function envFlagEnabled(name: string): boolean {
+  return ["1", "true", "yes", "on"].includes(
+    String(Deno.env.get(name) || "").trim().toLowerCase(),
+  );
+}
+
+function requestedFedaPayMode(): FedaPayEnvironment {
+  const explicitBase = String(Deno.env.get("FEDAPAY_API_BASE") || "").trim().replace(/\/$/, "");
+  if (explicitBase) {
+    if (explicitBase === FEDAPAY_SANDBOX_BASE) return "sandbox";
+    if (explicitBase === FEDAPAY_LIVE_BASE) return "live";
+    throw new Error("FEDAPAY_API_BASE_NOT_ALLOWED");
+  }
+
+  const mode = String(
+    Deno.env.get("FEDAPAY_MODE") ||
+    Deno.env.get("FEDAPAY_ENV") ||
+    "sandbox",
+  ).trim().toLowerCase();
+
+  if (["sandbox", "test", "development", "dev"].includes(mode)) return "sandbox";
+  if (["live", "production", "prod"].includes(mode)) return "live";
+  throw new Error("FEDAPAY_MODE_INVALID");
+}
+
+export function fedaPayConfiguration(): FedaPayConfiguration {
+  const requestedMode = requestedFedaPayMode();
+  const liveEnabled = envFlagEnabled("FEDAPAY_LIVE_ENABLED");
+  const liveBlocked = requestedMode === "live" && !liveEnabled;
+  const effectiveMode: FedaPayEnvironment = liveBlocked ? "sandbox" : requestedMode;
+
+  return {
+    requested_mode: requestedMode,
+    effective_mode: effectiveMode,
+    api_base: effectiveMode === "live" ? FEDAPAY_LIVE_BASE : FEDAPAY_SANDBOX_BASE,
+    live_enabled: liveEnabled,
+    live_blocked: liveBlocked,
+  };
+}
+
+export function fedaPayMode(): FedaPayEnvironment {
+  const configuration = fedaPayConfiguration();
+  if (configuration.live_blocked) throw new Error("FEDAPAY_LIVE_NOT_ENABLED");
+  return configuration.effective_mode;
+}
+
 export function fedaPayApiBase(): string {
-  const mode = (Deno.env.get("FEDAPAY_MODE") || Deno.env.get("FEDAPAY_ENV") || "live").toLowerCase();
-  return mode === "sandbox" || mode === "test" || mode === "development"
-    ? "https://sandbox-api.fedapay.com/v1"
-    : "https://api.fedapay.com/v1";
+  const configuration = fedaPayConfiguration();
+  if (configuration.live_blocked) throw new Error("FEDAPAY_LIVE_NOT_ENABLED");
+  return configuration.api_base;
 }
 
 export function extractFedaPayTransaction(payload: Record<string, unknown>): Record<string, any> {

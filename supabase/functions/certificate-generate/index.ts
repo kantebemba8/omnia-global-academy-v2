@@ -22,13 +22,54 @@ function safeText(value:unknown){return String(value??"").replace(/[\r\n\t]+/g,"
 function hex(value:unknown,fallback:string){const text=String(value||"");return /^#[0-9a-f]{6}$/i.test(text)?text:fallback;}
 function pdfColor(value:string){const v=hex(value,BLUE).slice(1);return rgb(parseInt(v.slice(0,2),16)/255,parseInt(v.slice(2,4),16)/255,parseInt(v.slice(4,6),16)/255);}
 function extForMime(mime:string){if(mime.includes("png"))return"png";if(mime.includes("jpeg")||mime.includes("jpg"))return"jpg";if(mime.includes("webp"))return"webp";if(mime.includes("svg"))return"svg";return"bin";}
-function resolveUrl(raw:string,appUrl:string){if(!raw)return"";if(/^https?:\/\//i.test(raw))return raw;if(raw.startsWith("/"))return`${appUrl.replace(/\/$/,"")}${raw}`;return raw;}
-async function snapshotAsset(sb:any,rawUrl:unknown,certificateUuid:string,label:string,appUrl:string):Promise<AssetSnapshot|null>{
- const original=resolveUrl(safeText(rawUrl),appUrl);if(!original)return null;
+function resolveUrl(raw:string,appUrl:string){
+ if(!raw)return"";
+ if(/^https?:\/\//i.test(raw))return raw;
+ if(raw.startsWith("/"))return`${appUrl.replace(/\/$/,"")}${raw}`;
+ return"";
+}
+function unsafeIpv4(hostname:string){
+ const parts=hostname.split(".");if(parts.length!==4||parts.some(part=>!/^\d{1,3}$/.test(part)))return false;
+ const octets=parts.map(Number);if(octets.some(value=>value<0||value>255))return true;
+ const [a,b]=octets;
+ return a===0||a===10||a===127||a>=224||
+  (a===100&&b>=64&&b<=127)||
+  (a===169&&b===254)||
+  (a===172&&b>=16&&b<=31)||
+  (a===192&&(b===0||b===168))||
+  (a===198&&(b===18||b===19));
+}
+function unsafeAssetHost(hostname:string){
+ const host=hostname.toLowerCase().replace(/^\[|\]$/g,"");
+ if(!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||host.endsWith(".lan")||host.endsWith(".home.arpa"))return true;
+ if(unsafeIpv4(host))return true;
+ if(host.includes(":")){
+  const normalized=host.toLowerCase();
+  if(normalized==="::"||normalized==="::1"||normalized.startsWith("fc")||normalized.startsWith("fd")||normalized.startsWith("fe8")||normalized.startsWith("fe9")||normalized.startsWith("fea")||normalized.startsWith("feb"))return true;
+  if(normalized.startsWith("::ffff:"))return unsafeIpv4(normalized.slice(7));
+ }
+ return false;
+}
+function safeAssetUrl(raw:string,appUrl:string){
+ const resolved=resolveUrl(raw,appUrl);if(!resolved)return"";
  try{
-  const response=await fetch(original,{signal:AbortSignal.timeout(12000)});if(!response.ok)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
-  const bytes=new Uint8Array(await response.arrayBuffer());if(!bytes.length||bytes.length>8*1024*1024)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
-  const mime=(response.headers.get("content-type")||"application/octet-stream").split(";")[0].toLowerCase();const digest=await sha256(bytes);const path=`snapshots/${certificateUuid}/${label}-${digest.slice(0,12)}.${extForMime(mime)}`;
+  const url=new URL(resolved);
+  if(url.protocol!=="https:"||url.username||url.password||unsafeAssetHost(url.hostname))return"";
+  if(url.port&&url.port!=="443")return"";
+  return url.toString();
+ }catch{return"";}
+}
+async function snapshotAsset(sb:any,rawUrl:unknown,certificateUuid:string,label:string,appUrl:string):Promise<AssetSnapshot|null>{
+ const original=safeAssetUrl(safeText(rawUrl),appUrl);if(!original)return null;
+ try{
+  const response=await fetch(original,{signal:AbortSignal.timeout(12000),redirect:"manual"});
+  if(response.status>=300&&response.status<400)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
+  if(!response.ok)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
+  const declaredLength=Number(response.headers.get("content-length")||0);if(declaredLength>8*1024*1024)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:null,sha256:null};
+  const mime=(response.headers.get("content-type")||"").split(";")[0].toLowerCase();
+  if(!["image/png","image/jpeg","image/jpg","image/webp","image/svg+xml"].includes(mime))return{original_url:original,snapshot_url:null,storage_path:null,mime_type:mime||null,sha256:null};
+  const bytes=new Uint8Array(await response.arrayBuffer());if(!bytes.length||bytes.length>8*1024*1024)return{original_url:original,snapshot_url:null,storage_path:null,mime_type:mime,sha256:null};
+  const digest=await sha256(bytes);const path=`snapshots/${certificateUuid}/${label}-${digest.slice(0,12)}.${extForMime(mime)}`;
   const {error}=await sb.storage.from("certificates").upload(path,bytes,{contentType:mime,upsert:true});if(error)throw error;
   const snapshotUrl=sb.storage.from("certificates").getPublicUrl(path).data.publicUrl;
   return{original_url:original,snapshot_url:snapshotUrl,storage_path:path,mime_type:mime,sha256:digest,bytes};

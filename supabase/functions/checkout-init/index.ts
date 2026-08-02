@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -218,8 +219,7 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "FEDAPAY_NOT_CONFIGURED", message: "Le paiement est temporairement indisponible." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const mode = (Deno.env.get("FEDAPAY_MODE") || "live").toLowerCase();
-    const fedaBase = mode === "sandbox" || mode === "test" ? "https://sandbox-api.fedapay.com/v1" : "https://api.fedapay.com/v1";
+    const fedaBase = fedaPayApiBase();
     const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
 
     async function checkoutUrlFor(transactionId: string): Promise<string | null> {
@@ -337,6 +337,13 @@ Deno.serve(async (req: Request) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: "INTERNAL", message: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const message = err instanceof Error ? err.message : String(err);
+    if (["FEDAPAY_LIVE_NOT_ENABLED", "FEDAPAY_API_BASE_NOT_ALLOWED", "FEDAPAY_MODE_INVALID"].includes(message)) {
+      return new Response(JSON.stringify({
+        error: "PAYMENT_CONFIGURATION_BLOCKED",
+        message: "Les paiements réels ne sont pas activés. Le mode sandbox reste obligatoire.",
+      }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ error: "INTERNAL", message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

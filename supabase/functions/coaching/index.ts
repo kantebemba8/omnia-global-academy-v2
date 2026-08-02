@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1559,7 +1560,7 @@ async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Rec
 
   const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
   if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
-  const apiBase = (Deno.env.get("FEDAPAY_API_BASE") || "https://api.fedapay.com/v1").replace(/\/$/, "");
+  const apiBase = fedaPayApiBase();
   const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   const names = String(user.full_name || "").trim().split(/\s+/);
@@ -2945,7 +2946,7 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
     return { order: paidOrder || { ...order, payment_status: "paid", provider_transaction_id: freeReference }, payment_url: null, already_paid: true, free_order: true };
   }
   const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || ""; if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
-  const apiBase = (Deno.env.get("FEDAPAY_API_BASE") || "https://api.fedapay.com/v1").replace(/\/$/, "");
+  const apiBase = fedaPayApiBase();
   const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   const names = String(user.full_name || "").trim().split(/\s+/); const firstname = names.shift() || String(user.email).split("@")[0]; const lastname = names.join(" ") || "-";

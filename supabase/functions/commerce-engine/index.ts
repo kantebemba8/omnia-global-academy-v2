@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -271,8 +272,7 @@ function commerceReturnPath(product: Record<string, any>, isPlan: boolean) {
 async function createFedaPay(order: Record<string, any>, user: UserContext, label: string, returnPath: string) {
   const key = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
   if (!key) throw new Error("FEDAPAY_NOT_CONFIGURED");
-  const mode = (Deno.env.get("FEDAPAY_MODE") || "live").toLowerCase();
-  const base = mode === "sandbox" || mode === "test" ? "https://sandbox-api.fedapay.com/v1" : "https://api.fedapay.com/v1";
+  const base = fedaPayApiBase();
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
   const parts = (user.full_name || "").trim().split(/\s+/);
@@ -801,6 +801,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION", action }, 404);
   } catch (error) {
     console.error("commerce-engine", error);
-    return json({ error: "INTERNAL", message: error instanceof Error ? error.message : String(error) }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    if (["FEDAPAY_LIVE_NOT_ENABLED", "FEDAPAY_API_BASE_NOT_ALLOWED", "FEDAPAY_MODE_INVALID"].includes(message)) {
+      return json({
+        error: "PAYMENT_CONFIGURATION_BLOCKED",
+        message: "Les paiements réels ne sont pas activés. Le mode sandbox reste obligatoire.",
+      }, 503);
+    }
+    return json({ error: "INTERNAL", message }, 500);
   }
 });
