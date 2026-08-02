@@ -1,0 +1,37 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "__APPLE_TEAM_ID__.com.omniaglobalacademy.app"
+        ],
+        "components": [
+          {
+            "/": "/cours/*"
+          },
+          {
+            "/": "/omnia-live/*"
+          },
+          {
+            "/": "/emploi/*"
+          },
+          {
+            "/": "/verify/*"
+          },
+          {
+            "/": "/credentials/*"
+          },
+          {
+            "/": "/coaching/*"
+          },
+          {
+            "/": "/projects/*"
+          },
+          {
+            "/": "/talent/*"
+          }
+        ]
+      }
+    ]
+  }
+}

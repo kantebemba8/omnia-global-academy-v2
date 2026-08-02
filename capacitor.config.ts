@@ -1,6 +1,7 @@
 /// <reference types="@capacitor/keyboard" />
 /// <reference types="@capacitor/status-bar" />
 /// <reference types="@capacitor/splash-screen" />
+/// <reference types="@capacitor/push-notifications" />
 
 import type { CapacitorConfig } from '@capacitor/cli';
 
@@ -14,6 +15,9 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   plugins: {
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'banner', 'list'],
+    },
     SystemBars: {
       insetsHandling: 'css',
       style: 'DARK',

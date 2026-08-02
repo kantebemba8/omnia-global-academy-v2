@@ -26,7 +26,12 @@
     "test:mobile:module2:android": "node scripts/mobile/verify-module2.mjs --android",
     "test:mobile:module3": "node scripts/mobile/verify-module3.mjs --source",
     "test:mobile:module3:android": "node scripts/mobile/verify-module3.mjs --android",
-    "mobile:module3:ios": "node scripts/mobile/apply-module3-ios.mjs"
+    "mobile:module3:ios": "node scripts/mobile/apply-module3-ios.mjs",
+    "test:mobile:module4": "node scripts/mobile/verify-module4.mjs --source",
+    "test:mobile:module4:android": "node scripts/mobile/verify-module4.mjs --android",
+    "mobile:module4:ios": "node scripts/mobile/apply-module4-ios.mjs",
+    "mobile:configure-links": "node scripts/mobile/configure-app-links.mjs",
+    "test:mobile:module4:supabase": "node scripts/mobile/verify-module4.mjs --supabase"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
@@ -51,7 +56,9 @@
     "@capacitor/share": "8.0.1",
     "html2canvas": "1.4.1",
     "jspdf": "4.2.1",
-    "jsqr": "1.4.0"
+    "jsqr": "1.4.0",
+    "@capacitor/device": "8.0.2",
+    "@capacitor/push-notifications": "8.1.2"
   },
   "devDependencies": {
     "@capacitor/assets": "3.0.5",

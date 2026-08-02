@@ -3,32 +3,9 @@ import { Keyboard } from '@capacitor/keyboard';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { getOmniaPlatform, isNativeApp, isTrustedOmniaUrl, OMNIA_WEB_ORIGIN, openExternalUrl } from './platform';
+import { navigateInsideOmnia, routeFromOmniaUrl } from './deepLinks';
 
 let initialized = false;
-
-function nativeRouteFromUrl(rawUrl: string): string | null {
-  try {
-    const url = new URL(rawUrl);
-
-    if (url.protocol === 'omnia:') {
-      const hostPart = url.host ? `/${url.host}` : '';
-      const pathname = `${hostPart}${url.pathname}`.replace(/\/{2,}/g, '/');
-      return `${pathname || '/accueil'}${url.search}${url.hash}`;
-    }
-
-    if (!isTrustedOmniaUrl(rawUrl)) return null;
-    return `${url.pathname || '/accueil'}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
-}
-
-function navigateInsideApp(path: string): void {
-  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (current === path) return;
-  window.history.pushState({}, '', path);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
 
 function installExternalLinkInterceptor(): void {
   document.addEventListener('click', event => {
@@ -44,7 +21,7 @@ function installExternalLinkInterceptor(): void {
     event.preventDefault();
 
     if (isTrustedOmniaUrl(url.href)) {
-      navigateInsideApp(`${url.pathname || '/accueil'}${url.search}${url.hash}`);
+      navigateInsideOmnia(`${url.pathname || '/accueil'}${url.search}${url.hash}`);
       return;
     }
 
@@ -78,8 +55,8 @@ export async function initializeNativeRuntime(): Promise<void> {
   });
 
   await App.addListener('appUrlOpen', ({ url }) => {
-    const path = nativeRouteFromUrl(url);
-    if (path) navigateInsideApp(path);
+    const path = routeFromOmniaUrl(url);
+    if (path) navigateInsideOmnia(path);
   });
 
   await App.addListener('backButton', async ({ canGoBack }) => {
@@ -112,8 +89,8 @@ export async function initializeNativeRuntime(): Promise<void> {
   });
 
   const launch = await App.getLaunchUrl();
-  const launchPath = launch?.url ? nativeRouteFromUrl(launch.url) : null;
-  if (launchPath) navigateInsideApp(launchPath);
+  const launchPath = launch?.url ? routeFromOmniaUrl(launch.url) : null;
+  if (launchPath) navigateInsideOmnia(launchPath);
 
   await SplashScreen.hide();
 }

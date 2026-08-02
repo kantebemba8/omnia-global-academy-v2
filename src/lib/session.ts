@@ -6,6 +6,10 @@ const USER_KEY = 'omnia_user';
 const SECURE_STORAGE_PREFIX = 'omnia_session_';
 let nativeSessionToken: string | null = null;
 let sessionStorageInitialized = false;
+function notifySessionChanged(authenticated: boolean): void {
+  window.dispatchEvent(new CustomEvent('omnia:session-changed', { detail: { authenticated } }));
+}
+
 
 /**
  * Roles used by the navigation and access-control UI.
@@ -124,11 +128,13 @@ export function saveSession(token: string, user: unknown): void {
 
   if (!isNativeSessionStorage()) {
     localStorage.setItem(SESSION_KEY, token);
+    notifySessionChanged(true);
     return;
   }
 
   nativeSessionToken = token;
   localStorage.removeItem(SESSION_KEY);
+  notifySessionChanged(true);
   void configureSecureStorage()
     .then(() =>
       SecureStorage.set(
@@ -159,15 +165,18 @@ export function getStoredUser<T>(): T | null {
 }
 
 export function clearSession(): void {
+  window.dispatchEvent(new CustomEvent('omnia:session-ending'));
   localStorage.removeItem(USER_KEY);
 
   if (!isNativeSessionStorage()) {
     localStorage.removeItem(SESSION_KEY);
+    notifySessionChanged(false);
     return;
   }
 
   nativeSessionToken = null;
   localStorage.removeItem(SESSION_KEY);
+  notifySessionChanged(false);
   void configureSecureStorage()
     .then(() => SecureStorage.remove(SESSION_KEY, false))
     .catch(error => {

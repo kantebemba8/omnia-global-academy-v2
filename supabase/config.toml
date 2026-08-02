@@ -298,3 +298,6 @@ verify_jwt = false
 
 [functions.video-signed-url]
 verify_jwt = false
+
+[functions.mobile-notifications]
+verify_jwt = false

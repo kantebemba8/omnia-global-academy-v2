@@ -4,4 +4,5 @@
     <string name="title_activity_main">Omnia Global Academy</string>
     <string name="package_name">com.omniaglobalacademy.app</string>
     <string name="custom_url_scheme">com.omniaglobalacademy.app</string>
+    <string name="default_notification_channel_id">omnia-general</string>
 </resources>

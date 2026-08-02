@@ -31,3 +31,8 @@ supabase/.temp/
 OGA_RESULTAT_*.txt
 ETAT_AUDIT_OGA.txt
 OGA_BACKUP_*/
+
+# Native push credentials are local/CI secrets
+android/app/google-services.json
+ios/App/GoogleService-Info.plist
+*.p8
