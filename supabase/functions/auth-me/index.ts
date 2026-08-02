@@ -125,9 +125,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Regular user — suspended check after demo branch
-    if (user.status === "suspendu") {
-      return new Response(JSON.stringify({ success: false, message: "Compte inaccessible" }), {
-        status: 403,
+    if (user.status !== "actif") {
+      return new Response(JSON.stringify({
+        success: false,
+        error: user.status === "supprime" ? "ACCOUNT_DELETED" : "ACCOUNT_INACTIVE",
+        message: "Compte inaccessible",
+      }), {
+        status: user.status === "supprime" ? 410 : 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

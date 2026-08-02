@@ -32,8 +32,8 @@ async function handler(req: Request) {
   if (!sess) return json({ error: "SESSION_INVALID" }, 401);
   const userId = sess.user_id;
 
-  const { data: user } = await sb.from("users").select("country_code, account_status").eq("id", userId).maybeSingle();
-  if (!user || user.account_status === "suspended") return json({ error: "ACCOUNT_SUSPENDED" }, 403);
+  const { data: user } = await sb.from("users").select("country_code, status").eq("id", userId).maybeSingle();
+  if (!user || user.status !== "actif") return json({ error: "ACCOUNT_SUSPENDED" }, 403);
 
   const body = await req.json();
   const { space, course_id, title, content, country_code } = body as {
@@ -371,12 +371,25 @@ async function handler(req: Request) {
     if (!enr) return json({ error: "NOT_ENROLLED" }, 403);
   }
 
+  // Hide content authored by users blocked by the current user.
+  let blockedUserIds: string[] = [];
+  if (userId) {
+    const { data: blockedRows } = await sb.from("user_blocks")
+      .select("blocked_user_id")
+      .eq("blocker_user_id", userId);
+    blockedUserIds = (blockedRows || []).map((row: { blocked_user_id: string }) => row.blocked_user_id);
+  }
+
   // Build query — top-level posts only (parent_id IS NULL)
   let query = sb.from("forum_posts")
     .select("id, title, content, user_id, country_code, space, course_id, likes_count, replies_count, is_pinned, is_solved, is_flagged, created_at", { count: "exact" })
     .eq("space", space)
     .eq("is_visible", true)
     .is("parent_id", null);
+
+  if (blockedUserIds.length > 0) {
+    query = query.not("user_id", "in", `(${blockedUserIds.join(",")})`);
+  }
 
   if (space === "cours" && courseId) {
     query = query.eq("course_id", courseId);

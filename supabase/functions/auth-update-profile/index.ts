@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import bcrypt from "npm:bcryptjs@2.4.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +41,8 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return json({ error: "INVALID_BODY" }, 400);
 
+  const action = typeof body.action === "string" ? body.action.trim() : "";
+
   const userUpdates: Record<string, unknown> = {};
   for (const field of USER_FIELDS) {
     if (body[field] !== undefined) userUpdates[field] = body[field] === "" ? null : body[field];
@@ -57,7 +60,8 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  if (Object.keys(userUpdates).length === 0 && Object.keys(professorUpdates).length === 0) {
+  const accountActions = new Set(["delete_account", "block_user", "unblock_user", "list_blocked_users"]);
+  if (!accountActions.has(action) && Object.keys(userUpdates).length === 0 && Object.keys(professorUpdates).length === 0) {
     return json({ error: "NO_VALID_FIELDS", message: "Aucun champ valide fourni." }, 400);
   }
 
@@ -75,6 +79,113 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (sessionError || !session) return json({ error: "SESSION_INVALID" }, 401);
     const userId = String(session.user_id);
+
+    if (action === "block_user" || action === "unblock_user") {
+      const targetUserId = typeof body.target_user_id === "string" ? body.target_user_id.trim() : "";
+      const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
+      if (!targetUserId) return json({ error: "TARGET_USER_REQUIRED" }, 400);
+      if (targetUserId === userId) return json({ error: "CANNOT_BLOCK_SELF" }, 400);
+
+      const { data: target, error: targetError } = await sb.from("users")
+        .select("id,status")
+        .eq("id", targetUserId)
+        .maybeSingle();
+      if (targetError) throw targetError;
+      if (!target || target.status === "supprime") return json({ error: "TARGET_USER_NOT_FOUND" }, 404);
+
+      if (action === "block_user") {
+        const { error } = await sb.from("user_blocks").upsert({
+          blocker_user_id: userId,
+          blocked_user_id: targetUserId,
+          reason: reason || null,
+        }, { onConflict: "blocker_user_id,blocked_user_id" });
+        if (error) throw error;
+        return json({ success: true, blocked: true, target_user_id: targetUserId });
+      }
+
+      const { error } = await sb.from("user_blocks").delete()
+        .eq("blocker_user_id", userId)
+        .eq("blocked_user_id", targetUserId);
+      if (error) throw error;
+      return json({ success: true, blocked: false, target_user_id: targetUserId });
+    }
+
+    if (action === "list_blocked_users") {
+      const { data: blocks, error: blocksError } = await sb.from("user_blocks")
+        .select("blocked_user_id,reason,created_at")
+        .eq("blocker_user_id", userId)
+        .order("created_at", { ascending: false });
+      if (blocksError) throw blocksError;
+
+      const blockedIds = (blocks || []).map((row: { blocked_user_id: string }) => row.blocked_user_id);
+      const { data: blockedUsers, error: usersError } = blockedIds.length
+        ? await sb.from("users").select("id,full_name,status").in("id", blockedIds)
+        : { data: [], error: null };
+      if (usersError) throw usersError;
+      const nameMap = new Map((blockedUsers || []).map((row: { id: string; full_name: string }) => [row.id, row.full_name] as const));
+
+      return json({
+        success: true,
+        blocked_users: (blocks || []).map((row: { blocked_user_id: string; reason?: string | null; created_at: string }) => ({
+          user_id: row.blocked_user_id,
+          full_name: nameMap.get(row.blocked_user_id) || "Utilisateur",
+          reason: row.reason || null,
+          blocked_at: row.created_at,
+        })),
+      });
+    }
+
+    if (action === "delete_account") {
+      const currentPassword = typeof body.current_password === "string" ? body.current_password : "";
+      const confirmation = typeof body.confirmation === "string" ? body.confirmation.trim() : "";
+      const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+      const source = body.source === "web" ? "web" : "app";
+
+      if (!currentPassword || confirmation !== "SUPPRIMER") {
+        return json({ error: "DELETION_CONFIRMATION_REQUIRED", message: "Confirmation de suppression invalide." }, 400);
+      }
+
+      const { data: account, error: accountError } = await sb.from("users")
+        .select("id,email,password_hash,status")
+        .eq("id", userId)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!account || account.status === "supprime") {
+        return json({ error: "ACCOUNT_UNAVAILABLE", message: "Ce compte est déjà supprimé ou inaccessible." }, 410);
+      }
+      if (String(account.email || "").toLowerCase() === "test@omniaglobalacademy.com") {
+        return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être supprimé." }, 403);
+      }
+
+      const passwordValid = await bcrypt.compare(currentPassword, String(account.password_hash || ""));
+      if (!passwordValid) {
+        return json({ error: "INVALID_PASSWORD", message: "Mot de passe actuel incorrect." }, 403);
+      }
+
+      const { data: deletion, error: deletionError } = await sb.rpc("omnia_delete_user_account", {
+        p_user_id: userId,
+        p_reason: reason || null,
+        p_source: source,
+      });
+      if (deletionError) {
+        const message = String(deletionError.message || "");
+        if (message.includes("LAST_SUPER_ADMIN_PROTECTED")) {
+          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le dernier Super-admin actif ne peut pas supprimer son compte." }, 409);
+        }
+        if (message.includes("DEMO_ACCOUNT_PROTECTED")) {
+          return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être supprimé." }, 403);
+        }
+        throw deletionError;
+      }
+
+      return json({
+        success: true,
+        account_deleted: true,
+        deletion_reference: deletion?.deletion_reference || null,
+        deleted_at: deletion?.deleted_at || new Date().toISOString(),
+        retained_categories: deletion?.retained_categories || [],
+      });
+    }
 
     if (userUpdates.email) {
       const { data: existing } = await sb.from("users")

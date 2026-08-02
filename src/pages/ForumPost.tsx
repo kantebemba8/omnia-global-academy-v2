@@ -4,7 +4,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { ThumbsUp, Flag, CheckCircle, Pin, ArrowLeft, X, Send, MessageSquare } from 'lucide-react';
+import { ThumbsUp, Flag, CheckCircle, Pin, ArrowLeft, X, Send, MessageSquare, Ban } from 'lucide-react';
 
 interface Post {
   id: string; title: string | null; content: string; user_id: string;
@@ -64,6 +64,8 @@ export default function ForumPost() {
   const [reportReason, setReportReason] = useState('spam');
   const [reportDetails, setReportDetails] = useState('');
   const [reporting, setReporting] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  const [blockingUserId, setBlockingUserId] = useState<string | null>(null);
 
   const isLoggedIn = !!getSessionToken();
   const token = getSessionToken() || '';
@@ -72,8 +74,57 @@ export default function ForumPost() {
 
   useEffect(() => {
     if (!postId) return;
-    loadPost();
+    void loadPost();
   }, [postId]);
+
+  useEffect(() => {
+    if (!token) return;
+    void loadBlockedUsers();
+  }, [token]);
+
+  async function loadBlockedUsers() {
+    try {
+      const response = await fetch(ENDPOINTS.authUpdateProfile, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list_blocked_users' }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setBlockedUserIds(new Set((data.blocked_users || []).map((item: { user_id: string }) => item.user_id)));
+      }
+    } catch { /* keep the forum available if safety preferences cannot be loaded */ }
+  }
+
+  async function blockUser(targetUserId: string) {
+    if (!token || targetUserId === myId) return;
+    const confirmed = window.confirm('Bloquer cet utilisateur ? Ses contenus du forum seront masqués pour vous.');
+    if (!confirmed) return;
+    setBlockingUserId(targetUserId);
+    try {
+      const response = await fetch(ENDPOINTS.authUpdateProfile, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'block_user', target_user_id: targetUserId, reason: 'forum' }),
+      });
+      if (response.ok) {
+        setBlockedUserIds(current => new Set([...current, targetUserId]));
+        if (post?.user_id === targetUserId) navigate(`/forum/${post.space}`);
+        else setReplies(current => current.filter(reply => reply.user_id !== targetUserId));
+      }
+    } finally {
+      setBlockingUserId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!post) return;
+    if (blockedUserIds.has(post.user_id)) {
+      navigate(`/forum/${post.space}`, { replace: true });
+      return;
+    }
+    setReplies(current => current.filter(reply => !blockedUserIds.has(reply.user_id)));
+  }, [post, blockedUserIds, navigate]);
 
   async function loadPost() {
     setLoading(true);
@@ -127,7 +178,7 @@ export default function ForumPost() {
         }
 
         setPost({ ...rawPost, ...authorData(rawPost.user_id), user_liked: likedSet.has(rawPost.id) });
-        setReplies((repliesData || []).map((r: Post) => ({
+        setReplies((repliesData || []).filter((r: Post) => !blockedUserIds.has(r.user_id)).map((r: Post) => ({
           ...r, ...authorData(r.user_id), user_liked: likedSet.has(r.id),
         })));
       }
@@ -263,10 +314,18 @@ export default function ForumPost() {
                 <MessageSquare className="w-4 h-4" /> Répondre
               </button>
               {isLoggedIn && (
-                <button onClick={() => setShowReport({ postId: post.id })}
-                  className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 ml-auto transition-colors">
-                  <Flag className="w-3.5 h-3.5" /> Signaler
-                </button>
+                <div className="ml-auto flex items-center gap-3">
+                  {post.user_id !== myId && !blockedUserIds.has(post.user_id) && (
+                    <button type="button" disabled={blockingUserId === post.user_id} onClick={() => void blockUser(post.user_id)}
+                      className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-700 disabled:opacity-50">
+                      <Ban className="w-3.5 h-3.5" /> Bloquer
+                    </button>
+                  )}
+                  <button onClick={() => setShowReport({ postId: post.id })}
+                    className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors">
+                    <Flag className="w-3.5 h-3.5" /> Signaler
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -310,9 +369,16 @@ export default function ForumPost() {
                                 <CheckCircle className="w-3 h-3" /> Marquer comme solution
                               </button>
                             )}
+                            {isLoggedIn && reply.user_id !== myId && !blockedUserIds.has(reply.user_id) && (
+                              <button type="button" disabled={blockingUserId === reply.user_id} onClick={() => void blockUser(reply.user_id)}
+                                className="ml-auto flex items-center gap-1 text-xs text-gray-300 hover:text-red-600 disabled:opacity-50">
+                                <Ban className="w-3 h-3" /> Bloquer
+                              </button>
+                            )}
                             {isLoggedIn && (
                               <button onClick={() => setShowReport({ postId: reply.id })}
-                                className="flex items-center gap-1 text-xs text-gray-300 hover:text-red-400 ml-auto transition-colors">
+                                aria-label="Signaler cette réponse"
+                                className={`flex items-center gap-1 text-xs text-gray-300 hover:text-red-400 transition-colors ${reply.user_id === myId || blockedUserIds.has(reply.user_id) ? 'ml-auto' : ''}`}>
                                 <Flag className="w-3 h-3" />
                               </button>
                             )}

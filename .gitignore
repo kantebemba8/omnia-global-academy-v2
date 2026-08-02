@@ -41,3 +41,9 @@ android/local.properties
 android/.gradle/
 android/build/
 android/app/build/
+
+# Android release signing secrets
+*.jks
+*.keystore
+keystore.properties
+android/keystore.properties

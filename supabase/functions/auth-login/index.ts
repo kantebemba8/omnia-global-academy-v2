@@ -316,6 +316,10 @@ Deno.serve(async (req: Request) => {
       }, 403);
     }
 
+    if (user.status === "supprime") {
+      return json({ success: false, error: "ACCOUNT_DELETED", message: "Ce compte a été supprimé." }, 410);
+    }
+
     if (user.status !== "actif") {
       return json({ success: false, message: "Compte inactif" }, 403);
     }

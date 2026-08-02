@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState, type ElementType, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import {
   AlertTriangle, Bell, Briefcase, CheckCircle, Eye, EyeOff, Globe, Languages,
-  Lock, Mail, MapPin, Phone, Target, User,
+  Ban, Lock, Mail, MapPin, Phone, Target, Trash2, User,
 } from 'lucide-react';
 import { credentialsRequest, LearnerSkillsPassportResponse, SkillsPassport } from '../../lib/credentialsApi';
 import { isLearnerPreviewMode, previewSkillsPassport } from '../../lib/learnerPreview';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { getSessionToken, saveSession } from '../../lib/session';
+import { clearSession, getSessionToken, saveSession } from '../../lib/session';
 
 interface UserData {
   id: string; full_name: string; email: string; phone_number: string;
@@ -19,6 +19,7 @@ interface UserData {
 
 type Tab = 'info' | 'professionnel' | 'securite' | 'notifications';
 type MessageState = { text: string; ok: boolean } | null;
+type BlockedUser = { user_id: string; full_name: string; reason: string | null; blocked_at: string };
 
 function getApiBase() {
   const url = import.meta.env.VITE_SUPABASE_URL || '';
@@ -55,6 +56,7 @@ const PREVIEW_USER: UserData = {
 
 export function DashboardProfil() {
   const location = useLocation();
+  const navigate = useNavigate();
   const previewMode = isLearnerPreviewMode();
   const requestedTab = new URLSearchParams(location.search).get('tab');
   const initialTab: Tab = requestedTab === 'professionnel' ? 'professionnel' : 'info';
@@ -78,6 +80,13 @@ export function DashboardProfil() {
   const [notifs, setNotifs] = useState({ allow_email: true, allow_sms: true, allow_push: false, subscribe_newsletter: false });
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifMsg, setNotifMsg] = useState<MessageState>(null);
+
+  const [deleteForm, setDeleteForm] = useState({ currentPassword: '', confirmation: '', reason: '', accepted: false });
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<MessageState>(null);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (requestedTab === 'professionnel') setTab('professionnel');
@@ -127,6 +136,33 @@ export function DashboardProfil() {
   }, [previewMode]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadBlockedUsers = useCallback(async () => {
+    if (previewMode || !getSessionToken()) return;
+    setBlockedLoading(true);
+    try {
+      const response = await fetch(`${getApiBase()}/auth-update-profile`, {
+        method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'list_blocked_users' }),
+      });
+      const json = await response.json();
+      if (response.ok) setBlockedUsers(json.blocked_users || []);
+    } catch { /* the security page remains usable */ }
+    finally { setBlockedLoading(false); }
+  }, [previewMode]);
+
+  useEffect(() => {
+    if (tab === 'securite') void loadBlockedUsers();
+  }, [tab, loadBlockedUsers]);
+
+  async function unblockUser(targetUserId: string) {
+    setUnblockingId(targetUserId);
+    try {
+      const response = await fetch(`${getApiBase()}/auth-update-profile`, {
+        method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'unblock_user', target_user_id: targetUserId }),
+      });
+      if (response.ok) setBlockedUsers(current => current.filter(item => item.user_id !== targetUserId));
+    } finally { setUnblockingId(null); }
+  }
 
   async function saveProfile() {
     setSaving(true); setMsg(null);
@@ -203,6 +239,51 @@ export function DashboardProfil() {
     finally { setPwSaving(false); }
   }
 
+  async function deleteAccount() {
+    if (previewMode) {
+      setDeleteMsg({ text: 'La suppression est désactivée dans la prévisualisation.', ok: false });
+      return;
+    }
+    if (!deleteForm.accepted || deleteForm.confirmation.trim() !== 'SUPPRIMER' || !deleteForm.currentPassword) {
+      setDeleteMsg({ text: 'Confirmez les conséquences, saisissez votre mot de passe et écrivez SUPPRIMER.', ok: false });
+      return;
+    }
+
+    setDeleteSaving(true); setDeleteMsg(null);
+    try {
+      const response = await fetch(`${getApiBase()}/auth-update-profile`, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          action: 'delete_account',
+          current_password: deleteForm.currentPassword,
+          confirmation: deleteForm.confirmation.trim(),
+          reason: deleteForm.reason.trim(),
+          source: 'app',
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) {
+        const messages: Record<string, string> = {
+          INVALID_PASSWORD: 'Le mot de passe actuel est incorrect.',
+          LAST_SUPER_ADMIN_PROTECTED: 'Le dernier Super-admin actif ne peut pas supprimer son compte.',
+          DEMO_ACCOUNT_PROTECTED: 'Le compte de démonstration ne peut pas être supprimé.',
+          DELETION_CONFIRMATION_REQUIRED: 'La confirmation de suppression est invalide.',
+        };
+        setDeleteMsg({ text: messages[payload.error] || payload.message || 'Suppression impossible.', ok: false });
+        return;
+      }
+
+      const reference = typeof payload.deletion_reference === 'string' ? payload.deletion_reference : '';
+      clearSession();
+      navigate(`/compte-supprime${reference ? `?reference=${encodeURIComponent(reference)}` : ''}`, { replace: true });
+    } catch {
+      setDeleteMsg({ text: 'Erreur réseau. Votre compte n’a pas été supprimé.', ok: false });
+    } finally {
+      setDeleteSaving(false);
+    }
+  }
+
   async function saveNotifs() {
     setNotifSaving(true); setNotifMsg(null);
     if (previewMode) {
@@ -261,16 +342,70 @@ export function DashboardProfil() {
           <InlineMessage value={proMsg} /><SaveButton saving={proSaving} onClick={() => void saveProfessionalProfile()} label="Synchroniser le profil professionnel" />
         </div>}
 
-        {tab === 'securite' && <div className="space-y-4 p-5"><p className="text-sm text-gray-500">Modifiez votre mot de passe. Minimum 8 caractères.</p>{[
-          ['current', 'Mot de passe actuel'], ['newPw', 'Nouveau mot de passe'], ['confirm', 'Confirmer le nouveau mot de passe'],
-        ].map(([key, label]) => <label key={key} className="block"><span className="mb-1 block text-sm font-medium text-gray-700">{label}</span><div className="relative"><input type={showPw ? 'text' : 'password'} value={(pwForm as Record<string, string>)[key]} onChange={e => setPwForm(p => ({ ...p, [key]: e.target.value }))} className={`${plainInputClass} pr-10`} /><button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>)}<InlineMessage value={pwMsg} /><SaveButton saving={pwSaving} onClick={() => void savePassword()} label="Changer le mot de passe" /></div>}
+        {tab === 'securite' && <div className="space-y-6 p-5">
+          <section className="space-y-4">
+            <p className="text-sm text-gray-500">Modifiez votre mot de passe. Minimum 8 caractères.</p>
+            {[['current', 'Mot de passe actuel'], ['newPw', 'Nouveau mot de passe'], ['confirm', 'Confirmer le nouveau mot de passe']].map(([key, label]) => (
+              <label key={key} className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
+                <div className="relative">
+                  <input type={showPw ? 'text' : 'password'} value={(pwForm as Record<string, string>)[key]} onChange={e => setPwForm(p => ({ ...p, [key]: e.target.value }))} className={`${plainInputClass} pr-10`} />
+                  <button type="button" aria-label={showPw ? 'Masquer les mots de passe' : 'Afficher les mots de passe'} onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    {showPw ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
+                  </button>
+                </div>
+              </label>
+            ))}
+            <InlineMessage value={pwMsg} />
+            <SaveButton saving={pwSaving} onClick={() => void savePassword()} label="Changer le mot de passe" />
+          </section>
+
+          <section className="border-t border-gray-200 pt-6">
+            <div className="flex items-start gap-3">
+              <Ban aria-hidden="true" className="mt-0.5 shrink-0 text-gray-600" size={20} />
+              <div className="flex-1">
+                <h2 className="font-bold text-gray-900">Utilisateurs bloqués</h2>
+                <p className="mt-1 text-sm text-gray-500">Leurs contenus communautaires sont masqués et vous pouvez les débloquer ici.</p>
+                <div className="mt-4 space-y-2">
+                  {blockedLoading ? <p className="text-sm text-gray-500">Chargement…</p> : blockedUsers.length === 0 ? <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-500">Aucun utilisateur bloqué.</p> : blockedUsers.map(item => (
+                    <div key={item.user_id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                      <div><p className="text-sm font-semibold text-gray-800">{item.full_name}</p><p className="text-xs text-gray-500">Bloqué le {new Date(item.blocked_at).toLocaleDateString('fr-FR')}</p></div>
+                      <button type="button" disabled={unblockingId === item.user_id} onClick={() => void unblockUser(item.user_id)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50">Débloquer</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="border-t border-gray-200 pt-6">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+              <div className="flex items-start gap-3">
+                <Trash2 aria-hidden="true" className="mt-0.5 shrink-0 text-red-700" size={21} />
+                <div>
+                  <h2 className="font-bold text-red-900">Supprimer définitivement le compte</h2>
+                  <p className="mt-1 text-sm leading-6 text-red-800">Cette action ferme immédiatement tous vos accès et supprime ou anonymise vos données personnelles. Les documents comptables et traces antifraude légalement nécessaires restent pseudonymisés.</p>
+                  <Link to="/supprimer-compte" className="mt-2 inline-block text-sm font-semibold text-red-900 underline">Lire les détails de suppression</Link>
+                </div>
+              </div>
+              <div className="mt-5 space-y-4">
+                <label className="block"><span className="mb-1 block text-sm font-medium text-red-950">Mot de passe actuel</span><input type="password" autoComplete="current-password" value={deleteForm.currentPassword} onChange={event => setDeleteForm(current => ({ ...current, currentPassword: event.target.value }))} className={plainInputClass} /></label>
+                <label className="block"><span className="mb-1 block text-sm font-medium text-red-950">Écrivez SUPPRIMER</span><input value={deleteForm.confirmation} onChange={event => setDeleteForm(current => ({ ...current, confirmation: event.target.value.toUpperCase() }))} className={plainInputClass} /></label>
+                <label className="block"><span className="mb-1 block text-sm font-medium text-red-950">Motif facultatif</span><textarea rows={3} maxLength={500} value={deleteForm.reason} onChange={event => setDeleteForm(current => ({ ...current, reason: event.target.value }))} className={plainInputClass} /></label>
+                <label className="flex items-start gap-3 text-sm leading-6 text-red-900"><input type="checkbox" checked={deleteForm.accepted} onChange={event => setDeleteForm(current => ({ ...current, accepted: event.target.checked }))} className="mt-1" /><span>Je comprends que la suppression est irréversible et que mes accès, profils et contenus personnels ne pourront pas être restaurés.</span></label>
+                <InlineMessage value={deleteMsg} />
+                <button type="button" disabled={deleteSaving || !deleteForm.accepted || deleteForm.confirmation.trim() !== 'SUPPRIMER' || !deleteForm.currentPassword} onClick={() => void deleteAccount()} className="w-full rounded-lg bg-red-700 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{deleteSaving ? 'Suppression en cours…' : 'Supprimer définitivement mon compte'}</button>
+              </div>
+            </div>
+          </section>
+        </div>}
 
         {tab === 'notifications' && <div className="space-y-4 p-5">{[
           ['allow_email', 'Notifications par email', 'Recevoir les mises à jour par email'],
           ['allow_sms', 'Notifications par SMS', 'Recevoir les alertes importantes par SMS'],
-          ['allow_push', 'Notifications push', 'Notifications dans le navigateur'],
+          ['allow_push', 'Notifications push', 'Alertes sur le web et les applications mobiles'],
           ['subscribe_newsletter', 'Newsletter', 'Actualités et nouveautés Omnia Academy'],
-        ].map(([key, label, desc]) => <div key={key} className="flex items-center justify-between gap-4 border-b border-gray-50 py-3 last:border-0"><div><p className="text-sm font-medium text-gray-800">{label}</p><p className="text-xs text-gray-500">{desc}</p></div><button onClick={() => setNotifs(p => ({ ...p, [key]: !p[key as keyof typeof p] }))} className="relative flex-shrink-0 rounded-full" style={{ width: 40, height: 22, backgroundColor: (notifs as Record<string, boolean>)[key] ? '#002050' : '#d1d5db' }}><span className="absolute left-0.5 top-0.5 rounded-full bg-white shadow-sm transition-all" style={{ width: 18, height: 18, transform: (notifs as Record<string, boolean>)[key] ? 'translateX(18px)' : 'translateX(0)' }} /></button></div>)}<InlineMessage value={notifMsg} /><SaveButton saving={notifSaving} onClick={() => void saveNotifs()} label="Enregistrer les préférences" /></div>}
+        ].map(([key, label, desc]) => <div key={key} className="flex items-center justify-between gap-4 border-b border-gray-50 py-3 last:border-0"><div><p className="text-sm font-medium text-gray-800">{label}</p><p className="text-xs text-gray-500">{desc}</p></div><button type="button" role="switch" aria-checked={(notifs as Record<string, boolean>)[key]} aria-label={label} onClick={() => setNotifs(p => ({ ...p, [key]: !p[key as keyof typeof p] }))} className="relative flex-shrink-0 rounded-full" style={{ width: 40, height: 22, backgroundColor: (notifs as Record<string, boolean>)[key] ? '#002050' : '#d1d5db' }}><span className="absolute left-0.5 top-0.5 rounded-full bg-white shadow-sm transition-all" style={{ width: 18, height: 18, transform: (notifs as Record<string, boolean>)[key] ? 'translateX(18px)' : 'translateX(0)' }} /></button></div>)}<InlineMessage value={notifMsg} /><SaveButton saving={notifSaving} onClick={() => void saveNotifs()} label="Enregistrer les préférences" /></div>}
       </div>
     </>}
   </div></DashboardLayout>;

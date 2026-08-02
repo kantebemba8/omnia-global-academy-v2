@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def omniaVersionCode = (System.getenv('OGA_ANDROID_VERSION_CODE') ?: '1').toInteger()
+def omniaVersionName = System.getenv('OGA_ANDROID_VERSION_NAME') ?: '1.0.0'
+def omniaKeystorePath = System.getenv('OGA_ANDROID_KEYSTORE_PATH')
+def omniaKeystorePassword = System.getenv('OGA_ANDROID_KEYSTORE_PASSWORD')
+def omniaKeyAlias = System.getenv('OGA_ANDROID_KEY_ALIAS')
+def omniaKeyPassword = System.getenv('OGA_ANDROID_KEY_PASSWORD')
+def omniaReleaseSigningReady = [omniaKeystorePath, omniaKeystorePassword, omniaKeyAlias, omniaKeyPassword].every { it }
+
 android {
     namespace = "com.omniaglobalacademy.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "com.omniaglobalacademy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode omniaVersionCode
+        versionName omniaVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,11 +24,33 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (omniaReleaseSigningReady) {
+            release {
+                storeFile file(omniaKeystorePath)
+                storePassword omniaKeystorePassword
+                keyAlias omniaKeyAlias
+                keyPassword omniaKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (omniaReleaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
     }
 }
 

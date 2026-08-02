@@ -22,6 +22,8 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
 const APropos = lazy(() => import('./pages/APropos').then((module) => ({ default: module.APropos })));
 const Confidentialite = lazy(() => import('./pages/Confidentialite').then((module) => ({ default: module.Confidentialite })));
+const SupprimerCompte = lazy(() => import('./pages/SupprimerCompte').then((module) => ({ default: module.SupprimerCompte })));
+const CompteSupprime = lazy(() => import('./pages/CompteSupprime').then((module) => ({ default: module.CompteSupprime })));
 const LegalDocumentPage = lazy(() => import('./pages/LegalDocumentPage'));
 const Catalogue = lazy(() => import('./pages/Catalogue').then((module) => ({ default: module.Catalogue })));
 const ExternalCourseAccess = lazy(() => import('./pages/ExternalCourseAccess'));
@@ -810,6 +812,10 @@ export default function App() {
 <Route element={<RequireOmniaCareerAdmin />}>
   <Route path="/admin/omnia-career" element={<Navigate to="/admin/career-studio" replace />} />
 </Route>
+
+        {/* Account deletion must remain publicly reachable for store compliance. */}
+        <Route path="/supprimer-compte" element={<SupprimerCompte />} />
+        <Route path="/compte-supprime" element={<CompteSupprime />} />
 
         {/* Public routes guarded by coming-soon mode */}
         <Route element={<GuardedRoutes />}>

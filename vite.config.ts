@@ -114,5 +114,21 @@ export default defineConfig(({ mode }) => {
       include: ['react-router-dom'],
       exclude: ['lucide-react'],
     },
+    build: {
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('jsqr')) return 'document-tools';
+            if (id.includes('recharts')) return 'charts';
+            if (id.includes('@supabase')) return 'supabase';
+            if (id.includes('@sentry')) return 'monitoring';
+            if (id.includes('@capacitor') || id.includes('capacitor-secure-storage')) return 'native-bridge';
+            return undefined;
+          },
+        },
+      },
+    },
   };
 });
