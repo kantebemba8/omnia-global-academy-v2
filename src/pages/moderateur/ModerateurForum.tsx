@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -25,7 +26,7 @@ export default function ModerateurForum() {
 
   function load() {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     fetch(ENDPOINTS.moderatorForumAction, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
@@ -35,7 +36,7 @@ export default function ModerateurForum() {
 
   async function doAction(postId: string, action: 'hide' | 'restore' | 'unflag') {
     setSubmitting(postId + action);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const res = await fetch(ENDPOINTS.moderatorForumAction, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Plus, Save, Trash2, Upload } from 'lucide-react';
 import { ENDPOINTS } from '../../lib/config';
@@ -49,7 +50,7 @@ export function PartnersManager() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle2, Loader2, Video } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -13,7 +14,7 @@ function isoDate(date: Date) { return date.toISOString().slice(0, 10); }
 export default function CoachingBooking() {
   const { coachId = '' } = useParams();
   const navigate = useNavigate();
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const loggedIn = Boolean(getSessionToken());
   const [coach, setCoach] = useState<CoachProfile | null>(null);
   const [offerId, setOfferId] = useState('');
   const [duration, setDuration] = useState(60);

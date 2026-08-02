@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ENDPOINTS } from '../../lib/config';
 import { Save, Lock } from 'lucide-react';
@@ -15,7 +16,7 @@ export function PricingTiersManager() {
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
 
   async function load() {
     const r = await fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token()}` } });

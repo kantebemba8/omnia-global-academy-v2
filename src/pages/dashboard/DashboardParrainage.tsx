@@ -1,3 +1,5 @@
+import { openExternalUrl } from '../../lib/mobile';
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -60,7 +62,7 @@ export function DashboardParrainage() {
         return;
       }
 
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       if (!token) return;
 
       const response = await fetch(`${getApiBase()}/referral-info`, {
@@ -100,7 +102,7 @@ export function DashboardParrainage() {
       ? ` et bénéficiez de ${formatXof(data.reward_referred_xof)} après votre premier achat confirmé`
       : '';
     const message = encodeURIComponent(`Rejoignez Omnia Global Academy avec mon lien${benefit} : ${data.referral_link}`);
-    window.open(`https://wa.me/?text=${message}`, '_blank');
+    void openExternalUrl(`https://wa.me/?text=${message}`);
   }
 
   const statusBadge = (status: string) => {

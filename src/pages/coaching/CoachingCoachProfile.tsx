@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BadgeCheck, CalendarDays, Globe2, Heart, Languages, Linkedin, Star, Users, Video } from 'lucide-react';
@@ -13,7 +14,7 @@ function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice
 export default function CoachingCoachProfile() {
   const { coachId = '' } = useParams();
   const navigate = useNavigate();
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const loggedIn = Boolean(getSessionToken());
   const [coach, setCoach] = useState<CoachProfile | null>(null);
   const [favorite, setFavorite] = useState(false);
   const [loading, setLoading] = useState(true);

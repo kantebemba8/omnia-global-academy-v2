@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
@@ -40,7 +41,7 @@ export default function ForumCours() {
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
 
-  const token = localStorage.getItem('omnia_session_token') || '';
+  const token = getSessionToken() || '';
 
   const load = useCallback(async () => {
     if (!courseId || !token) return;

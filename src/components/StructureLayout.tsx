@@ -1,3 +1,4 @@
+import { getSessionToken, clearSession } from '../lib/session';
 import React, { ReactNode, useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -190,14 +191,14 @@ export function StructureLayout({ children, displayName }: Props) {
 
   function handleLogout() {
     sessionStorage.removeItem('omnia_admin_role_preview');
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (token) {
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
-    localStorage.removeItem('omnia_session_token');
+    clearSession();
     localStorage.removeItem('omnia_user');
     navigate('/connexion');
   }

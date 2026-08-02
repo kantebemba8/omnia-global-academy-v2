@@ -1,3 +1,5 @@
+import { openExternalUrl } from '../../lib/mobile';
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CreditCard, Download, Heart, RefreshCw, Search, Sparkles, Star, UserRound, Video, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -16,7 +18,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function LearnerCoachingDashboard() {
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const loggedIn = Boolean(getSessionToken());
   const [data, setData] = useState<DashboardData>({ success: true, sessions: [], favorites: [] });
   const [section, setSection] = useState<Section>('upcoming');
   const [loading, setLoading] = useState(loggedIn);
@@ -44,7 +46,7 @@ export default function LearnerCoachingDashboard() {
     setError('');
     try {
       const result = await coachingRequest<{ success: true; signed_url: string }>('invoice_signed_url', { invoice_id: invoiceId });
-      window.open(result.signed_url, '_blank', 'noopener,noreferrer');
+      void openExternalUrl(result.signed_url);
     } catch (e) { setError(e instanceof Error ? e.message : 'Facture indisponible.'); }
   }
 

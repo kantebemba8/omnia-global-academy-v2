@@ -1,0 +1,10 @@
+CORRECTIF MODULE 1 - GRADLE V3
+
+Ce correctif remplace uniquement INSTALLER-MODULE1.ps1.
+
+Corrections :
+- selection automatique d un JDK compatible Java 17 a 24 ;
+- Java 25 est ignore s il est incompatible ;
+- Gradle assembleDebug est lance depuis le dossier android ;
+- aucune modification Supabase ;
+- restauration automatique conservee.

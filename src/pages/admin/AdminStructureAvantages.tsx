@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Gift, RefreshCw, CheckCircle, XCircle, AlertCircle, Zap } from 'lucide-react';
@@ -25,7 +26,7 @@ export default function AdminStructureAvantages() {
   const [comments, setComments] = useState<Record<string, string>>({});
   const [actionId, setActionId] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
   async function loadStructures() {

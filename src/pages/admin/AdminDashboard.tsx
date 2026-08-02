@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -115,7 +116,7 @@ export default function AdminDashboard() {
   async function load(p: string) {
     setLoading(true);
     setError('');
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) {
       navigate('/connexion');
       return;

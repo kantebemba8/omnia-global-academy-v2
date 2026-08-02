@@ -1,0 +1,9 @@
+CORRECTIF MODULE 1 - INSTALLATEUR JAVA V2
+
+Ce correctif remplace uniquement INSTALLER-MODULE1.ps1.
+
+Corrections :
+- suppression des apostrophes typographiques incompatibles avec certaines versions de Windows PowerShell 5.1 ;
+- messages convertis en ASCII pour eviter les caracteres mal affiches ;
+- utilisation automatique du JDK integre a Android Studio a la place de Java 25 global ;
+- aucune modification du code fonctionnel, de Supabase ou du payload du Module 1.

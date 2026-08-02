@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useState, useEffect } from 'react';
 import { Shield, Plus, Save, Trash2, User, ChevronDown, ChevronUp, X, Check, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -92,7 +93,7 @@ export default function AdminEquipe() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const authHeaders = (json = false) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), 'Authorization': `Bearer ${token()}`, 'x-omnia-session-token': token() });
 
   // ── Charger la liste des modérateurs ─────────────────────

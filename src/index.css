@@ -4624,3 +4624,54 @@ body {
     animation: none !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Omnia native shell (Capacitor)
+   These variables preserve the validated web layouts while exposing safe-area
+   values to the few native-only adjustments that need them.
+   -------------------------------------------------------------------------- */
+:root {
+  --oga-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --oga-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --oga-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --oga-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --oga-keyboard-height: 0px;
+}
+
+html.oga-native,
+html.oga-native body,
+html.oga-native #root {
+  min-height: 100%;
+}
+
+html.oga-native body {
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.oga-native #root {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding-top: var(--oga-safe-top);
+  padding-right: var(--oga-safe-right);
+  padding-bottom: var(--oga-safe-bottom);
+  padding-left: var(--oga-safe-left);
+}
+
+html.oga-native.oga-keyboard-open #root {
+  padding-bottom: 0;
+}
+
+.oga-native-safe-top {
+  padding-top: var(--oga-safe-top);
+}
+
+.oga-native-safe-bottom {
+  padding-bottom: var(--oga-safe-bottom);
+}
+
+.oga-native-safe-inline {
+  padding-right: var(--oga-safe-right);
+  padding-left: var(--oga-safe-left);
+}

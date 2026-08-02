@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -66,7 +67,7 @@ export default function AdminDemoAccess() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function load() {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     fetch(ENDPOINTS.adminDemoConfigure, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => {
@@ -131,7 +132,7 @@ export default function AdminDemoAccess() {
       return;
     }
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const res = await fetch(ENDPOINTS.adminDemoConfigure, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

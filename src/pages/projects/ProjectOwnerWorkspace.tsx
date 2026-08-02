@@ -1,3 +1,4 @@
+import { openExternalUrl } from '../../lib/mobile';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, Check, ClipboardList, Edit3, Eye, FileCheck2, FolderKanban, Mail, Plus, RefreshCw,
@@ -353,7 +354,7 @@ export default function ProjectOwnerWorkspace() {
     if (!deliverable.file_path) return;
     try {
       const result = await getProjectFileUrl(deliverable.project_id, deliverable.file_path);
-      window.open(result.signed_url, '_blank', 'noopener,noreferrer');
+      void openExternalUrl(result.signed_url);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Accès au fichier impossible.');
     }

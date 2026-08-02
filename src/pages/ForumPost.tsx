@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
@@ -64,8 +65,8 @@ export default function ForumPost() {
   const [reportDetails, setReportDetails] = useState('');
   const [reporting, setReporting] = useState(false);
 
-  const isLoggedIn = !!localStorage.getItem('omnia_session_token');
-  const token = localStorage.getItem('omnia_session_token') || '';
+  const isLoggedIn = !!getSessionToken();
+  const token = getSessionToken() || '';
   const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');
   const myId = userData?.id;
 

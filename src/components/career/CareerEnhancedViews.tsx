@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Download,
@@ -34,7 +35,7 @@ function Stat({label,value,icon:Icon,onClick}:{label:string;value:string|number;
 }
 function readJson<T>(key:string,fallback:T):T{try{return JSON.parse(localStorage.getItem(key)||'') as T}catch{return fallback}}
 function saveJson(key:string,value:any){localStorage.setItem(key,JSON.stringify(value))}
-function token(){return localStorage.getItem('omnia_session_token')||''}
+function token(){return getSessionToken()||''}
 async function callAi(text:string){
   if(!SUPABASE_URL||!token()) throw new Error('IA indisponible');
   const response=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'make_professional',text})});

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -51,7 +52,7 @@ export default function AdminMesFormations() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
 
   function showToast(msg: string) {
     setToast(msg);

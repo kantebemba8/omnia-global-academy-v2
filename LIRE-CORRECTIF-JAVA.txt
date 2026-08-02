@@ -1,0 +1,2 @@
+﻿Correctif de l'installateur du Module 1 : force le JDK intégré à Android Studio et corrige la lecture de java -version.
+Aucun fichier du projet ni de Supabase n'est inclus.

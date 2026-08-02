@@ -1,3 +1,4 @@
+import { isNativeApp } from '../lib/mobile';
 import { useEffect, useState } from 'react';
 
 type InstallPromptEvent = Event & {
@@ -8,6 +9,7 @@ type InstallPromptEvent = Event & {
 const DISMISS_KEY = 'omnia_pwa_install_dismissed';
 
 export function PwaInstallBanner() {
+  const nativeApp = isNativeApp();
   const [deferredPrompt, setDeferredPrompt] = useState<InstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -31,7 +33,7 @@ export function PwaInstallBanner() {
     };
   }, []);
 
-  if (!visible || !deferredPrompt) return null;
+  if (nativeApp || !visible || !deferredPrompt) return null;
 
   async function handleInstall() {
     if (!deferredPrompt) return;

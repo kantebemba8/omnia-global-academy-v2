@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -35,7 +36,7 @@ export default function AdminFintech() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const headers = () => ({
     Authorization: `Bearer ${token()}`,
     'x-omnia-session-token': token(),

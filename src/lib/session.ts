@@ -1,5 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+import { KeychainAccess, SecureStorage } from '@aparajita/capacitor-secure-storage';
+
 const SESSION_KEY = 'omnia_session_token';
 const USER_KEY = 'omnia_user';
+const SECURE_STORAGE_PREFIX = 'omnia_session_';
+let nativeSessionToken: string | null = null;
+let sessionStorageInitialized = false;
 
 /**
  * Roles used by the navigation and access-control UI.
@@ -67,13 +73,79 @@ export function normalizePlatformRoles(roles: readonly string[] | null | undefin
   return [...normalized];
 }
 
+function isNativeSessionStorage(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+async function configureSecureStorage(): Promise<void> {
+  await SecureStorage.setKeyPrefix(SECURE_STORAGE_PREFIX);
+  await SecureStorage.setSynchronize(false);
+  await SecureStorage.setDefaultKeychainAccess(KeychainAccess.whenUnlockedThisDeviceOnly);
+}
+
+/**
+ * Hydrates the synchronous session cache before React renders. On a native
+ * device the opaque token is persisted only in iOS Keychain / Android
+ * Keystore-backed storage. A legacy localStorage token is migrated once and
+ * removed immediately.
+ */
+export async function initializeSessionStorage(): Promise<void> {
+  if (sessionStorageInitialized) return;
+  sessionStorageInitialized = true;
+
+  if (!isNativeSessionStorage()) return;
+
+  try {
+    await configureSecureStorage();
+    const secureToken = await SecureStorage.get(SESSION_KEY, false, false);
+    nativeSessionToken = typeof secureToken === 'string' ? secureToken : null;
+
+    const legacyToken = localStorage.getItem(SESSION_KEY);
+    if (!nativeSessionToken && legacyToken) {
+      nativeSessionToken = legacyToken;
+      await SecureStorage.set(
+        SESSION_KEY,
+        legacyToken,
+        false,
+        false,
+        KeychainAccess.whenUnlockedThisDeviceOnly,
+      );
+    }
+  } catch (error) {
+    console.error('[Omnia] Impossible d’initialiser le stockage sécurisé de session.', error);
+    nativeSessionToken = null;
+  } finally {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
 export function saveSession(token: string, user: unknown): void {
-  localStorage.setItem(SESSION_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+
+  if (!isNativeSessionStorage()) {
+    localStorage.setItem(SESSION_KEY, token);
+    return;
+  }
+
+  nativeSessionToken = token;
+  localStorage.removeItem(SESSION_KEY);
+  void configureSecureStorage()
+    .then(() =>
+      SecureStorage.set(
+        SESSION_KEY,
+        token,
+        false,
+        false,
+        KeychainAccess.whenUnlockedThisDeviceOnly,
+      ),
+    )
+    .catch(error => {
+      console.error('[Omnia] Échec de l’enregistrement sécurisé de la session.', error);
+    });
 }
 
 export function getSessionToken(): string | null {
-  return localStorage.getItem(SESSION_KEY);
+  return isNativeSessionStorage() ? nativeSessionToken : localStorage.getItem(SESSION_KEY);
 }
 
 export function getStoredUser<T>(): T | null {
@@ -87,8 +159,20 @@ export function getStoredUser<T>(): T | null {
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(USER_KEY);
+
+  if (!isNativeSessionStorage()) {
+    localStorage.removeItem(SESSION_KEY);
+    return;
+  }
+
+  nativeSessionToken = null;
+  localStorage.removeItem(SESSION_KEY);
+  void configureSecureStorage()
+    .then(() => SecureStorage.remove(SESSION_KEY, false))
+    .catch(error => {
+      console.error('[Omnia] Échec de la suppression sécurisée de la session.', error);
+    });
 }
 
 export function getDashboardPathForRoles(roles: readonly string[]): string {

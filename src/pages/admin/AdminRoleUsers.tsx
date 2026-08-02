@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -40,7 +41,7 @@ export default function AdminRoleUsers(){
     (async()=>{
       setLoading(true);setError('');
       try{
-        const token=localStorage.getItem('omnia_session_token');
+        const token=getSessionToken();
         if(!token)throw new Error('Session expirée.');
         const r=await fetch(`${ENDPOINTS.dashboardAdmin}?role=${encodeURIComponent(roleKey)}`,{
           headers:edgeAuthHeaders()

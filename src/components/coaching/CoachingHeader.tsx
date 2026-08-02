@@ -1,3 +1,4 @@
+import { getSessionToken, clearSession } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -93,7 +94,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
   }, []);
 
   const roles = user?.roles || [];
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token')) && Boolean(user);
+  const loggedIn = Boolean(getSessionToken()) && Boolean(user);
   const isCoach = roles.includes('coach');
   const previewMode = isCoachPreviewMode();
   const isCoachingLanding = location.pathname === '/coaching';
@@ -130,7 +131,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
 
   function logout() {
     localStorage.removeItem('omnia_user');
-    localStorage.removeItem('omnia_session_token');
+    clearSession();
     localStorage.removeItem('omnia_access_token');
     localStorage.removeItem('access_token');
     navigate('/connexion');

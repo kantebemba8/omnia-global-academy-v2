@@ -1,3 +1,4 @@
+import { getSessionToken } from './session';
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 /**
@@ -18,7 +19,7 @@ export function edgeGatewayHeaders(extra: Record<string, string> = {}): Record<s
  * session is sent separately in x-omnia-session-token.
  */
 export function edgeAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const sessionToken = localStorage.getItem('omnia_session_token') || '';
+  const sessionToken = getSessionToken() || '';
   return {
     ...edgeGatewayHeaders(),
     ...(sessionToken ? { 'x-omnia-session-token': sessionToken } : {}),

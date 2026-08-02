@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +11,7 @@ const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
-function token() { return localStorage.getItem('omnia_session_token') || ''; }
+function token() { return getSessionToken() || ''; }
 async function call(action: string, body: Record<string, unknown> = {}) {
   const res = await fetch(API, {
     method: 'POST',

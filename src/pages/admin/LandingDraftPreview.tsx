@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function LandingDraftPreview() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const token = localStorage.getItem('omnia_session_token') || '';
+    const token = getSessionToken() || '';
     if (!token) { navigate('/connexion', { replace: true }); return; }
     Promise.all([
       fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }),

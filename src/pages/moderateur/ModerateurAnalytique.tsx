@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -29,7 +30,7 @@ export default function ModerateurAnalytique() {
       } catch { /* ignore */ }
     }
 
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) {
       setError('Session expirée. Veuillez vous reconnecter.');
       setLoading(false);

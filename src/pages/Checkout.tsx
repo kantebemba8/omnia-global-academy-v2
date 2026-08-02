@@ -1,3 +1,5 @@
+import { assertNativePaymentAvailable, redirectToWebPayment } from '../lib/mobile';
+import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
@@ -46,7 +48,7 @@ export default function Checkout() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { navigate(`/connexion?redirect=/paiement/${courseId}`); return; }
 
     fetch(`${ENDPOINTS.courseDetail}?id=${courseId}`)
@@ -80,6 +82,7 @@ export default function Checkout() {
     setSubmitting(true);
     setError('');
     try {
+      if (finalPrice > 0) assertNativePaymentAvailable();
       const res = await fetch(ENDPOINTS.checkoutInit, {
         method: 'POST',
         headers: edgeAuthHeaders(),
@@ -103,10 +106,10 @@ export default function Checkout() {
         return;
       }
       if (d.payment_url) {
-        window.location.href = d.payment_url;
+        redirectToWebPayment(d.payment_url);
       }
-    } catch {
-      setError('Erreur réseau. Veuillez réessayer.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Erreur réseau. Veuillez réessayer.');
     } finally {
       setSubmitting(false);
     }

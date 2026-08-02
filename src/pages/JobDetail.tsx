@@ -1,3 +1,5 @@
+import { openExternalUrl } from '../lib/mobile';
+import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
@@ -91,7 +93,7 @@ export default function JobDetail() {
   const [applyError, setApplyError] = useState('');
   const [applied, setApplied] = useState(false);
 
-  const isLoggedIn = !!localStorage.getItem('omnia_session_token');
+  const isLoggedIn = !!getSessionToken();
   const userData = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}'); } catch { return {}; }
   }, []);
@@ -145,7 +147,7 @@ export default function JobDetail() {
       if (d.success) {
         setApplied(true);
         setShowApply(false);
-        if (mode === 'external_link' && d.external_url) window.open(d.external_url, '_blank', 'noopener,noreferrer');
+        if (mode === 'external_link' && d.external_url) void openExternalUrl(d.external_url);
         if (mode === 'external_email' && d.external_email) {
           const subject = encodeURIComponent(`Candidature — ${job.title}`);
           const body = encodeURIComponent(coverLetter || `Bonjour,\n\nJe vous adresse ma candidature pour le poste ${job.title}.\n\nCordialement,`);

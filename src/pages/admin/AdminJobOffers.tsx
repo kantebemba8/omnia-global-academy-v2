@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -50,7 +51,7 @@ const EMPTY_FORM: JobForm = {
   application_mode: 'omnia_managed', external_apply_url: '', external_apply_email: '', application_instructions: '',
 };
 
-function token() { return localStorage.getItem('omnia_session_token') || ''; }
+function token() { return getSessionToken() || ''; }
 async function postManage<T>(body: unknown): Promise<T> {
   const res = await fetch(ENDPOINTS.jobPlatformManage, {
     method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),

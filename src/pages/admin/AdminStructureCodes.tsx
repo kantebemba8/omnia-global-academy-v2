@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { QrCode, RefreshCw, CheckCircle, XCircle, AlertCircle, Search, Eye } from 'lucide-react';
@@ -23,7 +24,7 @@ export default function AdminStructureCodes() {
   const [adminComment, setAdminComment] = useState('');
   const [actionCode, setActionCode] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
   async function loadStructures() {

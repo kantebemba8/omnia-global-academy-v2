@@ -1,3 +1,4 @@
+import {openExternalUrl} from '../../../lib/mobile';
 import {useEffect,useState} from 'react';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
 import {liveApi} from '../liveApi';
@@ -27,7 +28,7 @@ export default function MyLiveDocuments(){
   try{
    const r=await liveApi('document_download',{}, {document_id:id});
    if(!r.download_url)throw new Error('PDF indisponible.');
-   window.open(r.download_url,'_blank','noopener,noreferrer');
+   void openExternalUrl(r.download_url);
   }catch(e){setMsg(e instanceof Error?e.message:'Téléchargement impossible.')}
  }
 

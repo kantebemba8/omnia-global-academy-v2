@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -63,7 +64,7 @@ export default function AdminStructures() {
   const [adminComment, setAdminComment] = useState('');
   const [showPending, setShowPending] = useState<{ structures: number; codes: number; benefits: number } | null>(null);
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
   async function load() {

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Send, Upload, UserRoundCheck } from 'lucide-react';
@@ -30,7 +31,7 @@ function splitValues(value: string) { return value.split(',').map(item => item.t
 function valueOrNull(value: string) { return value.trim() ? Number(value) : null; }
 
 export default function CoachApplication() {
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const loggedIn = Boolean(getSessionToken());
   const [bootstrap, setBootstrap] = useState<Bootstrap>({ success: true, domains: [], levels: [] });
   const [self, setSelf] = useState<SelfStatus | null>(null);
   const [form, setForm] = useState<FormState>(empty);

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -68,7 +69,7 @@ export function LandingCmsFoundation() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
   const touch = (page: LandingPageConfig): LandingPageConfig => ({ ...page, updated_at: new Date().toISOString() });
 
   const load = useCallback(async () => {

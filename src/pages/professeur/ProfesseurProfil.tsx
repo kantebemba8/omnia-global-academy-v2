@@ -5,7 +5,7 @@ import { User, Mail, Phone, Globe, Lock, Eye, EyeOff, CheckCircle, AlertTriangle
 
 import { CATEGORY_LABELS } from '../../lib/categories';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { saveSession } from '../../lib/session';
+import { getSessionToken, saveSession } from '../../lib/session';
 interface ProfUser {
   id: string; full_name: string; email: string; phone_number: string;
   country_code: string; allow_email: boolean; allow_sms: boolean;
@@ -52,7 +52,7 @@ export function ProfesseurProfil() {
 
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token && !bypassAuth) { navigate('/connexion'); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: edgeAuthHeaders() });
@@ -78,7 +78,7 @@ export function ProfesseurProfil() {
   useEffect(() => { load(); }, [load]);
 
   async function saveProfile() {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) return;
     setSaving(true); setMsg(null);
     try {
@@ -104,7 +104,7 @@ export function ProfesseurProfil() {
   async function savePassword() {
     if (pwForm.newPw !== pwForm.confirm) { setPwMsg({ text: 'Mots de passe différents.', ok: false }); return; }
     if (pwForm.newPw.length < 8) { setPwMsg({ text: 'Minimum 8 caractères.', ok: false }); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) return;
     setPwSaving(true); setPwMsg(null);
     try {

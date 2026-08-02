@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -165,7 +166,7 @@ export default function AdminCMS() {
   const [nlCampaigns, setNlCampaigns] = useState<Array<{ id: string; subject: string; channel: string; status: string; sent_at: string | null; recipients_count: number; created_at: string }>>([]);
 
   function load() {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => {
@@ -204,7 +205,7 @@ export default function AdminCMS() {
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
     if (supabaseUrl && anonKey) {
       fetch(`${supabaseUrl}/rest/v1/newsletter_campaigns?order=created_at.desc&limit=20`, {
-        headers: { apikey: anonKey, Authorization: `Bearer ${localStorage.getItem('omnia_session_token') || ''}` },
+        headers: { apikey: anonKey, Authorization: `Bearer ${getSessionToken() || ''}` },
       }).then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setNlCampaigns(d); }).catch(() => {});
     }
   }
@@ -216,7 +217,7 @@ export default function AdminCMS() {
 
  async function save(extraUpdates?: { key: string; value: unknown }[]) {
     setSaving(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
 
     const updates: { key: string; value: unknown }[] = Object.entries(settings)
       .filter(([key]) => canCmsWrite(key))
@@ -279,7 +280,7 @@ export default function AdminCMS() {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       const res = await fetch(ENDPOINTS.adminCmsUpdate, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -306,7 +307,7 @@ export default function AdminCMS() {
   }
 
   async function activateFavicon(url: string) {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     try {
       const res = await fetch(ENDPOINTS.adminCmsUpdate, {
         method: 'POST',
@@ -325,7 +326,7 @@ export default function AdminCMS() {
   }
 
   async function deleteFavicon(url: string) {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     try {
       const res = await fetch(ENDPOINTS.adminCmsUpdate, {
         method: 'POST',
@@ -345,7 +346,7 @@ export default function AdminCMS() {
     setSaving(true);
     setToast('');
     try {
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       const updates = [
         { key: 'quiz_lesson_threshold', value: settings.quiz_lesson_threshold ?? '80' },
         { key: 'quiz_module_threshold', value: settings.quiz_module_threshold ?? '70' },
@@ -369,7 +370,7 @@ export default function AdminCMS() {
   async function saveMultipliers() {
     setSaving(true);
     setToast('');
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     try {
       const res = await fetch(ENDPOINTS.adminCmsUpdate, {
         method: 'POST',
@@ -404,7 +405,7 @@ export default function AdminCMS() {
     await save();
 
     if (settings.maintenance_notice_email === 'true') {
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       try {
         const res = await fetch(ENDPOINTS.newsletterSend, {
           method: 'POST',
@@ -433,7 +434,7 @@ export default function AdminCMS() {
     if (nlChannel === 'email' && !nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
     if (nlChannel === 'sms' && !nlSmsText.trim()) { setToast('Texte SMS requis.'); return; }
     setNlSending(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     try {
       const res = await fetch(ENDPOINTS.newsletterSend, {
         method: 'POST',

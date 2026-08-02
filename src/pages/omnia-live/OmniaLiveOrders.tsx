@@ -1,3 +1,4 @@
+import {openExternalUrl} from '../../lib/mobile';
 import {useEffect,useState} from 'react';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
 import {liveApi} from './liveApi';
@@ -14,7 +15,7 @@ export default function OmniaLiveOrders(){
  async function invoice(id:string){
   try{
    const r=await liveApi('invoice_download',{}, {invoice_id:id});
-   if(r.download_url)window.open(r.download_url,'_blank','noopener,noreferrer');
+   if(r.download_url)void openExternalUrl(r.download_url);
    else throw new Error('Facture indisponible.');
   }catch(e){setMessage(e instanceof Error?e.message:'Facture indisponible.')}
  }

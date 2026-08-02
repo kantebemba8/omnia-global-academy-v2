@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -52,7 +53,7 @@ export function ProfesseurAnalytique() {
 
   const loadAnalytics = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
-    if (!localStorage.getItem('omnia_session_token')) { navigate('/connexion'); return; }
+    if (!getSessionToken()) { navigate('/connexion'); return; }
     setLoading(true);
     setError('');
     try {

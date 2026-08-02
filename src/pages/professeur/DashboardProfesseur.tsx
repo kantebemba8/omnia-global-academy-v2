@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -104,7 +105,7 @@ export function DashboardProfesseur() {
 
   const load = useCallback(async () => {
     if (bypassAuth) { setData(PREVIEW_DASHBOARD); setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { if (!bypassAuth) navigate('/connexion'); setLoading(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, {

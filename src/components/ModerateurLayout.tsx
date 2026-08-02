@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { ElementType, ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
@@ -82,7 +83,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore */ }
     }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { navigate(isPreview ? '/admin/dashboard' : '/connexion'); return; }
 
     const cached = localStorage.getItem('mod_perms');

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -42,7 +43,7 @@ export default function ModerateurKyc() {
       setLoading(false);
       return;
     }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     fetch(ENDPOINTS.moderatorKycAction, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.json())
       .then((payload) => { setData(payload); setLoading(false); })
@@ -54,7 +55,7 @@ export default function ModerateurKyc() {
   async function decide() {
     if (!modal) return;
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const response = await fetch(ENDPOINTS.moderatorKycAction, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

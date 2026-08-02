@@ -1,3 +1,4 @@
+import { assertNativePaymentAvailable, openExternalUrl, redirectToWebPayment } from '../../lib/mobile';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Clock3, CreditCard, Download, Loader2, RefreshCw, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -63,10 +64,11 @@ export default function CoachingPayment() {
   async function startPayment() {
     setBusy(true); setError('');
     try {
+      assertNativePaymentAvailable();
       const result = await coachingRequest<{ success: true; payment_url: string | null; already_paid: boolean }>('payment_checkout', { session_id: sessionId });
       if (result.already_paid) { await load(); return; }
       if (!result.payment_url) throw new Error('Le lien de paiement est indisponible.');
-      window.location.assign(result.payment_url);
+      redirectToWebPayment(result.payment_url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Paiement impossible.');
     } finally { setBusy(false); }
@@ -77,7 +79,7 @@ export default function CoachingPayment() {
     setBusy(true); setError('');
     try {
       const result = await coachingRequest<{ success: true; signed_url: string }>('invoice_signed_url', { invoice_id: data.invoice.id });
-      window.open(result.signed_url, '_blank', 'noopener,noreferrer');
+      void openExternalUrl(result.signed_url);
     } catch (e) { setError(e instanceof Error ? e.message : 'Facture indisponible.'); }
     finally { setBusy(false); }
   }

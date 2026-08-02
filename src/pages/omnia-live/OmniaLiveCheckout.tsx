@@ -1,3 +1,4 @@
+import { assertNativePaymentAvailable, redirectToWebPayment } from '../../lib/mobile';
 import {useEffect,useState} from 'react';
 import {useNavigate,useParams} from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
@@ -49,9 +50,10 @@ export default function OmniaLiveCheckout(){
   if(!order)return;
   setPaying(true);setMessage('');
   try{
+   assertNativePaymentAvailable();
    const callback=`${window.location.origin}/omnia-live/mes-achats`;
    const r=await liveApi('fedapay_prepare',{method:'POST',body:JSON.stringify({order_id:order.id,callback_url:callback})});
-   if(r.payment_url)window.location.assign(r.payment_url);
+   if(r.payment_url)redirectToWebPayment(r.payment_url);
    else throw new Error('Le paiement Omnia Live n’est pas encore activé.');
   }catch(e){
    setMessage(e instanceof Error?e.message:'Le paiement Omnia Live n’est pas encore disponible.');

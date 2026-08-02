@@ -1,3 +1,4 @@
+import { getSessionToken } from './session';
 import {
   CareerDocType,
   CareerDocumentFull,
@@ -19,7 +20,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const FUNCTIONS_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '';
 
 function sessionToken() {
-  return localStorage.getItem('omnia_session_token') || '';
+  return getSessionToken() || '';
 }
 
 function nowIso() {

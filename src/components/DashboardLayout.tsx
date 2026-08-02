@@ -1,3 +1,4 @@
+import { getSessionToken, clearSession } from '../lib/session';
 import React, { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
@@ -240,7 +241,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const stored = localStorage.getItem('omnia_user');
     // Une prévisualisation conserve la session Super Admin sans lui attribuer le rôle affiché.
     if (previewMode && stored) {
@@ -257,7 +258,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
 
   function handleLogout() {
     sessionStorage.removeItem('omnia_admin_role_preview');
-    localStorage.removeItem('omnia_session_token');
+    clearSession();
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_access_token');
     localStorage.removeItem('access_token');

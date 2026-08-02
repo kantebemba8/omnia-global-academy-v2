@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -62,7 +63,7 @@ export function DashboardCertificats() {
 
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setLoading(false); return; }
 
     try {

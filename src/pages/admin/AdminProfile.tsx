@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Bell, Lock, Mail, Phone, User } from 'lucide-react';
@@ -40,7 +41,7 @@ export default function AdminProfile() {
   }, []);
 
   async function save() {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setMsg('Session introuvable.'); return; }
     setSaving(true); setMsg('');
     try {

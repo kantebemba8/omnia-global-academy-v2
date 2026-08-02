@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -39,7 +40,7 @@ export default function ModerateurCours() {
     if (bypassAuth) { setLoading(false); return; }
     try {
       setLoading(true);
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       const response = await fetch(ENDPOINTS.moderatorCourseAction, { headers: { Authorization: `Bearer ${token}` } });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || result.error || 'Impossible de charger les formations');
@@ -55,7 +56,7 @@ export default function ModerateurCours() {
 
   async function doAction(courseId: string, action: string, extra?: Record<string, unknown>) {
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const res = await fetch(ENDPOINTS.moderatorCourseAction, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

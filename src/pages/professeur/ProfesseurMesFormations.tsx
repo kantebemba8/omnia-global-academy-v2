@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -41,7 +42,7 @@ export function ProfesseurMesFormations() {
 
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { navigate('/connexion', { replace: true }); return; }
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {

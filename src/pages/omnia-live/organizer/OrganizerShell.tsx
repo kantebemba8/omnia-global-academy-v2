@@ -1,3 +1,4 @@
+import { clearSession } from '../../../lib/session';
 import {ElementType,ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
@@ -76,7 +77,7 @@ export default function OrganizerShell({
 
   function logout(){
     sessionStorage.removeItem('omnia_admin_role_preview');
-    localStorage.removeItem('omnia_session_token');
+    clearSession();
     localStorage.removeItem('omnia_user');
     localStorage.removeItem('omnia_access_token');
     localStorage.removeItem('access_token');

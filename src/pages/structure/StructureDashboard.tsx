@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
@@ -74,7 +75,7 @@ export default function StructureDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
- const token = () => localStorage.getItem('omnia_session_token') || '';
+ const token = () => getSessionToken() || '';
 
   // Mode prévisualisation super admin
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true' &&

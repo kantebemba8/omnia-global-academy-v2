@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -81,7 +82,7 @@ export default function AdminForum() {
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [loadError, setLoadError] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
 
   function showNotice(text: string, error = false) {
     setNotice({ text, error });

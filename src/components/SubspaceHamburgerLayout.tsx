@@ -1,3 +1,4 @@
+import { clearSession } from '../lib/session';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -188,7 +189,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                       role="menuitem"
                       onClick={() => {
                         localStorage.removeItem('omnia_user');
-                        localStorage.removeItem('omnia_session_token');
+                        clearSession();
                         localStorage.removeItem('omnia_access_token');
                         localStorage.removeItem('access_token');
                         navigate('/connexion');

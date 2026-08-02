@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -39,7 +40,7 @@ export default function StructureMesFormations() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) {
       navigate('/connexion', { replace: true });
       return;
@@ -88,7 +89,7 @@ export default function StructureMesFormations() {
 
   async function deleteDraft(id: string, title: string) {
     if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) return navigate('/connexion', { replace: true });
     try {
       const res = await fetch(API, {

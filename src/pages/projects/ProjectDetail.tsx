@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -91,7 +92,7 @@ export default function ProjectDetail() {
   const submitApplication = async (event: FormEvent) => {
     event.preventDefault();
     if (!project) return;
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) {
       navigate(`/connexion?redirect=${encodeURIComponent(`/projects/${project.slug}`)}`);
       return;
@@ -137,7 +138,7 @@ export default function ProjectDetail() {
   const submitReport = async (event: FormEvent) => {
     event.preventDefault();
     if (!project || !reportDescription.trim()) return;
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) {
       navigate(`/connexion?redirect=${encodeURIComponent(`/projects/${project.slug}`)}`);
       return;

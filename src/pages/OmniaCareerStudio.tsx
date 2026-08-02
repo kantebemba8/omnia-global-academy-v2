@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Briefcase, CheckCircle2, FileText, Lock, Mail, MessageSquare, Sparkles, Star, UserRound } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
@@ -14,7 +15,7 @@ const TOOLS = [
 
 export default function OmniaCareerStudio() {
   const navigate = useNavigate();
-  const isLoggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const isLoggedIn = Boolean(getSessionToken());
 
   function start() {
     if (isLoggedIn) navigate('/dashboard/career-studio');

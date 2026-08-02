@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ENDPOINTS } from '../lib/config';
@@ -56,7 +57,7 @@ export default function PaymentConfirmation() {
 
   useEffect(() => {
     if (!orderNumber) { navigate('/dashboard'); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { navigate(`/connexion?redirect=${encodeURIComponent(`/paiement/confirmation?order=${orderNumber}`)}`); return; }
 
     let cancelled = false;

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, ExternalLink, Facebook, Globe2, Instagram,
@@ -73,7 +74,7 @@ export function PublicChannelsManager() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const token = () => localStorage.getItem('omnia_session_token') || '';
+  const token = () => getSessionToken() || '';
 
   const load = useCallback(async () => {
     setLoading(true);

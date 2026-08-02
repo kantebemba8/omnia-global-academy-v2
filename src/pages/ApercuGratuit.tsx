@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
@@ -57,7 +58,7 @@ export function ApercuGratuit() {
 
   useEffect(() => {
     if (!courseId) return;
-    const sessionToken = localStorage.getItem('omnia_session_token') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    const sessionToken = getSessionToken() || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
     fetch(API, {
       method: 'POST',
       headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },

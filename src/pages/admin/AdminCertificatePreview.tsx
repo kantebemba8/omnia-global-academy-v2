@@ -1,3 +1,4 @@
+import { openInternalPreviewUrl } from '../../lib/mobile';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -239,7 +240,7 @@ export default function AdminCertificatePreview() {
             <p className="mt-1 text-sm text-gray-500">Les données affichées sont fictives et servent uniquement à contrôler les modèles avant émission.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => window.open(fullscreenUrl(), '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ExternalLink size={15} /> Aperçu pleine page</button>
+            <button onClick={() => openInternalPreviewUrl(fullscreenUrl())} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ExternalLink size={15} /> Aperçu pleine page</button>
             <button onClick={() => { const win = window.open(fullscreenUrl(), '_blank'); window.setTimeout(() => win?.print(), 1200); }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Download size={15} /> Télécharger / imprimer</button>
           </div>
         </header>

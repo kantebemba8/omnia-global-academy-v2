@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -562,7 +563,7 @@ function ProfileView({ displayName }: { displayName: string }) {
   const [saving,setSaving]=useState(false); const [message,setMessage]=useState('');
   async function save(){
     setSaving(true); setMessage('');
-    const token=localStorage.getItem('omnia_session_token')||'';
+    const token=getSessionToken()||'';
     const payload={full_name:profile.full_name,email:profile.email,phone_number:profile.phone,professional_title:profile.title,location:profile.location,bio:profile.bio};
     try {
       if(token){

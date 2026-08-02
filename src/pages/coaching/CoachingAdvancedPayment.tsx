@@ -1,3 +1,4 @@
+import { openExternalUrl } from '../../lib/mobile';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
@@ -68,7 +69,7 @@ export default function CoachingAdvancedPayment() {
     if (!data?.invoice?.id) return;
     try {
       const result = await coachingRequest<{ signed_url: string }>('invoice_signed_url', { invoice_id: data.invoice.id });
-      window.open(result.signed_url, '_blank', 'noopener,noreferrer');
+      void openExternalUrl(result.signed_url);
     } catch (currentError) {
       setError(currentError instanceof Error ? currentError.message : 'Facture indisponible.');
     }

@@ -1,3 +1,4 @@
+import { openExternalUrl } from '../../lib/mobile';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock3, Download, DoorOpen, ExternalLink, Headphones, Link2, Loader2, LogOut, Play, Radio, RefreshCw, ShieldCheck, Square, UsersRound, Video } from 'lucide-react';
@@ -154,7 +155,7 @@ export default function CoachingSessionRoom() {
   async function openRecording() {
     if (!recording?.recording?.id) return;
     setBusy('recording-download');
-    try { const result = await coachingRequest<{ signed_url: string }>('recording_signed_url', { recording_id: recording.recording.id }); window.open(result.signed_url, '_blank', 'noopener,noreferrer'); }
+    try { const result = await coachingRequest<{ signed_url: string }>('recording_signed_url', { recording_id: recording.recording.id }); void openExternalUrl(result.signed_url); }
     catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement indisponible.'); } finally { setBusy(''); }
   }
 

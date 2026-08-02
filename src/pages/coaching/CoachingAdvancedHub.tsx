@@ -1,3 +1,5 @@
+import { assertNativePaymentAvailable, redirectToWebPayment } from '../../lib/mobile';
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, CheckCircle2, Save, Sparkles, Users } from 'lucide-react';
@@ -25,7 +27,7 @@ type Recommendations = { recommendations: CoachingRecommendation[]; preferences:
 const defaults: LearnerCoachingPreferences = { domain_ids: [], languages: ['Français'], goals: [], budget_min_xof: 0, budget_max_xof: null, meeting_modes: ['jitsi', 'external'], preferred_formats: ['individual'] };
 
 export default function CoachingAdvancedHub() {
-  const loggedIn = Boolean(localStorage.getItem('omnia_session_token'));
+  const loggedIn = Boolean(getSessionToken());
   const [catalogue, setCatalogue] = useState<Catalogue>({ groups: [], domains: [] });
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [recommendations, setRecommendations] = useState<CoachingRecommendation[]>([]);
@@ -63,8 +65,9 @@ export default function CoachingAdvancedHub() {
     setBusy(`group:${productId}`);
     setError('');
     try {
+      assertNativePaymentAvailable();
       const result = await coachingRequest<{ success: true; order: { id: string }; payment_url?: string | null }>('advanced_checkout', { product_type: 'group', product_id: productId });
-      if (result.payment_url) window.location.assign(result.payment_url);
+      if (result.payment_url) redirectToWebPayment(result.payment_url);
       else window.location.assign(`/coaching/avance/paiement/${result.order.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Paiement impossible.');

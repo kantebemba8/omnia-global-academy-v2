@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -31,7 +32,7 @@ export default function ModerateurSupport() {
 
   function load() {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     fetch(ENDPOINTS.moderatorSupportAction, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => { setTickets(d.tickets ?? []); setLoading(false); })
@@ -41,7 +42,7 @@ export default function ModerateurSupport() {
 
   async function doAction(ticketId: string, action: string, extra?: Record<string, unknown>) {
     setSubmitting(true);
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const res = await fetch(ENDPOINTS.moderatorSupportAction, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

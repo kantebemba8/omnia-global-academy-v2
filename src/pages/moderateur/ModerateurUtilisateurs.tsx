@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
@@ -181,7 +182,7 @@ export default function ModerateurUtilisateurs() {
     const tabDef = tabs.find((t) => t.key === tabKey);
     if (!tabDef) return;
     setLoading((prev) => ({ ...prev, [tabKey]: true }));
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const params = new URLSearchParams({ type: tabDef.type });
     if (search) params.set('search', search);
     fetch(`${ENDPOINTS.moderatorAccountAction}?${params}`, {
@@ -201,7 +202,7 @@ export default function ModerateurUtilisateurs() {
     if (!requestModal || !reason.trim()) return;
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       const res = await fetch(ENDPOINTS.moderatorAccountAction, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

@@ -1,3 +1,4 @@
+import { getSessionToken } from '../lib/session';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
@@ -20,7 +21,7 @@ export default function Forum() {
   const [country, setCountry] = useState('ML');
   const [stats, setStats] = useState<ForumStats>({ general: 0, carriere: 0, jobs: 0 });
   const [enrollments, setEnrollments] = useState<Array<{ course_id: string; title: string }>>([]);
-  const isLoggedIn = !!localStorage.getItem('omnia_session_token');
+  const isLoggedIn = !!getSessionToken();
   const userRoles: string[] = (() => {
     try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles || []; } catch { return []; }
   })();
@@ -48,7 +49,7 @@ export default function Forum() {
 
     // Load enrollments if logged in
     if (isLoggedIn) {
-      const token = localStorage.getItem('omnia_session_token');
+      const token = getSessionToken();
       const supaUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
       const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');

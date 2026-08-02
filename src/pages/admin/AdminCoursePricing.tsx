@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Calculator, CheckCircle2, Loader2, RefreshCw, Save, Scale, UserRound } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -24,7 +25,7 @@ type PricingCourse = {
 
 type Choice = 'automatic' | 'professor' | 'custom';
 
-function sessionToken() { return localStorage.getItem('omnia_session_token') || ''; }
+function sessionToken() { return getSessionToken() || ''; }
 function money(value: number | null | undefined) { return `${Number(value || 0).toLocaleString('fr-FR')} XOF`; }
 
 async function requestPricing<T>(method: 'GET' | 'POST', body?: unknown): Promise<T> {

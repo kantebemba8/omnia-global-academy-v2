@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -65,7 +66,7 @@ export function ProfesseurPortefeuille() {
 
   const load = useCallback(async () => {
     if (bypassAuth) { setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token && !bypassAuth) { navigate('/connexion'); return; }
     try {
       const res = await fetch(`${getApiBase()}/dashboard-professeur`, { headers: edgeAuthHeaders() });
@@ -82,7 +83,7 @@ export function ProfesseurPortefeuille() {
   useEffect(() => { load(); }, [load]);
 
   async function submitPayout() {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) return;
     setSubmitting(true); setSubmitMsg(null);
     try {

@@ -4,7 +4,7 @@ import { Clock, BookOpen, User, LogOut, ChevronRight, AlertTriangle, GraduationC
 import { ENDPOINTS } from '../../lib/config';
 import DemoExpiredModal from '../../components/DemoExpiredModal';
 import DemoWatermark from '../../components/DemoWatermark';
-import { clearSession } from '../../lib/session';
+import { clearSession, getSessionToken } from '../../lib/session';
 
 interface DemoCourse {
   id: string;
@@ -79,7 +79,7 @@ export default function DemoDashboard() {
   }
 
   useEffect(() => {
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     const isDemo = localStorage.getItem('is_demo');
     if (!token) { navigate('/connexion', { replace: true }); return; }
     if (isDemo !== 'true') { navigate('/dashboard', { replace: true }); return; }

@@ -8,7 +8,7 @@ import {
 import { credentialsRequest, LearnerSkillsPassportResponse, SkillsPassport } from '../../lib/credentialsApi';
 import { isLearnerPreviewMode, previewSkillsPassport } from '../../lib/learnerPreview';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { saveSession } from '../../lib/session';
+import { getSessionToken, saveSession } from '../../lib/session';
 
 interface UserData {
   id: string; full_name: string; email: string; phone_number: string;
@@ -95,7 +95,7 @@ export function DashboardProfil() {
       return;
     }
 
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setLoading(false); return; }
     try {
       const [profileResponse, passportResponse] = await Promise.all([
@@ -135,7 +135,7 @@ export function DashboardProfil() {
       setMsg({ text: 'Modifications visibles dans cet aperçu uniquement. Aucune donnée n’a été enregistrée.', ok: true });
       setSaving(false); return;
     }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setSaving(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/auth-update-profile`, {
@@ -186,7 +186,7 @@ export function DashboardProfil() {
     if (previewMode) { setPwMsg({ text: 'La sécurité du compte n’est pas modifiable depuis une prévisualisation.', ok: false }); return; }
     if (pwForm.newPw !== pwForm.confirm) { setPwMsg({ text: 'Les mots de passe ne correspondent pas.', ok: false }); return; }
     if (pwForm.newPw.length < 8) { setPwMsg({ text: 'Mot de passe trop court (min. 8 caractères).', ok: false }); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) return;
     setPwSaving(true); setPwMsg(null);
     try {
@@ -209,7 +209,7 @@ export function DashboardProfil() {
       setNotifMsg({ text: 'Préférences mises à jour dans cet aperçu uniquement.', ok: true });
       setNotifSaving(false); return;
     }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setNotifSaving(false); return; }
     try {
       const res = await fetch(`${getApiBase()}/auth-update-profile`, {

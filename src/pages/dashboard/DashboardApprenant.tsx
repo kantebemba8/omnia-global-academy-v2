@@ -1,3 +1,4 @@
+import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
@@ -41,7 +42,7 @@ export function DashboardApprenant() {
 
   const load = useCallback(async () => {
     if (previewMode) { setData(PREVIEW_DASHBOARD); setLoading(false); return; }
-    const token = localStorage.getItem('omnia_session_token');
+    const token = getSessionToken();
     if (!token) { setLoading(false); return; }
     try {
       const res = await fetch((ENDPOINTS as Record<string, string>)['dashboardApprenant'] || `${(ENDPOINTS as Record<string, string>)['authRegister'].replace('/auth-register', '')}/dashboard-apprenant`, {
