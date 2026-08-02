@@ -208,20 +208,49 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ enrolled: true, free_license: false, course_id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Create pending order
-    const { data: providerSetting } = await sb.from("site_settings").select("value").eq("key", "payment_provider_primary").maybeSingle();
-    const paymentProvider = String(providerSetting?.value || "fedapay");
-    if (paymentProvider !== "fedapay") {
-      return new Response(JSON.stringify({ error: "PAYMENT_PROVIDER_NOT_IMPLEMENTED", message: `Le prestataire ${paymentProvider} n\'est pas encore connecté au checkout.` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-    if (!fedaKey) {
-      return new Response(JSON.stringify({ error: "FEDAPAY_NOT_CONFIGURED", message: "Le paiement est temporairement indisponible." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Create pending order. Native builds never open FedaPay for digital content.
+    const paymentChannel = String(body.payment_channel || "web");
+    const nativePlatform = String(body.platform || "");
+    const nativeStore = paymentChannel === "native_store" && ["android", "ios"].includes(nativePlatform);
+    const paymentProvider = nativeStore
+      ? (nativePlatform === "android" ? "google_play" : "app_store")
+      : String((await sb.from("site_settings").select("value").eq("key", "payment_provider_primary").maybeSingle()).data?.value || "fedapay");
+
+    if (!nativeStore && paymentProvider !== "fedapay") {
+      return new Response(JSON.stringify({ error: "PAYMENT_PROVIDER_NOT_IMPLEMENTED", message: `Le prestataire ${paymentProvider} n'est pas encore connecté au checkout.` }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const fedaBase = fedaPayApiBase();
-    const appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
+    const pendingSince = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { data: reusableOrder } = await sb.from("orders")
+      .select("id,order_number,fedapay_transaction_id,gateway_reference,payment_gateway")
+      .eq("user_id", user.id)
+      .eq("course_id", course_id)
+      .eq("payment_status", "pending")
+      .eq("payment_gateway", paymentProvider)
+      .eq("final_price_xof", finalPrice)
+      .gte("created_at", pendingSince)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
+    if (nativeStore && reusableOrder) {
+      return new Response(JSON.stringify({
+        order_number: reusableOrder.order_number,
+        order_id: reusableOrder.id,
+        original_price: originalPrice,
+        discount_xof: discountXof,
+        final_price: finalPrice,
+        coupon_applied: couponCodeApplied,
+        subscription_discount_xof: commerceBenefit.discountXof,
+        native_store: true,
+        platform: nativePlatform,
+        reused: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    let fedaKey = "";
+    let fedaBase = "";
+    let appUrl = "";
     async function checkoutUrlFor(transactionId: string): Promise<string | null> {
       const response = await fetch(`${fedaBase}/transactions/${encodeURIComponent(transactionId)}/token`, {
         method: "POST",
@@ -232,33 +261,29 @@ Deno.serve(async (req: Request) => {
       return tokenData.url || tokenData.token_url || tokenData.token || null;
     }
 
-    const pendingSince = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    const { data: reusableOrder } = await sb.from("orders")
-      .select("id,order_number,fedapay_transaction_id,gateway_reference")
-      .eq("user_id", user.id)
-      .eq("course_id", course_id)
-      .eq("payment_status", "pending")
-      .eq("final_price_xof", finalPrice)
-      .gte("created_at", pendingSince)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (reusableOrder?.fedapay_transaction_id) {
-      const reusedUrl = await checkoutUrlFor(String(reusableOrder.fedapay_transaction_id));
-      if (reusedUrl) {
-        return new Response(JSON.stringify({
-          order_number: reusableOrder.order_number,
-          order_id: reusableOrder.id,
-          original_price: originalPrice,
-          discount_xof: discountXof,
-          final_price: finalPrice,
-          coupon_applied: couponCodeApplied,
-          subscription_discount_xof: commerceBenefit.discountXof,
-          payment_url: reusedUrl,
-          fedapay_token: String(reusableOrder.fedapay_transaction_id),
-          reused: true,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!nativeStore) {
+      fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+      if (!fedaKey) {
+        return new Response(JSON.stringify({ error: "FEDAPAY_NOT_CONFIGURED", message: "Le paiement est temporairement indisponible." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      fedaBase = fedaPayApiBase();
+      appUrl = Deno.env.get("APP_URL") || Deno.env.get("PUBLIC_APP_URL") || "https://omniaglobalacademy.com";
+      if (reusableOrder?.fedapay_transaction_id) {
+        const reusedUrl = await checkoutUrlFor(String(reusableOrder.fedapay_transaction_id));
+        if (reusedUrl) {
+          return new Response(JSON.stringify({
+            order_number: reusableOrder.order_number,
+            order_id: reusableOrder.id,
+            original_price: originalPrice,
+            discount_xof: discountXof,
+            final_price: finalPrice,
+            coupon_applied: couponCodeApplied,
+            subscription_discount_xof: commerceBenefit.discountXof,
+            payment_url: reusedUrl,
+            fedapay_token: String(reusableOrder.fedapay_transaction_id),
+            reused: true,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
     }
 
@@ -275,6 +300,20 @@ Deno.serve(async (req: Request) => {
       idempotency_key: idempotencyKey,
     }).select("id, order_number").single();
     if (orderErr) throw orderErr;
+
+    if (nativeStore) {
+      return new Response(JSON.stringify({
+        order_number: order.order_number,
+        order_id: order.id,
+        original_price: originalPrice,
+        discount_xof: discountXof,
+        final_price: finalPrice,
+        coupon_applied: couponCodeApplied,
+        subscription_discount_xof: commerceBenefit.discountXof,
+        native_store: true,
+        platform: nativePlatform,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const nameParts = (user.full_name || "").trim().split(/\s+/);
     const firstname = nameParts[0] || user.email.split("@")[0];

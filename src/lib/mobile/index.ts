@@ -7,3 +7,4 @@ export * from './qr';
 export * from './pdf';
 export * from './deepLinks';
 export * from './notifications';
+export * from './storeBilling';

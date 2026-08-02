@@ -49,6 +49,10 @@ function tokenFrom(req: Request) {
 
 async function sessionContext(sb: ReturnType<typeof createClient>, token: string) {
   if (!token) return null;
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("DB_SERVICE_ROLE_KEY") || "";
+  if (serviceRole && token === serviceRole) {
+    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"] };
+  }
 
   const { data: session } = await sb
     .from("user_sessions")
@@ -80,6 +84,10 @@ async function sessionContext(sb: ReturnType<typeof createClient>, token: string
 
 function isSuperAdmin(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return !!ctx?.roles.includes("super_admin");
+}
+
+function isService(ctx: Awaited<ReturnType<typeof sessionContext>>) {
+  return !!ctx?.roles.includes("service_role");
 }
 
 async function featureFlagEnabled(
@@ -3147,6 +3155,8 @@ async function registrationCreate(
   const body = (await req.json().catch(() => ({}))) as {
     event_id?: string;
     access_source?: string;
+    payment_channel?: string;
+    platform?: string;
   };
 
   if (!body.event_id) return json({ error: "EVENT_ID_REQUIRED" }, 400);
@@ -3202,6 +3212,14 @@ async function registrationCreate(
 
   const amount = Number(ev.price_amount || 0);
   const free = amount <= 0;
+  const paymentChannel = String(body.payment_channel || "web");
+  const nativePlatform = String(body.platform || "");
+  const nativeStore = paymentChannel === "native_store" && ["android", "ios"].includes(nativePlatform);
+  const paymentProvider = free
+    ? "free"
+    : nativeStore
+      ? (nativePlatform === "android" ? "google_play" : "app_store")
+      : (Deno.env.get("LIVE_PAYMENT_PROVIDER") || "platform_default");
 
   const { data: registration, error: regError } = await sb
     .from("live_registrations")
@@ -3235,7 +3253,7 @@ async function registrationCreate(
       amount,
       currency: ev.currency || "XOF",
       payment_status: "pending",
-      payment_provider: Deno.env.get("LIVE_PAYMENT_PROVIDER") || "platform_default",
+      payment_provider: paymentProvider,
     })
     .select("*")
     .single();
@@ -3248,6 +3266,8 @@ async function registrationCreate(
     order,
     payment_required: true,
     payment_provider: order.payment_provider,
+    native_store: nativeStore,
+    platform: nativeStore ? nativePlatform : null,
   }, 201);
 }
 
@@ -7029,6 +7049,10 @@ async function commerceCheckout(
   if(!ctx) return json({error:"AUTH_REQUIRED"},401);
 
   const body=await req.json().catch(()=>({})) as any;
+  const paymentChannel=String(body.payment_channel||"web");
+  const nativePlatform=String(body.platform||"");
+  const nativeStore=paymentChannel==="native_store"&&["android","ios"].includes(nativePlatform);
+  const paymentProvider=nativeStore?(nativePlatform==="android"?"google_play":"app_store"):"fedapay";
   const product=await commerceResolveProduct(sb,{
     product_id:body.product_id,
     event_id:body.event_id,
@@ -7058,6 +7082,7 @@ async function commerceCheckout(
     .eq("purchase_type",purchaseType)
     .eq("event_id",product.event_id||null)
     .eq("media_id",product.media_id||null)
+    .eq("payment_provider",net<=0?"free":paymentProvider)
     .in("payment_status",["pending","paid"])
     .order("created_at",{ascending:false}).limit(1).maybeSingle();
 
@@ -7098,7 +7123,7 @@ async function commerceCheckout(
     tax_amount:tax,
     net_amount:net,
     payment_status:net<=0?"paid":"pending",
-    payment_provider:net<=0?"free":"fedapay",
+    payment_provider:net<=0?"free":paymentProvider,
     paid_at:net<=0?new Date().toISOString():null,
     access_granted_at:net<=0?new Date().toISOString():null,
     pricing_snapshot:{
@@ -7133,6 +7158,8 @@ async function commerceCheckout(
     product,
     payment_required:net>0,
     final_amount:net,
+    native_store:nativeStore&&net>0,
+    platform:nativeStore?nativePlatform:null,
   },201);
 }
 
@@ -7206,6 +7233,34 @@ async function commerceFinalizePaidOrder(
   if(order.purchase_type==="live"&&order.registration_id){
     await sb.from("live_registrations").update({status:"confirmed"}).eq("id",order.registration_id);
   }
+}
+
+
+async function storePaymentFinalize(
+  sb: ReturnType<typeof createClient>,
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+  body: Record<string, unknown>,
+) {
+  if(!ctx||!isService(ctx)) return json({error:"SERVICE_ONLY"},403);
+  const orderId=String(body.order_id||"");
+  const {data:order,error}=await sb.from("live_orders").select("*").eq("id",orderId).maybeSingle();
+  if(error) throw error;
+  if(!order) return json({error:"LIVE_ORDER_NOT_FOUND"},404);
+  if(order.payment_status==="paid") return json({success:true,order,already_completed:true});
+  if(!["google_play","app_store"].includes(String(order.payment_provider||""))) return json({error:"STORE_ORDER_PROVIDER_MISMATCH"},409);
+  const providerTransactionId=String(body.provider_transaction_id||"");
+  if(!providerTransactionId) return json({error:"STORE_TRANSACTION_REQUIRED"},400);
+  const {data:paidOrder,error:updateError}=await sb.from("live_orders").update({
+    payment_status:"paid",
+    provider_reference:body.provider_reference||providerTransactionId,
+    payment_metadata:{...(order.payment_metadata||{}),store:body.provider_metadata||{}},
+    paid_at:new Date().toISOString(),
+    access_granted_at:new Date().toISOString(),
+    failed_at:null,
+  }).eq("id",order.id).select("*").single();
+  if(updateError) throw updateError;
+  await commerceFinalizePaidOrder(sb,paidOrder);
+  return json({success:true,order:paidOrder});
 }
 
 async function commerceEntitlementsMine(
@@ -8513,6 +8568,9 @@ Deno.serve(async (req: Request) => {
 
       case "commerce_entitlements_mine":
         return await commerceEntitlementsMine(sb, ctx);
+
+      case "store_payment_finalize":
+        return await storePaymentFinalize(sb, ctx, await req.json().catch(()=>({})) as Record<string,unknown>);
 
       case "discount_admin_create":
         return await discountAdminCreate(req, sb, ctx);

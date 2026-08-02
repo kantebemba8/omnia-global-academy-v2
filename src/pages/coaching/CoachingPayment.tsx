@@ -1,4 +1,4 @@
-import { assertNativePaymentAvailable, openExternalUrl, redirectToWebPayment } from '../../lib/mobile';
+import { isNativeApp, openExternalUrl, redirectToWebPayment } from '../../lib/mobile';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Clock3, CreditCard, Download, Loader2, RefreshCw, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -64,11 +64,11 @@ export default function CoachingPayment() {
   async function startPayment() {
     setBusy(true); setError('');
     try {
-      assertNativePaymentAvailable();
       const result = await coachingRequest<{ success: true; payment_url: string | null; already_paid: boolean }>('payment_checkout', { session_id: sessionId });
       if (result.already_paid) { await load(); return; }
       if (!result.payment_url) throw new Error('Le lien de paiement est indisponible.');
-      redirectToWebPayment(result.payment_url);
+      if (isNativeApp()) await openExternalUrl(result.payment_url);
+      else redirectToWebPayment(result.payment_url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Paiement impossible.');
     } finally { setBusy(false); }
@@ -99,7 +99,7 @@ export default function CoachingPayment() {
           </> : <>
             <CreditCard size={46} color={GOLD}/>
             <h1 className="mt-4 text-3xl font-semibold" style={{ color: BLUE }}>Paiement de la session</h1>
-            <p className="mt-3 leading-7 text-slate-600">Le paiement s’effectue sur l’interface sécurisée FedaPay. Aucune donnée de paiement n’est saisie directement dans OGA.</p>
+            <p className="mt-3 leading-7 text-slate-600">Cette séance individuelle est un service direct entre vous et le coach. Le paiement s’effectue sur une interface externe sécurisée et aucune donnée bancaire n’est saisie dans OGA.</p>
           </>}
 
           {cancelled && !paid && <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertTriangle size={19} className="shrink-0"/><p>Le paiement a été annulé. Aucun montant n’a été débité. Vous pouvez réessayer tant que le créneau reste réservé.</p></div>}
@@ -115,14 +115,14 @@ export default function CoachingPayment() {
           </div>}
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {canPay && <button onClick={startPayment} disabled={busy} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{busy ? <Loader2 size={17} className="animate-spin"/> : <CreditCard size={17}/>}Payer avec FedaPay</button>}
+            {canPay && <button onClick={startPayment} disabled={busy} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{busy ? <Loader2 size={17} className="animate-spin"/> : <CreditCard size={17}/>}Payer la séance</button>}
             {!paid && <button onClick={() => load()} disabled={busy} className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={17}/>Actualiser le statut</button>}
             {paid && data?.invoice && <button onClick={openInvoice} disabled={busy} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}><Download size={17}/>Télécharger la facture PDF</button>}
           </div>
         </section>
 
         <aside className="space-y-4">
-          <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><ShieldCheck color={GOLD}/><h2 className="mt-3 font-semibold" style={{ color: BLUE }}>Paiement sécurisé</h2><p className="mt-2 text-sm leading-6 text-slate-600">La confirmation définitive vient du webhook FedaPay, pas du simple retour dans le navigateur.</p></div>
+          <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><ShieldCheck color={GOLD}/><h2 className="mt-3 font-semibold" style={{ color: BLUE }}>Paiement sécurisé</h2><p className="mt-2 text-sm leading-6 text-slate-600">La confirmation définitive vient du prestataire de paiement, pas du simple retour dans l’application ou le navigateur.</p></div>
           {!paid && expiresIn !== null && <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><Clock3 color={GOLD}/><h2 className="mt-3 font-semibold" style={{ color: BLUE }}>Créneau réservé</h2><p className="mt-2 text-sm leading-6 text-slate-600">Il reste environ <strong>{expiresIn} minute{expiresIn > 1 ? 's' : ''}</strong> pour terminer le paiement.</p></div>}
           {data?.order && <div className="rounded-2xl border bg-white p-5 text-sm" style={{ borderColor: BORDER }}><p className="text-slate-500">Commande</p><p className="mt-1 font-semibold" style={{ color: BLUE }}>{data.order.order_number}</p><p className="mt-3 text-slate-500">Statut</p><p className="mt-1 font-semibold capitalize" style={{ color: GOLD }}>{data.order.payment_status.replace(/_/g, ' ')}</p></div>}
         </aside>

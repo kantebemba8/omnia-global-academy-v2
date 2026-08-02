@@ -36,3 +36,8 @@ OGA_BACKUP_*/
 android/app/google-services.json
 ios/App/GoogleService-Info.plist
 *.p8
+# Android machine-specific SDK path and generated build caches
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/

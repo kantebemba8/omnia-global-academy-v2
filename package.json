@@ -31,7 +31,11 @@
     "test:mobile:module4:android": "node scripts/mobile/verify-module4.mjs --android",
     "mobile:module4:ios": "node scripts/mobile/apply-module4-ios.mjs",
     "mobile:configure-links": "node scripts/mobile/configure-app-links.mjs",
-    "test:mobile:module4:supabase": "node scripts/mobile/verify-module4.mjs --supabase"
+    "test:mobile:module4:supabase": "node scripts/mobile/verify-module4.mjs --supabase",
+    "test:mobile:module5": "node scripts/mobile/verify-module5.mjs --source",
+    "test:mobile:module5:android": "node scripts/mobile/verify-module5.mjs --android",
+    "test:mobile:module5:supabase": "node scripts/mobile/verify-module5.mjs --supabase",
+    "mobile:module5:ios": "node scripts/mobile/apply-module5-ios.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",

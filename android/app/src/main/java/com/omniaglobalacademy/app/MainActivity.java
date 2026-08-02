@@ -1,5 +1,14 @@
 package com.omniaglobalacademy.app;
 
-import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
 
-public class MainActivity extends BridgeActivity {}
+import com.getcapacitor.BridgeActivity;
+import com.omniaglobalacademy.app.billing.OmniaStorePlugin;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(OmniaStorePlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}

@@ -1,4 +1,4 @@
-import { assertNativePaymentAvailable, redirectToWebPayment } from '../../lib/mobile';
+import { getOmniaPlatform, isNativeApp, redirectToWebPayment, startNativeStorePurchase } from '../../lib/mobile';
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -65,8 +65,24 @@ export default function CoachingAdvancedHub() {
     setBusy(`group:${productId}`);
     setError('');
     try {
-      assertNativePaymentAvailable();
-      const result = await coachingRequest<{ success: true; order: { id: string }; payment_url?: string | null }>('advanced_checkout', { product_type: 'group', product_id: productId });
+      const nativeStore = isNativeApp();
+      const platform = getOmniaPlatform();
+      const result = await coachingRequest<{ success: true; order: { id: string }; payment_url?: string | null; native_store?: boolean }>('advanced_checkout', {
+        product_type: 'group',
+        product_id: productId,
+        payment_channel: nativeStore ? 'native_store' : 'web',
+        platform,
+      });
+      if (nativeStore) {
+        const purchase = await startNativeStorePurchase('coaching_advanced', result.order.id);
+        if (purchase.completed) {
+          setMessage('Paiement confirmé. Votre place est réservée.');
+          await load();
+        } else if (purchase.pending) {
+          setMessage('Achat en attente de confirmation par le store.');
+        }
+        return;
+      }
       if (result.payment_url) redirectToWebPayment(result.payment_url);
       else window.location.assign(`/coaching/avance/paiement/${result.order.id}`);
     } catch (e) {

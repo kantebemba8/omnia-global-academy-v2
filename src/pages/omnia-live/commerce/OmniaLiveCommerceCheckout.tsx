@@ -1,4 +1,4 @@
-import { assertNativePaymentAvailable, redirectToWebPayment } from '../../../lib/mobile';
+import { getOmniaPlatform, isNativeApp, redirectToWebPayment, startNativeStorePurchase } from '../../../lib/mobile';
 import {useEffect,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
@@ -28,7 +28,7 @@ export default function OmniaLiveCommerceCheckout(){
   setBusy(true);setMsg('');
   try{
    const r=await liveApi('commerce_checkout',{method:'POST',body:JSON.stringify({
-    product_id:product?.id,event_id:eventId,media_id:mediaId,product_type:type,discount_code:discount.trim().toUpperCase()||null
+    product_id:product?.id,event_id:eventId,media_id:mediaId,product_type:type,discount_code:discount.trim().toUpperCase()||null,payment_channel:isNativeApp()?'native_store':'web',platform:isNativeApp()?getOmniaPlatform():undefined
    })});
    setOrder(r.order);
    if(!r.payment_required)setMsg('Accès activé sans paiement.');
@@ -41,7 +41,14 @@ export default function OmniaLiveCommerceCheckout(){
   if(!order)return;
   setBusy(true);setMsg('');
   try{
-   assertNativePaymentAvailable();
+   if(isNativeApp()){
+    const purchase=await startNativeStorePurchase('omnia_live',order.id);
+    if(purchase.pending){setMsg('Le paiement est en attente de confirmation dans votre store.');return}
+    if(purchase.cancelled)return;
+    setOrder((current:any)=>current?{...current,payment_status:'paid'}:current);
+    setMsg('Paiement confirmé. Votre accès Omnia Live est actif.');
+    return;
+   }
    const r=await liveApi('fedapay_prepare',{method:'POST',body:JSON.stringify({
     order_id:order.id,callback_url:`${window.location.origin}/omnia-live/mes-achats`
    })});
@@ -67,7 +74,7 @@ export default function OmniaLiveCommerceCheckout(){
     {order&&<div className="mt-5 border-t border-slate-200 pt-5">
      <div className="text-sm font-semibold">Commande {order.order_number}</div>
      <div className="mt-1 text-sm text-slate-500">{liveStatusLabel(order.payment_status)} · {Number(order.amount||order.net_amount||0).toLocaleString('fr-FR')} {order.currency}</div>
-     {order.payment_status!=='paid'&&<button onClick={pay} disabled={busy} className="mt-4 w-full rounded-lg px-5 py-3 text-sm font-bold text-white disabled:opacity-40" style={{background:GOLD}}>{busy?'Préparation…':'Payer avec FedaPay'}</button>}
+     {order.payment_status!=='paid'&&<button onClick={pay} disabled={busy} className="mt-4 w-full rounded-lg px-5 py-3 text-sm font-bold text-white disabled:opacity-40" style={{background:GOLD}}>{busy?'Préparation…':isNativeApp()?'Payer dans l’application':'Payer avec FedaPay'}</button>}
     </div>}
    </>:<div className="text-sm text-slate-500">Produit non disponible.</div>}
    {msg&&<div className="mt-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}

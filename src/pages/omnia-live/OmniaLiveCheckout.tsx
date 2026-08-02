@@ -1,4 +1,4 @@
-import { assertNativePaymentAvailable, redirectToWebPayment } from '../../lib/mobile';
+import { getOmniaPlatform, isNativeApp, redirectToWebPayment, startNativeStorePurchase } from '../../lib/mobile';
 import {useEffect,useState} from 'react';
 import {useNavigate,useParams} from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
@@ -28,7 +28,8 @@ export default function OmniaLiveCheckout(){
 
  async function register(){
   try{
-   const r=await liveApi('registration_create',{method:'POST',body:JSON.stringify({event_id:liveId})});
+   const nativeStore=isNativeApp();
+   const r=await liveApi('registration_create',{method:'POST',body:JSON.stringify({event_id:liveId,payment_channel:nativeStore?'native_store':'web',platform:nativeStore?getOmniaPlatform():undefined})});
    if(r.waitlisted){
     setWaitlist(r.waitlist);
     setMessage('Événement complet : vous avez été placé sur la liste d’attente.');
@@ -40,7 +41,7 @@ export default function OmniaLiveCheckout(){
     return;
    }
    setOrder(r.order);
-   setMessage('Votre commande a été créée. Le paiement sera proposé lorsque le module FedaPay Omnia Live sera activé.');
+   setMessage(isNativeApp()?'Votre commande a été créée. Le paiement sera présenté par votre store.':'Votre commande a été créée. Vous pouvez continuer avec FedaPay.');
   }catch(e){
    setMessage(e instanceof Error?e.message:'Inscription impossible.');
   }
@@ -50,7 +51,14 @@ export default function OmniaLiveCheckout(){
   if(!order)return;
   setPaying(true);setMessage('');
   try{
-   assertNativePaymentAvailable();
+   if(isNativeApp()){
+    const purchase=await startNativeStorePurchase('omnia_live',order.id);
+    if(purchase.pending){setMessage('Le paiement est en attente de confirmation dans votre store.');return}
+    if(purchase.cancelled)return;
+    setMessage('Paiement confirmé. Votre accès Omnia Live est actif.');
+    window.setTimeout(()=>navigate(`/omnia-live/${liveId}`),800);
+    return;
+   }
    const callback=`${window.location.origin}/omnia-live/mes-achats`;
    const r=await liveApi('fedapay_prepare',{method:'POST',body:JSON.stringify({order_id:order.id,callback_url:callback})});
    if(r.payment_url)redirectToWebPayment(r.payment_url);
@@ -79,9 +87,9 @@ export default function OmniaLiveCheckout(){
     <div className="text-sm font-semibold" style={{color:BLUE}}>Commande {order.order_number}</div>
     <div className="mt-1 text-sm text-slate-500">{Number(order.amount||0).toLocaleString('fr-FR')} {order.currency} · {liveStatusLabel(order.payment_status)}</div>
     <button onClick={pay} disabled={paying||order.payment_status==='paid'} className="mt-4 rounded-lg px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" style={{background:GOLD}}>
-     {paying?'Préparation du paiement…':'Payer avec FedaPay'}
+     {paying?'Préparation du paiement…':isNativeApp()?'Payer dans l’application':'Payer avec FedaPay'}
     </button>
-    <p className="mt-3 max-w-2xl text-xs text-slate-500">L’accès payant n’est accordé qu’après confirmation serveur du paiement. Un retour navigateur seul ne valide jamais une transaction.</p>
+    <p className="mt-3 max-w-2xl text-xs text-slate-500">{isNativeApp()?'L’accès est accordé uniquement après vérification serveur de l’achat par le store.':'L’accès payant n’est accordé qu’après confirmation serveur du paiement. Un retour navigateur seul ne valide jamais une transaction.'}</p>
    </div>}
 
    {message&&<div className="mt-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{message}</div>}

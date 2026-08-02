@@ -1,4 +1,4 @@
-import { assertNativePaymentAvailable, redirectToWebPayment } from '../lib/mobile';
+import { getOmniaPlatform, isNativeApp, redirectToWebPayment, startNativeStorePurchase } from '../lib/mobile';
 import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -26,7 +26,7 @@ const PAYMENT_LOGOS = [
   { name: 'Mastercard', bg: '#EB001B', text: '#fff', abbr: 'MC' },
 ];
 
-const GUARANTEES = [
+const WEB_GUARANTEES = [
   'Paiement sécurisé via FedaPay',
   'Accès illimité à vie',
   'Remboursement 14 jours si non commencé',
@@ -82,13 +82,15 @@ export default function Checkout() {
     setSubmitting(true);
     setError('');
     try {
-      if (finalPrice > 0) assertNativePaymentAvailable();
+      const nativeStore = isNativeApp() && finalPrice > 0;
       const res = await fetch(ENDPOINTS.checkoutInit, {
         method: 'POST',
         headers: edgeAuthHeaders(),
         body: JSON.stringify({
           course_id: courseId,
           coupon_code: couponResult?.valid ? couponInput.trim() : undefined,
+          payment_channel: nativeStore ? 'native_store' : 'web',
+          platform: nativeStore ? getOmniaPlatform() : undefined,
         }),
       });
       const d = await res.json();
@@ -105,6 +107,16 @@ export default function Checkout() {
         setError(messages[d.error] ?? d.message ?? 'Une erreur est survenue.');
         return;
       }
+      if (d.native_store && d.order_id) {
+        const purchase = await startNativeStorePurchase('course', d.order_id);
+        if (purchase.pending) {
+          setError('Le paiement Google Play est en attente. L’accès sera activé après confirmation.');
+          return;
+        }
+        if (purchase.cancelled) return;
+        navigate(`/cours/${courseId}/apprendre`);
+        return;
+      }
       if (d.payment_url) {
         redirectToWebPayment(d.payment_url);
       }
@@ -115,6 +127,7 @@ export default function Checkout() {
     }
   };
 
+  const nativeStore = isNativeApp();
   const originalPrice = course?.price_xof ?? 0;
   const discountXof = couponResult?.valid ? (couponResult.discount_xof ?? 0) : 0;
   const finalPrice = couponResult?.valid ? (couponResult.final_price_xof ?? originalPrice) : originalPrice;
@@ -230,7 +243,7 @@ export default function Checkout() {
             {/* Guarantees */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
               <ul className="grid grid-cols-2 gap-2">
-                {GUARANTEES.map(g => (
+                {(nativeStore ? ['Paiement sécurisé par votre store', ...WEB_GUARANTEES.slice(1)] : WEB_GUARANTEES).map(g => (
                   <li key={g} className="flex items-start gap-1.5 text-xs text-gray-600">
                     <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#1E7A52' }} /> {g}
                   </li>
@@ -244,17 +257,19 @@ export default function Checkout() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
               <div>
                 <p className="font-semibold text-gray-800 mb-1">Mode de paiement</p>
-                <p className="text-xs text-gray-500">Vous serez redirigé vers FedaPay pour finaliser le paiement en toute sécurité.</p>
+                <p className="text-xs text-gray-500">{nativeStore ? 'Le paiement sera présenté par Google Play ou l’App Store.' : 'Vous serez redirigé vers FedaPay pour finaliser le paiement en toute sécurité.'}</p>
               </div>
 
-              {/* Payment method logos */}
-              <div className="grid grid-cols-3 gap-2">
-                {PAYMENT_LOGOS.map(m => (
-                  <div key={m.name} title={m.name} className="h-10 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: m.bg, color: m.text }}>
-                    {m.abbr}
-                  </div>
-                ))}
-              </div>
+              {!nativeStore && <>
+                {/* Moyens disponibles via FedaPay sur le web */}
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_LOGOS.map(m => (
+                    <div key={m.name} title={m.name} className="h-10 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: m.bg, color: m.text }}>
+                      {m.abbr}
+                    </div>
+                  ))}
+                </div>
+              </>}
 
               {error && (
                 <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
@@ -270,15 +285,15 @@ export default function Checkout() {
                 style={{ backgroundColor: '#BF8813' }}
               >
                 {submitting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Redirection…</>
+                  <><Loader2 className="w-5 h-5 animate-spin" /> {nativeStore ? 'Ouverture du store…' : 'Redirection…'}</>
                 ) : (
-                  <>Procéder au paiement →</>
+                  <>{nativeStore ? 'Payer dans l’application →' : 'Procéder au paiement →'}</>
                 )}
               </button>
 
               <div className="flex items-center gap-1.5 justify-center">
                 <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
-                <p className="text-xs text-gray-400">Paiement sécurisé SSL</p>
+                <p className="text-xs text-gray-400">{nativeStore ? 'Paiement sécurisé par votre store' : 'Paiement sécurisé SSL'}</p>
               </div>
 
               <p className="text-xs text-gray-400 text-center leading-relaxed">

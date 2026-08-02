@@ -1,6 +1,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
+import {
+  finishGooglePlayPurchase,
+  loadStoreSession,
+  obfuscatedStoreAccountId,
+  sha256Hex as storeSha256Hex,
+  verifyGooglePlayPurchase,
+  type StorePlatform,
+  type StoreProductType,
+  type StoreTargetType,
+} from "../_shared/mobile-store-billing.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -258,6 +269,490 @@ async function activateOrder(sb: SB, orderId: string, providerId?: string, provi
   return { order: { ...order, payment_status: "completed" }, entitlement, revenue };
 }
 
+
+
+type StoreOrderTarget = {
+  targetType: StoreTargetType;
+  targetId: string;
+  userId: string;
+  amountXof: number;
+  moduleKey: "formations" | "commerce" | "omnia_live" | "coaching";
+  paymentProvider: string;
+  paymentStatus: string;
+  commercePlanId: string | null;
+  commerceCreatorOfferId: string | null;
+  subscriptionRequired: boolean;
+  order: Record<string, any>;
+};
+
+async function resolveStoreOrderTarget(
+  sb: SB,
+  userId: string,
+  targetType: StoreTargetType,
+  targetId: string,
+): Promise<StoreOrderTarget> {
+  if (targetType === "course") {
+    const { data, error } = await sb.from("orders").select("*").eq("id", targetId).eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("STORE_ORDER_NOT_FOUND");
+    return { targetType, targetId, userId, amountXof: Number(data.final_price_xof || 0), moduleKey: "formations", paymentProvider: String(data.payment_gateway || ""), paymentStatus: String(data.payment_status || ""), commercePlanId: null, commerceCreatorOfferId: null, subscriptionRequired: false, order: data };
+  }
+  if (targetType === "commerce") {
+    const { data, error } = await sb.from("commerce_orders").select("*").eq("id", targetId).eq("buyer_user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("STORE_ORDER_NOT_FOUND");
+    let subscriptionRequired = false;
+    if (data.plan_id) {
+      const { data: plan } = await sb.from("commerce_plans").select("commercial_type,billing_interval").eq("id", data.plan_id).maybeSingle();
+      subscriptionRequired = Boolean(plan && (["subscription", "trial"].includes(String(plan.commercial_type)) || String(plan.billing_interval) !== "none"));
+    } else if (data.creator_offer_id) {
+      const { data: offer } = await sb.from("commerce_creator_offers").select("offer_kind").eq("id", data.creator_offer_id).maybeSingle();
+      subscriptionRequired = String(offer?.offer_kind || "") === "subscription";
+    }
+    return { targetType, targetId, userId, amountXof: Number(data.final_amount_xof || 0), moduleKey: "commerce", paymentProvider: String(data.payment_provider || ""), paymentStatus: String(data.payment_status || ""), commercePlanId: data.plan_id ? String(data.plan_id) : null, commerceCreatorOfferId: data.creator_offer_id ? String(data.creator_offer_id) : null, subscriptionRequired, order: data };
+  }
+  if (targetType === "omnia_live") {
+    const { data, error } = await sb.from("live_orders").select("*").eq("id", targetId).eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("STORE_ORDER_NOT_FOUND");
+    const subscriptionRequired = String(data.purchase_type || "") === "subscription";
+    return { targetType, targetId, userId, amountXof: Math.round(Number(data.net_amount ?? data.amount ?? 0)), moduleKey: "omnia_live", paymentProvider: String(data.payment_provider || ""), paymentStatus: String(data.payment_status || ""), commercePlanId: null, commerceCreatorOfferId: null, subscriptionRequired, order: data };
+  }
+  if (targetType === "coaching") throw new Error("STORE_ONE_TO_ONE_EXTERNAL_SERVICE");
+  const { data, error } = await sb.from("coaching_payment_orders").select("*").eq("id", targetId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("STORE_ORDER_NOT_FOUND");
+  const advanced = String(data.product_type || "session") !== "session";
+  if ((targetType === "coaching_advanced") !== advanced) throw new Error("STORE_ORDER_TYPE_MISMATCH");
+  const subscriptionRequired = String(data.product_type || "") === "subscription";
+  return { targetType, targetId, userId, amountXof: Number(data.amount_xof || 0), moduleKey: "coaching", paymentProvider: String(data.payment_provider || ""), paymentStatus: String(data.payment_status || ""), commercePlanId: null, commerceCreatorOfferId: null, subscriptionRequired, order: data };
+}
+
+function expectedStoreProvider(platform: StorePlatform) {
+  return platform === "android" ? "google_play" : "app_store";
+}
+
+async function resolveStoreProduct(sb: SB, target: StoreOrderTarget, platform: StorePlatform) {
+  if (target.commerceCreatorOfferId) {
+    const { data, error } = await sb.from("mobile_store_products").select("*")
+      .eq("platform", platform).eq("target_kind", "creator_offer").eq("commerce_creator_offer_id", target.commerceCreatorOfferId).eq("status", "active").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("STORE_PRODUCT_NOT_CONFIGURED");
+    if (target.subscriptionRequired && String(data.product_type) !== "subscription") throw new Error("STORE_PRODUCT_TYPE_MISMATCH");
+    if (!target.subscriptionRequired && String(data.product_type) === "subscription") throw new Error("STORE_PRODUCT_TYPE_MISMATCH");
+    return data;
+  }
+  if (target.subscriptionRequired) {
+    if (!target.commercePlanId) throw new Error("STORE_SUBSCRIPTION_MAPPING_REQUIRED");
+    const { data, error } = await sb.from("mobile_store_products").select("*")
+      .eq("platform", platform).eq("target_kind", "commerce_plan").eq("commerce_plan_id", target.commercePlanId).eq("status", "active").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("STORE_PRODUCT_NOT_CONFIGURED");
+    return data;
+  }
+  const { data, error } = await sb.from("mobile_store_products").select("*")
+    .eq("platform", platform).eq("target_kind", "price_tier").eq("module_key", target.moduleKey)
+    .eq("price_xof", target.amountXof).eq("status", "active").maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    const { data: globalProduct, error: globalError } = await sb.from("mobile_store_products").select("*")
+      .eq("platform", platform).eq("target_kind", "price_tier").eq("module_key", "global")
+      .eq("price_xof", target.amountXof).eq("status", "active").maybeSingle();
+    if (globalError) throw globalError;
+    if (!globalProduct) throw new Error("STORE_PRODUCT_NOT_CONFIGURED");
+    return globalProduct;
+  }
+  return data;
+}
+
+async function postInternal(functionName: string, body: Record<string, unknown>) {
+  const url = String(Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !serviceRole) throw new Error("INTERNAL_SERVICE_CONFIGURATION_MISSING");
+  const action = String(body.action || "");
+  const endpoint = functionName === "omnia-live" && action
+    ? `${url}/functions/v1/${functionName}?action=${encodeURIComponent(action)}`
+    : `${url}/functions/v1/${functionName}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${serviceRole}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(String(payload.message || payload.error || `INTERNAL_${functionName.toUpperCase()}_FAILED`));
+  return payload;
+}
+
+async function finalizeStoreOrder(sb: SB, target: StoreOrderTarget, verified: Record<string, any>) {
+  const providerId = String(verified.providerTransactionId || verified.purchaseTokenHash);
+  const providerReference = String(verified.providerTransactionId || verified.purchaseTokenHash);
+  const providerPayload = { provider: target.paymentProvider, store: verified.payload, purchase_state: verified.purchaseState };
+  if (target.targetType === "course") {
+    return await settlePlatformOrder(sb, target.order, {
+      id: providerId,
+      reference: providerReference,
+      amount: target.amountXof,
+      currency: { iso: "XOF" },
+      status: "approved",
+      metadata: { order_id: target.targetId, mobile_store: true },
+      ...providerPayload,
+    });
+  }
+  if (target.targetType === "commerce") {
+    return await activateOrder(sb, target.targetId, providerId, providerReference, providerPayload);
+  }
+  if (target.targetType === "omnia_live") {
+    return await postInternal("omnia-live", { action: "store_payment_finalize", order_id: target.targetId, provider_transaction_id: providerId, provider_reference: providerReference, provider_metadata: providerPayload });
+  }
+  return await postInternal("coaching", { action: "store_payment_finalize", order_id: target.targetId, provider_transaction_id: providerId, provider_reference: providerReference, provider_metadata: providerPayload });
+}
+
+async function prepareStorePurchase(sb: SB, ctx: UserContext, body: Record<string, unknown>) {
+  const platform = String(body.platform || "") as StorePlatform;
+  const targetType = String(body.target_type || "") as StoreTargetType;
+  const targetId = String(body.target_id || "");
+  if (!["android", "ios"].includes(platform)) throw new Error("STORE_PLATFORM_INVALID");
+  if (!["course", "commerce", "omnia_live", "coaching", "coaching_advanced"].includes(targetType) || !targetId) throw new Error("STORE_TARGET_INVALID");
+  const target = await resolveStoreOrderTarget(sb, ctx.id, targetType, targetId);
+  if (target.amountXof <= 0) throw new Error("STORE_AMOUNT_INVALID");
+  if (["completed", "paid"].includes(target.paymentStatus)) return { completed: true, target_type: targetType, target_id: targetId };
+  if (!["pending", "processing"].includes(target.paymentStatus)) throw new Error("STORE_ORDER_NOT_PAYABLE");
+  if (target.paymentProvider !== expectedStoreProvider(platform)) throw new Error("STORE_ORDER_PROVIDER_MISMATCH");
+  const product = await resolveStoreProduct(sb, target, platform);
+  const nonce = crypto.randomUUID();
+  const { data: session, error } = await sb.from("mobile_store_purchase_sessions").insert({
+    user_id: ctx.id,
+    platform,
+    target_type: targetType,
+    target_id: targetId,
+    store_product_id: product.id,
+    expected_amount_xof: target.amountXof,
+    nonce,
+    metadata: { module_key: target.moduleKey },
+  }).select("id,expires_at").single();
+  if (error) throw error;
+  return {
+    completed: false,
+    session_id: session.id,
+    expires_at: session.expires_at,
+    platform,
+    product_id: product.store_product_id,
+    product_type: product.product_type,
+    expected_amount_xof: target.amountXof,
+    obfuscated_account_id: await obfuscatedStoreAccountId(ctx.id),
+  };
+}
+
+async function verifyStorePurchase(sb: SB, ctx: UserContext, body: Record<string, unknown>) {
+  const sessionId = String(body.session_id || "");
+  const purchaseToken = String(body.purchase_token || "");
+  const packageName = String(body.package_name || "com.omniaglobalacademy.app");
+  if (!sessionId || !purchaseToken) throw new Error("STORE_PURCHASE_DATA_INCOMPLETE");
+  const session = await loadStoreSession(sb, ctx.id, sessionId);
+  const product = session.mobile_store_products as Record<string, any>;
+  if (session.status === "completed") return { completed: true, already_completed: true, target_type: session.target_type, target_id: session.target_id };
+  if (session.platform === "ios") throw new Error("APPLE_STORE_SERVER_CONFIGURATION_PENDING");
+  if (session.platform !== "android") throw new Error("STORE_PLATFORM_INVALID");
+  if (String(body.product_id || "") !== String(product.store_product_id || "")) throw new Error("STORE_PRODUCT_MISMATCH");
+  const tokenHash = await storeSha256Hex(purchaseToken);
+  const { data: existing } = await sb.from("mobile_store_transactions").select("*").eq("platform", "android").eq("purchase_token_hash", tokenHash).maybeSingle();
+  if (existing?.verification_status === "granted") {
+    if (String(existing.user_id) !== ctx.id) throw new Error("STORE_TOKEN_ALREADY_USED");
+    await sb.from("mobile_store_purchase_sessions").update({ status: "completed", completed_at: existing.granted_at || new Date().toISOString() }).eq("id", session.id);
+    return { completed: true, already_completed: true, target_type: session.target_type, target_id: session.target_id };
+  }
+  if (existing && String(existing.user_id) !== ctx.id) throw new Error("STORE_TOKEN_ALREADY_USED");
+  await sb.from("mobile_store_purchase_sessions").update({ status: "verifying", error_code: null }).eq("id", session.id);
+  const verified = await verifyGooglePlayPurchase({
+    packageName,
+    productId: String(product.store_product_id),
+    productType: String(product.product_type) as StoreProductType,
+    purchaseToken,
+    expectedAccountId: await obfuscatedStoreAccountId(ctx.id),
+  });
+  let transactionId = existing?.id ? String(existing.id) : "";
+  if (existing) {
+    await sb.from("mobile_store_transactions").update({
+      session_id: session.id,
+      store_product_id: verified.storeProductId,
+      provider_transaction_id: verified.providerTransactionId,
+      purchase_state: verified.purchaseState,
+      acknowledgement_state: verified.acknowledgementState,
+      consumption_state: verified.consumptionState,
+      provider_payload: verified.payload,
+      verification_status: "verified",
+      rejection_reason: null,
+      verified_at: new Date().toISOString(),
+    }).eq("id", existing.id);
+  } else {
+    const { data: inserted, error } = await sb.from("mobile_store_transactions").insert({
+      session_id: session.id,
+      user_id: ctx.id,
+      platform: "android",
+      store_product_id: verified.storeProductId,
+      provider_transaction_id: verified.providerTransactionId,
+      purchase_token_hash: verified.purchaseTokenHash,
+      purchase_state: verified.purchaseState,
+      acknowledgement_state: verified.acknowledgementState,
+      consumption_state: verified.consumptionState,
+      provider_payload: verified.payload,
+      verification_status: "verified",
+      verified_at: new Date().toISOString(),
+    }).select("id").single();
+    if (error) throw error;
+    transactionId = String(inserted.id);
+  }
+  const target = await resolveStoreOrderTarget(sb, ctx.id, String(session.target_type) as StoreTargetType, String(session.target_id));
+  if (target.amountXof !== Number(session.expected_amount_xof)) throw new Error("STORE_ORDER_AMOUNT_CHANGED");
+  const result = await finalizeStoreOrder(sb, target, verified);
+  let finished: Awaited<ReturnType<typeof finishGooglePlayPurchase>>;
+  try {
+    finished = await finishGooglePlayPurchase({
+      packageName,
+      productId: verified.storeProductId,
+      productType: String(product.product_type) as StoreProductType,
+      purchaseToken,
+      needsAcknowledge: verified.needsAcknowledge,
+      needsConsume: verified.needsConsume,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Promise.all([
+      sb.from("mobile_store_transactions").update({
+        verification_status: "verified",
+        rejection_reason: `STORE_FINALIZATION_PENDING:${message}`,
+      }).eq("id", transactionId),
+      sb.from("mobile_store_purchase_sessions").update({
+        status: "verifying",
+        error_code: "STORE_FINALIZATION_PENDING",
+      }).eq("id", session.id),
+    ]);
+    throw new Error(`STORE_FINALIZATION_PENDING:${message}`);
+  }
+  const now = new Date().toISOString();
+  await Promise.all([
+    sb.from("mobile_store_transactions").update({ verification_status: "granted", granted_at: now, rejection_reason: null, acknowledgement_state: finished.acknowledged ? "ACKNOWLEDGED" : verified.acknowledgementState, consumption_state: finished.consumed ? "CONSUMED" : verified.consumptionState }).eq("id", transactionId),
+    sb.from("mobile_store_purchase_sessions").update({ status: "completed", completed_at: now, error_code: null }).eq("id", session.id),
+  ]);
+  return { completed: true, target_type: session.target_type, target_id: session.target_id, result, store_finalization: finished };
+}
+
+
+async function restoreStorePurchases(sb: SB, ctx: UserContext, body: Record<string, unknown>) {
+  const platform = String(body.platform || "") as StorePlatform;
+  if (platform === "ios") throw new Error("APPLE_STORE_SERVER_CONFIGURATION_PENDING");
+  if (platform !== "android") throw new Error("STORE_PLATFORM_INVALID");
+
+  const packageName = String(body.package_name || "com.omniaglobalacademy.app");
+  const purchases = Array.isArray(body.purchases) ? body.purchases.slice(0, 50) : [];
+  const results: Array<Record<string, unknown>> = [];
+
+  for (const item of purchases) {
+    const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const productId = String(record.product_id || "");
+    const purchaseToken = String(record.purchase_token || "");
+    const requestedGoogleType = String(record.google_product_type || "");
+    if (!productId || !purchaseToken) {
+      results.push({ product_id: productId || null, success: false, error: "STORE_PURCHASE_DATA_INCOMPLETE" });
+      continue;
+    }
+
+    try {
+      const tokenHash = await storeSha256Hex(purchaseToken);
+      const { data: existingTransaction, error: existingError } = await sb.from("mobile_store_transactions")
+        .select("*")
+        .eq("platform", "android")
+        .eq("purchase_token_hash", tokenHash)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (existingTransaction?.verification_status === "granted") {
+        if (String(existingTransaction.user_id) !== ctx.id) throw new Error("STORE_TOKEN_ALREADY_USED");
+        results.push({ product_id: productId, success: true, already_restored: true });
+        continue;
+      }
+      if (existingTransaction && String(existingTransaction.user_id) !== ctx.id) throw new Error("STORE_TOKEN_ALREADY_USED");
+
+      const { data: product, error: productError } = await sb.from("mobile_store_products")
+        .select("*")
+        .eq("platform", "android")
+        .eq("store_product_id", productId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (productError) throw productError;
+      if (!product) throw new Error("STORE_RESTORE_PRODUCT_NOT_CONFIGURED");
+      const productType = String(product.product_type) as StoreProductType;
+      if (requestedGoogleType && (requestedGoogleType === "subs") !== (productType === "subscription")) {
+        throw new Error("STORE_PRODUCT_TYPE_MISMATCH");
+      }
+
+      const { data: recoverableSession, error: recoverableError } = await sb.from("mobile_store_purchase_sessions")
+        .select("id,target_type,target_id,status")
+        .eq("user_id", ctx.id)
+        .eq("platform", "android")
+        .eq("store_product_id", product.id)
+        .neq("status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recoverableError) throw recoverableError;
+
+      if (recoverableSession) {
+        const { error: reopenSessionError } = await sb.from("mobile_store_purchase_sessions").update({
+          status: "prepared",
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          error_code: null,
+        }).eq("id", recoverableSession.id);
+        if (reopenSessionError) throw reopenSessionError;
+        const result = await verifyStorePurchase(sb, ctx, {
+          session_id: recoverableSession.id,
+          platform: "android",
+          product_id: productId,
+          product_type: productType,
+          purchase_token: purchaseToken,
+          package_name: packageName,
+        });
+        results.push({ product_id: productId, success: true, recovered_session: true, result });
+        continue;
+      }
+
+      if (productType !== "subscription") throw new Error("STORE_RESTORE_SESSION_NOT_FOUND");
+
+      let plan: Record<string, any> | null = null;
+      let offer: Record<string, any> | null = null;
+      if (String(product.target_kind) === "commerce_plan" && product.commerce_plan_id) {
+        const response = await sb.from("commerce_plans")
+          .select("*")
+          .eq("id", product.commerce_plan_id)
+          .eq("status", "active")
+          .maybeSingle();
+        if (response.error) throw response.error;
+        plan = response.data;
+        if (!plan) throw new Error("PLAN_NOT_AVAILABLE");
+        if (!(await audienceAllowed(sb, ctx, String(plan.audience)))) throw new Error("PLAN_AUDIENCE_NOT_ALLOWED");
+      } else if (String(product.target_kind) === "creator_offer" && product.commerce_creator_offer_id) {
+        const response = await sb.from("commerce_creator_offers")
+          .select("*")
+          .eq("id", product.commerce_creator_offer_id)
+          .eq("offer_kind", "subscription")
+          .eq("status", "published")
+          .maybeSingle();
+        if (response.error) throw response.error;
+        offer = response.data;
+        if (!offer) throw new Error("OFFER_NOT_AVAILABLE");
+      } else {
+        throw new Error("STORE_RESTORE_PRODUCT_NOT_CONFIGURED");
+      }
+
+      let subscriptionQuery = sb.from("commerce_subscriptions")
+        .select("id,source_order_id,current_period_end,status")
+        .eq("user_id", ctx.id)
+        .in("status", ["trial", "active", "grace", "past_due"]);
+      subscriptionQuery = plan
+        ? subscriptionQuery.eq("plan_id", plan.id)
+        : subscriptionQuery.eq("creator_offer_id", offer!.id);
+      const { data: activeSubscription, error: subscriptionError } = await subscriptionQuery
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (subscriptionError) throw subscriptionError;
+
+      let order: Record<string, any> | null = null;
+      if (activeSubscription?.source_order_id) {
+        const response = await sb.from("commerce_orders")
+          .select("*")
+          .eq("id", activeSubscription.source_order_id)
+          .eq("buyer_user_id", ctx.id)
+          .maybeSingle();
+        if (response.error) throw response.error;
+        order = response.data;
+      }
+
+      if (!order) {
+        let pendingQuery = sb.from("commerce_orders")
+          .select("*")
+          .eq("buyer_user_id", ctx.id)
+          .eq("payment_provider", "google_play")
+          .in("payment_status", ["pending", "processing"]);
+        pendingQuery = plan ? pendingQuery.eq("plan_id", plan.id) : pendingQuery.eq("creator_offer_id", offer!.id);
+        const response = await pendingQuery.order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (response.error) throw response.error;
+        order = response.data;
+      }
+
+      const entityId = String(plan?.id || offer?.id || "");
+      const restoreIdempotency = await sha256(`${ctx.id}:${entityId}:restore:${tokenHash}`);
+      if (!order) {
+        const response = await sb.from("commerce_orders")
+          .select("*")
+          .eq("buyer_user_id", ctx.id)
+          .eq("idempotency_key", restoreIdempotency)
+          .maybeSingle();
+        if (response.error) throw response.error;
+        order = response.data;
+        if (order && ["failed", "cancelled", "refunded"].includes(String(order.payment_status || ""))) {
+          const reopened = await sb.from("commerce_orders").update({
+            payment_provider: "google_play",
+            payment_status: "pending",
+            paid_at: null,
+            failed_at: null,
+            refunded_at: null,
+            metadata: { ...(order.metadata || {}), source: "commerce-engine", payment_channel: "native_store", restoration: true },
+          }).eq("id", order.id).select("*").single();
+          if (reopened.error) throw reopened.error;
+          order = reopened.data;
+        }
+      }
+
+      if (!order) {
+        const amount = Math.max(0, Math.round(Number(plan?.price_xof ?? offer?.approved_price_xof ?? offer?.price_xof ?? 0)));
+        if (amount <= 0) throw new Error("STORE_AMOUNT_INVALID");
+        const response = await sb.from("commerce_orders").insert({
+          order_number: orderNumber(),
+          buyer_user_id: ctx.id,
+          plan_id: plan?.id || null,
+          creator_offer_id: offer?.id || null,
+          order_type: plan ? "plan" : "creator_offer",
+          original_amount_xof: amount,
+          discount_xof: 0,
+          final_amount_xof: amount,
+          payment_provider: "google_play",
+          payment_status: "pending",
+          idempotency_key: restoreIdempotency,
+          metadata: { source: "commerce-engine", payment_channel: "native_store", restoration: true },
+        }).select("*").single();
+        if (response.error) throw response.error;
+        order = response.data;
+      }
+
+      const { data: session, error: sessionError } = await sb.from("mobile_store_purchase_sessions").insert({
+        user_id: ctx.id,
+        platform: "android",
+        target_type: "commerce",
+        target_id: order.id,
+        store_product_id: product.id,
+        expected_amount_xof: Number(order.final_amount_xof || plan?.price_xof || offer?.approved_price_xof || offer?.price_xof || 0),
+        nonce: crypto.randomUUID(),
+        metadata: { module_key: "commerce", restoration: true },
+      }).select("id").single();
+      if (sessionError) throw sessionError;
+
+      const result = await verifyStorePurchase(sb, ctx, {
+        session_id: session.id,
+        platform: "android",
+        product_id: productId,
+        product_type: productType,
+        purchase_token: purchaseToken,
+        package_name: packageName,
+      });
+      results.push({ product_id: productId, success: true, result });
+    } catch (error) {
+      results.push({ product_id: productId, success: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { restored: results.filter((item) => item.success).length, results };
+}
+
 function commerceReturnPath(product: Record<string, any>, isPlan: boolean) {
   if (!isPlan) return "/dashboard/abonnements";
   const audience = String(product.audience || "learner");
@@ -347,6 +842,18 @@ Deno.serve(async (req: Request) => {
       return json({ subscriptions: subscriptions || [], entitlements: entitlements || [], orders: orders || [] });
     }
 
+    if (action === "store_purchase_prepare") {
+      return json(await prepareStorePurchase(sb, ctx, body));
+    }
+
+    if (action === "store_purchase_verify") {
+      return json(await verifyStorePurchase(sb, ctx, body));
+    }
+
+    if (action === "store_purchase_restore") {
+      return json(await restoreStorePurchases(sb, ctx, body));
+    }
+
     if (action === "checkout_create") {
       const planId = body.plan_id ? String(body.plan_id) : null;
       const offerId = body.creator_offer_id ? String(body.creator_offer_id) : null;
@@ -408,18 +915,25 @@ Deno.serve(async (req: Request) => {
         }
       }
       const finalAmount = Math.max(0, Number(product.price_xof) - discount);
+      const paymentChannel = String(body.payment_channel || "web");
+      const nativePlatform = String(body.platform || "");
+      const nativeStore = paymentChannel === "native_store" && ["android", "ios"].includes(nativePlatform);
+      const paymentProvider = nativeStore ? (nativePlatform === "android" ? "google_play" : "app_store") : "fedapay";
       const number = orderNumber();
       const idempotency = await sha256(`${ctx.id}:${planId || offerId}:${number}`);
       const { data: order, error } = await sb.from("commerce_orders").insert({
         order_number: number, buyer_user_id: ctx.id, plan_id: planId, creator_offer_id: offerId,
         order_type: planId ? "plan" : "creator_offer", original_amount_xof: Number(product.price_xof), discount_xof: discount,
-        final_amount_xof: finalAmount, payment_status: "pending", idempotency_key: idempotency,
-        promotion_id: promotionId, metadata: { source: "commerce-engine" },
+        final_amount_xof: finalAmount, payment_provider: paymentProvider, payment_status: "pending", idempotency_key: idempotency,
+        promotion_id: promotionId, metadata: { source: "commerce-engine", payment_channel: nativeStore ? "native_store" : "web" },
       }).select("*").single();
       if (error) throw error;
       if (finalAmount === 0) {
         const result = await activateOrder(sb, order.id, "free", "free");
         return json({ completed: true, order_number: number, result });
+      }
+      if (nativeStore) {
+        return json({ completed: false, order_number: number, order_id: order.id, native_store: true, platform: nativePlatform, provider: paymentProvider });
       }
       try {
         const provider = await createFedaPay(order, ctx, label, commerceReturnPath(product, Boolean(planId)));
@@ -565,7 +1079,7 @@ Deno.serve(async (req: Request) => {
     if (!isAdmin(ctx) && !isService(ctx)) return json({ error: "FORBIDDEN" }, 403);
 
     if (action === "admin_dashboard") {
-      const [{ data: plans }, { data: benefits }, { data: offers }, { data: subscriptions }, { data: orders }, { data: payouts }, { data: commissions }, { data: promotions }] = await Promise.all([
+      const [{ data: plans }, { data: benefits }, { data: offers }, { data: subscriptions }, { data: orders }, { data: payouts }, { data: commissions }, { data: promotions }, { data: storeProducts }] = await Promise.all([
         sb.from("commerce_plans").select("*,commerce_plan_benefits(*,commerce_benefit_definitions(*))").order("created_at", { ascending: false }),
         sb.from("commerce_benefit_definitions").select("*").order("module_key").order("name"),
         sb.from("commerce_creator_offers").select("*").order("created_at", { ascending: false }),
@@ -574,10 +1088,58 @@ Deno.serve(async (req: Request) => {
         sb.from("commerce_payout_requests").select("*,users!commerce_payout_requests_creator_user_id_fkey(full_name,email)").order("requested_at", { ascending: false }).limit(100),
         sb.from("commerce_commission_rules").select("*,users!commerce_commission_rules_creator_user_id_fkey(full_name,email)").order("priority").order("created_at", { ascending: false }),
         sb.from("commerce_promotions").select("*").order("created_at", { ascending: false }),
+        sb.from("mobile_store_products").select("*,commerce_plans(id,name,price_xof,billing_interval),commerce_creator_offers(id,title,offer_kind,approved_price_xof,price_xof,module_key,status)").order("platform").order("display_name"),
       ]);
       const signedOffers = await Promise.all((offers || []).map(async (offer: any) => ({ ...offer, supporting_documents: await signDocumentList(sb, offer.supporting_documents) })));
       const signedCommissions = await Promise.all((commissions || []).map(async (rule: any) => ({ ...rule, supporting_documents: await signDocumentList(sb, rule.supporting_documents) })));
-      return json({ plans: plans || [], benefits: benefits || [], creator_offers: signedOffers, subscriptions: subscriptions || [], orders: orders || [], payouts: payouts || [], commission_rules: signedCommissions, promotions: promotions || [] });
+      return json({ plans: plans || [], benefits: benefits || [], creator_offers: signedOffers, subscriptions: subscriptions || [], orders: orders || [], payouts: payouts || [], commission_rules: signedCommissions, promotions: promotions || [], store_products: storeProducts || [] });
+    }
+
+    if (action === "admin_store_product_save") {
+      const id = body.id ? String(body.id) : null;
+      const platform = String(body.platform || "");
+      const productType = String(body.product_type || "");
+      const targetKind = String(body.target_kind || "");
+      const moduleKey = String(body.module_key || "global");
+      const storeProductId = String(body.store_product_id || "").trim();
+      const displayName = String(body.display_name || "").trim();
+      const status = String(body.status || "draft");
+      const priceXof = body.price_xof === null || body.price_xof === undefined || body.price_xof === "" ? null : Math.round(Number(body.price_xof));
+      const commercePlanId = body.commerce_plan_id ? String(body.commerce_plan_id) : null;
+      const commerceCreatorOfferId = body.commerce_creator_offer_id ? String(body.commerce_creator_offer_id) : null;
+      if (!["android", "ios"].includes(platform) || !["consumable", "non_consumable", "subscription"].includes(productType) || !["price_tier", "commerce_plan", "creator_offer"].includes(targetKind)) return json({ error: "STORE_PRODUCT_CONFIGURATION_INVALID" }, 400);
+      if (!["global", "formations", "commerce", "omnia_live", "coaching"].includes(moduleKey) || !storeProductId || !displayName) return json({ error: "STORE_PRODUCT_REQUIRED_FIELDS" }, 400);
+      if (targetKind === "price_tier" && (!priceXof || priceXof <= 0 || commercePlanId || commerceCreatorOfferId || productType !== "consumable")) return json({ error: "STORE_PRICE_TIER_INVALID" }, 400);
+      if (targetKind === "commerce_plan" && (!commercePlanId || commerceCreatorOfferId || priceXof !== null || productType !== "subscription")) return json({ error: "STORE_SUBSCRIPTION_MAPPING_INVALID" }, 400);
+      if (targetKind === "creator_offer") {
+        if (!commerceCreatorOfferId || commercePlanId || priceXof !== null) return json({ error: "STORE_CREATOR_OFFER_MAPPING_INVALID" }, 400);
+        const { data: creatorOffer, error: creatorOfferError } = await sb.from("commerce_creator_offers").select("id,offer_kind,status").eq("id", commerceCreatorOfferId).maybeSingle();
+        if (creatorOfferError) throw creatorOfferError;
+        if (!creatorOffer || !["approved", "published", "paused"].includes(String(creatorOffer.status))) return json({ error: "STORE_CREATOR_OFFER_NOT_AVAILABLE" }, 400);
+        const expectedType = String(creatorOffer.offer_kind) === "subscription" ? "subscription" : productType;
+        if ((String(creatorOffer.offer_kind) === "subscription") !== (productType === "subscription")) return json({ error: "STORE_CREATOR_OFFER_TYPE_INVALID" }, 400);
+        void expectedType;
+      }
+      const payload = { platform, store_product_id: storeProductId, product_type: productType, target_kind: targetKind, module_key: moduleKey, price_xof: priceXof, commerce_plan_id: commercePlanId, commerce_creator_offer_id: commerceCreatorOfferId, display_name: displayName, notes: body.notes || null, status, updated_by: ctx.id };
+      const current = id ? (await sb.from("mobile_store_products").select("*").eq("id", id).maybeSingle()).data : null;
+      const result = id
+        ? await sb.from("mobile_store_products").update(payload).eq("id", id).select("*").single()
+        : await sb.from("mobile_store_products").insert({ ...payload, created_by: ctx.id }).select("*").single();
+      if (result.error) throw result.error;
+      await audit(sb, ctx.id, "admin_store_product_save", "mobile_store_product", result.data.id, current, result.data, String(body.notes || ""));
+      return json({ store_product: result.data });
+    }
+
+    if (action === "admin_store_product_status") {
+      const id = String(body.id || "");
+      const status = String(body.status || "paused");
+      if (!["draft", "active", "paused", "retired"].includes(status)) return json({ error: "STORE_PRODUCT_STATUS_INVALID" }, 400);
+      const { data: current } = await sb.from("mobile_store_products").select("*").eq("id", id).maybeSingle();
+      if (!current) return json({ error: "STORE_PRODUCT_NOT_FOUND" }, 404);
+      const { data, error } = await sb.from("mobile_store_products").update({ status, updated_by: ctx.id }).eq("id", id).select("*").single();
+      if (error) throw error;
+      await audit(sb, ctx.id, "admin_store_product_status", "mobile_store_product", id, current, data, String(body.reason || ""));
+      return json({ store_product: data });
     }
 
     if (action === "admin_benefit_save") {

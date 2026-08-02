@@ -76,6 +76,8 @@ async function authenticate(sb: Supabase, req: Request): Promise<Session | null>
   const bearerToken = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   const token = explicitToken || bearerToken;
   if (!token) return null;
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (serviceRole && token === serviceRole) return { userId: "service", roles: ["service_role"] };
   const { data: session, error } = await sb
     .from("user_sessions")
     .select("user_id")
@@ -90,6 +92,10 @@ async function authenticate(sb: Supabase, req: Request): Promise<Session | null>
 
 function isAdmin(session: Session | null): boolean {
   return !!session?.roles.includes("super_admin");
+}
+
+function isService(session: Session | null): boolean {
+  return !!session?.roles.includes("service_role");
 }
 
 const DIRECT_COACH_ELIGIBILITY_ROLES = new Set(["professeur", "formateur"]);
@@ -1530,6 +1536,9 @@ async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Rec
     dispute_window_hours: Number(settings.dispute_window_hours || 48),
   };
 
+  // A one-to-one live coaching session is an external person-to-person service.
+  // It deliberately remains on the existing FedaPay flow, including in the native app.
+  const paymentProvider = "fedapay";
   const orderNumber = existing?.order_number || coachingOrderNumber();
   const idempotencyKey = existing?.idempotency_key || await sha256Hex(`${session.userId}:${booking.id}:${orderNumber}`);
   const orderPayload = {
@@ -1540,7 +1549,7 @@ async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Rec
     amount_xof: Number(booking.price_total_xof),
     currency: "XOF",
     payment_status: "pending",
-    payment_provider: "fedapay",
+    payment_provider: paymentProvider,
     idempotency_key: idempotencyKey,
     commission_percent_snapshot: Number(booking.commission_percent_snapshot),
     commission_amount_xof: Number(booking.commission_amount_xof),
@@ -2925,9 +2934,13 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
   if (existing.data?.payment_status === "paid") return { order: existing.data, already_paid: true, payment_url: null };
   const { data: user } = await sb.from("users").select("id,full_name,email,phone_number,country_code,status").eq("id", actor.userId).maybeSingle();
   if (!user || user.status !== "actif") throw new Error("SESSION_INVALID");
+  const paymentChannel = asText(body.payment_channel, 30) || "web";
+  const nativePlatform = asText(body.platform, 20);
+  const nativeStore = paymentChannel === "native_store" && ["android", "ios"].includes(nativePlatform);
+  const paymentProvider = nativeStore ? (nativePlatform === "android" ? "google_play" : "app_store") : "fedapay";
   const orderNumber = existing.data?.order_number || advancedOrderNumber(context.productType);
   const idempotencyKey = existing.data?.idempotency_key || await sha256Hex(`${actor.userId}:${context.productType}:${context.productId}:${orderNumber}`);
-  const orderPayload = { order_number: orderNumber, session_id: null, user_id: actor.userId, coach_id: context.coachId, amount_xof: context.amountXof, currency: "XOF", payment_status: "pending", payment_provider: "fedapay", idempotency_key: idempotencyKey, commission_percent_snapshot: context.commissionPercent, commission_amount_xof: context.commissionAmount, coach_net_xof: context.coachNet, offer_title_snapshot: context.title, coach_name_snapshot: context.coachName, session_start_snapshot: context.productType === "group" ? context.snapshot.scheduled_start : null, session_end_snapshot: context.productType === "group" ? context.snapshot.scheduled_end : null, policy_snapshot: { source: "coaching_module_6" }, product_type: context.productType, product_id: context.productId, product_snapshot: context.snapshot };
+  const orderPayload = { order_number: orderNumber, session_id: null, user_id: actor.userId, coach_id: context.coachId, amount_xof: context.amountXof, currency: "XOF", payment_status: "pending", payment_provider: paymentProvider, idempotency_key: idempotencyKey, commission_percent_snapshot: context.commissionPercent, commission_amount_xof: context.commissionAmount, coach_net_xof: context.coachNet, offer_title_snapshot: context.title, coach_name_snapshot: context.coachName, session_start_snapshot: context.productType === "group" ? context.snapshot.scheduled_start : null, session_end_snapshot: context.productType === "group" ? context.snapshot.scheduled_end : null, policy_snapshot: { source: "coaching_module_6" }, product_type: context.productType, product_id: context.productId, product_snapshot: context.snapshot };
   const result = existing.data ? await sb.from("coaching_payment_orders").update(orderPayload).eq("id", existing.data.id).select("*").single() : await sb.from("coaching_payment_orders").insert(orderPayload).select("*").single();
   if (result.error) throw result.error;
   const order = result.data;
@@ -2945,6 +2958,7 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
     const { data: paidOrder } = await sb.from("coaching_payment_orders").select("*").eq("id", order.id).single();
     return { order: paidOrder || { ...order, payment_status: "paid", provider_transaction_id: freeReference }, payment_url: null, already_paid: true, free_order: true };
   }
+  if (nativeStore) return { order, payment_url: null, already_paid: false, native_store: true, platform: nativePlatform };
   const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || ""; if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
   const apiBase = fedaPayApiBase();
   const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
@@ -2957,6 +2971,49 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
   const tokenResponse=await fetch(`${apiBase}/transactions/${providerId}/token`,{method:"POST",headers:{Authorization:`Bearer ${fedaKey}`,"Content-Type":"application/json"}}); if(!tokenResponse.ok) throw new Error("PAYMENT_LINK_FAILED"); const tokenData=await tokenResponse.json(); const paymentUrl=String(tokenData.url||tokenData.token_url||""); if(!paymentUrl) throw new Error("PAYMENT_LINK_FAILED");
   await sb.from("coaching_payment_orders").update({provider_transaction_id:providerId,provider_reference:transaction?.reference||null,provider_metadata:transactionData}).eq("id",order.id);
   return { order: { ...order, provider_transaction_id: providerId }, payment_url: paymentUrl, already_paid: false };
+}
+
+
+async function storePaymentFinalize(sb: Supabase, actor: Session, body: Record<string, unknown>) {
+  if (!isService(actor)) throw new Error("SERVICE_ONLY");
+  const orderId = asText(body.order_id, 80);
+  const { data: order, error } = await sb.from("coaching_payment_orders").select("*").eq("id", orderId).maybeSingle();
+  if (error) throw error;
+  if (!order) throw new Error("COACHING_ORDER_NOT_FOUND");
+  if (order.payment_status === "paid") return { order, already_completed: true };
+  if (!["google_play", "app_store"].includes(String(order.payment_provider || ""))) throw new Error("STORE_ORDER_PROVIDER_MISMATCH");
+  const advanced = String(order.product_type || "session") !== "session";
+  if (!advanced) throw new Error("STORE_ONE_TO_ONE_EXTERNAL_SERVICE");
+  const rpcName = "coaching_confirm_advanced_payment";
+  const providerTransactionId = asText(body.provider_transaction_id, 500);
+  const providerReference = asNullableText(body.provider_reference, 500);
+  const { data: confirmation, error: confirmationError } = await sb.rpc(rpcName, {
+    p_order_id: order.id,
+    p_provider_transaction_id: providerTransactionId,
+    p_provider_reference: providerReference,
+    p_provider_metadata: body.provider_metadata || {},
+  });
+  if (confirmationError) throw confirmationError;
+  await requestCoachingInvoice(order.id);
+  if (advanced) {
+    await invokeNotification("coaching_advanced_purchase_confirmed", { userId: order.user_id, product_type: order.product_type, product_title: order.offer_title_snapshot, amount_xof: order.amount_xof, action_url: "/dashboard/coaching/avance" });
+    if (order.coach_id) {
+      const { data: coach } = await sb.from("coach_profiles").select("user_id").eq("id", order.coach_id).maybeSingle();
+      if (coach?.user_id) await invokeNotification("coaching_advanced_sale", { userId: coach.user_id, product_type: order.product_type, product_title: order.offer_title_snapshot, amount_xof: order.amount_xof, action_url: "/coach/produits" });
+    }
+  } else {
+    const [{ data: booking }, { data: learner }, { data: coach }] = await Promise.all([
+      sb.from("coaching_sessions").select("*").eq("id", order.session_id).maybeSingle(),
+      sb.from("users").select("full_name,email").eq("id", order.user_id).maybeSingle(),
+      sb.from("coach_profiles").select("user_id").eq("id", order.coach_id).maybeSingle(),
+    ]);
+    if (booking) {
+      await invokeNotification("coaching_booking_confirmed", { userId: order.user_id, session_id: booking.id, coach_name: booking.coach_name_snapshot, offer_title: booking.offer_title_snapshot, scheduled_start: booking.scheduled_start, duration_minutes: booking.duration_minutes, amount_xof: order.amount_xof, action_url: "/dashboard/coaching" });
+      if (coach?.user_id) await invokeNotification("coaching_new_booking", { userId: coach.user_id, learner_name: learner?.full_name || learner?.email || "Apprenant", session_id: booking.id, offer_title: booking.offer_title_snapshot, scheduled_start: booking.scheduled_start, duration_minutes: booking.duration_minutes, amount_xof: order.amount_xof, action_url: "/coach/sessions" });
+    }
+  }
+  const { data: paidOrder } = await sb.from("coaching_payment_orders").select("*").eq("id", order.id).single();
+  return { order: paidOrder, confirmation };
 }
 
 async function advancedPaymentStatus(sb: Supabase, actor: Session, body: Record<string, unknown>) {
@@ -3165,6 +3222,7 @@ Deno.serve(async (req: Request) => {
       session = await coachPreviewSession(sb);
     }
 
+    if (action === "store_payment_finalize") return json({ success: true, ...(await storePaymentFinalize(sb, session, body)) });
     if (action === "upload_asset") return json({ success: true, asset: await uploadAsset(sb, session, body) });
     if (action === "self_status") {
       const [applications, profile] = await Promise.all([

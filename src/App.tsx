@@ -11,6 +11,7 @@ import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import { PreviewReturnButton } from './components/PreviewReturnButton';
 import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
 import { MobileNotificationBridge } from './components/mobile/MobileNotificationBridge';
+import { MobileStoreRecoveryBridge } from './components/mobile/MobileStoreRecoveryBridge';
 
 const RequireOmniaCareerLearner = lazy(() => import('./components/auth/RequireOmniaCareerLearner'));
 const RequireOmniaCareerAdmin = lazy(() => import('./components/auth/RequireOmniaCareerAdmin'));
@@ -454,6 +455,7 @@ export default function App() {
         <SiteModeProvider>
         <MaintenanceNoticeBanner />
         <MobileNotificationBridge />
+        <MobileStoreRecoveryBridge />
         <PreviewReturnButton />
         <PlatformRoleGate>
         <Suspense fallback={<RouteLoadingFallback />}>
