@@ -1,4 +1,6 @@
 import type { CareerDocType } from './careerStudioData';
+import { exportElementAsNativePdf } from './mobile/pdf';
+import { isNativeApp } from './mobile/platform';
 
 export type CareerPrintOptions = {
   title: string;
@@ -23,11 +25,7 @@ function collectStyles() {
     .join('\n');
 }
 
-export function printCareerElementAsPdf(element: HTMLElement | null, options: CareerPrintOptions) {
-  if (!element) {
-    throw new Error("Aucun aperçu imprimable n'est disponible.");
-  }
-
+function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintOptions): void {
   const cloned = element.cloneNode(true) as HTMLElement;
   cloned.querySelectorAll('[data-no-print="true"]').forEach((node) => node.remove());
 
@@ -102,4 +100,25 @@ export function printCareerElementAsPdf(element: HTMLElement | null, options: Ca
 </body>
 </html>`);
   popup.document.close();
+}
+
+export async function printCareerElementAsPdf(
+  element: HTMLElement | null,
+  options: CareerPrintOptions,
+): Promise<void> {
+  if (!element) {
+    throw new Error("Aucun aperçu imprimable n'est disponible.");
+  }
+
+  if (isNativeApp()) {
+    const title = options.title || 'Document Omnia Career';
+    await exportElementAsNativePdf(element, {
+      title,
+      fileName: `${safeFileName(title)}.pdf`,
+      orientation: 'portrait',
+    });
+    return;
+  }
+
+  printCareerElementInBrowser(element, options);
 }

@@ -11,6 +11,7 @@ import {
   ClrAchievement, ClrExportResponse, ClrImport, ClrRecord, ClrShare, ClrVisibility, LearnerClrResponse,
   credentialStatusLabel, credentialsRequest, visibilityLabel,
 } from '../../lib/credentialsApi';
+import { isNativeApp, saveOrShareText } from '../../lib/mobile';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -147,14 +148,15 @@ export default function DashboardLearningRecord() {
     try {
       const response = await credentialsRequest<ClrExportResponse>('learner_export_clr', { format });
       const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content, null, 2);
-      const blob = new Blob([content], { type: response.media_type });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url; link.download = response.file_name;
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveOrShareText(content, {
+        fileName: response.file_name,
+        mimeType: response.media_type,
+        title: format === 'vc_jwt' ? 'CLR 2.0 signé' : 'Learning Record JSON-LD',
+      });
       setRecord(response.record);
-      setNotice(format === 'vc_jwt' ? 'CLR 2.0 signé et exporté.' : 'Learning Record exporté en JSON-LD.');
+      setNotice(isNativeApp()
+        ? 'Learning Record prêt à enregistrer ou partager.'
+        : format === 'vc_jwt' ? 'CLR 2.0 signé et exporté.' : 'Learning Record exporté en JSON-LD.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Export impossible.'); }
     finally { setWorking(''); }
   }

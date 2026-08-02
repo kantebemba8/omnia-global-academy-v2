@@ -23,7 +23,10 @@
     "mobile:assets:android": "capacitor-assets generate --android --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\"",
     "mobile:assets:ios": "capacitor-assets generate --ios --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\"",
     "test:mobile:module2": "node scripts/mobile/verify-module2.mjs --source",
-    "test:mobile:module2:android": "node scripts/mobile/verify-module2.mjs --android"
+    "test:mobile:module2:android": "node scripts/mobile/verify-module2.mjs --android",
+    "test:mobile:module3": "node scripts/mobile/verify-module3.mjs --source",
+    "test:mobile:module3:android": "node scripts/mobile/verify-module3.mjs --android",
+    "mobile:module3:ios": "node scripts/mobile/apply-module3-ios.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
@@ -42,7 +45,13 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
-    "recharts": "^3.9.1"
+    "recharts": "^3.9.1",
+    "@capacitor/camera": "8.2.1",
+    "@capacitor/filesystem": "8.1.2",
+    "@capacitor/share": "8.0.1",
+    "html2canvas": "1.4.1",
+    "jspdf": "4.2.1",
+    "jsqr": "1.4.0"
   },
   "devDependencies": {
     "@capacitor/assets": "3.0.5",
@@ -68,8 +77,12 @@
     "node": ">=22.0.0"
   },
   "allowScripts": {
+    "core-js@3.49.0": true,
     "esbuild@0.21.5": true,
-    "sharp@0.32.6": true,
-    "fsevents@2.3.3": true
+    "fsevents@2.3.3": true,
+    "sharp@0.32.6": true
+  },
+  "overrides": {
+    "core-js": "3.49.0"
   }
 }

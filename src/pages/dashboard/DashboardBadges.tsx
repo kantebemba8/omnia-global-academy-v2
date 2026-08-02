@@ -11,6 +11,7 @@ import {
   credentialsRequest,
   visibilityLabel,
 } from '../../lib/credentialsApi';
+import { downloadOrShareRemoteFile, isNativeApp } from '../../lib/mobile';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -25,6 +26,20 @@ export default function DashboardBadges() {
   const [saving, setSaving] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
   const previewMode = isLearnerPreviewMode();
+  const nativeApp = isNativeApp();
+
+  async function exportBadgeJwt(badge: BadgeAward) {
+    try {
+      await downloadOrShareRemoteFile(credentialAssetUrl(badge.verification_code, 'jwt'), {
+        fileName: `badge-${badge.verification_code}.jwt`,
+        mimeType: 'application/vc+jwt',
+        title: `Badge ${badge.title}`,
+      });
+      setNotice(nativeApp ? 'Badge prêt à enregistrer ou partager.' : 'Badge téléchargé.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Export du badge impossible.');
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -192,9 +207,9 @@ export default function DashboardBadges() {
                           <Eye size={15} /> Copier
                         </button>
                         {signed && (
-                          <a href={credentialAssetUrl(badge.verification_code, 'jwt')} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
-                            <Download size={15} /> Télécharger le VC-JWT
-                          </a>
+                          <button type="button" onClick={() => void exportBadgeJwt(badge)} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" style={{ color: BLUE }}>
+                            <Download size={15} /> {nativeApp ? 'Enregistrer ou partager le VC-JWT' : 'Télécharger le VC-JWT'}
+                          </button>
                         )}
                       </div>
                     ) : (

@@ -21,6 +21,7 @@ import {
 import { ENDPOINTS } from '../lib/config';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useLanguage } from '../i18n/LanguageContext';
+import { decodeQrFile, downloadOrShareRemoteFile, isNativeApp, scanQrWithNativeCamera } from '../lib/mobile';
 
 interface Accreditation {
   organization_name?: string;
@@ -225,8 +226,10 @@ export default function VerifyCertificate() {
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
+  const nativeApp = isNativeApp();
 
   const verify = useCallback(async (rawId?: string) => {
     const id = extractCertificateId(rawId ?? input);
@@ -257,33 +260,59 @@ export default function VerifyCertificate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [certificateId]);
 
+  function showScanError(error: unknown) {
+    setResult({
+      valid: false,
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Impossible de lire ce QR code.',
+    });
+    setSearched(true);
+    setVerifiedAt(new Date());
+  }
+
   async function scanQrFromFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
     setScanLoading(true);
     try {
-      const BarcodeDetectorClass = (window as unknown as {
-        BarcodeDetector?: new (options: { formats: string[] }) => {
-          detect(source: ImageBitmap): Promise<Array<{ rawValue: string }>>;
-        };
-      }).BarcodeDetector;
-      if (!BarcodeDetectorClass) {
-        throw new Error('La lecture QR n’est pas prise en charge par ce navigateur. Saisissez l’identifiant manuellement.');
-      }
-      const bitmap = await createImageBitmap(file);
-      const detector = new BarcodeDetectorClass({ formats: ['qr_code'] });
-      const codes = await detector.detect(bitmap);
-      bitmap.close();
-      const value = codes[0]?.rawValue;
-      if (!value) throw new Error('Aucun QR code lisible n’a été détecté dans cette image.');
-      await verify(value);
+      await verify(await decodeQrFile(file));
     } catch (error) {
-      setResult({ valid: false, status: 'error', message: error instanceof Error ? error.message : 'Impossible de lire ce QR code.' });
-      setSearched(true);
-      setVerifiedAt(new Date());
+      showScanError(error);
     } finally {
       setScanLoading(false);
+    }
+  }
+
+  async function scanQrCode() {
+    if (!nativeApp) {
+      cameraInputRef.current?.click();
+      return;
+    }
+    setScanLoading(true);
+    try {
+      const value = await scanQrWithNativeCamera();
+      if (value) await verify(value);
+    } catch (error) {
+      showScanError(error);
+    } finally {
+      setScanLoading(false);
+    }
+  }
+
+  async function downloadCertificatePdf() {
+    if (!certificate?.pdf_url || downloadLoading) return;
+    setDownloadLoading(true);
+    try {
+      await downloadOrShareRemoteFile(certificate.pdf_url, {
+        fileName: `certificat-${certificate.id || input || 'omnia'}.pdf`,
+        mimeType: certificate.pdf_mime_type || 'application/pdf',
+        title: 'Certificat Omnia Global Academy',
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Téléchargement du certificat impossible.');
+    } finally {
+      setDownloadLoading(false);
     }
   }
 
@@ -382,14 +411,14 @@ export default function VerifyCertificate() {
               <div className="mt-6 rounded-xl border border-dashed border-[#D6C39D] bg-[#FDFBF7] px-6 py-8 text-center">
                 <QrCode className="mx-auto h-10 w-10 text-[#BF8813]" />
                 <p className="mt-3 text-sm font-semibold text-[#002050]">Importer une photo du QR code</p>
-                <p className="mt-1 text-xs text-slate-500">Formats JPG, PNG ou WEBP. La lecture reste locale dans votre navigateur.</p>
+                <p className="mt-1 text-xs text-slate-500">La lecture reste locale sur votre appareil. Aucune image du QR code n’est envoyée.</p>
                 <button
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={() => void scanQrCode()}
                   disabled={scanLoading}
                   className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg border border-[#BF8813] px-5 text-sm font-semibold text-[#9B6A0A] hover:bg-[#FFF8E8] disabled:opacity-60"
                 >
-                  {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
-                  Choisir une image
+                  {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : nativeApp ? <QrCode className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+                  {nativeApp ? 'Scanner avec la caméra' : 'Choisir une image'}
                 </button>
                 <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={scanQrFromFile} className="hidden" />
               </div>
@@ -420,7 +449,7 @@ export default function VerifyCertificate() {
                     <Detail label="Émetteur" value={certificate.issuer_name || 'Omnia Global Academy'} />
                     <Detail label="Statut" value={status === 'valid' ? 'Valide' : status === 'expired' ? 'Expiré' : 'Révoqué'} accent={statusTheme.text} />
                     {certificate.pdf_sha256 && <Detail label="Empreinte PDF" value={certificate.pdf_sha256.slice(0, 20) + '…'} mono />}
-                    {certificate.pdf_url && status === 'valid' && <div className="sm:col-span-2"><a href={certificate.pdf_url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}><Download className="h-4 w-4" /> Télécharger le certificat PDF</a></div>}
+                    {certificate.pdf_url && status === 'valid' && <div className="sm:col-span-2"><button type="button" onClick={() => void downloadCertificatePdf()} disabled={downloadLoading} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ background: '#002050' }}>{downloadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} {nativeApp ? 'Enregistrer ou partager le PDF' : 'Télécharger le certificat PDF'}</button></div>}
                     {result.revocation_reason && <div className="sm:col-span-2"><Detail label="Motif de révocation" value={result.revocation_reason} /></div>}
                   </div>
                 ) : (

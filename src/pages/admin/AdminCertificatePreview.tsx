@@ -1,5 +1,5 @@
-import { openInternalPreviewUrl } from '../../lib/mobile';
-import { useMemo, useState } from 'react';
+import { exportElementAsNativePdf, isNativeApp, openInternalPreviewUrl } from '../../lib/mobile';
+import { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Download, ExternalLink, Eye, Printer } from 'lucide-react';
@@ -204,6 +204,8 @@ export default function AdminCertificatePreview() {
   const [professorName, setProfessorName] = useState(params.get('professor') || 'Dr. Oumar Traoré');
   const [schoolName, setSchoolName] = useState(params.get('school') || 'Institut Supérieur de Technologie');
   const [directorName, setDirectorName] = useState(params.get('director') || 'Moussa Koné');
+  const previewRef = useRef<HTMLDivElement>(null);
+  const nativeApp = isNativeApp();
 
   const previewProps = useMemo<PreviewProps>(() => ({
     template, documentKind, cpd, studentName, courseTitle, level, category, cpdHours, professorName, schoolName, directorName,
@@ -217,15 +219,33 @@ export default function AdminCertificatePreview() {
     return `/admin/certificate-preview?${query.toString()}`;
   }
 
+  async function exportPreview() {
+    if (nativeApp) {
+      if (!previewRef.current) return;
+      await exportElementAsNativePdf(previewRef.current, {
+        fileName: `apercu-certificat-${template}.pdf`,
+        title: `Aperçu ${DOCUMENT_COPY[documentKind].label}`,
+        orientation: 'landscape',
+      });
+      return;
+    }
+    if (fullscreen) {
+      window.print();
+      return;
+    }
+    const win = window.open(fullscreenUrl(), '_blank');
+    window.setTimeout(() => win?.print(), 1200);
+  }
+
   if (fullscreen) {
     return (
       <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:bg-white print:p-0">
         <style>{`@page{size:A4 landscape;margin:0}.certificate-print-actions{display:flex}@media print{.certificate-print-actions{display:none!important}body{background:#fff}.certificate-print-wrap{width:297mm!important;height:210mm!important;padding:8mm!important;display:flex!important;align-items:center!important;justify-content:center!important}.certificate-print-wrap #certificate-preview-canvas{box-shadow:none!important;border-radius:0!important}}`}</style>
         <div className="certificate-print-actions mx-auto mb-4 flex max-w-[1122px] justify-end gap-2">
           <button onClick={() => window.close()} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Fermer</button>
-          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Printer size={15} /> Télécharger / imprimer PDF</button>
+          <button onClick={() => void exportPreview()} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Printer size={15} /> {nativeApp ? 'Enregistrer ou partager le PDF' : 'Télécharger / imprimer PDF'}</button>
         </div>
-        <div className="certificate-print-wrap mx-auto max-w-[1122px]"><CertificateCanvas {...previewProps} /></div>
+        <div ref={previewRef} className="certificate-print-wrap mx-auto max-w-[1122px]"><CertificateCanvas {...previewProps} /></div>
       </div>
     );
   }
@@ -241,7 +261,7 @@ export default function AdminCertificatePreview() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => openInternalPreviewUrl(fullscreenUrl())} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><ExternalLink size={15} /> Aperçu pleine page</button>
-            <button onClick={() => { const win = window.open(fullscreenUrl(), '_blank'); window.setTimeout(() => win?.print(), 1200); }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Download size={15} /> Télécharger / imprimer</button>
+            <button onClick={() => void exportPreview()} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><Download size={15} /> {nativeApp ? 'Enregistrer ou partager' : 'Télécharger / imprimer'}</button>
           </div>
         </header>
 
@@ -294,7 +314,7 @@ export default function AdminCertificatePreview() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2"><Eye size={16} style={{ color: BLUE }} /><span className="text-sm font-semibold" style={{ color: BLUE }}>Aperçu — {DOCUMENT_COPY[documentKind].label} · Template {template}{cpd ? ' + reconnaissance' : ''}</span></div>
               </div>
-              <CertificateCanvas {...previewProps} />
+              <div ref={previewRef}><CertificateCanvas {...previewProps} /></div>
             </div>
           </div>
         </div>

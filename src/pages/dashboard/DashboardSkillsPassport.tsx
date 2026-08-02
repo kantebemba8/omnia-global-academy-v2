@@ -12,6 +12,7 @@ import {
   SkillsPassportExportResponse, SkillsPassportShare, credentialStatusLabel,
   credentialsRequest,
 } from '../../lib/credentialsApi';
+import { isNativeApp, saveOrShareText } from '../../lib/mobile';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -142,12 +143,15 @@ export default function DashboardSkillsPassport() {
     try {
       const response = await credentialsRequest<SkillsPassportExportResponse>('learner_export_skills_passport', { format });
       const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content, null, 2);
-      const url = URL.createObjectURL(new Blob([content], { type: response.media_type }));
-      const link = document.createElement('a'); link.href = url; link.download = response.file_name;
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveOrShareText(content, {
+        fileName: response.file_name,
+        mimeType: response.media_type,
+        title: format === 'vc_jwt' ? 'Skills Passport signé' : 'Skills Passport JSON-LD',
+      });
       setPassport(response.passport);
-      setNotice(format === 'vc_jwt' ? 'Passeport signé exporté.' : 'Passeport JSON-LD exporté.');
+      setNotice(isNativeApp()
+        ? 'Skills Passport prêt à enregistrer ou partager.'
+        : format === 'vc_jwt' ? 'Passeport signé exporté.' : 'Passeport JSON-LD exporté.');
     } catch (cause) { setError(humanError(cause instanceof Error ? cause.message : 'Export impossible.')); }
     finally { setWorking(''); }
   }

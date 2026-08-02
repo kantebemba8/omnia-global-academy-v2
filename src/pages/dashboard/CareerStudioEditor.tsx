@@ -47,6 +47,7 @@ import {
 } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
+import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
@@ -843,7 +844,7 @@ export default function CareerStudioEditor() {
         setTokens(result.tokens_remaining);
       }
 
-      printCareerElementAsPdf(printRef.current, {
+      await printCareerElementAsPdf(printRef.current, {
         title: currentDocument.title || (currentDocument.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
         docType: currentDocument.doc_type,
         tokensConsumed: result.tokens_consumed,
@@ -1307,6 +1308,7 @@ function EditorPanel({
 }
 
 function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data: DocData; update: (mutator: (data: DocData) => DocData) => void }) {
+  const nativeApp = isNativeApp();
   if (active === 'profile') {
     return (
       <div className="space-y-3">
@@ -1345,6 +1347,25 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
                     }}
                   />
                 </label>
+                {nativeApp && <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const photo = await pickNativeImageAsDataUrl({ source: 'camera', quality: 82, width: 1200 });
+                      if (!photo) return;
+                      if (approximateDataUrlBytes(photo) > 2 * 1024 * 1024) {
+                        window.alert('Cette photo dépasse 2 Mo. Reprenez-la avec une résolution plus faible.');
+                        return;
+                      }
+                      update(d => ({ ...d, photo_url: photo }));
+                    } catch (error) {
+                      window.alert(error instanceof Error ? error.message : 'Impossible d’utiliser la caméra.');
+                    }
+                  }}
+                  className="rounded-xl border border-[#002050] px-3 py-2 text-xs font-semibold text-[#002050]"
+                >
+                  Prendre une photo
+                </button>}
                 {data.photo_url && <button type="button" onClick={() => update(d => ({ ...d, photo_url: '', photo_zoom: 1, photo_position_x: 50, photo_position_y: 50 }))} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600">Supprimer</button>}
               </div>
             </div>

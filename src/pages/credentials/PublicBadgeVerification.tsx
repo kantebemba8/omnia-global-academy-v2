@@ -8,6 +8,7 @@ import {
   credentialStatusLabel,
   credentialsRequest,
 } from '../../lib/credentialsApi';
+import { downloadOrShareRemoteFile, isNativeApp } from '../../lib/mobile';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -24,6 +25,22 @@ export default function PublicBadgeVerification() {
   const [verification, setVerification] = useState<CredentialVerification | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const nativeApp = isNativeApp();
+
+  async function exportAsset(format: 'jwt' | 'json' | 'qr') {
+    if (!badge) return;
+    try {
+      const extension = format === 'json' ? 'jsonld' : format;
+      const mimeType = format === 'json' ? 'application/ld+json' : format === 'qr' ? 'image/png' : 'application/vc+jwt';
+      await downloadOrShareRemoteFile(credentialAssetUrl(badge.verification_code, format), {
+        fileName: `badge-${badge.verification_code}.${extension}`,
+        mimeType,
+        title: `Badge ${badge.title}`,
+      });
+    } catch (cause) {
+      window.alert(cause instanceof Error ? cause.message : 'Export du badge impossible.');
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -148,16 +165,16 @@ export default function PublicBadgeVerification() {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {badge.credential_jwt_available && (
-                    <a href={credentialAssetUrl(badge.verification_code, 'jwt')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>
-                      <Download size={16} /> Télécharger VC-JWT
-                    </a>
+                    <button type="button" onClick={() => void exportAsset('jwt')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>
+                      <Download size={16} /> {nativeApp ? 'Enregistrer VC-JWT' : 'Télécharger VC-JWT'}
+                    </button>
                   )}
-                  <a href={credentialAssetUrl(badge.verification_code, 'json')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold" style={{ color: BLUE }}>
-                    <Download size={16} /> Télécharger JSON-LD
-                  </a>
-                  <a href={credentialAssetUrl(badge.verification_code, 'qr')} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold" style={{ color: BLUE }}>
-                    <QrCode size={16} /> Ouvrir le QR code
-                  </a>
+                  <button type="button" onClick={() => void exportAsset('json')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold" style={{ color: BLUE }}>
+                    <Download size={16} /> {nativeApp ? 'Enregistrer JSON-LD' : 'Télécharger JSON-LD'}
+                  </button>
+                  <button type="button" onClick={() => void exportAsset('qr')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold" style={{ color: BLUE }}>
+                    <QrCode size={16} /> {nativeApp ? 'Enregistrer le QR code' : 'Ouvrir le QR code'}
+                  </button>
                 </div>
               </section>
 
