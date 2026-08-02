@@ -4675,3 +4675,25 @@ html.oga-native.oga-keyboard-open #root {
   padding-right: var(--oga-safe-right);
   padding-left: var(--oga-safe-left);
 }
+
+/* Module 2: lecteur pédagogique et contenus interactifs sur mobile. */
+.oga-course-reader-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+html.oga-native .oga-course-reader-shell {
+  height: calc(100dvh - var(--oga-safe-top) - var(--oga-safe-bottom));
+  min-height: calc(100dvh - var(--oga-safe-top) - var(--oga-safe-bottom));
+}
+
+.oga-scorm-fullscreen {
+  inset: 0;
+}
+
+html.oga-native .oga-scorm-fullscreen {
+  top: var(--oga-safe-top);
+  right: var(--oga-safe-right);
+  bottom: var(--oga-safe-bottom);
+  left: var(--oga-safe-left);
+}

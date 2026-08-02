@@ -21,7 +21,9 @@
     "mobile:open:ios": "cap open ios",
     "mobile:assets": "capacitor-assets generate --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\"",
     "mobile:assets:android": "capacitor-assets generate --android --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\"",
-    "mobile:assets:ios": "capacitor-assets generate --ios --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\""
+    "mobile:assets:ios": "capacitor-assets generate --ios --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#002050\" --splashBackgroundColor \"#FFFFFF\" --splashBackgroundColorDark \"#002050\"",
+    "test:mobile:module2": "node scripts/mobile/verify-module2.mjs --source",
+    "test:mobile:module2:android": "node scripts/mobile/verify-module2.mjs --android"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
@@ -31,6 +33,7 @@
     "@capacitor/core": "8.4.2",
     "@capacitor/ios": "8.4.2",
     "@capacitor/keyboard": "8.0.5",
+    "@capacitor/network": "8.0.1",
     "@capacitor/splash-screen": "8.0.2",
     "@capacitor/status-bar": "8.0.3",
     "@sentry/react": "^10.63.0",
@@ -63,5 +66,10 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "sharp@0.32.6": true,
+    "fsevents@2.3.3": true
   }
 }

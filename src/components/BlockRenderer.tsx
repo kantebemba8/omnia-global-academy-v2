@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Star, Info, AlertTriangle, Lightbulb, BookOpen, CheckCircle,
   Download, Play, FileText, Table, Layers, ChevronDown, ChevronUp,
-  ChevronRight, RotateCcw, Check, X
+  RotateCcw, Check, X, WifiOff
 } from 'lucide-react';
 
 interface Block {
@@ -21,6 +21,7 @@ interface Block {
 interface BlockRendererProps {
   block: Block;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
+  isOnline?: boolean;
 }
 
 // ─── Utilitaire taille fichier ─────────────────────────────────
@@ -33,8 +34,20 @@ function fmtSize(bytes?: number) {
 // ══════════════════════════════════════════════════════════════
 // BLOCK RENDERER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
-export function BlockRenderer({ block, onQuizAnswer }: BlockRendererProps) {
+export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRendererProps) {
   const c = block.content_json;
+  const onlineOnlyTypes = new Set(['video', 'audio', 'pdf', 'word', 'download', 'excel', 'scorm', 'embed']);
+  if (!isOnline && onlineOnlyTypes.has(block.block_type)) {
+    return (
+      <div className="my-4 flex items-start gap-3 rounded-xl border p-4" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
+        <WifiOff size={18} className="mt-0.5 shrink-0" style={{ color: '#BF8813' }} />
+        <div>
+          <p className="text-sm font-semibold" style={{ color: '#002050' }}>{block.title || 'Ressource disponible en ligne'}</p>
+          <p className="mt-1 text-xs" style={{ color: '#6B7280' }}>Reconnectez-vous pour ouvrir cette ressource. Le texte conservé dans la leçon reste accessible.</p>
+        </div>
+      </div>
+    );
+  }
 
   switch (block.block_type) {
 
@@ -723,10 +736,11 @@ function InteractiveTableBlock({ headers, rows, style }: { headers: string[]; ro
 }
 
 // ─── Export : Rendu d'une leçon complète ─────────────────────
-export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer }: {
+export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, isOnline = true }: {
   blocks: Block[];
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
+  isOnline?: boolean;
 }) {
   // Compatibilité ascendante : si pas de blocs, afficher content_text
   if (!blocks || blocks.length === 0) {
@@ -746,7 +760,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer }: {
       {blocks
         .sort((a, b) => a.position - b.position)
         .map(block => (
-          <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} />
+          <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} isOnline={isOnline} />
         ))}
     </div>
   );

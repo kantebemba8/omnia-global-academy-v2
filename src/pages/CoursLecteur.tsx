@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -6,7 +6,9 @@ import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
 import { AssessmentEngine } from '../components/AssessmentEngine';
-import { getResilientDeviceId, loadResilientLesson, queueOfflineSeconds, saveResilientLesson, takeOfflineSeconds } from '../lib/resilientCourseStore';
+import { acknowledgeOfflineSeconds, getResilientDeviceId, listOfflineProgress, listResilientLessonIds, loadResilientCourseProgress, loadResilientLesson, queueOfflineSeconds, saveResilientCourseProgress, saveResilientLesson } from '../lib/resilientCourseStore';
+import { useOmniaNetworkStatus } from '../hooks/useOmniaNetwork';
+import { openExternalUrl } from '../lib/mobile';
 interface AiMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -41,6 +43,22 @@ interface LessonContent {
   }>;
 }
 
+interface CourseProgressSnapshot {
+  modules: ModuleItem[];
+  finalUnlocked: boolean;
+  progressPct: number;
+  savedAt: string;
+}
+
+interface LessonDataPayload {
+  lesson: LessonContent;
+  progress: { time_spent_seconds: number; quiz_passed: boolean; is_completed: boolean };
+  required_seconds: number;
+  cpd_time_reached: boolean;
+  next_lesson_id: string | null;
+  blocks?: Array<Record<string, unknown>>;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function findFirstIncomplete(mods: ModuleItem[]): string | null {
   for (const mod of mods) {
@@ -53,6 +71,17 @@ function findNext(mods: ModuleItem[], id: string): string | null {
   const all = mods.flatMap(m => m.lessons);
   const idx = all.findIndex(l => l.lesson_id === id);
   return idx >= 0 && idx < all.length - 1 ? all[idx + 1].lesson_id : null;
+}
+function findFirstOfflineLesson(mods: ModuleItem[], availableLessonIds: ReadonlySet<string>): string | null {
+  for (const mod of mods) {
+    if (!mod.is_unlocked) continue;
+    const available = mod.lessons.find(lesson => availableLessonIds.has(lesson.lesson_id));
+    if (available) return available.lesson_id;
+  }
+  return null;
+}
+function courseProgressExpiry(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 function fmtTime(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
 
@@ -138,50 +167,90 @@ function DicteeAudioExercise({ texteReference, audioUrl }: { texteReference: str
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
-function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onGoFinal, finalUnlocked }: {
-  modules: ModuleItem[]; currentLessonId: string | null;
-  onSelectLesson: (id: string) => void; onGoExam: (modId: string) => void;
-  onGoFinal: () => void; finalUnlocked: boolean;
+function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onGoFinal, finalUnlocked, isOnline, offlineLessonIds }: {
+  modules: ModuleItem[];
+  currentLessonId: string | null;
+  onSelectLesson: (id: string) => void;
+  onGoExam: (modId: string) => void;
+  onGoFinal: () => void;
+  finalUnlocked: boolean;
+  isOnline: boolean;
+  offlineLessonIds: ReadonlySet<string>;
 }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set(modules.map(m => m.module_id)));
-  const toggle = (id: string) => setOpen(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  const typeIcon = (ct: string) => ct === 'video' ? <PlayCircle size={13} /> : ct === 'audio' ? <Volume2 size={13} /> : ct === 'external' ? <ExternalLink size={13} /> : <FileText size={13} />;
+  const [open, setOpen] = useState<Set<string>>(() => new Set(modules.map(module => module.module_id)));
+  useEffect(() => {
+    setOpen(previous => {
+      const next = new Set(previous);
+      modules.forEach(module => next.add(module.module_id));
+      return next;
+    });
+  }, [modules]);
+  const toggle = (id: string) => setOpen(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const typeIcon = (contentType: string) => contentType === 'video'
+    ? <PlayCircle size={13} />
+    : contentType === 'audio'
+      ? <Volume2 size={13} />
+      : contentType === 'external'
+        ? <ExternalLink size={13} />
+        : <FileText size={13} />;
 
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: '#FAFAFA', borderRight: '1px solid #E4E7EC' }}>
       <div className="py-3">
-        {modules.map(mod => (
-          <div key={mod.module_id}>
-            <button onClick={() => toggle(mod.module_id)}
+        {modules.map(module => (
+          <div key={module.module_id}>
+            <button
+              onClick={() => toggle(module.module_id)}
               className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-gray-100 transition-colors"
-              style={{ opacity: mod.is_unlocked ? 1 : 0.45 }}>
-              <span className="flex-1 text-xs font-bold uppercase tracking-wide" style={{ color: '#002050' }}>{mod.position}. {mod.title}</span>
-              {open.has(mod.module_id) ? <ChevronDown size={14} style={{ color: '#9CA3AF' }} /> : <ChevronRight size={14} style={{ color: '#9CA3AF' }} />}
+              style={{ opacity: module.is_unlocked ? 1 : 0.45 }}
+            >
+              <span className="flex-1 text-xs font-bold uppercase tracking-wide" style={{ color: '#002050' }}>{module.position}. {module.title}</span>
+              {open.has(module.module_id) ? <ChevronDown size={14} style={{ color: '#9CA3AF' }} /> : <ChevronRight size={14} style={{ color: '#9CA3AF' }} />}
             </button>
-            {open.has(mod.module_id) && (
+            {open.has(module.module_id) && (
               <div>
-                {mod.lessons.map(l => {
-                  const cur = l.lesson_id === currentLessonId;
+                {module.lessons.map(lesson => {
+                  const current = lesson.lesson_id === currentLessonId;
+                  const availableOffline = offlineLessonIds.has(lesson.lesson_id);
+                  const canOpen = module.is_unlocked && (isOnline || availableOffline);
                   return (
-                    <button key={l.lesson_id}
-                      onClick={() => mod.is_unlocked && onSelectLesson(l.lesson_id)}
+                    <button
+                      key={lesson.lesson_id}
+                      onClick={() => canOpen && onSelectLesson(lesson.lesson_id)}
+                      disabled={!canOpen}
+                      title={!isOnline && !availableOffline ? 'Cette leçon n’est pas conservée sur cet appareil.' : undefined}
                       className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left transition-colors"
-                      style={{ backgroundColor: cur ? '#EEF2FF' : 'transparent', cursor: mod.is_unlocked ? 'pointer' : 'not-allowed', opacity: mod.is_unlocked ? 1 : 0.5 }}>
-                      {l.is_completed ? <CheckCircle size={14} style={{ color: '#1E7A52', flexShrink: 0 }} />
-                        : cur ? <PlayCircle size={14} style={{ color: '#002050', flexShrink: 0 }} />
+                      style={{
+                        backgroundColor: current ? '#EEF2FF' : 'transparent',
+                        cursor: canOpen ? 'pointer' : 'not-allowed',
+                        opacity: canOpen ? 1 : 0.42,
+                      }}
+                    >
+                      {lesson.is_completed
+                        ? <CheckCircle size={14} style={{ color: '#1E7A52', flexShrink: 0 }} />
+                        : current
+                          ? <PlayCircle size={14} style={{ color: '#002050', flexShrink: 0 }} />
                           : <Circle size={14} style={{ color: '#D1D5DB', flexShrink: 0 }} />}
-                      <span className="text-xs leading-tight flex-1" style={{ color: cur ? '#002050' : '#374151', fontWeight: cur ? 600 : 400 }}>{l.title}</span>
-                      <span className="ml-auto flex-shrink-0" style={{ color: '#9CA3AF' }}>{typeIcon(l.content_type)}</span>
+                      <span className="text-xs leading-tight flex-1" style={{ color: current ? '#002050' : '#374151', fontWeight: current ? 600 : 400 }}>{lesson.title}</span>
+                      {!isOnline && availableOffline && <Database size={12} aria-label="Disponible hors connexion" style={{ color: '#1E7A52', flexShrink: 0 }} />}
+                      <span className="ml-auto flex-shrink-0" style={{ color: '#9CA3AF' }}>{typeIcon(lesson.content_type)}</span>
                     </button>
                   );
                 })}
-                {mod.is_unlocked && (
-                  <button onClick={() => mod.exam_unlocked && onGoExam(mod.module_id)}
+                {module.is_unlocked && (
+                  <button
+                    onClick={() => isOnline && module.exam_unlocked && onGoExam(module.module_id)}
+                    disabled={!isOnline || !module.exam_unlocked}
                     className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left hover:bg-gray-50 transition-colors"
-                    style={{ opacity: mod.exam_unlocked ? 1 : 0.4, cursor: mod.exam_unlocked ? 'pointer' : 'default' }}>
-                    <ClipboardList size={14} style={{ color: mod.exam_passed ? '#1E7A52' : '#BF8813', flexShrink: 0 }} />
-                    <span className="text-xs font-semibold" style={{ color: mod.exam_passed ? '#1E7A52' : '#BF8813' }}>
-                      {mod.exam_passed ? `Examen ✓ (${mod.exam_score}%)` : 'Examen de module'}
+                    style={{ opacity: isOnline && module.exam_unlocked ? 1 : 0.4, cursor: isOnline && module.exam_unlocked ? 'pointer' : 'default' }}
+                  >
+                    <ClipboardList size={14} style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813', flexShrink: 0 }} />
+                    <span className="text-xs font-semibold" style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813' }}>
+                      {module.exam_passed ? `Examen ✓ (${module.exam_score}%)` : isOnline ? 'Examen de module' : 'Examen disponible en ligne'}
                     </span>
                   </button>
                 )}
@@ -191,9 +260,13 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
         ))}
         {finalUnlocked && (
           <div style={{ borderTop: '1px solid #E4E7EC', marginTop: 8, paddingTop: 8 }}>
-            <button onClick={onGoFinal} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-amber-50 transition-colors">
+            <button
+              onClick={() => isOnline && onGoFinal()}
+              disabled={!isOnline}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-amber-50 transition-colors disabled:opacity-40"
+            >
               <Trophy size={15} style={{ color: '#BF8813' }} />
-              <span className="text-xs font-bold" style={{ color: '#BF8813' }}>Validation finale</span>
+              <span className="text-xs font-bold" style={{ color: '#BF8813' }}>{isOnline ? 'Validation finale' : 'Validation finale disponible en ligne'}</span>
             </button>
           </div>
         )}
@@ -239,17 +312,14 @@ export function CoursLecteur() {
   const { user, sessionToken, loading: authLoading } = useAuth();
   const previewMode = new URLSearchParams(window.location.search).get('preview');
   const isAdminPreview = previewMode === 'admin';
+  const network = useOmniaNetworkStatus();
+  const isOnline = network.connected;
 
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [finalUnlocked, setFinalUnlocked] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(routeLessonId ?? null);
-  const [lessonData, setLessonData] = useState<{
-    lesson: LessonContent;
-    progress: { time_spent_seconds: number; quiz_passed: boolean; is_completed: boolean };
-    required_seconds: number; cpd_time_reached: boolean;
-    next_lesson_id: string | null; blocks?: any[];
-  } | null>(null);
+  const [lessonData, setLessonData] = useState<LessonDataPayload | null>(null);
   const [progressLoading, setProgressLoading] = useState(true);
   const [lessonLoading, setLessonLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
@@ -263,33 +333,36 @@ export function CoursLecteur() {
   const [aiError, setAiError] = useState('');
   const aiBottomRef = useRef<HTMLDivElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [dataSaver, setDataSaver] = useState(() => localStorage.getItem('omnia_data_saver') === '1');
   const [resilientMessage, setResilientMessage] = useState('');
   const [resilientBusy, setResilientBusy] = useState(false);
   const [usingLocalCopy, setUsingLocalCopy] = useState(false);
+  const [usingLocalProgram, setUsingLocalProgram] = useState(false);
+  const [offlineLessonIds, setOfflineLessonIds] = useState<string[]>([]);
+  const [appActive, setAppActive] = useState(true);
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const online = () => setIsOnline(true);
-    const offline = () => setIsOnline(false);
-    window.addEventListener('online', online);
-    window.addEventListener('offline', offline);
-    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
-  }, []);
+  const offlineLessonSet = useMemo(() => new Set(offlineLessonIds), [offlineLessonIds]);
 
   useEffect(() => {
     localStorage.setItem('omnia_data_saver', dataSaver ? '1' : '0');
   }, [dataSaver]);
 
   useEffect(() => {
-    if (isOnline || !user?.id || !courseId || !currentLessonId) return;
-    const timer = window.setInterval(() => {
-      if (!document.hidden) queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds: 30 }).catch(() => undefined);
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [isOnline, user?.id, courseId, currentLessonId]);
+    const updateAppState = (event: Event) => {
+      const detail = (event as CustomEvent<{ isActive?: boolean }>).detail;
+      setAppActive(detail?.isActive !== false);
+    };
+    window.addEventListener('omnia:app-state', updateAppState);
+    return () => window.removeEventListener('omnia:app-state', updateAppState);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id || !courseId) return;
+    listResilientLessonIds({ userId: user.id, courseId })
+      .then(setOfflineLessonIds)
+      .catch(() => setOfflineLessonIds([]));
+  }, [user?.id, courseId, resilientMessage]);
 
   useEffect(() => {
     // L'aperçu Super Admin reste accessible avec la session active et ne doit pas
@@ -297,35 +370,95 @@ export function CoursLecteur() {
     if (!authLoading && !user && !isAdminPreview) navigate('/connexion');
   }, [authLoading, user, navigate, isAdminPreview]);
 
-  const loadProgress = useCallback(async () => {
-    if (!sessionToken || !courseId) return;
-    try {
-      const res = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
-      const data = await res.json();
-      if (data.error) { navigate(`/cours/${courseId}`); return; }
-      setModules(data.modules ?? []);
-      setFinalUnlocked(data.final_validation_unlocked ?? false);
-      setProgressPct(data.progress?.percent ?? 0);
-    } catch { /* ignore */ }
-  }, [sessionToken, courseId, navigate]);
+  const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
+    setModules(snapshot.modules);
+    setFinalUnlocked(snapshot.finalUnlocked);
+    setProgressPct(snapshot.progressPct);
+  }, []);
 
-  useEffect(() => {
-    if (!isOnline || !user?.id || !courseId || !currentLessonId || !sessionToken) return;
-    takeOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId }).then(async seconds => {
-      if (!seconds) return;
+  const loadProgress = useCallback(async () => {
+    if (!sessionToken || !courseId || !user?.id) return;
+
+    try {
+      if (!isOnline) throw new Error('offline');
+      const response = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        if ([401, 403, 404].includes(response.status)) {
+          navigate(`/cours/${courseId}`);
+          return;
+        }
+        throw new Error(data.message || data.error || 'Progression indisponible');
+      }
+
+      const snapshot: CourseProgressSnapshot = {
+        modules: data.modules ?? [],
+        finalUnlocked: data.final_validation_unlocked ?? false,
+        progressPct: data.progress?.percent ?? 0,
+        savedAt: new Date().toISOString(),
+      };
+      applyProgressSnapshot(snapshot);
+      setUsingLocalProgram(false);
+      await saveResilientCourseProgress({
+        userId: user.id,
+        courseId,
+        expiresAt: courseProgressExpiry(),
+        value: snapshot,
+      });
+    } catch {
+      const local = await loadResilientCourseProgress<CourseProgressSnapshot>({ userId: user.id, courseId }).catch(() => null);
+      if (local) {
+        applyProgressSnapshot(local);
+        setUsingLocalProgram(true);
+      } else if (!isOnline) {
+        setResilientMessage('Le programme de cette formation n’est pas encore disponible hors connexion sur cet appareil.');
+      }
+    }
+  }, [sessionToken, courseId, user?.id, isOnline, navigate, applyProgressSnapshot]);
+
+  const syncOfflineProgress = useCallback(async () => {
+    if (!isOnline || !appActive || !user?.id || !courseId || !sessionToken) return;
+    const pending = await listOfflineProgress({ userId: user.id, courseId }).catch(() => []);
+    if (pending.length === 0) return;
+
+    let synchronized = 0;
+    for (const item of pending) {
       try {
         const response = await fetch(ENDPOINTS.videoSignedUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-          body: JSON.stringify({ action: 'offline_sync', course_id: courseId, lesson_id: currentLessonId, device_id: getResilientDeviceId(), seconds }),
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+          body: JSON.stringify({
+            action: 'offline_sync',
+            course_id: item.courseId,
+            lesson_id: item.lessonId,
+            device_id: getResilientDeviceId(),
+            seconds: item.seconds,
+          }),
         });
-        if (!response.ok) throw new Error();
-        setResilientMessage('Progression hors connexion synchronisée.');
-        await loadProgress();
+        if (!response.ok) continue;
+        await acknowledgeOfflineSeconds({
+          userId: item.userId,
+          courseId: item.courseId,
+          lessonId: item.lessonId,
+          seconds: item.seconds,
+        });
+        synchronized += 1;
       } catch {
-        await queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds });
+        // Cette entrée reste en attente et sera retentée au prochain retour réseau.
       }
-    }).catch(() => undefined);
-  }, [isOnline, user?.id, courseId, currentLessonId, sessionToken, loadProgress]);
+    }
+
+    if (synchronized > 0) {
+      setResilientMessage('Progression hors connexion synchronisée.');
+      await loadProgress();
+    }
+  }, [isOnline, appActive, user?.id, courseId, sessionToken, loadProgress]);
+
+  useEffect(() => {
+    void syncOfflineProgress();
+  }, [syncOfflineProgress]);
 
 
   useEffect(() => {
@@ -336,55 +469,100 @@ export function CoursLecteur() {
 
   useEffect(() => {
     if (modules.length === 0 || currentLessonId) return;
-    const first = routeLessonId ?? findFirstIncomplete(modules);
+    const first = routeLessonId ?? (isOnline
+      ? findFirstIncomplete(modules)
+      : findFirstOfflineLesson(modules, offlineLessonSet));
     if (first) setCurrentLessonId(first);
-  }, [modules, routeLessonId, currentLessonId]);
+  }, [modules, routeLessonId, currentLessonId, isOnline, offlineLessonSet]);
 
   useEffect(() => {
     if (!currentLessonId || !courseId || !sessionToken || !user?.id) return;
     let cancelled = false;
+    let accessDenied = false;
     setLessonLoading(true);
-    setShowSummary(false); setVideoUrl(null); setExternalVisited(false); setUsingLocalCopy(false); setResilientMessage('');
+    setShowSummary(false);
+    setVideoUrl(null);
+    setExternalVisited(false);
+    setUsingLocalCopy(false);
+    setResilientMessage('');
     if (videoTimerRef.current) clearInterval(videoTimerRef.current);
+
     (async () => {
       try {
-        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+        if (!isOnline) throw new Error('offline');
+        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        });
         const data = await response.json();
-        if (!response.ok || data.error) throw new Error(data.message || data.error || 'Chargement impossible');
+        if (!response.ok || data.error) {
+          accessDenied = [401, 403, 404].includes(response.status);
+          throw new Error(data.message || data.error || 'Chargement impossible');
+        }
         if (cancelled) return;
         setLessonData(data);
         if (data.lesson.content_type === 'video' && !dataSaver) signVideo(currentLessonId);
-      } catch {
-        const local = await loadResilientLesson<any>({ userId: user.id, courseId, lessonId: currentLessonId });
+      } catch (error) {
+        if (accessDenied && isOnline) {
+          if (!cancelled) {
+            setLessonData(null);
+            setResilientMessage(error instanceof Error ? error.message : 'Accès à cette leçon refusé.');
+          }
+          return;
+        }
+
+        const local = await loadResilientLesson<LessonDataPayload>({
+          userId: user.id,
+          courseId,
+          lessonId: currentLessonId,
+        });
         if (cancelled) return;
         if (local) {
           setLessonData(local);
           setUsingLocalCopy(true);
           setResilientMessage('Copie locale sécurisée utilisée. La progression sera synchronisée au retour de la connexion.');
         } else {
+          setLessonData(null);
           setResilientMessage('Cette leçon n’est pas disponible hors connexion sur cet appareil.');
         }
       } finally {
         if (!cancelled) setLessonLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver]);
 
-  const signVideo = useCallback((lid: string) => {
-    if (!courseId || !sessionToken) return;
-    const doSign = async () => {
+    return () => { cancelled = true; };
+  // signVideo est stable pour le cours et le jeton courants.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver, isOnline]);
+
+  const signVideo = useCallback((lessonId: string) => {
+    if (!courseId || !sessionToken || !isOnline) return;
+    const requestSignedUrl = async () => {
       try {
-        const r = await fetch(ENDPOINTS.videoSignedUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ lesson_id: lid, course_id: courseId }) });
-        const d = await r.json();
-        if (d.url) setVideoUrl(d.url);
-      } catch { /* ignore */ }
+        const response = await fetch(ENDPOINTS.videoSignedUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+          body: JSON.stringify({ lesson_id: lessonId, course_id: courseId }),
+        });
+        const data = await response.json();
+        if (response.ok && data.url) setVideoUrl(data.url);
+      } catch {
+        // Le lecteur affichera le contenu texte disponible pendant la coupure.
+      }
     };
-    doSign();
+    void requestSignedUrl();
     if (videoTimerRef.current) clearInterval(videoTimerRef.current);
-    videoTimerRef.current = setInterval(doSign, 55_000);
-  }, [courseId, sessionToken]);
+    videoTimerRef.current = setInterval(requestSignedUrl, 55_000);
+  }, [courseId, sessionToken, isOnline]);
+
+  useEffect(() => {
+    if (!isOnline) {
+      setVideoUrl(null);
+      if (videoTimerRef.current) clearInterval(videoTimerRef.current);
+    }
+    return () => {
+      if (videoTimerRef.current) clearInterval(videoTimerRef.current);
+    };
+  }, [isOnline]);
 
   const { timeSpent, cpdTimeReached, isActive } = useCpdTimer({
     lessonId: currentLessonId, courseId: courseId ?? null,
@@ -392,11 +570,21 @@ export function CoursLecteur() {
     initialSpent: lessonData?.progress.time_spent_seconds ?? 0,
     sessionToken,
     onTimeReached: () => {
-      if (!currentLessonId || !courseId || !sessionToken) return;
+      if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
       fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
         .then(r => r.json()).then(d => { if (!d.error) setLessonData(d); });
     },
   });
+
+  useEffect(() => {
+    if (isOnline || !isActive || !appActive || !user?.id || !courseId || !currentLessonId) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) {
+        queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds: 30 }).catch(() => undefined);
+      }
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [isOnline, isActive, appActive, user?.id, courseId, currentLessonId]);
 
   const goToLesson = (id: string) => { setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}`, { replace: true }); };
 
@@ -453,10 +641,24 @@ export function CoursLecteur() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
+  useEffect(() => {
+    if (appActive || !videoContainerRef.current) return;
+    const iframe = videoContainerRef.current.querySelector('iframe');
+    try {
+      iframe?.contentWindow?.postMessage('{"pause":true}', '*');
+    } catch {
+      // Le lecteur tiers peut refuser les messages cross-origin.
+    }
+  }, [appActive]);
+
   const handleSendAI = useCallback(async (requestedMode?: string, suggestedPrompt?: string) => {
     const message = (suggestedPrompt ?? aiInput).trim();
     const mode = requestedMode ?? aiMode;
     if (!message || aiLoading || !courseId || !sessionToken) return;
+    if (!isOnline) {
+      setAiError('L’assistant IA nécessite une connexion internet. Votre leçon locale reste disponible.');
+      return;
+    }
     const userMsg: AiMessage = { id: Date.now().toString(), role: 'user', content: message };
     setAiMessages(prev => [...prev, userMsg]);
     setAiInput('');
@@ -483,10 +685,14 @@ export function CoursLecteur() {
     } finally {
       setAiLoading(false);
     }
-  }, [aiInput, aiMode, aiLoading, courseId, sessionToken, aiMessages]);
+  }, [aiInput, aiMode, aiLoading, courseId, sessionToken, aiMessages, isOnline]);
 
   const saveCurrentLessonForResilientAccess = useCallback(async () => {
     if (!user?.id || !courseId || !currentLessonId || !sessionToken || !lessonData) return;
+    if (!isOnline) {
+      setResilientMessage('Reconnectez-vous pour renouveler l’autorisation hors connexion de cette leçon.');
+      return;
+    }
     setResilientBusy(true); setResilientMessage('');
     try {
       const response = await fetch(ENDPOINTS.videoSignedUrl, {
@@ -497,18 +703,27 @@ export function CoursLecteur() {
       if (!response.ok) throw new Error(data.message || data.error || 'Accès résilient refusé.');
       const safeCopy = {
         ...lessonData,
-        lesson: { ...lessonData.lesson, video_url: undefined, cloudflare_stream_uid: undefined },
-        blocks: (lessonData.blocks ?? []).map((block: any) => ({
-          ...block,
-          file_url: ['video', 'scorm', 'download'].includes(block.block_type) ? undefined : block.file_url,
-        })),
+        lesson: { ...lessonData.lesson, video_url: undefined, audio_url: undefined, cloudflare_stream_uid: undefined },
+        blocks: (lessonData.blocks ?? []).map((block: Record<string, unknown>) => {
+          const blockType = String(block.block_type ?? '');
+          const onlineOnly = ['video', 'audio', 'scorm', 'download', 'pdf', 'word', 'excel', 'embed'].includes(blockType);
+          const content = block.content_json && typeof block.content_json === 'object'
+            ? block.content_json as Record<string, unknown>
+            : {};
+          return {
+            ...block,
+            file_url: onlineOnly ? undefined : block.file_url,
+            content_json: onlineOnly ? { ...content, url: undefined, src: undefined } : content,
+          };
+        }),
       };
       await saveResilientLesson({ userId: user.id, courseId, lessonId: currentLessonId, expiresAt: data.expires_at, value: safeCopy });
+      setOfflineLessonIds(await listResilientLessonIds({ userId: user.id, courseId }));
       setResilientMessage(`Leçon protégée sur cet appareil jusqu’au ${new Date(data.expires_at).toLocaleDateString('fr-FR')}.`);
     } catch (error) {
       setResilientMessage(error instanceof Error ? error.message : 'Enregistrement local impossible.');
     } finally { setResilientBusy(false); }
-  }, [user?.id, courseId, currentLessonId, sessionToken, lessonData]);
+  }, [user?.id, courseId, currentLessonId, sessionToken, lessonData, isOnline]);
 
   const lesson = lessonData?.lesson;
   const prog = lessonData?.progress;
@@ -524,7 +739,7 @@ export function CoursLecteur() {
   );
 
   return (
-    <div className="flex flex-col h-screen" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
         <button
@@ -553,6 +768,7 @@ export function CoursLecteur() {
           <span className="text-xs font-semibold text-white">{progressPct}%</span>
         </div>
         <button onClick={() => setAiOpen(o => !o)}
+          title={isOnline ? 'Ouvrir l’assistant IA' : 'L’assistant IA nécessite une connexion'}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
           style={{ backgroundColor: aiOpen ? 'rgba(191,136,19,0.25)' : 'rgba(255,255,255,0.10)' }}>
           <Bot size={15} style={{ color: aiOpen ? '#BF8813' : 'rgba(255,255,255,0.75)' }} />
@@ -607,6 +823,8 @@ export function CoursLecteur() {
                   navigate(`/cours/${courseId}/validation-finale`);
                 }}
                 finalUnlocked={finalUnlocked}
+                isOnline={isOnline}
+                offlineLessonIds={offlineLessonSet}
               />
             </div>
           </aside>
@@ -621,7 +839,9 @@ export function CoursLecteur() {
             onSelectLesson={goToLesson}
             onGoExam={(modId) => navigate(`/cours/${courseId}/examen-module/${modId}`)}
             onGoFinal={() => navigate(`/cours/${courseId}/validation-finale`)}
-            finalUnlocked={finalUnlocked} />
+            finalUnlocked={finalUnlocked}
+            isOnline={isOnline}
+            offlineLessonIds={offlineLessonSet} />
         </aside>
 
         {/* Content */}
@@ -642,7 +862,8 @@ export function CoursLecteur() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: isOnline ? '#1E7A52' : '#B45309' }}>
                     {isOnline ? <ShieldCheck size={15}/> : <WifiOff size={15}/>}
-                    {isOnline ? 'Connexion disponible' : 'Mode hors connexion'}
+                    {isOnline ? `Connexion disponible${network.connectionType === 'cellular' ? ' — réseau mobile' : network.connectionType === 'wifi' ? ' — Wi-Fi' : ''}` : 'Mode hors connexion'}
+                    {usingLocalProgram && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">programme local</span>}
                     {usingLocalCopy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">copie locale</span>}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -672,18 +893,23 @@ export function CoursLecteur() {
                     {lesson.external_partner && (
                       <p className="text-xs text-gray-500 mb-3">Fourni par {lesson.external_partner}</p>
                     )}
-                    <a href={lesson.external_url} target="_blank" rel="noopener noreferrer"
-                      onClick={() => setExternalVisited(true)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm text-white hover:opacity-85 transition-opacity"
+                    <button
+                      type="button"
+                      disabled={!isOnline}
+                      onClick={() => {
+                        setExternalVisited(true);
+                        void openExternalUrl(lesson.external_url!);
+                      }}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm text-white hover:opacity-85 transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
                       style={{ backgroundColor: '#BF8813' }}>
                       <ExternalLink size={15} />
-                      Accéder au contenu
-                    </a>
+                      {isOnline ? 'Accéder au contenu' : 'Contenu disponible en ligne'}
+                    </button>
                   </div>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>
                     Ce contenu s'ouvre dans un nouvel onglet et n'est pas comptabilisé dans le temps pédagogique.
                   </p>
-                  {externalVisited && !isCompleted && (
+                  {isOnline && externalVisited && !isCompleted && (
                     <button
                       onClick={async () => {
                         if (!currentLessonId || !courseId || !sessionToken) return;
@@ -716,7 +942,7 @@ export function CoursLecteur() {
                   onContextMenu={(e) => e.preventDefault()}
                 >
                   {videoUrl
-                    ? <iframe src={videoUrl} className="w-full h-full" allowFullScreen allow="autoplay; fullscreen" title={lesson.title} />
+                    ? <iframe src={videoUrl} className="w-full h-full" allowFullScreen allow="autoplay; fullscreen; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" title={lesson.title} />
                     : <div className="w-full h-full flex items-center justify-center">
                         <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: '#FFF', borderTopColor: 'transparent' }} />
                       </div>
@@ -727,12 +953,12 @@ export function CoursLecteur() {
                 <div className="rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
                   <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#002050' }}><Gauge size={16}/>Lecture vidéo suspendue pour économiser les données</div>
                   <p className="mt-2 text-xs text-slate-600">Utilisez le texte, la transcription ou la piste audio lorsqu’elle est disponible. Désactivez l’économie de données pour reprendre la vidéo.</p>
-                  {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" className="mt-3 w-full" src={lesson.audio_url} />}
+                  {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" preload="metadata" className="mt-3 w-full" src={lesson.audio_url} />}
                 </div>
               )}
               {lesson.content_type === 'audio' && lesson.audio_url && (
                 <div className="rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
-                  <audio controls className="w-full"><source src={lesson.audio_url} /></audio>
+                  <audio controls controlsList="nodownload" preload="metadata" className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>
               )}
              {lesson.content_type === 'text' && !lesson.has_blocks && lesson.text_content && (
@@ -745,6 +971,7 @@ export function CoursLecteur() {
                   <LessonBlocksRenderer
                     blocks={lessonData.blocks as any[]}
                     contentText={lesson.text_content}
+                    isOnline={isOnline}
                     onQuizAnswer={(_blockId, _answer, _correct) => {}}
                   />
                 </div>
@@ -785,7 +1012,7 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
+              {isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
                 <AssessmentEngine
                   courseId={courseId}
                   lessonId={currentLessonId}
@@ -797,6 +1024,11 @@ export function CoursLecteur() {
                   }}
                 />
               )}
+              {!isOnline && !(lesson.is_external || lesson.content_type === 'external') && (
+                <div className="mb-5 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
+                  Les évaluations et examens nécessitent une connexion afin de protéger les tentatives et les résultats.
+                </div>
+              )}
 
               {/* CPD row — hidden for external lessons */}
               {!lesson.is_external && lesson.content_type !== 'external' && (
@@ -804,7 +1036,7 @@ export function CoursLecteur() {
                 <CpdBar required={lessonData?.required_seconds ?? 0} spent={timeSpent}
                   reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
                   isCompleted={isCompleted} />
-                {currentMod?.exam_unlocked && !currentMod.exam_passed && (
+                {isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
                   <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}`)}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-80"
                     style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Passer l'examen</button>
@@ -817,7 +1049,7 @@ export function CoursLecteur() {
                 <div className="rounded-2xl p-5 mb-5" style={{ backgroundColor: '#F8F9FA', borderLeft: '4px solid #BF8813' }}>
                   <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#BF8813' }}>Résumé de la leçon</p>
                   <p className="text-sm leading-relaxed mb-4" style={{ color: '#374151' }}>{lesson.lesson_summary}</p>
-                  {lessonData?.next_lesson_id && (
+                  {lessonData?.next_lesson_id && (isOnline || offlineLessonSet.has(lessonData.next_lesson_id)) && (
                     <button onClick={handleNext} className="px-5 py-2.5 rounded-xl font-semibold text-sm text-white hover:opacity-85"
                       style={{ backgroundColor: '#002050' }}>Leçon suivante →</button>
                   )}
@@ -827,11 +1059,11 @@ export function CoursLecteur() {
               {/* Next shortcuts */}
               {isCompleted && !showSummary && (
                 <div className="flex gap-3 mt-2">
-                  {lessonData?.next_lesson_id && (
+                  {lessonData?.next_lesson_id && (isOnline || offlineLessonSet.has(lessonData.next_lesson_id)) && (
                     <button onClick={handleNext} className="px-5 py-2.5 rounded-xl font-semibold text-sm text-white hover:opacity-85"
                       style={{ backgroundColor: '#002050' }}>Leçon suivante →</button>
                   )}
-                  {currentMod?.exam_unlocked && !currentMod.exam_passed && (
+                  {isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
                     <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}`)}
                       className="px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-85"
                       style={{ border: '1.5px solid #BF8813', color: '#BF8813' }}>Passer l'examen du module</button>
@@ -907,7 +1139,7 @@ export function CoursLecteur() {
                   ['revision_plan', 'Plan de révision', 'Préparez un plan de révision concis pour cette formation.'],
                   ['recommendation', 'À revoir', 'Quels éléments validés de cette formation devrais-je revoir en priorité ?'],
                 ].map(([mode, label, prompt]) => (
-                  <button key={mode} onClick={() => { setAiMode(mode); handleSendAI(mode, prompt); }} disabled={aiLoading}
+                  <button key={mode} onClick={() => { setAiMode(mode); handleSendAI(mode, prompt); }} disabled={aiLoading || !isOnline}
                     className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold disabled:opacity-50"
                     style={{ borderColor: aiMode === mode ? '#BF8813' : '#E4E7EC', color: '#002050', background: aiMode === mode ? '#FFFBEB' : 'white' }}>
                     {label}
@@ -919,20 +1151,20 @@ export function CoursLecteur() {
                   value={aiInput}
                   onChange={e => setAiInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAI('question'); } }}
-                  placeholder="Posez une question sur le contenu validé..."
+                  placeholder={isOnline ? 'Posez une question sur le contenu validé...' : 'Assistant IA disponible en ligne'}
                   rows={2}
-                  disabled={aiLoading}
+                  disabled={aiLoading || !isOnline}
                   className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-gray-400 disabled:opacity-50"
                   style={{ lineHeight: '1.5' }}
                 />
-                <button onClick={() => handleSendAI('question')} disabled={aiLoading || !aiInput.trim()}
+                <button onClick={() => handleSendAI('question')} disabled={aiLoading || !isOnline || !aiInput.trim()}
                   className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-40"
                   style={{ backgroundColor: '#002050' }}>
                   <Send size={13} style={{ color: 'white' }} />
                 </button>
               </div>
-              <p className="text-center mt-2" style={{ color: '#9CA3AF', fontSize: 10 }}>
-                Réponses limitées aux contenus validés par le Centre Qualité
+              <p className="text-center mt-2" style={{ color: isOnline ? '#9CA3AF' : '#B45309', fontSize: 10 }}>
+                {isOnline ? 'Réponses limitées aux contenus validés par le Centre Qualité' : 'Connexion internet requise pour l’assistant IA'}
               </p>
             </div>
           </aside>

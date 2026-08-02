@@ -7,10 +7,11 @@ import { getRuntimeConfigIssues } from './lib/runtimeConfig';
 import ConfigurationError from './pages/ConfigurationError';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { initializeSessionStorage } from './lib/session';
-import { initializeNativeRuntime } from './lib/mobile';
+import { initializeNativeRuntime, initializeNetworkRuntime } from './lib/mobile';
 
 async function bootstrap(): Promise<void> {
   await initializeSessionStorage();
+  await initializeNetworkRuntime();
   await initializeNativeRuntime();
 
   const runtimeConfigIssues = getRuntimeConfigIssues();

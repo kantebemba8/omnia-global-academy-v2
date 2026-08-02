@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { useOmniaNetworkStatus } from '../hooks/useOmniaNetwork';
 
-type NetworkState = 'online' | 'offline' | 'restored';
+type BannerState = 'online' | 'offline' | 'restored';
 
 export function NetworkStatusBanner() {
-  const [networkState, setNetworkState] = useState<NetworkState>(() =>
-    navigator.onLine ? 'online' : 'offline'
-  );
+  const network = useOmniaNetworkStatus();
+  const [bannerState, setBannerState] = useState<BannerState>(() => network.connected ? 'online' : 'offline');
+  const previousConnectedRef = useRef(network.connected);
   const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -16,33 +17,36 @@ export function NetworkStatusBanner() {
       }
     };
 
-    const handleOffline = () => {
-      clearHideTimer();
-      setNetworkState('offline');
-    };
+    clearHideTimer();
+    const wasConnected = previousConnectedRef.current;
+    previousConnectedRef.current = network.connected;
 
-    const handleOnline = () => {
-      clearHideTimer();
-      setNetworkState('restored');
+    if (!network.connected) {
+      setBannerState('offline');
+      return clearHideTimer;
+    }
+
+    if (!wasConnected) {
+      setBannerState('restored');
       hideTimerRef.current = window.setTimeout(() => {
-        setNetworkState('online');
+        setBannerState('online');
         hideTimerRef.current = null;
       }, 4000);
-    };
+    } else {
+      setBannerState('online');
+    }
 
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('online', handleOnline);
+    return clearHideTimer;
+  }, [network.connected]);
 
-    return () => {
-      clearHideTimer();
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('online', handleOnline);
-    };
-  }, []);
+  if (bannerState === 'online') return null;
 
-  if (networkState === 'online') return null;
-
-  const restored = networkState === 'restored';
+  const restored = bannerState === 'restored';
+  const connectionLabel = network.connectionType === 'cellular'
+    ? ' via le réseau mobile'
+    : network.connectionType === 'wifi'
+      ? ' en Wi-Fi'
+      : '';
 
   return (
     <aside
@@ -83,8 +87,8 @@ export function NetworkStatusBanner() {
         </svg>
         <span>
           {restored
-            ? 'Connexion rétablie. Vous pouvez continuer.'
-            : 'Connexion interrompue. Les actions en ligne reprendront automatiquement dès le retour du réseau.'}
+            ? `Connexion rétablie${connectionLabel}. La synchronisation reprend automatiquement.`
+            : 'Connexion interrompue. Les contenus conservés restent accessibles et la progression sera synchronisée au retour du réseau.'}
         </span>
       </div>
     </aside>

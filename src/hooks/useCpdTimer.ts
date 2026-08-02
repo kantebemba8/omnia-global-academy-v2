@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ENDPOINTS } from '../lib/config';
+import { useOmniaNetworkStatus } from './useOmniaNetwork';
 
 interface UseCpdTimerProps {
   lessonId: string | null;
@@ -11,81 +12,120 @@ interface UseCpdTimerProps {
 }
 
 export function useCpdTimer({ lessonId, courseId, requiredSeconds, initialSpent, sessionToken, onTimeReached }: UseCpdTimerProps) {
+  const network = useOmniaNetworkStatus();
   const [timeSpent, setTimeSpent] = useState(initialSpent);
   const [isActive, setIsActive] = useState(true);
   const isActiveRef = useRef(true);
+  const appActiveRef = useRef(true);
   const lastActivityRef = useRef(Date.now());
   const onTimeReachedRef = useRef(onTimeReached);
 
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { onTimeReachedRef.current = onTimeReached; }, [onTimeReached]);
 
-  // Reset when lesson changes
   useEffect(() => {
     setTimeSpent(initialSpent);
     setIsActive(true);
     lastActivityRef.current = Date.now();
   }, [lessonId, initialSpent]);
 
-  // Activity detection
   useEffect(() => {
-    const reset = () => { lastActivityRef.current = Date.now(); if (!isActiveRef.current) setIsActive(true); };
+    const reset = () => {
+      lastActivityRef.current = Date.now();
+      if (appActiveRef.current && !document.hidden && !isActiveRef.current) setIsActive(true);
+    };
     window.addEventListener('mousemove', reset, { passive: true });
     window.addEventListener('keydown', reset, { passive: true });
     window.addEventListener('touchstart', reset, { passive: true });
-    return () => { window.removeEventListener('mousemove', reset); window.removeEventListener('keydown', reset); window.removeEventListener('touchstart', reset); };
+    window.addEventListener('pointerdown', reset, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', reset);
+      window.removeEventListener('keydown', reset);
+      window.removeEventListener('touchstart', reset);
+      window.removeEventListener('pointerdown', reset);
+    };
   }, []);
 
-  // Page Visibility API
   useEffect(() => {
-    const onVis = () => setIsActive(!document.hidden);
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    const onVisibilityChange = () => {
+      const active = appActiveRef.current && !document.hidden;
+      setIsActive(active);
+      if (active) lastActivityRef.current = Date.now();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
-  // Window focus / blur
   useEffect(() => {
     const onBlur = () => setIsActive(false);
-    const onFocus = () => { setIsActive(true); lastActivityRef.current = Date.now(); };
+    const onFocus = () => {
+      if (!appActiveRef.current || document.hidden) return;
+      setIsActive(true);
+      lastActivityRef.current = Date.now();
+    };
     window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);
-    return () => { window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus); };
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
-  // Inactivity check — pause after 3 min of no interaction
   useEffect(() => {
-    const id = window.setInterval(() => { if (Date.now() - lastActivityRef.current > 3 * 60 * 1000) setIsActive(false); }, 10_000);
-    return () => clearInterval(id);
+    const onAppState = (event: Event) => {
+      const detail = (event as CustomEvent<{ isActive?: boolean }>).detail;
+      const active = detail?.isActive !== false;
+      appActiveRef.current = active;
+      setIsActive(active && !document.hidden);
+      if (active) lastActivityRef.current = Date.now();
+    };
+    window.addEventListener('omnia:app-state', onAppState);
+    return () => window.removeEventListener('omnia:app-state', onAppState);
   }, []);
 
-  // 1-second local tick
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current > 3 * 60 * 1000) setIsActive(false);
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (!lessonId) return;
     const id = window.setInterval(() => {
-      if (!isActiveRef.current) return;
-      setTimeSpent(prev => {
-        const next = prev + 1;
-        if (requiredSeconds > 0 && next >= requiredSeconds && prev < requiredSeconds) onTimeReachedRef.current?.();
+      if (!isActiveRef.current || !appActiveRef.current || document.hidden) return;
+      setTimeSpent(previous => {
+        const next = previous + 1;
+        if (requiredSeconds > 0 && next >= requiredSeconds && previous < requiredSeconds) {
+          onTimeReachedRef.current?.();
+        }
         return next;
       });
     }, 1_000);
-    return () => clearInterval(id);
+    return () => window.clearInterval(id);
   }, [lessonId, requiredSeconds]);
 
-  // Server heartbeat every 30s
   useEffect(() => {
-    if (!lessonId || !courseId || !sessionToken) return;
+    if (!lessonId || !courseId || !sessionToken || !network.connected) return;
     const id = window.setInterval(async () => {
+      if (!isActiveRef.current || !appActiveRef.current || document.hidden) return;
       try {
         await fetch(ENDPOINTS.heartbeat, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-          body: JSON.stringify({ lesson_id: lessonId, course_id: courseId, seconds_since_last_heartbeat: 30, is_active: isActiveRef.current }),
+          body: JSON.stringify({
+            lesson_id: lessonId,
+            course_id: courseId,
+            seconds_since_last_heartbeat: 30,
+            is_active: true,
+          }),
         });
-      } catch { /* ignore */ }
+      } catch {
+        // Le lecteur conserve localement le temps réalisé hors connexion.
+      }
     }, 30_000);
-    return () => clearInterval(id);
-  }, [lessonId, courseId, sessionToken]);
+    return () => window.clearInterval(id);
+  }, [lessonId, courseId, sessionToken, network.connected]);
 
   return {
     timeSpent,
