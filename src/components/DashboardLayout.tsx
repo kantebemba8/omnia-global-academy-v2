@@ -39,7 +39,7 @@ const APPRENANT_NAV = [
   { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
   { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
-  { path: '/forum', label: 'Omnia Forum', icon: MessageSquare },
+  { path: '/forum', label: 'Omnia Communauté', icon: MessageSquare },
   { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
   { path: '/dashboard/structure', label: 'Ma Structure', icon: Building2 },
 ];
@@ -54,7 +54,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/payouts', label: 'Mon portefeuille', icon: Wallet },
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
-  { path: '/forum', label: 'Forums & Entraide', icon: MessageSquare },
+  { path: '/forum', label: 'Communauté & entraide', icon: MessageSquare },
   { path: '/professeur/profile', label: 'Configuration profil', icon: Settings },
   { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
 ];
@@ -101,7 +101,7 @@ const APPRENANT_GROUPS: NavGroup[] = [
       { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
       { path: '/talent', label: 'Omnia Talent', icon: Search },
       { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
-      { path: '/forum', label: 'Omnia Forum', icon: MessageSquare },
+      { path: '/forum', label: 'Omnia Communauté', icon: MessageSquare },
     ],
   },
 ];
@@ -142,7 +142,7 @@ const PROFESSEUR_GROUPS: NavGroup[] = [
     id: 'professor-network', label: 'Réseau & communauté', icon: Users,
     items: [
       { path: '/talent', label: 'Omnia Talent', icon: Search },
-      { path: '/forum', label: 'Forums & Entraide', icon: MessageSquare },
+      { path: '/forum', label: 'Communauté & entraide', icon: MessageSquare },
     ],
   },
 ];

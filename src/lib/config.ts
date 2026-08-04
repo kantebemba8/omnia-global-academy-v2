@@ -74,8 +74,10 @@ export const ENDPOINTS ={
   notifyDispatch: `${API_BASE_URL}/notify-dispatch`,
   newsletterSend: `${API_BASE_URL}/newsletter-send`,
   updateLastAccess: `${API_BASE_URL}/update-last-access`,
-  // Module 14 — Forum & Carrière
+  // Module 14 — Omnia Communauté & Carrière
   forumPostsList: `${API_BASE_URL}/forum-manage?action=list`,
+  forumPostDetail: `${API_BASE_URL}/forum-manage?action=detail`,
+  forumAccessibleCourses: `${API_BASE_URL}/forum-manage?action=courses`,
   forumPostCreate: `${API_BASE_URL}/forum-manage?action=create`,
   forumPostReply: `${API_BASE_URL}/forum-manage?action=reply`,
   forumPostLike: `${API_BASE_URL}/forum-manage?action=like`,

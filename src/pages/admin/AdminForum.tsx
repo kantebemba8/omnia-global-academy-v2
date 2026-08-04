@@ -42,9 +42,9 @@ interface ForumData {
 type Tab = 'flagged' | 'all';
 
 const SPACE_LABELS: Record<string, string> = {
-  general: 'Forum Général',
+  general: 'Espace général',
   carriere: 'Carrière & Emploi',
-  cours: 'Forum de cours',
+  cours: 'Forum de formation',
 };
 
 function apiMessage(value: unknown, fallback: string): string {
@@ -198,7 +198,7 @@ export default function AdminForum() {
         <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Communauté & Live</p>
-            <h1 className="mt-1 text-2xl font-bold" style={{ color: BLUE }}>Forum & Modération</h1>
+            <h1 className="mt-1 text-2xl font-bold" style={{ color: BLUE }}>Communauté & Modération</h1>
             <p className="mt-1 text-sm text-gray-500">Modérez les publications, traitez les signalements et contrôlez les contenus épinglés.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -207,7 +207,7 @@ export default function AdminForum() {
               className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
               style={{ background: BLUE }}
             >
-              <ExternalLink size={15} /> Ouvrir Forum communauté
+              <ExternalLink size={15} /> Ouvrir Omnia Communauté
             </Link>
             <button
               type="button"
@@ -258,7 +258,7 @@ export default function AdminForum() {
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-sm text-gray-500">Chargement du forum…</div>
+          <div className="py-16 text-center text-sm text-gray-500">Chargement de la communauté…</div>
         ) : posts.length === 0 ? (
           <div className="border-y py-14 text-center" style={{ borderColor: BORDER }}>
             <MessageSquare size={34} className="mx-auto opacity-25" style={{ color: BLUE }} />

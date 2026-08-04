@@ -444,7 +444,7 @@ export function Catalogue() {
             </div>
           ) : courses.length === 0 ? (
             <div className="text-center py-20">
-              <div className="text-5xl mb-4">🔍</div>
+              <Search size={44} className="mx-auto mb-4 text-slate-300" aria-hidden="true" />
               <p className="font-semibold mb-2" style={{ color: '#002050', fontSize: '16px' }}>
                 Aucune formation ne correspond à vos critères.
               </p>

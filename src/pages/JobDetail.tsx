@@ -2,13 +2,12 @@ import { openExternalUrl } from '../lib/mobile';
 import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 import {
   AlertCircle,
-  ArrowRight,
   Building2,
   Calendar,
   CheckCircle,
@@ -168,38 +167,33 @@ export default function JobDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: OMNIA_BLUE, borderTopColor: 'transparent' }} />
+      <CommunityLayout>
+        <div className="flex min-h-[70vh] items-center justify-center bg-white">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: OMNIA_BLUE, borderTopColor: 'transparent' }} />
         </div>
-        <PageFooter />
-      </div>
+      </CommunityLayout>
     );
   }
 
   if (notFound || !job) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center flex-col gap-4 p-8">
-          <p className="text-gray-500 text-lg">Offre introuvable ou expirée.</p>
-          <Link to="/emploi" className="text-sm underline" style={{ color: OMNIA_BLUE }}>Retour aux offres</Link>
+      <CommunityLayout>
+        <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 bg-white p-8">
+          <p className="text-lg text-slate-500">Offre introuvable ou expirée.</p>
+          <Link to="/emploi" className="text-sm font-bold underline" style={{ color: OMNIA_BLUE }}>Retour aux offres</Link>
         </div>
-        <PageFooter />
-      </div>
+      </CommunityLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <Navbar />
-
-      <div className="max-w-5xl mx-auto px-4 py-6 w-full flex-1">
+    <CommunityLayout>
+      <div className="min-h-screen bg-white">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-12 pt-8 md:px-8">
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-5">
-          <Link to="/forum" className="hover:text-gray-600">Forum</Link>
+          <Link to="/forum" className="hover:text-slate-600">Omnia Communauté</Link>
           <span>›</span>
-          <Link to="/emploi" className="hover:text-gray-600">Emploi</Link>
+          <Link to="/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
           <span>›</span>
           <span className="truncate max-w-48" style={{ color: OMNIA_BLUE }}>{job.title}</span>
         </div>
@@ -251,7 +245,7 @@ export default function JobDetail() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 sticky top-4">
+            <div className="sticky top-24 rounded-2xl border border-gray-100 bg-white p-5">
               {applied ? (
                 <div className="text-center">
                   <CheckCircle className="w-10 h-10 mx-auto mb-3" style={{ color: '#1E7A52' }} />
@@ -352,6 +346,7 @@ export default function JobDetail() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </CommunityLayout>
   );
 }

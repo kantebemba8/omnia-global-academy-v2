@@ -131,6 +131,7 @@ const Forum = lazy(() => import('./pages/Forum'));
 const ForumGeneral = lazy(() => import('./pages/ForumGeneral'));
 const ForumPost = lazy(() => import('./pages/ForumPost'));
 const ForumCours = lazy(() => import('./pages/ForumCours'));
+const CommunityCourseForums = lazy(() => import('./pages/CommunityCourseForums'));
 const EspaceCarriere = lazy(() => import('./pages/EspaceCarriere'));
 const JobDetail = lazy(() => import('./pages/JobDetail'));
 const FormulaireRecruteur = lazy(() => import('./pages/FormulaireRecruteur'));
@@ -792,11 +793,12 @@ export default function App() {
         {/* Reconnaissances professionnelles — accès public */}
         <Route path="/cpd" element={<CpdPage />} />
 
-        {/* Module 14 — Forum & Carrière — always accessible */}
+        {/* Module 14 — Omnia Communauté & Carrière — always accessible */}
         <Route path="/forum" element={<Forum />} />
         <Route path="/forum/general" element={<ForumGeneral />} />
         <Route path="/forum/carriere" element={<ForumGeneral />} />
         <Route path="/forum/post/:postId" element={<ForumPost />} />
+        <Route path="/forum/formations" element={<CommunityCourseForums />} />
         <Route path="/forum/cours/:courseId" element={<ForumCours />} />
         <Route path="/emploi" element={<EspaceCarriere />} />
         <Route path="/emploi/:jobId" element={<JobDetail />} />

@@ -101,7 +101,7 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
 
   const moderationItems: ModeratorNavItem[] = [];
   if (permissions.can_moderate_forum) {
-    moderationItems.push({ path: '/moderator/forum', label: 'Forum', icon: MessageSquare });
+    moderationItems.push({ path: '/moderator/forum', label: 'Communauté', icon: MessageSquare });
   }
   if (permissions.can_moderate_jobs) {
     moderationItems.push({ path: '/moderator/jobs', label: "Offres d'emploi", icon: Briefcase });

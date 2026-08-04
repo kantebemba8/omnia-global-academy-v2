@@ -112,7 +112,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'Communauté & Live',
     icon: Layers3,
     items: [
-      { path: '/admin/forum', label: 'Forum & Modération', icon: MessageSquare },
+      { path: '/admin/forum', label: 'Communauté & Modération', icon: MessageSquare },
       { path: '/admin/omnia-live', label: 'Gestion Omnia Live', icon: Radio },
     ],
   },

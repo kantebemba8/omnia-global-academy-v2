@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Navbar } from '../components/Navbar';
+import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { Briefcase, CheckCircle, AlertCircle, Building2, User, Mail, Phone, FileText } from 'lucide-react';
+import { Briefcase, CheckCircle, AlertCircle, Building2, User, FileText } from 'lucide-react';
 
 const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance', 'Autre'];
 const CATEGORIES = ['Tech & Digital', 'Finance', 'Marketing', 'Management', 'Santé', 'Education', 'Juridique', 'Autre'];
@@ -86,9 +86,8 @@ export default function FormulaireRecruteur() {
 
   if (step === 'success') {
     return (
-      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center p-8">
+      <CommunityLayout>
+        <div className="flex min-h-[75vh] items-center justify-center bg-white p-8">
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-12 max-w-lg w-full text-center">
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
               style={{ backgroundColor: '#E4F1EA' }}>
@@ -104,29 +103,27 @@ export default function FormulaireRecruteur() {
                 style={{ backgroundColor: '#002050' }}>
                 Voir les offres publiées
               </Link>
-              <Link to="/"
-                className="block text-center py-3 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50">
-                Retour à l'accueil
+              <Link to="/forum"
+                className="block rounded-xl border border-gray-200 py-3 text-center text-sm font-medium text-gray-500 hover:bg-gray-50">
+                Retour à Omnia Communauté
               </Link>
             </div>
           </div>
         </div>
-        <PageFooter />
-      </div>
+      </CommunityLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <Navbar />
-
+    <CommunityLayout>
+      <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="border-b border-slate-100 bg-white">
+        <div className="mx-auto max-w-3xl px-4 pb-8 pt-8 md:px-6">
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
-            <Link to="/forum" className="hover:text-gray-600">Forum</Link>
+            <Link to="/forum" className="hover:text-slate-600">Omnia Communauté</Link>
             <span>›</span>
-            <Link to="/emploi" className="hover:text-gray-600">Emploi</Link>
+            <Link to="/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
             <span>›</span>
             <span style={{ color: '#002050' }}>Déposer une offre</span>
           </div>
@@ -143,7 +140,7 @@ export default function FormulaireRecruteur() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-8 w-full flex-1">
+      <div className="mx-auto w-full max-w-3xl px-4 py-10 md:px-6">
         <form onSubmit={submit} className="space-y-6">
           {/* Company info */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6">
@@ -271,6 +268,7 @@ export default function FormulaireRecruteur() {
       </div>
 
       <PageFooter />
-    </div>
+      </div>
+    </CommunityLayout>
   );
 }

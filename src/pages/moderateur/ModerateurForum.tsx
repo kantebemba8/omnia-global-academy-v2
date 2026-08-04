@@ -64,7 +64,7 @@ export default function ModerateurForum() {
             style={{ color: '#002050' }}>{toast}</div>
         )}
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Modération du forum</h1>
+          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Modération de la communauté</h1>
           <p className="text-gray-500 text-sm mt-1">Gérez les publications et les signalements</p>
         </div>
 
@@ -77,7 +77,7 @@ export default function ModerateurForum() {
           <button onClick={() => setTab('all')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'all' ? 'text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
             style={tab === 'all' ? { backgroundColor: '#002050' } : {}}>
-            <MessageSquare className="w-4 h-4" /> Tous les posts ({data?.all_posts?.length ?? 0})
+            <MessageSquare className="w-4 h-4" /> Toutes les publications ({data?.all_posts?.length ?? 0})
           </button>
         </div>
 
@@ -90,7 +90,7 @@ export default function ModerateurForum() {
           <div className="bg-white rounded-xl p-12 text-center border border-gray-100 shadow-sm">
             <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: '#002050' }} />
             <p className="text-gray-400 text-sm">
-              {tab === 'flagged' ? 'Aucun post signalé' : 'Aucun post'}
+              {tab === 'flagged' ? 'Aucune publication signalée' : 'Aucune publication'}
             </p>
           </div>
         ) : (

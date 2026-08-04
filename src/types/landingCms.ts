@@ -173,7 +173,7 @@ const DEFAULT_NAVIGATION: LandingNavigationConfig = {
     linkItem('nav-talent', 4, 'Omnia Talent', '/talent', 'Profils, offres et recrutement'),
     linkItem('nav-career', 5, 'Carrière et opportunités', '/emploi', 'Emploi, candidatures et développement professionnel'),
     linkItem('nav-verify', 6, 'Certificats et preuves', '/verify', 'Vérification publique des documents'),
-    linkItem('nav-forum', 7, 'Forum', '/forum', 'Échanges autour des formations et de la carrière'),
+    linkItem('nav-forum', 7, 'Omnia Communauté', '/forum', 'Échangez, apprenez et développez votre réseau'),
   ],
   professional_links: [
     linkItem('nav-professor', 1, 'Devenir professeur', '/inscription/professeur', 'Créer et publier des formations'),
@@ -205,7 +205,7 @@ const DEFAULT_FOOTER: LandingFooterConfig = {
         linkItem('footer-coaching', 3, 'Omnia Coaching', '/coaching'),
         linkItem('footer-talent', 4, 'Omnia Talent', '/talent'),
         linkItem('footer-career', 5, 'Carrière et opportunités', '/emploi'),
-        linkItem('footer-forum', 6, 'Forum', '/forum'),
+        linkItem('footer-forum', 6, 'Omnia Communauté', '/forum'),
       ],
     },
     {
@@ -293,7 +293,7 @@ const SECTION_DEFAULTS: Record<LandingSectionType, Omit<LandingSectionConfig, 'i
       contentItem('ecosystem-coaching', 3, { title: 'Omnia Coaching', description: 'Un accompagnement individuel avec des profils validés, des créneaux et des formats de séance adaptés.', action_label: 'Trouver un coach', action_url: '/coaching', icon_key: 'heart' }),
       contentItem('ecosystem-career', 4, { title: 'Omnia Career', description: 'CV, lettres, candidatures, préparation aux entretiens et outils de développement professionnel.', action_label: 'Découvrir l’espace carrière', action_url: '/emploi', icon_key: 'briefcase' }),
       contentItem('ecosystem-talent', 5, { title: 'Omnia Talent', description: 'Profils, compétences vérifiées, recruteurs, offres et outils de gestion du recrutement.', action_label: 'Accéder à Omnia Talent', action_url: '/talent', icon_key: 'users' }),
-      contentItem('ecosystem-forum', 6, { title: 'Communauté', description: 'Un forum pour échanger autour des formations, de la carrière et des sujets professionnels.', action_label: 'Rejoindre le forum', action_url: '/forum', icon_key: 'message' }),
+      contentItem('ecosystem-forum', 6, { title: 'Omnia Communauté', description: 'Un espace vivant pour échanger, obtenir de l’aide, suivre les discussions de vos formations et découvrir des opportunités professionnelles.', action_label: 'Rejoindre la communauté', action_url: '/forum', icon_key: 'message' }),
     ],
   },
   credentials: {

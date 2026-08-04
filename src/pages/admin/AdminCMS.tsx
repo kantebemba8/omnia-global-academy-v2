@@ -85,7 +85,7 @@ const DEFAULT_PAGE_CONTENT: PublicPageContent = {
     recent_talents_title: 'Talents récemment visibles',
     recent_talents_subtitle: 'Profils issus directement du Profil carrière Omnia.',
     recent_jobs_title: 'Offres récentes',
-    recent_jobs_subtitle: 'Les mêmes offres que dans l’espace Emploi et le Forum Communauté.',
+    recent_jobs_subtitle: 'Les mêmes offres que dans l’espace Emploi et le Omnia Communauté.',
   },
   omnia_live: {
     badge: 'APPRENDRE EN TEMPS RÉEL',
@@ -748,7 +748,7 @@ export default function AdminCMS() {
             <div className="max-w-5xl mx-auto space-y-6">
               <div>
                 <h3 className="font-semibold" style={{color:'#002050'}}>Documents juridiques centralisés</h3>
-                <p className="text-xs text-gray-500 mt-1">Une seule source pour toute la plateforme. Les mêmes contenus doivent être reliés depuis l’accueil, Omnia Talent, Omnia Live, Career, Forum, inscription et paiement.</p>
+                <p className="text-xs text-gray-500 mt-1">Une seule source pour toute la plateforme. Les mêmes contenus doivent être reliés depuis l’accueil, Omnia Talent, Omnia Live, Career, Omnia Communauté, inscription et paiement.</p>
               </div>
               <TextArea label="À Propos (Markdown)" k="a_propos_content_fr" rows={8} />
               <TextArea label="Politique de confidentialité et données personnelles (Markdown)" k="confidentialite_content_fr" rows={10} />
@@ -1125,7 +1125,7 @@ export default function AdminCMS() {
                     ['omnia_live','Omnia Live'],
                     ['career','Omnia Career'],
                     ['talent','Omnia Talent'],
-                    ['forum','Forum'],
+                    ['forum','Omnia Communauté'],
                     ['payments','Paiements'],
                     ['formations','Formations'],
                   ].map(([slug,label])=>{

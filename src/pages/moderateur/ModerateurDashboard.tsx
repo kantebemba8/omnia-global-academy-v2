@@ -36,7 +36,7 @@ const TYPE_COLOR: Record<string, string> = {
 };
 const TYPE_LABEL: Record<string, string> = {
   course: 'Formation', kyc_prof: 'KYC Professeur',
-  job: "Offre d'emploi", forum: 'Forum', support: 'Support',
+  job: "Offre d'emploi", forum: 'Communauté', support: 'Support',
 };
 
 const KPI_PRESENTATION: Record<string, { icon: typeof Activity; accent: string; path: string }> = {
@@ -88,7 +88,7 @@ export default function ModerateurDashboard() {
         kpis: [
           { key: 'courses', label: 'Formations en attente', value: 0 },
           { key: 'professor_kyc', label: 'Professeurs à vérifier', value: 0 },
-          { key: 'forum', label: 'Signalements Forum', value: 0 },
+          { key: 'forum', label: 'Signalements Communauté', value: 0 },
           { key: 'jobs', label: 'Offres à valider', value: 0 },
         ],
         priority_queue: [],

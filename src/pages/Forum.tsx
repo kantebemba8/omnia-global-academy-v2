@@ -1,10 +1,28 @@
 import { getSessionToken } from '../lib/session';
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
-import { MessageCircle, Briefcase, BookOpen, Globe, ChevronDown, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen as BookOpenCheck,
+  Briefcase as BriefcaseBusiness,
+  CheckCircle2,
+  ChevronDown,
+  Globe2,
+  GraduationCap,
+  MessageCircle as MessageCircleQuestion,
+  MessageSquare as MessagesSquare,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
+} from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
+import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
+
+const BLUE = '#002050';
+const GOLD = '#BF8813';
+const BORDER = '#E5E7EB';
 
 const COUNTRIES = [
   { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
@@ -12,186 +30,325 @@ const COUNTRIES = [
   { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
   { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
   { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'CD', name: 'RD Congo' },
+  { code: 'FR', name: 'France' }, { code: 'BE', name: 'Belgique' }, { code: 'LU', name: 'Luxembourg' },
+  { code: 'CA', name: 'Canada' }, { code: 'US', name: 'États-Unis' },
 ];
 
-interface ForumStats { general: number; carriere: number; jobs: number }
+type CommunityPost = {
+  id: string;
+  title: string;
+  content: string;
+  space: 'general' | 'carriere' | 'cours';
+  author_name: string;
+  author_initials: string;
+  author_avatar_url?: string | null;
+  author_badge?: string | null;
+  replies_count: number;
+  likes_count: number;
+  is_solved: boolean;
+  created_at: string;
+};
+
+type AccessibleCourse = {
+  id: string;
+  title: string;
+  access_type: 'learner' | 'instructor' | 'moderation';
+  discussions_count?: number;
+};
+
+type CommunityStats = {
+  general: number;
+  carriere: number;
+  jobs: number;
+  courses: number;
+};
+
+function relativeTime(iso: string) {
+  const diff = Math.max(0, Date.now() - new Date(iso).getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `il y a ${Math.max(1, minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `il y a ${days} j`;
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+}
+
+function PostAvatar({ post }: { post: CommunityPost }) {
+  if (post.author_avatar_url) {
+    return <img src={post.author_avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />;
+  }
+  return (
+    <span className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>
+      {post.author_initials || '?'}
+    </span>
+  );
+}
 
 export default function Forum() {
-  const navigate = useNavigate();
   const [country, setCountry] = useState('ML');
-  const [stats, setStats] = useState<ForumStats>({ general: 0, carriere: 0, jobs: 0 });
-  const [enrollments, setEnrollments] = useState<Array<{ course_id: string; title: string }>>([]);
-  const isLoggedIn = !!getSessionToken();
-  const userRoles: string[] = (() => {
-    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles || []; } catch { return []; }
-  })();
-  const dashboardPath = userRoles.includes('super_admin') ? '/admin/dashboard'
-    : userRoles.includes('moderateur') ? '/moderateur/dashboard'
-    : userRoles.includes('professeur') ? '/professeur/dashboard'
-    : userRoles.some(role => ['responsable_structure', 'structure_admin', 'gestionnaire_partenaire', 'directeur', 'etablissement_directeur'].includes(role)) ? '/structure/dashboard'
-    : userRoles.some(role => ['enseignant', 'etablissement_enseignant'].includes(role)) ? '/professeur/dashboard'
-    : '/dashboard';
+  const [stats, setStats] = useState<CommunityStats>({ general: 0, carriere: 0, jobs: 0, courses: 0 });
+  const [recentPosts, setRecentPosts] = useState<CommunityPost[]>([]);
+  const [unansweredPosts, setUnansweredPosts] = useState<CommunityPost[]>([]);
+  const [courses, setCourses] = useState<AccessibleCourse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const token = getSessionToken() || '';
+  const isLoggedIn = Boolean(token);
 
   useEffect(() => {
-    const stored = localStorage.getItem('omnia_user');
-    if (stored) {
-      try { const u = JSON.parse(stored); if (u.country_code) setCountry(u.country_code); } catch { /**/ }
-    }
+    try {
+      const user = JSON.parse(localStorage.getItem('omnia_user') || '{}');
+      if (user?.country_code) setCountry(user.country_code);
+    } catch { /* keep the default country */ }
+  }, []);
 
-    // Load forum stats
-    Promise.all([
-      fetch(`${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
-      fetch(`${ENDPOINTS.forumPostsList}&space=carriere&country_code=${country}&limit=1`).then(r => r.json()).catch(() => ({})),
-      fetch(`${ENDPOINTS.jobsList}?limit=1`).then(r => r.json()).catch(() => ({})),
-    ]).then(([gen, carr, jobs]) => {
-      setStats({ general: gen.total || 0, carriere: carr.total || 0, jobs: jobs.total || 0 });
-    });
-
-    // Load enrollments if logged in
-    if (isLoggedIn) {
-      const token = getSessionToken();
-      const supaUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-      const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');
-      if (supaUrl && userData?.id) {
-        fetch(`${supaUrl}/rest/v1/user_enrollments?user_id=eq.${userData.id}&select=course_id,courses(title)`, {
-          headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
-        }).then(r => r.json()).then(d => {
-          if (Array.isArray(d)) setEnrollments(d.map((e: { course_id: string; courses: { title: string } }) => ({ course_id: e.course_id, title: e.courses?.title || '' })).filter((e: { title: string }) => e.title));
-        }).catch(() => {});
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const headers = token ? edgeAuthHeaders() : edgeGatewayHeaders();
+      const generalUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&limit=4`;
+      const careerUrl = `${ENDPOINTS.forumPostsList}&space=carriere&country_code=${country}&limit=4`;
+      const unansweredUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&sort=unanswered&limit=4`;
+      const promises: Promise<unknown>[] = [
+        fetch(generalUrl, { headers }).then(response => response.json()).catch(() => ({})),
+        fetch(careerUrl, { headers }).then(response => response.json()).catch(() => ({})),
+        fetch(unansweredUrl, { headers }).then(response => response.json()).catch(() => ({})),
+        fetch(`${ENDPOINTS.jobsList}?limit=1`, { headers: edgeGatewayHeaders() }).then(response => response.json()).catch(() => ({})),
+      ];
+      if (token) {
+        promises.push(fetch(ENDPOINTS.forumAccessibleCourses, { headers }).then(response => response.json()).catch(() => ({})));
       }
+      const [general, career, unanswered, jobs, courseData] = await Promise.all(promises) as Array<Record<string, unknown>>;
+      if (cancelled) return;
+      const generalPosts = Array.isArray(general?.posts) ? general.posts as CommunityPost[] : [];
+      const careerPosts = Array.isArray(career?.posts) ? career.posts as CommunityPost[] : [];
+      const merged = [...generalPosts, ...careerPosts]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 6);
+      const accessibleCourses = Array.isArray(courseData?.courses) ? courseData.courses as AccessibleCourse[] : [];
+      setRecentPosts(merged);
+      setUnansweredPosts(Array.isArray(unanswered?.posts) ? unanswered.posts as CommunityPost[] : []);
+      setCourses(accessibleCourses);
+      setStats({
+        general: Number(general?.total || 0),
+        carriere: Number(career?.total || 0),
+        jobs: Number(jobs?.total || 0),
+        courses: accessibleCourses.length,
+      });
+      setLoading(false);
     }
-  }, [country]);
+    void load();
+    return () => { cancelled = true; };
+  }, [country, token]);
 
-  const countryName = COUNTRIES.find(c => c.code === country)?.name || country;
+  const countryName = useMemo(() => COUNTRIES.find(item => item.code === country)?.name || country, [country]);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <ForumHamburgerNav />
-
-{/* Hero */}
-      <section className="py-16 px-4" style={{ background: 'linear-gradient(135deg, #001840 0%, #002050 60%, #003580 100%)' }}>
-        <div className="max-w-4xl mx-auto text-center">
-          {isLoggedIn && (
-            <div className="flex justify-start mb-6">
-              <button onClick={() => navigate(dashboardPath)}
-                className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all"
-                style={{ backgroundColor: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.80)', border: '1px solid rgba(255,255,255,0.15)' }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.18)'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.10)'}>
-                ← Retour au tableau de bord
-              </button>
-            </div>
-          )}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 border border-amber-400/30" style={{ backgroundColor: 'rgba(191,136,19,0.12)' }}>
-            <MessageCircle className="w-4 h-4" style={{ color: '#BF8813' }} />
-            <span className="text-sm font-medium" style={{ color: '#BF8813' }}>Communauté Omnia</span>
-          </div>
-          <h1 className="mb-3 inline-flex rounded-2xl bg-white/95 px-5 py-3 text-4xl font-bold shadow-sm md:text-5xl"><span style={{ color: '#002050' }}>Omnia</span><span className="ml-3" style={{ color: '#BF8813' }}>Forum</span></h1>
-          <p className="text-lg mb-8" style={{ color: '#BF8813' }}>Apprenez ensemble, posez vos questions, partagez votre savoir</p>
-
-          {/* Country selector */}
-          <div className="inline-flex flex-col items-center gap-2">
-            <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2.5 border border-white/20">
-              <Globe className="w-4 h-4 text-white/70" />
-              <span className="text-white/70 text-sm">Affichage pour :</span>
-              <div className="relative">
-                <select value={country} onChange={e => setCountry(e.target.value)}
-                  className="bg-transparent text-white font-semibold text-sm pr-6 focus:outline-none cursor-pointer appearance-none">
-                  {COUNTRIES.map(c => <option key={c.code} value={c.code} style={{ color: '#002050' }}>{c.name}</option>)}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-white/70 absolute right-0 top-0.5 pointer-events-none" />
+    <CommunityLayout>
+      <div className="min-h-screen bg-white">
+        <section className="border-b border-slate-100 bg-white px-4 pb-10 pt-8 md:px-8 md:pb-14 md:pt-12">
+          <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.2fr_.8fr] lg:items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em]" style={{ borderColor: 'rgba(191,136,19,.28)', color: GOLD, background: 'rgba(191,136,19,.06)' }}>
+                <UsersRound size={15} /> Communauté d'apprentissage et d'opportunités
+              </div>
+              <h1 className="mt-5 max-w-3xl text-4xl font-black leading-tight md:text-6xl" style={{ color: BLUE }}>
+                Grandir ensemble dans <span style={{ color: GOLD }}>Omnia Communauté</span>
+              </h1>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
+                Posez vos questions, partagez vos expériences, échangez avec les formateurs et découvrez les opportunités professionnelles de l'écosystème Omnia.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Link to={`/forum/general?country_code=${country}`} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white" style={{ background: BLUE }}>
+                  Rejoindre l'espace général <ArrowRight size={17} />
+                </Link>
+                <Link to="/forum/formations" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}>
+                  Mes forums de formation <BookOpenCheck size={17} />
+                </Link>
+                <Link to="/emploi" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}>
+                  Carrière & emploi <BriefcaseBusiness size={17} />
+                </Link>
               </div>
             </div>
-            <p className="text-white/40 text-xs">Le forum est filtré par pays. Changez pour voir d'autres communautés.</p>
+
+            <div className="rounded-3xl border bg-gradient-to-br from-slate-50 via-white to-amber-50 p-5 shadow-sm" style={{ borderColor: BORDER }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: GOLD }}>Communauté locale</p>
+                  <p className="mt-1 text-xl font-bold" style={{ color: BLUE }}>{countryName}</p>
+                </div>
+                <Globe2 size={26} color={GOLD} />
+              </div>
+              <div className="relative mt-4">
+                <select value={country} onChange={event => setCountry(event.target.value)} className="w-full appearance-none rounded-xl border bg-white px-4 py-3 pr-10 text-sm font-semibold outline-none" style={{ borderColor: BORDER, color: BLUE }}>
+                  {COUNTRIES.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}
+                </select>
+                <ChevronDown size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">Les discussions générales et carrière sont organisées par pays. Les forums de formation restent liés à vos cours.</p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <Metric value={stats.general} label="Discussions générales" icon={MessagesSquare} />
+                <Metric value={stats.carriere} label="Questions carrière" icon={GraduationCap} />
+                <Metric value={stats.jobs} label="Offres disponibles" icon={BriefcaseBusiness} />
+                <Metric value={stats.courses} label="Forums accessibles" icon={BookOpenCheck} />
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* 3 Space Cards */}
-      <section className="py-16 px-4 bg-white">
-        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-6">
-          {/* Espace Général */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all p-6 flex flex-col">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: '#FEF9EE' }}>
-              <MessageCircle className="w-6 h-6" style={{ color: '#BF8813' }} />
+        <section className="px-4 py-12 md:px-8">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeader eyebrow="Explorer" title="Tous les espaces de la communauté" subtitle="Chaque espace a un objectif clair et conserve ses propres règles d'accès." />
+            <div className="mt-7 grid gap-5 lg:grid-cols-3">
+              <SpacePanel icon={MessageCircleQuestion} title="Espace général" description="Entraide, apprentissage, orientation et échanges entre membres de la communauté." stat={`${stats.general} discussion${stats.general === 1 ? '' : 's'}`} to={`/forum/general?country_code=${country}`} action="Ouvrir l'espace" />
+              <SpacePanel icon={BriefcaseBusiness} title="Carrière & emploi" description="Offres professionnelles, conseils de candidature et échanges sur le développement de carrière." stat={`${stats.jobs} offre${stats.jobs === 1 ? '' : 's'} disponible${stats.jobs === 1 ? '' : 's'}`} to="/emploi" action="Voir les opportunités" secondary={{ to: '/forum/carriere', label: 'Poser une question carrière' }} />
+              <SpacePanel icon={BookOpenCheck} title="Forums des formations" description="Questions et réponses rattachées aux formations auxquelles vous avez réellement accès." stat={isLoggedIn ? `${stats.courses} forum${stats.courses === 1 ? '' : 's'} accessible${stats.courses === 1 ? '' : 's'}` : 'Connexion requise'} to={isLoggedIn ? '/forum/formations' : '/connexion'} action={isLoggedIn ? 'Voir mes forums' : 'Se connecter'} />
             </div>
-            <h2 className="text-lg font-bold mb-1" style={{ color: '#002050' }}>Espace Général</h2>
-            <p className="text-sm text-gray-500 mb-3 flex-1">Discussions, entraide, vie étudiante</p>
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
-              <Users className="w-3.5 h-3.5" />
-              <span>{stats.general} discussion{stats.general !== 1 ? 's' : ''} · {countryName}</span>
-            </div>
-            <Link to={`/forum/general?country_code=${country}`}
-              className="block text-center py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: '#002050' }}>
-              Accéder →
-            </Link>
           </div>
+        </section>
 
-          {/* Espace Carrière */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all p-6 flex flex-col">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: '#FEF9EE' }}>
-              <Briefcase className="w-6 h-6" style={{ color: '#BF8813' }} />
+        <section className="border-y border-slate-100 bg-slate-50/60 px-4 py-12 md:px-8">
+          <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.4fr_.6fr]">
+            <div>
+              <SectionHeader eyebrow="Activité" title="Discussions récentes" subtitle="Les publications les plus récentes dans l'espace général et les conseils carrière." />
+              <div className="mt-6 space-y-3">
+                {loading ? <LoadingRows /> : recentPosts.length === 0 ? <EmptyPanel text="Aucune discussion récente dans cette communauté." /> : recentPosts.map(post => <PostRow key={post.id} post={post} />)}
+              </div>
             </div>
-            <h2 className="text-lg font-bold mb-1" style={{ color: '#002050' }}>Carrière & Emploi</h2>
-            <p className="text-sm text-gray-500 mb-3 flex-1">Offres d'emploi, conseils carrière</p>
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
-              <Briefcase className="w-3.5 h-3.5" />
-              <span>{stats.jobs} offre{stats.jobs !== 1 ? 's' : ''} active{stats.jobs !== 1 ? 's' : ''}</span>
+            <div>
+              <SectionHeader eyebrow="Entraide" title="Questions sans réponse" subtitle="Une contribution utile peut débloquer le parcours d'un autre membre." />
+              <div className="mt-6 space-y-3">
+                {loading ? <LoadingRows count={3} /> : unansweredPosts.length === 0 ? <EmptyPanel text="Aucune question en attente pour le moment." /> : unansweredPosts.slice(0, 4).map(post => <PostRow key={post.id} post={post} compact />)}
+              </div>
             </div>
-            <Link to="/emploi"
-              className="block text-center py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 mb-2"
-              style={{ backgroundColor: '#002050' }}>
-              Voir les offres →
-            </Link>
-            <Link to="/recruteur" className="block text-center text-xs text-gray-400 hover:text-gray-600 transition-colors">
-              Vous recrutez ? Déposez une offre
-            </Link>
           </div>
+        </section>
 
-          {/* Forums de Cours */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all p-6 flex flex-col">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: '#FEF9EE' }}>
-              <BookOpen className="w-6 h-6" style={{ color: '#BF8813' }} />
-            </div>
-            <h2 className="text-lg font-bold mb-1" style={{ color: '#002050' }}>Forums des Formations</h2>
-            <p className="text-sm text-gray-500 mb-3">Posez vos questions sur vos cours</p>
-
-            {isLoggedIn && enrollments.length > 0 ? (
-              <div className="flex-1 space-y-1.5 mb-4">
-                {enrollments.slice(0, 4).map(e => (
-                  <Link key={e.course_id} to={`/forum/cours/${e.course_id}`}
-                    className="flex items-center gap-2 text-xs text-gray-600 hover:text-blue-700 py-1 px-2 rounded-lg hover:bg-gray-50 transition-colors truncate">
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#BF8813' }} />
-                    {e.title}
+        {isLoggedIn && (
+          <section className="px-4 py-12 md:px-8">
+            <div className="mx-auto max-w-6xl">
+              <SectionHeader eyebrow="Vos apprentissages" title="Forums de vos formations" subtitle="Retrouvez les espaces réservés à vos formations, avec les questions, réponses et solutions validées." action={{ to: '/forum/formations', label: 'Voir tous mes forums' }} />
+              <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {courses.length === 0 ? (
+                  <div className="md:col-span-2 lg:col-span-3"><EmptyPanel text="Aucun forum de formation n'est disponible pour votre compte." action={{ to: '/catalogue', label: 'Explorer le catalogue' }} /></div>
+                ) : courses.slice(0, 6).map(course => (
+                  <Link key={course.id} to={`/forum/cours/${course.id}`} className="rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: BORDER }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <BookOpenCheck size={22} color={GOLD} />
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">{course.access_type === 'learner' ? 'Apprenant' : course.access_type === 'instructor' ? 'Formateur' : 'Modération'}</span>
+                    </div>
+                    <h3 className="mt-4 line-clamp-2 text-base font-bold" style={{ color: BLUE }}>{course.title}</h3>
+                    <p className="mt-2 text-xs text-slate-500">{Number(course.discussions_count || 0)} discussion{Number(course.discussions_count || 0) === 1 ? '' : 's'}</p>
+                    <span className="mt-4 inline-flex items-center gap-1 text-sm font-bold" style={{ color: BLUE }}>Accéder au forum <ArrowRight size={15} /></span>
                   </Link>
                 ))}
               </div>
-            ) : (
-              <p className="text-xs text-gray-400 flex-1 mb-4">Accessible depuis vos formations achetées</p>
-            )}
+            </div>
+          </section>
+        )}
 
-            {isLoggedIn ? (
-              enrollments.length === 0 && (
-                <Link to="/catalogue"
-                  className="block text-center py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: '#002050' }}>
-                  Parcourir les formations
-                </Link>
-              )
-            ) : (
-              <Link to="/connexion"
-                className="block text-center py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: '#002050' }}>
-                Se connecter pour accéder
-              </Link>
-            )}
+        <section id="regles" className="border-t border-slate-100 bg-white px-4 py-12 md:px-8">
+          <div className="mx-auto max-w-6xl rounded-3xl border p-6 md:p-8" style={{ borderColor: BORDER, background: 'linear-gradient(135deg, rgba(0,32,80,.035), rgba(191,136,19,.055))' }}>
+            <div className="grid gap-8 lg:grid-cols-[.75fr_1.25fr] lg:items-center">
+              <div>
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"><ShieldCheck size={24} color={GOLD} /></div>
+                <h2 className="mt-4 text-2xl font-black" style={{ color: BLUE }}>Une communauté utile, respectueuse et sûre</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">Les échanges sont conçus pour favoriser l'apprentissage, l'entraide et les opportunités professionnelles. Les contenus peuvent être signalés et modérés.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Rule icon={CheckCircle2} title="Partagez des informations utiles" text="Précisez le contexte de vos questions et valorisez les réponses qui vous ont aidé." />
+                <Rule icon={UsersRound} title="Respectez chaque membre" text="Aucun harcèlement, discrimination, spam ou divulgation d'informations privées." />
+                <Rule icon={Sparkles} title="Mettez en avant les solutions" text="Dans les forums de formation, marquez la réponse qui résout réellement la question." />
+                <Rule icon={ShieldCheck} title="Signalez les abus" text="Le signalement et le blocage sont disponibles depuis chaque discussion." />
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <PageFooter />
+        <PageFooter />
+      </div>
+    </CommunityLayout>
+  );
+}
+
+function Metric({ value, label, icon: Icon }: { value: number; label: string; icon: typeof MessagesSquare }) {
+  return (
+    <div className="rounded-2xl border bg-white p-3" style={{ borderColor: BORDER }}>
+      <div className="flex items-center justify-between"><Icon size={16} color={GOLD} /><strong className="text-lg" style={{ color: BLUE }}>{value}</strong></div>
+      <p className="mt-2 text-[11px] leading-4 text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function SectionHeader({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle: string; action?: { to: string; label: string } }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>{eyebrow}</p>
+        <h2 className="mt-2 text-2xl font-black md:text-3xl" style={{ color: BLUE }}>{title}</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{subtitle}</p>
+      </div>
+      {action && <Link to={action.to} className="inline-flex items-center gap-1 text-sm font-bold" style={{ color: BLUE }}>{action.label}<ArrowRight size={16} /></Link>}
+    </div>
+  );
+}
+
+function SpacePanel({ icon: Icon, title, description, stat, to, action, secondary }: { icon: typeof MessagesSquare; title: string; description: string; stat: string; to: string; action: string; secondary?: { to: string; label: string } }) {
+  return (
+    <article className="flex min-h-[280px] flex-col rounded-3xl border bg-white p-6 shadow-sm" style={{ borderColor: BORDER }}>
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: 'rgba(191,136,19,.09)' }}><Icon size={23} color={GOLD} /></div>
+      <h3 className="mt-5 text-xl font-black" style={{ color: BLUE }}>{title}</h3>
+      <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{description}</p>
+      <p className="mt-4 text-xs font-semibold text-slate-400">{stat}</p>
+      <Link to={to} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}>{action}<ArrowRight size={15} /></Link>
+      {secondary && <Link to={secondary.to} className="mt-3 text-center text-xs font-semibold" style={{ color: GOLD }}>{secondary.label}</Link>}
+    </article>
+  );
+}
+
+function PostRow({ post, compact = false }: { post: CommunityPost; compact?: boolean }) {
+  return (
+    <Link to={`/forum/post/${post.id}`} className="flex items-start gap-3 rounded-2xl border bg-white p-4 transition hover:border-amber-300 hover:shadow-sm" style={{ borderColor: BORDER }}>
+      <PostAvatar post={post} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">{post.author_name}</span>
+          {post.author_badge && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold" style={{ color: GOLD }}>{post.author_badge}</span>}
+          <span className="text-[11px] text-slate-400">{relativeTime(post.created_at)}</span>
+        </div>
+        <h3 className={`mt-1 font-bold ${compact ? 'line-clamp-2 text-sm' : 'line-clamp-2 text-[15px]'}`} style={{ color: BLUE }}>{post.title}</h3>
+        {!compact && <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{post.content}</p>}
+        <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-400">
+          <span>{post.space === 'carriere' ? 'Conseils carrière' : 'Espace général'}</span>
+          <span>{post.replies_count} réponse{post.replies_count === 1 ? '' : 's'}</span>
+          <span>{post.likes_count} utile{post.likes_count === 1 ? '' : 's'}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function Rule({ icon: Icon, title, text }: { icon: typeof ShieldCheck; title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border bg-white p-4" style={{ borderColor: BORDER }}>
+      <Icon size={18} color={GOLD} />
+      <h3 className="mt-3 text-sm font-bold" style={{ color: BLUE }}>{title}</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function LoadingRows({ count = 4 }: { count?: number }) {
+  return <>{Array.from({ length: count }).map((_, index) => <div key={index} className="h-24 animate-pulse rounded-2xl border bg-white" style={{ borderColor: BORDER }} />)}</>;
+}
+
+function EmptyPanel({ text, action }: { text: string; action?: { to: string; label: string } }) {
+  return (
+    <div className="rounded-2xl border border-dashed bg-white p-8 text-center" style={{ borderColor: BORDER }}>
+      <MessageCircleQuestion size={28} className="mx-auto text-slate-300" />
+      <p className="mt-3 text-sm text-slate-500">{text}</p>
+      {action && <Link to={action.to} className="mt-4 inline-flex items-center gap-1 text-sm font-bold" style={{ color: BLUE }}>{action.label}<ArrowRight size={15} /></Link>}
     </div>
   );
 }

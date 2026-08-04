@@ -98,7 +98,7 @@ export default function TalentHome() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_jobs_title || 'Offres récentes'}</h2>
-              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Emploi et le Forum Communauté.'}</p>
+              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Emploi et le Omnia Communauté.'}</p>
             </div>
             <Link to="/talent/explorer?tab=offres" className="text-sm font-semibold" style={{ color: GOLD }}>Explorer</Link>
           </div>

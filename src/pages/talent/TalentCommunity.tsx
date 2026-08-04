@@ -31,8 +31,8 @@ export default function TalentCommunity() {
         </div>
 
         <div className="mt-8 flex flex-col gap-3 rounded-2xl border bg-white p-6 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: BORDER }}>
-          <div><h2 className="font-semibold" style={{ color: BLUE }}>Accéder au forum Omnia</h2><p className="mt-1 text-sm text-gray-500">Le forum reste le cœur des discussions de la communauté.</p></div>
-          <Link to="/forum" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Ouvrir le forum <ArrowRight size={16}/></Link>
+          <div><h2 className="font-semibold" style={{ color: BLUE }}>Accéder à Omnia Communauté</h2><p className="mt-1 text-sm text-gray-500">Omnia Communauté réunit les discussions, les forums de formation et les opportunités professionnelles.</p></div>
+          <Link to="/forum" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Ouvrir la communauté <ArrowRight size={16}/></Link>
         </div>
       </section>
     </TalentLayout>

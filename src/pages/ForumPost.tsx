@@ -1,26 +1,40 @@
 import { getSessionToken } from '../lib/session';
-import { useEffect, useState, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import ForumHamburgerNav from '../components/forum/ForumHamburgerNav';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
-import { ThumbsUp, Flag, CheckCircle, Pin, ArrowLeft, X, Send, MessageSquare, Ban } from 'lucide-react';
+import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
+import { Ban, CheckCircle, Flag, MessageSquare, Pin, Send, ThumbsUp, X } from 'lucide-react';
+
+const BLUE = '#002050';
+const GOLD = '#BF8813';
+const BORDER = '#E5E7EB';
 
 interface Post {
-  id: string; title: string | null; content: string; user_id: string;
-  author_name: string; author_initials: string; country_code: string;
-  space: string; likes_count: number; replies_count: number;
-  is_pinned: boolean; is_solved: boolean; is_flagged: boolean;
-  solved_reply_id: string | null; user_liked: boolean; created_at: string;
+  id: string;
+  title: string | null;
+  content: string;
+  user_id: string;
+  author_name: string;
+  author_initials: string;
+  author_avatar_url?: string | null;
+  author_badge?: string | null;
+  country_code: string | null;
+  space: 'general' | 'carriere' | 'cours';
+  course_id?: string | null;
+  course_title?: string | null;
+  likes_count: number;
+  replies_count: number;
+  is_pinned: boolean;
+  is_solved: boolean;
+  is_flagged: boolean;
+  is_instructor?: boolean;
+  solved_reply_id: string | null;
+  user_liked: boolean;
+  created_at: string;
   parent_id: string | null;
 }
-
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'TG', name: 'Togo' },
-  { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
-];
 
 const REPORT_REASONS = [
   { value: 'spam', label: 'Spam ou publicité' },
@@ -32,34 +46,48 @@ const REPORT_REASONS = [
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `il y a ${m || 1} min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `il y a ${h}h`;
-  const d = Math.floor(h / 24);
-  return d < 30 ? `il y a ${d}j` : new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `il y a ${minutes || 1} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return days < 30 ? `il y a ${days} j` : new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
-function Monogram({ initials, size = 48, bg = '#002050' }: { initials: string; size?: number; bg?: string }) {
-  return (
-    <div className="flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold"
-      style={{ width: size, height: size, backgroundColor: bg, fontSize: size * 0.35 }}>
-      {initials}
-    </div>
-  );
+function Avatar({ post, size = 46 }: { post: Post; size?: number }) {
+  if (post.author_avatar_url) return <img src={post.author_avatar_url} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
+  return <span className="flex shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ width: size, height: size, fontSize: size * .32, background: post.is_instructor ? GOLD : BLUE }}>{post.author_initials || '?'}</span>;
+}
+
+function spacePath(post: Pick<Post, 'space' | 'course_id'>) {
+  if (post.space === 'cours' && post.course_id) return `/forum/cours/${post.course_id}`;
+  if (post.space === 'carriere') return '/forum/carriere';
+  return '/forum/general';
+}
+
+function spaceLabel(post: Pick<Post, 'space' | 'course_title'>) {
+  if (post.space === 'cours') return post.course_title || 'Forum de formation';
+  if (post.space === 'carriere') return 'Conseils carrière';
+  return 'Espace général';
 }
 
 export default function ForumPost() {
   const { postId } = useParams<{ postId: string }>();
   const navigate = useNavigate();
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const token = getSessionToken() || '';
+  const isLoggedIn = Boolean(token);
+  const userData = (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}'); } catch { return {}; } })();
+  const myId = userData?.id as string | undefined;
 
   const [post, setPost] = useState<Post | null>(null);
   const [replies, setReplies] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessError, setAccessError] = useState('');
   const [replyContent, setReplyContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [replyError, setReplyError] = useState('');
+  const [canMarkSolution, setCanMarkSolution] = useState(false);
   const [showReport, setShowReport] = useState<{ postId: string } | null>(null);
   const [reportReason, setReportReason] = useState('spam');
   const [reportDetails, setReportDetails] = useState('');
@@ -67,49 +95,56 @@ export default function ForumPost() {
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [blockingUserId, setBlockingUserId] = useState<string | null>(null);
 
-  const isLoggedIn = !!getSessionToken();
-  const token = getSessionToken() || '';
-  const userData = JSON.parse(localStorage.getItem('omnia_user') || '{}');
-  const myId = userData?.id;
-
-  useEffect(() => {
-    if (!postId) return;
-    void loadPost();
-  }, [postId]);
-
-  useEffect(() => {
-    if (!token) return;
-    void loadBlockedUsers();
-  }, [token]);
+  useEffect(() => { if (postId) void loadPost(); }, [postId, token]);
+  useEffect(() => { if (token) void loadBlockedUsers(); }, [token]);
 
   async function loadBlockedUsers() {
     try {
       const response = await fetch(ENDPOINTS.authUpdateProfile, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({ action: 'list_blocked_users' }),
       });
       const data = await response.json();
-      if (response.ok) {
-        setBlockedUserIds(new Set((data.blocked_users || []).map((item: { user_id: string }) => item.user_id)));
-      }
-    } catch { /* keep the forum available if safety preferences cannot be loaded */ }
+      if (response.ok) setBlockedUserIds(new Set((data.blocked_users || []).map((item: { user_id: string }) => item.user_id)));
+    } catch { /* community remains available */ }
+  }
+
+  async function loadPost() {
+    if (!postId) return;
+    setLoading(true);
+    setAccessError('');
+    try {
+      const headers = token ? edgeAuthHeaders() : edgeGatewayHeaders();
+      const response = await fetch(`${ENDPOINTS.forumPostDetail}&post_id=${encodeURIComponent(postId)}`, { headers });
+      const data = await response.json();
+      if (data.error === 'NOT_ENROLLED' || data.error === 'FORBIDDEN') { setAccessError('not_enrolled'); setPost(null); setReplies([]); return; }
+      if (data.error === 'AUTH_REQUIRED' && !token) { setAccessError('auth_required'); setPost(null); return; }
+      if (!response.ok) throw new Error(data.error || 'Discussion introuvable.');
+      setPost(data.post || null);
+      setReplies(Array.isArray(data.replies) ? data.replies : []);
+      setCanMarkSolution(Boolean(data.can_mark_solution));
+    } catch (cause) {
+      setAccessError(cause instanceof Error ? cause.message : 'Discussion introuvable.');
+      setPost(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function blockUser(targetUserId: string) {
     if (!token || targetUserId === myId) return;
-    const confirmed = window.confirm('Bloquer cet utilisateur ? Ses contenus du forum seront masqués pour vous.');
-    if (!confirmed) return;
+    if (!window.confirm('Bloquer cet utilisateur ? Ses contenus de la communauté seront masqués pour vous.')) return;
     setBlockingUserId(targetUserId);
     try {
       const response = await fetch(ENDPOINTS.authUpdateProfile, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'block_user', target_user_id: targetUserId, reason: 'forum' }),
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'block_user', target_user_id: targetUserId, reason: 'community' }),
       });
       if (response.ok) {
         setBlockedUserIds(current => new Set([...current, targetUserId]));
-        if (post?.user_id === targetUserId) navigate(`/forum/${post.space}`);
+        if (post?.user_id === targetUserId) navigate(spacePath(post));
         else setReplies(current => current.filter(reply => reply.user_id !== targetUserId));
       }
     } finally {
@@ -117,350 +152,126 @@ export default function ForumPost() {
     }
   }
 
-  useEffect(() => {
-    if (!post) return;
-    if (blockedUserIds.has(post.user_id)) {
-      navigate(`/forum/${post.space}`, { replace: true });
-      return;
-    }
-    setReplies(current => current.filter(reply => !blockedUserIds.has(reply.user_id)));
-  }, [post, blockedUserIds, navigate]);
-
-  async function loadPost() {
-    setLoading(true);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      // Load post + replies via forum-posts-list approach, or just get it from Supabase directly
-      const supaUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-      if (supaUrl) {
-        const [postRes, repliesRes] = await Promise.all([
-          fetch(`${supaUrl}/rest/v1/forum_posts?id=eq.${postId}&select=*`, {
-            headers: { apikey: anonKey, Authorization: `Bearer ${token || anonKey}` },
-          }),
-          fetch(`${supaUrl}/rest/v1/forum_posts?parent_id=eq.${postId}&is_visible=eq.true&order=created_at.asc&select=*`, {
-            headers: { apikey: anonKey, Authorization: `Bearer ${token || anonKey}` },
-          }),
-        ]);
-        const [postData, repliesData] = await Promise.all([postRes.json(), repliesRes.json()]);
-
-        // Enrich with author names
-        const rawPost = postData[0];
-        if (!rawPost) { setLoading(false); return; }
-
-        const userIds = [...new Set([rawPost.user_id, ...(repliesData || []).map((r: Post) => r.user_id)])];
-        const usersRes = await fetch(`${supaUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,full_name`, {
-          headers: { apikey: anonKey, Authorization: `Bearer ${token || anonKey}` },
-        });
-        const users: Array<{ id: string; full_name: string }> = await usersRes.json();
-        const userMap: Record<string, string> = {};
-        users.forEach(u => { userMap[u.id] = u.full_name; });
-
-        const authorData = (uid: string) => {
-          const name = userMap[uid] || '';
-          const parts = name.trim().split(/\s+/);
-          return {
-            author_name: parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0] || '?',
-            author_initials: ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?',
-          };
-        };
-
-        // Check liked
-        let likedSet = new Set<string>();
-        if (myId) {
-          const likedRes = await fetch(`${supaUrl}/rest/v1/forum_likes?user_id=eq.${myId}&post_id=in.(${postId},${(repliesData || []).map((r: Post) => r.id).join(',')})&select=post_id`, {
-            headers: { apikey: anonKey, Authorization: `Bearer ${token || anonKey}` },
-          });
-          const liked = await likedRes.json();
-          likedSet = new Set((liked || []).map((l: { post_id: string }) => l.post_id));
-        }
-
-        setPost({ ...rawPost, ...authorData(rawPost.user_id), user_liked: likedSet.has(rawPost.id) });
-        setReplies((repliesData || []).filter((r: Post) => !blockedUserIds.has(r.user_id)).map((r: Post) => ({
-          ...r, ...authorData(r.user_id), user_liked: likedSet.has(r.id),
-        })));
-      }
-    } catch { /**/ }
-    setLoading(false);
-  }
-
   async function toggleLike(targetId: string) {
-    if (!isLoggedIn) { navigate('/connexion'); return; }
-    const res = await fetch(ENDPOINTS.forumPostLike, {
+    if (!isLoggedIn) { navigate(`/connexion?redirect=${encodeURIComponent(`/forum/post/${postId}`)}`); return; }
+    const response = await fetch(ENDPOINTS.forumPostLike, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ post_id: targetId }),
     });
-    const d = await res.json();
-    if (targetId === post?.id) {
-      setPost(p => p ? { ...p, user_liked: d.liked, likes_count: d.likes_count } : p);
-    } else {
-      setReplies(rs => rs.map(r => r.id === targetId ? { ...r, user_liked: d.liked, likes_count: d.likes_count } : r));
-    }
+    const data = await response.json();
+    if (!response.ok) return;
+    if (targetId === post?.id) setPost(current => current ? { ...current, user_liked: data.liked, likes_count: data.likes_count } : current);
+    else setReplies(current => current.map(reply => reply.id === targetId ? { ...reply, user_liked: data.liked, likes_count: data.likes_count } : reply));
   }
 
   async function submitReply() {
-    if (!replyContent.trim()) return;
-    if (replyContent.length < 10) { setReplyError('Réponse trop courte (min 10 caractères).'); return; }
-    setSubmitting(true); setReplyError('');
-    const res = await fetch(ENDPOINTS.forumPostReply, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parent_id: postId, content: replyContent }),
-    });
-    const d = await res.json();
-    if (d.success) { setReplyContent(''); loadPost(); } else setReplyError(d.error || 'Erreur.');
-    setSubmitting(false);
+    if (!postId || !replyContent.trim()) return;
+    if (replyContent.trim().length < 10) { setReplyError('Réponse trop courte (minimum 10 caractères).'); return; }
+    setSubmitting(true);
+    setReplyError('');
+    try {
+      const response = await fetch(ENDPOINTS.forumPostReply, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ parent_id: postId, content: replyContent.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Réponse impossible.');
+      setReplyContent('');
+      await loadPost();
+    } catch (cause) {
+      setReplyError(cause instanceof Error ? cause.message : 'Réponse impossible.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function submitReport() {
     if (!showReport) return;
     setReporting(true);
-    await fetch(ENDPOINTS.forumPostReport, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post_id: showReport.postId, reason: reportReason, details: reportDetails }),
-    });
-    setShowReport(null); setReporting(false); setReportDetails('');
+    try {
+      await fetch(ENDPOINTS.forumPostReport, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ post_id: showReport.postId, reason: reportReason, details: reportDetails.trim() || undefined }),
+      });
+      setShowReport(null);
+      setReportDetails('');
+    } finally {
+      setReporting(false);
+    }
   }
 
   async function markSolution(replyId: string) {
-    await fetch(ENDPOINTS.forumPostSolve, {
+    const response = await fetch(ENDPOINTS.forumPostSolve, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ post_id: postId, reply_id: replyId }),
     });
-    loadPost();
+    if (response.ok) await loadPost();
   }
 
-  if (loading) return (
-    <div className="min-h-screen flex flex-col">
-      <ForumHamburgerNav />
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
-      </div>
-    </div>
-  );
+  if (loading) return <CommunityLayout><div className="flex min-h-[70vh] items-center justify-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: BLUE, borderTopColor: 'transparent' }} /></div></CommunityLayout>;
 
-  if (!post) return (
-    <div className="min-h-screen flex flex-col">
-      <ForumHamburgerNav />
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-500">Discussion introuvable.</p>
-          <Link to="/forum" className="text-sm mt-2 inline-block" style={{ color: '#002050' }}>Retour au forum</Link>
-        </div>
-      </div>
-    </div>
-  );
+  if (!post) {
+    const message = accessError === 'not_enrolled' ? 'Cette discussion appartient à un forum de formation réservé aux participants autorisés.' : accessError === 'auth_required' ? 'Connectez-vous pour accéder à cette discussion de formation.' : accessError || 'Discussion introuvable.';
+    return <CommunityLayout><div className="flex min-h-[70vh] items-center justify-center px-4"><div className="max-w-lg rounded-3xl border border-dashed p-10 text-center" style={{ borderColor: BORDER }}><MessageSquare size={34} className="mx-auto text-slate-300" /><h1 className="mt-4 text-lg font-bold" style={{ color: BLUE }}>Accès indisponible</h1><p className="mt-2 text-sm leading-6 text-slate-500">{message}</p><Link to={accessError === 'auth_required' ? '/connexion' : '/forum'} className="mt-5 inline-flex rounded-xl px-5 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}>{accessError === 'auth_required' ? 'Se connecter' : 'Retour à Omnia Communauté'}</Link></div></div></CommunityLayout>;
+  }
 
-  const countryName = COUNTRIES.find(c => c.code === post.country_code)?.name || post.country_code;
-  const sortedReplies = [...replies].sort((a, b) => {
+  const visibleReplies = replies.filter(reply => !blockedUserIds.has(reply.user_id));
+  const sortedReplies = [...visibleReplies].sort((a, b) => {
     if (a.id === post.solved_reply_id) return -1;
     if (b.id === post.solved_reply_id) return 1;
     return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
+  const backPath = spacePath(post);
+  const sectionLabel = spaceLabel(post);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8F9FA' }}>
-      <ForumHamburgerNav />
+    <CommunityLayout>
+      <div className="min-h-screen bg-white">
+        <section className="px-4 pb-10 pt-8 md:px-8">
+          <div className="mx-auto max-w-4xl">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400"><Link to="/forum" className="hover:text-slate-600">Omnia Communauté</Link><span>›</span><Link to={backPath} className="hover:text-slate-600">{sectionLabel}</Link><span>›</span><span className="max-w-[280px] truncate" style={{ color: BLUE }}>{post.title}</span></div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 w-full flex-1">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-5">
-          <Link to="/forum" className="hover:text-gray-600">Forum</Link>
-          <span>›</span>
-          <Link to={`/forum/${post.space}`} className="hover:text-gray-600 capitalize">{post.space === 'general' ? 'Espace Général' : post.space}</Link>
-          <span>›</span>
-          <span className="text-gray-600 truncate max-w-48">{post.title}</span>
-        </div>
-
-        {/* Main post */}
-        <div className="bg-white rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid #E4E7EC', borderLeft: '4px solid #BF8813' }}>
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <Monogram initials={post.author_initials} size={48} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span className="font-semibold text-sm" style={{ color: '#002050' }}>{post.author_name}</span>
-                  <span className="text-xs text-gray-400">{relativeTime(post.created_at)} · {countryName}</span>
-                  {post.is_pinned && (
-                    <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#EFF6FF', color: '#002050' }}>
-                      <Pin className="w-2.5 h-2.5" /> Épinglé
-                    </span>
-                  )}
-                  {post.is_solved && (
-                    <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#E4F1EA', color: '#1E7A52' }}>
-                      <CheckCircle className="w-2.5 h-2.5" /> Résolu
-                    </span>
-                  )}
+            <article className="mt-5 rounded-3xl border bg-white p-6 shadow-sm md:p-8" style={{ borderColor: BORDER, borderLeft: `4px solid ${GOLD}` }}>
+              <div className="flex items-start gap-4">
+                <Avatar post={post} size={52} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-bold" style={{ color: BLUE }}>{post.author_name}</span>{post.author_badge && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold" style={{ color: GOLD }}>{post.author_badge}</span>}<span className="text-xs text-slate-400">{relativeTime(post.created_at)}</span>{post.is_pinned && <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold" style={{ color: BLUE }}><Pin size={11} /> Épinglé</span>}{post.is_solved && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700"><CheckCircle size={11} /> Solution trouvée</span>}</div>
+                  <h1 className="mt-3 text-2xl font-black leading-tight" style={{ color: BLUE }}>{post.title}</h1>
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">{post.content}</p>
                 </div>
-                <h1 className="text-xl font-bold mb-3" style={{ color: '#002050' }}>{post.title}</h1>
-                <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
               </div>
-            </div>
+              <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                <button onClick={() => void toggleLike(post.id)} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold" style={post.user_liked ? { background: '#EFF6FF', color: BLUE } : { color: '#64748B' }}><ThumbsUp size={16} /> {post.likes_count} utile{post.likes_count === 1 ? '' : 's'}</button>
+                <button onClick={() => replyRef.current?.focus()} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"><MessageSquare size={16} /> Répondre</button>
+                {isLoggedIn && <div className="ml-auto flex flex-wrap items-center gap-3">{post.user_id !== myId && !blockedUserIds.has(post.user_id) && <button disabled={blockingUserId === post.user_id} onClick={() => void blockUser(post.user_id)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-700 disabled:opacity-50"><Ban size={14} /> Bloquer</button>}<button onClick={() => setShowReport({ postId: post.id })} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-600"><Flag size={14} /> Signaler</button></div>}
+              </div>
+            </article>
 
-            {/* Post actions */}
-            <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-100">
-              <button onClick={() => toggleLike(post.id)}
-                className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all"
-                style={post.user_liked ? { backgroundColor: '#EFF6FF', color: '#002050' } : { color: '#6B7280' }}>
-                <ThumbsUp className="w-4 h-4" /> {post.likes_count}
-              </button>
-              <button onClick={() => replyRef.current?.focus()}
-                className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-50 transition-all">
-                <MessageSquare className="w-4 h-4" /> Répondre
-              </button>
-              {isLoggedIn && (
-                <div className="ml-auto flex items-center gap-3">
-                  {post.user_id !== myId && !blockedUserIds.has(post.user_id) && (
-                    <button type="button" disabled={blockingUserId === post.user_id} onClick={() => void blockUser(post.user_id)}
-                      className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-700 disabled:opacity-50">
-                      <Ban className="w-3.5 h-3.5" /> Bloquer
-                    </button>
-                  )}
-                  <button onClick={() => setShowReport({ postId: post.id })}
-                    className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors">
-                    <Flag className="w-3.5 h-3.5" /> Signaler
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Replies */}
-        {sortedReplies.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold text-gray-500 mb-3">{sortedReplies.length} réponse{sortedReplies.length !== 1 ? 's' : ''}</h2>
-            <div className="space-y-3">
-              {sortedReplies.map(reply => {
+            <section className="mt-8">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black" style={{ color: BLUE }}>{sortedReplies.length} réponse{sortedReplies.length === 1 ? '' : 's'}</h2><Link to={backPath} className="text-xs font-bold" style={{ color: GOLD }}>Retour à {sectionLabel}</Link></div>
+              {sortedReplies.length === 0 ? <div className="mt-4 rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500" style={{ borderColor: BORDER }}>Aucune réponse pour le moment.</div> : <div className="mt-4 space-y-3">{sortedReplies.map(reply => {
                 const isSolution = reply.id === post.solved_reply_id;
-                return (
-                  <div key={reply.id} className="bg-white rounded-xl overflow-hidden"
-                    style={{ border: `1px solid ${isSolution ? '#1E7A52' : '#E4E7EC'}`, borderLeft: `3px solid ${isSolution ? '#1E7A52' : '#E4E7EC'}` }}>
-                    <div className="p-4">
-                      {isSolution && (
-                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-green-100">
-                          <CheckCircle className="w-4 h-4" style={{ color: '#1E7A52' }} />
-                          <span className="text-xs font-semibold" style={{ color: '#1E7A52' }}>Solution acceptée</span>
-                        </div>
-                      )}
-                      <div className="flex items-start gap-3">
-                        <Monogram initials={reply.author_initials} size={36} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            <span className="font-semibold text-sm" style={{ color: '#002050' }}>{reply.author_name}</span>
-                            <span className="text-xs text-gray-400">{relativeTime(reply.created_at)}</span>
-                          </div>
-                          <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{reply.content}</p>
-                          <div className="flex items-center gap-3 mt-3">
-                            <button onClick={() => toggleLike(reply.id)}
-                              className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-all"
-                              style={reply.user_liked ? { backgroundColor: '#EFF6FF', color: '#002050' } : { color: '#9CA3AF' }}>
-                              <ThumbsUp className="w-3 h-3" /> {reply.likes_count}
-                            </button>
-                            {isLoggedIn && myId === post.user_id && !post.is_solved && (
-                              <button onClick={() => markSolution(reply.id)}
-                                className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-all hover:bg-green-50"
-                                style={{ color: '#1E7A52' }}>
-                                <CheckCircle className="w-3 h-3" /> Marquer comme solution
-                              </button>
-                            )}
-                            {isLoggedIn && reply.user_id !== myId && !blockedUserIds.has(reply.user_id) && (
-                              <button type="button" disabled={blockingUserId === reply.user_id} onClick={() => void blockUser(reply.user_id)}
-                                className="ml-auto flex items-center gap-1 text-xs text-gray-300 hover:text-red-600 disabled:opacity-50">
-                                <Ban className="w-3 h-3" /> Bloquer
-                              </button>
-                            )}
-                            {isLoggedIn && (
-                              <button onClick={() => setShowReport({ postId: reply.id })}
-                                aria-label="Signaler cette réponse"
-                                className={`flex items-center gap-1 text-xs text-gray-300 hover:text-red-400 transition-colors ${reply.user_id === myId || blockedUserIds.has(reply.user_id) ? 'ml-auto' : ''}`}>
-                                <Flag className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                return <article key={reply.id} className="rounded-2xl border bg-white p-5" style={{ borderColor: isSolution ? '#34A36F' : BORDER, borderLeft: `3px solid ${isSolution ? '#34A36F' : BORDER}` }}>
+                  {isSolution && <div className="mb-4 flex items-center gap-2 border-b border-emerald-100 pb-3 text-xs font-bold text-emerald-700"><CheckCircle size={16} /> Solution acceptée</div>}
+                  <div className="flex items-start gap-3"><Avatar post={reply} size={40} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-bold" style={{ color: BLUE }}>{reply.author_name}</span>{reply.author_badge && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold" style={{ color: GOLD }}>{reply.author_badge}</span>}<span className="text-xs text-slate-400">{relativeTime(reply.created_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{reply.content}</p><div className="mt-3 flex flex-wrap items-center gap-3"><button onClick={() => void toggleLike(reply.id)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold" style={reply.user_liked ? { background: '#EFF6FF', color: BLUE } : { color: '#94A3B8' }}><ThumbsUp size={13} /> {reply.likes_count}</button>{isLoggedIn && canMarkSolution && !post.is_solved && <button onClick={() => void markSolution(reply.id)} className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><CheckCircle size={13} /> Marquer comme solution</button>}{isLoggedIn && reply.user_id !== myId && !blockedUserIds.has(reply.user_id) && <button disabled={blockingUserId === reply.user_id} onClick={() => void blockUser(reply.user_id)} className="ml-auto inline-flex items-center gap-1 text-xs text-slate-300 hover:text-red-600 disabled:opacity-50"><Ban size={12} /> Bloquer</button>}{isLoggedIn && <button onClick={() => setShowReport({ postId: reply.id })} aria-label="Signaler cette réponse" className="inline-flex items-center gap-1 text-xs text-slate-300 hover:text-red-500"><Flag size={12} /></button>}</div></div></div>
+                </article>;
+              })}</div>}
+            </section>
 
-        {/* Reply zone */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <h3 className="font-semibold text-sm mb-3" style={{ color: '#002050' }}>Votre réponse</h3>
-          {isLoggedIn ? (
-            <>
-              <textarea ref={replyRef} value={replyContent} onChange={e => setReplyContent(e.target.value.slice(0, 2000))}
-                rows={4} placeholder="Rédigez votre réponse... (min 10 caractères)"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-gray-400 mb-1" />
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-gray-400">{replyContent.length}/2000</span>
-              </div>
-              {replyError && <p className="text-red-600 text-sm mb-3">{replyError}</p>}
-              <button onClick={submitReply} disabled={submitting || !replyContent.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90"
-                style={{ backgroundColor: '#002050' }}>
-                <Send className="w-4 h-4" />
-                {submitting ? 'Publication…' : 'Publier ma réponse'}
-              </button>
-            </>
-          ) : (
-            <div className="text-center py-4">
-              <p className="text-sm text-gray-500 mb-3">Connectez-vous pour répondre à cette discussion.</p>
-              <Link to="/connexion" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ backgroundColor: '#002050' }}>
-                Se connecter
-              </Link>
-            </div>
-          )}
-        </div>
+            <section className="mt-8 rounded-3xl border bg-slate-50/60 p-5 md:p-6" style={{ borderColor: BORDER }}>
+              <h2 className="text-base font-black" style={{ color: BLUE }}>Votre réponse</h2>
+              {isLoggedIn ? <><textarea ref={replyRef} value={replyContent} onChange={event => setReplyContent(event.target.value.slice(0, 2000))} rows={5} placeholder="Rédigez une réponse claire, respectueuse et utile..." className="mt-4 w-full resize-none rounded-xl border bg-white px-3 py-3 text-sm outline-none" style={{ borderColor: BORDER }} /><div className="mt-2 flex items-center justify-between"><span className="text-xs text-slate-400">{replyContent.length}/2000</span></div>{replyError && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{replyError}</p>}<button onClick={() => void submitReply()} disabled={submitting || !replyContent.trim()} className="mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50" style={{ background: BLUE }}><Send size={16} /> {submitting ? 'Publication...' : 'Publier ma réponse'}</button></> : <div className="mt-4 rounded-2xl border bg-white p-6 text-center" style={{ borderColor: BORDER }}><p className="text-sm text-slate-500">Connectez-vous pour participer à la discussion.</p><Link to={`/connexion?redirect=${encodeURIComponent(`/forum/post/${post.id}`)}`} className="mt-4 inline-flex rounded-xl px-5 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}>Se connecter</Link></div>}
+            </section>
+          </div>
+        </section>
+        <PageFooter />
+
+        {showReport && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4"><div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-lg font-black" style={{ color: BLUE }}>Signaler ce contenu</h2><button onClick={() => setShowReport(null)} className="rounded-xl p-2 hover:bg-slate-100"><X size={18} /></button></div><p className="mt-2 text-sm text-slate-500">Le signalement sera transmis aux personnes autorisées à modérer la communauté.</p><select value={reportReason} onChange={event => setReportReason(event.target.value)} className="mt-5 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: BORDER }}>{REPORT_REASONS.map(reason => <option key={reason.value} value={reason.value}>{reason.label}</option>)}</select><textarea value={reportDetails} onChange={event => setReportDetails(event.target.value.slice(0, 1000))} rows={4} placeholder="Précisions facultatives..." className="mt-3 w-full resize-none rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: BORDER }} /><div className="mt-5 flex gap-3"><button onClick={() => setShowReport(null)} className="flex-1 rounded-xl border py-2.5 text-sm font-semibold text-slate-600" style={{ borderColor: BORDER }}>Annuler</button><button disabled={reporting} onClick={() => void submitReport()} className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{reporting ? 'Envoi...' : 'Signaler'}</button></div></div></div>}
       </div>
-
-      <PageFooter />
-
-      {/* Report modal */}
-      {showReport && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900">Signaler ce contenu</h2>
-              <button onClick={() => setShowReport(null)} className="p-1 rounded-lg hover:bg-gray-100">
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="space-y-2">
-                {REPORT_REASONS.map(r => (
-                  <label key={r.value} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 cursor-pointer hover:bg-gray-50">
-                    <input type="radio" value={r.value} checked={reportReason === r.value}
-                      onChange={() => setReportReason(r.value)} className="accent-current" style={{ accentColor: '#002050' }} />
-                    <span className="text-sm text-gray-700">{r.label}</span>
-                  </label>
-                ))}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1.5">Détails (optionnel)</label>
-                <textarea value={reportDetails} onChange={e => setReportDetails(e.target.value)} rows={3}
-                  placeholder="Précisez si nécessaire..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-400" />
-              </div>
-              <button onClick={submitReport} disabled={reporting}
-                className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-                style={{ backgroundColor: '#DC2626' }}>
-                {reporting ? 'Envoi…' : 'Envoyer le signalement'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </CommunityLayout>
   );
 }
