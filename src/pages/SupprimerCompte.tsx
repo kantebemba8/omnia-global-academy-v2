@@ -66,7 +66,7 @@ export function SupprimerCompte() {
             </p>
             {signedIn ? (
               <Link
-                to="/dashboard/profil?tab=securite"
+                to="/mon-profil?tab=securite"
                 className="mt-5 inline-flex rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white"
               >
                 Ouvrir les paramètres de sécurité

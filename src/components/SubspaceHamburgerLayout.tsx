@@ -1,5 +1,5 @@
 import { clearSession } from '../lib/session';
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Radio, Search, UserRound } from 'lucide-react';
@@ -14,7 +14,7 @@ export type SubspaceNavItem = {
   exact?: boolean;
 };
 
-type StoredUser = { full_name?: string; name?: string; email?: string; roles?: string[] };
+type StoredUser = { full_name?: string; name?: string; email?: string; avatar_url?: string | null; roles?: string[] };
 
 type Props = {
   title: string;
@@ -39,11 +39,11 @@ export function getDashboardPath(roles: string[] = []) {
 export function getProfilePath(roles: string[] = []) {
   // IMPORTANT: always use the REAL authenticated role.
   // A preview URL (?preview=true) must never change the personal profile destination.
-  if (roles.includes('super_admin')) return '/admin/profil';
-  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/profil';
-  if (roles.includes('recruteur')) return '/talent/recruteur/profil';
-  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/profile';
-  return '/dashboard/profil';
+  if (roles.includes('super_admin')) return '/mon-profil';
+  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/mon-profil';
+  if (roles.includes('recruteur')) return '/mon-profil';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/mon-profil';
+  return '/mon-profil';
 }
 
 function initials(user: StoredUser | null) {
@@ -57,15 +57,32 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
   const [profileOpen, setProfileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const user = useMemo<StoredUser | null>(() => {
+  const [user, setUser] = useState<StoredUser | null>(() => {
     try { const raw = localStorage.getItem('omnia_user'); return raw ? JSON.parse(raw) : null; } catch { return null; }
-  }, []);
+  });
   const roles = user?.roles || [];
   const dashboardPath = getDashboardPath(roles);
   const profilePath = getProfilePath(roles);
   const isSuperAdmin = roles.includes('super_admin');
   const isOrganizer = roles.some(r => ['organizer','organisateur','professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r))
     || Boolean((user as any)?.omnia_live_organizer);
+
+  useEffect(() => {
+    const refreshUser = () => {
+      try {
+        const raw = localStorage.getItem('omnia_user');
+        setUser(raw ? JSON.parse(raw) as StoredUser : null);
+      } catch {
+        setUser(null);
+      }
+    };
+    window.addEventListener('omnia:profile-updated', refreshUser);
+    window.addEventListener('storage', refreshUser);
+    return () => {
+      window.removeEventListener('omnia:profile-updated', refreshUser);
+      window.removeEventListener('storage', refreshUser);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open && !profileOpen) return;
@@ -156,7 +173,11 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                 aria-expanded={profileOpen}
                 aria-label="Ouvrir le menu du profil"
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt="Photo de profil" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
+                ) : (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                )}
                 <ChevronDown size={15} className="text-slate-400" />
               </button>
 

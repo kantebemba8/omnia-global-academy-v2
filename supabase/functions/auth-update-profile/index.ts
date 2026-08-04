@@ -8,6 +8,82 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
 
+const PROFILE_BUCKET = "profile-avatars";
+const MAX_AVATAR_BYTES = 3 * 1024 * 1024;
+const ALLOWED_AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+const PROFILE_VISIBILITIES = new Set(["public", "members", "private"]);
+const URL_FIELDS = new Set(["website_url", "linkedin_url", "portfolio_url", "github_url"]);
+
+const USER_FIELDS = [
+  "full_name",
+  "email",
+  "phone_number",
+  "country_code",
+  "birth_date",
+  "allow_email",
+  "allow_sms",
+  "allow_push",
+  "subscribe_newsletter",
+] as const;
+
+const PROFILE_TEXT_FIELDS: Record<string, number> = {
+  display_name: 160,
+  headline: 220,
+  bio: 3000,
+  city: 160,
+  website_url: 700,
+  linkedin_url: 700,
+  portfolio_url: 700,
+  github_url: 700,
+  availability_text: 300,
+  public_email: 255,
+  public_phone: 80,
+};
+
+const PROFILE_ARRAY_FIELDS: Record<string, { maxItems: number; maxLength: number }> = {
+  languages: { maxItems: 20, maxLength: 80 },
+  skills: { maxItems: 50, maxLength: 120 },
+  interests: { maxItems: 30, maxLength: 120 },
+};
+
+const PROFILE_BOOLEAN_FIELDS = [
+  "show_email",
+  "show_phone",
+  "show_location",
+  "show_roles",
+  "show_achievements",
+  "allow_messages",
+] as const;
+
+const ROLE_DETAIL_TEXT_FIELDS: Record<string, number> = {
+  education_level: 160,
+  field_of_study: 180,
+  career_goal: 1200,
+  years_experience: 40,
+  expertise_domain: 300,
+  experience_summary: 2000,
+  organizer_type: 120,
+  organization_name: 220,
+};
+
+const ROLE_DETAIL_ARRAY_FIELDS: Record<string, { maxItems: number; maxLength: number }> = {
+  target_roles: { maxItems: 20, maxLength: 120 },
+  target_sectors: { maxItems: 20, maxLength: 120 },
+  contract_preferences: { maxItems: 15, maxLength: 100 },
+  teaching_languages: { maxItems: 15, maxLength: 80 },
+  qualifications: { maxItems: 30, maxLength: 180 },
+  teaching_formats: { maxItems: 10, maxLength: 100 },
+  event_topics: { maxItems: 25, maxLength: 150 },
+  moderation_domains: { maxItems: 25, maxLength: 150 },
+  recruitment_sectors: { maxItems: 25, maxLength: 150 },
+  recruitment_countries: { maxItems: 25, maxLength: 100 },
+  coaching_topics: { maxItems: 25, maxLength: 150 },
+  session_languages: { maxItems: 15, maxLength: 80 },
+};
+
+type DbClient = ReturnType<typeof createClient>;
+type SessionContext = { userId: string; roles: string[] };
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -15,55 +91,367 @@ function json(data: unknown, status = 200) {
   });
 }
 
-const USER_FIELDS = [
-  "full_name",
-  "email",
-  "phone_number",
-  "country_code",
-  "avatar_url",
-  "allow_email",
-  "allow_sms",
-  "allow_push",
-  "subscribe_newsletter",
-] as const;
+function tokenFromRequest(req: Request) {
+  return (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+}
 
-const PROFESSOR_FIELDS = ["bio", "expertise_domain"] as const;
+async function resolveSession(sb: DbClient, req: Request, required = true): Promise<SessionContext | null | Response> {
+  const token = tokenFromRequest(req);
+  if (!token) return required ? json({ error: "AUTH_REQUIRED" }, 401) : null;
+
+  const { data: session, error: sessionError } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (sessionError || !session) return required ? json({ error: "SESSION_INVALID" }, 401) : null;
+
+  const { data: roleRows, error: roleError } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id);
+  if (roleError) throw roleError;
+  return {
+    userId: String(session.user_id),
+    roles: (roleRows || []).map((row: { role: string }) => String(row.role)),
+  };
+}
+
+function isResponse(value: unknown): value is Response {
+  return value instanceof Response;
+}
+
+async function ignoreFailure(operation: PromiseLike<unknown>) {
+  try {
+    await operation;
+  } catch {
+    // Synchronisation secondaire : le profil unifié reste la source de vérité.
+  }
+}
+
+function cleanText(value: unknown, maxLength: number): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value).trim().slice(0, maxLength) || null;
+}
+
+function cleanArray(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(item => String(item).trim().slice(0, maxLength)).filter(Boolean))].slice(0, maxItems);
+}
+
+function validHttpUrl(value: string | null) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeProfile(input: Record<string, unknown>) {
+  const result: Record<string, unknown> = {};
+  for (const [field, maxLength] of Object.entries(PROFILE_TEXT_FIELDS)) {
+    if (input[field] === undefined) continue;
+    const value = cleanText(input[field], maxLength);
+    if (URL_FIELDS.has(field) && !validHttpUrl(value)) throw new Error(`INVALID_URL:${field}`);
+    result[field] = value;
+  }
+  for (const [field, config] of Object.entries(PROFILE_ARRAY_FIELDS)) {
+    if (input[field] !== undefined) result[field] = cleanArray(input[field], config.maxItems, config.maxLength);
+  }
+  for (const field of PROFILE_BOOLEAN_FIELDS) {
+    if (input[field] !== undefined) result[field] = Boolean(input[field]);
+  }
+  if (input.visibility !== undefined) {
+    const visibility = String(input.visibility || "");
+    if (!PROFILE_VISIBILITIES.has(visibility)) throw new Error("INVALID_VISIBILITY");
+    result.visibility = visibility;
+  }
+  return result;
+}
+
+function sanitizeRoleDetails(input: Record<string, unknown>) {
+  const result: Record<string, unknown> = {};
+  for (const [field, maxLength] of Object.entries(ROLE_DETAIL_TEXT_FIELDS)) {
+    if (input[field] !== undefined) result[field] = cleanText(input[field], maxLength);
+  }
+  for (const [field, config] of Object.entries(ROLE_DETAIL_ARRAY_FIELDS)) {
+    if (input[field] !== undefined) result[field] = cleanArray(input[field], config.maxItems, config.maxLength);
+  }
+  return result;
+}
+
+function parseDataUrl(value: unknown) {
+  const text = typeof value === "string" ? value : "";
+  const match = text.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) throw new Error("INVALID_AVATAR_DATA");
+  const mime = match[1].toLowerCase();
+  if (!ALLOWED_AVATAR_MIME.has(mime)) throw new Error("INVALID_AVATAR_TYPE");
+  const normalized = match[2].replace(/\s+/g, "");
+  const bytes = Uint8Array.from(atob(normalized), char => char.charCodeAt(0));
+  if (!bytes.length || bytes.length > MAX_AVATAR_BYTES) throw new Error("AVATAR_TOO_LARGE");
+  return { mime, bytes };
+}
+
+function avatarExtension(mime: string) {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  return "jpg";
+}
+
+async function ensureProfile(sb: DbClient, userId: string, fullName?: string | null) {
+  const { data: existing, error: existingError } = await sb
+    .from("user_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing as Record<string, unknown>;
+
+  const { data, error } = await sb
+    .from("user_profiles")
+    .insert({ user_id: userId, display_name: cleanText(fullName, 160) })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Record<string, unknown>;
+}
+
+async function loadProfileBundle(
+  sb: DbClient,
+  userId: string,
+  knownRoles?: string[],
+  createProfile = true,
+) {
+  const [userResult, rolesResult, profileResult, professorResult, organizerResult, coachResult, managerResult] = await Promise.all([
+    sb.from("users").select("id,full_name,email,phone_number,country_code,birth_date,avatar_url,allow_email,allow_sms,allow_push,subscribe_newsletter,ai_tokens,status").eq("id", userId).maybeSingle(),
+    knownRoles ? Promise.resolve({ data: knownRoles.map(role => ({ role })), error: null }) : sb.from("user_roles").select("role").eq("user_id", userId),
+    sb.from("user_profiles").select("*").eq("user_id", userId).maybeSingle(),
+    sb.from("professeur_profiles").select("bio,expertise_domain,cv_diploma_url,kyc_status,signature_url").eq("user_id", userId).maybeSingle(),
+    sb.from("live_organizer_profiles").select("display_name,bio,country,website,logo_url,verification_status,public_rating,review_count,completed_events").eq("user_id", userId).maybeSingle(),
+    sb.from("coach_profiles").select("id,public_slug,professional_title,biography,specialties,languages,country,timezone,photo_url,linkedin_url,website_url,status,average_rating,rating_count,completed_sessions_count").eq("user_id", userId).maybeSingle(),
+    sb.from("partner_managers").select("organization_id,role_in_org,is_primary,status").eq("user_id", userId).neq("status", "retire").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  if (userResult.error) throw userResult.error;
+  if (!userResult.data || userResult.data.status === "supprime") return null;
+  if (rolesResult.error) throw rolesResult.error;
+  if (profileResult.error) throw profileResult.error;
+
+  const roles = (rolesResult.data || []).map((row: { role: string }) => String(row.role));
+  let structure: Record<string, unknown> | null = null;
+  if (!managerResult.error && managerResult.data?.organization_id) {
+    const { data } = await sb
+      .from("partner_organizations")
+      .select("id,org_name,org_type,country,city,logo_url,website,description")
+      .eq("id", managerResult.data.organization_id)
+      .maybeSingle();
+    if (data) structure = { ...data, role_in_org: managerResult.data.role_in_org, is_primary: managerResult.data.is_primary };
+  }
+
+  const profile = profileResult.data || (createProfile
+    ? await ensureProfile(sb, userId, userResult.data.full_name)
+    : {
+        user_id: userId,
+        display_name: userResult.data.full_name,
+        headline: null,
+        bio: null,
+        city: null,
+        languages: [],
+        skills: [],
+        interests: [],
+        visibility: "members",
+        show_email: false,
+        show_phone: false,
+        show_location: true,
+        show_roles: true,
+        show_achievements: true,
+        allow_messages: true,
+        role_details: {},
+      });
+  return {
+    user: userResult.data,
+    roles,
+    profile,
+    professor_profile: professorResult.error ? null : professorResult.data || null,
+    organizer_profile: organizerResult.error ? null : organizerResult.data || null,
+    coach_profile: coachResult.error ? null : coachResult.data || null,
+    structure,
+  };
+}
+
+async function synchronizeRoleProfiles(
+  sb: DbClient,
+  userId: string,
+  roles: string[],
+  user: Record<string, unknown>,
+  profile: Record<string, unknown>,
+) {
+  const roleDetails = (profile.role_details && typeof profile.role_details === "object" ? profile.role_details : {}) as Record<string, unknown>;
+  const displayName = cleanText(profile.display_name, 160) || cleanText(user.full_name, 160) || "Membre Omnia";
+  const country = cleanText(user.country_code, 20);
+  const city = cleanText(profile.city, 160);
+  const location = [city, country].filter(Boolean).join(", ") || null;
+  const languages = cleanArray(profile.languages, 20, 80);
+  const skills = cleanArray(profile.skills, 50, 120);
+  const visibility = profile.visibility === "public" ? "public" : profile.visibility === "members" ? "recruiters" : "private";
+
+  // La présentation Career/Skills Passport est synchronisée pour les rôles individuels.
+  const individualRoles = roles.some(role => ["apprenant", "professeur", "formateur", "coach", "organizer", "organisateur", "recruteur", "recruteur_independant"].includes(role));
+  if (individualRoles) {
+    await ignoreFailure(sb.from("career_public_profiles").upsert({
+      user_id: userId,
+      full_name: displayName,
+      professional_title: cleanText(profile.headline, 220),
+      email: profile.show_email ? cleanText(profile.public_email, 255) : null,
+      phone: profile.show_phone ? cleanText(profile.public_phone, 80) : null,
+      location,
+      linkedin: cleanText(profile.linkedin_url, 700),
+      bio: cleanText(profile.bio, 3000),
+      skills,
+      languages,
+      photo_url: cleanText(user.avatar_url, 1200),
+      visibility,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" }));
+
+    await ignoreFailure(sb.from("skills_passports").update({
+      professional_headline: cleanText(profile.headline, 220),
+      professional_summary: cleanText(profile.bio, 3000),
+      target_roles: cleanArray(roleDetails.target_roles, 20, 120),
+      languages,
+      location_text: location,
+      availability_text: cleanText(profile.availability_text, 300),
+      updated_at: new Date().toISOString(),
+    }).eq("user_id", userId));
+  }
+
+  if (roles.some(role => ["professeur", "formateur", "enseignant", "etablissement_enseignant"].includes(role))) {
+    await ignoreFailure(sb.from("professeur_profiles").upsert({
+      user_id: userId,
+      bio: cleanText(profile.bio, 3000),
+      expertise_domain: cleanText(roleDetails.expertise_domain, 300) || skills.slice(0, 5).join(", ") || null,
+    }, { onConflict: "user_id" }));
+  }
+
+  if (roles.some(role => ["organizer", "organisateur"].includes(role))) {
+    await ignoreFailure(sb.from("live_organizer_profiles").update({
+      display_name: displayName,
+      bio: cleanText(profile.bio, 3000),
+      country,
+      website: cleanText(profile.website_url, 700),
+      updated_at: new Date().toISOString(),
+    }).eq("user_id", userId));
+  }
+
+  if (roles.includes("coach")) {
+    await ignoreFailure(sb.from("coach_profiles").update({
+      professional_title: cleanText(profile.headline, 220),
+      biography: cleanText(profile.bio, 3000),
+      specialties: skills,
+      languages: cleanArray(roleDetails.session_languages, 15, 80).length
+        ? cleanArray(roleDetails.session_languages, 15, 80)
+        : languages,
+      country,
+      photo_url: cleanText(user.avatar_url, 1200),
+      linkedin_url: cleanText(profile.linkedin_url, 700),
+      website_url: cleanText(profile.website_url, 700),
+      updated_at: new Date().toISOString(),
+    }).eq("user_id", userId));
+  }
+}
+
+async function publicProfileAction(sb: DbClient, req: Request, body: Record<string, unknown>) {
+  const targetUserId = cleanText(body.user_id ?? body.profile_user_id, 80);
+  if (!targetUserId) return json({ error: "PROFILE_USER_REQUIRED" }, 400);
+
+  const optionalSession = await resolveSession(sb, req, false);
+  if (isResponse(optionalSession)) return optionalSession;
+  const bundle = await loadProfileBundle(sb, targetUserId, undefined, false);
+  if (!bundle) return json({ error: "PROFILE_NOT_FOUND" }, 404);
+
+  const profile = bundle.profile as Record<string, unknown>;
+  const viewerIsOwner = optionalSession?.userId === targetUserId;
+  const viewerIsAdmin = optionalSession?.roles.includes("super_admin") || false;
+  const visibility = String(profile.visibility || "members");
+  if (visibility === "private" && !viewerIsOwner && !viewerIsAdmin) return json({ error: "PROFILE_PRIVATE" }, 403);
+  if (visibility === "members" && !optionalSession) return json({ error: "MEMBER_ACCESS_REQUIRED" }, 401);
+
+  const roleDetails = (profile.role_details && typeof profile.role_details === "object" ? profile.role_details : {}) as Record<string, unknown>;
+  const safeRoleDetails: Record<string, unknown> = {};
+  for (const key of [
+    "education_level", "field_of_study", "career_goal", "target_roles", "target_sectors", "contract_preferences",
+    "years_experience", "expertise_domain", "teaching_languages", "qualifications", "teaching_formats",
+    "experience_summary", "organizer_type", "organization_name", "event_topics", "moderation_domains",
+    "recruitment_sectors", "recruitment_countries", "coaching_topics", "session_languages",
+  ]) {
+    if (roleDetails[key] !== undefined && roleDetails[key] !== null && roleDetails[key] !== "") safeRoleDetails[key] = roleDetails[key];
+  }
+
+  const user = bundle.user as Record<string, unknown>;
+  const response = {
+    id: user.id,
+    display_name: profile.display_name || user.full_name || "Membre Omnia",
+    avatar_url: user.avatar_url || null,
+    headline: profile.headline || null,
+    bio: profile.bio || null,
+    city: profile.show_location ? profile.city || null : null,
+    country_code: profile.show_location ? user.country_code || null : null,
+    languages: profile.languages || [],
+    skills: profile.skills || [],
+    interests: profile.interests || [],
+    website_url: profile.website_url || null,
+    linkedin_url: profile.linkedin_url || null,
+    portfolio_url: profile.portfolio_url || null,
+    github_url: profile.github_url || null,
+    availability_text: profile.availability_text || null,
+    email: profile.show_email ? profile.public_email || null : null,
+    phone: profile.show_phone ? profile.public_phone || null : null,
+    roles: profile.show_roles ? bundle.roles : [],
+    show_achievements: Boolean(profile.show_achievements),
+    allow_messages: Boolean(profile.allow_messages),
+    role_details: safeRoleDetails,
+    professor_profile: bundle.professor_profile ? {
+      expertise_domain: (bundle.professor_profile as Record<string, unknown>).expertise_domain || null,
+    } : null,
+    organizer_profile: bundle.organizer_profile ? {
+      verification_status: (bundle.organizer_profile as Record<string, unknown>).verification_status || null,
+      public_rating: (bundle.organizer_profile as Record<string, unknown>).public_rating || 0,
+      review_count: (bundle.organizer_profile as Record<string, unknown>).review_count || 0,
+      completed_events: (bundle.organizer_profile as Record<string, unknown>).completed_events || 0,
+    } : null,
+    coach_profile: bundle.coach_profile ? {
+      public_slug: (bundle.coach_profile as Record<string, unknown>).public_slug || null,
+      status: (bundle.coach_profile as Record<string, unknown>).status || null,
+      average_rating: (bundle.coach_profile as Record<string, unknown>).average_rating || 0,
+      rating_count: (bundle.coach_profile as Record<string, unknown>).rating_count || 0,
+      completed_sessions_count: (bundle.coach_profile as Record<string, unknown>).completed_sessions_count || 0,
+    } : null,
+    structure: bundle.structure ? {
+      id: (bundle.structure as Record<string, unknown>).id,
+      name: (bundle.structure as Record<string, unknown>).org_name,
+      type: (bundle.structure as Record<string, unknown>).org_type,
+      logo_url: (bundle.structure as Record<string, unknown>).logo_url,
+      city: profile.show_location ? (bundle.structure as Record<string, unknown>).city : null,
+      country: profile.show_location ? (bundle.structure as Record<string, unknown>).country : null,
+    } : null,
+    visibility,
+  };
+
+  return json({ success: true, profile: response, is_owner: viewerIsOwner });
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "PATCH" && req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
-  const token = (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-  if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
-
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return json({ error: "INVALID_BODY" }, 400);
-
-  const action = typeof body.action === "string" ? body.action.trim() : "";
-
-  const userUpdates: Record<string, unknown> = {};
-  for (const field of USER_FIELDS) {
-    if (body[field] !== undefined) userUpdates[field] = body[field] === "" ? null : body[field];
-  }
-
-  const requestedProfessorProfile = body.professor_profile && typeof body.professor_profile === "object"
-    ? body.professor_profile as Record<string, unknown>
-    : null;
-  const professorUpdates: Record<string, unknown> = {};
-  if (requestedProfessorProfile) {
-    for (const field of PROFESSOR_FIELDS) {
-      if (requestedProfessorProfile[field] !== undefined) {
-        professorUpdates[field] = requestedProfessorProfile[field] === "" ? null : requestedProfessorProfile[field];
-      }
-    }
-  }
-
-  const accountActions = new Set(["delete_account", "block_user", "unblock_user", "list_blocked_users"]);
-  if (!accountActions.has(action) && Object.keys(userUpdates).length === 0 && Object.keys(professorUpdates).length === 0) {
-    return json({ error: "NO_VALID_FIELDS", message: "Aucun champ valide fourni." }, 400);
-  }
+  const action = typeof body.action === "string" ? body.action.trim() : "update_profile";
 
   try {
     const sb = createClient(
@@ -71,18 +459,62 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: session, error: sessionError } = await sb
-      .from("user_sessions")
-      .select("user_id")
-      .eq("session_token", token)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
-    if (sessionError || !session) return json({ error: "SESSION_INVALID" }, 401);
-    const userId = String(session.user_id);
+    if (action === "public_profile") return await publicProfileAction(sb, req, body);
+
+    const session = await resolveSession(sb, req, true);
+    if (isResponse(session)) return session;
+    if (!session) return json({ error: "SESSION_INVALID" }, 401);
+    const userId = session.userId;
+
+    if (action === "get_profile") {
+      const bundle = await loadProfileBundle(sb, userId, session.roles);
+      if (!bundle) return json({ error: "ACCOUNT_UNAVAILABLE" }, 410);
+      return json({ success: true, ...bundle });
+    }
+
+    if (action === "upload_avatar") {
+      const { mime, bytes } = parseDataUrl(body.avatar_base64);
+      const current = await ensureProfile(sb, userId);
+      const oldPath = cleanText(current.avatar_storage_path, 800);
+      const path = `${userId}/avatar-${crypto.randomUUID()}.${avatarExtension(mime)}`;
+      const { error: uploadError } = await sb.storage.from(PROFILE_BUCKET).upload(path, bytes, {
+        contentType: mime,
+        cacheControl: "31536000",
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+      const publicUrl = sb.storage.from(PROFILE_BUCKET).getPublicUrl(path).data.publicUrl;
+      if (!publicUrl) throw new Error("AVATAR_PUBLIC_URL_UNAVAILABLE");
+
+      const [{ error: userError }, { error: profileError }] = await Promise.all([
+        sb.from("users").update({ avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq("id", userId),
+        sb.from("user_profiles").upsert({ user_id: userId, avatar_storage_path: path }, { onConflict: "user_id" }),
+      ]);
+      if (userError) throw userError;
+      if (profileError) throw profileError;
+      if (oldPath && oldPath !== path) await ignoreFailure(sb.storage.from(PROFILE_BUCKET).remove([oldPath]));
+
+      const bundle = await loadProfileBundle(sb, userId, session.roles);
+      return json({ success: true, avatar_url: publicUrl, ...(bundle || {}) });
+    }
+
+    if (action === "remove_avatar") {
+      const current = await ensureProfile(sb, userId);
+      const oldPath = cleanText(current.avatar_storage_path, 800);
+      const [{ error: userError }, { error: profileError }] = await Promise.all([
+        sb.from("users").update({ avatar_url: null, updated_at: new Date().toISOString() }).eq("id", userId),
+        sb.from("user_profiles").upsert({ user_id: userId, avatar_storage_path: null }, { onConflict: "user_id" }),
+      ]);
+      if (userError) throw userError;
+      if (profileError) throw profileError;
+      if (oldPath) await ignoreFailure(sb.storage.from(PROFILE_BUCKET).remove([oldPath]));
+      const bundle = await loadProfileBundle(sb, userId, session.roles);
+      return json({ success: true, ...(bundle || {}) });
+    }
 
     if (action === "block_user" || action === "unblock_user") {
-      const targetUserId = typeof body.target_user_id === "string" ? body.target_user_id.trim() : "";
-      const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
+      const targetUserId = cleanText(body.target_user_id, 80);
+      const reason = cleanText(body.reason, 300);
       if (!targetUserId) return json({ error: "TARGET_USER_REQUIRED" }, 400);
       if (targetUserId === userId) return json({ error: "CANNOT_BLOCK_SELF" }, 400);
 
@@ -97,7 +529,7 @@ Deno.serve(async (req: Request) => {
         const { error } = await sb.from("user_blocks").upsert({
           blocker_user_id: userId,
           blocked_user_id: targetUserId,
-          reason: reason || null,
+          reason,
         }, { onConflict: "blocker_user_id,blocked_user_id" });
         if (error) throw error;
         return json({ success: true, blocked: true, target_user_id: targetUserId });
@@ -138,7 +570,7 @@ Deno.serve(async (req: Request) => {
     if (action === "delete_account") {
       const currentPassword = typeof body.current_password === "string" ? body.current_password : "";
       const confirmation = typeof body.confirmation === "string" ? body.confirmation.trim() : "";
-      const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+      const reason = cleanText(body.reason, 500);
       const source = body.source === "web" ? "web" : "app";
 
       if (!currentPassword || confirmation !== "SUPPRIMER") {
@@ -158,13 +590,11 @@ Deno.serve(async (req: Request) => {
       }
 
       const passwordValid = await bcrypt.compare(currentPassword, String(account.password_hash || ""));
-      if (!passwordValid) {
-        return json({ error: "INVALID_PASSWORD", message: "Mot de passe actuel incorrect." }, 403);
-      }
+      if (!passwordValid) return json({ error: "INVALID_PASSWORD", message: "Mot de passe actuel incorrect." }, 403);
 
       const { data: deletion, error: deletionError } = await sb.rpc("omnia_delete_user_account", {
         p_user_id: userId,
-        p_reason: reason || null,
+        p_reason: reason,
         p_source: source,
       });
       if (deletionError) {
@@ -187,65 +617,97 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const requestedUser = (body.user && typeof body.user === "object" ? body.user : body) as Record<string, unknown>;
+    const requestedProfile = (body.profile && typeof body.profile === "object" ? { ...body.profile as Record<string, unknown> } : {}) as Record<string, unknown>;
+    const legacyProfessorProfile = (body.professor_profile && typeof body.professor_profile === "object"
+      ? body.professor_profile
+      : {}) as Record<string, unknown>;
+    if (requestedProfile.bio === undefined && legacyProfessorProfile.bio !== undefined) requestedProfile.bio = legacyProfessorProfile.bio;
+    const requestedRoleDetails = (body.role_details && typeof body.role_details === "object"
+      ? { ...body.role_details as Record<string, unknown> }
+      : requestedProfile.role_details && typeof requestedProfile.role_details === "object"
+        ? { ...requestedProfile.role_details as Record<string, unknown> }
+        : {}) as Record<string, unknown>;
+    if (requestedRoleDetails.expertise_domain === undefined && legacyProfessorProfile.expertise_domain !== undefined) {
+      requestedRoleDetails.expertise_domain = legacyProfessorProfile.expertise_domain;
+    }
+
+    const userUpdates: Record<string, unknown> = {};
+    for (const field of USER_FIELDS) {
+      if (requestedUser[field] !== undefined) userUpdates[field] = requestedUser[field] === "" ? null : requestedUser[field];
+    }
     if (userUpdates.email) {
-      const { data: existing } = await sb.from("users")
-        .select("id")
-        .eq("email", String(userUpdates.email).trim().toLowerCase())
-        .neq("id", userId)
-        .maybeSingle();
+      const email = String(userUpdates.email).trim().toLowerCase();
+      const { data: existing } = await sb.from("users").select("id").eq("email", email).neq("id", userId).maybeSingle();
       if (existing) return json({ error: "EMAIL_TAKEN" }, 409);
-      userUpdates.email = String(userUpdates.email).trim().toLowerCase();
+      userUpdates.email = email;
     }
-
     if (userUpdates.phone_number) {
-      const { data: existing } = await sb.from("users")
-        .select("id")
-        .eq("phone_number", String(userUpdates.phone_number).trim())
-        .neq("id", userId)
-        .maybeSingle();
+      const phone = String(userUpdates.phone_number).trim();
+      const { data: existing } = await sb.from("users").select("id").eq("phone_number", phone).neq("id", userId).maybeSingle();
       if (existing) return json({ error: "PHONE_TAKEN" }, 409);
-      userUpdates.phone_number = String(userUpdates.phone_number).trim();
+      userUpdates.phone_number = phone;
+    }
+    if (userUpdates.full_name !== undefined) {
+      userUpdates.full_name = cleanText(userUpdates.full_name, 255);
+      if (!userUpdates.full_name) return json({ error: "FULL_NAME_REQUIRED" }, 400);
+    }
+    if (userUpdates.email !== undefined && !userUpdates.email) return json({ error: "EMAIL_REQUIRED" }, 400);
+    if (userUpdates.phone_number !== undefined && !userUpdates.phone_number) return json({ error: "PHONE_REQUIRED" }, 400);
+    if (userUpdates.country_code !== undefined) {
+      userUpdates.country_code = cleanText(userUpdates.country_code, 10)?.toUpperCase();
+      if (!userUpdates.country_code) return json({ error: "COUNTRY_REQUIRED" }, 400);
+    }
+    if (userUpdates.birth_date !== undefined) {
+      userUpdates.birth_date = cleanText(userUpdates.birth_date, 20);
+      if (!userUpdates.birth_date) return json({ error: "BIRTH_DATE_REQUIRED" }, 400);
     }
 
-    if (Object.keys(userUpdates).length > 0) {
+    const profileUpdates = sanitizeProfile(requestedProfile);
+    const roleDetails = sanitizeRoleDetails(requestedRoleDetails);
+    if (Object.keys(roleDetails).length) {
+      const currentProfile = await ensureProfile(sb, userId);
+      const currentDetails = currentProfile.role_details && typeof currentProfile.role_details === "object"
+        ? currentProfile.role_details as Record<string, unknown>
+        : {};
+      profileUpdates.role_details = { ...currentDetails, ...roleDetails };
+    }
+
+    if (!Object.keys(userUpdates).length && !Object.keys(profileUpdates).length) {
+      return json({ error: "NO_VALID_FIELDS", message: "Aucun champ valide fourni." }, 400);
+    }
+
+    if (Object.keys(userUpdates).length) {
       userUpdates.updated_at = new Date().toISOString();
-      const { error: updateError } = await sb.from("users").update(userUpdates).eq("id", userId);
-      if (updateError) throw updateError;
-    }
-
-    let professorProfile: Record<string, unknown> | null = null;
-    if (Object.keys(professorUpdates).length > 0) {
-      const { data: professorRole, error: roleError } = await sb.from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "professeur")
-        .maybeSingle();
-      if (roleError) throw roleError;
-      if (!professorRole) return json({ error: "PROFESSOR_ROLE_REQUIRED" }, 403);
-
-      const { data, error } = await sb.from("professeur_profiles")
-        .upsert({ user_id: userId, ...professorUpdates }, { onConflict: "user_id" })
-        .select("bio,expertise_domain,cv_diploma_url,kyc_status,signature_url")
-        .single();
+      const { error } = await sb.from("users").update(userUpdates).eq("id", userId);
       if (error) throw error;
-      professorProfile = data as Record<string, unknown>;
-    } else {
-      const { data } = await sb.from("professeur_profiles")
-        .select("bio,expertise_domain,cv_diploma_url,kyc_status,signature_url")
-        .eq("user_id", userId)
-        .maybeSingle();
-      professorProfile = data as Record<string, unknown> | null;
+    }
+    if (Object.keys(profileUpdates).length) {
+      const { error } = await sb.from("user_profiles").upsert({
+        user_id: userId,
+        ...profileUpdates,
+      }, { onConflict: "user_id" });
+      if (error) throw error;
     }
 
-    const { data: user, error: userError } = await sb.from("users")
-      .select("id,full_name,email,phone_number,country_code,avatar_url,allow_email,allow_sms,allow_push,subscribe_newsletter,ai_tokens")
-      .eq("id", userId)
-      .maybeSingle();
-    if (userError) throw userError;
-
-    return json({ success: true, user, professor_profile: professorProfile });
+    const bundle = await loadProfileBundle(sb, userId, session.roles);
+    if (!bundle) return json({ error: "ACCOUNT_UNAVAILABLE" }, 410);
+    await synchronizeRoleProfiles(
+      sb,
+      userId,
+      bundle.roles,
+      bundle.user as Record<string, unknown>,
+      bundle.profile as Record<string, unknown>,
+    );
+    const refreshed = await loadProfileBundle(sb, userId, session.roles);
+    return json({ success: true, ...(refreshed || bundle) });
   } catch (error) {
     console.error("auth-update-profile", error);
+    const message = error instanceof Error ? error.message : "SERVER_ERROR";
+    if (message.startsWith("INVALID_URL:")) return json({ error: "INVALID_URL", field: message.split(":")[1] }, 400);
+    if (["INVALID_VISIBILITY", "INVALID_AVATAR_DATA", "INVALID_AVATAR_TYPE", "AVATAR_TOO_LARGE"].includes(message)) {
+      return json({ error: message }, 400);
+    }
     return json({ error: "SERVER_ERROR" }, 500);
   }
 });

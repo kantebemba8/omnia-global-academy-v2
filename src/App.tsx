@@ -59,7 +59,8 @@ const DashboardCareerStudio = lazy(() => import('./pages/dashboard/DashboardCare
 const CareerStudioEditor = lazy(() => import('./pages/dashboard/CareerStudioEditor'));
 const OmniaCareerStudio = lazy(() => import('./pages/OmniaCareerStudio'));
 const DashboardParrainage = lazy(() => import('./pages/dashboard/DashboardParrainage').then((module) => ({ default: module.DashboardParrainage })));
-const DashboardProfil = lazy(() => import('./pages/dashboard/DashboardProfil').then((module) => ({ default: module.DashboardProfil })));
+const UnifiedProfilePage = lazy(() => import('./pages/profile/UnifiedProfilePage'));
+const PublicProfilePage = lazy(() => import('./pages/profile/PublicProfilePage'));
 const DashboardProfesseur = lazy(() => import('./pages/professeur/DashboardProfesseur').then((module) => ({ default: module.DashboardProfesseur })));
 const ProfesseurMesFormations = lazy(() => import('./pages/professeur/ProfesseurMesFormations').then((module) => ({ default: module.ProfesseurMesFormations })));
 const ProfesseurAssessmentCenter = lazy(() => import('./pages/professeur/ProfesseurAssessmentCenter'));
@@ -255,7 +256,6 @@ const AdminOmniaLiveIntegrity = lazy(() => import('./pages/omnia-live/admin/Admi
 const AdminOmniaLiveAudit = lazy(() => import('./pages/omnia-live/admin/AdminOmniaLiveAudit'));
 const OmniaLiveSystemStatus = lazy(() => import('./pages/omnia-live/system/OmniaLiveSystemStatus'));
 const OmniaLiveWatch = lazy(() => import('./pages/omnia-live/OmniaLiveWatch'));
-const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
 const ProjectsHome = lazy(() => import('./pages/projects/ProjectsHome'));
 const ProjectDetail = lazy(() => import('./pages/projects/ProjectDetail'));
 const PublicProjectPortfolio = lazy(() => import('./pages/projects/PublicProjectPortfolio'));
@@ -517,7 +517,7 @@ export default function App() {
           <Route path="/talent/recruteur/candidatures" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/entretiens" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/messages" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/profil" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/profil" element={<Navigate to="/mon-profil" replace />} />
           <Route path="/talent/recruteur/parametres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/plans" element={<CommerceCatalog audience="recruiter" />} />
           <Route path="/talent/organisations" element={<TalentOrganisations />} />
@@ -628,7 +628,7 @@ export default function App() {
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/dashboard/roles/:roleKey" element={<AdminRoleUsers />} />
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
-        <Route path="/admin/profil" element={<AdminProfile />} />
+        <Route path="/admin/profil" element={<Navigate to="/mon-profil" replace />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/coaching" element={<AdminCoaching />} />
         <Route path="/admin/coaching/candidatures" element={<AdminCoaching />} />
@@ -709,6 +709,15 @@ export default function App() {
         <Route path="/moderator/missions" element={<ModerateurMissions />} />
         <Route path="/moderateur/missions" element={<ModerateurMissions />} />
 
+        {/* Profil utilisateur unifié — tous les rôles */}
+        <Route path="/mon-profil" element={<UnifiedProfilePage />} />
+        <Route path="/profil/:userId" element={<PublicProfilePage />} />
+        <Route path="/moderator/profile" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/moderateur/profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/structure/mon-profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/coach/profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/omnia-live/organisateur/profil" element={<Navigate to="/mon-profil" replace />} />
+
         {/* Module 6 — Dashboard apprenant — always accessible */}
         <Route path="/dashboard" element={<DashboardApprenant />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
@@ -726,7 +735,7 @@ export default function App() {
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />
         <Route path="/dashboard/parrainage" element={<DashboardParrainage />} />
-        <Route path="/dashboard/profil" element={<DashboardProfil />} />
+        <Route path="/dashboard/profil" element={<Navigate to="/mon-profil" replace />} />
           <Route path="/dashboard/structure" element={<DashboardStructure />} />
 
         {/* Espace Professeur */}
@@ -754,7 +763,8 @@ export default function App() {
 
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
-        <Route path="/professeur/profile" element={<ProfesseurProfil />} />
+        <Route path="/professeur/profile" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/professeur/dossier-professionnel" element={<ProfesseurProfil />} />
           <Route path="/professeur/certificats" element={<ProfesseurCertificats />} />
 
         {/* Espace Structure */}
@@ -809,7 +819,7 @@ export default function App() {
   <Route path="/omnia-career/lettres" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/entretien" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/candidatures" element={<DashboardCareerStudio />} />
-  <Route path="/omnia-career/profil" element={<Navigate to="/dashboard/profil?tab=professionnel" replace />} />
+  <Route path="/omnia-career/profil" element={<Navigate to="/mon-profil?tab=professionnel" replace />} />
   <Route path="/omnia-career/coaching" element={<Navigate to="/coaching" replace />} />
   <Route path="/omnia-career/parametres" element={<DashboardCareerStudio />} />
 </Route>

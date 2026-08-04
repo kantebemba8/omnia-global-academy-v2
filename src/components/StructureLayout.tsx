@@ -5,7 +5,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, LogOut,
   ChevronRight, ChevronDown, Menu, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, X,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, User, Radio, ExternalLink, Layers3, ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, X,
 } from 'lucide-react';
 
 interface NavItem {
@@ -87,6 +87,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     label: 'Pilotage & réglages',
     icon: Settings,
     items: [
+      { path: '/mon-profil', label: 'Mon profil personnel', icon: User },
       { path: '/structure/statistiques', label: 'Statistiques', icon: BarChart2 },
       { path: '/structure/notifications', label: 'Notifications', icon: Bell },
       { path: '/structure/parametres', label: 'Paramètres', icon: Settings },
@@ -115,6 +116,7 @@ const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
       { path: '/structure/recrutement/entretiens', label: 'Entretiens', icon: CalendarDays },
       { path: '/structure/recrutement/messages', label: 'Messages', icon: MessageSquare },
       { path: '/structure/recrutement/statistiques', label: 'Statistiques', icon: BarChart2 },
+      { path: '/mon-profil', label: 'Mon profil personnel', icon: User },
     ],
   },
   {

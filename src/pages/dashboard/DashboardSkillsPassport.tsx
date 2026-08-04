@@ -194,7 +194,7 @@ export default function DashboardSkillsPassport() {
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => void load()} className={secondaryButton}><RefreshCw size={15} /> Actualiser</button>
-        <Link to={withLearnerPreview('/dashboard/profil?tab=professionnel')} className={secondaryButton}><Briefcase size={15} /> Profil professionnel</Link>
+        <Link to={withLearnerPreview('/mon-profil?tab=professionnel')} className={secondaryButton}><Briefcase size={15} /> Profil professionnel</Link>
         <button disabled={working === 'publish' || selected.size === 0} onClick={() => void publish()} className={primaryButton}><UploadCloud size={15} /> {working === 'publish' ? 'Publication…' : 'Publier et signer'}</button>
       </div>
     </header>

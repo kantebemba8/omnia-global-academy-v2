@@ -12,6 +12,7 @@ import {
   BarChart2,
   Shield,
   ClipboardCheck,
+  User,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
@@ -112,6 +113,13 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
   if (moderationItems.length) {
     groups.push({ id: 'moderation', label: 'Modération & support', icon: MessageSquare, items: moderationItems });
   }
+
+  groups.push({
+    id: 'account',
+    label: 'Mon compte',
+    icon: User,
+    items: [{ path: '/mon-profil', label: 'Mon profil', icon: User }],
+  });
 
   if (moderatorHasAnyPermission(permissions, COMPLEMENTARY_KEYS)) {
     groups.push({

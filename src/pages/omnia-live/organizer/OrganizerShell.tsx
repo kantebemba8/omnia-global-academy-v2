@@ -3,7 +3,7 @@ import {ElementType,ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
   LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,CreditCard,Settings2,
-  PlusCircle,MessageSquare,KeyRound,Menu,X,LogOut,ArrowLeft,ChevronDown
+  PlusCircle,MessageSquare,KeyRound,Menu,X,LogOut,ArrowLeft,ChevronDown,User
 } from 'lucide-react';
 import {isOrganizerPreviewMode} from '../liveApi';
 
@@ -48,7 +48,10 @@ const NAV_GROUPS:OrganizerNavGroup[]=[
   {
     id:'settings',
     label:'Configuration',
-    items:[{path:'/omnia-live/organisateur/parametres',label:'Paramètres',icon:Settings2}],
+    items:[
+      {path:'/mon-profil',label:'Mon profil',icon:User},
+      {path:'/omnia-live/organisateur/parametres',label:'Paramètres',icon:Settings2},
+    ],
   },
 ];
 

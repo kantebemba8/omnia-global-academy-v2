@@ -23,7 +23,7 @@ import { clearSession, getStoredUser } from '../../lib/session';
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 
-type StoredUser = { id?: string; full_name?: string; email?: string; roles?: string[] };
+type StoredUser = { id?: string; full_name?: string; email?: string; avatar_url?: string | null; roles?: string[] };
 type Props = { children: ReactNode; title?: string; subtitle?: string };
 
 const NAV = [
@@ -35,7 +35,7 @@ const NAV = [
   { path: '/talent/recruteur/favoris', label: 'Talents favoris', icon: Heart },
   { path: '/talent/recruteur/entretiens', label: 'Entretiens', icon: CalendarDays },
   { path: '/talent/recruteur/messages', label: 'Messages', icon: MessageSquare },
-  { path: '/talent/recruteur/profil', label: 'Profil recruteur', icon: UserRound },
+  { path: '/mon-profil', label: 'Mon profil', icon: UserRound },
   { path: '/talent/recruteur/plans', label: 'Plans & crédits', icon: CreditCard },
   { path: '/talent/recruteur/parametres', label: 'Paramètres', icon: Settings },
 ];
@@ -51,11 +51,22 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [user, setUser] = useState<StoredUser | null>(() => getStoredUser<StoredUser>());
 
   useEffect(() => {
     setOpen(false);
     setProfileOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const refreshUser = () => setUser(getStoredUser<StoredUser>());
+    window.addEventListener('omnia:profile-updated', refreshUser);
+    window.addEventListener('storage', refreshUser);
+    return () => {
+      window.removeEventListener('omnia:profile-updated', refreshUser);
+      window.removeEventListener('storage', refreshUser);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open && !profileOpen) return;
@@ -73,7 +84,6 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, profileOpen]);
-  const user = getStoredUser<StoredUser>();
   const previewMode = useMemo(
     () => new URLSearchParams(location.search).get('preview') === 'true' && !!user?.roles?.includes('super_admin'),
     [location.search, user?.roles],
@@ -177,14 +187,18 @@ export function RecruiterLayout({ children, title = 'Espace recruteur', subtitle
             </button>
             <div className="relative">
               <button type="button" onClick={() => setProfileOpen(value => !value)} className="flex items-center gap-1 rounded-xl px-1.5 py-1 transition hover:bg-slate-100" aria-label="Ouvrir le menu du profil" aria-expanded={profileOpen}>
-                <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="Photo de profil" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
+                ) : (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                )}
                 <ChevronDown size={15} className="text-slate-400" />
               </button>
               {profileOpen && (
                 <>
                   <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu du profil" />
                   <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
-                    <button type="button" role="menuitem" onClick={() => navigate(withPreview('/talent/recruteur/profil'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
+                    <button type="button" role="menuitem" onClick={() => navigate(withPreview('/mon-profil'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
                     <button type="button" role="menuitem" onClick={() => navigate(withPreview('/talent/recruteur/dashboard'))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><LayoutDashboard size={17} /> Retour au Dashboard recruteur</button>
                     <button type="button" role="menuitem" onClick={() => navigate('/talent')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><ExternalLink size={17} /> Voir Omnia Talent</button>
                     <><div className="my-1 border-t border-slate-100" /><button type="button" role="menuitem" onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button></>

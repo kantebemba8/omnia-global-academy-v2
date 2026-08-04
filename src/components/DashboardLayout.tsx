@@ -23,7 +23,7 @@ interface Props {
 
 const APPRENANT_NAV = [
   { path: '/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
-  { path: '/dashboard/profil', label: 'Mon profil', icon: User },
+  { path: '/mon-profil', label: 'Mon profil', icon: User },
   { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
   { path: '/dashboard/abonnements', label: 'Abonnements & avantages', icon: CreditCard },
   { path: '/dashboard/evaluations', label: 'Mes évaluations', icon: ClipboardCheck },
@@ -55,7 +55,7 @@ const PROFESSEUR_NAV = [
   { path: '/professeur/analytics', label: 'Analytique élèves', icon: BarChart2 },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
   { path: '/forum', label: 'Communauté & entraide', icon: MessageSquare },
-  { path: '/professeur/profile', label: 'Configuration profil', icon: Settings },
+  { path: '/mon-profil', label: 'Mon profil', icon: Settings },
   { path: '/professeur/certificats', label: 'Mes Certificats', icon: Award },
 ];
 
@@ -68,7 +68,7 @@ const APPRENANT_GROUPS: NavGroup[] = [
   {
     id: 'learner-account', label: 'Mon espace', icon: User,
     items: [
-      { path: '/dashboard/profil', label: 'Mon profil', icon: User },
+      { path: '/mon-profil', label: 'Mon profil', icon: User },
       { path: '/dashboard/abonnements', label: 'Abonnements & avantages', icon: CreditCard },
       { path: '/dashboard/parrainage', label: 'Parrainage & Gains', icon: Gift },
       { path: '/dashboard/structure', label: 'Ma Structure', icon: Building2 },
@@ -113,7 +113,7 @@ const PROFESSEUR_GROUPS: NavGroup[] = [
   },
   {
     id: 'professor-account', label: 'Mon espace', icon: User,
-    items: [{ path: '/professeur/profile', label: 'Configuration profil', icon: Settings }],
+    items: [{ path: '/mon-profil', label: 'Mon profil', icon: Settings }],
   },
   {
     id: 'professor-courses', label: 'Formations', icon: BookOpen,

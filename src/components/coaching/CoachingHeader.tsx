@@ -25,6 +25,7 @@ type StoredUser = {
   full_name?: string;
   name?: string;
   email?: string;
+  avatar_url?: string | null;
   roles?: string[];
 };
 
@@ -55,11 +56,11 @@ function dashboardPathForRoles(roles: string[]): string {
 }
 
 function profilePathForRoles(roles: string[]): string {
-  if (roles.includes('super_admin')) return '/admin/profil';
-  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/profil';
-  if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/profil';
-  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/profile';
-  return '/dashboard/profil';
+  if (roles.includes('super_admin')) return '/mon-profil';
+  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/mon-profil';
+  if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/mon-profil';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/mon-profil';
+  return '/mon-profil';
 }
 
 function initials(user: StoredUser | null) {
@@ -84,14 +85,14 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const user = useMemo<StoredUser | null>(() => {
+  const [user, setUser] = useState<StoredUser | null>(() => {
     try {
       const raw = localStorage.getItem('omnia_user');
       return raw ? JSON.parse(raw) as StoredUser : null;
     } catch {
       return null;
     }
-  }, []);
+  });
 
   const roles = user?.roles || [];
   const loggedIn = Boolean(getSessionToken()) && Boolean(user);
@@ -101,6 +102,23 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
   const dashboardPath = dashboardPathForRoles(roles);
   const profilePath = profilePathForRoles(roles);
   const coachSpaceTarget = loggedIn ? (isCoach ? withCoachPreview('/coach/dashboard') : dashboardPath) : '/connexion?redirect=%2Fcoach%2Fdashboard';
+
+  useEffect(() => {
+    const refreshUser = () => {
+      try {
+        const raw = localStorage.getItem('omnia_user');
+        setUser(raw ? JSON.parse(raw) as StoredUser : null);
+      } catch {
+        setUser(null);
+      }
+    };
+    window.addEventListener('omnia:profile-updated', refreshUser);
+    window.addEventListener('storage', refreshUser);
+    return () => {
+      window.removeEventListener('omnia:profile-updated', refreshUser);
+      window.removeEventListener('storage', refreshUser);
+    };
+  }, []);
 
   const navItems = useMemo<NavItem[]>(() => {
     const items: NavItem[] = [
@@ -198,7 +216,11 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
                   aria-label="Ouvrir le menu du profil"
                   aria-expanded={profileOpen}
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt="Photo de profil" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
+                  ) : (
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>
+                  )}
                   <ChevronDown size={15} className="text-slate-400" />
                 </button>
 

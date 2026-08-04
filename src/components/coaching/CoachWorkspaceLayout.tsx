@@ -12,6 +12,7 @@ import {
   Package,
   Settings2,
   Star,
+  User,
   X,
 } from 'lucide-react';
 import { withCoachPreview } from '../../lib/coachingApi';
@@ -29,6 +30,7 @@ const items = [
   { path: '/coach/commerce', label: 'Tarifs & abonnements', icon: CreditCard },
   { path: '/coach/plan-omnia', label: 'Mon plan Omnia', icon: CreditCard },
   { path: '/coach/produits', label: 'Coaching collectif', icon: Package },
+  { path: '/mon-profil', label: 'Mon profil', icon: User },
 ];
 
 export default function CoachWorkspaceLayout({ children }: { children: ReactNode }) {

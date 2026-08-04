@@ -35,22 +35,22 @@ function userInitials(user: AuthUser) {
 
 function profilePathForUser(user: AuthUser) {
   const roles = normalizePlatformRoles(user.roles);
-  if (roles.includes('super_admin')) return '/admin/profil';
-  if (roles.includes('structure')) return '/structure/profil';
-  if (roles.includes('recruteur_structure') || roles.includes('recruteur')) return '/talent/recruteur/profil';
-  if (roles.includes('professeur')) return '/professeur/profile';
-  return '/dashboard/profil';
+  if (roles.includes('super_admin')) return '/mon-profil';
+  if (roles.includes('structure')) return '/mon-profil';
+  if (roles.includes('recruteur_structure') || roles.includes('recruteur')) return '/mon-profil';
+  if (roles.includes('professeur')) return '/mon-profil';
+  return '/mon-profil';
 }
 
 function settingsPathForUser(user: AuthUser) {
   const roles = normalizePlatformRoles(user.roles);
-  if (roles.includes('super_admin')) return '/admin/profil';
-  if (roles.includes('structure')) return '/structure/profil';
+  if (roles.includes('super_admin')) return '/mon-profil';
+  if (roles.includes('structure')) return '/mon-profil';
   if (roles.includes('recruteur_structure') || roles.includes('recruteur')) return '/talent/recruteur/parametres';
   if (roles.includes('organisateur')) return '/omnia-live/organisateur/parametres';
-  if (roles.includes('professeur')) return '/professeur/profile';
+  if (roles.includes('professeur')) return '/mon-profil';
   if (roles.includes('moderateur')) return '/moderateur/dashboard';
-  return '/dashboard/profil?tab=parametres';
+  return '/mon-profil?tab=visibilite';
 }
 
 function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' }) {

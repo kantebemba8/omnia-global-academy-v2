@@ -63,14 +63,20 @@ export function useAuth() {
     void refreshSession();
 
     const handleSessionChanged = () => void refreshSession();
+    const handleProfileUpdated = () => {
+      const cached = getStoredUser<AuthUser>();
+      if (cached) setUser(cached);
+    };
     const handleStorage = (event: StorageEvent) => {
       if (event.key === 'omnia_user' || event.key === 'omnia_session_token') void refreshSession();
     };
 
     window.addEventListener('omnia:session-changed', handleSessionChanged);
+    window.addEventListener('omnia:profile-updated', handleProfileUpdated);
     window.addEventListener('storage', handleStorage);
     return () => {
       window.removeEventListener('omnia:session-changed', handleSessionChanged);
+      window.removeEventListener('omnia:profile-updated', handleProfileUpdated);
       window.removeEventListener('storage', handleStorage);
     };
   }, [refreshSession]);
