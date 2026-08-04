@@ -132,7 +132,7 @@ interface Props {
   displayName?: string;
 }
 
-export function StructureLayout({ children, displayName }: Props) {
+export function StructureLayout({ children }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<{ full_name: string; email: string; roles?: string[] } | null>(null);
@@ -350,12 +350,10 @@ export function StructureLayout({ children, displayName }: Props) {
           >
             <Menu size={18} style={{ color: '#002050' }} />
           </button>
-          <div className="flex items-center gap-2">
-            <Building2 size={16} style={{ color: '#002050' }} />
-            <span className="text-sm font-bold" style={{ color: '#002050' }}>
-              {displayName ?? 'Espace Structure'}
-            </span>
-          </div>
+          <Link to={buildPath('/')} className="flex items-center gap-2">
+            <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-8 w-8 object-contain" />
+            <span className="text-sm font-bold" style={{ color: '#002050' }}>Omnia Global Academy</span>
+          </Link>
         </header>
 
         <main className="flex-1 overflow-y-auto overscroll-contain" style={{ background: '#F8F9FA' }}>

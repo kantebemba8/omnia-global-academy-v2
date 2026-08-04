@@ -3,130 +3,210 @@ import { ElementType, ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import {
-  LayoutDashboard, BookOpen, Users, MessageSquare, Briefcase, HelpCircle, BarChart2, Shield
+  LayoutDashboard,
+  BookOpen,
+  Users,
+  MessageSquare,
+  Briefcase,
+  HelpCircle,
+  BarChart2,
+  Shield,
+  ClipboardCheck,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
+import {
+  MODERATOR_PERMISSION_KEYS,
+  ModeratorPermissionKey,
+  ModeratorPermissions,
+  moderatorHasAnyPermission,
+  normalizeModeratorPermissions,
+} from '../lib/moderatorPermissions';
 
-interface ModPerms {
-  can_see_pending_courses: boolean;
-  can_recommend_course_price: boolean;
-  can_reject_course: boolean;
-  can_approve_transmit_course: boolean;
-  can_validate_professor_kyc: boolean;
-  can_validate_structure_kyc: boolean;
-  can_see_learners_list: boolean;
-  can_see_professors_list: boolean;
-  can_request_account_suspension: boolean;
-  can_moderate_forum: boolean;
-  can_moderate_jobs: boolean;
-  can_manage_support: boolean;
-  can_view_moderation_log: boolean;
-  can_view_analytics: boolean;
-  can_view_financial_summary: boolean;
+type ModeratorNavItem = {
+  path: string;
+  label: string;
+  icon: ElementType;
+  exact?: boolean;
+};
+
+type ModeratorNavGroup = {
+  id: string;
+  label: string;
+  icon: ElementType;
+  items: ModeratorNavItem[];
+};
+
+const COURSE_WORKSPACE_KEYS: ModeratorPermissionKey[] = [
+  'can_see_pending_courses',
+  'can_review_course_content',
+  'can_request_course_modification',
+  'can_reject_course',
+  'can_recommend_course_price',
+  'can_approve_transmit_course',
+];
+
+const USER_WORKSPACE_KEYS: ModeratorPermissionKey[] = [
+  'can_see_learners_list',
+  'can_see_professors_list',
+  'can_request_account_suspension',
+];
+
+const COMPLEMENTARY_KEYS: ModeratorPermissionKey[] = [
+  'can_manage_course_certifications',
+  'can_create_assisted_course',
+  'can_see_structures_list',
+  'can_see_organizers_list',
+  'can_validate_structure_kyc',
+  'can_view_ai_conversations',
+  'can_manage_reports',
+  'can_review_live_events',
+  'can_review_live_reports',
+  'can_review_live_refunds',
+  'can_review_live_organizers',
+  'can_review_structure_requests',
+  'can_review_structure_codes',
+  'can_review_structure_benefits',
+];
+
+function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNavGroup[] {
+  const groups: ModeratorNavGroup[] = [
+    {
+      id: 'dashboard',
+      label: 'Accueil',
+      icon: LayoutDashboard,
+      items: [{ path: '/moderator/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
+    },
+  ];
+
+  if (moderatorHasAnyPermission(permissions, COURSE_WORKSPACE_KEYS)) {
+    groups.push({
+      id: 'courses',
+      label: 'Formations',
+      icon: BookOpen,
+      items: [{ path: '/moderator/courses', label: 'Contrôle des formations', icon: BookOpen }],
+    });
+  }
+
+  const userItems: ModeratorNavItem[] = [];
+  if (permissions.can_validate_professor_kyc) {
+    userItems.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield });
+  }
+  if (moderatorHasAnyPermission(permissions, USER_WORKSPACE_KEYS)) {
+    userItems.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users });
+  }
+  if (userItems.length) {
+    groups.push({ id: 'users', label: 'Utilisateurs & KYC', icon: Users, items: userItems });
+  }
+
+  const moderationItems: ModeratorNavItem[] = [];
+  if (permissions.can_moderate_forum) {
+    moderationItems.push({ path: '/moderator/forum', label: 'Forum', icon: MessageSquare });
+  }
+  if (permissions.can_moderate_jobs) {
+    moderationItems.push({ path: '/moderator/jobs', label: "Offres d'emploi", icon: Briefcase });
+  }
+  if (permissions.can_manage_support) {
+    moderationItems.push({ path: '/moderator/support', label: 'Support', icon: HelpCircle });
+  }
+  if (moderationItems.length) {
+    groups.push({ id: 'moderation', label: 'Modération & support', icon: MessageSquare, items: moderationItems });
+  }
+
+  if (moderatorHasAnyPermission(permissions, COMPLEMENTARY_KEYS)) {
+    groups.push({
+      id: 'missions',
+      label: 'Contrôles complémentaires',
+      icon: ClipboardCheck,
+      items: [{ path: '/moderator/missions', label: 'Centre de missions', icon: ClipboardCheck }],
+    });
+  }
+
+  if (permissions.can_view_analytics) {
+    groups.push({
+      id: 'analytics',
+      label: 'Pilotage',
+      icon: BarChart2,
+      items: [{ path: '/moderator/analytics', label: 'Analytique', icon: BarChart2 }],
+    });
+  }
+
+  return groups;
 }
 
-type ModeratorNavItem = { path: string; label: string; icon: ElementType; exact?: boolean; always: boolean };
-
-function buildModNav(perms: ModPerms) {
-  const items: ModeratorNavItem[] = [
-    { path: '/moderator/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true, always: true },
-  ];
-  if (perms.can_see_pending_courses || perms.can_reject_course || perms.can_approve_transmit_course) {
-    items.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen, always: false });
-  }
-  if (perms.can_validate_professor_kyc) {
-    items.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield, always: false });
-  }
-  if (perms.can_see_learners_list || perms.can_see_professors_list || perms.can_request_account_suspension) {
-    items.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users, always: false });
-  }
-  if (perms.can_moderate_forum) {
-    items.push({ path: '/moderator/forum', label: 'Forum', icon: MessageSquare, always: false });
-  }
-  if (perms.can_moderate_jobs) {
-    items.push({ path: '/moderator/jobs', label: "Offres d'emploi", icon: Briefcase, always: false });
-  }
-  if (perms.can_manage_support) {
-    items.push({ path: '/moderator/support', label: 'Support', icon: HelpCircle, always: false });
-  }
-  if (perms.can_view_analytics) {
-    items.push({ path: '/moderator/analytics', label: 'Analytique', icon: BarChart2, always: false });
-  }
-  return items;
+function allPermissionsEnabled(): ModeratorPermissions {
+  return Object.fromEntries(MODERATOR_PERMISSION_KEYS.map(key => [key, true])) as ModeratorPermissions;
 }
 
 export function ModerateurLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const [navItems, setNavItems] = useState<ReturnType<typeof buildModNav> | null>(null);
+  const [navGroups, setNavGroups] = useState<ModeratorNavGroup[] | null>(null);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const isPreview = searchParams.get('preview') === 'true';
     const stored = localStorage.getItem('omnia_user');
-    // Mode aperçu Super-admin : bypass total
+
     if (isPreview && stored) {
       try {
-        const u = JSON.parse(stored);
-        if (u?.roles?.includes('super_admin')) {
-          setNavItems(buildModNav({
-            can_see_pending_courses: true, can_recommend_course_price: true,
-            can_reject_course: true, can_approve_transmit_course: true,
-            can_validate_professor_kyc: true, can_validate_structure_kyc: true,
-            can_see_learners_list: true, can_see_professors_list: true,
-            can_request_account_suspension: true, can_moderate_forum: true,
-            can_moderate_jobs: true,
-            can_manage_support: true, can_view_moderation_log: true,
-            can_view_analytics: true, can_view_financial_summary: true,
-          }));
+        const user = JSON.parse(stored);
+        if (user?.roles?.includes('super_admin')) {
+          setNavGroups(buildModeratorNavGroups(allPermissionsEnabled()));
           return;
         }
-      } catch { /* ignore */ }
+      } catch {
+        // Le mode normal vérifiera la session.
+      }
     }
-    const token = getSessionToken();
-    if (!token) { navigate(isPreview ? '/admin/dashboard' : '/connexion'); return; }
+
+    if (!getSessionToken()) {
+      navigate(isPreview ? '/admin/dashboard' : '/connexion', { replace: true });
+      return;
+    }
 
     const cached = localStorage.getItem('mod_perms');
     if (cached) {
       try {
-        const perms = JSON.parse(cached) as ModPerms;
-        setNavItems(buildModNav(perms));
-      } catch { /* fetch fresh */ }
+        const normalized = normalizeModeratorPermissions(JSON.parse(cached));
+        setNavGroups(buildModeratorNavGroups(normalized));
+      } catch {
+        localStorage.removeItem('mod_perms');
+      }
     }
 
-    fetch(ENDPOINTS.dashboardModerateur, {
-      headers: edgeAuthHeaders(),
-    })
-      .then(async (r) => {
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.message || data.error || 'Permissions indisponibles');
-        return data;
-      })
-      .then((data) => {
-        if (data.permissions) {
-          localStorage.setItem('mod_perms', JSON.stringify(data.permissions));
-          setNavItems(buildModNav(data.permissions as ModPerms));
-        } else {
-          navigate(isPreview ? '/admin/dashboard' : '/connexion');
+    fetch(ENDPOINTS.dashboardModerateur, { headers: edgeAuthHeaders() })
+      .then(async response => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.message || payload.error || 'Permissions indisponibles');
         }
+        return payload;
       })
-      .catch(() => navigate(isPreview ? '/admin/dashboard' : '/connexion'));
+      .then(payload => {
+        if (!payload.permissions) throw new Error('Permissions absentes');
+        const normalized = normalizeModeratorPermissions(payload.permissions);
+        localStorage.setItem('mod_perms', JSON.stringify(normalized));
+        setNavGroups(buildModeratorNavGroups(normalized));
+      })
+      .catch(() => navigate(isPreview ? '/admin/dashboard' : '/connexion', { replace: true }));
   }, [navigate]);
 
-  if (!navItems) {
+  if (!navGroups) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ backgroundColor: '#002050' }}>
         <div className="text-center">
-          <div className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-3"
-            style={{ borderColor: '#BF8813', borderTopColor: 'transparent' }} />
-          <p className="text-white/60 text-sm">Chargement des permissions…</p>
+          <div
+            className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"
+            style={{ borderColor: '#BF8813', borderTopColor: 'transparent' }}
+          />
+          <p className="text-sm text-white/60">Chargement des permissions…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <DashboardLayout role="moderateur" navItems={navItems}>
+    <DashboardLayout role="moderateur" navGroups={navGroups}>
       {children}
     </DashboardLayout>
   );

@@ -91,6 +91,7 @@ const AdminAssessmentGovernance = lazy(() => import('./pages/admin/AdminAssessme
 const ModerateurOffresEmploi = lazy(() => import('./pages/moderateur/ModerateurOffresEmploi'));
 const ModerateurSupport = lazy(() => import('./pages/moderateur/ModerateurSupport'));
 const ModerateurAnalytique = lazy(() => import('./pages/moderateur/ModerateurAnalytique'));
+const ModerateurMissions = lazy(() => import('./pages/moderateur/ModerateurMissions'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminRoleUsers = lazy(() => import('./pages/admin/AdminRoleUsers'));
 const AdminActivityToday = lazy(() => import('./pages/admin/AdminActivityToday'));
@@ -704,6 +705,8 @@ export default function App() {
         <Route path="/moderateur/support" element={<ModerateurSupport />} />
         <Route path="/moderator/analytics" element={<ModerateurAnalytique />} />
         <Route path="/moderateur/analytique" element={<ModerateurAnalytique />} />
+        <Route path="/moderator/missions" element={<ModerateurMissions />} />
+        <Route path="/moderateur/missions" element={<ModerateurMissions />} />
 
         {/* Module 6 — Dashboard apprenant — always accessible */}
         <Route path="/dashboard" element={<DashboardApprenant />} />

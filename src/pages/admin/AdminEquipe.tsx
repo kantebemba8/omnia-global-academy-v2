@@ -2,6 +2,7 @@ import { getSessionToken } from '../../lib/session';
 import { useState, useEffect } from 'react';
 import { Shield, Plus, Save, Trash2, User, ChevronDown, ChevronUp, X, Check, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
+import { MODERATOR_PERMISSION_SECTIONS } from '../../lib/moderatorPermissions';
 
 interface Permission {
   key: string;
@@ -30,48 +31,10 @@ interface ActionRequest {
   target_user: { id: string; full_name: string; email: string };
 }
 
-const PERMISSION_SECTIONS: PermissionSection[] = [
-  { title:'Formations & certifications', perms:[
-    {key:'can_see_pending_courses',label:'Voir les formations en attente'},
-    {key:'can_review_course_content',label:'Contrôler le contenu pédagogique'},
-    {key:'can_request_course_modification',label:'Demander des modifications'},
-    {key:'can_reject_course',label:'Rejeter une formation non conforme'},
-    {key:'can_recommend_course_price',label:'Proposer une décision de prix'},
-    {key:'can_approve_transmit_course',label:'Approuver et transmettre au Super-admin'},
-    {key:'can_manage_course_certifications',label:'Contrôler les demandes de certifications et badges'},
-    {key:'can_create_assisted_course',label:'Créer ou corriger une saisie assistée'},
-  ]},
-  { title:'Utilisateurs, Structures & KYC', perms:[
-    {key:'can_see_learners_list',label:'Voir la liste des apprenants'},
-    {key:'can_see_professors_list',label:'Voir la liste des professeurs'},
-    {key:'can_see_structures_list',label:'Voir les Structures'},
-    {key:'can_see_organizers_list',label:'Voir les organisateurs'},
-    {key:'can_validate_professor_kyc',label:'Examiner le KYC des professeurs'},
-    {key:'can_validate_structure_kyc',label:'Examiner le KYC des Structures'},
-    {key:'can_request_account_suspension',label:'Demander la suspension temporaire d’un compte'},
-  ]},
-  { title:'Modération, support & communication', perms:[
-    {key:'can_moderate_forum',label:'Modérer le forum'},
-    {key:'can_moderate_jobs',label:"Modérer les offres d'emploi"},
-    {key:'can_manage_support',label:'Gérer les tickets de support'},
-    {key:'can_view_ai_conversations',label:'Consulter les conversations IA autorisées'},
-    {key:'can_manage_reports',label:'Traiter les signalements'},
-  ]},
-  { title:'Omnia Live', perms:[
-    {key:'can_review_live_events',label:'Examiner les événements Omnia Live'},
-    {key:'can_review_live_reports',label:'Traiter les signalements Omnia Live'},
-    {key:'can_review_live_refunds',label:'Préparer les dossiers de remboursement'},
-    {key:'can_review_live_organizers',label:'Examiner les demandes organisateur'},
-  ]},
-  { title:'Structures', perms:[
-    {key:'can_review_structure_requests',label:'Examiner les demandes Structure'},
-    {key:'can_review_structure_codes',label:'Examiner les codes Structure'},
-    {key:'can_review_structure_benefits',label:'Examiner les avantages Structure'},
-  ]},
-  { title:'Statistiques non financières', perms:[
-    {key:'can_view_analytics',label:"Voir les statistiques d'audience et d'activité"},
-  ]},
-];
+const PERMISSION_SECTIONS: PermissionSection[] = MODERATOR_PERMISSION_SECTIONS.map(section => ({
+  title: section.title,
+  perms: section.permissions.map(({ key, label }) => ({ key, label })),
+}));
 
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;

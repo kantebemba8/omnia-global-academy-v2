@@ -3,7 +3,7 @@ import {ElementType,ReactNode,useEffect,useState} from 'react';
 import {Link,NavLink,useLocation,useNavigate} from 'react-router-dom';
 import {
   LayoutDashboard,Radio,Users,Film,BarChart3,Wallet,CreditCard,Settings2,
-  PlusCircle,MessageSquare,KeyRound,Menu,X,LogOut,ArrowLeft
+  PlusCircle,MessageSquare,KeyRound,Menu,X,LogOut,ArrowLeft,ChevronDown
 } from 'lucide-react';
 import {isOrganizerPreviewMode} from '../liveApi';
 
@@ -11,14 +11,16 @@ const BLUE='#002050';
 const GOLD='#BF8813';
 
 type OrganizerNavItem={path:string;label:string;icon:ElementType;exact?:boolean};
-type OrganizerNavGroup={label:string;items:OrganizerNavItem[]};
+type OrganizerNavGroup={id:string;label:string;items:OrganizerNavItem[]};
 
 const NAV_GROUPS:OrganizerNavGroup[]=[
   {
+    id:'dashboard',
     label:'Accueil',
     items:[{path:'/omnia-live/organisateur',label:'Accueil',icon:LayoutDashboard,exact:true}],
   },
   {
+    id:'events',
     label:'Événements',
     items:[
       {path:'/omnia-live/proposer',label:'Créer un événement',icon:PlusCircle},
@@ -30,10 +32,12 @@ const NAV_GROUPS:OrganizerNavGroup[]=[
     ],
   },
   {
+    id:'analytics',
     label:'Pilotage',
     items:[{path:'/omnia-live/organisateur/statistiques',label:'Analytics',icon:BarChart3}],
   },
   {
+    id:'commerce',
     label:'Offres & revenus',
     items:[
       {path:'/omnia-live/organisateur/offres',label:'Offres aux participants',icon:CreditCard},
@@ -42,6 +46,7 @@ const NAV_GROUPS:OrganizerNavGroup[]=[
     ],
   },
   {
+    id:'settings',
     label:'Configuration',
     items:[{path:'/omnia-live/organisateur/parametres',label:'Paramètres',icon:Settings2}],
   },
@@ -53,6 +58,7 @@ export default function OrganizerShell({
   const location=useLocation();
   const navigate=useNavigate();
   const [mobileOpen,setMobileOpen]=useState(false);
+  const [expandedGroups,setExpandedGroups]=useState<Record<string,boolean>>({});
 
   const preview=isOrganizerPreviewMode();
 
@@ -105,32 +111,64 @@ export default function OrganizerShell({
 
     <nav className="oga-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
       <div className="space-y-5">
-        {NAV_GROUPS.map(group=><section key={group.label}>
-          <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">{group.label}</p>
-          <div className="space-y-1">
-            {group.items.map(item=>{
-              const Icon=item.icon;
-              return <NavLink
-                key={item.path}
-                to={buildPath(item.path)}
-                end={Boolean(item.exact)}
-                className={({isActive})=>
-                  `relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition ${
-                    isActive
-                      ? 'text-white'
-                      : 'text-white/75 hover:text-white'
-                  }`
-                }
-              >
-                {({isActive})=><>
-                  {isActive&&<span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{backgroundColor:GOLD}}/>}
-                  <Icon style={{width:18,height:18,flexShrink:0}}/>
-                  <span className="flex-1">{item.label}</span>
-                </>}
-              </NavLink>;
-            })}
-          </div>
-        </section>)}
+        {NAV_GROUPS.map(group=>{
+          const open=expandedGroups[group.id]===true;
+          const GroupIcon=group.items[0].icon;
+
+          if(group.id==='dashboard'){
+            const item=group.items[0];
+            return <NavLink
+              key={group.id}
+              to={buildPath(item.path)}
+              end
+              className={({isActive})=>
+                `relative flex items-center gap-3 px-3 py-2.5 text-sm font-semibold transition ${
+                  isActive ? 'text-white' : 'text-white/75 hover:text-white'
+                }`
+              }
+            >
+              {({isActive})=><>
+                {isActive&&<span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{backgroundColor:GOLD}}/>}
+                <GroupIcon style={{width:18,height:18,flexShrink:0}}/>
+                <span className="flex-1">{group.label}</span>
+              </>}
+            </NavLink>;
+          }
+
+          return <section key={group.id}>
+            <button
+              type="button"
+              onClick={()=>setExpandedGroups(previous=>({...previous,[group.id]:!previous[group.id]}))}
+              aria-expanded={open}
+              className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm font-semibold text-white/75 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
+            >
+              <GroupIcon style={{width:18,height:18,flexShrink:0}}/>
+              <span className="flex-1">{group.label}</span>
+              <ChevronDown size={14} className={`transition-transform ${open?'rotate-180':''}`}/>
+            </button>
+            {open&&<div className="mb-2 ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-3">
+              {group.items.map(item=>{
+                const Icon=item.icon;
+                return <NavLink
+                  key={item.path}
+                  to={buildPath(item.path)}
+                  end={Boolean(item.exact)}
+                  className={({isActive})=>
+                    `relative flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition ${
+                      isActive ? 'text-[#BF8813]' : 'text-white/60 hover:text-white'
+                    }`
+                  }
+                >
+                  {({isActive})=><>
+                    {isActive&&<span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{backgroundColor:GOLD}}/>}
+                    <Icon style={{width:15,height:15,flexShrink:0}}/>
+                    <span className="flex-1">{item.label}</span>
+                  </>}
+                </NavLink>;
+              })}
+            </div>}
+          </section>;
+        })}
       </div>
     </nav>
 

@@ -233,7 +233,6 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                 );
               })}
             </nav>
-            <div className="border-t border-slate-100 px-3 pt-4"><LanguageSwitcher className="w-full" /></div>
             <div className="mt-auto px-3 py-4">
               <button type="button" onClick={() => { setOpen(false); navigate(user ? dashboardPath : '/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
                 {user ? <ArrowLeft size={18} /> : <Home size={18} />}

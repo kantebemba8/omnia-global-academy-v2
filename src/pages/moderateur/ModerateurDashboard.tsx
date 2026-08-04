@@ -6,10 +6,11 @@ import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardC
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { MODERATOR_PERMISSION_KEYS, normalizeModeratorPermissions } from '../../lib/moderatorPermissions';
 
 import {
   BookOpen, Users, Shield, MessageSquare, Briefcase, HelpCircle,
-  Clock, CheckCircle, XCircle, Lock, AlertTriangle, Activity
+  Clock, CheckCircle, XCircle, Lock, AlertTriangle, Activity, ClipboardCheck
 } from 'lucide-react';
 
 interface KPI { key: string; label: string; value: number }
@@ -81,16 +82,9 @@ export default function ModerateurDashboard() {
   useEffect(() => {
     if (bypassAuth) {
       setData({
-        permissions: {
-          can_see_pending_courses: true,
-          can_validate_professor_kyc: true,
-          can_see_learners_list: true,
-          can_request_account_suspension: true,
-          can_moderate_forum: true,
-          can_moderate_jobs: true,
-          can_manage_support: true,
-          can_view_analytics: true,
-        },
+        permissions: Object.fromEntries(
+          MODERATOR_PERMISSION_KEYS.map(key => [key, true]),
+        ),
         kpis: [
           { key: 'courses', label: 'Formations en attente', value: 0 },
           { key: 'professor_kyc', label: 'Professeurs à vérifier', value: 0 },
@@ -117,7 +111,14 @@ export default function ModerateurDashboard() {
         if (!response.ok) throw new Error(payload.message || payload.error || 'Tableau de bord indisponible.');
         return payload as DashData;
       })
-      .then((payload) => setData(payload))
+      .then((payload) => {
+        const permissions = normalizeModeratorPermissions(payload.permissions);
+        setData({
+          ...payload,
+          permissions,
+          has_any_permission: MODERATOR_PERMISSION_KEYS.some(key => permissions[key]),
+        });
+      })
       .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Tableau de bord indisponible.'))
       .finally(() => setLoading(false));
   }, [bypassAuth]);
@@ -154,6 +155,9 @@ export default function ModerateurDashboard() {
     </ModerateurLayout>
   );
 
+  const normalizedPermissions = normalizeModeratorPermissions(data.permissions);
+  const activePermissionCount = MODERATOR_PERMISSION_KEYS.filter(key => normalizedPermissions[key]).length;
+  const missionsPath = bypassAuth ? '/moderator/missions?preview=true' : '/moderator/missions';
   const kpiPriority = ['courses', 'professor_kyc', 'forum', 'jobs', 'support', 'learners', 'professors'];
   const visibleKpis = [...(data.kpis || [])]
     .sort((a, b) => kpiPriority.indexOf(a.key) - kpiPriority.indexOf(b.key))
@@ -162,8 +166,19 @@ export default function ModerateurDashboard() {
   return (
     <ModerateurLayout>
       <div className="p-6 max-w-6xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
+            <p className="mt-1 text-sm text-gray-500">Vos autorisations actives déterminent les espaces et contrôles disponibles.</p>
+          </div>
+          <Link
+            to={missionsPath}
+            className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-gray-50"
+            style={{ borderColor: '#E4E7EC', color: '#002050' }}
+          >
+            <ClipboardCheck size={17} style={{ color: '#BF8813' }} />
+            Centre de missions · {activePermissionCount}
+          </Link>
         </div>
 
         {/* No permissions banner */}

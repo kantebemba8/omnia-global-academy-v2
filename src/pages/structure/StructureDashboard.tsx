@@ -18,30 +18,6 @@ const gatewayHeaders = () => ({
   ...(ANON_KEY ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } : {}),
 });
 
-const STRUCTURE_LABELS: Record<string, string> = {
-  ministere: 'Espace Ministère',
-  etablissement: 'Espace Établissement',
-  universite: 'Espace Université',
-  ecole: 'Espace École',
-  centre_formation: 'Espace Centre de formation',
-  entreprise: 'Espace Entreprise',
-  ong: 'Espace ONG',
-  association: 'Espace Association',
-  institution_publique: 'Espace Institution publique',
-  organisation_internationale: 'Espace Organisation internationale',
-  cabinet_formation: 'Espace Cabinet de formation',
-  autre: 'Espace Structure professionnelle',
-};
-
-const STATUS_LABELS: Record<string, { label: string; color: string; bg: string; icon: typeof Clock }> = {
-  pending_validation:  { label: 'En attente de validation',  color: '#92400E', bg: '#FEF3C7', icon: Clock },
-  changes_requested:   { label: 'Modification demandée',     color: '#1D4ED8', bg: '#EFF6FF', icon: AlertCircle },
-  validated:           { label: 'Validée',                   color: '#065F46', bg: '#D1FAE5', icon: CheckCircle },
-  rejected:            { label: 'Refusée',                   color: '#991B1B', bg: '#FEE2E2', icon: XCircle },
-  suspended:           { label: 'Suspendue',                 color: '#374151', bg: '#F3F4F6', icon: AlertCircle },
-  draft:               { label: 'Brouillon',                 color: '#6B7280', bg: '#F3F4F6', icon: Clock },
-};
-
 interface Structure {
   id: string;
   name: string;
@@ -84,8 +60,8 @@ export default function StructureDashboard() {
  async function load() {
     if (isPreview) {
       setStructure({
-        id: 'preview', name: 'Espace Structure', structure_type: 'autre', status: 'validated',
-        display_name: 'Espace Structure', status_label: 'Lecture seule', logo_url: undefined,
+        id: 'preview', name: '', structure_type: 'autre', status: 'validated',
+        display_name: '', status_label: 'Lecture seule', logo_url: undefined,
         admin_comment: undefined,
       });
       setStats({ members: 0, active_codes: 0, active_benefits: 0 });
@@ -137,14 +113,10 @@ export default function StructureDashboard() {
     setError('La gestion des rattachements est disponible dans le menu « Demandes de rattachement ».');
   }
 
-  const displayName = structure
-    ? (STRUCTURE_LABELS[structure.structure_type] ?? 'Espace Structure')
-    : 'Espace Structure';
-
   // ── Pas encore de structure ──────────────────────────────────────────────
   if (!loading && error === 'no_structure') {
     return (
-      <StructureLayout displayName="Espace Structure">
+      <StructureLayout>
         <div className="flex flex-col items-center justify-center h-full gap-6 p-8 text-center">
           <Building2 size={56} style={{ color: '#002050', opacity: 0.15 }} />
           <div>
@@ -169,7 +141,7 @@ export default function StructureDashboard() {
   // ── Chargement ───────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <StructureLayout displayName={displayName}>
+      <StructureLayout>
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
             style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
@@ -180,14 +152,15 @@ export default function StructureDashboard() {
 
   if (!structure) return null;
 
-  const statusInfo = STATUS_LABELS[structure.status] ?? STATUS_LABELS.pending_validation;
-  const StatusIcon = statusInfo.icon;
+  const visibleStructureName = structure.name && !/^Espace\s+Structure/i.test(structure.name.trim())
+    ? structure.name.trim()
+    : '';
   const isValidated = structure.status === 'validated';
   const isChangesRequested = structure.status === 'changes_requested';
   const isPending = structure.status === 'pending_validation';
 
   return (
-    <StructureLayout displayName={displayName}>
+    <StructureLayout>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
 
         {/* Header */}
@@ -205,14 +178,9 @@ export default function StructureDashboard() {
             )}
             <div>
               <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{dashboardGreeting()}</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold" style={{ color: '#475467' }}>{structure.name}</span>
-                <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: statusInfo.bg, color: statusInfo.color }}>
-                  <StatusIcon size={11} />
-                  {statusInfo.label}
-                </span>
-              </div>
+              {visibleStructureName && (
+                <p className="mt-1 text-sm font-semibold" style={{ color: '#475467' }}>{visibleStructureName}</p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

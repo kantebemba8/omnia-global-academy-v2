@@ -32,14 +32,14 @@ const SECTION_BY_PATH: Array<{ test: (p: string) => boolean; title: string; desc
 export default function StructurePreviewPage() {
   const { pathname } = useLocation();
   const section = SECTION_BY_PATH.find(item => item.test(pathname)) ?? {
-    title: 'Espace Structure',
+    title: 'Structure',
     description: 'Aucune donnée disponible.',
     icon: Building2,
   };
   const Icon = section.icon;
 
   return (
-    <StructureLayout displayName="Espace Structure">
+    <StructureLayout>
       <div className="p-6 lg:p-8 max-w-5xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>{section.title}</h1>

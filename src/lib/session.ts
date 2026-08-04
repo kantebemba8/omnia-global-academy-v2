@@ -123,18 +123,18 @@ export async function initializeSessionStorage(): Promise<void> {
   }
 }
 
-export function saveSession(token: string, user: unknown): void {
+export function saveSession(token: string, user: unknown, notify = true): void {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 
   if (!isNativeSessionStorage()) {
     localStorage.setItem(SESSION_KEY, token);
-    notifySessionChanged(true);
+    if (notify) notifySessionChanged(true);
     return;
   }
 
   nativeSessionToken = token;
   localStorage.removeItem(SESSION_KEY);
-  notifySessionChanged(true);
+  if (notify) notifySessionChanged(true);
   void configureSecureStorage()
     .then(() =>
       SecureStorage.set(

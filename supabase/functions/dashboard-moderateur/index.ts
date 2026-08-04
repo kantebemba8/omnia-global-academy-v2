@@ -30,6 +30,7 @@ const EMPTY_PERMS: Record<string, boolean> = {
   can_reject_course: false,
   can_approve_transmit_course: false,
   can_transmit_course_to_admin: false,
+  can_manage_course_certifications: false,
   can_create_assisted_course: false,
   can_see_learners_list: false,
   can_see_professors_list: false,
@@ -307,12 +308,13 @@ Deno.serve(async (req: Request) => {
     const activePermissionKeys = [
       "can_see_pending_courses", "can_review_course_content", "can_request_course_modification",
       "can_recommend_course_price", "can_reject_course", "can_approve_transmit_course",
-      "can_create_assisted_course", "can_see_learners_list", "can_see_professors_list",
-      "can_request_account_suspension", "can_validate_professor_kyc", "can_moderate_forum",
-      "can_moderate_jobs", "can_manage_support", "can_view_ai_conversations", "can_manage_reports",
-      "can_review_live_events", "can_review_live_reports", "can_review_live_refunds",
-      "can_review_live_organizers", "can_review_structure_requests", "can_review_structure_codes",
-      "can_review_structure_benefits", "can_view_analytics",
+      "can_manage_course_certifications", "can_create_assisted_course", "can_see_learners_list",
+      "can_see_professors_list", "can_see_structures_list", "can_see_organizers_list",
+      "can_request_account_suspension", "can_validate_professor_kyc", "can_validate_structure_kyc",
+      "can_moderate_forum", "can_moderate_jobs", "can_manage_support", "can_view_ai_conversations",
+      "can_manage_reports", "can_review_live_events", "can_review_live_reports",
+      "can_review_live_refunds", "can_review_live_organizers", "can_review_structure_requests",
+      "can_review_structure_codes", "can_review_structure_benefits", "can_view_analytics",
     ];
 
     return json({
