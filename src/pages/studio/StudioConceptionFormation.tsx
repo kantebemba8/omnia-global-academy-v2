@@ -166,6 +166,7 @@ export default function StudioConceptionFormation() {
   const params = useParams<{ courseId?: string; id?: string }>();
   const courseId = params.courseId || params.id;
   const [searchParams] = useSearchParams();
+  const requestedPanel = searchParams.get('panel');
   const isNew = !courseId || courseId === 'new';
 
   // État principal
@@ -211,6 +212,7 @@ export default function StudioConceptionFormation() {
   const [coverCandidates, setCoverCandidates] = useState<string[]>([]);
   const [coverGenerating, setCoverGenerating] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
+  const [openingAssessmentPolicy, setOpeningAssessmentPolicy] = useState(false);
 
   // Autosave ref
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -257,6 +259,10 @@ export default function StudioConceptionFormation() {
     }
     load();
   }, [courseId]);
+
+  useEffect(() => {
+    if (course.id && requestedPanel === 'assessment-rules') setShowAssessmentPolicy(true);
+  }, [course.id, requestedPanel]);
 
   async function loadBlocks(lessonId: string) {
     const data = await api('get_blocks', { lesson_id: lessonId });
@@ -503,7 +509,7 @@ export default function StudioConceptionFormation() {
   }
 
   // ─── Créer / sauvegarder le brouillon ─────────────────────
-  async function ensureCourseCreated(): Promise<Course | null> {
+  async function ensureCourseCreated(options: { openAssessmentPolicy?: boolean } = {}): Promise<Course | null> {
     if (course.id) return course;
     if (!course.title.trim()) { showToast('Saisissez le titre de la formation.', 'error'); return null; }
     if (!course.short_description?.trim()) { showToast('Ajoutez la description courte visible avant achat.', 'error'); return null; }
@@ -545,12 +551,38 @@ export default function StudioConceptionFormation() {
         : window.location.pathname.includes('/partner/') ? '/partner/studio'
         : window.location.pathname.includes('/structure/') ? '/structure/studio'
         : '/professeur/studio';
-      navigate(`${basePath}/${data.course.id}`, { replace: true });
+      const query = options.openAssessmentPolicy ? '?panel=assessment-rules' : '';
+      navigate(`${basePath}/${data.course.id}${query}`, { replace: true });
       return data.course;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Impossible de créer le brouillon', 'error');
       return null;
     } finally { setCreatingDraft(false); }
+  }
+
+  async function openAssessmentPolicy() {
+    if (openingAssessmentPolicy) return;
+    setOpeningAssessmentPolicy(true);
+    try {
+      if (!course.id) {
+        const created = await ensureCourseCreated({ openAssessmentPolicy: true });
+        if (!created?.id) return;
+        return;
+      }
+      setShowAssessmentPolicy(true);
+    } finally {
+      setOpeningAssessmentPolicy(false);
+    }
+  }
+
+  function closeAssessmentPolicy() {
+    setShowAssessmentPolicy(false);
+    if (requestedPanel === 'assessment-rules') {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('panel');
+      const query = nextParams.toString();
+      navigate({ search: query ? `?${query}` : '' }, { replace: true });
+    }
   }
 
   async function save() {
@@ -760,19 +792,6 @@ export default function StudioConceptionFormation() {
 
       {/* ── CORPS PRINCIPAL ──────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden relative">
-        <div className="absolute left-[252px] right-4 top-3 z-10 pointer-events-none">
-          <div className="pointer-events-auto max-w-4xl mx-auto">
-            <AssessmentRulesCard
-              courseId={course.id || 'new'}
-              durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0}
-              onConfigure={() => {
-                if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; }
-                setShowAssessmentPolicy(true);
-              }}
-            />
-          </div>
-        </div>
-
         {/* ── COLONNE GAUCHE : Bibliothèque ────────────── */}
         <div className="bg-white border-r flex flex-col flex-shrink-0" style={{ width: '240px', borderColor: '#E4E7EC' }}>
 
@@ -934,8 +953,20 @@ export default function StudioConceptionFormation() {
             </div>
           </div>
 
+          <div className="flex-shrink-0 border-b bg-white px-3 py-3 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
+            <div className="mx-auto max-w-5xl">
+              <AssessmentRulesCard
+                courseId={course.id || 'new'}
+                durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0}
+                busy={openingAssessmentPolicy || creatingDraft}
+                locked={locked}
+                onConfigure={openAssessmentPolicy}
+              />
+            </div>
+          </div>
+
           {/* Canevas */}
-          <div className="flex-1 overflow-y-auto p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && !showFinalization && (
@@ -1318,7 +1349,7 @@ export default function StudioConceptionFormation() {
         <AssessmentPolicyPanel
           courseId={course.id}
           locked={locked}
-          onClose={() => setShowAssessmentPolicy(false)}
+          onClose={closeAssessmentPolicy}
         />
       )}
 

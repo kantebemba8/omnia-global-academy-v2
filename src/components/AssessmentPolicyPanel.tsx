@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, CheckCircle2, Eye, Loader2, Monitor, Plus, RotateCcw,
   Save, ShieldCheck, Trash2, Users, Video, X, type LucideIcon,
@@ -69,14 +69,44 @@ type Framework = {
   levels: Array<{ id: string; code: string; name: string; level_number: number; framework_id: string }>;
 };
 
+class StudioApiError extends Error {
+  code: string;
+  status: number;
+
+  constructor(message: string, code: string, status: number) {
+    super(message);
+    this.name = 'StudioApiError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 async function call(action: string, payload: Record<string, unknown>) {
   const response = await fetch(API, {
     method: 'POST',
     headers: edgeAuthHeaders(),
     body: JSON.stringify({ action, ...payload }),
   });
-  const data = await response.json();
-  if (!response.ok || data.success === false) throw new Error(data.message || data.error || 'Erreur');
+  const raw = await response.text();
+  let data: any = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new StudioApiError(
+        response.ok ? 'Réponse serveur illisible.' : `Le serveur a répondu avec l’erreur HTTP ${response.status}.`,
+        `HTTP_${response.status}`,
+        response.status,
+      );
+    }
+  }
+  if (!response.ok || data.success === false) {
+    throw new StudioApiError(
+      data.message || data.error || `Erreur HTTP ${response.status}`,
+      String(data.error || `HTTP_${response.status}`),
+      response.status,
+    );
+  }
   return data;
 }
 
@@ -87,16 +117,25 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [frameworkWarning, setFrameworkWarning] = useState('');
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setFrameworkWarning('');
     try {
-      await call('ensure_assessments', { course_id: courseId });
+      if (!locked) await call('ensure_assessments', { course_id: courseId });
+
       const [data, catalog] = await Promise.all([
         call('assessment_policy_get', { course_id: courseId }),
-        assessmentGovernanceCall<any>('framework_catalog').catch(() => ({ frameworks: [] })),
+        assessmentGovernanceCall<any>('framework_catalog').catch((caught) => {
+          setFrameworkWarning(caught instanceof Error
+            ? `Référentiels indisponibles : ${caught.message}`
+            : 'Les référentiels de compétences sont temporairement indisponibles.');
+          return { frameworks: [] };
+        }),
       ]);
+
       setFrameworks(catalog.frameworks || []);
       setRows((data.assessments || []).map((row: Partial<AssessmentRow> & Pick<AssessmentRow, 'id' | 'title' | 'scope'>) => ({
         ...row,
@@ -133,9 +172,22 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
     } finally {
       setLoading(false);
     }
-  }
+  }, [courseId, locked]);
 
-  useEffect(() => { void load(); }, [courseId]);
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose, saving]);
 
   const groups = useMemo(() => ({
     lesson: rows.filter(row => row.scope === 'lesson'),
@@ -148,6 +200,10 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
   }
 
   async function save() {
+    if (!rows.length) {
+      setError('Aucune évaluation n’est disponible à enregistrer.');
+      return;
+    }
     setSaving(true);
     setMessage('');
     setError('');
@@ -164,6 +220,7 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
         assessments: rows,
       });
       setMessage('Les règles d’évaluation, de jury, de révision et de compétences ont été enregistrées. Elles seront contrôlées par le Centre Qualité.');
+      await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.');
     } finally {
@@ -172,17 +229,17 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
   }
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/50 p-4">
-      <div className="mx-auto my-6 w-full max-w-7xl rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b px-6 py-5" style={{ borderColor: BORDER }}>
+    <div className="fixed inset-0 z-[80] flex items-stretch justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="assessment-policy-title" className="flex max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
+        <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5" style={{ borderColor: BORDER }}>
           <div>
-            <h2 className="text-lg font-bold" style={{ color: BLUE }}>Évaluations, tentatives, jurys et compétences</h2>
+            <h2 id="assessment-policy-title" className="text-lg font-bold" style={{ color: BLUE }}>Évaluations, tentatives, jurys et compétences</h2>
             <p className="mt-1 max-w-4xl text-sm text-gray-600">Configurez chaque évaluation. Le Centre Qualité valide ensuite la surveillance, les jurys, les révisions, la remédiation et les compétences réellement évaluées.</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100" aria-label="Fermer"><X size={20} /></button>
         </div>
 
-        <div className="px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <div className="mb-5 grid gap-3 md:grid-cols-5">
             <Info icon={RotateCcw} title="Tentatives" text="La remédiation remplace le blocage définitif pour une formation achetée." />
             <Info icon={ShieldCheck} title="Contrôle qualité" text="Le Super Admin valide les règles proposées avant publication." />
@@ -191,7 +248,23 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
             <Info icon={CheckCircle2} title="Compétences" text="Seules les compétences mappées et réellement réussies sont vérifiées." />
           </div>
 
-          {loading ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500"><Loader2 className="animate-spin" size={18} />Chargement…</div> : (
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500" role="status" aria-live="polite"><Loader2 className="animate-spin" size={18} />Chargement des règles…</div>
+          ) : error && rows.length === 0 ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-center">
+              <AlertCircle className="mx-auto" size={24} color="#B91C1C" />
+              <p className="mt-2 text-sm font-semibold text-red-800">Impossible d’ouvrir les règles</p>
+              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700"><RotateCcw size={15} />Réessayer</button>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-xl border p-6 text-center" style={{ borderColor: BORDER }}>
+              <ShieldCheck className="mx-auto" size={26} color={GOLD} />
+              <p className="mt-2 text-sm font-semibold" style={{ color: BLUE }}>Aucune évaluation disponible</p>
+              <p className="mt-1 text-sm text-gray-600">Ajoutez au moins une leçon ou rechargez la configuration.</p>
+              {!locked && <button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><RotateCcw size={15} />Créer ou actualiser les évaluations</button>}
+            </div>
+          ) : (
             <div className="space-y-7">
               <AssessmentGroup title="Évaluations des leçons" rows={groups.lesson} frameworks={frameworks} locked={locked} onUpdate={update} />
               <AssessmentGroup title="Évaluations des modules" rows={groups.module} frameworks={frameworks} locked={locked} onUpdate={update} />
@@ -199,13 +272,14 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
             </div>
           )}
 
-          {message && <p className="mt-5 rounded-xl bg-green-50 p-3 text-sm text-green-700">{message}</p>}
-          {error && <p className="mt-5 flex items-center gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700"><AlertCircle size={16} />{error}</p>}
+          {error && rows.length > 0 && <p className="mt-5 flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={16} />{error}</p>}
+          {frameworkWarning && <p className="mt-5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><AlertCircle className="mt-0.5 shrink-0" size={16} />{frameworkWarning}</p>}
+          {message && <p className="mt-5 rounded-xl bg-green-50 p-3 text-sm text-green-700" role="status" aria-live="polite">{message}</p>}
         </div>
 
-        <div className="flex justify-end gap-3 border-t px-6 py-4" style={{ borderColor: BORDER }}>
+        <div className="flex flex-shrink-0 flex-col-reverse gap-3 border-t px-4 py-4 sm:flex-row sm:justify-end sm:px-6" style={{ borderColor: BORDER }}>
           <button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER }}>Fermer</button>
-          <button disabled={locked || saving || loading} onClick={save} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Enregistrer les règles</button>
+          <button disabled={locked || saving || loading || rows.length === 0} onClick={save} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Enregistrer les règles</button>
         </div>
       </div>
     </div>

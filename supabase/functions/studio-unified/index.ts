@@ -438,58 +438,135 @@ Deno.serve(async(req)=>{
 
   if(action==="ensure_assessments"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:course}=await sb.from("courses").select("id,title,creator_id,studio_status,lesson_passing_score,module_passing_score,final_passing_score,assessment_policy").eq("id",courseId).single();
+   const {data:course,error:courseError}=await sb.from("courses").select("id,title,creator_id,studio_status,lesson_passing_score,module_passing_score,final_passing_score,assessment_policy").eq("id",courseId).maybeSingle();
+   if(courseError)throw courseError;
+   if(!course)return json({success:false,error:"NOT_FOUND"},404);
    if(!isAdmin&&["pending_validation","validated","published"].includes(String(course.studio_status||"")))return json({success:false,error:"COURSE_LOCKED",message:"Cette formation doit être renvoyée en modification avant de changer ses évaluations."},409);
-   const {data:mods}=await sb.from("course_modules").select("id,title,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
-   const {data:lessons}=await sb.from("course_lessons").select("id,module_id,title,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
-   const {data:blocks}=await sb.from("lesson_blocks").select("id,lesson_id,block_type,position,content_json,file_url,file_name").eq("course_id",courseId).order("position");
-   const policy=course.assessment_policy||{};const defaultCooldown=Math.max(0,Number(policy.default_retry_cooldown_hours??24));const defaultRemediation=Math.max(1,Number(policy.default_remediation_after_attempts??3));const defaultMode=String(policy.default_remediation_mode||"review_module");
+
+   const [{data:mods,error:modsError},{data:lessons,error:lessonsError},{data:blocks,error:blocksError}]=await Promise.all([
+    sb.from("course_modules").select("id,title,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position"),
+    sb.from("course_lessons").select("id,module_id,title,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position"),
+    sb.from("lesson_blocks").select("id,lesson_id,block_type,position,content_json,file_url,file_name").eq("course_id",courseId).order("position"),
+   ]);
+   if(modsError)throw modsError;
+   if(lessonsError)throw lessonsError;
+   if(blocksError)throw blocksError;
+
+   const policy=course.assessment_policy&&typeof course.assessment_policy==="object"?course.assessment_policy:{};
+   const defaultCooldown=Math.max(0,Number(policy.default_retry_cooldown_hours??24));
+   const defaultRemediation=Math.max(1,Number(policy.default_remediation_after_attempts??3));
+   const defaultMode=String(policy.default_remediation_mode||"review_module");
    const evalTypes=["qcm","true_false","open_question","exercise","assignment_upload"];
+
    const ensureOne=async(scope:string,title:string,moduleId?:string,lessonId?:string,passing=80)=>{
     let q=sb.from("course_assessments").select("*").eq("course_id",courseId).eq("scope",scope);
-    if(lessonId)q=q.eq("lesson_id",lessonId); else if(moduleId)q=q.eq("module_id",moduleId); else q=q.is("module_id",null).is("lesson_id",null);
-    let {data:a}=await q.maybeSingle();
-    if(!a){const ins:any={course_id:courseId,module_id:moduleId||null,lesson_id:lessonId||null,scope,title,passing_score:passing,max_attempts:defaultRemediation,remediation_after_attempts:defaultRemediation,retry_cooldown_hours:defaultCooldown,remediation_mode:scope==="lesson"?"review_lesson":defaultMode,attempts_unlimited_for_purchased:true,required:true,correction_mode:"mixed",created_by:userId,estimated_minutes:scope==="final"?45:scope==="module"?20:10};const r=await sb.from("course_assessments").insert(ins).select("*").single();if(r.error)throw r.error;a=r.data;}
-    const {count}=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",a.id);
-    if(!count){
-      const sourceLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((l:any)=>l.module_id===moduleId&&!l.is_module_intro).map((l:any)=>l.id):(lessons||[]).filter((l:any)=>l.is_final_exam).map((l:any)=>l.id);
-      const src=(blocks||[]).filter((x:any)=>sourceLessonIds.includes(x.lesson_id)&&evalTypes.includes(x.block_type));
-      for(const [i,bk] of src.entries()){
-       const c=bk.content_json||{};const qt=bk.block_type==="assignment_upload"?"exercise":bk.block_type;const payload:any={assessment_id:a.id,question_type:qt,position:i,prompt:c.question||c.statement||c.title||c.instructions||"Question à compléter",points:Number(c.points||10),grading_mode:["qcm","true_false"].includes(qt)?"automatic":(c.grading_mode||"human"),options:c.options||[],correct_answer:qt==="qcm"?c.correctIndex:qt==="true_false"?c.answer:c.expected_answer||null,explanation:c.explanation||"",resource_files:c.resources||((bk.file_url)?[{name:bk.file_name||"Ressource",url:bk.file_url}]:[]),accepted_submission_types:c.accepted_types||["pdf","doc","docx","xls","xlsx","zip","png","jpg"],rubric:c.rubric||[]};
-       const {error}=await sb.from("assessment_questions").insert(payload);if(error)throw error;
-      }
+    if(lessonId)q=q.eq("lesson_id",lessonId);else if(moduleId)q=q.eq("module_id",moduleId);else q=q.is("module_id",null).is("lesson_id",null);
+    const existing=await q.maybeSingle();
+    if(existing.error)throw existing.error;
+    let assessment=existing.data;
+    if(!assessment){
+     const insertPayload:any={course_id:courseId,module_id:moduleId||null,lesson_id:lessonId||null,scope,title,passing_score:passing,max_attempts:defaultRemediation,remediation_after_attempts:defaultRemediation,retry_cooldown_hours:defaultCooldown,remediation_mode:scope==="lesson"?"review_lesson":defaultMode,attempts_unlimited_for_purchased:true,required:true,correction_mode:"mixed",created_by:userId,estimated_minutes:scope==="final"?45:scope==="module"?20:10};
+     const inserted=await sb.from("course_assessments").insert(insertPayload).select("*").single();
+     if(inserted.error)throw inserted.error;
+     assessment=inserted.data;
     }
-    return a;
+
+    const questionCount=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",assessment.id);
+    if(questionCount.error)throw questionCount.error;
+    if(!questionCount.count){
+     const sourceLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((lesson:any)=>lesson.module_id===moduleId&&!lesson.is_module_intro).map((lesson:any)=>lesson.id):(lessons||[]).filter((lesson:any)=>lesson.is_final_exam).map((lesson:any)=>lesson.id);
+     const sourceBlocks=(blocks||[]).filter((block:any)=>sourceLessonIds.includes(block.lesson_id)&&evalTypes.includes(block.block_type));
+     for(const [position,block] of sourceBlocks.entries()){
+      const content=block.content_json||{};
+      const questionType=block.block_type==="assignment_upload"?"exercise":block.block_type;
+      const questionPayload:any={assessment_id:assessment.id,question_type:questionType,position,prompt:content.question||content.statement||content.title||content.instructions||"Question à compléter",points:Number(content.points||10),grading_mode:["qcm","true_false"].includes(questionType)?"automatic":(content.grading_mode||"human"),options:content.options||[],correct_answer:questionType==="qcm"?content.correctIndex:questionType==="true_false"?content.answer:content.expected_answer||null,explanation:content.explanation||"",resource_files:content.resources||((block.file_url)?[{name:block.file_name||"Ressource",url:block.file_url}]:[]),accepted_submission_types:content.accepted_types||["pdf","doc","docx","xls","xlsx","zip","png","jpg"],rubric:content.rubric||[]};
+      const {error:questionError}=await sb.from("assessment_questions").insert(questionPayload);
+      if(questionError)throw questionError;
+     }
+    }
+    return assessment;
    };
-   for(const l of lessons||[]){if(!l.is_intro&&!l.is_module_intro&&!l.is_conclusion&&!l.is_final_exam)await ensureOne("lesson",`Évaluation — ${l.title}`,l.module_id,l.id,course.lesson_passing_score||80)}
-   for(const m of mods||[]){if(!m.is_intro&&!m.is_conclusion&&!m.is_final_exam)await ensureOne("module",`Évaluation du module — ${m.title}`,m.id,undefined,course.module_passing_score||80)}
+
+   for(const lesson of lessons||[]){if(!lesson.is_intro&&!lesson.is_module_intro&&!lesson.is_conclusion&&!lesson.is_final_exam)await ensureOne("lesson",`Évaluation — ${lesson.title}`,lesson.module_id,lesson.id,course.lesson_passing_score||80)}
+   for(const module of mods||[]){if(!module.is_intro&&!module.is_conclusion&&!module.is_final_exam)await ensureOne("module",`Évaluation du module — ${module.title}`,module.id,undefined,course.module_passing_score||80)}
    await ensureOne("final",`Examen final — ${course.title}`,undefined,undefined,course.final_passing_score||70);
-   const {data:all,error}=await sb.from("course_assessments").select("*,assessment_questions(count)").eq("course_id",courseId).order("scope");if(error)throw error;
+
+   const {data:all,error:allError}=await sb.from("course_assessments").select("*,assessment_questions(count)").eq("course_id",courseId).order("scope");
+   if(allError)throw allError;
    return json({success:true,assessments:all||[],policy});
   }
   if(action==="assessment_policy_get"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:course,error:ce}=await sb.from("courses").select("assessment_policy").eq("id",courseId).single();if(ce)throw ce;
-   const {data:assessments,error}=await sb.from("course_assessments").select("id,title,scope,module_id,lesson_id,passing_score,max_attempts,time_limit_minutes,required,retry_cooldown_hours,remediation_after_attempts,remediation_mode,attempts_unlimited_for_purchased,attempts_per_period,attempt_period,retry_instructions,assessment_type,delivery_mode,security_level,session_required,identity_verification_required,proctoring_settings,result_release_mode,competency_labels,competency_framework_id,jury_required,jury_min_members,jury_decision_mode,appeal_enabled,appeal_deadline_days,allowed_materials,candidate_instructions,integrity_rules").eq("course_id",courseId).order("scope");if(error)throw error;
-   const ids=(assessments||[]).map((x:any)=>x.id);const {data:mappings}=ids.length?await sb.from("assessment_competency_mappings").select("*,competency:competency_definitions(id,name,code,framework_id),level:competency_levels(id,name,code,level_number)").in("assessment_id",ids):{data:[]};
-   return json({success:true,policy:course.assessment_policy||{},assessments:(assessments||[]).map((row:any)=>({...row,competency_mappings:(mappings||[]).filter((m:any)=>m.assessment_id===row.id),competency_ids:(mappings||[]).filter((m:any)=>m.assessment_id===row.id).map((m:any)=>m.competency_id)}))});
+   const {data:course,error:courseError}=await sb.from("courses").select("assessment_policy").eq("id",courseId).maybeSingle();
+   if(courseError)throw courseError;
+   if(!course)return json({success:false,error:"NOT_FOUND"},404);
+   const {data:assessments,error:assessmentError}=await sb.from("course_assessments").select("id,title,scope,module_id,lesson_id,passing_score,max_attempts,time_limit_minutes,required,retry_cooldown_hours,remediation_after_attempts,remediation_mode,attempts_unlimited_for_purchased,attempts_per_period,attempt_period,retry_instructions,assessment_type,delivery_mode,security_level,session_required,identity_verification_required,proctoring_settings,result_release_mode,competency_labels,competency_framework_id,jury_required,jury_min_members,jury_decision_mode,appeal_enabled,appeal_deadline_days,allowed_materials,candidate_instructions,integrity_rules").eq("course_id",courseId).order("scope");
+   if(assessmentError)throw assessmentError;
+   const ids=(assessments||[]).map((item:any)=>item.id);
+   let mappings:any[]=[];
+   if(ids.length){
+    const mappingResult=await sb.from("assessment_competency_mappings").select("*,competency:competency_definitions(id,name,code,framework_id),level:competency_levels(id,name,code,level_number)").in("assessment_id",ids);
+    if(mappingResult.error)throw mappingResult.error;
+    mappings=mappingResult.data||[];
+   }
+   return json({success:true,policy:course.assessment_policy||{},assessments:(assessments||[]).map((row:any)=>({...row,competency_mappings:mappings.filter((mapping:any)=>mapping.assessment_id===row.id),competency_ids:mappings.filter((mapping:any)=>mapping.assessment_id===row.id).map((mapping:any)=>mapping.competency_id)}))});
   }
   if(action==="assessment_policy_update"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:courseState}=await sb.from("courses").select("studio_status").eq("id",courseId).maybeSingle();if(!courseState)return json({success:false,error:"NOT_FOUND"},404);if(!isAdmin&&["pending_validation","validated","published"].includes(String(courseState.studio_status||"")))return json({success:false,error:"COURSE_LOCKED",message:"Cette formation doit être renvoyée en modification avant de changer ses règles."},409);
-   const allowedModes=["none","review_lesson","review_module","exercise","manual"],allowedPeriods=["day","week","month","subscription_period"],allowedTypes=["quiz","exam","case_study","project","practical","oral","assignment"],allowedDelivery=["asynchronous","scheduled_online","scheduled_in_person","hybrid"],allowedRelease=["immediate","after_review","manual"];
-   const policy={...(b.policy||{}),purchased_access:"until_passed",certificate_requires_success:true};
+   const {data:courseState,error:courseStateError}=await sb.from("courses").select("studio_status").eq("id",courseId).maybeSingle();
+   if(courseStateError)throw courseStateError;
+   if(!courseState)return json({success:false,error:"NOT_FOUND"},404);
+   if(!isAdmin&&["pending_validation","validated","published"].includes(String(courseState.studio_status||"")))return json({success:false,error:"COURSE_LOCKED",message:"Cette formation doit être renvoyée en modification avant de changer ses règles."},409);
+
    const rows=Array.isArray(b.assessments)?b.assessments:[];
+   if(!rows.length)return json({success:false,error:"ASSESSMENTS_REQUIRED",message:"Aucune règle d’évaluation à enregistrer."},400);
+   const incomingIds=[...new Set(rows.map((item:any)=>String(item.id||"")).filter(Boolean))];
+   if(incomingIds.length!==rows.length)return json({success:false,error:"INVALID_ASSESSMENT_IDS",message:"Une ou plusieurs évaluations sont invalides ou dupliquées."},400);
+   const existingResult=await sb.from("course_assessments").select("id,scope").eq("course_id",courseId).in("id",incomingIds);
+   if(existingResult.error)throw existingResult.error;
+   const existingIds=new Set((existingResult.data||[]).map((item:any)=>String(item.id)));
+   if(existingIds.size!==incomingIds.length)return json({success:false,error:"ASSESSMENT_OUTSIDE_COURSE",message:"Une évaluation n’appartient pas à cette formation."},400);
+
+   const allowedModes=["none","review_lesson","review_module","exercise","manual"],allowedPeriods=["day","week","month","subscription_period"],allowedTypes=["quiz","exam","case_study","project","practical","oral","assignment"],allowedDelivery=["asynchronous","scheduled_online","scheduled_in_person","hybrid"],allowedRelease=["immediate","after_review","manual"];
+   const policy={...(b.policy&&typeof b.policy==="object"?b.policy:{}),purchased_access:"until_passed",certificate_requires_success:true};
+   const nowIso=new Date().toISOString();
+
    for(const item of rows){
-    const competencyInput=Array.isArray(item.competency_mappings)?item.competency_mappings:(Array.isArray(item.competency_ids)?item.competency_ids.map((id:any)=>({competency_id:id})):[]);const competencyIds=[...new Set(competencyInput.map((x:any)=>String(x.competency_id||"")).filter(Boolean))];const {data:definitions}=competencyIds.length?await sb.from("competency_definitions").select("id,name,framework_id").in("id",competencyIds).eq("status","active"):{data:[]};const defMap=new Map((definitions||[]).map((x:any)=>[x.id,x]));const selected=competencyInput.filter((x:any)=>defMap.has(String(x.competency_id||""))).slice(0,30);const labels=selected.map((x:any)=>String(defMap.get(String(x.competency_id))?.name||"")).filter(Boolean);const frameworkId=item.competency_framework_id||((definitions||[])[0]?.framework_id)||null;
-    const juryMode=["majority","unanimous","president_final"].includes(item.jury_decision_mode)?item.jury_decision_mode:"majority";const juryRequired=item.jury_required===true;
-    const patch:any={passing_score:Math.min(100,Math.max(1,Number(item.passing_score||70))),max_attempts:Math.max(1,Number(item.remediation_after_attempts||item.max_attempts||3)),remediation_after_attempts:Math.max(1,Number(item.remediation_after_attempts||3)),retry_cooldown_hours:Math.max(0,Number(item.retry_cooldown_hours||0)),remediation_mode:allowedModes.includes(item.remediation_mode)?item.remediation_mode:"review_module",attempts_unlimited_for_purchased:true,time_limit_minutes:item.time_limit_minutes?Math.max(1,Number(item.time_limit_minutes)):null,required:item.required!==false,attempts_per_period:item.attempts_per_period?Math.max(1,Number(item.attempts_per_period)):null,attempt_period:allowedPeriods.includes(item.attempt_period)?item.attempt_period:null,retry_instructions:String(item.retry_instructions||""),assessment_type:allowedTypes.includes(item.assessment_type)?item.assessment_type:(item.scope==="final"?"exam":"quiz"),delivery_mode:allowedDelivery.includes(item.delivery_mode)?item.delivery_mode:"asynchronous",security_level:Math.min(4,Math.max(1,Number(item.security_level||1))),session_required:item.session_required===true,identity_verification_required:item.identity_verification_required===true,proctoring_settings:item.proctoring_settings&&typeof item.proctoring_settings==="object"?item.proctoring_settings:{},result_release_mode:juryRequired?"manual":(allowedRelease.includes(item.result_release_mode)?item.result_release_mode:"after_review"),competency_labels:labels.length?labels:(Array.isArray(item.competency_labels)?item.competency_labels.map((x:any)=>String(x).trim()).filter(Boolean).slice(0,30):[]),competency_framework_id:frameworkId,jury_required:juryRequired,jury_min_members:Math.min(15,Math.max(1,Number(item.jury_min_members||2))),jury_decision_mode:juryMode,appeal_enabled:item.appeal_enabled!==false,appeal_deadline_days:Math.min(90,Math.max(0,Number(item.appeal_deadline_days??7))),allowed_materials:String(item.allowed_materials||""),candidate_instructions:String(item.candidate_instructions||""),integrity_rules:String(item.integrity_rules||""),updated_at:new Date().toISOString()};
-    const {error}=await sb.from("course_assessments").update(patch).eq("id",item.id).eq("course_id",courseId);if(error)throw error;
-    await sb.from("assessment_competency_mappings").delete().eq("assessment_id",item.id);if(selected.length){const mappingRows=selected.map((x:any)=>({assessment_id:item.id,competency_id:String(x.competency_id),target_level_id:x.target_level_id||null,weight:Math.min(100,Math.max(0.01,Number(x.weight||1))),passing_score:x.passing_score===null||x.passing_score===undefined?null:Math.min(100,Math.max(0,Number(x.passing_score))),required:x.required!==false,created_by:userId}));const {error:mappingError}=await sb.from("assessment_competency_mappings").insert(mappingRows);if(mappingError)throw mappingError;}
+    const competencyInput=Array.isArray(item.competency_mappings)?item.competency_mappings:(Array.isArray(item.competency_ids)?item.competency_ids.map((id:any)=>({competency_id:id})):[]);
+    const competencyIds=[...new Set(competencyInput.map((mapping:any)=>String(mapping.competency_id||"")).filter(Boolean))];
+    let definitions:any[]=[];
+    if(competencyIds.length){
+     const definitionResult=await sb.from("competency_definitions").select("id,name,framework_id").in("id",competencyIds).eq("status","active");
+     if(definitionResult.error)throw definitionResult.error;
+     definitions=definitionResult.data||[];
+    }
+    const definitionMap=new Map(definitions.map((definition:any)=>[String(definition.id),definition]));
+    const selected=competencyInput.filter((mapping:any)=>definitionMap.has(String(mapping.competency_id||""))).slice(0,30);
+    const labels=selected.map((mapping:any)=>String(definitionMap.get(String(mapping.competency_id))?.name||"")).filter(Boolean);
+    const frameworkId=item.competency_framework_id||(definitions[0]?.framework_id)||null;
+    const juryMode=["majority","unanimous","president_final"].includes(item.jury_decision_mode)?item.jury_decision_mode:"majority";
+    const juryRequired=item.jury_required===true;
+    const timeLimit=Number(item.time_limit_minutes||0);
+    const patch:any={passing_score:Math.min(100,Math.max(1,Number(item.passing_score||70))),max_attempts:Math.max(1,Number(item.max_attempts||item.remediation_after_attempts||3)),remediation_after_attempts:Math.max(1,Number(item.remediation_after_attempts||3)),retry_cooldown_hours:Math.max(0,Number(item.retry_cooldown_hours||0)),remediation_mode:allowedModes.includes(item.remediation_mode)?item.remediation_mode:"review_module",attempts_unlimited_for_purchased:true,time_limit_minutes:timeLimit>0?Math.max(1,timeLimit):null,required:item.required!==false,attempts_per_period:item.attempts_per_period?Math.max(1,Number(item.attempts_per_period)):null,attempt_period:allowedPeriods.includes(item.attempt_period)?item.attempt_period:null,retry_instructions:String(item.retry_instructions||""),assessment_type:allowedTypes.includes(item.assessment_type)?item.assessment_type:(item.scope==="final"?"exam":"quiz"),delivery_mode:allowedDelivery.includes(item.delivery_mode)?item.delivery_mode:"asynchronous",security_level:Math.min(4,Math.max(1,Number(item.security_level||1))),session_required:item.session_required===true,identity_verification_required:item.identity_verification_required===true,proctoring_settings:item.proctoring_settings&&typeof item.proctoring_settings==="object"?item.proctoring_settings:{},result_release_mode:juryRequired?"manual":(allowedRelease.includes(item.result_release_mode)?item.result_release_mode:"after_review"),competency_labels:labels.length?labels:(Array.isArray(item.competency_labels)?item.competency_labels.map((label:any)=>String(label).trim()).filter(Boolean).slice(0,30):[]),competency_framework_id:frameworkId,jury_required:juryRequired,jury_min_members:Math.min(15,Math.max(1,Number(item.jury_min_members||2))),jury_decision_mode:juryMode,appeal_enabled:item.appeal_enabled!==false,appeal_deadline_days:Math.min(90,Math.max(0,Number(item.appeal_deadline_days??7))),allowed_materials:String(item.allowed_materials||""),candidate_instructions:String(item.candidate_instructions||""),integrity_rules:String(item.integrity_rules||""),updated_at:nowIso};
+    const updateResult=await sb.from("course_assessments").update(patch).eq("id",item.id).eq("course_id",courseId).select("id").maybeSingle();
+    if(updateResult.error)throw updateResult.error;
+    if(!updateResult.data)return json({success:false,error:"ASSESSMENT_UPDATE_FAILED",message:"Une évaluation n’a pas pu être mise à jour."},409);
+
+    const deleteMappings=await sb.from("assessment_competency_mappings").delete().eq("assessment_id",item.id);
+    if(deleteMappings.error)throw deleteMappings.error;
+    if(selected.length){
+     const mappingRows=selected.map((mapping:any)=>({assessment_id:item.id,competency_id:String(mapping.competency_id),target_level_id:mapping.target_level_id||null,weight:Math.min(100,Math.max(0.01,Number(mapping.weight||1))),passing_score:mapping.passing_score===null||mapping.passing_score===undefined?null:Math.min(100,Math.max(0,Number(mapping.passing_score))),required:mapping.required!==false,created_by:userId}));
+     const {error:mappingError}=await sb.from("assessment_competency_mappings").insert(mappingRows);
+     if(mappingError)throw mappingError;
+    }
    }
+
    const first=(scope:string,fallback:number)=>Math.min(100,Math.max(1,Number(rows.find((item:any)=>item.scope===scope)?.passing_score||fallback)));
-   const {error:courseErr}=await sb.from("courses").update({assessment_policy:policy,lesson_passing_score:first("lesson",80),module_passing_score:first("module",80),final_passing_score:first("final",70),assessment_rules_locked:false,updated_at:new Date().toISOString()}).eq("id",courseId);if(courseErr)throw courseErr;
-   await log(sb,courseId,userId,"assessment_policy_updated",{count:rows.length});return json({success:true});
+   const courseUpdate=await sb.from("courses").update({assessment_policy:policy,lesson_passing_score:first("lesson",80),module_passing_score:first("module",80),final_passing_score:first("final",70),assessment_rules_locked:false,updated_at:nowIso}).eq("id",courseId).select("id").maybeSingle();
+   if(courseUpdate.error)throw courseUpdate.error;
+   if(!courseUpdate.data)return json({success:false,error:"COURSE_UPDATE_FAILED",message:"Les règles n’ont pas été rattachées à la formation."},409);
+   await log(sb,courseId,userId,"assessment_policy_updated",{count:rows.length});
+   return json({success:true,updated_assessments:rows.length});
   }
   if(action==="prepare_assessment_submission_upload"){
    if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation Super Admin ne crée aucune copie."},403);
