@@ -1,6 +1,6 @@
 import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import {
@@ -86,6 +86,8 @@ function PostAvatar({ post }: { post: CommunityPost }) {
 }
 
 export default function Forum() {
+  const [searchParams] = useSearchParams();
+  const search = (searchParams.get('search') || '').trim();
   const [country, setCountry] = useState('ML');
   const [stats, setStats] = useState<CommunityStats>({ general: 0, carriere: 0, jobs: 0, courses: 0 });
   const [recentPosts, setRecentPosts] = useState<CommunityPost[]>([]);
@@ -107,9 +109,10 @@ export default function Forum() {
     async function load() {
       setLoading(true);
       const headers = token ? edgeAuthHeaders() : edgeGatewayHeaders();
-      const generalUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&limit=4`;
-      const careerUrl = `${ENDPOINTS.forumPostsList}&space=carriere&country_code=${country}&limit=4`;
-      const unansweredUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&sort=unanswered&limit=4`;
+      const encodedSearch = search ? `&search=${encodeURIComponent(search)}` : '';
+      const generalUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&limit=${search ? 12 : 4}${encodedSearch}`;
+      const careerUrl = `${ENDPOINTS.forumPostsList}&space=carriere&country_code=${country}&limit=${search ? 12 : 4}${encodedSearch}`;
+      const unansweredUrl = `${ENDPOINTS.forumPostsList}&space=general&country_code=${country}&sort=unanswered&limit=4${encodedSearch}`;
       const promises: Promise<unknown>[] = [
         fetch(generalUrl, { headers }).then(response => response.json()).catch(() => ({})),
         fetch(careerUrl, { headers }).then(response => response.json()).catch(() => ({})),
@@ -140,13 +143,18 @@ export default function Forum() {
     }
     void load();
     return () => { cancelled = true; };
-  }, [country, token]);
+  }, [country, token, search]);
 
   const countryName = useMemo(() => COUNTRIES.find(item => item.code === country)?.name || country, [country]);
 
   return (
     <CommunityLayout>
       <div className="min-h-screen bg-white">
+        {search && (
+          <div className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm md:px-8" style={{ color: BLUE }}>
+            Résultats de la recherche <strong>« {search} »</strong> dans les discussions de la Communauté.
+          </div>
+        )}
         <section className="border-b border-slate-100 bg-white px-4 pb-10 pt-8 md:px-8 md:pb-14 md:pt-12">
           <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.2fr_.8fr] lg:items-center">
             <div>
@@ -166,7 +174,7 @@ export default function Forum() {
                 <Link to="/forum/formations" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}>
                   Mes forums de formation <BookOpenCheck size={17} />
                 </Link>
-                <Link to="/emploi" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}>
+                <Link to="/forum/emploi" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}>
                   Carrière & emploi <BriefcaseBusiness size={17} />
                 </Link>
               </div>
@@ -202,7 +210,7 @@ export default function Forum() {
             <SectionHeader eyebrow="Explorer" title="Tous les espaces de la communauté" subtitle="Chaque espace a un objectif clair et conserve ses propres règles d'accès." />
             <div className="mt-7 grid gap-5 lg:grid-cols-3">
               <SpacePanel icon={MessageCircleQuestion} title="Espace général" description="Entraide, apprentissage, orientation et échanges entre membres de la communauté." stat={`${stats.general} discussion${stats.general === 1 ? '' : 's'}`} to={`/forum/general?country_code=${country}`} action="Ouvrir l'espace" />
-              <SpacePanel icon={BriefcaseBusiness} title="Carrière & emploi" description="Offres professionnelles, conseils de candidature et échanges sur le développement de carrière." stat={`${stats.jobs} offre${stats.jobs === 1 ? '' : 's'} disponible${stats.jobs === 1 ? '' : 's'}`} to="/emploi" action="Voir les opportunités" secondary={{ to: '/forum/carriere', label: 'Poser une question carrière' }} />
+              <SpacePanel icon={BriefcaseBusiness} title="Carrière & emploi" description="Offres professionnelles, conseils de candidature et échanges sur le développement de carrière." stat={`${stats.jobs} offre${stats.jobs === 1 ? '' : 's'} disponible${stats.jobs === 1 ? '' : 's'}`} to="/forum/emploi" action="Voir les opportunités" secondary={{ to: '/forum/carriere', label: 'Poser une question carrière' }} />
               <SpacePanel icon={BookOpenCheck} title="Forums des formations" description="Questions et réponses rattachées aux formations auxquelles vous avez réellement accès." stat={isLoggedIn ? `${stats.courses} forum${stats.courses === 1 ? '' : 's'} accessible${stats.courses === 1 ? '' : 's'}` : 'Connexion requise'} to={isLoggedIn ? '/forum/formations' : '/connexion'} action={isLoggedIn ? 'Voir mes forums' : 'Se connecter'} />
             </div>
           </div>

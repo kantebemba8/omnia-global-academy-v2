@@ -45,6 +45,8 @@ export function ProjectsPublicLayout({ children }: { children: ReactNode }) {
     <SubspaceHamburgerLayout
       title="Omnia Projects"
       navItems={navItems}
+      searchPath="/projects/explorer"
+      searchParam="q"
       searchPlaceholder="Rechercher un projet, une compétence, une organisation..."
     >
       {children}

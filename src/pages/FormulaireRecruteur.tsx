@@ -98,7 +98,7 @@ export default function FormulaireRecruteur() {
               Votre offre d'emploi est en cours de validation par notre équipe. Vous recevrez une confirmation par email dans les 24-48 heures ouvrées.
             </p>
             <div className="flex flex-col gap-3">
-              <Link to="/emploi"
+              <Link to="/forum/emploi"
                 className="block text-center py-3 rounded-xl text-sm font-bold text-white"
                 style={{ backgroundColor: '#002050' }}>
                 Voir les offres publiées
@@ -123,7 +123,7 @@ export default function FormulaireRecruteur() {
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
             <Link to="/forum" className="hover:text-slate-600">Omnia Communauté</Link>
             <span>›</span>
-            <Link to="/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
+            <Link to="/forum/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
             <span>›</span>
             <span style={{ color: '#002050' }}>Déposer une offre</span>
           </div>
@@ -254,7 +254,7 @@ export default function FormulaireRecruteur() {
           )}
 
           <div className="flex gap-4">
-            <Link to="/emploi"
+            <Link to="/forum/emploi"
               className="flex-1 py-3.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 text-center">
               Annuler
             </Link>

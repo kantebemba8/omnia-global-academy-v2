@@ -98,7 +98,7 @@ export default function TalentHome() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_jobs_title || 'Offres récentes'}</h2>
-              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Emploi et le Omnia Communauté.'}</p>
+              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Carrière & emploi d’Omnia Communauté.'}</p>
             </div>
             <Link to="/talent/explorer?tab=offres" className="text-sm font-semibold" style={{ color: GOLD }}>Explorer</Link>
           </div>
@@ -107,7 +107,7 @@ export default function TalentHome() {
           ) : (
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {jobs.slice(0, 3).map(job => (
-                <Link key={job.id} to={`/emploi/${job.id}`} className="rounded-xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-sm" style={{ borderColor: BORDER }}>
+                <Link key={job.id} to={`/forum/emploi/${job.id}`} className="rounded-xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-sm" style={{ borderColor: BORDER }}>
                   <p className="text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p>
                   <p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">

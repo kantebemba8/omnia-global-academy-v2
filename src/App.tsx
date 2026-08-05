@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import { RootGate } from './components/RootGate';
 
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
@@ -12,6 +12,12 @@ import { PreviewReturnButton } from './components/PreviewReturnButton';
 import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
 import { MobileNotificationBridge } from './components/mobile/MobileNotificationBridge';
 import { MobileStoreRecoveryBridge } from './components/mobile/MobileStoreRecoveryBridge';
+
+
+function LegacyJobRedirect() {
+  const { jobId } = useParams();
+  return <Navigate to={`/forum/emploi/${jobId || ''}`} replace />;
+}
 
 const RequireOmniaCareerLearner = lazy(() => import('./components/auth/RequireOmniaCareerLearner'));
 const RequireOmniaCareerAdmin = lazy(() => import('./components/auth/RequireOmniaCareerAdmin'));
@@ -810,8 +816,10 @@ export default function App() {
         <Route path="/forum/post/:postId" element={<ForumPost />} />
         <Route path="/forum/formations" element={<CommunityCourseForums />} />
         <Route path="/forum/cours/:courseId" element={<ForumCours />} />
-        <Route path="/emploi" element={<EspaceCarriere />} />
-        <Route path="/emploi/:jobId" element={<JobDetail />} />
+        <Route path="/forum/emploi" element={<EspaceCarriere />} />
+        <Route path="/forum/emploi/:jobId" element={<JobDetail />} />
+        <Route path="/emploi" element={<Navigate to="/forum/emploi" replace />} />
+        <Route path="/emploi/:jobId" element={<LegacyJobRedirect />} />
 
 <Route element={<RequireOmniaCareerLearner />}>
   <Route path="/omnia-career" element={<DashboardCareerStudio />} />

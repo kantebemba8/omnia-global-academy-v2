@@ -1,8 +1,8 @@
 import { clearSession } from '../lib/session';
-import { ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
-import { ArrowLeft, Bell, ChevronDown, Home, LogOut, Menu, Radio, Search, UserRound } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, Home, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -14,6 +14,14 @@ export type SubspaceNavItem = {
   exact?: boolean;
 };
 
+export type SubspaceSearchResult = {
+  id: string;
+  label: string;
+  description?: string;
+  path?: string;
+  onSelect?: () => void;
+};
+
 type StoredUser = { full_name?: string; name?: string; email?: string; avatar_url?: string | null; roles?: string[] };
 
 type Props = {
@@ -22,6 +30,12 @@ type Props = {
   children: ReactNode;
   searchPlaceholder?: string;
   showSearch?: boolean;
+  searchPath?: string;
+  searchParam?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  onSearchSubmit?: (value: string) => void;
+  searchResults?: SubspaceSearchResult[];
   rightContent?: ReactNode;
 };
 
@@ -36,13 +50,8 @@ export function getDashboardPath(roles: string[] = []) {
   return '/dashboard';
 }
 
-export function getProfilePath(roles: string[] = []) {
-  // IMPORTANT: always use the REAL authenticated role.
-  // A preview URL (?preview=true) must never change the personal profile destination.
-  if (roles.includes('super_admin')) return '/mon-profil';
-  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/mon-profil';
-  if (roles.includes('recruteur')) return '/mon-profil';
-  if (roles.includes('professeur') || roles.includes('formateur')) return '/mon-profil';
+export function getProfilePath(_roles: string[] = []) {
+  // Toujours utiliser le rôle authentifié réel. Une prévisualisation ne change jamais le profil personnel.
   return '/mon-profil';
 }
 
@@ -52,9 +61,34 @@ function initials(user: StoredUser | null) {
   return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : source.slice(0, 2).toUpperCase();
 }
 
-export default function SubspaceHamburgerLayout({ title, navItems, children, searchPlaceholder, showSearch = true, rightContent }: Props) {
+function targetWithSearch(path: string, param: string, value: string) {
+  const [pathAndQuery, hash = ''] = path.split('#', 2);
+  const [pathname, query = ''] = pathAndQuery.split('?', 2);
+  const params = new URLSearchParams(query);
+  if (value) params.set(param, value);
+  else params.delete(param);
+  const serialized = params.toString();
+  return `${pathname}${serialized ? `?${serialized}` : ''}${hash ? `#${hash}` : ''}`;
+}
+
+export default function SubspaceHamburgerLayout({
+  title,
+  navItems,
+  children,
+  searchPlaceholder,
+  showSearch = true,
+  searchPath,
+  searchParam = 'q',
+  searchValue,
+  onSearchChange,
+  onSearchSubmit,
+  searchResults = [],
+  rightContent,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [internalSearch, setInternalSearch] = useState(() => new URLSearchParams(window.location.search).get(searchParam) || '');
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState<StoredUser | null>(() => {
@@ -64,8 +98,30 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
   const dashboardPath = getDashboardPath(roles);
   const profilePath = getProfilePath(roles);
   const isSuperAdmin = roles.includes('super_admin');
-  const isOrganizer = roles.some(r => ['organizer','organisateur','professeur','formateur','responsable_structure','structure_admin','directeur'].includes(r))
+  const isOrganizer = roles.some(r => ['organizer', 'organisateur', 'professeur', 'formateur', 'responsable_structure', 'structure_admin', 'directeur'].includes(r))
     || Boolean((user as any)?.omnia_live_organizer);
+  const resolvedSearchValue = searchValue ?? internalSearch;
+
+  const setSearch = (value: string) => {
+    if (onSearchChange) onSearchChange(value);
+    else setInternalSearch(value);
+  };
+
+  const submitSearch = (event?: FormEvent) => {
+    event?.preventDefault();
+    const value = resolvedSearchValue.trim();
+    if (onSearchSubmit) {
+      onSearchSubmit(value);
+      return;
+    }
+    navigate(targetWithSearch(searchPath || location.pathname, searchParam, value));
+  };
+
+  const selectSearchResult = (result: SubspaceSearchResult) => {
+    result.onSelect?.();
+    if (result.path) navigate(result.path);
+    setSearchFocused(false);
+  };
 
   useEffect(() => {
     const refreshUser = () => {
@@ -91,6 +147,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
       if (event.key === 'Escape') {
         setOpen(false);
         setProfileOpen(false);
+        setSearchFocused(false);
       }
     };
     if (open) document.body.style.overflow = 'hidden';
@@ -104,7 +161,41 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
   useEffect(() => {
     setOpen(false);
     setProfileOpen(false);
-  }, [location.pathname, location.search]);
+    setSearchFocused(false);
+    if (searchValue === undefined) setInternalSearch(new URLSearchParams(location.search).get(searchParam) || '');
+  }, [location.pathname, location.search, searchParam, searchValue]);
+
+  const searchField = (mobile = false) => (
+    <form onSubmit={submitSearch} className={`relative flex items-center rounded-xl border border-slate-200 bg-white px-3 ${mobile ? 'w-full' : 'w-full max-w-[420px]'}`}>
+      <Search size={17} className="flex-shrink-0 text-slate-400" />
+      <input
+        value={resolvedSearchValue}
+        onChange={event => setSearch(event.target.value)}
+        onFocus={() => setSearchFocused(true)}
+        aria-label={searchPlaceholder || `Rechercher dans ${title}`}
+        className="h-10 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm outline-none focus-visible:ring-0"
+        placeholder={searchPlaceholder || `Rechercher dans ${title}...`}
+      />
+      {resolvedSearchValue && (
+        <button type="button" onClick={() => setSearch('')} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Effacer la recherche">
+          <X size={14} />
+        </button>
+      )}
+      {searchFocused && resolvedSearchValue.trim() && searchResults.length > 0 && !mobile && (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[70] max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+          {searchResults.map(result => (
+            <button key={result.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => selectSearchResult(result)} className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left hover:bg-slate-50">
+              <Search size={15} className="mt-0.5 flex-shrink-0" style={{ color: GOLD }} />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold" style={{ color: BLUE }}>{result.label}</span>
+                {result.description && <span className="mt-0.5 block truncate text-xs text-slate-500">{result.description}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </form>
+  );
 
   return (
     <div className="min-h-screen bg-white" style={{ color: BLUE }}>
@@ -145,21 +236,12 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
           )}
         </div>
 
-        {showSearch && (
-          <div className="mx-5 hidden w-full max-w-[420px] items-center rounded-xl border border-slate-200 bg-white px-3 lg:flex">
-            <Search size={17} className="text-slate-400" />
-            <input aria-label={searchPlaceholder || `Rechercher dans ${title}`} className="h-10 flex-1 border-0 bg-transparent px-2 text-sm outline-none focus-visible:ring-0" placeholder={searchPlaceholder || `Rechercher dans ${title}...`} />
-          </div>
-        )}
+        {showSearch && <div className="relative mx-5 hidden w-full max-w-[420px] lg:block">{searchField()}</div>}
 
         <div className="flex flex-shrink-0 items-center gap-3">
           {rightContent}
           <LanguageSwitcher compact />
-          {user ? (
-            <button type="button" onClick={() => navigate(dashboardPath)} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
-              <ArrowLeft size={16} /> Retour au Dashboard
-            </button>
-          ) : (
+          {!user && (
             <button type="button" onClick={() => navigate('/accueil')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
               <ArrowLeft size={16} /> Retour à Omnia Global Academy
             </button>
@@ -183,15 +265,13 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
 
               {profileOpen && (
                 <>
-                  <button
-                    type="button"
-                    aria-label="Fermer le menu du profil"
-                    className="fixed inset-0 z-40 cursor-default"
-                    onClick={() => setProfileOpen(false)}
-                  />
+                  <button type="button" aria-label="Fermer le menu du profil" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
                   <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
                     <button type="button" role="menuitem" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <UserRound size={17} /> Mon profil
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
+                      <LayoutDashboard size={17} /> Mon espace
                     </button>
                     <button type="button" role="menuitem" onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <Bell size={17} /> Notifications
@@ -204,9 +284,6 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                     >
                       <Radio size={17} />
                       {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                      <ArrowLeft size={17} /> Retour au Dashboard
                     </button>
                     <div className="my-1 border-t border-slate-100" />
                     <button
@@ -234,7 +311,7 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
       {open && (
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Navigation ${title}`}>
           <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Fermer le menu en cliquant à l’extérieur" />
-          <aside id="subspace-navigation-drawer" className="absolute left-3 top-[84px] w-[286px] max-w-[86vw] max-h-[calc(100vh-100px)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <aside id="subspace-navigation-drawer" className="absolute left-3 top-[84px] flex max-h-[calc(100dvh-100px)] w-[286px] max-w-[86vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
               <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-12 w-12 rounded-xl object-cover" />
               <div className="min-w-0">
@@ -242,28 +319,32 @@ export default function SubspaceHamburgerLayout({ title, navItems, children, sea
                 <div className="text-[10px] font-semibold tracking-[0.15em] text-slate-500">GLOBAL ACADEMY</div>
               </div>
             </div>
-            <div className="px-5 pb-2 pt-5">
-              <div className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>{title}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {showSearch && <div className="px-4 pt-4 lg:hidden">{searchField(true)}</div>}
+              <div className="px-5 pb-2 pt-5">
+                <div className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>{title}</div>
+              </div>
+              <nav className="space-y-1 px-3 py-3">
+                {navItems.map(item => {
+                  const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.path} to={item.path} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined} className="relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" style={{ color: active ? BLUE : '#526074', background: active ? 'rgba(191,136,19,.08)' : undefined }}>
+                      {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full" style={{ background: GOLD }} />}
+                      <Icon size={18} style={{ color: active ? GOLD : '#64748B' }} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
             </div>
-            <nav className="space-y-1 px-3 py-3">
-              {navItems.map(item => {
-                const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
-                const Icon = item.icon;
-                return (
-                  <Link key={item.path} to={item.path} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined} className="relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" style={{ color: active ? BLUE : '#526074', background: active ? 'rgba(191,136,19,.08)' : undefined }}>
-                    {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full" style={{ background: GOLD }} />}
-                    <Icon size={18} style={{ color: active ? GOLD : '#64748B' }} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-            <div className="mt-auto px-3 py-4">
-              <button type="button" onClick={() => { setOpen(false); navigate(user ? dashboardPath : '/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
-                {user ? <ArrowLeft size={18} /> : <Home size={18} />}
-                {user ? 'Retour au Dashboard' : 'Retour à Omnia Global Academy'}
-              </button>
-            </div>
+            {!user && (
+              <div className="border-t border-slate-100 px-3 py-4">
+                <button type="button" onClick={() => { setOpen(false); navigate('/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
+                  <Home size={18} /> Retour à Omnia Global Academy
+                </button>
+              </div>
+            )}
           </aside>
         </div>
       )}

@@ -13,12 +13,17 @@ type Tab = 'talents' | 'entreprises' | 'offres';
 export default function TalentExplore() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) || 'talents';
+  const headerQuery = params.get('q') || '';
   const [talents, setTalents] = useState<PublicTalent[]>([]);
   const [jobs, setJobs] = useState<PublicJob[]>([]);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => headerQuery);
   const [location, setLocation] = useState('');
   const [sector, setSector] = useState('');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setQuery(headerQuery);
+  }, [headerQuery]);
 
   useEffect(() => {
     Promise.allSettled([loadPublicTalents(), loadPublicJobs()]).then(([talentResult, jobResult]) => {
@@ -72,7 +77,7 @@ export default function TalentExplore() {
             ['entreprises', 'Entreprises', Building2],
             ['offres', 'Offres', Briefcase],
           ] as const).map(([value, label, Icon]) => (
-            <button key={value} type="button" onClick={() => setParams({ tab: value })} className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium" style={{ background: tab === value ? BLUE : 'white', color: tab === value ? 'white' : BLUE, border: `1px solid ${tab === value ? BLUE : BORDER}` }}>
+            <button key={value} type="button" onClick={() => { const next = new URLSearchParams(params); next.set('tab', value); setParams(next); }} className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium" style={{ background: tab === value ? BLUE : 'white', color: tab === value ? 'white' : BLUE, border: `1px solid ${tab === value ? BLUE : BORDER}` }}>
               <Icon size={16} /> {label}
             </button>
           ))}
@@ -118,7 +123,7 @@ function TalentResult({ talent }: { talent: PublicTalent }) {
 }
 
 function JobResult({ job }: { job: PublicJob }) {
-  return <Link to={`/emploi/${job.id}`} className="rounded-xl border bg-white p-5 hover:shadow-sm" style={{ borderColor: BORDER }}><Briefcase size={18} color={GOLD} /><p className="mt-3 text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p><p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">{job.location && <span>{job.location}</span>}{job.contract_type && <span className="rounded-full bg-gray-100 px-2 py-1">{job.contract_type}</span>}</div></Link>;
+  return <Link to={`/forum/emploi/${job.id}`} className="rounded-xl border bg-white p-5 hover:shadow-sm" style={{ borderColor: BORDER }}><Briefcase size={18} color={GOLD} /><p className="mt-3 text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p><p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">{job.location && <span>{job.location}</span>}{job.contract_type && <span className="rounded-full bg-gray-100 px-2 py-1">{job.contract_type}</span>}</div></Link>;
 }
 
 function CompanyResult({ company }: { company: { name: string; jobs: PublicJob[]; sector?: string; location?: string } }) {

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
 import LiveCard from './LiveCard';
 import LiveRail from './LiveRail';
 import { LiveItem, liveApi } from './liveApi';
 
 export default function CatalogView({ title, subtitle, filter }: { title: string; subtitle: string; filter?: string }) {
+  const [searchParams] = useSearchParams();
+  const search = (searchParams.get('q') || '').trim().toLowerCase();
   const [items, setItems] = useState<LiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,14 +42,25 @@ export default function CatalogView({ title, subtitle, filter }: { title: string
       .finally(() => setLoading(false));
   }, [filter, params]);
 
+  const filteredItems = useMemo(() => {
+    if (!search) return items;
+    return items.filter(item => {
+      const haystack = [item.title, item.short_description, item.long_description, item.organizer_display_name, item.event_type, item.delivery_type, item.language, item.level]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(search);
+    });
+  }, [items, search]);
+
   const spotlight = useMemo(
-    () => items.filter(item => item.status === 'live' || item.featured).slice(0, 10),
-    [items],
+    () => filteredItems.filter(item => item.status === 'live' || item.featured).slice(0, 10),
+    [filteredItems],
   );
   const spotlightIds = useMemo(() => new Set(spotlight.map(item => item.id)), [spotlight]);
   const catalogueItems = useMemo(
-    () => items.filter(item => !spotlightIds.has(item.id)),
-    [items, spotlightIds],
+    () => filteredItems.filter(item => !spotlightIds.has(item.id)),
+    [filteredItems, spotlightIds],
   );
 
   return (
@@ -55,11 +69,13 @@ export default function CatalogView({ title, subtitle, filter }: { title: string
         <h1 className="text-3xl font-extrabold md:text-4xl" style={{ color: '#002050' }}>{title}</h1>
         <p className="mt-3 max-w-3xl text-slate-600">{subtitle}</p>
 
+        {search && <p className="mt-4 text-sm font-semibold" style={{ color: '#BF8813' }}>Résultats pour « {searchParams.get('q')} »</p>}
+
         {loading ? (
           <div className="mt-10 text-slate-500">Chargement...</div>
         ) : error ? (
           <div className="mt-10 rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">{error}</div>
-        ) : items.length ? (
+        ) : filteredItems.length ? (
           <div className="mt-9 space-y-12">
             <LiveRail
               title={filter === 'live' ? 'En direct maintenant' : 'En direct et à la une'}

@@ -35,7 +35,6 @@ const APPRENANT_NAV = [
   { path: '/dashboard/professional-pathways', label: 'Parcours professionnels', icon: Route },
   { path: '/dashboard/employabilite', label: 'Employabilité intégrée', icon: UserRoundCheck },
   { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
-  { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
   { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
   { path: '/talent', label: 'Omnia Talent', icon: Search },
   { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
@@ -97,8 +96,7 @@ const APPRENANT_GROUPS: NavGroup[] = [
     id: 'learner-career', label: 'Carrière & projets', icon: Briefcase,
     items: [
       { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
-      { path: '/emploi', label: 'Espace Carrière', icon: Briefcase },
-      { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
+          { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
       { path: '/talent', label: 'Omnia Talent', icon: Search },
       { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },
       { path: '/forum', label: 'Omnia Communauté', icon: MessageSquare },
@@ -451,13 +449,13 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <div className="hidden lg:flex flex-col flex-shrink-0" style={{ width: 260 }}>{sidebar}</div>
+    <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-gray-50">
+      <div className="hidden h-[100dvh] flex-shrink-0 flex-col overflow-hidden lg:flex" style={{ width: 260 }}>{sidebar}</div>
 
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation du tableau de bord">
           <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />
-          <div id="dashboard-mobile-navigation" className="relative z-10 flex flex-col" style={{ width: 260 }}>{sidebar}</div>
+          <div id="dashboard-mobile-navigation" className="relative z-10 flex h-[100dvh] flex-col overflow-hidden" style={{ width: 260 }}>{sidebar}</div>
         </div>
       )}
 
@@ -475,7 +473,7 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
           </button>
           <span className="font-semibold text-sm" style={{ color: '#002050' }}>Omnia Academy</span>
         </div>
-        <main className="flex-1 overflow-y-auto overscroll-contain">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {children}
         </main>
       </div>

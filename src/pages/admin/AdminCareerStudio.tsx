@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
+import { clearSession } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import {
   AlertCircle,
-  ArrowLeft,
   BarChart2,
   Check,
   Coins,
@@ -21,6 +21,10 @@ import {
   Sparkles,
   X,
   ExternalLink,
+  ChevronDown,
+  LayoutDashboard,
+  LogOut,
+  UserRound,
 } from 'lucide-react';
 
 type SubTab = 'dashboard' | 'rules' | 'packs' | 'cv_templates' | 'lm_templates' | 'ai' | 'question_bank' | 'exports' | 'stats';
@@ -239,6 +243,7 @@ export default function AdminCareerStudio() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [questionBank, setQuestionBank] = useState<InterviewQuestion[]>([]);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
   const [tokenTransactions, setTokenTransactions] = useState<any[]>([]);
@@ -252,6 +257,21 @@ export default function AdminCareerStudio() {
     is_active: true,
     source: 'super_admin',
   });
+
+  const adminUser = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('omnia_user') || '{}') as { full_name?: string; name?: string; email?: string; avatar_url?: string | null }; }
+    catch { return {}; }
+  }, []);
+  const adminInitials = (adminUser.full_name || adminUser.name || adminUser.email || 'SA')
+    .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+
+  function logout() {
+    clearSession();
+    localStorage.removeItem('omnia_user');
+    localStorage.removeItem('omnia_access_token');
+    localStorage.removeItem('access_token');
+    navigate('/connexion');
+  }
 
   function showToast(text: string, type: 'success' | 'error' = 'success') {
     setToast({ text, type });
@@ -537,17 +557,17 @@ export default function AdminCareerStudio() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#F8FAFC' }}>
-      <div className="flex min-h-screen" style={{ background: '#F8FAFC' }}>
+    <div className="h-[100dvh] min-h-0 overflow-hidden" style={{ background: '#F8FAFC' }}>
+      <div className="flex h-full min-h-0 overflow-hidden" style={{ background: '#F8FAFC' }}>
         {toast && (
           <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-5 py-3 text-sm font-semibold shadow-lg" style={{ borderColor: toast.type === 'success' ? '#BBF7D0' : '#FECACA', color: toast.type === 'success' ? '#166534' : '#DC2626' }}>
             {toast.text}
           </div>
         )}
 
-        <aside className="w-64 flex flex-shrink-0 flex-col" style={{background:OMNIA_BLUE}}>
+        <aside className="flex h-full min-h-0 w-64 flex-shrink-0 flex-col overflow-hidden" style={{background:OMNIA_BLUE}}>
           <div className="border-b border-white/10 p-5 flex items-center gap-3"><img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-10 w-10 object-contain"/><div><p className="font-bold text-white">Omnia</p><p className="font-bold" style={{color:OMNIA_GOLD}}>Career Studio</p></div></div>
-          <nav className="space-y-1 p-3">
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
             {SUB_MENUS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -559,10 +579,10 @@ export default function AdminCareerStudio() {
                 {label}
               </button>
             ))}
-          </nav><div className="mt-auto border-t border-white/10 p-3"><Link to="/admin/dashboard" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{color:OMNIA_GOLD}}><ArrowLeft size={16}/>Retour au Dashboard</Link></div>
+          </nav>
         </aside>
 
-        <main className="flex-1 space-y-6 overflow-y-auto p-6">
+        <main className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="mb-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: `${OMNIA_GOLD}55`, background: `${OMNIA_GOLD}12`, color: OMNIA_GOLD }}>
@@ -580,6 +600,18 @@ export default function AdminCareerStudio() {
               <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
                 <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
               </button>
+              <div className="relative">
+                <button type="button" onClick={() => setProfileMenuOpen(value => !value)} className="flex items-center gap-1 rounded-xl border bg-white p-1.5" style={{ borderColor: BORDER }} aria-label="Ouvrir le menu du profil Super-admin" aria-expanded={profileMenuOpen}>
+                  {adminUser.avatar_url ? <img src={adminUser.avatar_url} alt="Photo de profil" className="h-8 w-8 rounded-full object-cover" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: OMNIA_BLUE }}>{adminInitials}</span>}
+                  <ChevronDown size={14} color={MUTED} />
+                </button>
+                {profileMenuOpen && <><button type="button" className="fixed inset-0 z-40" aria-label="Fermer le menu du profil" onClick={() => setProfileMenuOpen(false)} /><div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border bg-white py-2 shadow-xl" style={{ borderColor: BORDER }}>
+                  <button type="button" onClick={() => navigate('/mon-profil')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
+                  <button type="button" onClick={() => navigate('/admin/dashboard')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50"><LayoutDashboard size={17} /> Mon espace</button>
+                  <div className="my-1 border-t" style={{ borderColor: BORDER }} />
+                  <button type="button" onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button>
+                </div></>}
+              </div>
             </div>
           </div>
 

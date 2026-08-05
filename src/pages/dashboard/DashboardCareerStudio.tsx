@@ -21,7 +21,6 @@ import {
   Mail,
   MessageSquare,
   Plus,
-  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -30,7 +29,6 @@ import {
   Target,
   Trash2,
   UserRound,
-  X,
   AlertCircle,
   Check,
   RefreshCw,
@@ -45,7 +43,7 @@ import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPrevi
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
-import SubspaceHamburgerLayout from '../../components/SubspaceHamburgerLayout';
+import SubspaceHamburgerLayout, { type SubspaceSearchResult } from '../../components/SubspaceHamburgerLayout';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -175,6 +173,8 @@ export default function DashboardCareerStudio() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const incomingSearch = searchParams.get('search');
+  const requestedSection = searchParams.get('section') || 'dashboard';
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [documents, setDocuments] = useState<CareerDocument[]>([]);
   const [cvTemplates, setCvTemplates] = useState<Template[]>(fallbackCvTemplates);
@@ -196,18 +196,18 @@ export default function DashboardCareerStudio() {
   const latestCv = cvDocs[0];
   const latestLm = lmDocs[0];
 
-  const searchResults = useMemo(() => {
+  const searchResults = useMemo<SubspaceSearchResult[]>(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [] as Array<{ label: string; subtitle: string; action: () => void }>;
+    if (!q) return [];
     const pages = navItems
       .filter(item => item.label.toLowerCase().includes(q))
-      .map(item => ({ label: item.label, subtitle: 'Page Omnia Career', action: () => goToView(item.id) }));
+      .map(item => ({ id: `page-${item.id}`, label: item.label, description: 'Page Omnia Career', onSelect: () => goToView(item.id) }));
     const docs = documents
       .filter(doc => `${doc.title} ${doc.doc_type}`.toLowerCase().includes(q))
-      .map(doc => ({ label: doc.title, subtitle: doc.doc_type === 'cv' ? 'CV' : 'Lettre de motivation', action: () => openDoc(doc.id, doc.doc_type) }));
+      .map(doc => ({ id: `doc-${doc.id}`, label: doc.title, description: doc.doc_type === 'cv' ? 'CV' : 'Lettre de motivation', onSelect: () => openDoc(doc.id, doc.doc_type) }));
     const models = [...cvTemplates, ...lmTemplates]
       .filter(t => `${t.name_fr} ${t.description_fr || ''}`.toLowerCase().includes(q))
-      .map(t => ({ label: t.name_fr, subtitle: t.template_key.startsWith('lm_') ? 'Modèle LM' : 'Modèle CV', action: () => createDoc(t.template_key.startsWith('lm_') ? 'lm' : 'cv', t.template_key) }));
+      .map(t => ({ id: `model-${t.template_key}`, label: t.name_fr, description: t.template_key.startsWith('lm_') ? 'Modèle LM' : 'Modèle CV', onSelect: () => createDoc(t.template_key.startsWith('lm_') ? 'lm' : 'cv', t.template_key) }));
     return [...pages, ...docs, ...models].slice(0, 12);
   }, [searchQuery, documents, cvTemplates, lmTemplates]);
 
@@ -279,8 +279,11 @@ export default function DashboardCareerStudio() {
   }, [previewMode]);
 
   useEffect(() => {
-    const section = searchParams.get('section') || 'dashboard';
-    if (location.pathname === '/omnia-career/profil' || section === 'profile' || section === 'profil') {
+    if (incomingSearch !== null) setSearchQuery(incomingSearch);
+  }, [incomingSearch]);
+
+  useEffect(() => {
+    if (location.pathname === '/omnia-career/profil' || requestedSection === 'profile' || requestedSection === 'profil') {
       navigate('/mon-profil?tab=professionnel', { replace: true });
       return;
     }
@@ -293,8 +296,8 @@ export default function DashboardCareerStudio() {
       '/omnia-career/parametres': 'settings',
     };
     const sectionMap: Record<string, ActiveView> = { dashboard:'dashboard', cv:'cv', builder:'cv', letters:'lm', lettre:'lm', lm:'lm', interview:'interview', entretien:'interview', applications:'applications', candidatures:'applications', settings:'settings', parametres:'settings' };
-    setActiveView(pathMap[location.pathname] || sectionMap[section] || 'dashboard');
-  }, [location.pathname, navigate, searchParams]);
+    setActiveView(pathMap[location.pathname] || sectionMap[requestedSection] || 'dashboard');
+  }, [location.pathname, navigate, requestedSection]);
 
   function routeForView(view: ActiveView) {
     if (previewMode) {
@@ -381,20 +384,17 @@ export default function DashboardCareerStudio() {
     }));
 
   return (
-    <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={careerNavItems} showSearch={false}>
+    <SubspaceHamburgerLayout
+      title="Omnia Career Studio"
+      navItems={careerNavItems}
+      searchValue={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchResults={searchResults}
+      searchPlaceholder="Rechercher un CV, une LM, un modèle ou une page..."
+    >
       <div className="min-h-[calc(100vh-72px)]" style={{ background: PAGE_BG, color: '#111827' }}>
         {previewMode && <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900 md:px-8">Prévisualisation apprenant sécurisée : les documents restent locaux, aucun jeton n’est consommé et aucune donnée apprenant n’est modifiée.</div>}
         {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
-        <div className="border-b bg-white px-5 py-4 md:px-8" style={{ borderColor: BORDER }}>
-          <div className="relative max-w-[620px]">
-            <div className="flex h-11 items-center rounded-2xl border bg-white px-4" style={{ borderColor: BORDER }}>
-              <Search size={18} color="#9CA3AF" />
-              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ml-3 h-full flex-1 border-0 bg-transparent text-sm outline-none" placeholder="Rechercher dans Omnia Career..." />
-              {searchQuery && <button onClick={() => setSearchQuery('')} className="rounded-full p-1 hover:bg-slate-100"><X size={15} color={MUTED} /></button>}
-            </div>
-            {searchQuery && <div className="absolute left-0 right-0 top-13 z-50 max-h-80 overflow-y-auto rounded-2xl border bg-white p-2 shadow-xl" style={{ borderColor: BORDER }}>{searchResults.length ? searchResults.map((result,index)=><button key={`${result.label}-${index}`} onClick={()=>{result.action();setSearchQuery('')}} className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"><span><span className="block text-sm font-semibold" style={{color:OMNIA_BLUE}}>{result.label}</span><span className="text-xs" style={{color:MUTED}}>{result.subtitle}</span></span><ChevronRight size={15} color={MUTED}/></button>) : <div className="px-3 py-5 text-center text-sm" style={{color:MUTED}}>Aucun résultat.</div>}</div>}
-          </div>
-        </div>
         <main className="px-5 py-7 md:px-8">
           {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}
           {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}

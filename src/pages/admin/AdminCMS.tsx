@@ -85,7 +85,7 @@ const DEFAULT_PAGE_CONTENT: PublicPageContent = {
     recent_talents_title: 'Talents récemment visibles',
     recent_talents_subtitle: 'Profils issus directement du Profil carrière Omnia.',
     recent_jobs_title: 'Offres récentes',
-    recent_jobs_subtitle: 'Les mêmes offres que dans l’espace Emploi et le Omnia Communauté.',
+    recent_jobs_subtitle: 'Les mêmes offres que dans l’espace Carrière & emploi d’Omnia Communauté.',
   },
   omnia_live: {
     badge: 'APPRENDRE EN TEMPS RÉEL',

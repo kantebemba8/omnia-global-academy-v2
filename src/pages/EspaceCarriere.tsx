@@ -213,7 +213,7 @@ export default function EspaceCarriere() {
                   const badge = deadlineBadge(job.deadline);
                   const mode = normalizeApplicationMode(job.application_mode);
                   return (
-                    <Link key={job.id} to={`/emploi/${job.id}`} className="group block rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md" style={{ borderColor: BORDER }}>
+                    <Link key={job.id} to={`/forum/emploi/${job.id}`} className="group block rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md" style={{ borderColor: BORDER }}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex min-w-0 flex-1 items-start gap-4">
                           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: BLUE }}><Building2 size={21} /></div>

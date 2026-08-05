@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Briefcase, Building2, Filter, Search, ShieldCheck, Target, Users } from 'lucide-react';
 import {
   getProjectsContext,
@@ -15,10 +15,12 @@ const TYPES = Object.entries(PROJECT_TYPE_LABELS) as Array<[ProjectType, string]
 
 export default function ProjectsHome() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const explorer = location.pathname.endsWith('/explorer');
+  const headerQuery = searchParams.get('q') || '';
   const [projects, setProjects] = useState<OmniaProject[]>([]);
   const [context, setContext] = useState<ProjectContext | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => headerQuery);
   const [type, setType] = useState('');
   const [level, setLevel] = useState('');
   const [loading, setLoading] = useState(true);
@@ -40,10 +42,11 @@ export default function ProjectsHome() {
   };
 
   useEffect(() => {
-    load();
+    setQuery(headerQuery);
+    load(headerQuery ? { q: headerQuery } : {});
     getProjectsContext().then(setContext).catch(() => setContext(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [explorer]);
+  }, [explorer, headerQuery]);
 
   const title = useMemo(() => explorer ? 'Explorer les projets et défis' : 'Opportunités récemment publiées', [explorer]);
 
@@ -63,7 +66,7 @@ export default function ProjectsHome() {
               <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>Plus qu’une offre</p>
               <h2 className="mt-3 text-3xl font-bold leading-tight" style={{ color: '#002050' }}>Produire, collaborer et démontrer ce que vous savez faire.</h2>
               <p className="mt-4 max-w-2xl leading-7 text-slate-600">
-                Omnia Projects est réservé aux expériences réelles. Les offres d’emploi restent dans Omnia Talent et la préparation des candidatures dans Omnia Career.
+                Omnia Projects est réservé aux expériences réelles. Les offres d’emploi restent dans Omnia Communauté et la préparation des candidatures dans Omnia Career.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">

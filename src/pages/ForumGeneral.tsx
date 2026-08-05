@@ -139,7 +139,7 @@ export default function ForumGeneral() {
                   <p className="mt-5 text-xs font-bold uppercase tracking-[.13em]" style={{ color: GOLD }}>{isCarriere ? 'Développement professionnel' : 'Discussions communautaires'}</p>
                   <h1 className="mt-2 text-3xl font-black md:text-4xl" style={{ color: BLUE }}>{spaceLabel}</h1>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
-                  {isCarriere && <Link to="/emploi" className="mt-5 inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}><BriefcaseBusiness size={16} /> Voir les offres d’emploi <ArrowRight size={15} /></Link>}
+                  {isCarriere && <Link to="/forum/emploi" className="mt-5 inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}><BriefcaseBusiness size={16} /> Voir les offres d’emploi <ArrowRight size={15} /></Link>}
                 </div>
                 <div className="flex flex-col items-end gap-3">
                   <div className="rounded-2xl border bg-white px-5 py-4 text-center" style={{ borderColor: BORDER }}><strong className="block text-2xl" style={{ color: BLUE }}>{total}</strong><span className="text-xs text-slate-500">discussion{total === 1 ? '' : 's'}</span></div>

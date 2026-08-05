@@ -1,14 +1,12 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { ArrowLeft, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 const BLUE='#002050';
 
 export default function AdminActivityToday(){
- const navigate=useNavigate();
  const [rows,setRows]=useState<any[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
  useEffect(()=>{(async()=>{try{
    const token=getSessionToken(); if(!token)throw new Error('Session expirée.');
@@ -18,7 +16,6 @@ export default function AdminActivityToday(){
  }catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}})()},[]);
  return <AdminLayout><div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
    <header className="border-b border-gray-200 pb-5">
-    <button onClick={()=>navigate('/admin/dashboard')} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 mb-4"><ArrowLeft size={15}/>Retour au tableau de bord</button>
     <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Activité d’aujourd’hui</h1>
    </header>
    {error&&<div className="border-l-4 border-red-500 pl-4 text-sm text-red-700">{error}</div>}

@@ -1,10 +1,9 @@
 import { openExternalUrl } from '../../lib/mobile';
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { Users, Copy, CheckCircle, Share2, Clock, Gift, ArrowLeft } from 'lucide-react';
+import { Users, Copy, CheckCircle, Share2, Clock, Gift } from 'lucide-react';
 import { getPublicSiteSettings } from '../../lib/siteSettingsCache';
 
 interface Filleul {
@@ -133,9 +132,6 @@ export function DashboardParrainage() {
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-gray-500">
               Aucun lien, bonus ou récompense n’est actif pour le moment. Le programme apparaîtra automatiquement lorsque le Super-admin l’activera et définira ses montants.
             </p>
-            <Link to="/dashboard" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: '#BF8813' }}>
-              <ArrowLeft size={16} /> Retour au tableau de bord
-            </Link>
           </div>
         ) : (
           <>

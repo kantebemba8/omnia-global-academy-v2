@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { ArrowLeft, Eye, Users } from 'lucide-react';
+import { Eye, Users } from 'lucide-react';
 
 const BLUE='#002050', GOLD='#BF8813';
 
@@ -62,9 +62,6 @@ export default function AdminRoleUsers(){
   return <AdminLayout>
     <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
       <div className="border-b border-gray-200 pb-5">
-        <button onClick={()=>navigate('/admin/dashboard')} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 mb-4">
-          <ArrowLeft size={15}/> Retour au tableau de bord
-        </button>
         <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>{LABELS[roleKey]||data?.role||roleKey}</h1>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           {roleKey==='recruteur'&&<button type="button" onClick={()=>openPreview('/talent/recruteur/dashboard?preview=true','recruteur')} className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}><Eye size={16}/>Prévisualiser l’espace recruteur</button>}

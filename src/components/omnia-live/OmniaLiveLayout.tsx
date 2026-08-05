@@ -32,7 +32,7 @@ export default function OmniaLiveLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <SubspaceHamburgerLayout title="Omnia Live" navItems={nav} searchPlaceholder="Rechercher un live, une formation, un expert...">
+    <SubspaceHamburgerLayout title="Omnia Live" navItems={nav} searchPath="/omnia-live/explorer" searchParam="q" searchPlaceholder="Rechercher un live, une formation ou un expert...">
       {children}
     </SubspaceHamburgerLayout>
   );

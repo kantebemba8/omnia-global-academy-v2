@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Award, BadgeCheck, Building2, FileCheck2, Layers3, KeyRound, LayoutDashboard, Menu, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Award, BadgeCheck, Building2, FileCheck2, Layers3, KeyRound, LayoutDashboard, Menu, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import UserAccountMenu from '../UserAccountMenu';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -63,9 +64,6 @@ export default function AdminCredentialsManagementLayout({ children }: { childre
           </Link>;
         })}
       </nav>
-      <div className="border-t border-white/10 px-3 py-4">
-        <Link to="/admin/dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white"><ArrowLeft size={18} /> Retour au Dashboard Super Admin</Link>
-      </div>
     </aside>
   );
 
@@ -73,7 +71,7 @@ export default function AdminCredentialsManagementLayout({ children }: { childre
     <div className="hidden w-[270px] flex-shrink-0 lg:block">{sidebar}</div>
     {open && <div className="fixed inset-0 z-[90] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation Badges et Learning Records"><button type="button" className="fixed inset-0 bg-black/55" onClick={() => setOpen(false)} aria-label="Fermer le menu" /><div id="admin-credentials-mobile-navigation" className="relative z-10 h-full w-[280px] max-w-[88vw]">{sidebar}</div></div>}
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden"><button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" style={{ color: BLUE }} aria-expanded={open} aria-controls="admin-credentials-mobile-navigation"><Menu size={18} /> Badges & Learning Records</button></div>
+      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3"><button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden" style={{ color: BLUE }} aria-expanded={open} aria-controls="admin-credentials-mobile-navigation"><Menu size={18} /> Badges & Learning Records</button><UserAccountMenu dashboardPath="/admin/dashboard" /></div>
       <main className="min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>
     </div>
   </div>;

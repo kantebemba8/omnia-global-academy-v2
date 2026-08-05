@@ -180,7 +180,7 @@ export default function JobDetail() {
       <CommunityLayout>
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 bg-white p-8">
           <p className="text-lg text-slate-500">Offre introuvable ou expirée.</p>
-          <Link to="/emploi" className="text-sm font-bold underline" style={{ color: OMNIA_BLUE }}>Retour aux offres</Link>
+          <Link to="/forum/emploi" className="text-sm font-bold underline" style={{ color: OMNIA_BLUE }}>Retour aux offres</Link>
         </div>
       </CommunityLayout>
     );
@@ -193,7 +193,7 @@ export default function JobDetail() {
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-5">
           <Link to="/forum" className="hover:text-slate-600">Omnia Communauté</Link>
           <span>›</span>
-          <Link to="/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
+          <Link to="/forum/emploi" className="hover:text-slate-600">Carrière & emploi</Link>
           <span>›</span>
           <span className="truncate max-w-48" style={{ color: OMNIA_BLUE }}>{job.title}</span>
         </div>

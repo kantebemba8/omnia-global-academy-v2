@@ -706,7 +706,7 @@ function CareerPanel({ section }: { section: LandingSectionConfig }) {
           <ul>
             {talent.slice(1, 5).map(item => <li key={item.id}><Check className="h-4 w-4" aria-hidden="true" />{item.title || item.label}</li>)}
           </ul>
-          <ActionLink href={section.secondary_cta_url || '/emploi'} variant="secondary" className="mt-5">
+          <ActionLink href={section.secondary_cta_url || '/forum/emploi'} variant="secondary" className="mt-5">
             {section.secondary_cta_label || 'Découvrir Omnia Career'}
           </ActionLink>
         </article>

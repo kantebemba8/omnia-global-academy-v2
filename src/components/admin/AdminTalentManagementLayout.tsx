@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
-  ArrowLeft,
   BarChart3,
   ExternalLink,
   LayoutDashboard,
@@ -11,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import UserAccountMenu from '../UserAccountMenu';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -73,9 +73,6 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
         <Link to="/talent" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ color: GOLD }}>
           <ExternalLink size={18} /> Voir Omnia Talent
         </Link>
-        <Link to="/admin/dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white">
-          <ArrowLeft size={18} /> Retour au Dashboard
-        </Link>
       </div>
     </aside>
   );
@@ -90,17 +87,18 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
             style={{ color: BLUE }}
             aria-expanded={open}
             aria-controls="admin-talent-mobile-navigation"
           >
             <Menu size={18} /> Supervision Omnia Talent
           </button>
+          <UserAccountMenu dashboardPath="/admin/dashboard" />
         </div>
         <main className="min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>
       </div>

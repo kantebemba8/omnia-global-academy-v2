@@ -13,7 +13,7 @@ const NAV = [
 
 export function TalentLayout({ children }: { children: ReactNode }) {
   return (
-    <SubspaceHamburgerLayout title="Omnia Talent" navItems={NAV} searchPlaceholder="Rechercher un talent, une compétence...">
+    <SubspaceHamburgerLayout title="Omnia Talent" navItems={NAV} searchPath="/talent/explorer" searchParam="q" searchPlaceholder="Rechercher un talent, une compétence ou une organisation...">
       {children}
     </SubspaceHamburgerLayout>
   );

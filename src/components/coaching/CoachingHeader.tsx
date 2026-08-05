@@ -2,7 +2,6 @@ import { getSessionToken, clearSession } from '../../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   CalendarDays,
   ChevronDown,
   Compass,
@@ -240,7 +239,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
                         </button>
                       )}
                       <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                        <ArrowLeft size={17} /> Retour au Dashboard
+                        <LayoutDashboard size={17} /> Mon espace
                       </button>
                       <div className="my-1 border-t border-slate-100" />
                       <button onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50">
@@ -286,12 +285,13 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
                 );
               })}
             </nav>
-            <div className="border-t border-slate-100 px-3 py-4">
-              <button type="button" onClick={() => { setMenuOpen(false); navigate(loggedIn ? dashboardPath : '/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
-                {loggedIn ? <ArrowLeft size={18} /> : <Home size={18} />}
-                {loggedIn ? 'Retour au Dashboard' : 'Retour à Omnia Global Academy'}
-              </button>
-            </div>
+            {!loggedIn && (
+              <div className="border-t border-slate-100 px-3 py-4">
+                <button type="button" onClick={() => { setMenuOpen(false); navigate('/accueil'); }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition hover:bg-slate-50" style={{ color: BLUE }}>
+                  <Home size={18} /> Retour à Omnia Global Academy
+                </button>
+              </div>
+            )}
           </aside>
         </div>
       )}

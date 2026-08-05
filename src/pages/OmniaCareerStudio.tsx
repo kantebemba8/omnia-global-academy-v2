@@ -41,7 +41,7 @@ export default function OmniaCareerStudio() {
   const login = () => navigate('/connexion?redirect=/dashboard/career-studio');
 
   return (
-    <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={NAV_ITEMS} showSearch={false}>
+    <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={NAV_ITEMS} searchPath="/dashboard/career-studio" searchParam="search" searchPlaceholder="Rechercher un CV, une LM ou un modèle...">
       <main className="min-h-[calc(100vh-72px)] bg-white px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl space-y-8">
           <section className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1fr_440px] lg:items-center lg:p-10">

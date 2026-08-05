@@ -5,7 +5,7 @@ import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
 const NAV = [
   { label: 'Accueil Communauté', path: '/forum', icon: Home, exact: true },
   { label: 'Espace général', path: '/forum/general', icon: MessageCircleQuestion },
-  { label: 'Carrière & emploi', path: '/emploi', icon: BriefcaseBusiness },
+  { label: 'Carrière & emploi', path: '/forum/emploi', icon: BriefcaseBusiness },
   { label: 'Conseils carrière', path: '/forum/carriere', icon: GraduationCap },
   { label: 'Forums des formations', path: '/forum/formations', icon: BookOpenCheck },
 ];
@@ -15,7 +15,8 @@ export default function CommunityLayout({ children }: { children: ReactNode }) {
     <SubspaceHamburgerLayout
       title="Omnia Communauté"
       navItems={NAV}
-      showSearch={false}
+      searchPath="/forum"
+      searchParam="search"
       searchPlaceholder="Rechercher une discussion, une formation ou une opportunité..."
     >
       {children}
