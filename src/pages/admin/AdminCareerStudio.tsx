@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CV_TEMPLATES_META, LM_TEMPLATES_META } from '../../lib/careerStudioData';
+import { Link, useNavigate } from 'react-router-dom';
+import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import {
@@ -69,6 +69,8 @@ type Template = {
   thumbnail_url?: string | null;
   layout_config?: Record<string, unknown>;
   is_custom?: boolean;
+  catalog_status?: 'official' | 'custom' | 'retired';
+  canonical_template_key?: string | null;
 };
 
 type InterviewQuestion = {
@@ -203,8 +205,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       aria-pressed={checked}
     >
       <span
-        className="absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform"
-        style={{ transform: checked ? 'translateX(23px)' : 'translateX(4px)' }}
+        className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform"
+        style={{ transform: checked ? 'translateX(24px)' : 'translateX(4px)' }}
       />
     </button>
   );
@@ -224,6 +226,7 @@ async function postTemplateManager<T>(body: unknown): Promise<T> {
 }
 
 export default function AdminCareerStudio() {
+  const navigate = useNavigate();
   const [subTab, setSubTab] = useState<SubTab>('dashboard');
   const [rules, setRules] = useState<CareerRule[]>([]);
   const [tokenConfig, setTokenConfig] = useState<TokenConfig[]>([]);
@@ -271,25 +274,9 @@ export default function AdminCareerStudio() {
       setRules(data.rules || []);
       setTokenConfig(data.token_config || []);
       setAiConfig(data.ai_config || []);
-      let customTemplates: Template[] = [];
-      try {
-        const custom = await postTemplateManager<{ templates: Template[] }>({ action: 'list' });
-        customTemplates = custom.templates || [];
-      } catch { customTemplates = []; }
-
-      const remoteTemplates = [...(data.templates || []), ...customTemplates];
-      const remoteByKey = new Map(remoteTemplates.map(template => [template.template_key, template]));
-      const builtins = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META].map(template => ({
-        ...template,
-        ...(remoteByKey.get(template.template_key) || {}),
-        is_active: remoteByKey.get(template.template_key)?.is_active ?? true,
-      } as Template));
-      const merged = [
-        ...builtins,
-        ...remoteTemplates.filter(template => !builtins.some(builtin => builtin.template_key === template.template_key)),
-      ];
-      setCvTemplates(merged.filter(t => t.template_type === 'cv').sort((a,b)=>a.display_order-b.display_order));
-      setLmTemplates(merged.filter(t => t.template_type === 'lm').sort((a,b)=>a.display_order-b.display_order));
+      const remoteTemplates = data.templates || [];
+      setCvTemplates(mergeCareerTemplateCatalog('cv', remoteTemplates as any, { authoritative: true, includeInactive: true }) as Template[]);
+      setLmTemplates(mergeCareerTemplateCatalog('lm', remoteTemplates as any, { authoritative: true, includeInactive: true }) as Template[]);
       setStats(data.stats || stats);
       setQuestionBank(data.questions || []);
       setExportLogs(data.exports || []);
@@ -302,6 +289,11 @@ export default function AdminCareerStudio() {
   }
 
   useEffect(() => { loadAll(); }, []);
+
+  function openLearnerCareerPreview() {
+    sessionStorage.setItem('omnia_admin_role_preview', 'apprenant');
+    navigate('/dashboard/career-studio?preview=true');
+  }
 
 
 
@@ -582,9 +574,9 @@ export default function AdminCareerStudio() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link to="/career-studio" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
+              <button type="button" onClick={openLearnerCareerPreview} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
                 <ExternalLink size={15} /> Ouvrir Omnia Career Studio
-              </Link>
+              </button>
               <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
                 <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
               </button>

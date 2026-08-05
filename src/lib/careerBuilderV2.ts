@@ -1,6 +1,7 @@
 import type { DocData, DesignOptions } from '../components/career/CvTemplates';
 import type { LmData, LmDesign } from '../components/career/LmTemplates';
 import type { CareerDocType, CareerDocumentFull } from './careerStudioData';
+import { getPairedLmTemplateKey } from './careerStudioData';
 
 export type CareerEvidenceStatus = 'verified' | 'declared' | 'pending' | 'missing';
 export type CareerEvidenceType = 'experience' | 'project' | 'formation' | 'certificate' | 'badge' | 'recommendation' | 'document';
@@ -529,7 +530,7 @@ export function createLinkedLetterFromCv(document: CareerDocumentFull): CareerDo
     id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title: meta.target.company ? `Lettre - ${meta.target.company}` : 'Ma lettre de motivation',
     doc_type: 'lm',
-    template_key: document.template_key.replace(/^cv_/, 'lm_'),
+    template_key: getPairedLmTemplateKey(document.template_key),
     language: document.language || 'fr',
     status: 'draft',
     ats_score: 0,

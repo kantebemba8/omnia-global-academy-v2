@@ -57,16 +57,146 @@ async function loadKeyValueConfig(
   return result;
 }
 
+const LEGACY_TEMPLATE_ALIASES: Record<string, string> = {
+  classic_pro: "cv_horizon",
+  modern_student: "cv_nile",
+  corporate_blue: "cv_horizon",
+  minimal_luxe: "cv_impact",
+  africa_gold: "cv_sahara",
+  tech_future: "cv_digital",
+  cyber_security: "cv_digital",
+  data_analyst: "cv_digital",
+  creative_digital: "cv_baobab",
+  no_photo_ats: "cv_atlas",
+  photo_elegant: "cv_horizon",
+  young_graduate: "cv_nile",
+  internship_ready: "cv_nile",
+  international_cv: "cv_atlas",
+  qhse_professional: "cv_qhse",
+  business_manager: "cv_executive",
+  hospitality: "cv_hospitality",
+  hospitality_premium: "cv_hospitality",
+  academic_cv: "cv_academia",
+  academic: "cv_academia",
+  freelancer: "cv_kora",
+  freelancer_portfolio: "cv_kora",
+  executive_one_page: "cv_executive",
+  cyber_security_cv: "cv_digital",
+  data_analyst_cv: "cv_digital",
+  modern: "cv_horizon",
+  professional: "cv_horizon",
+  classic: "cv_horizon",
+  creative: "cv_baobab",
+  simple: "cv_atlas",
+  student: "cv_nile",
+  qhse: "cv_qhse",
+  lm_classic_pro: "lm_horizon",
+  lm_modern_student: "lm_atlas",
+  lm_corporate_blue: "lm_horizon",
+  lm_minimal_luxe: "lm_atlas",
+  lm_africa_gold: "lm_sahara",
+  lm_tech_future: "lm_digital",
+  lm_cyber_security: "lm_digital",
+  lm_data_analyst: "lm_digital",
+  lm_creative_digital: "lm_kora",
+  lm_no_photo_ats: "lm_atlas",
+  lm_photo_elegant: "lm_horizon",
+  lm_young_graduate: "lm_atlas",
+  lm_internship_ready: "lm_atlas",
+  lm_international: "lm_horizon",
+  lm_qhse: "lm_horizon",
+  lm_business_manager: "lm_executive",
+  lm_hospitality: "lm_sahara",
+  lm_academic: "lm_atlas",
+  lm_freelancer: "lm_kora",
+  lm_stage_simple: "lm_atlas",
+  lm_premier_emploi: "lm_atlas",
+  lm_alternance: "lm_atlas",
+  lm_spontanee: "lm_horizon",
+  lm_qhse_rse: "lm_horizon",
+  lm_tech_data: "lm_digital",
+  lm_hotellerie: "lm_sahara",
+  lm_administration: "lm_horizon",
+  lm_finance_banque: "lm_executive",
+  lm_internationale: "lm_horizon",
+  lm_courte_premium: "lm_executive",
+  lm_pro_classique: "lm_horizon",
+  classic_lm: "lm_horizon",
+  dynamic_lm: "lm_kora",
+  academic_lm: "lm_atlas",
+  modern_lm: "lm_horizon",
+  professional_lm: "lm_horizon",
+  creative_lm: "lm_kora",
+  simple_lm: "lm_atlas",
+};
+
+function defaultTemplateKey(docType: string) {
+  return docType === "lm" ? "lm_horizon" : "cv_horizon";
+}
+
+function canonicalTemplateKey(docType: string, requestedKey: unknown) {
+  const raw = String(requestedKey || defaultTemplateKey(docType)).trim().toLowerCase();
+  // Une clé inconnue peut être celle d'un modèle personnalisé. La requête
+  // suivante vérifie son template_type réel dans career_templates.
+  return LEGACY_TEMPLATE_ALIASES[raw] || raw;
+}
+
+async function resolveTemplateKey(
+  sb: ReturnType<typeof createClient>,
+  docType: string,
+  requestedKey: unknown,
+) {
+  if (!["cv", "lm"].includes(docType)) throw new Error("INVALID_DOCUMENT_TYPE");
+  const canonicalKey = canonicalTemplateKey(docType, requestedKey);
+
+  const { data: template, error } = await sb
+    .from("career_templates")
+    .select("template_key,template_type,is_active,catalog_status,is_custom")
+    .eq("template_key", canonicalKey)
+    .maybeSingle();
+  if (error) throw error;
+  if (!template) throw new Error("TEMPLATE_NOT_FOUND");
+  if (String(template.template_type) !== docType) throw new Error("TEMPLATE_TYPE_MISMATCH");
+  if (template.is_active !== true) throw new Error("TEMPLATE_INACTIVE");
+  if (!["official", "custom"].includes(String(template.catalog_status || ""))) {
+    throw new Error("TEMPLATE_NOT_IN_ACTIVE_CATALOG");
+  }
+  return String(template.template_key);
+}
+
+async function canonicalizeDocumentTemplate(
+  sb: ReturnType<typeof createClient>,
+  document: Record<string, any>,
+) {
+  try {
+    const templateKey = await resolveTemplateKey(
+      sb,
+      String(document.doc_type || "cv"),
+      document.template_key,
+    );
+    return { ...document, template_key: templateKey };
+  } catch {
+    return {
+      ...document,
+      template_key: defaultTemplateKey(String(document.doc_type || "cv")),
+    };
+  }
+}
+
 async function listAction(req: Request, sb: ReturnType<typeof createClient>) {
   if (req.method === "GET") {
     const url = new URL(req.url);
-    const type = url.searchParams.get("type") || "cv";
+    const type = String(url.searchParams.get("type") || "cv");
     const category = url.searchParams.get("category");
+    if (!["cv", "lm"].includes(type)) return json({ error: "INVALID_DOCUMENT_TYPE" }, 400);
+
     let query = sb.from("career_templates")
       .select("*")
       .eq("template_type", type)
       .eq("is_active", true)
-      .order("display_order");
+      .in("catalog_status", ["official", "custom"])
+      .order("display_order")
+      .order("template_key");
     if (category) query = query.eq("category", category);
     const { data, error } = await query;
     if (error) throw error;
@@ -80,6 +210,7 @@ async function listAction(req: Request, sb: ReturnType<typeof createClient>) {
 
   const body = await req.json().catch(() => ({}));
   const docType = String(body.doc_type || "cv");
+  if (!["cv", "lm"].includes(docType)) return json({ error: "INVALID_DOCUMENT_TYPE" }, 400);
 
   const [documentsResult, templatesResult, tokenConfig, aiConfig, formationsResult, certificatesResult, partnerResult] = await Promise.all([
     sb.from("career_documents")
@@ -91,7 +222,9 @@ async function listAction(req: Request, sb: ReturnType<typeof createClient>) {
       .select("*")
       .eq("template_type", docType)
       .eq("is_active", true)
-      .order("display_order"),
+      .in("catalog_status", ["official", "custom"])
+      .order("display_order")
+      .order("template_key"),
     loadKeyValueConfig(sb, "career_token_config", true),
     loadKeyValueConfig(sb, "career_ai_config"),
     sb.from("enrollments")
@@ -113,6 +246,10 @@ async function listAction(req: Request, sb: ReturnType<typeof createClient>) {
   if (documentsResult.error) throw documentsResult.error;
   if (templatesResult.error) throw templatesResult.error;
 
+  const documents = await Promise.all(
+    (documentsResult.data || []).map((document: any) => canonicalizeDocumentTemplate(sb, document)),
+  );
+
   return json({
     success: true,
     user: {
@@ -123,9 +260,8 @@ async function listAction(req: Request, sb: ReturnType<typeof createClient>) {
       career_studio_enabled: user.career_studio_enabled ?? true,
       profile_completion: Number(user.profile_completion || 0),
     },
-    documents: documentsResult.data || [],
+    documents,
     templates: templatesResult.data || [],
-    // Les anciens packs de jetons sont volontairement retirés.
     packs: [],
     token_config: tokenConfig,
     ai_config: aiConfig,
@@ -144,6 +280,20 @@ async function saveAction(req: Request, sb: ReturnType<typeof createClient>) {
   const body = await req.json().catch(() => ({}));
   const operation = String(body.action || "save");
   const documentId = body.document_id ? String(body.document_id) : "";
+
+  // Cette branche doit précéder toute mutation. L'ancienne fonction traitait `get`
+  // comme une sauvegarde et pouvait écraser le document avec des valeurs vides.
+  if (operation === "get") {
+    if (!documentId) return json({ error: "DOCUMENT_ID_REQUIRED" }, 400);
+    const { data: document, error } = await sb.from("career_documents")
+      .select("*")
+      .eq("id", documentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!document) return json({ error: "DOCUMENT_NOT_FOUND" }, 404);
+    return json({ success: true, action: "get", document: await canonicalizeDocumentTemplate(sb, document) });
+  }
 
   if (operation === "delete") {
     if (!documentId) return json({ error: "DOCUMENT_ID_REQUIRED" }, 400);
@@ -164,11 +314,22 @@ async function saveAction(req: Request, sb: ReturnType<typeof createClient>) {
       .maybeSingle();
     if (originalError) throw originalError;
     if (!original) return json({ error: "DOCUMENT_NOT_FOUND" }, 404);
+
+    let templateKey: string;
+    try {
+      templateKey = await resolveTemplateKey(sb, String(original.doc_type), original.template_key);
+    } catch (error) {
+      return json({
+        error: "TEMPLATE_UNAVAILABLE",
+        message: error instanceof Error ? error.message : "Le modèle du document n'est plus disponible.",
+      }, 409);
+    }
+
     const { data, error } = await sb.from("career_documents").insert({
       user_id: user.id,
       doc_type: original.doc_type,
       title: `${original.title} (copie)`,
-      template_key: original.template_key,
+      template_key: templateKey,
       language: original.language,
       doc_data: original.doc_data,
       design_options: original.design_options,
@@ -195,6 +356,18 @@ async function saveAction(req: Request, sb: ReturnType<typeof createClient>) {
   }
 
   const docType = String(body.doc_type || "cv");
+  if (!["cv", "lm"].includes(docType)) return json({ error: "INVALID_DOCUMENT_TYPE" }, 400);
+
+  let templateKey: string;
+  try {
+    templateKey = await resolveTemplateKey(sb, docType, body.template_key);
+  } catch (error) {
+    return json({
+      error: "TEMPLATE_UNAVAILABLE",
+      message: error instanceof Error ? error.message : "Le modèle sélectionné n'est pas disponible.",
+    }, 409);
+  }
+
   const title = String(body.title || "Mon document").trim() || "Mon document";
   const docData = body.doc_data && typeof body.doc_data === "object" ? body.doc_data : {};
   const designOptions = body.design_options && typeof body.design_options === "object" ? body.design_options : {};
@@ -202,7 +375,7 @@ async function saveAction(req: Request, sb: ReturnType<typeof createClient>) {
   const patch = {
     doc_type: docType,
     title,
-    template_key: body.template_key || null,
+    template_key: templateKey,
     language: body.language || "fr",
     doc_data: docData,
     design_options: designOptions,

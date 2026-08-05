@@ -23,6 +23,9 @@ export type CareerTemplateMeta = {
   thumbnail_url?: string;
   layout_config?: Record<string, unknown>;
   is_custom?: boolean;
+  is_active?: boolean;
+  catalog_status?: 'official' | 'custom';
+  canonical_template_key?: string | null;
 };
 
 export type CareerDocumentSummary = {
@@ -175,6 +178,113 @@ export const LM_TEMPLATES_META: CareerTemplateMeta[] = [
 ];
 
 export const CAREER_TEMPLATES_META = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META];
+export const OFFICIAL_CAREER_TEMPLATE_KEYS = new Set(CAREER_TEMPLATES_META.map(template => template.template_key));
+
+export const LEGACY_CV_TEMPLATE_ALIASES: Record<string, string> = {
+  classic_pro: 'cv_horizon',
+  modern_student: 'cv_nile',
+  corporate_blue: 'cv_horizon',
+  minimal_luxe: 'cv_impact',
+  africa_gold: 'cv_sahara',
+  tech_future: 'cv_digital',
+  cyber_security: 'cv_digital',
+  data_analyst: 'cv_digital',
+  creative_digital: 'cv_baobab',
+  no_photo_ats: 'cv_atlas',
+  photo_elegant: 'cv_horizon',
+  young_graduate: 'cv_nile',
+  internship_ready: 'cv_nile',
+  international_cv: 'cv_atlas',
+  qhse_professional: 'cv_qhse',
+  business_manager: 'cv_executive',
+  hospitality: 'cv_hospitality',
+  hospitality_premium: 'cv_hospitality',
+  academic_cv: 'cv_academia',
+  academic: 'cv_academia',
+  freelancer: 'cv_kora',
+  freelancer_portfolio: 'cv_kora',
+  executive_one_page: 'cv_executive',
+  cyber_security_cv: 'cv_digital',
+  data_analyst_cv: 'cv_digital',
+  modern: 'cv_horizon',
+  professional: 'cv_horizon',
+  classic: 'cv_horizon',
+  creative: 'cv_baobab',
+  simple: 'cv_atlas',
+  student: 'cv_nile',
+  qhse: 'cv_qhse',
+};
+
+export const LEGACY_LM_TEMPLATE_ALIASES: Record<string, string> = {
+  lm_classic_pro: 'lm_horizon',
+  lm_modern_student: 'lm_atlas',
+  lm_corporate_blue: 'lm_horizon',
+  lm_minimal_luxe: 'lm_atlas',
+  lm_africa_gold: 'lm_sahara',
+  lm_tech_future: 'lm_digital',
+  lm_cyber_security: 'lm_digital',
+  lm_data_analyst: 'lm_digital',
+  lm_creative_digital: 'lm_kora',
+  lm_no_photo_ats: 'lm_atlas',
+  lm_photo_elegant: 'lm_horizon',
+  lm_young_graduate: 'lm_atlas',
+  lm_internship_ready: 'lm_atlas',
+  lm_international: 'lm_horizon',
+  lm_qhse: 'lm_horizon',
+  lm_business_manager: 'lm_executive',
+  lm_hospitality: 'lm_sahara',
+  lm_academic: 'lm_atlas',
+  lm_freelancer: 'lm_kora',
+  lm_stage_simple: 'lm_atlas',
+  lm_premier_emploi: 'lm_atlas',
+  lm_alternance: 'lm_atlas',
+  lm_spontanee: 'lm_horizon',
+  lm_qhse_rse: 'lm_horizon',
+  lm_tech_data: 'lm_digital',
+  lm_hotellerie: 'lm_sahara',
+  lm_administration: 'lm_horizon',
+  lm_finance_banque: 'lm_executive',
+  lm_internationale: 'lm_horizon',
+  lm_courte_premium: 'lm_executive',
+  lm_pro_classique: 'lm_horizon',
+  classic_lm: 'lm_horizon',
+  dynamic_lm: 'lm_kora',
+  academic_lm: 'lm_atlas',
+  modern_lm: 'lm_horizon',
+  professional_lm: 'lm_horizon',
+  creative_lm: 'lm_kora',
+  simple_lm: 'lm_atlas',
+};
+
+export const LEGACY_CAREER_TEMPLATE_KEYS = new Set(
+  [
+    ...Object.keys(LEGACY_CV_TEMPLATE_ALIASES),
+    ...Object.keys(LEGACY_LM_TEMPLATE_ALIASES),
+  ].filter(templateKey => !OFFICIAL_CAREER_TEMPLATE_KEYS.has(templateKey)),
+);
+
+const CV_TO_LM_TEMPLATE: Record<string, string> = {
+  cv_horizon: 'lm_horizon',
+  cv_sahara: 'lm_sahara',
+  cv_atlas: 'lm_atlas',
+  cv_kora: 'lm_kora',
+  cv_nile: 'lm_horizon',
+  cv_executive: 'lm_executive',
+  cv_baobab: 'lm_kora',
+  cv_digital: 'lm_digital',
+  cv_academia: 'lm_atlas',
+  cv_hospitality: 'lm_sahara',
+  cv_qhse: 'lm_horizon',
+  cv_impact: 'lm_atlas',
+};
+
+export function isOfficialCareerTemplateKey(templateKey?: string | null) {
+  return OFFICIAL_CAREER_TEMPLATE_KEYS.has(String(templateKey || '').trim().toLowerCase());
+}
+
+export function isLegacyCareerTemplateKey(templateKey?: string | null) {
+  return LEGACY_CAREER_TEMPLATE_KEYS.has(String(templateKey || '').trim().toLowerCase());
+}
 
 export const CAREER_PALETTES = [
   { key: 'omnia', name: 'Omnia', colors: DEFAULT_COLORS },
@@ -184,59 +294,210 @@ export const CAREER_PALETTES = [
   { key: 'red', name: 'Bordeaux', colors: { ...DEFAULT_COLORS, primary: '#7F1D1D', accent: '#B91C1C', sidebar: '#FEF2F2' } },
 ];
 
-function getCachedCustomTemplates(docType: CareerDocType): CareerTemplateMeta[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(localStorage.getItem('omnia_career_custom_templates') || '[]');
-    return Array.isArray(parsed) ? parsed.filter((t: CareerTemplateMeta) => t.template_type === docType) : [];
-  } catch { return []; }
+function stableTemplateSort(a: CareerTemplateMeta, b: CareerTemplateMeta) {
+  return Number(a.display_order || 0) - Number(b.display_order || 0)
+    || a.name_fr.localeCompare(b.name_fr, 'fr')
+    || a.template_key.localeCompare(b.template_key);
 }
 
-export function cacheCareerTemplates(templates: CareerTemplateMeta[]) {
+const CAREER_TEMPLATE_CATALOG_CACHE_KEY = 'omnia_career_template_catalog_v2';
+const CAREER_CUSTOM_TEMPLATE_CACHE_KEY = 'omnia_career_custom_templates';
+const CAREER_TEMPLATE_CATALOG_LOADED_KEY = 'omnia_career_template_catalog_loaded_v2';
+
+type MergeCareerTemplateOptions = {
+  /**
+   * Quand true, la liste distante est la source de vérité: un modèle officiel absent
+   * n'est pas réinjecté par le fallback statique. C'est indispensable pour que la
+   * désactivation Super-admin soit réellement respectée dans le catalogue apprenant.
+   */
+  authoritative?: boolean;
+  /** Affiche aussi les modèles désactivés, uniquement dans l'administration. */
+  includeInactive?: boolean;
+};
+
+function readCachedCatalog(docType: CareerDocType): { loaded: boolean; templates: CareerTemplateMeta[] } {
+  if (typeof window === 'undefined') return { loaded: false, templates: [] };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CAREER_TEMPLATE_CATALOG_CACHE_KEY) || '[]');
+    const loadedTypes = JSON.parse(localStorage.getItem(CAREER_TEMPLATE_CATALOG_LOADED_KEY) || '[]');
+    return {
+      loaded: Array.isArray(loadedTypes) && loadedTypes.includes(docType),
+      templates: Array.isArray(parsed)
+        ? parsed.filter((template: CareerTemplateMeta) =>
+            template.template_type === docType
+            && !isLegacyCareerTemplateKey(template.template_key))
+        : [],
+    };
+  } catch {
+    return { loaded: false, templates: [] };
+  }
+}
+
+export function cacheCareerTemplates(templates: CareerTemplateMeta[], docType?: CareerDocType) {
   if (typeof window === 'undefined') return;
-  const custom = templates.filter(t => t.is_custom || t.layout_config);
-  localStorage.setItem('omnia_career_custom_templates', JSON.stringify(custom));
+  const clean = templates.filter(template =>
+    ['cv', 'lm'].includes(template.template_type)
+    && !isLegacyCareerTemplateKey(template.template_key)
+  );
+  const typesToReplace = new Set<CareerDocType>(
+    docType ? [docType] : clean.map(template => template.template_type),
+  );
+
+  let previous: CareerTemplateMeta[] = [];
+  let loadedTypes: CareerDocType[] = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CAREER_TEMPLATE_CATALOG_CACHE_KEY) || '[]');
+    if (Array.isArray(parsed)) previous = parsed;
+    const parsedLoaded = JSON.parse(localStorage.getItem(CAREER_TEMPLATE_CATALOG_LOADED_KEY) || '[]');
+    if (Array.isArray(parsedLoaded)) loadedTypes = parsedLoaded.filter(type => type === 'cv' || type === 'lm');
+  } catch {
+    previous = [];
+    loadedTypes = [];
+  }
+
+  const merged = [
+    ...previous.filter(template => !typesToReplace.has(template.template_type)),
+    ...clean,
+  ];
+  localStorage.setItem(CAREER_TEMPLATE_CATALOG_CACHE_KEY, JSON.stringify(merged));
+  localStorage.setItem(
+    CAREER_TEMPLATE_CATALOG_LOADED_KEY,
+    JSON.stringify([...new Set([...loadedTypes, ...typesToReplace])]),
+  );
+
+  // Conservé pour le renderer configurable des modèles personnalisés existants.
+  const custom = merged.filter(template => template.is_custom === true);
+  localStorage.setItem(CAREER_CUSTOM_TEMPLATE_CACHE_KEY, JSON.stringify(custom));
+}
+
+export function mergeCareerTemplateCatalog(
+  docType: CareerDocType,
+  remoteTemplates: CareerTemplateMeta[] = [],
+  options: MergeCareerTemplateOptions = {},
+): CareerTemplateMeta[] {
+  const officialBase = (docType === 'cv' ? CV_TEMPLATES_META : LM_TEMPLATES_META).map(template => ({
+    ...template,
+    is_active: true,
+    is_custom: false,
+    catalog_status: 'official' as const,
+    canonical_template_key: template.template_key,
+  }));
+  const officialByKey = new Map(officialBase.map(template => [template.template_key, template]));
+
+  const cleanRemote = remoteTemplates
+    .filter(template => template.template_type === docType)
+    .filter(template => !isLegacyCareerTemplateKey(template.template_key));
+
+  const remoteByKey = new Map<string, CareerTemplateMeta>();
+  for (const template of cleanRemote) {
+    const key = String(template.template_key || '').trim().toLowerCase();
+    if (!key) continue;
+    remoteByKey.set(key, { ...template, template_key: key });
+  }
+
+  const result: CareerTemplateMeta[] = [];
+
+  if (!options.authoritative) {
+    for (const template of officialBase) {
+      const remote = remoteByKey.get(template.template_key);
+      remoteByKey.delete(template.template_key);
+      const merged = {
+        ...template,
+        ...(remote || {}),
+        template_key: template.template_key,
+        template_type: docType,
+        is_custom: false,
+        catalog_status: 'official' as const,
+        canonical_template_key: template.template_key,
+        is_active: remote?.is_active !== false,
+        is_free: remote?.is_free ?? true,
+        default_colors: remote?.default_colors && Object.keys(remote.default_colors).length
+          ? remote.default_colors
+          : template.default_colors,
+        display_order: Number(remote?.display_order ?? template.display_order),
+      };
+      if (options.includeInactive || merged.is_active !== false) result.push(merged);
+    }
+  }
+
+  for (const [key, remote] of remoteByKey) {
+    const official = officialByKey.get(key);
+    if (official) {
+      const merged: CareerTemplateMeta = {
+        ...official,
+        ...remote,
+        template_key: key,
+        template_type: docType,
+        is_custom: false,
+        catalog_status: 'official',
+        canonical_template_key: key,
+        is_active: remote.is_active !== false,
+        is_free: remote.is_free ?? true,
+        default_colors: remote.default_colors && Object.keys(remote.default_colors).length
+          ? remote.default_colors
+          : official.default_colors,
+        display_order: Number(remote.display_order ?? official.display_order),
+      };
+      if (options.includeInactive || merged.is_active !== false) result.push(merged);
+      continue;
+    }
+
+    if (remote.is_custom !== true && remote.catalog_status !== 'custom') continue;
+    const custom: CareerTemplateMeta = {
+      ...remote,
+      template_key: key,
+      template_type: docType,
+      is_custom: true,
+      catalog_status: 'custom',
+      canonical_template_key: key,
+      is_active: remote.is_active !== false,
+      is_free: remote.is_free ?? true,
+      display_order: Number(remote.display_order || 999),
+      default_colors: remote.default_colors && Object.keys(remote.default_colors).length
+        ? remote.default_colors
+        : DEFAULT_COLORS,
+    };
+    if (options.includeInactive || custom.is_active !== false) result.push(custom);
+  }
+
+  const deduped = new Map<string, CareerTemplateMeta>();
+  for (const template of result) deduped.set(template.template_key, template);
+  return [...deduped.values()].sort(stableTemplateSort);
 }
 
 export function getCareerTemplates(docType: CareerDocType) {
-  const builtins = docType === 'cv' ? CV_TEMPLATES_META : LM_TEMPLATES_META;
-  const merged = [...builtins, ...getCachedCustomTemplates(docType).filter(c => !builtins.some(b => b.template_key === c.template_key))];
-  return merged.sort((a, b) => a.display_order - b.display_order);
+  const cached = readCachedCatalog(docType);
+  if (cached.loaded) {
+    return mergeCareerTemplateCatalog(docType, cached.templates, { authoritative: true });
+  }
+  return mergeCareerTemplateCatalog(docType);
 }
 
 export function normalizeTemplateKey(docType: CareerDocType, templateKey?: string | null) {
-  const key = String(templateKey || '').trim();
-  const cvAliases: Record<string, string> = {
-    modern: 'cv_horizon',
-    professional: 'cv_atlas',
-    creative: 'cv_baobab',
-    classic: 'cv_horizon',
-    simple: 'cv_atlas',
-    student: 'cv_nile',
-    qhse: 'cv_qhse',
-    hospitality_premium: 'cv_hospitality',
-    cyber_security_cv: 'cv_digital',
-    data_analyst_cv: 'cv_digital',
-  };
-  const lmAliases: Record<string, string> = {
-    classic_lm: 'lm_horizon',
-    dynamic_lm: 'lm_kora',
-    academic_lm: 'lm_atlas',
-    modern_lm: 'lm_horizon',
-    professional_lm: 'lm_horizon',
-    creative_lm: 'lm_kora',
-    simple_lm: 'lm_atlas',
-  };
+  const raw = String(templateKey || '').trim().toLowerCase();
+  if (!raw) return getDefaultTemplateKey(docType);
+  const aliases = docType === 'cv' ? LEGACY_CV_TEMPLATE_ALIASES : LEGACY_LM_TEMPLATE_ALIASES;
+  const mapped = aliases[raw] || raw;
 
-  const mapped = docType === 'cv' ? (cvAliases[key] || key) : (lmAliases[key] || key);
-  const exists = getCareerTemplates(docType).some(t => t.template_key === mapped);
-  return exists ? mapped : getDefaultTemplateKey(docType);
+  if (isOfficialCareerTemplateKey(mapped)) {
+    const expectedType = mapped.startsWith('lm_') ? 'lm' : 'cv';
+    return expectedType === docType ? mapped : getDefaultTemplateKey(docType);
+  }
+
+  return mapped;
+}
+
+export function getPairedLmTemplateKey(cvTemplateKey?: string | null) {
+  const canonicalCv = normalizeTemplateKey('cv', cvTemplateKey);
+  return CV_TO_LM_TEMPLATE[canonicalCv] || getDefaultTemplateKey('lm');
 }
 
 export function getTemplateMeta(docType: CareerDocType, templateKey?: string | null) {
   const list = getCareerTemplates(docType);
   const normalizedKey = normalizeTemplateKey(docType, templateKey);
-  return list.find(t => t.template_key === normalizedKey) || list[0];
+  return list.find(template => template.template_key === normalizedKey)
+    || list.find(template => template.template_key === getDefaultTemplateKey(docType))
+    || list[0];
 }
 
 export function getDefaultDocTitle(docType: CareerDocType) {

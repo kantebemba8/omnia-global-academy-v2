@@ -1,17 +1,65 @@
 import React from 'react';
-import { LM_TEMPLATE_MAP_1_10, LmData, LmDesign } from './LmTemplates_1_10';
-import { LM_TEMPLATE_MAP_11_32 } from './LmTemplates_11_32';
-import { ConfigurableLmTemplate, BUILTIN_LM_LAYOUTS } from './EditableCareerTemplates';
+import { BUILTIN_LM_LAYOUTS, ConfigurableLmTemplate } from './EditableCareerTemplates';
 
-export type { LmData, LmDesign };
+export interface LmData {
+  sender: { name: string; address: string; phone: string; email: string; city: string; date: string; };
+  recipient: { name: string; company: string; address: string; };
+  subject: string;
+  salutation: string;
+  intro: string;
+  motivation: string;
+  skills_paragraph: string;
+  company_link: string;
+  availability: string;
+  closing: string;
+  signature: string;
+  career_meta?: Record<string, unknown>;
+  manual_layout?: unknown;
+  manual_layouts?: Record<string, unknown>;
+}
 
-export const LM_TEMPLATE_MAP: Record<string, React.ComponentType<{ data: LmData; design: LmDesign }>> = {
-  ...LM_TEMPLATE_MAP_1_10,
-  ...LM_TEMPLATE_MAP_11_32,
-  ...Object.fromEntries(Object.keys(BUILTIN_LM_LAYOUTS).map(key => [key, (props: { data: LmData; design: LmDesign }) => <ConfigurableLmTemplate {...props} templateKey={key} />])),
-};
+export interface LmDesign {
+  colors: { primary: string; accent: string; sidebar: string; text: string; background: string; };
+  font: string;
+  font_size_body: number;
+  line_spacing: number;
+  document_mode?: 'creative' | 'balanced' | 'ats';
+  page_format?: 'a4' | 'letter';
+  orientation?: 'portrait' | 'landscape';
+  margins?: { top: number; right: number; bottom: number; left: number };
+  letter_spacing?: number;
+  paragraph_spacing?: number;
+  section_spacing?: number;
+  density?: 'compact' | 'balanced' | 'spacious';
+  page_numbers?: boolean;
+  footer_text?: string;
+  border_width?: number;
+  border_color?: string;
+  editor_mode?: 'template' | 'manual';
+}
 
-export function LmPreview({ templateKey, data, design }: { templateKey: string; data: LmData; design: LmDesign }) {
+type LmTemplateComponent = React.ComponentType<{ data: LmData; design: LmDesign }>;
+
+export const LM_TEMPLATE_MAP: Record<string, LmTemplateComponent> = Object.fromEntries(
+  Object.keys(BUILTIN_LM_LAYOUTS).map(templateKey => [
+    templateKey,
+    (props: { data: LmData; design: LmDesign }) => (
+      <ConfigurableLmTemplate {...props} templateKey={templateKey} />
+    ),
+  ]),
+) as Record<string, LmTemplateComponent>;
+
+export function LmPreview({
+  templateKey,
+  data,
+  design,
+}: {
+  templateKey: string;
+  data: LmData;
+  design: LmDesign;
+}) {
   const Component = LM_TEMPLATE_MAP[templateKey];
-  return Component ? <Component data={data} design={design} /> : <ConfigurableLmTemplate data={data} design={design} templateKey={templateKey} />;
+  return Component
+    ? <Component data={data} design={design} />
+    : <ConfigurableLmTemplate data={data} design={design} templateKey={templateKey} />;
 }

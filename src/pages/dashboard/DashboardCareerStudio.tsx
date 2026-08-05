@@ -41,6 +41,7 @@ import { consumeCareerTokenAction, fetchCareerTemplateCatalog } from '../../lib/
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
+import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
 import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
@@ -184,9 +185,10 @@ export default function DashboardCareerStudio() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const previewMode = isLearnerPreviewMode();
 
   const user = readUser();
-  const displayName = user?.full_name || user?.name || user?.email || 'Apprenant';
+  const displayName = previewMode ? 'Aperçu apprenant' : (user?.full_name || user?.name || user?.email || 'Apprenant');
   const initials = getInitials(displayName, user?.email);
 
   const cvDocs = useMemo(() => documents.filter((doc) => doc.doc_type === 'cv'), [documents]);
@@ -228,6 +230,19 @@ export default function DashboardCareerStudio() {
   async function loadData() {
     setLoading(true);
     try {
+      if (previewMode) {
+        const [publicCvTemplates, publicLmTemplates] = await Promise.all([
+          fetchCareerTemplateCatalog('cv'),
+          fetchCareerTemplateCatalog('lm'),
+        ]);
+        setDocuments([]);
+        setCvTemplates(publicCvTemplates as Template[]);
+        setLmTemplates(publicLmTemplates as Template[]);
+        cacheCareerTemplates([...(publicCvTemplates as any), ...(publicLmTemplates as any)]);
+        setTokens(0);
+        return;
+      }
+
       const [cvData, lmData, publicCvTemplates, publicLmTemplates] = await Promise.allSettled([
         loadByType('cv'),
         loadByType('lm'),
@@ -252,7 +267,7 @@ export default function DashboardCareerStudio() {
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
       setTokens(cvPayload?.user?.cv_tokens ?? lmPayload?.user?.cv_tokens ?? 0);
     } catch {
-      showToast('Impossible de charger vos données Omnia Career pour le moment.');
+      showToast('Impossible de charger les données Omnia Career pour le moment.');
     } finally {
       setLoading(false);
     }
@@ -261,7 +276,7 @@ export default function DashboardCareerStudio() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [previewMode]);
 
   useEffect(() => {
     const section = searchParams.get('section') || 'dashboard';
@@ -281,14 +296,28 @@ export default function DashboardCareerStudio() {
     setActiveView(pathMap[location.pathname] || sectionMap[section] || 'dashboard');
   }, [location.pathname, navigate, searchParams]);
 
-  function goToView(view: ActiveView) {
+  function routeForView(view: ActiveView) {
+    if (previewMode) {
+      const params = new URLSearchParams({ preview: 'true', section: view });
+      const currentJob = searchParams.get('job_id');
+      if (currentJob && (view === 'interview' || view === 'applications')) params.set('job_id', currentJob);
+      return `/dashboard/career-studio?${params.toString()}`;
+    }
     const routes: Record<ActiveView, string> = {
       dashboard: '/omnia-career', cv: '/omnia-career/cv-builder', lm: '/omnia-career/lettres', interview: '/omnia-career/entretien',
       applications: '/omnia-career/candidatures', profile: '/mon-profil?tab=professionnel', settings: '/omnia-career/parametres',
     };
     const currentJob = searchParams.get('job_id');
     const query = currentJob && (view === 'interview' || view === 'applications') ? `?job_id=${encodeURIComponent(currentJob)}` : '';
-    navigate(`${routes[view]}${query}`);
+    return `${routes[view]}${query}`;
+  }
+
+  function goToView(view: ActiveView) {
+    if (previewMode && view === 'profile') {
+      showToast('Le profil personnel n’est pas modifié pendant la prévisualisation apprenant.');
+      return;
+    }
+    navigate(routeForView(view));
   }
 
   async function createDoc(docType: DocType, templateKey?: string) {
@@ -296,7 +325,7 @@ export default function DashboardCareerStudio() {
     const chosen = normalizeTemplateKey(docType, templateKey || templates[0]?.template_key || undefined);
     const selected = templates.find(template => template.template_key === chosen);
 
-    if (selected && selected.is_free === false) {
+    if (!previewMode && selected && selected.is_free === false) {
       try {
         const charge = await consumeCareerTokenAction(
           'spend_premium_template',
@@ -311,15 +340,16 @@ export default function DashboardCareerStudio() {
       }
     }
 
-    navigate(`/dashboard/career-studio/editor/new?type=${docType}&template=${encodeURIComponent(chosen)}`);
+    navigate(withLearnerPreview(`/dashboard/career-studio/editor/new?type=${docType}&template=${encodeURIComponent(chosen)}`));
   }
 
   function openDoc(documentId?: string, fallbackType: DocType = 'cv') {
-    if (documentId) navigate(`/dashboard/career-studio/editor/${documentId}`);
+    if (documentId) navigate(withLearnerPreview(`/dashboard/career-studio/editor/${documentId}`));
     else createDoc(fallbackType);
   }
 
   async function deleteDoc(docId: string) {
+    if (previewMode) { showToast('La prévisualisation Super-admin est en lecture seule.'); return; }
     if (!confirm('Supprimer ce document ?')) return;
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=save`, {
@@ -341,16 +371,19 @@ export default function DashboardCareerStudio() {
     { label: 'Évaluer mon profil', icon: Star, action: () => goToView('profile') },
   ];
 
-  const careerNavItems = navItems.map((item) => ({
+  const careerNavItems = navItems
+    .filter((item) => !(previewMode && item.id === 'profile'))
+    .map((item) => ({
     label: item.label,
-    path: ({ dashboard:'/omnia-career', cv:'/omnia-career/cv-builder', lm:'/omnia-career/lettres', interview:'/omnia-career/entretien', applications:'/omnia-career/candidatures', profile:'/mon-profil?tab=professionnel', settings:'/omnia-career/parametres' } as Record<ActiveView,string>)[item.id],
+    path: routeForView(item.id),
     icon: item.icon,
-    exact: item.id === 'dashboard',
-  }));
+      exact: item.id === 'dashboard',
+    }));
 
   return (
     <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={careerNavItems} showSearch={false}>
       <div className="min-h-[calc(100vh-72px)]" style={{ background: PAGE_BG, color: '#111827' }}>
+        {previewMode && <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900 md:px-8">Prévisualisation apprenant sécurisée : les documents restent locaux, aucun jeton n’est consommé et aucune donnée apprenant n’est modifiée.</div>}
         {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
         <div className="border-b bg-white px-5 py-4 md:px-8" style={{ borderColor: BORDER }}>
           <div className="relative max-w-[620px]">

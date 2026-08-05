@@ -45,7 +45,7 @@ import {
   getTemplateMeta,
   normalizeTemplateKey,
 } from '../../lib/careerStudioData';
-import { consumeCareerTokenAction, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
+import { consumeCareerTokenAction, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
@@ -64,6 +64,7 @@ import {
   normalizeCareerDocument,
   type CareerSourceProfile,
 } from '../../lib/careerBuilderV2';
+import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -356,6 +357,7 @@ export default function CareerStudioEditor() {
   const [searchParams] = useSearchParams();
   const docType = (searchParams.get('type') === 'lm' ? 'lm' : 'cv') as CareerDocType;
   const requestedTemplate = normalizeTemplateKey(docType, searchParams.get('template') || getDefaultTemplateKey(docType));
+  const previewMode = isLearnerPreviewMode();
 
   const [document, setDocument] = useState<CareerDocumentFull | null>(null);
   const [templates, setTemplates] = useState<CareerTemplateMeta[]>([]);
@@ -421,6 +423,19 @@ export default function CareerStudioEditor() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (previewMode) {
+        const catalog = await fetchCareerTemplateCatalog(docType);
+        setTemplates(catalog);
+        setTokens(0);
+        setRemoteMode(false);
+        setSourceProfile({});
+        const loaded = await getCareerDocument(docType, 'new', requestedTemplate);
+        const normalized = normalizeCareerDocument(loaded.document);
+        setDocument(normalized);
+        setOfferText('');
+        return;
+      }
+
       const list = await listCareerDocuments(docType);
       setTemplates(list.templates);
       setTokens(list.tokens);
@@ -434,7 +449,7 @@ export default function CareerStudioEditor() {
     } finally {
       setLoading(false);
     }
-  }, [docId, docType, requestedTemplate]);
+  }, [docId, docType, previewMode, requestedTemplate]);
 
   useEffect(() => {
     load();
@@ -442,6 +457,11 @@ export default function CareerStudioEditor() {
 
   useEffect(() => {
     if (!document) return;
+    if (previewMode) {
+      setOmniaAdvice('Prévisualisation sécurisée : vérifiez le modèle et sa mise en page sans modifier les données d’un apprenant.');
+      setOmniaAdviceLoading(false);
+      return;
+    }
     let cancelled = false;
     setOmniaAdvice('');
     setOmniaAdviceLoading(true);
@@ -464,7 +484,7 @@ export default function CareerStudioEditor() {
       if (!cancelled) setOmniaAdviceLoading(false);
     });
     return () => { cancelled = true; };
-  }, [document?.id]);
+  }, [document?.id, previewMode]);
 
   const updateDocument = useCallback((updater: (current: CareerDocumentFull) => CareerDocumentFull) => {
     setDocument(prev => {
@@ -488,6 +508,14 @@ export default function CareerStudioEditor() {
 
   const persistDocument = useCallback(async (docToSave: CareerDocumentFull) => {
     setSaveState('saving');
+    if (previewMode) {
+      const previewDocument = normalizeCareerDocument({ ...docToSave, updated_at: new Date().toISOString() });
+      setDocument(previewDocument);
+      setRemoteMode(false);
+      setSaveState('saved');
+      setDirty(false);
+      return previewDocument;
+    }
     try {
       const saved = await saveCareerDocument(docToSave);
       setDocument(saved.document);
@@ -499,7 +527,7 @@ export default function CareerStudioEditor() {
       setSaveState('error');
       throw new Error('SAVE_FAILED');
     }
-  }, []);
+  }, [previewMode]);
 
   const saveNow = useCallback(async (interactive = true, action: 'save' | 'pdf' | 'manual' = 'save') => {
     if (!document) return null;
@@ -561,29 +589,12 @@ export default function CareerStudioEditor() {
   }
 
   function templatePreset(key: string) {
-    const presets: Record<string, Partial<DesignOptions>> = {
-      classic_pro: { colors: { primary: '#17365D', accent: '#BF8813', sidebar: '#EEF2F6', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
-      modern_student: { colors: { primary: '#E9A8B8', accent: '#7B61A8', sidebar: '#FFF4F7', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
-      corporate_blue: { colors: { primary: '#002B5C', accent: '#2F6B9A', sidebar: '#EAF1F7', text: '#273444', background: '#FFFFFF' }, photo_enabled: true },
-      minimal_luxe: { colors: { primary: '#111827', accent: '#C9A86A', sidebar: '#F8F5EF', text: '#2F2F2F', background: '#FFFFFF' }, photo_enabled: false },
-      africa_gold: { colors: { primary: '#06182E', accent: '#BF8813', sidebar: '#06182E', text: '#E5E7EB', background: '#06182E' }, photo_enabled: true },
-      tech_future: { colors: { primary: '#071622', accent: '#00D9E9', sidebar: '#071622', text: '#D7F9FF', background: '#071622' }, photo_enabled: true },
-      cyber_security: { colors: { primary: '#050A07', accent: '#71FF4D', sidebar: '#050A07', text: '#D8FFD0', background: '#050A07' }, photo_enabled: true },
-      data_analyst: { colors: { primary: '#1E4F7A', accent: '#4AA3DF', sidebar: '#EAF5FB', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
-      creative_digital: { colors: { primary: '#1F2937', accent: '#FF7A59', sidebar: '#FFF3EE', text: '#374151', background: '#FFFFFF' }, photo_enabled: true },
-      no_photo_ats: { colors: { primary: '#111827', accent: '#4B5563', sidebar: '#FFFFFF', text: '#111827', background: '#FFFFFF' }, photo_enabled: false },
-      photo_elegant: { colors: { primary: '#102A43', accent: '#BF8813', sidebar: '#102A43', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
-      young_graduate: { colors: { primary: '#577263', accent: '#A9C2B3', sidebar: '#EEF5F0', text: '#34443B', background: '#FFFFFF' }, photo_enabled: true },
-      internship_ready: { colors: { primary: '#4B6B63', accent: '#A8C8BE', sidebar: '#EDF5F2', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
-      international_cv: { colors: { primary: '#1F4C7A', accent: '#64A4D8', sidebar: '#EEF6FC', text: '#334155', background: '#FFFFFF' }, photo_enabled: true },
-      qhse_professional: { colors: { primary: '#1F5A39', accent: '#6B9C79', sidebar: '#EAF4ED', text: '#2F4738', background: '#FFFFFF' }, photo_enabled: true },
-      business_manager: { colors: { primary: '#071A33', accent: '#BF8813', sidebar: '#071A33', text: '#E5E7EB', background: '#071A33' }, photo_enabled: true },
-      hospitality: { colors: { primary: '#7A4A2E', accent: '#C7A17A', sidebar: '#F7EFE7', text: '#4A3326', background: '#FFFDFC' }, photo_enabled: true },
-      academic_cv: { colors: { primary: '#123B6D', accent: '#3E6FA3', sidebar: '#EAF1F8', text: '#2F3B49', background: '#FFFFFF' }, photo_enabled: true },
-      freelancer: { colors: { primary: '#463D78', accent: '#7B6EC8', sidebar: '#F1EFFF', text: '#36304B', background: '#FFFFFF' }, photo_enabled: true },
-      executive_one_page: { colors: { primary: '#050505', accent: '#BF8813', sidebar: '#050505', text: '#F3F4F6', background: '#050505' }, photo_enabled: true },
-    };
-    return presets[key] || {};
+    const meta = getTemplateMeta('cv', key);
+    const photoDisabled = new Set(['cv_atlas', 'cv_academia', 'cv_qhse', 'cv_impact', 'cv_executive']);
+    return {
+      colors: meta.default_colors || DEFAULT_COLORS,
+      photo_enabled: !photoDisabled.has(meta.template_key),
+    } satisfies Partial<DesignOptions>;
   }
 
   async function changeTemplate(templateKey: string) {
@@ -591,7 +602,7 @@ export default function CareerStudioEditor() {
     const meta = templates.find(template => template.template_key === normalizedTemplateKey)
       || getTemplateMeta(docType, normalizedTemplateKey);
 
-    if (!meta.is_free && document?.template_key !== normalizedTemplateKey) {
+    if (!previewMode && !meta.is_free && document?.template_key !== normalizedTemplateKey) {
       try {
         const charge = await consumeCareerTokenAction(
           'spend_premium_template',
@@ -665,6 +676,7 @@ export default function CareerStudioEditor() {
   }
 
   async function requestAi(mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) {
+    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation Super-admin.'); return; }
     if (!document || aiLoading) return;
     setAiLoading(true);
     setAiSuggestion(null);
@@ -709,6 +721,7 @@ export default function CareerStudioEditor() {
   }
 
   async function personalizeWithAi() {
+    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation Super-admin.'); return; }
     if (!document || !personalizeText.trim() || personalizeLoading) return;
     setPersonalizeLoading(true);
     try {
@@ -781,6 +794,7 @@ export default function CareerStudioEditor() {
   }
 
   async function createAtsVersion() {
+    if (previewMode) { showToast('La création d’une copie est désactivée en prévisualisation.'); return; }
     if (!document) return;
     try {
       const now = new Date().toISOString();
@@ -814,6 +828,7 @@ export default function CareerStudioEditor() {
   }
 
   async function createLinkedLetter() {
+    if (previewMode) { showToast('La création d’une lettre associée est désactivée en prévisualisation.'); return; }
     if (!document || document.doc_type !== 'cv') return;
     try {
       const source = isDocumentNamed(document) ? document : { ...document, title: 'CV principal' };
@@ -828,6 +843,7 @@ export default function CareerStudioEditor() {
   }
 
   async function handlePdfDownload(alreadyNamed = false) {
+    if (previewMode) { showToast('Le téléchargement PDF est désactivé en prévisualisation afin de ne consommer aucun jeton.'); return; }
     if (!document) return;
     if (exportingPdf) return;
 
@@ -893,7 +909,7 @@ export default function CareerStudioEditor() {
       <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="flex h-[76px] items-center justify-between px-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/dashboard/career-studio')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <button onClick={() => navigate(withLearnerPreview('/dashboard/career-studio'))} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               <ArrowLeft className="h-4 w-4" /> Mes documents
             </button>
             <div>
@@ -912,7 +928,7 @@ export default function CareerStudioEditor() {
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
+              {previewMode ? 'Prévisualisation locale' : saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#bf8813]">{tokens} jeton(s)</div>
             <button onClick={() => setFullPreviewOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
@@ -936,6 +952,8 @@ export default function CareerStudioEditor() {
           </div>
         </div>
       </div>
+
+      {previewMode && <div className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Prévisualisation apprenant sécurisée : les changements restent uniquement dans cette page. Aucun document, jeton ou donnée apprenant n’est modifié.</div>}
 
       {isManualMode && (
         <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-[#bf8813]/30 bg-[#bf8813]/10 px-4 py-3 text-sm">

@@ -11,6 +11,7 @@ import {
   normalizeTemplateKey,
   calculateBasicScore,
   cacheCareerTemplates,
+  mergeCareerTemplateCatalog,
 } from './careerStudioData';
 
 import { edgeAuthHeaders, edgeGatewayHeaders } from './edgeAuth';
@@ -223,24 +224,13 @@ export async function fetchCareerTemplateCatalog(docType: CareerDocType): Promis
     const rows = await safeJson<Array<Record<string, unknown>>>(res);
     if (!res.ok || !Array.isArray(rows)) throw new Error('TEMPLATE_CATALOG_UNAVAILABLE');
 
-    const remoteByKey = new Map(rows.map(row => [String(row.template_key || ''), row]));
-    const merged = localTemplates.map(template => ({
-      ...template,
-      ...(remoteByKey.get(template.template_key) || {}),
-      is_free: remoteByKey.get(template.template_key)?.is_free ?? template.is_free,
-      is_ats_compatible: remoteByKey.get(template.template_key)?.is_ats_compatible ?? template.is_ats_compatible,
-      display_order: Number(remoteByKey.get(template.template_key)?.display_order ?? template.display_order),
-    }));
-
-    for (const row of rows) {
-      const key = String(row.template_key || '');
-      if (!key || merged.some(template => template.template_key === key)) continue;
-      merged.push(row as unknown as ReturnType<typeof getCareerTemplates>[number]);
-    }
-
-    const sorted = merged.sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0));
-    cacheCareerTemplates(sorted as any);
-    return sorted;
+    const catalog = mergeCareerTemplateCatalog(
+      docType,
+      rows as unknown as ReturnType<typeof getCareerTemplates>,
+      { authoritative: true },
+    );
+    cacheCareerTemplates(catalog, docType);
+    return catalog;
   } catch {
     return localTemplates;
   }
@@ -404,8 +394,12 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
       partner_link?: CareerSourceProfile['partner_link'];
     }>('career-studio-manage?action=list', { doc_type: docType });
 
-    const templates = data.templates?.length ? data.templates : publicTemplates;
-    if (templates.length) cacheCareerTemplates(templates as any);
+    const templates = mergeCareerTemplateCatalog(
+      docType,
+      data.templates ?? publicTemplates,
+      { authoritative: true },
+    );
+    cacheCareerTemplates(templates, docType);
     return {
       documents: data.documents || [],
       templates,

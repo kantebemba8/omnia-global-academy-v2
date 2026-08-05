@@ -51,9 +51,136 @@ async function safeRows(sb: any, table: string, select = "*") {
   }
 }
 
+const OFFICIAL_TEMPLATE_KEYS = new Set([
+  "cv_horizon",
+  "cv_sahara",
+  "cv_atlas",
+  "cv_kora",
+  "cv_nile",
+  "cv_executive",
+  "cv_baobab",
+  "cv_digital",
+  "cv_academia",
+  "cv_hospitality",
+  "cv_qhse",
+  "cv_impact",
+  "lm_horizon",
+  "lm_sahara",
+  "lm_atlas",
+  "lm_kora",
+  "lm_digital",
+  "lm_executive",
+]);
+
+const LEGACY_TEMPLATE_KEYS = new Set([
+  "academic",
+  "academic_cv",
+  "academic_lm",
+  "africa_gold",
+  "business_manager",
+  "classic",
+  "classic_lm",
+  "classic_pro",
+  "corporate_blue",
+  "creative",
+  "creative_digital",
+  "creative_lm",
+  "cyber_security",
+  "cyber_security_cv",
+  "data_analyst",
+  "data_analyst_cv",
+  "dynamic_lm",
+  "executive_one_page",
+  "freelancer",
+  "freelancer_portfolio",
+  "hospitality",
+  "hospitality_premium",
+  "international_cv",
+  "internship_ready",
+  "lm_academic",
+  "lm_administration",
+  "lm_africa_gold",
+  "lm_alternance",
+  "lm_business_manager",
+  "lm_classic_pro",
+  "lm_corporate_blue",
+  "lm_courte_premium",
+  "lm_creative_digital",
+  "lm_cyber_security",
+  "lm_data_analyst",
+  "lm_finance_banque",
+  "lm_freelancer",
+  "lm_hospitality",
+  "lm_hotellerie",
+  "lm_international",
+  "lm_internationale",
+  "lm_internship_ready",
+  "lm_minimal_luxe",
+  "lm_modern_student",
+  "lm_no_photo_ats",
+  "lm_photo_elegant",
+  "lm_premier_emploi",
+  "lm_pro_classique",
+  "lm_qhse",
+  "lm_qhse_rse",
+  "lm_spontanee",
+  "lm_stage_simple",
+  "lm_tech_data",
+  "lm_tech_future",
+  "lm_young_graduate",
+  "minimal_luxe",
+  "modern",
+  "modern_lm",
+  "modern_student",
+  "no_photo_ats",
+  "photo_elegant",
+  "professional",
+  "professional_lm",
+  "qhse",
+  "qhse_professional",
+  "simple",
+  "simple_lm",
+  "student",
+  "tech_future",
+  "young_graduate",
+]);
+
 function dateValue(value: unknown): number {
   const time = value ? new Date(String(value)).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
+}
+
+function visibleTemplates(rows: any[]) {
+  return (rows || []).filter((row: any) =>
+    ["official", "custom"].includes(String(row.catalog_status || ""))
+    && !LEGACY_TEMPLATE_KEYS.has(String(row.template_key || "").trim().toLowerCase())
+  );
+}
+
+function safeTemplatePatch(template: any, existing: any) {
+  const templateType = String(template?.template_type || existing?.template_type || "");
+  if (!["cv", "lm"].includes(templateType)) throw new Error("INVALID_TEMPLATE_TYPE");
+  return {
+    template_type: templateType,
+    name_fr: String(template?.name_fr || existing?.name_fr || template?.template_key || "Modèle").trim(),
+    description_fr: String(template?.description_fr ?? existing?.description_fr ?? "").trim(),
+    category: String(template?.category || existing?.category || "professional"),
+    is_free: template?.is_free !== false,
+    is_active: template?.is_active !== false,
+    is_ats_compatible: template?.is_ats_compatible !== false,
+    display_order: Math.max(1, Number(template?.display_order || existing?.display_order || 999)),
+    thumbnail_url: template?.thumbnail_url ?? existing?.thumbnail_url ?? null,
+    layout_config: template?.layout_config && typeof template.layout_config === "object"
+      ? template.layout_config
+      : (existing?.layout_config || {}),
+    default_colors: template?.default_colors && typeof template.default_colors === "object"
+      ? template.default_colors
+      : (existing?.default_colors || {}),
+    is_custom: existing?.catalog_status === "custom" || existing?.is_custom === true,
+    catalog_status: existing?.catalog_status === "official" ? "official" : "custom",
+    canonical_template_key: String(existing?.canonical_template_key || template?.template_key || ""),
+    updated_at: new Date().toISOString(),
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -234,6 +361,7 @@ Deno.serve(async (req: Request) => {
         safeRows(sb, "user_roles", "user_id,role"),
       ]);
 
+      const catalogTemplates = visibleTemplates(templates);
       const learnerIds = new Set(
         userRoles.filter((row: any) => row.role === "apprenant").map((row: any) => row.user_id),
       );
@@ -298,8 +426,8 @@ Deno.serve(async (req: Request) => {
         .map(([template_key, usage_count]) => ({
           template_key,
           usage_count,
-          name_fr: templates.find((t: any) => t.template_key === template_key)?.name_fr || template_key,
-          template_type: templates.find((t: any) => t.template_key === template_key)?.template_type || "",
+          name_fr: catalogTemplates.find((t: any) => t.template_key === template_key)?.name_fr || template_key,
+          template_type: catalogTemplates.find((t: any) => t.template_key === template_key)?.template_type || "",
         }))
         .sort((a, b) => b.usage_count - a.usage_count)
         .slice(0, 10);
@@ -321,9 +449,9 @@ Deno.serve(async (req: Request) => {
         token_sales_count: completedTokenOrders.length,
         token_revenue_xof: tokenRevenueXof,
         ai_actions: aiActions,
-        active_templates: templates.filter((row: any) => row.is_active).length,
-        active_cv_templates: templates.filter((row: any) => row.is_active && row.template_type === "cv").length,
-        active_lm_templates: templates.filter((row: any) => row.is_active && row.template_type === "lm").length,
+        active_templates: catalogTemplates.filter((row: any) => row.is_active).length,
+        active_cv_templates: catalogTemplates.filter((row: any) => row.is_active && row.template_type === "cv").length,
+        active_lm_templates: catalogTemplates.filter((row: any) => row.is_active && row.template_type === "lm").length,
         active_packs: 0,
         active_questions: questions.filter((row: any) => row.is_active).length,
         top_templates: topTemplates,
@@ -334,7 +462,7 @@ Deno.serve(async (req: Request) => {
         token_config: tokenConfig.sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0)),
         token_packs: [],
         ai_config: aiConfig.sort((a: any, b: any) => String(a.config_key).localeCompare(String(b.config_key))),
-        templates: templates.sort((a: any, b: any) => String(a.template_type).localeCompare(String(b.template_type)) || Number(a.display_order || 0) - Number(b.display_order || 0)),
+        templates: catalogTemplates.sort((a: any, b: any) => String(a.template_type).localeCompare(String(b.template_type)) || Number(a.display_order || 0) - Number(b.display_order || 0) || String(a.template_key).localeCompare(String(b.template_key))),
         questions: questions.sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at)),
         exports: enrichedExports.sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at)).slice(0, 500),
         transactions: learnerTransactions.sort((a: any, b: any) => dateValue(b.created_at) - dateValue(a.created_at)).slice(0, 500),
@@ -371,12 +499,37 @@ Deno.serve(async (req: Request) => {
 
     if (action === "save_template") {
       const template = body.template || {};
-      const { error } = await sb.from("career_templates").upsert(
-        { ...template, updated_at: new Date().toISOString() },
-        { onConflict: "template_key" },
-      );
+      const key = String(template.template_key || "").trim();
+      if (!key) return json({ error: "TEMPLATE_KEY_REQUIRED" }, 400);
+
+      const { data: existing, error: existingError } = await sb
+        .from("career_templates")
+        .select("*")
+        .eq("template_key", key)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (
+        !existing
+        || !["official", "custom"].includes(String(existing.catalog_status || ""))
+        || LEGACY_TEMPLATE_KEYS.has(key.toLowerCase())
+      ) {
+        return json({ error: "TEMPLATE_NOT_EDITABLE", message: "Ce modèle n'appartient pas au catalogue actif." }, 409);
+      }
+      if (existing.catalog_status === "official" && !OFFICIAL_TEMPLATE_KEYS.has(key.toLowerCase())) {
+        return json({ error: "TEMPLATE_NOT_EDITABLE", message: "Cette ancienne clé de modèle a été retirée." }, 409);
+      }
+
+      const patch = safeTemplatePatch(template, existing);
+      const { data, error } = await sb.from("career_templates")
+        .update(patch)
+        .eq("template_key", key)
+        .select("*")
+        .single();
       if (error) throw error;
-      return json({ success: true });
+
+      const { error: orderError } = await sb.rpc("career_normalize_template_order", { p_template_type: patch.template_type });
+      if (orderError) throw orderError;
+      return json({ success: true, template: data });
     }
 
     if (action === "question_create") {

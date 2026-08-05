@@ -1,5 +1,6 @@
 import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
+import { BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
 import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
 
 const SAMPLE_CV: DocData = {
@@ -35,7 +36,7 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
   return {
     colors: template.default_colors,
     font:'inter', font_size_body:9, font_size_title:11, line_spacing:1.5,
-    photo_enabled: template.template_key !== 'cv_atlas' && template.template_key !== 'cv_impact',
+    photo_enabled: BUILTIN_CV_LAYOUTS[template.template_key]?.photo !== false,
     photo_shape:'round', pages:1,
   };
 }
