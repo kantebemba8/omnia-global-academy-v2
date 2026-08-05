@@ -3,8 +3,8 @@ import { sanitizeRichText } from '../../lib/careerBuilderV2';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, BringToFront, Copy, Image as ImageIcon,
   Italic, Layers, Lock, Minus, Move, Plus, Redo2, RotateCcw, SendToBack, Square,
-  Trash2, Type, Underline, Undo2, Unlock, X, ZoomIn, ZoomOut, Circle, List,
-  UserCircle2, Briefcase, GraduationCap, Award, Languages, MapPin, Phone, Mail
+  Trash2, Type, Underline, Undo2, Unlock, X, ZoomIn, ZoomOut, Circle,
+  Briefcase, GraduationCap, Award, Languages, Mail
 } from 'lucide-react';
 
 export type ManualBlockType = 'text' | 'image' | 'shape' | 'line';
@@ -86,6 +86,8 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
   const [zoom, setZoom] = useState(0.72);
   const [history, setHistory] = useState<ManualLayout[]>([]);
   const [future, setFuture] = useState<ManualLayout[]>([]);
+  const [elementsPanelOpen, setElementsPanelOpen] = useState(true);
+  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(true);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const gesture = useRef<{ mode: 'drag' | 'resize'; id: string; startX: number; startY: number; original: ManualBlock } | null>(null);
   const wasOpen = useRef(false);
@@ -294,6 +296,8 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           <div><div className="text-sm font-semibold text-[#002050]">Éditeur manuel avancé</div><div className="max-w-[420px] truncate text-xs text-slate-500">{title}</div></div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setElementsPanelOpen(value => !value)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${elementsPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les éléments"><Plus className="h-4 w-4" /><span className="hidden lg:inline">Éléments</span></button>
+          <button onClick={() => setPropertiesPanelOpen(value => !value)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${propertiesPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les propriétés"><Layers className="h-4 w-4" /><span className="hidden lg:inline">Propriétés</span></button>
           <button onClick={undo} disabled={!history.length} className="rounded-lg border p-2 disabled:opacity-30" title="Annuler"><Undo2 className="h-4 w-4" /></button>
           <button onClick={redo} disabled={!future.length} className="rounded-lg border p-2 disabled:opacity-30" title="Rétablir"><Redo2 className="h-4 w-4" /></button>
           <button onClick={() => { setLayout(normalize(initialLayout)); onChange(normalize(initialLayout)); }} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><RotateCcw className="h-4 w-4" /> Réinitialiser</button>
@@ -302,7 +306,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
+        {elementsPanelOpen && <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
           <h3 className="mb-3 text-sm font-semibold text-[#002050]">Ajouter</h3>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => addPreset('title')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Type className="h-5 w-5" /> Titre</button>
@@ -329,9 +333,9 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
               </button>
             ))}
           </div>
-        </aside>
+        </aside>}
 
-        <main className="relative min-w-0 flex-1 overflow-auto bg-slate-200 p-8" onPointerMove={moveGesture} onPointerUp={endGesture}>
+        <main className="relative min-w-0 flex-1 overflow-auto bg-slate-200 p-4 sm:p-8" onPointerMove={moveGesture} onPointerUp={endGesture}>
           <div className="mb-4 flex items-center justify-center gap-2">
             <button onClick={() => setZoom(z => Math.max(.35, z-.1))} className="rounded-lg bg-white p-2 shadow"><ZoomOut className="h-4 w-4" /></button>
             <span className="w-16 text-center text-xs font-semibold">{Math.round(zoom*100)}%</span>
@@ -372,7 +376,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           </div>
         </main>
 
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+        {propertiesPanelOpen && <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
           {!selected ? <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">Sélectionnez un élément pour le modifier.</div> : (
             <div className="space-y-4">
               <div className="flex items-center justify-between"><h3 className="font-semibold text-[#002050]">Propriétés</h3><button onClick={() => patchBlock(selected.id,{locked:!selected.locked})} className="rounded-lg border p-2">{selected.locked?<Unlock className="h-4 w-4"/>:<Lock className="h-4 w-4"/>}</button></div>
@@ -401,7 +405,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
               <div className="grid grid-cols-2 gap-2"><button onClick={()=>duplicateBlock(selected.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm"><Copy className="h-4 w-4"/>Dupliquer</button><button onClick={()=>removeBlock(selected.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600"><Trash2 className="h-4 w-4"/>Supprimer</button><button onClick={()=>moveLayer(selected.id,'front')} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs"><BringToFront className="h-4 w-4"/>Devant</button><button onClick={()=>moveLayer(selected.id,'back')} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs"><SendToBack className="h-4 w-4"/>Derrière</button></div>
             </div>
           )}
-        </aside>
+        </aside>}
       </div>
     </div>
   );

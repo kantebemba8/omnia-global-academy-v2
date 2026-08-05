@@ -96,6 +96,28 @@ const LM_SECTIONS: Array<{ key: LmSectionKey; label: string; subtitle: string; i
   { key: 'variables', label: 'Ciblage', subtitle: 'Poste, ton et mots-clés', icon: Sparkles },
 ];
 
+const WORKSPACE_ITEMS: Array<{ key: Workspace; label: string; icon: any }> = [
+  { key: 'content', label: 'Contenu', icon: FileText },
+  { key: 'source', label: 'Sources', icon: Database },
+  { key: 'target', label: 'Poste', icon: Target },
+  { key: 'design', label: 'Design', icon: Palette },
+  { key: 'quality', label: 'Qualité', icon: ShieldCheck },
+  { key: 'versions', label: 'Versions', icon: History },
+  { key: 'ai', label: 'IA', icon: Sparkles },
+  { key: 'templates', label: 'Modèles', icon: Settings },
+];
+
+const WORKSPACE_TITLES: Record<Workspace, { title: string; description: string }> = {
+  content: { title: 'Contenu', description: 'Modifiez les informations affichées dans le document.' },
+  source: { title: 'Sources Omnia', description: 'Importez uniquement les données que vous souhaitez utiliser.' },
+  target: { title: 'Poste ciblé', description: 'Adaptez le document à une offre ou à une candidature.' },
+  design: { title: 'Design', description: 'Personnalisez la présentation sans casser le modèle.' },
+  quality: { title: 'Qualité', description: 'Contrôlez la lisibilité, le contenu et la compatibilité ATS.' },
+  versions: { title: 'Versions', description: 'Enregistrez et restaurez des étapes importantes.' },
+  ai: { title: 'Assistant IA', description: 'Demandez une suggestion puis décidez de l’appliquer.' },
+  templates: { title: 'Modèles', description: 'Changez de modèle sans perdre le contenu du document.' },
+};
+
 function uid(prefix = 'item') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -146,6 +168,11 @@ function PreviewFrame({ children, zoom, onZoomChange, width = 794, height = 1123
 
 function plain(value: unknown) {
   return String(value || '').replace(/[<>]/g, '');
+}
+
+function containsExampleContent(data: DocData | LmData) {
+  const serialized = JSON.stringify(data || {});
+  return /Votre nom complet|Titre professionnel visé|prenom\.nom@email\.com|XX XX|Nom de l’entreprise|Intitulé du poste|Remplacez|Décrivez|votre-portfolio\.com|linkedin\.com\/in\/votre-profil|\[[^\]]+\]/i.test(serialized);
 }
 
 function textBlock(content: string, x: number, y: number, width: number, height: number, style: Partial<ManualBlock['style']> = {}, zIndex = 2): ManualBlock {
@@ -344,12 +371,13 @@ function isCvSectionComplete(key: CvSectionKey, data: DocData) {
   return false;
 }
 function isLmSectionComplete(key: LmSectionKey, data: LmData) {
-  const map: Record<string, boolean> = {
-    sender: hasText(data.sender?.name) && hasText(data.sender?.email), recipient: hasText(data.recipient?.company), subject: hasText(data.subject),
-    intro: hasText(data.intro), motivation: hasText(data.motivation), skills: hasText(data.skills_paragraph), company: hasText(data.company_link),
-    closing: hasText(data.closing), signature: hasText(data.signature),
+  const map: Record<LmSectionKey, boolean> = {
+    sender: hasText(data.sender?.name) && hasText(data.sender?.email),
+    recipient: hasText(data.recipient?.company),
+    letter: hasText(data.intro) && hasText(data.motivation) && hasText(data.skills_paragraph) && hasText(data.closing),
+    variables: hasText(data.subject) && hasText(data.salutation) && hasText(data.signature),
   };
-  return Boolean(map[key]);
+  return map[key];
 }
 export default function CareerStudioEditor() {
   const navigate = useNavigate();
@@ -387,6 +415,8 @@ export default function CareerStudioEditor() {
   const [omniaAdvice, setOmniaAdvice] = useState('');
   const [omniaAdviceLoading, setOmniaAdviceLoading] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>('content');
+  const [toolPanelOpen, setToolPanelOpen] = useState(true);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [sourceProfile, setSourceProfile] = useState<CareerSourceProfile>({});
 
   const qualityReport = useMemo(() => {
@@ -571,22 +601,19 @@ export default function CareerStudioEditor() {
   }, [document?.doc_data, document?.design_options, document?.template_key, document?.title, dirty]);
 
   function updateCv(mutator: (data: DocData) => DocData) {
-    updateDocument(doc => ({ ...doc, doc_data: mutator(getCvData(doc)) }));
+    updateDocument(doc => {
+      const next = mutator(getCvData(doc));
+      return { ...doc, doc_data: { ...next, career_meta: { ...(next.career_meta || {}), example_content: false } } };
+    });
   }
 
   function updateLm(mutator: (data: LmData) => LmData) {
-    updateDocument(doc => ({ ...doc, doc_data: mutator(getLmData(doc)) }));
+    updateDocument(doc => {
+      const next = mutator(getLmData(doc));
+      return { ...doc, doc_data: { ...next, career_meta: { ...(next.career_meta || {}), example_content: false } } };
+    });
   }
 
-  function updateDesignColors(colors: typeof DEFAULT_COLORS) {
-    updateDocument(doc => ({
-      ...doc,
-      design_options: {
-        ...doc.design_options,
-        colors,
-      } as DesignOptions | LmDesign,
-    }));
-  }
 
   function templatePreset(key: string) {
     const meta = getTemplateMeta('cv', key);
@@ -897,167 +924,188 @@ export default function CareerStudioEditor() {
   const isCv = document.doc_type === 'cv';
   const cvData = isCv ? getCvData(document) : null;
   const lmData = !isCv ? getLmData(document) : null;
+  const isExampleContent = Boolean((document.doc_data as any)?.career_meta?.example_content) || containsExampleContent(document.doc_data);
+  const workspaceMeta = WORKSPACE_TITLES[workspace];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
       {toast && (
-        <div className="fixed right-5 top-5 z-50 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#002050] shadow-lg">
+        <div className="fixed right-5 top-5 z-[160] rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#002050] shadow-lg">
           {toast}
         </div>
       )}
 
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex h-[76px] items-center justify-between px-6">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate(withLearnerPreview('/dashboard/career-studio'))} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              <ArrowLeft className="h-4 w-4" /> Mes documents
+      <header className="relative z-40 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="flex min-h-[76px] items-center justify-between gap-4 px-4 lg:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(withLearnerPreview('/dashboard/career-studio'))}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              title="Mes documents"
+              aria-label="Retour à mes documents"
+            >
+              <ArrowLeft className="h-4 w-4" />
             </button>
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                Omnia Career <ChevronRight className="h-3 w-3" /> {isCv ? 'CV Builder' : 'Lettres de motivation'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Omnia Career <ChevronRight className="h-3 w-3" /> {isCv ? 'CV Builder' : 'Lettre de motivation'}
               </div>
               <input
                 value={document.title}
                 onChange={e => updateDocument(doc => ({ ...doc, title: e.target.value }))}
-                className="mt-1 w-[420px] border-0 bg-transparent text-2xl font-semibold text-[#002050] outline-none"
+                className="mt-0.5 w-full max-w-[520px] truncate border-0 bg-transparent text-lg font-semibold text-[#002050] outline-none sm:text-xl"
+                aria-label="Nom du document"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:flex">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
               {previewMode ? 'Prévisualisation locale' : saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
-            <div className="rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#bf8813]">{tokens} jeton(s)</div>
-            <button onClick={() => setFullPreviewOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <Eye className="h-4 w-4" /> Prévisualiser
+            <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
+            <button
+              type="button"
+              onClick={manualSave}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50"
+            >
+              <Save className="h-4 w-4" /><span className="hidden sm:inline">Enregistrer</span>
             </button>
-            <button onClick={() => setPersonalizeOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <Sparkles className="h-4 w-4" /> Personnaliser avec IA
+            <button
+              type="button"
+              onClick={handlePdfDownload}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Download className="h-4 w-4" /><span className="hidden sm:inline">{exportingPdf ? 'Préparation...' : 'PDF'}</span>
             </button>
-            {isCv && <button onClick={createLinkedLetter} className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/30 bg-[#bf8813]/10 px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-[#bf8813]/15">
-              <Mail className="h-4 w-4 text-[#bf8813]" /> Créer la LM associée
-            </button>}
-            <button onClick={() => setManualEditorOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <Edit3 className="h-4 w-4" /> Éditeur libre
-            </button>
-            <button onClick={manualSave} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <Save className="h-4 w-4" /> Enregistrer
-            </button>
-            <button onClick={handlePdfDownload} disabled={exportingPdf} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
-              <Download className="h-4 w-4" /> {exportingPdf ? 'Préparation...' : 'Télécharger PDF'}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setActionsOpen(value => !value)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#002050] hover:bg-slate-50"
+                aria-expanded={actionsOpen}
+                aria-label="Ouvrir les actions du document"
+                title="Plus d’actions"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+              {actionsOpen && (
+                <div className="absolute right-0 top-12 z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+                  <button type="button" onClick={() => { setFullPreviewOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4 text-[#002050]" />Prévisualiser en plein écran</button>
+                  <button type="button" onClick={() => { setPersonalizeOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#bf8813]" />Personnaliser à partir d’un texte</button>
+                  <button type="button" onClick={() => { setWorkspace('ai'); setToolPanelOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#002050]" />Ouvrir l’assistant IA</button>
+                  {isCv && <button type="button" onClick={() => { createLinkedLetter(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail className="h-4 w-4 text-[#bf8813]" />Créer la LM associée</button>}
+                  <button type="button" onClick={() => { setManualEditorOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Ouvrir l’éditeur libre</button>
+                  <div className="my-1 border-t border-slate-100" />
+                  <button type="button" onClick={() => { resetDemoData(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Réinitialiser avec l’exemple</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {previewMode && <div className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Prévisualisation apprenant sécurisée : les changements restent uniquement dans cette page. Aucun document, jeton ou donnée apprenant n’est modifié.</div>}
+      {previewMode && <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-900">Prévisualisation apprenant sécurisée : les changements restent locaux et aucun jeton n’est consommé.</div>}
 
       {isManualMode && (
-        <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-[#bf8813]/30 bg-[#bf8813]/10 px-4 py-3 text-sm">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#bf8813]/30 bg-[#bf8813]/10 px-5 py-2.5 text-sm">
           <span className="font-semibold text-[#002050]">Mode édition libre actif : le PDF utilisera votre mise en page manuelle.</span>
-          <div className="flex gap-2"><button onClick={() => setManualEditorOpen(true)} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Continuer l’édition</button><button onClick={switchToTemplateMode} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold">Revenir au modèle</button></div>
+          <div className="flex gap-2"><button type="button" onClick={() => setManualEditorOpen(true)} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Continuer</button><button type="button" onClick={switchToTemplateMode} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold">Revenir au modèle</button></div>
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-76px)] grid-cols-[300px_minmax(520px,1fr)_390px] gap-5 p-5">
-        <aside className={cardClass('h-[calc(100vh-116px)] overflow-hidden p-4')}>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-[#002050]">{isCv ? 'Sections du CV' : 'Structure de la lettre'}</h2>
-              <p className="mt-1 text-xs text-slate-500">Cliquez sur une section pour modifier.</p>
-            </div>
-            <button onClick={resetDemoData} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Réinitialiser</button>
-          </div>
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <nav className="z-20 flex w-[76px] shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-slate-200 bg-white px-2 py-3" aria-label="Outils du Career Studio">
+          {WORKSPACE_ITEMS.map(item => {
+            const Icon = item.icon;
+            const active = workspace === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => { setWorkspace(item.key); setToolPanelOpen(true); }}
+                className={`flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold transition ${active ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-[#002050]'}`}
+                aria-pressed={active}
+                title={item.label}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+          {!toolPanelOpen && (
+            <button type="button" onClick={() => setToolPanelOpen(true)} className="mt-auto flex w-full flex-col items-center gap-1 rounded-xl border border-slate-200 px-1 py-2 text-[10px] font-bold text-[#002050] hover:bg-slate-50" title="Ouvrir le panneau">
+              <ChevronRight className="h-4 w-4" /><span>Panneau</span>
+            </button>
+          )}
+        </nav>
 
-          <div className="space-y-2">
-            {(isCv ? CV_SECTIONS : LM_SECTIONS).map(section => {
-              const Icon = section.icon;
-              const active = isCv ? activeCvSection === section.key : activeLmSection === section.key;
-              return (
-                <button
-                  key={section.key}
-                  onClick={() => (isCv ? setActiveCvSection(section.key as CvSectionKey) : setActiveLmSection(section.key as LmSectionKey))}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
-                >
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? 'bg-[#002050] text-white' : 'bg-slate-100 text-[#002050]'}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-[#002050]">{section.label}</div>
-                    <div className="truncate text-xs text-slate-500">{section.subtitle}</div>
-                  </div>
-                  {(isCv ? isCvSectionComplete(section.key as CvSectionKey, cvData as DocData) : isLmSectionComplete(section.key as LmSectionKey, lmData as LmData))
-                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    : <span className="h-4 w-4 rounded-full border border-slate-300" />}
-                </button>
-              );
-            })}
-          </div>
+        {toolPanelOpen && <button type="button" aria-label="Fermer le panneau" onClick={() => setToolPanelOpen(false)} className="absolute inset-0 left-[76px] z-20 bg-slate-950/20 md:hidden" />}
 
-          <div className="mt-5 rounded-2xl border border-[#bf8813]/30 bg-[#bf8813]/10 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#002050]"><Sparkles className="h-4 w-4 text-[#bf8813]" />Conseil Omnia</div>
-            <p className="mt-2 text-xs leading-5 text-slate-600">
-              {omniaAdviceLoading ? 'Génération du conseil IA…' : (omniaAdvice || 'Conseil IA indisponible pour le moment.')}
-            </p>
-          </div>
-        </aside>
-
-        <main className="min-w-0">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-[#002050]">{isCv ? 'CV Builder' : 'Éditeur de lettre'}</h1>
-              <p className="mt-1 text-sm text-slate-500">Aperçu en direct avec sauvegarde automatique.</p>
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              <Eye className="h-4 w-4 text-[#002050]" /> Aperçu en direct
-            </div>
-          </div>
-
-          <div className={cardClass('p-4')}>
-            <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom} width={previewMetrics.width} height={previewMetrics.height}>
-              <div ref={printRef} data-career-print-source="true">
-                {isManualMode && manualLayout ? (
-                  <ManualDocumentCanvas layout={manualLayout} />
-                ) : (
-                  <CareerDocumentSurface design={document.design_options} title={document.title}>
-                    {isCv ? (
-                      <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
-                    ) : (
-                      <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
-                    )}
-                  </CareerDocumentSurface>
-                )}
+        {toolPanelOpen && (
+          <aside className="absolute inset-y-0 left-[76px] z-30 flex w-[min(380px,calc(100vw-76px))] flex-col border-r border-slate-200 bg-[#F8FAFC] shadow-xl md:static md:z-auto md:w-[380px] md:shadow-none">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[#002050]">{workspaceMeta.title}</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{workspaceMeta.description}</p>
               </div>
-            </PreviewFrame>
+              <button type="button" onClick={() => setToolPanelOpen(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fermer le panneau"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} onCvSectionChange={setActiveCvSection} onLmSectionChange={setActiveLmSection} updateCv={updateCv} updateLm={updateLm} score={score} isExampleContent={isExampleContent} />}
+              {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: { ...(data as any), career_meta: { ...((data as any).career_meta || {}), example_content: false } } }))} />}
+              {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
+              {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
+              {workspace === 'quality' && qualityReport && <CareerQualityPanel report={qualityReport} onCreateAtsVersion={createAtsVersion} />}
+              {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
+              {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loading={aiLoading} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
+              {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
+            </div>
+          </aside>
+        )}
+
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100/70 p-3 sm:p-5">
+          <div className="mx-auto max-w-[1180px]">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{selectedTemplate?.name_fr || 'Modèle sélectionné'}</span>
+                  <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">Qualité {score}%</span>
+                </div>
+                <h1 className="mt-2 text-xl font-semibold text-[#002050]">Aperçu du document</h1>
+              </div>
+              {!toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}
+            </div>
+
+            {isExampleContent && (
+              <div className="mb-3 rounded-2xl border border-[#bf8813]/30 bg-[#fff8e8] px-4 py-3 text-sm text-slate-700">
+                <strong className="text-[#002050]">Contenu d’exemple prêt à modifier.</strong> Remplacez les informations génériques par vos données réelles avant d’enregistrer ou d’exporter le document.
+              </div>
+            )}
+
+            <div className={cardClass('p-3 sm:p-4')}>
+              <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom} width={previewMetrics.width} height={previewMetrics.height}>
+                <div ref={printRef} data-career-print-source="true">
+                  {isManualMode && manualLayout ? (
+                    <ManualDocumentCanvas layout={manualLayout} />
+                  ) : (
+                    <CareerDocumentSurface design={document.design_options} title={document.title}>
+                      {isCv ? (
+                        <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
+                      ) : (
+                        <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                      )}
+                    </CareerDocumentSurface>
+                  )}
+                </div>
+              </PreviewFrame>
+            </div>
           </div>
         </main>
-
-        <aside className="h-[calc(100vh-116px)] overflow-y-auto pr-1">
-          <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-            <div className="grid grid-cols-4 gap-1">
-              {([
-                ['content','Contenu',FileText],['source','Sources',Database],['target','Poste',Target],['design','Design',Palette],
-                ['quality','Qualité',ShieldCheck],['versions','Versions',History],['ai','IA',Sparkles],['templates','Modèles',Settings],
-              ] as Array<[Workspace,string,any]>).map(([value,label,Icon]) => (
-                <button key={value} type="button" onClick={() => setWorkspace(value)} className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition ${workspace === value ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`} aria-pressed={workspace === value}>
-                  <Icon className="h-4 w-4" />{label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} updateCv={updateCv} updateLm={updateLm} score={score} />}
-          {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: data }))} />}
-          {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
-          {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
-          {workspace === 'quality' && qualityReport && <CareerQualityPanel report={qualityReport} onCreateAtsVersion={createAtsVersion} />}
-          {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
-          {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loading={aiLoading} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
-          {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
-        </aside>
       </div>
 
       {manualLayout && (
@@ -1285,44 +1333,75 @@ function EditorPanel({
   lmData,
   activeCvSection,
   activeLmSection,
+  onCvSectionChange,
+  onLmSectionChange,
   updateCv,
   updateLm,
   score,
+  isExampleContent,
 }: {
   isCv: boolean;
   cvData: DocData | null;
   lmData: LmData | null;
   activeCvSection: CvSectionKey;
   activeLmSection: LmSectionKey;
+  onCvSectionChange: (section: CvSectionKey) => void;
+  onLmSectionChange: (section: LmSectionKey) => void;
   updateCv: (mutator: (data: DocData) => DocData) => void;
   updateLm: (mutator: (data: LmData) => LmData) => void;
   score: number;
+  isExampleContent: boolean;
 }) {
-  if (isCv && cvData) {
-    return (
-      <div className={cardClass('p-4')}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-[#002050]">Modifier la section</h3>
+  const sections = isCv ? CV_SECTIONS : LM_SECTIONS;
+  const activeSection = isCv ? activeCvSection : activeLmSection;
+  const currentData = isCv ? cvData : lmData;
+
+  return (
+    <div className="space-y-3">
+      <div className={cardClass('p-3')}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-[#002050]">Structure du document</div>
+            <div className="mt-1 text-xs text-slate-500">Ouvrez une section, modifiez-la puis passez à la suivante.</div>
+          </div>
           <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">{score}%</span>
         </div>
-        <CvSectionEditor active={activeCvSection} data={cvData} update={updateCv} />
-      </div>
-    );
-  }
-
-  if (!isCv && lmData) {
-    return (
-      <div className={cardClass('p-4')}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-[#002050]">Modifier la lettre</h3>
-          <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">{score}%</span>
+        {isExampleContent && <div className="mt-3 rounded-xl border border-[#bf8813]/30 bg-[#fff8e8] px-3 py-2 text-xs leading-5 text-slate-600">Les textes affichés sont des exemples. La première modification marque le document comme personnalisé.</div>}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {sections.map(section => {
+            const Icon = section.icon;
+            const active = activeSection === section.key;
+            const complete = currentData
+              ? isCv
+                ? isCvSectionComplete(section.key as CvSectionKey, currentData as DocData)
+                : isLmSectionComplete(section.key as LmSectionKey, currentData as LmData)
+              : false;
+            return (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => isCv ? onCvSectionChange(section.key as CvSectionKey) : onLmSectionChange(section.key as LmSectionKey)}
+                className={`flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition ${active ? 'border-[#002050] bg-[#002050]/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[#002050]' : 'text-slate-400'}`} />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{section.label}</span>
+                {complete ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" /> : <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-slate-300" />}
+              </button>
+            );
+          })}
         </div>
-        <LmSectionEditor active={activeLmSection} data={lmData} update={updateLm} />
       </div>
-    );
-  }
 
-  return null;
+      <div className={cardClass('p-4')}>
+        <div className="mb-4">
+          <h3 className="text-base font-semibold text-[#002050]">{sections.find(section => section.key === activeSection)?.label || 'Modifier la section'}</h3>
+          <p className="mt-1 text-xs text-slate-500">{sections.find(section => section.key === activeSection)?.subtitle}</p>
+        </div>
+        {isCv && cvData ? <CvSectionEditor active={activeCvSection} data={cvData} update={updateCv} /> : null}
+        {!isCv && lmData ? <LmSectionEditor active={activeLmSection} data={lmData} update={updateLm} /> : null}
+      </div>
+    </div>
+  );
 }
 
 function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data: DocData; update: (mutator: (data: DocData) => DocData) => void }) {

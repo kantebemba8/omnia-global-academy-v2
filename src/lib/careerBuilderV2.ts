@@ -1,7 +1,7 @@
 import type { DocData, DesignOptions } from '../components/career/CvTemplates';
 import type { LmData, LmDesign } from '../components/career/LmTemplates';
 import type { CareerDocType, CareerDocumentFull } from './careerStudioData';
-import { getPairedLmTemplateKey } from './careerStudioData';
+import { createDefaultData, getPairedLmTemplateKey } from './careerStudioData';
 
 export type CareerEvidenceStatus = 'verified' | 'declared' | 'pending' | 'missing';
 export type CareerEvidenceType = 'experience' | 'project' | 'formation' | 'certificate' | 'badge' | 'recommendation' | 'document';
@@ -495,31 +495,48 @@ export function createLinkedLetterFromCv(document: CareerDocumentFull): CareerDo
   const cv = document.doc_data as DocData;
   const meta = getCareerMeta(cv, 'cv');
   const now = new Date().toISOString();
+  const defaults = createDefaultData('lm') as LmData;
+  const firstExperience = cv.experiences?.find(item => item.position || item.company || item.description);
+  const highlightedSkills = (cv.skills || []).map(item => item.name).filter(Boolean).slice(0, 3);
+  const targetJob = meta.target.job_title || document.target_job || '[intitulé du poste]';
+  const targetCompany = meta.target.company || '[nom de l’entreprise]';
+  const profileTitle = cv.title && !/^titre professionnel/i.test(cv.title) ? cv.title : '[votre métier ou spécialité]';
+  const experienceProof = firstExperience?.description?.trim()
+    || 'décrivez ici une expérience, une mission ou un projet réel démontrant votre capacité à réussir dans ce poste';
+  const skillText = highlightedSkills.length
+    ? highlightedSkills.join(', ')
+    : '[compétence 1], [compétence 2] et [compétence 3]';
+
   const lmData: LmData = {
+    ...defaults,
     sender: {
-      name: cv.name || '',
-      address: cv.contact?.location || '',
-      phone: cv.contact?.phone || '',
-      email: cv.contact?.email || '',
-      city: cv.contact?.location || '',
+      ...defaults.sender,
+      name: cv.name || defaults.sender.name,
+      address: cv.contact?.location || defaults.sender.address,
+      phone: cv.contact?.phone || defaults.sender.phone,
+      email: cv.contact?.email || defaults.sender.email,
+      city: cv.contact?.location || defaults.sender.city,
       date: now.slice(0, 10),
     },
     recipient: {
-      name: meta.target.recruiter_name || '',
-      company: meta.target.company || '',
-      address: meta.target.location || '',
+      name: meta.target.recruiter_name || defaults.recipient.name,
+      company: meta.target.company || defaults.recipient.company,
+      address: meta.target.location || defaults.recipient.address,
     },
-    subject: meta.target.job_title ? `Candidature au poste de ${meta.target.job_title}` : 'Candidature',
-    salutation: meta.target.recruiter_name ? `Madame, Monsieur ${meta.target.recruiter_name},` : 'Madame, Monsieur,',
-    intro: '',
-    motivation: '',
-    skills_paragraph: '',
-    company_link: '',
-    availability: '',
-    closing: '',
-    signature: cv.name || '',
+    subject: `Candidature au poste de ${targetJob}`,
+    salutation: meta.target.recruiter_name
+      ? `Madame, Monsieur ${meta.target.recruiter_name},`
+      : defaults.salutation,
+    intro: `Je vous adresse ma candidature au poste de ${targetJob}. Mon parcours en tant que ${profileTitle} et mon intérêt pour ce domaine correspondent aux principales attentes de cette opportunité.`,
+    motivation: `Je souhaite rejoindre ${targetCompany} pour contribuer à ses projets et évoluer dans un environnement exigeant. Remplacez ce passage par une raison précise liée à l’entreprise, à ses activités ou à la mission proposée.`,
+    skills_paragraph: `Mon profil s’appuie notamment sur ${skillText}. Exemple à personnaliser avec des faits vérifiables : ${experienceProof}.`,
+    company_link: `Les missions proposées par ${targetCompany}, notamment [mission ou priorité], rejoignent mon projet professionnel et les responsabilités que je souhaite assumer.`,
+    availability: defaults.availability,
+    closing: defaults.closing,
+    signature: cv.name || defaults.signature,
     career_meta: {
       ...createDefaultCareerMeta('lm'),
+      example_content: true,
       target: { ...meta.target },
       evidence: meta.evidence.map(item => ({ ...item })),
       source_cv_id: document.id,
