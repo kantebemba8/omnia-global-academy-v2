@@ -29,7 +29,8 @@ const SECTIONS = [
   { title: 'Diagnostic technique', body: "Des rapports d'erreur minimaux peuvent être transmis pour corriger les incidents. Les mots de passe, jetons de session, contenus saisis, enregistrements audio/vidéo et paramètres d'URL sont exclus ou masqués autant que possible." },
   { title: 'Communauté, signalement et blocage', body: "Les publications et réponses de la communauté peuvent être signalées pour modération. Vous pouvez également bloquer un utilisateur afin de masquer ses contenus communautaires, puis le débloquer depuis les paramètres de sécurité." },
   { title: 'Sécurité et conservation', body: "Les mots de passe sont hachés, les sessions mobiles sont stockées dans le Keychain iOS ou un stockage protégé par Android Keystore, et les communications utilisent HTTPS. Les durées dépendent du service et des obligations légales applicables." },
-  { title: 'Suppression du compte', body: "La suppression révoque immédiatement les sessions et efface ou anonymise les données personnelles non soumises à une obligation de conservation. Les factures, paiements, preuves antifraude et journaux réglementaires indispensables peuvent être conservés sous un identifiant pseudonymisé." },
+  { title: 'Suspension volontaire', body: "Vous pouvez suspendre temporairement votre compte depuis Mon profil. Toutes les sessions sont alors révoquées et le profil public devient indisponible, sans suppression des données. La réactivation autonome exige une nouvelle vérification du mot de passe et n’est possible que pour une suspension demandée par le titulaire." },
+  { title: 'Suppression du compte', body: "La suppression révoque immédiatement les sessions et efface ou anonymise les données personnelles non soumises à une obligation de conservation. Les factures, paiements, preuves antifraude et journaux réglementaires indispensables peuvent être conservés sous un identifiant pseudonymisé. Le questionnaire facultatif d’amélioration est conservé séparément sans coordonnées directes et n’est pas affiché dans les journaux administratifs." },
   { title: 'Cookies et stockage local', body: "Le web utilise uniquement les mécanismes techniques nécessaires au service et à la session. L'application mobile utilise un stockage local sécurisé et des caches pédagogiques chiffrés pour la résilience hors connexion." },
 ];
 
@@ -61,7 +62,7 @@ export function Confidentialite() {
               Politique de confidentialité
             </h1>
             <p className="mt-3 text-sm" style={{ color: '#6B7280' }}>
-              Dernière mise à jour : 2 août 2026
+              Dernière mise à jour : 5 août 2026
             </p>
           </div>
         </div>

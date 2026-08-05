@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, status, email, full_name")
+      .select("id, status, email, full_name, suspension_source, self_suspension_until")
       .eq("phone_number", phoneNumber)
       .maybeSingle();
     if (userError) throw userError;
@@ -139,6 +139,19 @@ Deno.serve(async (req: Request) => {
         not_found: true,
         message: "Aucun compte trouvé. Souhaitez-vous vous inscrire ?",
       }, 404);
+    }
+
+    if (user.status === "suspendu") {
+      const selfSuspended = user.suspension_source === "self";
+      return json({
+        success: false,
+        error: selfSuspended ? "ACCOUNT_SELF_SUSPENDED" : "ACCOUNT_SUSPENDED",
+        can_reactivate: selfSuspended,
+        suspended_until: selfSuspended ? user.self_suspension_until || null : null,
+        message: selfSuspended
+          ? "Ce compte est suspendu volontairement. Utilisez la connexion par mot de passe pour le réactiver en toute sécurité."
+          : "Ce compte a été suspendu par l’équipe Omnia. Contactez le support.",
+      }, 403);
     }
 
     if (user.status !== "actif") {

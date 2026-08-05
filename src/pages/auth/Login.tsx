@@ -10,6 +10,12 @@ type LoginResponse = {
   success: boolean;
   message?: string;
   needs_validation?: boolean;
+  error?: string;
+  can_reactivate?: boolean;
+  suspended_at?: string | null;
+  suspended_until?: string | null;
+  reason_code?: string | null;
+  reactivated?: boolean;
   demo_expired?: boolean;
   not_found?: boolean;
   is_demo?: boolean;
@@ -28,6 +34,8 @@ type LoginResponse = {
     force_password_change?: boolean;
   };
 };
+
+type ReactivationState = { mode: 'email' | 'phone'; message: string; suspendedUntil: string | null } | null;
 
 const inputCls =
   'w-full px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#002050]/20 focus:border-[#002050] transition-colors';
@@ -67,11 +75,14 @@ export function Login() {
   const [error, setError] = useState('');
   const [demoExpired, setDemoExpired] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [reactivation, setReactivation] = useState<ReactivationState>(null);
+  const accountWasSuspended = new URLSearchParams(location.search).get('compte') === 'suspendu';
 
   const clearErrors = () => {
     setError('');
     setDemoExpired(false);
     setNotFound(false);
+    setReactivation(null);
   };
 
   const completeLogin = (data: LoginResponse) => {
@@ -105,6 +116,15 @@ export function Login() {
   };
 
   const handleLoginFailure = (data: LoginResponse, phoneMode = false) => {
+    if (data.can_reactivate && data.error === 'ACCOUNT_SELF_SUSPENDED') {
+      setReactivation({
+        mode: phoneMode ? 'phone' : 'email',
+        message: data.message || 'Ce compte est suspendu volontairement.',
+        suspendedUntil: data.suspended_until || null,
+      });
+      setError('');
+      return;
+    }
     if (data.demo_expired) {
       setDemoExpired(true);
       setError('');
@@ -136,6 +156,21 @@ export function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const reactivateAndLogin = async () => {
+    if (!reactivation) return;
+    setLoading(true); setError('');
+    try {
+      const body = reactivation.mode === 'phone'
+        ? { phone_number: getPrefix(country) + phoneLocal.replace(/^0+/, ''), password: phonePassword, reactivate_account: true }
+        : { email: email.trim(), password, reactivate_account: true };
+      const data = await authFetch<LoginResponse>('auth-login', body);
+      if (data.success) completeLogin(data);
+      else handleLoginFailure(data, reactivation.mode === 'phone');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Réactivation impossible.');
+    } finally { setLoading(false); }
   };
 
   const [phonePassword, setPhonePassword] = useState('');
@@ -183,6 +218,26 @@ export function Login() {
           Numéro de téléphone
         </button>
       </div>
+
+      {accountWasSuspended && !reactivation && (
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          Votre compte est maintenant suspendu et toutes vos sessions ont été fermées. Pour le réactiver, reconnectez-vous avec votre mot de passe puis confirmez la réactivation.
+        </div>
+      )}
+
+      {reactivation && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 flex-none text-amber-700" />
+            <div className="flex-1">
+              <p className="font-semibold">Compte suspendu volontairement</p>
+              <p className="mt-1 leading-6">{reactivation.message}</p>
+              {reactivation.suspendedUntil && <p className="mt-1 text-xs text-amber-800">Retour prévu : {new Date(reactivation.suspendedUntil).toLocaleDateString('fr-FR')}</p>}
+              <button type="button" disabled={loading} onClick={() => void reactivateAndLogin()} className="mt-3 rounded-lg bg-[#002050] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{loading ? 'Réactivation...' : 'Réactiver et me connecter'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Demo expired banner */}
       {demoExpired && (

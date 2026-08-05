@@ -14,6 +14,27 @@ const ALLOWED_AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const PROFILE_VISIBILITIES = new Set(["public", "members", "private"]);
 const URL_FIELDS = new Set(["website_url", "linkedin_url", "portfolio_url", "github_url"]);
 
+const SUSPENSION_REASON_LABELS: Record<string, string> = {
+  pause: "Je fais une pause",
+  too_many_notifications: "Je reçois trop de notifications",
+  low_usage: "Je n’utilise pas suffisamment la plateforme",
+  technical_issue: "Je rencontre un problème technique",
+  security_break: "Je souhaite protéger temporairement mon compte",
+  missing_features: "Je ne trouve pas les fonctionnalités recherchées",
+  other: "Autre",
+};
+
+const DELETION_REASON_LABELS: Record<string, string> = {
+  no_longer_use: "Je n’utilise plus la plateforme",
+  duplicate_account: "J’ai créé un autre compte",
+  privacy_request: "Je souhaite supprimer mes données",
+  technical_issues: "Je rencontre trop de problèmes techniques",
+  missing_content: "Je ne trouve pas les formations ou services recherchés",
+  communications: "Je ne souhaite plus recevoir de communications",
+  dissatisfied: "Je suis insatisfait de mon expérience",
+  other: "Autre",
+};
+
 const USER_FIELDS = [
   "full_name",
   "email",
@@ -140,6 +161,54 @@ function cleanText(value: unknown, maxLength: number): string | null {
 function cleanArray(value: unknown, maxItems: number, maxLength: number): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map(item => String(item).trim().slice(0, maxLength)).filter(Boolean))].slice(0, maxItems);
+}
+
+function redactFeedbackText(value: unknown, maxLength: number): string | null {
+  const cleaned = cleanText(value, maxLength);
+  if (!cleaned) return null;
+  return cleaned
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[adresse masquée]")
+    .replace(/(?:\+?\d[\d .()/-]{7,}\d)/g, "[numéro masqué]")
+    .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]{10,}){0,2}\b/g, "[secret masqué]");
+}
+
+function cleanFeedback(value: unknown) {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    improvement_feedback: redactFeedbackText(input.improvement_feedback, 1200),
+    missing_feature: redactFeedbackText(input.missing_feature, 600),
+    return_condition: redactFeedbackText(input.return_condition, 600),
+  };
+}
+
+function hasFeedback(value: ReturnType<typeof cleanFeedback>) {
+  return Boolean(value.improvement_feedback || value.missing_feature || value.return_condition);
+}
+
+async function saveExitFeedback(
+  sb: DbClient,
+  accountReference: string,
+  action: "suspension" | "deletion",
+  reasonCode: string,
+  feedback: ReturnType<typeof cleanFeedback>,
+) {
+  if (!hasFeedback(feedback)) return null;
+  try {
+    const { data, error } = await sb.from("account_exit_feedback").upsert({
+      account_reference: accountReference,
+      action,
+      reason_code: reasonCode,
+      ...feedback,
+    }, { onConflict: "account_reference,action" }).select("id").single();
+    if (error) {
+      console.error("account_exit_feedback upsert failed:", error.message);
+      return null;
+    }
+    return data?.id ? String(data.id) : null;
+  } catch (error) {
+    console.error("account_exit_feedback failed:", error);
+    return null;
+  }
 }
 
 function validHttpUrl(value: string | null) {
@@ -393,6 +462,9 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
   }
 
   const user = bundle.user as Record<string, unknown>;
+  if (String(user.status || "") === "suspendu" && !viewerIsAdmin) {
+    return json({ error: "PROFILE_SUSPENDED", message: "Ce profil est temporairement indisponible." }, 404);
+  }
   const response = {
     id: user.id,
     display_name: profile.display_name || user.full_name || "Membre Omnia",
@@ -567,10 +639,81 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "suspend_account") {
+      const currentPassword = typeof body.current_password === "string" ? body.current_password : "";
+      const confirmation = typeof body.confirmation === "string" ? body.confirmation.trim() : "";
+      const reasonCode = typeof body.reason_code === "string" ? body.reason_code.trim() : "";
+      const source = body.source === "web" ? "web" : "app";
+      const feedback = cleanFeedback(body.feedback);
+      const suspendedUntilText = typeof body.suspended_until === "string" ? body.suspended_until.trim() : "";
+      const suspendedUntil = suspendedUntilText ? new Date(suspendedUntilText) : null;
+
+      if (!currentPassword || confirmation !== "SUSPENDRE") {
+        return json({ error: "SUSPENSION_CONFIRMATION_REQUIRED", message: "Confirmation de suspension invalide." }, 400);
+      }
+      if (!Object.hasOwn(SUSPENSION_REASON_LABELS, reasonCode)) {
+        return json({ error: "INVALID_SUSPENSION_REASON", message: "Choisissez un motif de suspension valide." }, 400);
+      }
+      if (suspendedUntil && (Number.isNaN(suspendedUntil.getTime()) || suspendedUntil <= new Date() || suspendedUntil.getTime() > Date.now() + 366 * 24 * 60 * 60 * 1000)) {
+        return json({ error: "INVALID_SUSPENSION_UNTIL", message: "La date de retour prévue doit être future et située dans les 12 prochains mois." }, 400);
+      }
+
+      const { data: account, error: accountError } = await sb.from("users")
+        .select("id,email,password_hash,status,suspension_source")
+        .eq("id", userId)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!account || account.status === "supprime") {
+        return json({ error: "ACCOUNT_UNAVAILABLE", message: "Ce compte est supprimé ou inaccessible." }, 410);
+      }
+      if (String(account.email || "").toLowerCase() === "test@omniaglobalacademy.com") {
+        return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être suspendu." }, 403);
+      }
+
+      const passwordValid = await bcrypt.compare(currentPassword, String(account.password_hash || ""));
+      if (!passwordValid) return json({ error: "INVALID_PASSWORD", message: "Mot de passe actuel incorrect." }, 403);
+
+      const { data: suspension, error: suspensionError } = await sb.rpc("omnia_suspend_user_account", {
+        p_user_id: userId,
+        p_reason_code: reasonCode,
+        p_suspended_until: suspendedUntil ? suspendedUntil.toISOString() : null,
+        p_source: source,
+      });
+      if (suspensionError) {
+        const message = String(suspensionError.message || "");
+        if (message.includes("LAST_SUPER_ADMIN_PROTECTED")) {
+          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le dernier Super-admin actif ne peut pas suspendre son compte." }, 409);
+        }
+        if (message.includes("DEMO_ACCOUNT_PROTECTED")) {
+          return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être suspendu." }, 403);
+        }
+        if (message.includes("ACCOUNT_NOT_ACTIVE")) {
+          return json({ error: "ACCOUNT_NOT_ACTIVE", message: "Seul un compte actif peut être suspendu volontairement." }, 409);
+        }
+        throw suspensionError;
+      }
+
+      const suspensionReference = String(suspension?.suspension_reference || "");
+      if (suspensionReference) await saveExitFeedback(sb, suspensionReference, "suspension", reasonCode, feedback);
+
+      return json({
+        success: true,
+        account_suspended: true,
+        suspension_reference: suspensionReference || null,
+        suspended_at: suspension?.suspended_at || new Date().toISOString(),
+        suspended_until: suspension?.suspended_until || null,
+        reactivation: "password_login",
+      });
+    }
+
     if (action === "delete_account") {
       const currentPassword = typeof body.current_password === "string" ? body.current_password : "";
       const confirmation = typeof body.confirmation === "string" ? body.confirmation.trim() : "";
-      const reason = cleanText(body.reason, 500);
+      const reasonCodeInput = typeof body.reason_code === "string" ? body.reason_code.trim() : "";
+      const reasonCode = Object.hasOwn(DELETION_REASON_LABELS, reasonCodeInput) ? reasonCodeInput : "other";
+      const legacyReason = cleanText(body.reason, 500);
+      const reason = legacyReason || DELETION_REASON_LABELS[reasonCode];
+      const feedback = cleanFeedback(body.feedback);
       const source = body.source === "web" ? "web" : "app";
 
       if (!currentPassword || confirmation !== "SUPPRIMER") {
@@ -608,10 +751,21 @@ Deno.serve(async (req: Request) => {
         throw deletionError;
       }
 
+      const deletionReference = String(deletion?.deletion_reference || "");
+      let feedbackReference: string | null = null;
+      if (deletionReference) {
+        feedbackReference = await saveExitFeedback(sb, deletionReference, "deletion", reasonCode, feedback);
+        const { error: auditUpdateError } = await sb.from("account_deletion_audit").update({
+          reason_code: reasonCode,
+          feedback_reference: feedbackReference,
+        }).eq("deletion_reference", deletionReference);
+        if (auditUpdateError) console.error("account_deletion_audit metadata update failed:", auditUpdateError.message);
+      }
+
       return json({
         success: true,
         account_deleted: true,
-        deletion_reference: deletion?.deletion_reference || null,
+        deletion_reference: deletionReference || null,
         deleted_at: deletion?.deleted_at || new Date().toISOString(),
         retained_categories: deletion?.retained_categories || [],
       });

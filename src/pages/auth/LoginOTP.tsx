@@ -9,6 +9,9 @@ type LoginOtpResponse = {
   message?: string;
   not_found?: boolean;
   next_step?: string;
+  error?: string;
+  can_reactivate?: boolean;
+  suspended_until?: string | null;
 };
 
 const inputCls =
@@ -20,16 +23,21 @@ export function LoginOTP() {
   const [phoneLocal, setPhoneLocal] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [reactivationRequired, setReactivationRequired] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setReactivationRequired(false);
     setLoading(true);
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
       const data = await authFetch<LoginOtpResponse>('auth-login-otp', { phone_number });
       if (!data.success) {
-        if (data.not_found) {
+        if (data.can_reactivate && data.error === 'ACCOUNT_SELF_SUSPENDED') {
+          setReactivationRequired(true);
+          setError(data.message || 'Ce compte doit être réactivé avec son mot de passe.');
+        } else if (data.not_found) {
           setError(data.message || 'Aucun compte trouvé. Souhaitez-vous vous inscrire ?');
         } else {
           setError(data.message || 'Une erreur est survenue');
@@ -58,6 +66,11 @@ export function LoginOTP() {
             {error.includes('inscrire') && (
               <Link to="/inscription" className="font-semibold underline" style={{ color: '#002050' }}>
                 S'inscrire
+              </Link>
+            )}
+            {reactivationRequired && (
+              <Link to="/connexion" className="ml-1 font-semibold underline" style={{ color: '#002050' }}>
+                Connexion par mot de passe
               </Link>
             )}
           </div>

@@ -151,3 +151,28 @@ export function listBlockedProfileUsers(): Promise<{ blocked_users: Array<{ user
 export function unblockProfileUser(targetUserId: string): Promise<{ success: true }> {
   return request({ action: 'unblock_user', target_user_id: targetUserId });
 }
+export type AccountExitFeedback = {
+  improvement_feedback?: string;
+  missing_feature?: string;
+  return_condition?: string;
+};
+
+export function suspendOwnAccount(payload: {
+  current_password: string;
+  confirmation: string;
+  reason_code: string;
+  suspended_until?: string | null;
+  feedback?: AccountExitFeedback;
+}): Promise<{ success: true; account_suspended: true; suspended_at: string; suspended_until: string | null }> {
+  return request({ action: 'suspend_account', source: 'web', ...payload });
+}
+
+export function deleteOwnAccount(payload: {
+  current_password: string;
+  confirmation: string;
+  reason_code: string;
+  feedback?: AccountExitFeedback;
+}): Promise<{ success: true; account_deleted: true; deletion_reference: string | null; deleted_at: string }> {
+  return request({ action: 'delete_account', source: 'web', ...payload });
+}
+

@@ -25,7 +25,7 @@ export function SupprimerCompte() {
             <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-[#BF8813]">Gestion du compte</p>
             <h1 className="mt-2 text-3xl font-black text-[#002050] sm:text-4xl">Supprimer votre compte Omnia</h1>
             <p className="mt-4 text-base leading-7 text-slate-600">
-              La suppression ferme immédiatement votre accès, révoque toutes vos sessions et efface ou anonymise les données personnelles qui ne doivent pas être conservées.
+              La suppression ferme immédiatement votre accès, révoque toutes vos sessions et efface ou anonymise les données personnelles qui ne doivent pas être conservées. Une suspension temporaire et réversible est disponible dans Mon profil si vous souhaitez simplement faire une pause.
             </p>
           </div>
 
@@ -46,6 +46,17 @@ export function SupprimerCompte() {
             </article>
           </div>
 
+          <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-6">
+            <div className="flex items-start gap-3">
+              <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-blue-800" size={22} />
+              <div>
+                <h2 className="font-bold text-blue-950">Vous souhaitez seulement faire une pause ?</h2>
+                <p className="mt-2 text-sm leading-6 text-blue-900">La suspension volontaire conserve vos données, ferme toutes vos sessions et peut être annulée de manière sécurisée depuis la page de connexion avec votre mot de passe.</p>
+                {signedIn && <Link to="/mon-profil?tab=securite#gestion-compte" className="mt-3 inline-flex rounded-lg bg-[#002050] px-4 py-2 text-sm font-bold text-white">Suspendre plutôt mon compte</Link>}
+              </div>
+            </div>
+          </div>
+
           <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-6">
             <div className="flex items-start gap-3">
               <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0 text-amber-800" size={22} />
@@ -62,7 +73,7 @@ export function SupprimerCompte() {
             <CheckCircle2 aria-hidden="true" className="text-emerald-700" size={24} />
             <h2 className="mt-4 text-xl font-bold text-[#002050]">Effectuer la suppression</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Pour protéger votre compte, la suppression nécessite une session active, votre mot de passe actuel et la confirmation explicite « SUPPRIMER ».
+              Pour protéger votre compte, la suppression nécessite une session active, votre mot de passe actuel, un motif et la confirmation explicite « SUPPRIMER ». Un questionnaire d’amélioration facultatif est proposé sans être affiché dans les journaux administratifs.
             </p>
             {signedIn ? (
               <Link
@@ -73,7 +84,7 @@ export function SupprimerCompte() {
               </Link>
             ) : (
               <Link
-                to="/connexion?redirect=%2Fdashboard%2Fprofil%3Ftab%3Dsecurite"
+                to="/connexion?redirect=%2Fmon-profil%3Ftab%3Dsecurite%23gestion-compte"
                 className="mt-5 inline-flex rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white"
               >
                 Se connecter pour supprimer le compte

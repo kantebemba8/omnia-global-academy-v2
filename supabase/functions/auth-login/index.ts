@@ -149,6 +149,7 @@ Deno.serve(async (req: Request) => {
       ? body.phone_number.trim()
       : "";
     const password = typeof body.password === "string" ? body.password : "";
+    const reactivateAccount = body.reactivate_account === true;
 
     if ((!email && !phoneNumber) || !password) {
       return json({ success: false, message: "Identifiants requis" }, 400);
@@ -181,7 +182,7 @@ Deno.serve(async (req: Request) => {
     let userQuery = supabase
       .from("users")
       .select(
-        "id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change",
+        "id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change, suspension_source, self_suspended_at, self_suspension_until, self_suspension_reason_code",
       );
 
     userQuery = email
@@ -219,6 +220,8 @@ Deno.serve(async (req: Request) => {
       });
       return json({ success: false, message: "Identifiants incorrects" }, 401);
     }
+
+    let accountReactivated = false;
 
     if (user.email === DEMO_EMAIL) {
       const { data: demoConfig, error: demoError } = await supabase
@@ -297,15 +300,73 @@ Deno.serve(async (req: Request) => {
     }
 
     if (user.status === "suspendu") {
+      const selfSuspended = user.suspension_source === "self";
+      const plannedUntil = user.self_suspension_until ? new Date(user.self_suspension_until) : null;
+      const plannedDateReached = Boolean(plannedUntil && !Number.isNaN(plannedUntil.getTime()) && plannedUntil <= new Date());
+
+      if (!selfSuspended) {
+        await logSecurityEvent(supabase, {
+          event_type: "account_suspended",
+          ip_address: clientIP,
+          user_agent: userAgent,
+          endpoint: "auth-login",
+          user_id: user.id,
+          severity: "info",
+          details: { self_reactivation_allowed: false },
+        });
+        return json({
+          success: false,
+          error: "ACCOUNT_SUSPENDED",
+          can_reactivate: false,
+          message: "Ce compte a été suspendu par l’équipe Omnia. Contactez le support pour demander sa réactivation.",
+        }, 403);
+      }
+
+      if (!reactivateAccount && !plannedDateReached) {
+        await logSecurityEvent(supabase, {
+          event_type: "account_suspended",
+          ip_address: clientIP,
+          user_agent: userAgent,
+          endpoint: "auth-login",
+          user_id: user.id,
+          severity: "info",
+          details: { self_reactivation_allowed: true },
+        });
+        return json({
+          success: false,
+          error: "ACCOUNT_SELF_SUSPENDED",
+          can_reactivate: true,
+          suspended_at: user.self_suspended_at || null,
+          suspended_until: user.self_suspension_until || null,
+          reason_code: user.self_suspension_reason_code || null,
+          message: "Vous avez volontairement suspendu ce compte. Confirmez sa réactivation pour vous reconnecter.",
+        }, 403);
+      }
+
+      const { data: reactivation, error: reactivationError } = await supabase.rpc("omnia_reactivate_user_account", {
+        p_user_id: user.id,
+        p_source: "password_login",
+      });
+      if (reactivationError) {
+        const message = String(reactivationError.message || "");
+        if (message.includes("SELF_REACTIVATION_NOT_ALLOWED")) {
+          return json({ success: false, error: "SELF_REACTIVATION_NOT_ALLOWED", message: "La réactivation autonome n’est pas autorisée pour ce compte." }, 403);
+        }
+        throw reactivationError;
+      }
+
+      user.status = "actif";
+      accountReactivated = true;
       await logSecurityEvent(supabase, {
-        event_type: "account_suspended",
+        event_type: "account_reactivated",
         ip_address: clientIP,
         user_agent: userAgent,
         endpoint: "auth-login",
         user_id: user.id,
         severity: "info",
+        details: { source: plannedDateReached && !reactivateAccount ? "planned_date" : "user_confirmation" },
       });
-      return json({ success: false, message: "Compte suspendu. Contactez le support." }, 403);
+      void reactivation;
     }
 
     if (user.status === "en_attente_validation") {
@@ -356,6 +417,7 @@ Deno.serve(async (req: Request) => {
 
     return json({
       success: true,
+      reactivated: accountReactivated,
       session_token: sessionToken,
       redirect_url: getRedirectUrl(userRoles),
       user: {

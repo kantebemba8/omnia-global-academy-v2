@@ -81,6 +81,29 @@ function sessionToken(req: Request) {
   ).trim();
 }
 
+
+const ACCOUNT_REASON_LABELS: Record<string, string> = {
+  pause: "Pause volontaire",
+  too_many_notifications: "Trop de notifications",
+  low_usage: "Utilisation insuffisante",
+  technical_issue: "Problème technique",
+  security_break: "Protection temporaire du compte",
+  missing_features: "Fonctionnalités manquantes",
+  no_longer_use: "N’utilise plus la plateforme",
+  duplicate_account: "Compte en double",
+  privacy_request: "Demande de suppression des données",
+  technical_issues: "Problèmes techniques répétés",
+  missing_content: "Contenus ou services non trouvés",
+  communications: "Communications non souhaitées",
+  dissatisfied: "Expérience insatisfaisante",
+  other: "Autre motif",
+};
+
+function accountReasonLabel(value: unknown) {
+  const key = String(value || "");
+  return ACCOUNT_REASON_LABELS[key] || "Motif non communiqué";
+}
+
 const ROLE_GROUPS = [
   { key: "apprenant", label: "Apprenants", aliases: ["apprenant"] },
   { key: "professeur", label: "Professeurs", aliases: ["professeur", "formateur", "enseignant", "etablissement_enseignant"] },
@@ -146,13 +169,29 @@ Deno.serve(async (req: Request) => {
 
     if (url.searchParams.get("activity_today_detail") === "true") {
       const startToday = new Date(); startToday.setHours(0,0,0,0);
-      const [adminRows,studioRows] = await Promise.all([
+      const [adminRows,studioRows,lifecycleRows,deletionRows] = await Promise.all([
         rows(sb,"admin_audit_log","action,created_at,metadata",q=>q.gte("created_at",startToday.toISOString()).order("created_at",{ascending:false}).limit(200)),
         rows(sb,"course_studio_logs","action,created_at,course_id",q=>q.gte("created_at",startToday.toISOString()).order("created_at",{ascending:false}).limit(200)),
+        rows(sb,"account_lifecycle_audit","action,reason_code,planned_reactivation_at,created_at",q=>q.gte("created_at",startToday.toISOString()).order("created_at",{ascending:false}).limit(200)),
+        rows(sb,"account_deletion_audit","reason_code,completed_at",q=>q.gte("completed_at",startToday.toISOString()).order("completed_at",{ascending:false}).limit(200)),
       ]);
       const activities=[
         ...(adminRows||[]).map((r:any)=>({label:`Administration : ${String(r.action||"action").replaceAll("_"," ")}`,created_at:r.created_at,detail:r.metadata?JSON.stringify(r.metadata):"",source:"Administration"})),
         ...(studioRows||[]).map((r:any)=>({label:`Formation : ${String(r.action||"action").replaceAll("_"," ")}`,created_at:r.created_at,detail:r.course_id?`Formation ${r.course_id}`:"",source:"Studio de formation"})),
+        ...(lifecycleRows||[]).map((r:any)=>({
+          label:r.action==="self_reactivated"?"Compte réactivé par son titulaire":"Compte suspendu volontairement",
+          created_at:r.created_at,
+          detail:r.action==="self_suspended"
+            ?`${accountReasonLabel(r.reason_code)}${r.planned_reactivation_at?` · retour prévu ${new Date(r.planned_reactivation_at).toLocaleDateString("fr-FR")}`:""}`
+            :"Réactivation sécurisée après vérification du mot de passe",
+          source:"Cycle de vie du compte",
+        })),
+        ...(deletionRows||[]).map((r:any)=>({
+          label:"Compte supprimé définitivement",
+          created_at:r.completed_at,
+          detail:accountReasonLabel(r.reason_code),
+          source:"Cycle de vie du compte",
+        })),
       ].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
       return json({activities});
     }

@@ -144,13 +144,13 @@ Deno.serve(async (req: Request) => {
 
       const { data: user, error: userError } = await supabase
         .from("users")
-        .select("id, email, full_name, status")
+        .select("id, email, full_name, status, suspension_source")
         .eq("email", email)
         .maybeSingle();
       if (userError) throw userError;
 
       // Réponse volontairement identique pour empêcher l'énumération des comptes.
-      if (!user || user.status === "suspendu" || user.status === "supprime") {
+      if (!user || user.status === "supprime" || (user.status === "suspendu" && user.suspension_source !== "self")) {
         return json({ success: true, method: "email" });
       }
 
@@ -221,12 +221,12 @@ Deno.serve(async (req: Request) => {
 
       const { data: user, error: userError } = await supabase
         .from("users")
-        .select("id, email, full_name, status")
+        .select("id, email, full_name, status, suspension_source")
         .eq("phone_number", phoneNumber)
         .maybeSingle();
       if (userError) throw userError;
 
-      if (!user || user.status === "suspendu" || user.status === "supprime") {
+      if (!user || user.status === "supprime" || (user.status === "suspendu" && user.suspension_source !== "self")) {
         return json({
           success: true,
           method: "sms",

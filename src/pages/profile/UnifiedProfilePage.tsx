@@ -33,17 +33,26 @@ import {
   getUnifiedProfile,
   listBlockedProfileUsers,
   ProfileApiError,
+  deleteOwnAccount,
   removeProfileAvatar,
+  suspendOwnAccount,
   unblockProfileUser,
   updateUnifiedProfile,
   uploadProfileAvatar,
   type UnifiedProfileBundle,
 } from '../../lib/profileApi';
-import { getDashboardPathForRoles, getSessionToken, saveSession } from '../../lib/session';
+import { clearSession, getDashboardPathForRoles, getSessionToken, saveSession } from '../../lib/session';
 
 type Tab = 'apercu' | 'identite' | 'professionnel' | 'visibilite' | 'notifications' | 'securite';
 type Message = { ok: boolean; text: string } | null;
 type BlockedUser = { user_id: string; full_name: string; reason: string | null; blocked_at: string };
+type ExitFeedbackForm = { improvement_feedback: string; missing_feature: string; return_condition: string };
+type SuspensionForm = ExitFeedbackForm & {
+  currentPassword: string; confirmation: string; reasonCode: string; duration: string; customDate: string; accepted: boolean;
+};
+type DeletionForm = ExitFeedbackForm & {
+  currentPassword: string; confirmation: string; reasonCode: string; accepted: boolean;
+};
 
 type UserForm = {
   full_name: string;
@@ -124,6 +133,35 @@ const ROLE_LABELS: Record<string, string> = {
   recruteur_independant: 'Recruteur', professeur: 'Professeur', formateur: 'Professeur', coach: 'Coach', apprenant: 'Apprenant',
 };
 
+const SUSPENSION_REASONS = [
+  ['pause', 'Je fais une pause'],
+  ['too_many_notifications', 'Je reçois trop de notifications'],
+  ['low_usage', 'Je n’utilise pas suffisamment la plateforme'],
+  ['technical_issue', 'Je rencontre un problème technique'],
+  ['security_break', 'Je souhaite protéger temporairement mon compte'],
+  ['missing_features', 'Je ne trouve pas les fonctionnalités recherchées'],
+  ['other', 'Autre'],
+] as const;
+
+const DELETION_REASONS = [
+  ['no_longer_use', 'Je n’utilise plus la plateforme'],
+  ['duplicate_account', 'J’ai créé un autre compte'],
+  ['privacy_request', 'Je souhaite supprimer mes données'],
+  ['technical_issues', 'Je rencontre trop de problèmes techniques'],
+  ['missing_content', 'Je ne trouve pas les formations ou services recherchés'],
+  ['communications', 'Je ne souhaite plus recevoir de communications'],
+  ['dissatisfied', 'Je suis insatisfait de mon expérience'],
+  ['other', 'Autre'],
+] as const;
+
+const EMPTY_EXIT_FEEDBACK: ExitFeedbackForm = { improvement_feedback: '', missing_feature: '', return_condition: '' };
+const EMPTY_SUSPENSION: SuspensionForm = {
+  ...EMPTY_EXIT_FEEDBACK, currentPassword: '', confirmation: '', reasonCode: '', duration: '', customDate: '', accepted: false,
+};
+const EMPTY_DELETION: DeletionForm = {
+  ...EMPTY_EXIT_FEEDBACK, currentPassword: '', confirmation: '', reasonCode: '', accepted: false,
+};
+
 const TAB_ALIASES: Record<string, Tab> = {
   info: 'identite', informations: 'identite', professionnel: 'professionnel', profil_pro: 'professionnel',
   parametres: 'visibilite', preferences: 'visibilite', notifications: 'notifications', securite: 'securite', security: 'securite',
@@ -179,8 +217,37 @@ function profileErrorMessage(error: unknown) {
     BIRTH_DATE_REQUIRED: 'La date de naissance est obligatoire.', INVALID_URL: 'Une adresse web n’est pas valide.',
     AVATAR_TOO_LARGE: 'La photo dépasse 3 Mo.', INVALID_AVATAR_TYPE: 'Utilisez une image PNG, JPG ou WebP.',
     INVALID_AVATAR_DATA: 'La photo n’a pas pu être lue.', PROFILE_PRIVATE: 'Ce profil est privé.',
+    PROFILE_SUSPENDED: 'Ce profil est temporairement indisponible.', INVALID_PASSWORD: 'Mot de passe actuel incorrect.',
+    SUSPENSION_CONFIRMATION_REQUIRED: 'La confirmation de suspension est invalide.', INVALID_SUSPENSION_REASON: 'Choisissez un motif de suspension valide.',
+    INVALID_SUSPENSION_UNTIL: 'La date de retour prévue est invalide.', ACCOUNT_NOT_ACTIVE: 'Seul un compte actif peut être suspendu volontairement.',
+    LAST_SUPER_ADMIN_PROTECTED: 'Le dernier Super-admin actif ne peut pas suspendre ou supprimer son compte.',
+    DEMO_ACCOUNT_PROTECTED: 'Le compte de démonstration est protégé.', DELETION_CONFIRMATION_REQUIRED: 'La confirmation de suppression est invalide.',
   };
   return labels[error.code] || error.message || 'Mise à jour impossible.';
+}
+
+function plannedSuspensionDate(duration: string, customDate: string) {
+  if (!duration) return null;
+  if (duration === 'custom') {
+    if (!customDate) return null;
+    const parsed = new Date(`${customDate}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+  const days = Number(duration);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function accountImpactForRoles(roles: string[]) {
+  const impacts = new Set<string>();
+  if (roles.includes('apprenant')) impacts.add('Vos formations, progressions et espaces personnels deviennent inaccessibles pendant la suspension. Les certificats et preuves déjà émis restent conservés selon leurs règles.');
+  if (roles.some(role => ['professeur', 'formateur', 'enseignant', 'etablissement_enseignant'].includes(role))) impacts.add('Vos formations publiées et les dossiers nécessaires aux apprenants ne sont pas supprimés automatiquement. Vous ne pourrez plus les gérer pendant la suspension.');
+  if (roles.some(role => ['structure', 'responsable_structure', 'gestionnaire_partenaire', 'recruteur_structure'].includes(role))) impacts.add('La suspension de votre compte personnel ne supprime pas la Structure. Vérifiez qu’un autre responsable peut assurer la continuité avant une suppression définitive.');
+  if (roles.some(role => ['organisateur', 'organizer'].includes(role))) impacts.add('Les événements, inscriptions et documents déjà produits restent conservés. Vous perdez temporairement la gestion des événements à venir.');
+  if (roles.includes('moderateur')) impacts.add('Les journaux de modération nécessaires à la sécurité sont conservés sous une forme pseudonymisée.');
+  if (roles.includes('super_admin')) impacts.add('Le dernier Super-admin actif ne peut ni suspendre ni supprimer son compte.');
+  if (!impacts.size) impacts.add('La suspension désactive l’accès sans supprimer vos données. La suppression définitive efface ou anonymise les données personnelles, sous réserve des obligations légales et de sécurité.');
+  return [...impacts];
 }
 
 export default function UnifiedProfilePage() {
@@ -202,6 +269,10 @@ export default function UnifiedProfilePage() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [blocked, setBlocked] = useState<BlockedUser[]>([]);
   const [blockedLoading, setBlockedLoading] = useState(false);
+  const [suspensionForm, setSuspensionForm] = useState<SuspensionForm>(EMPTY_SUSPENSION);
+  const [suspensionSaving, setSuspensionSaving] = useState(false);
+  const [deletionForm, setDeletionForm] = useState<DeletionForm>(EMPTY_DELETION);
+  const [deletionSaving, setDeletionSaving] = useState(false);
 
   const hydrate = useCallback((next: UnifiedProfileBundle) => {
     setBundle(next);
@@ -227,6 +298,13 @@ export default function UnifiedProfilePage() {
     const next = TAB_ALIASES[queryTab] || (['apercu', 'identite', 'professionnel', 'visibilite', 'notifications', 'securite'].includes(queryTab) ? queryTab as Tab : null);
     if (next) setTab(next);
   }, [queryTab]);
+  useEffect(() => {
+    if (!bundle || tab !== 'securite' || location.hash !== '#gestion-compte') return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('gestion-compte')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [bundle, location.hash, tab]);
 
   const roles = bundle?.roles || [];
   const roleLabels = useMemo(() => [...new Set(roles.map(role => ROLE_LABELS[role] || role))], [roles]);
@@ -237,6 +315,7 @@ export default function UnifiedProfilePage() {
   const isRecruiter = roles.some(role => ['recruteur', 'recruteur_independant', 'recruteur_structure'].includes(role));
   const isCoach = roles.includes('coach');
   const isStructure = roles.some(role => ['structure', 'recruteur_structure'].includes(role));
+  const accountImpacts = useMemo(() => accountImpactForRoles(roles), [roles]);
 
   const completion = useMemo(() => {
     const values = [userForm.full_name, userForm.email, userForm.phone_number, userForm.country_code, userForm.birth_date,
@@ -357,6 +436,57 @@ export default function UnifiedProfilePage() {
     catch (error) { setMessage({ ok: false, text: profileErrorMessage(error) }); }
   }
 
+  async function suspendAccount() {
+    if (!suspensionForm.reasonCode) { setMessage({ ok: false, text: 'Choisissez un motif de suspension.' }); return; }
+    if (!suspensionForm.currentPassword) { setMessage({ ok: false, text: 'Saisissez votre mot de passe actuel.' }); return; }
+    if (suspensionForm.confirmation.trim() !== 'SUSPENDRE') { setMessage({ ok: false, text: 'Écrivez SUSPENDRE pour confirmer.' }); return; }
+    if (!suspensionForm.accepted) { setMessage({ ok: false, text: 'Confirmez avoir compris les conséquences de la suspension.' }); return; }
+    const suspendedUntil = plannedSuspensionDate(suspensionForm.duration, suspensionForm.customDate);
+    if (suspensionForm.duration && !suspendedUntil) { setMessage({ ok: false, text: 'Choisissez une date de retour valide.' }); return; }
+
+    setSuspensionSaving(true); setMessage(null);
+    try {
+      await suspendOwnAccount({
+        current_password: suspensionForm.currentPassword,
+        confirmation: suspensionForm.confirmation.trim(),
+        reason_code: suspensionForm.reasonCode,
+        suspended_until: suspendedUntil,
+        feedback: {
+          improvement_feedback: suspensionForm.improvement_feedback,
+          missing_feature: suspensionForm.missing_feature,
+          return_condition: suspensionForm.return_condition,
+        },
+      });
+      clearSession();
+      navigate('/connexion?compte=suspendu', { replace: true });
+    } catch (error) { setMessage({ ok: false, text: profileErrorMessage(error) }); }
+    finally { setSuspensionSaving(false); }
+  }
+
+  async function deleteAccount() {
+    if (!deletionForm.reasonCode) { setMessage({ ok: false, text: 'Choisissez un motif de suppression.' }); return; }
+    if (!deletionForm.currentPassword) { setMessage({ ok: false, text: 'Saisissez votre mot de passe actuel.' }); return; }
+    if (deletionForm.confirmation.trim() !== 'SUPPRIMER') { setMessage({ ok: false, text: 'Écrivez SUPPRIMER pour confirmer.' }); return; }
+    if (!deletionForm.accepted) { setMessage({ ok: false, text: 'Confirmez avoir compris que la suppression est irréversible.' }); return; }
+
+    setDeletionSaving(true); setMessage(null);
+    try {
+      const result = await deleteOwnAccount({
+        current_password: deletionForm.currentPassword,
+        confirmation: deletionForm.confirmation.trim(),
+        reason_code: deletionForm.reasonCode,
+        feedback: {
+          improvement_feedback: deletionForm.improvement_feedback,
+          missing_feature: deletionForm.missing_feature,
+          return_condition: deletionForm.return_condition,
+        },
+      });
+      clearSession();
+      navigate(`/compte-supprime${result.deletion_reference ? `?reference=${encodeURIComponent(result.deletion_reference)}` : ''}`, { replace: true });
+    } catch (error) { setMessage({ ok: false, text: profileErrorMessage(error) }); }
+    finally { setDeletionSaving(false); }
+  }
+
   function switchTab(next: Tab) {
     setTab(next); setMessage(null);
     const params = new URLSearchParams(location.search); params.set('tab', next);
@@ -419,6 +549,7 @@ export default function UnifiedProfilePage() {
           <Section title="Accès rapides" icon={Settings}>
             <div className="space-y-2">
               <QuickLink to={getDashboardPathForRoles(roles)} icon={User} label="Retour à mon Dashboard" />
+              <QuickLink to="/mon-profil?tab=securite#gestion-compte" icon={Shield} label="Gérer la suspension ou la suppression du compte" />
               {isLearner && <><QuickLink to="/dashboard/skills-passport" icon={Award} label="Skills Passport" /><QuickLink to="/dashboard/learning-record" icon={BookOpen} label="Learning Record" /></>}
               {isStructure && <QuickLink to="/structure/profil" icon={Users} label="Profil public de la structure" />}
               {isProfessor && <QuickLink to="/professeur/dossier-professionnel" icon={Shield} label="Dossier professeur et signature" />}
@@ -536,13 +667,49 @@ export default function UnifiedProfilePage() {
         <Section title="Membres bloqués" icon={Shield} description="Vous pouvez débloquer les membres que vous aviez masqués dans les espaces communautaires.">
           {blockedLoading ? <p className="text-sm text-slate-500">Chargement...</p> : blocked.length ? <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">{blocked.map(item => <div key={item.user_id} className="flex items-center justify-between gap-4 p-4"><div><p className="font-bold text-[#002050]">{item.full_name}</p><p className="text-xs text-slate-500">{item.reason || 'Aucun motif enregistré'}</p></div><button type="button" onClick={() => void unblock(item.user_id)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-[#002050]">Débloquer</button></div>)}</div> : <Empty text="Aucun membre bloqué." />}
         </Section>
-        <Section title="Gestion du compte" icon={AlertTriangle} description="La suspension volontaire et le questionnaire complet seront ajoutés au Lot 2C.">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">La suppression réglementaire déjà disponible reste accessible. Une nouvelle procédure unifiée de suspension et de suppression avec motifs sera traitée séparément pour sécuriser toutes les données liées aux rôles.</div>
-          <Link to="/supprimer-compte" className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-700"><Trash2 size={16} /> Accéder à la suppression du compte</Link>
-        </Section>
+        <section id="gestion-compte" className="space-y-6 scroll-mt-24">
+          <Section title="Conséquences selon vos rôles" icon={AlertTriangle} description="Prenez connaissance des effets avant de suspendre ou supprimer votre compte.">
+            <ul className="space-y-2 text-sm leading-6 text-slate-600">{accountImpacts.map(item => <li key={item} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-[#BF8813]" /><span>{item}</span></li>)}</ul>
+          </Section>
+
+          <Section title="Suspendre temporairement mon compte" icon={Shield} description="Une pause réversible : toutes vos sessions sont fermées immédiatement et vous pourrez réactiver le compte avec votre mot de passe.">
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">La suspension ne supprime pas vos données. Votre profil public devient temporairement indisponible. Une suspension décidée par l’équipe Omnia ne peut pas être réactivée automatiquement.</div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className={labelClass}>Motif de la pause<select className={inputClass} value={suspensionForm.reasonCode} onChange={e => setSuspensionForm(v => ({ ...v, reasonCode: e.target.value }))}><option value="">Sélectionner un motif</option>{SUSPENSION_REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className={labelClass}>Retour prévu — facultatif<select className={inputClass} value={suspensionForm.duration} onChange={e => setSuspensionForm(v => ({ ...v, duration: e.target.value }))}><option value="">Aucune date prévue</option><option value="7">Dans 7 jours</option><option value="14">Dans 14 jours</option><option value="30">Dans 30 jours</option><option value="custom">Choisir une date</option></select></label>
+              {suspensionForm.duration === 'custom' && <label className={`${labelClass} md:col-span-2`}>Date de retour prévue<input type="date" min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)} className={inputClass} value={suspensionForm.customDate} onChange={e => setSuspensionForm(v => ({ ...v, customDate: e.target.value }))} /></label>}
+              <AccountFeedbackFields value={suspensionForm} onChange={patch => setSuspensionForm(v => ({ ...v, ...patch }))} />
+              <label className={labelClass}>Mot de passe actuel<input type="password" autoComplete="current-password" className={inputClass} value={suspensionForm.currentPassword} onChange={e => setSuspensionForm(v => ({ ...v, currentPassword: e.target.value }))} /></label>
+              <label className={labelClass}>Écrivez SUSPENDRE<input className={inputClass} value={suspensionForm.confirmation} onChange={e => setSuspensionForm(v => ({ ...v, confirmation: e.target.value.toUpperCase() }))} /></label>
+            </div>
+            <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-slate-700"><input type="checkbox" className="mt-1" checked={suspensionForm.accepted} onChange={e => setSuspensionForm(v => ({ ...v, accepted: e.target.checked }))} /><span>Je comprends que je serai immédiatement déconnecté et que mes espaces seront inaccessibles jusqu’à ma réactivation.</span></label>
+            <button type="button" disabled={suspensionSaving || !suspensionForm.accepted || suspensionForm.confirmation !== 'SUSPENDRE' || !suspensionForm.currentPassword || !suspensionForm.reasonCode} onClick={() => void suspendAccount()} className="mt-5 w-full rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{suspensionSaving ? 'Suspension en cours...' : 'Suspendre mon compte'}</button>
+          </Section>
+
+          <Section title="Supprimer définitivement mon compte" icon={Trash2} description="Action irréversible soumise à une confirmation forte. Les données légalement nécessaires sont seulement conservées sous une forme pseudonymisée.">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-900">Avant de supprimer, vous pouvez choisir la suspension temporaire ci-dessus. La suppression ferme tous les accès et ne peut pas être annulée. <Link to="/supprimer-compte" className="font-bold underline">Lire la politique détaillée</Link>.</div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className={`${labelClass} md:col-span-2`}>Motif de la suppression<select className={inputClass} value={deletionForm.reasonCode} onChange={e => setDeletionForm(v => ({ ...v, reasonCode: e.target.value }))}><option value="">Sélectionner un motif</option>{DELETION_REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <AccountFeedbackFields value={deletionForm} onChange={patch => setDeletionForm(v => ({ ...v, ...patch }))} />
+              <label className={labelClass}>Mot de passe actuel<input type="password" autoComplete="current-password" className={inputClass} value={deletionForm.currentPassword} onChange={e => setDeletionForm(v => ({ ...v, currentPassword: e.target.value }))} /></label>
+              <label className={labelClass}>Écrivez SUPPRIMER<input className={inputClass} value={deletionForm.confirmation} onChange={e => setDeletionForm(v => ({ ...v, confirmation: e.target.value.toUpperCase() }))} /></label>
+            </div>
+            <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-red-900"><input type="checkbox" className="mt-1" checked={deletionForm.accepted} onChange={e => setDeletionForm(v => ({ ...v, accepted: e.target.checked }))} /><span>Je comprends que la suppression est définitive et que mes profils, accès et données personnelles supprimables ne pourront pas être restaurés.</span></label>
+            <button type="button" disabled={deletionSaving || !deletionForm.accepted || deletionForm.confirmation !== 'SUPPRIMER' || !deletionForm.currentPassword || !deletionForm.reasonCode} onClick={() => void deleteAccount()} className="mt-5 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{deletionSaving ? 'Suppression en cours...' : 'Supprimer définitivement mon compte'}</button>
+          </Section>
+        </section>
       </div>}
     </div>
   </ProfileRoleLayout>;
+}
+
+function AccountFeedbackFields({ value, onChange }: { value: ExitFeedbackForm; onChange: (patch: Partial<ExitFeedbackForm>) => void }) {
+  return <>
+    <p className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Ces réponses sont facultatives et servent uniquement à améliorer Omnia. N’indiquez aucun mot de passe, code, numéro de carte, adresse e-mail ou numéro de téléphone.</p>
+    <label className={`${labelClass} md:col-span-2`}>Que pourrions-nous améliorer ? — facultatif<textarea rows={3} maxLength={1200} className={inputClass} value={value.improvement_feedback} onChange={e => onChange({ improvement_feedback: e.target.value })} /></label>
+    <label className={labelClass}>Quelle fonctionnalité vous manque ? — facultatif<input maxLength={600} className={inputClass} value={value.missing_feature} onChange={e => onChange({ missing_feature: e.target.value })} /></label>
+    <label className={labelClass}>Qu’est-ce qui vous ferait revenir ? — facultatif<input maxLength={600} className={inputClass} value={value.return_condition} onChange={e => onChange({ return_condition: e.target.value })} /></label>
+  </>;
 }
 
 function Section({ title, icon: Icon, description, children }: { title: string; icon: ElementType; description?: string; children: ReactNode }) {
