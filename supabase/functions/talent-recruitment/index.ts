@@ -152,13 +152,20 @@ async function queueNotification(sb: ReturnType<typeof createClient>, userId: st
 }
 
 async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
-  const { data, error } = await sb
-    .from("career_public_profiles")
-    .select("user_id,full_name,professional_title,location,bio,skills,sectors,languages,certifications,photo_url,availability,experience_level,portfolio_url,contact_enabled,updated_at")
-    .eq("visibility", "public")
-    .order("updated_at", { ascending: false });
+  const [{ data, error }, { data: internalRoleRows, error: roleError }] = await Promise.all([
+    sb
+      .from("career_public_profiles")
+      .select("user_id,full_name,professional_title,location,bio,skills,sectors,languages,certifications,photo_url,availability,experience_level,portfolio_url,contact_enabled,updated_at")
+      .eq("visibility", "public")
+      .order("updated_at", { ascending: false }),
+    sb.from("user_roles").select("user_id").eq("role", "super_admin"),
+  ]);
   if (error) throw error;
-  return (data || []).map((profile: any) => ({ ...profile, id: profile.user_id }));
+  if (roleError) throw roleError;
+  const internalUserIds = new Set((internalRoleRows || []).map((row: any) => String(row.user_id)));
+  return (data || [])
+    .filter((profile: any) => !internalUserIds.has(String(profile.user_id)))
+    .map((profile: any) => ({ ...profile, id: profile.user_id }));
 }
 
 async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Request, body: any) {
@@ -167,6 +174,15 @@ async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Reque
   const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!session) return json({ error: "SESSION_INVALID" }, 401);
   const userId = String(session.user_id);
+  const { data: internalRole } = await sb.from("user_roles")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("role", "super_admin")
+    .maybeSingle();
+  if (internalRole) {
+    await sb.from("career_public_profiles").delete().eq("user_id", userId);
+    return json({ error: "PUBLIC_PROFILE_NOT_AVAILABLE" }, 403);
+  }
   const profile = body.profile || {};
   const row = {
     user_id: userId,

@@ -100,6 +100,7 @@ const ModerateurSupport = lazy(() => import('./pages/moderateur/ModerateurSuppor
 const ModerateurAnalytique = lazy(() => import('./pages/moderateur/ModerateurAnalytique'));
 const ModerateurMissions = lazy(() => import('./pages/moderateur/ModerateurMissions'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminDeletionRequests = lazy(() => import('./pages/admin/AdminDeletionRequests'));
 const AdminRoleUsers = lazy(() => import('./pages/admin/AdminRoleUsers'));
 const AdminActivityToday = lazy(() => import('./pages/admin/AdminActivityToday'));
 const AdminCMS = lazy(() => import('./pages/admin/AdminCMS'));
@@ -634,6 +635,7 @@ export default function App() {
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/dashboard/roles/:roleKey" element={<AdminRoleUsers />} />
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
+        <Route path="/admin/suppressions" element={<AdminDeletionRequests />} />
         <Route path="/admin/profil" element={<Navigate to="/mon-profil" replace />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/coaching" element={<AdminCoaching />} />
@@ -668,7 +670,7 @@ export default function App() {
         <Route path="/admin/payouts" element={<AdminRetraits />} />
         <Route path="/admin/marketing" element={<AdminMarketing />} />
         <Route path="/admin/courses" element={<AdminCatalogue />} />
-        <Route path="/admin/courses/new" element={<Navigate to="/admin/studio/new" replace />} />
+        <Route path="/admin/courses/new" element={<ProfessorCourseStart />} />
         <Route path="/admin/courses/:id/edit" element={<StudioConceptionFormation />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />

@@ -268,10 +268,10 @@ export default function SubspaceHamburgerLayout({
                   <button type="button" aria-label="Fermer le menu du profil" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
                   <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
                     <button type="button" role="menuitem" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                      <UserRound size={17} /> Mon profil
+                      <UserRound size={17} /> {isSuperAdmin ? 'Mon compte' : 'Mon profil'}
                     </button>
                     <button type="button" role="menuitem" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                      <LayoutDashboard size={17} /> Mon espace
+                      <LayoutDashboard size={17} /> Retour au Dashboard
                     </button>
                     <button type="button" role="menuitem" onClick={() => navigate('/omnia-live/notifications')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <Bell size={17} /> Notifications

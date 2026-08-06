@@ -85,6 +85,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
   const dashboardPath = user ? getDashboardPathForRoles(user.roles) : '/accueil';
   const profilePath = user ? profilePathForUser(user) : '/connexion';
   const settingsPath = user ? settingsPathForUser(user) : '/connexion';
+  const isAdministration = user ? normalizePlatformRoles(user.roles).includes('super_admin') : false;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -195,8 +196,8 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
             <p className="truncate text-sm font-bold text-[#002050]">{user.full_name || 'Utilisateur Omnia'}</p>
             <p className="mt-0.5 truncate text-xs text-slate-500">{user.email}</p>
           </div>
-          <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><LayoutDashboard size={17} /> Mon espace</button>
-          <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
+          <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><LayoutDashboard size={17} /> Retour au Dashboard</button>
+          <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><UserRound size={17} /> {isAdministration ? 'Mon compte' : 'Mon profil'}</button>
           <button type="button" onClick={() => navigate(settingsPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={17} /> Paramètres</button>
           <div className="my-1 border-t border-slate-100" />
           <button type="button" onClick={() => void handleLogout()} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button>
@@ -225,7 +226,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
           </div>
           <div className="flex items-center gap-2 lg:hidden">
             <LanguageSwitcher compact />
-            {user && <button type="button" onClick={() => navigate(dashboardPath)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Accéder à mon espace"><UserAvatar user={user} size="sm" /></button>}
+            {user && authenticatedActions}
             <button ref={mobileTriggerRef} type="button" className="min-h-11 min-w-11 rounded-lg p-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" onClick={() => setMobileOpen(value => !value)} aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'} aria-expanded={mobileOpen} aria-controls="omnia-mobile-navigation">{mobileOpen ? <X size={22} color="#002050" /> : <Menu size={22} color="#002050" />}</button>
           </div>
         </div>
@@ -240,8 +241,8 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
         <div className="space-y-2 border-t border-slate-100 px-5 pb-7 pt-5">
           {user ? <>
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3"><UserAvatar user={user} /><div className="min-w-0"><p className="truncate text-sm font-bold text-[#002050]">{user.full_name || 'Utilisateur Omnia'}</p><p className="truncate text-xs text-slate-500">{user.email}</p></div></div>
-            <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><LayoutDashboard size={17} /> Mon espace</button>
-            <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><UserRound size={17} /> Mon profil</button>
+            <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><LayoutDashboard size={17} /> Retour au Dashboard</button>
+            <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><UserRound size={17} /> {isAdministration ? 'Mon compte' : 'Mon profil'}</button>
             <button type="button" onClick={() => navigate(settingsPath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><Settings size={17} /> Paramètres</button>
             <button type="button" onClick={() => void handleLogout()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button>
           </> : !authLoading ? <>

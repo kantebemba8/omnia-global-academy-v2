@@ -96,6 +96,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
   const roles = user?.roles || [];
   const loggedIn = Boolean(getSessionToken()) && Boolean(user);
   const isCoach = roles.includes('coach');
+  const isAdministration = roles.includes('super_admin');
   const previewMode = isCoachPreviewMode();
   const isCoachingLanding = location.pathname === '/coaching';
   const dashboardPath = dashboardPathForRoles(roles);
@@ -228,7 +229,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
                     <button type="button" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} aria-label="Fermer le menu du profil" />
                     <div className="absolute right-0 top-12 z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
                       <button onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                        <UserRound size={17} /> Mon profil
+                        <UserRound size={17} /> {isAdministration ? 'Mon compte' : 'Mon profil'}
                       </button>
                       <button onClick={() => navigate('/dashboard/coaching')} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                         <CalendarDays size={17} /> Mes sessions coaching
@@ -239,7 +240,7 @@ export default function CoachingHeader({ searchValue = '', onSearchChange, searc
                         </button>
                       )}
                       <button onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
-                        <LayoutDashboard size={17} /> Mon espace
+                        <LayoutDashboard size={17} /> Retour au Dashboard
                       </button>
                       <div className="my-1 border-t border-slate-100" />
                       <button onClick={logout} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50">

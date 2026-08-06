@@ -3,6 +3,8 @@ import {Link} from 'react-router-dom';
 import {liveApi} from '../liveApi';
 import OrganizerShell from './OrganizerShell';
 import {deliveryLabel,liveStatusLabel} from '../../../lib/omniaLiveLabels';
+import { Trash2 } from 'lucide-react';
+import { deleteOrRequestContent } from '../../../lib/contentDeletion';
 
 const STATUS_OPTIONS=[
   ['','Tous les statuts'],
@@ -22,8 +24,26 @@ const STATUS_OPTIONS=[
 export default function OrganizerEvents(){
  const [items,setItems]=useState<any[]>([]),[status,setStatus]=useState(''),[q,setQ]=useState(''),[err,setErr]=useState('');
  const load=()=>liveApi('organizer_events',{}, {status:status||undefined,q:q||undefined})
-   .then(d=>setItems(d.items||[]))
+   .then(d=>{setItems(d.items||[]);setErr('')})
    .catch(e=>setErr(e instanceof Error?e.message:'Erreur'));
+
+ const removeEvent=async(event:any)=>{
+   const immediate=['draft','changes_requested','rejected','cancelled'].includes(event.status);
+   const confirmed=window.confirm(
+     immediate
+       ? `Supprimer « ${event.title} » ? Si aucune inscription ni donnée importante n’y est liée, la suppression sera immédiate.`
+       : `Demander la suppression de « ${event.title} » ? La confirmation de l’administration sera nécessaire.`,
+   );
+   if(!confirmed)return;
+   try{
+     const result=await deleteOrRequestContent('live_event',event.id);
+     setErr('');
+     if(result.deleted)setItems(current=>current.filter(item=>item.id!==event.id));
+     else window.alert(result.message);
+   }catch(caught){
+     setErr(caught instanceof Error?caught.message:'Impossible de traiter la suppression.');
+   }
+ };
  useEffect(()=>{load()},[status]);
 
  return <OrganizerShell title="Mes événements" subtitle="Brouillons, validation, publication, direct et historique.">
@@ -55,6 +75,14 @@ export default function OrganizerEvents(){
        {['draft','changes_requested'].includes(x.status)&&<Link to={`/omnia-live/studio/${x.id}`} className="text-sm font-semibold text-[#002050]">Reprendre le Studio</Link>}
        <Link to={`/omnia-live/organisateur/evenements/${x.id}`} className="text-sm font-semibold text-[#002050]">Gérer</Link>
        {['published','live'].includes(x.status)&&<Link to={`/omnia-live/${x.id}/organiser`} className="text-sm font-semibold text-[#BF8813]">Salle Live</Link>}
+       <button
+        type="button"
+        onClick={()=>void removeEvent(x)}
+        className="inline-flex items-center gap-1 text-sm font-semibold text-red-700"
+       >
+        <Trash2 size={14}/>
+        {['draft','changes_requested','rejected','cancelled'].includes(x.status)?'Supprimer':'Demander la suppression'}
+       </button>
       </div>
      </div>)}
     </div>

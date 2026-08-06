@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Omnia-Session-Token,X-Client-Info,Apikey",
 };
 
@@ -119,9 +119,407 @@ function roleGroup(key: string) {
   return ROLE_GROUPS.find((group) => group.key === key);
 }
 
+
+type SessionContext = {
+  userId: string;
+  roles: string[];
+  isAdmin: boolean;
+};
+
+type DeletionTarget = {
+  contentType: "course" | "project" | "live_event" | "job_offer";
+  contentId: string;
+  title: string;
+  creatorUserId: string;
+  organizationId: string | null;
+  status: string;
+  safeToDelete: boolean;
+  importanceReason: string;
+  metadata: Record<string, unknown>;
+};
+
+async function verifySessionContext(sb: any, token: string): Promise<SessionContext | null> {
+  if (!token) return null;
+  const { data: session } = await sb
+    .from("user_sessions")
+    .select("user_id")
+    .eq("session_token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!session?.user_id) return null;
+
+  const { data: roleRows } = await sb
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", session.user_id);
+
+  const roles = (roleRows ?? []).map((row: any) => String(row.role || ""));
+  return {
+    userId: session.user_id,
+    roles,
+    isAdmin: roles.includes("super_admin"),
+  };
+}
+
+async function exactCount(sb: any, table: string, column: string, value: string): Promise<number | null> {
+  const { count, error } = await sb
+    .from(table)
+    .select("*", { count: "exact", head: true })
+    .eq(column, value);
+  if (error) {
+    console.warn(`[dashboard-admin] count ${table}:`, error.message);
+    return null;
+  }
+  return count ?? 0;
+}
+
+function deletionCounts(values: Array<number | null>) {
+  return {
+    known: values.every(value => value !== null),
+    total: values.reduce((sum, value) => sum + Number(value ?? 0), 0),
+  };
+}
+
+function normalizeDeletionType(value: unknown): DeletionTarget["contentType"] | null {
+  const type = String(value || "");
+  return ["course", "project", "live_event", "job_offer"].includes(type)
+    ? type as DeletionTarget["contentType"]
+    : null;
+}
+
+async function resolveDeletionTarget(
+  sb: any,
+  session: SessionContext,
+  contentType: DeletionTarget["contentType"],
+  contentId: string,
+): Promise<DeletionTarget> {
+  if (contentType === "course") {
+    const { data: course, error } = await sb
+      .from("courses")
+      .select("id,title,creator_id,structure_id,creator_context,studio_status,is_published")
+      .eq("id", contentId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!course) throw new Error("CONTENU_INTROUVABLE");
+    if (!session.isAdmin && course.creator_id !== session.userId) throw new Error("FORBIDDEN");
+
+    const [enrollments, certificates, orders] = await Promise.all([
+      exactCount(sb, "user_enrollments", "course_id", contentId),
+      exactCount(sb, "certificates", "course_id", contentId),
+      exactCount(sb, "orders", "course_id", contentId),
+    ]);
+    const draft = ["draft", "brouillon", "rejected", "changes_requested"].includes(String(course.studio_status || "draft"));
+    const counts = deletionCounts([enrollments, certificates, orders]);
+    const hasHistory = counts.total > 0;
+    return {
+      contentType,
+      contentId,
+      title: course.title || "Formation sans titre",
+      creatorUserId: course.creator_id,
+      organizationId: course.structure_id ?? null,
+      status: String(course.studio_status || "draft"),
+      safeToDelete: counts.known && draft && !course.is_published && !hasHistory,
+      importanceReason: !counts.known
+        ? "Les dépendances de cette formation n’ont pas pu être vérifiées automatiquement."
+        : hasHistory
+          ? `${enrollments ?? 0} inscription(s), ${certificates ?? 0} certificat(s) et ${orders ?? 0} commande(s) sont liés à cette formation.`
+          : "Cette formation a quitté l’état de brouillon ou a été publiée.",
+      metadata: { enrollments, certificates, orders, creator_context: course.creator_context },
+    };
+  }
+
+  if (contentType === "project") {
+    const { data: project, error } = await sb
+      .from("omnia_projects")
+      .select("id,title,creator_user_id,organization_id,status")
+      .eq("id", contentId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!project) throw new Error("CONTENU_INTROUVABLE");
+    if (!session.isAdmin && project.creator_user_id !== session.userId) throw new Error("FORBIDDEN");
+
+    const [applications, teams, deliverables] = await Promise.all([
+      exactCount(sb, "omnia_project_applications", "project_id", contentId),
+      exactCount(sb, "omnia_project_teams", "project_id", contentId),
+      exactCount(sb, "omnia_project_deliverables", "project_id", contentId),
+    ]);
+    const counts = deletionCounts([applications, teams, deliverables]);
+    const hasHistory = counts.total > 0;
+    const safeStatus = ["draft", "changes_requested", "rejected"].includes(String(project.status || "draft"));
+    return {
+      contentType,
+      contentId,
+      title: project.title || "Projet sans titre",
+      creatorUserId: project.creator_user_id,
+      organizationId: project.organization_id ?? null,
+      status: String(project.status || "draft"),
+      safeToDelete: counts.known && safeStatus && !hasHistory,
+      importanceReason: !counts.known
+        ? "Les dépendances de ce projet n’ont pas pu être vérifiées automatiquement."
+        : hasHistory
+          ? `${applications ?? 0} candidature(s), ${teams ?? 0} équipe(s) et ${deliverables ?? 0} livrable(s) sont liés à ce projet.`
+          : "Ce projet a été soumis, publié ou possède un historique de validation.",
+      metadata: { applications, teams, deliverables },
+    };
+  }
+
+  if (contentType === "live_event") {
+    const { data: event, error } = await sb
+      .from("live_events")
+      .select("id,title,owner_user_id,owner_structure_id,status")
+      .eq("id", contentId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!event) throw new Error("CONTENU_INTROUVABLE");
+    if (!session.isAdmin && event.owner_user_id !== session.userId) throw new Error("FORBIDDEN");
+
+    const [registrations, orders, media] = await Promise.all([
+      exactCount(sb, "live_registrations", "event_id", contentId),
+      exactCount(sb, "live_orders", "event_id", contentId),
+      exactCount(sb, "live_media", "event_id", contentId),
+    ]);
+    const counts = deletionCounts([registrations, orders, media]);
+    const hasHistory = counts.total > 0;
+    const safeStatus = ["draft", "changes_requested", "rejected", "cancelled"].includes(String(event.status || "draft"));
+    return {
+      contentType,
+      contentId,
+      title: event.title || "Événement sans titre",
+      creatorUserId: event.owner_user_id || session.userId,
+      organizationId: event.owner_structure_id ?? null,
+      status: String(event.status || "draft"),
+      safeToDelete: counts.known && safeStatus && !hasHistory,
+      importanceReason: !counts.known
+        ? "Les dépendances de cet événement n’ont pas pu être vérifiées automatiquement."
+        : hasHistory
+          ? `${registrations ?? 0} inscription(s), ${orders ?? 0} commande(s) et ${media ?? 0} média(s) sont liés à cet événement.`
+          : "Cet événement a été soumis, approuvé ou publié.",
+      metadata: { registrations, orders, media },
+    };
+  }
+
+  const { data: job, error } = await sb
+    .from("job_offers")
+    .select("id,title,posted_by_id,organization_id,status")
+    .eq("id", contentId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!job) throw new Error("CONTENU_INTROUVABLE");
+  if (!session.isAdmin && job.posted_by_id !== session.userId) throw new Error("FORBIDDEN");
+
+  const applications = await exactCount(sb, "job_applications", "job_id", contentId);
+  const counts = deletionCounts([applications]);
+  const safeStatus = ["draft", "pending_moderation", "rejected", "changes_requested"].includes(String(job.status || "pending_moderation"));
+  return {
+    contentType,
+    contentId,
+    title: job.title || "Offre sans titre",
+    creatorUserId: job.posted_by_id || session.userId,
+    organizationId: job.organization_id ?? null,
+    status: String(job.status || "pending_moderation"),
+    safeToDelete: counts.known && safeStatus && applications === 0,
+    importanceReason: !counts.known
+      ? "Les candidatures liées à cette offre n’ont pas pu être vérifiées automatiquement."
+      : Number(applications ?? 0) > 0
+        ? `${applications ?? 0} candidature(s) sont liées à cette offre.`
+        : "Cette offre a été validée ou publiée.",
+    metadata: { applications },
+  };
+}
+
+async function executeSafeDeletion(sb: any, target: DeletionTarget) {
+  if (target.contentType === "course") {
+    const { error } = await sb.from("courses").delete().eq("id", target.contentId);
+    if (error) throw error;
+    return;
+  }
+  if (target.contentType === "project") {
+    const { error } = await sb.from("omnia_projects").delete().eq("id", target.contentId);
+    if (error) throw error;
+    return;
+  }
+  if (target.contentType === "live_event") {
+    const { error } = await sb.from("live_events").delete().eq("id", target.contentId);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await sb.from("job_offers").delete().eq("id", target.contentId);
+  if (error) throw error;
+}
+
+async function archiveImportantContent(sb: any, request: any) {
+  const now = new Date().toISOString();
+  if (request.content_type === "course") {
+    const { error } = await sb.from("courses").update({
+      is_published: false,
+      studio_status: "archived",
+      updated_at: now,
+    }).eq("id", request.content_id);
+    if (error) throw error;
+    return;
+  }
+  if (request.content_type === "project") {
+    const { error } = await sb.from("omnia_projects").update({
+      status: "archived",
+      updated_at: now,
+    }).eq("id", request.content_id);
+    if (error) throw error;
+    return;
+  }
+  if (request.content_type === "live_event") {
+    const { error } = await sb.from("live_events").update({
+      status: "archived",
+      updated_at: now,
+    }).eq("id", request.content_id);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await sb.from("job_offers").update({
+    status: "archived",
+    updated_at: now,
+  }).eq("id", request.content_id);
+  if (error) throw error;
+}
+
+async function handleDeletionPost(sb: any, session: SessionContext, body: any) {
+  const action = String(body?.action || "");
+
+  if (action === "delete_or_request") {
+    const contentType = normalizeDeletionType(body?.content_type);
+    const contentId = String(body?.content_id || "").trim();
+    if (!contentType || !contentId) return json({ error: "INVALID_REQUEST", message: "Contenu à supprimer invalide." }, 400);
+
+    const target = await resolveDeletionTarget(sb, session, contentType, contentId);
+    if (target.safeToDelete) {
+      await executeSafeDeletion(sb, target);
+      return json({
+        success: true,
+        deleted: true,
+        message: "Le contenu a été supprimé définitivement.",
+      });
+    }
+
+    const { data: existing } = await sb
+      .from("content_deletion_requests")
+      .select("*")
+      .eq("content_type", target.contentType)
+      .eq("content_id", target.contentId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existing) {
+      return json({
+        success: true,
+        deletion_pending: true,
+        request_id: existing.id,
+        message: "Une demande de suppression est déjà en attente de confirmation.",
+      });
+    }
+
+    const { data: request, error } = await sb
+      .from("content_deletion_requests")
+      .insert({
+        content_type: target.contentType,
+        content_id: target.contentId,
+        content_title: target.title,
+        creator_user_id: target.creatorUserId,
+        organization_id: target.organizationId,
+        requested_by: session.userId,
+        reason: String(body?.reason || "").trim() || null,
+        status: "pending",
+        requires_admin_confirmation: true,
+        importance_reason: target.importanceReason,
+        metadata: { ...target.metadata, original_status: target.status },
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+
+    return json({
+      success: true,
+      deletion_pending: true,
+      request_id: request.id,
+      message: "La demande a été transmise à l’administration pour confirmation.",
+    });
+  }
+
+  if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+
+  if (action === "list_deletion_requests") {
+    const requestedStatus = String(body?.status || "pending");
+    let query = sb
+      .from("content_deletion_requests")
+      .select("*,creator:creator_user_id(full_name,email)")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (requestedStatus !== "all") query = query.eq("status", requestedStatus);
+    const { data, error } = await query;
+    if (error) throw error;
+    return json({ success: true, requests: data ?? [] });
+  }
+
+  if (action === "review_deletion_request") {
+    const requestId = String(body?.request_id || "").trim();
+    const decision = String(body?.decision || "");
+    if (!requestId || !["approve", "reject"].includes(decision)) {
+      return json({ error: "INVALID_REQUEST", message: "Décision invalide." }, 400);
+    }
+
+    const { data: request, error: loadError } = await sb
+      .from("content_deletion_requests")
+      .select("*")
+      .eq("id", requestId)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (loadError) throw loadError;
+    if (!request) return json({ error: "REQUEST_NOT_FOUND", message: "Cette demande n’est plus en attente." }, 404);
+
+    const now = new Date().toISOString();
+    const note = String(body?.review_note || "").trim() || null;
+
+    if (decision === "reject") {
+      const { data, error } = await sb
+        .from("content_deletion_requests")
+        .update({
+          status: "rejected",
+          reviewed_by: session.userId,
+          reviewed_at: now,
+          review_note: note,
+        })
+        .eq("id", requestId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return json({ success: true, request: data, message: "La suppression a été refusée." });
+    }
+
+    await archiveImportantContent(sb, request);
+    const { data, error } = await sb
+      .from("content_deletion_requests")
+      .update({
+        status: "executed",
+        reviewed_by: session.userId,
+        reviewed_at: now,
+        review_note: note,
+        executed_at: now,
+      })
+      .eq("id", requestId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json({
+      success: true,
+      request: data,
+      message: "La suppression a été confirmée. Le contenu a été retiré tout en préservant son historique.",
+    });
+  }
+
+  return json({ error: "ACTION_NOT_SUPPORTED" }, 404);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-  if (req.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+  if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   const token = sessionToken(req);
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
@@ -132,9 +530,16 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return json({ error: "FORBIDDEN" }, 403);
+    const session = await verifySessionContext(sb, token);
+    if (!session) return json({ error: "AUTH_REQUIRED" }, 401);
 
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      return await handleDeletionPost(sb, session, body);
+    }
+
+    if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+    const adminId = session.userId;
     const url = new URL(req.url);
 
     // Détail d'un rôle : uniquement nom, e-mail et date d'inscription.

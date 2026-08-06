@@ -1,21 +1,32 @@
 import { getSessionToken, clearSession } from '../lib/session';
-import React, { ReactNode, useEffect, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
+import { DashboardTopbar } from './DashboardTopbar';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
-  ChevronRight, ChevronDown, Sparkles, Menu, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
+  ChevronRight, ChevronDown, Sparkles, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
   Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Route, X,
 } from 'lucide-react';
 
-interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
-interface NavGroup { id: string; label: string; icon: React.ElementType; items: NavItem[] }
+export interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
+export interface NavGroup { id: string; label: string; icon: React.ElementType; items: NavItem[] }
 interface Props {
   children: ReactNode;
-  role?: 'apprenant' | 'professeur' | 'directeur' | 'moderateur' | 'super_admin';
+  role?: 'apprenant' | 'professeur' | 'directeur' | 'moderateur' | 'super_admin' | 'recruteur' | 'coach' | 'organisateur';
   navItems?: NavItem[];
   navGroups?: NavGroup[];
+  headerTitle?: string;
+  headerSubtitle?: string;
+  headerActions?: ReactNode;
+  headerSearch?: ReactNode;
+  dashboardPath?: string;
+  spaceHomePath?: string;
+  spaceHomeLabel?: string;
+  brandTitle?: string;
+  brandAccent?: string;
+  contentClassName?: string;
 }
 
 
@@ -178,7 +189,22 @@ const ADMIN_NAV = [
   { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
 ];
 
-export function DashboardLayout({ children, role = 'apprenant', navItems, navGroups }: Props) {
+export function DashboardLayout({
+  children,
+  role = 'apprenant',
+  navItems,
+  navGroups,
+  headerTitle,
+  headerSubtitle,
+  headerActions,
+  headerSearch,
+  dashboardPath,
+  spaceHomePath = '/',
+  spaceHomeLabel = 'Retour à Omnia Global Academy',
+  brandTitle = 'Omnia',
+  brandAccent = 'Global Academy',
+  contentClassName = '',
+}: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -263,28 +289,34 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     navigate('/connexion');
   }
 
-  const filterReferralItems = (items: NavItem[]) =>
-    role === 'apprenant' && !referralEnabled
-      ? items.filter(item => item.path !== '/dashboard/parrainage')
-      : items;
+  const NAV_ITEMS = useMemo(() => {
+    const source = navItems ?? (
+      role === 'professeur' ? PROFESSEUR_NAV
+        : role === 'directeur' ? PARTNER_NAV
+          : role === 'super_admin' ? ADMIN_NAV
+            : APPRENANT_NAV
+    );
+    return role === 'apprenant' && !referralEnabled
+      ? source.filter(item => item.path !== '/dashboard/parrainage')
+      : source;
+  }, [navItems, referralEnabled, role]);
 
-  const NAV_ITEMS = filterReferralItems(navItems ?? (
-    role === 'professeur' ? PROFESSEUR_NAV
-      : role === 'directeur' ? PARTNER_NAV
-        : role === 'super_admin' ? ADMIN_NAV
-          : APPRENANT_NAV
-  ));
-
-  const rawNavGroups = navGroups ?? (
-    role === 'professeur' ? PROFESSEUR_GROUPS
-      : role === 'apprenant' ? APPRENANT_GROUPS
-        : undefined
-  );
-
-  const ACTIVE_NAV_GROUPS = rawNavGroups?.map(group => ({
-    ...group,
-    items: filterReferralItems(group.items),
-  })).filter(group => group.items.length > 0);
+  const ACTIVE_NAV_GROUPS = useMemo(() => {
+    const source = navGroups ?? (
+      role === 'professeur' ? PROFESSEUR_GROUPS
+        : role === 'apprenant' ? APPRENANT_GROUPS
+          : undefined
+    );
+    if (!source) return undefined;
+    return source
+      .map(group => ({
+        ...group,
+        items: role === 'apprenant' && !referralEnabled
+          ? group.items.filter(item => item.path !== '/dashboard/parrainage')
+          : group.items,
+      }))
+      .filter(group => group.items.length > 0);
+  }, [navGroups, referralEnabled, role]);
 
   useEffect(() => {
     if (!ACTIVE_NAV_GROUPS?.length) return;
@@ -305,14 +337,39 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
     return location.pathname.startsWith(item.path);
   }
 
+  const activeNavigation = useMemo(() => {
+    const items = ACTIVE_NAV_GROUPS?.flatMap(group => group.items) ?? NAV_ITEMS;
+    const exact = items.find(item => item.exact && location.pathname === item.path);
+    const candidates = items
+      .filter(item => !item.exact && (location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)))
+      .sort((a, b) => b.path.length - a.path.length);
+    return exact || candidates[0] || null;
+  }, [ACTIVE_NAV_GROUPS, NAV_ITEMS, location.pathname]);
+
+  const roleSubtitle = role === 'super_admin'
+    ? 'Gestion de la plateforme'
+    : role === 'moderateur'
+      ? 'Espace de modération'
+      : role === 'directeur'
+        ? 'Espace Structure'
+        : role === 'professeur'
+          ? 'Espace Professeur'
+          : role === 'recruteur'
+            ? 'Espace Recruteur'
+            : role === 'coach'
+              ? 'Espace Coach'
+              : role === 'organisateur'
+                ? 'Espace Organisateur'
+                : 'Espace Apprenant';
+
   const sidebar = (
     <aside className="flex flex-col h-full min-h-0 overflow-hidden" style={{ backgroundColor: '#002050' }}>
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-6 py-5">
         <Link to="/" className="flex min-w-0 items-center gap-3">
           <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain" />
-          <span className="font-bold leading-tight">
-            <span className="block text-white text-base">Omnia</span>
-            <span className="block text-sm" style={{ color: '#BF8813' }}>Global Academy</span>
+          <span className="min-w-0 font-bold leading-tight">
+            <span className="block truncate text-base text-white">{brandTitle}</span>
+            <span className="block truncate text-sm" style={{ color: '#BF8813' }}>{brandAccent}</span>
           </span>
         </Link>
         <button
@@ -431,13 +488,13 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
 
       <div className="px-3 pt-2 pb-5 border-t border-white/10 flex-shrink-0">
         <Link
-          to={buildPath('/')}
+          to={buildPath(spaceHomePath)}
           onClick={() => setSidebarOpen(false)}
           className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold transition-all"
           style={{ color: '#BF8813' }}
         >
           <ExternalLink style={{ width: 18, height: 18 }} />
-          <span>Retour à Omnia Global Academy</span>
+          <span>{spaceHomeLabel}</span>
         </Link>
         <button type="button" onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all text-sm">
@@ -459,21 +516,18 @@ export function DashboardLayout({ children, role = 'apprenant', navItems, navGro
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg text-gray-600 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
-            aria-label="Ouvrir le menu du tableau de bord"
-            aria-expanded={sidebarOpen}
-            aria-controls="dashboard-mobile-navigation"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <span className="font-semibold text-sm" style={{ color: '#002050' }}>Omnia Academy</span>
-        </div>
-        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <DashboardTopbar
+          title={headerTitle || activeNavigation?.label || 'Tableau de bord'}
+          subtitle={headerSubtitle || roleSubtitle}
+          onOpenNavigation={() => setSidebarOpen(true)}
+          navigationOpen={sidebarOpen}
+          navigationId="dashboard-mobile-navigation"
+          actions={headerActions}
+          search={headerSearch}
+          dashboardPath={dashboardPath}
+        />
+        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`}>
           {children}
         </main>
       </div>

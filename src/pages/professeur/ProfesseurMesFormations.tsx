@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2 } from 'lucide-react';
+import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 interface Formation {
   id: string; title: string; status: string;
@@ -72,17 +73,19 @@ export function ProfesseurMesFormations() {
   useEffect(() => { load(); }, [load]);
 
 
-  async function deleteDraft(id: string, title: string) {
-    if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
+  async function removeFormation(formation: Formation) {
+    const important = !['brouillon', 'draft', 'rejetee', 'rejected', 'modification_demandee', 'changes_requested'].includes(formation.status);
+    const confirmation = important
+      ? `Demander la suppression de « ${formation.title} » ? Cette formation possède un statut important et devra être confirmée par l’administration.`
+      : `Supprimer « ${formation.title} » ? Si aucun historique n’y est lié, la suppression sera immédiate.`;
+    if (!window.confirm(confirmation)) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
-        method: 'POST', headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'delete_course', course_id: id, creator_context: 'professeur' }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Suppression impossible');
-      setFormations(items => items.filter(item => item.id !== id));
-    } catch (e) { alert(e instanceof Error ? e.message : 'Suppression impossible'); }
+      const result = await deleteOrRequestContent('course', formation.id);
+      if (result.deleted) setFormations(items => items.filter(item => item.id !== formation.id));
+      alert(result.message);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Suppression impossible');
+    }
   }
 
   const statusAliases: Record<string, string[]> = {
@@ -179,13 +182,12 @@ export function ProfesseurMesFormations() {
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </Link>
                       )}
-                      {['brouillon', 'draft'].includes(f.status) && (
-                        <button type="button" onClick={() => deleteDraft(f.id, f.title)}
-                          className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center justify-center"
-                          style={{ borderColor: '#DC2626', color: '#DC2626' }} title="Supprimer le brouillon">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button type="button" onClick={() => removeFormation(f)}
+                        className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center justify-center"
+                        style={{ borderColor: '#DC2626', color: '#DC2626' }}
+                        title={['brouillon', 'draft'].includes(f.status) ? 'Supprimer la formation' : 'Demander la suppression'}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                       {['publiee', 'published'].includes(f.status) && (
                         <Link to="/professeur/analytics"
                           className="flex-1 py-2 text-xs font-semibold text-center rounded-lg flex items-center justify-center gap-1 text-white"

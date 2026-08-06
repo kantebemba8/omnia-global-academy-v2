@@ -21,7 +21,7 @@ const BORDER = '#E4E7EC';
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const IMPORT_EXTENSIONS = ['pdf', 'docx', 'xlsx', 'zip', 'txt', 'md', 'csv'];
 
-type CreatorContext = 'professeur' | 'structure';
+type CreatorContext = 'professeur' | 'structure' | 'admin';
 type CreationMode = 'file' | 'assisted' | null;
 
 async function call(action: string, body: Record<string, unknown> = {}) {
@@ -42,20 +42,40 @@ function fileExtension(name: string) {
 }
 
 function CreationLayout({ context, children }: { context: CreatorContext; children: ReactNode }) {
-  return context === 'structure'
-    ? <StructureLayout>{children}</StructureLayout>
-    : <DashboardLayout role="professeur">{children}</DashboardLayout>;
+  if (context === 'structure') return <StructureLayout>{children}</StructureLayout>;
+  if (context === 'admin') return <DashboardLayout role="super_admin">{children}</DashboardLayout>;
+  return <DashboardLayout role="professeur">{children}</DashboardLayout>;
 }
 
 export default function ProfessorCourseStart() {
   const navigate = useNavigate();
   const location = useLocation();
-  const creatorContext: CreatorContext = location.pathname.includes('/structure/') ? 'structure' : 'professeur';
-  const routes = useMemo(() => ({
-    manual: creatorContext === 'structure' ? '/structure/studio/new' : '/professeur/studio/new',
-    studio: creatorContext === 'structure' ? '/structure/studio' : '/professeur/studio',
-    courses: creatorContext === 'structure' ? '/structure/formations' : '/professeur/courses',
-  }), [creatorContext]);
+  const creatorContext: CreatorContext = location.pathname.includes('/structure/')
+    ? 'structure'
+    : location.pathname.includes('/admin/')
+      ? 'admin'
+      : 'professeur';
+  const routes = useMemo(() => {
+    if (creatorContext === 'structure') {
+      return {
+        manual: '/structure/studio/new',
+        studio: '/structure/studio',
+        courses: '/structure/formations',
+      };
+    }
+    if (creatorContext === 'admin') {
+      return {
+        manual: '/admin/studio/new',
+        studio: '/admin/studio',
+        courses: '/admin/studio-mes-formations',
+      };
+    }
+    return {
+      manual: '/professeur/studio/new',
+      studio: '/professeur/studio',
+      courses: '/professeur/courses',
+    };
+  }, [creatorContext]);
 
   const [mode, setMode] = useState<CreationMode>(null);
   const [title, setTitle] = useState('');

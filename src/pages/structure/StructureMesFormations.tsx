@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2 } from 'lucide-react';
 import { StructureLayout } from '../../components/StructureLayout';
+import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 type Formation = {
   id: string;
@@ -87,19 +88,21 @@ export default function StructureMesFormations() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function deleteDraft(id: string, title: string) {
-    if (!window.confirm(`Supprimer définitivement le brouillon « ${title} » ?`)) return;
-    const token = getSessionToken();
-    if (!token) return navigate('/connexion', { replace: true });
+  async function removeFormation(formation: Formation) {
+    const status = formation.studio_status || 'draft';
+    const important = !['draft', 'changes_requested', 'rejected'].includes(status);
+    const confirmation = important
+      ? `Demander la suppression de « ${formation.title || 'Formation sans titre'} » ? La confirmation de l’administration sera nécessaire.`
+      : `Supprimer « ${formation.title || 'Formation sans titre'} » ? Si aucun historique n’y est lié, la suppression sera immédiate.`;
+    if (!window.confirm(confirmation)) return;
     try {
-      const res = await fetch(API, {
-        method: 'POST', headers: gatewayHeaders(),
-        body: JSON.stringify({ action: 'delete_course', course_id: id, creator_context: 'structure', session_token: token }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Suppression impossible');
-      setFormations(items => items.filter(item => item.id !== id));
-    } catch (e) { setError(e instanceof Error ? e.message : 'Suppression impossible'); }
+      const result = await deleteOrRequestContent('course', formation.id);
+      if (result.deleted) setFormations(items => items.filter(item => item.id !== formation.id));
+      setError('');
+      window.alert(result.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Suppression impossible');
+    }
   }
 
 
@@ -156,13 +159,12 @@ export default function StructureMesFormations() {
                       ) : (
                         <div className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-gray-50 py-2 text-xs text-gray-500"><CheckCircle size={14} /> {state.label}</div>
                       )}
-                      {(formation.studio_status || 'draft') === 'draft' && (
-                        <button type="button" onClick={() => deleteDraft(formation.id, formation.title || 'Formation sans titre')}
-                          className="flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-semibold"
-                          style={{ borderColor: '#DC2626', color: '#DC2626' }} title="Supprimer le brouillon">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button type="button" onClick={() => removeFormation(formation)}
+                        className="flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-semibold"
+                        style={{ borderColor: '#DC2626', color: '#DC2626' }}
+                        title={(formation.studio_status || 'draft') === 'draft' ? 'Supprimer la formation' : 'Demander la suppression'}>
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 </article>

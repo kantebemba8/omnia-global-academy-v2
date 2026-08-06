@@ -2,7 +2,7 @@ import { openExternalUrl } from '../../lib/mobile';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, Check, ClipboardList, Edit3, Eye, FileCheck2, FolderKanban, Mail, Plus, RefreshCw,
-  Send, Users, X,
+  Send, Trash2, Users, X,
 } from 'lucide-react';
 import {
   changeProjectStatus,
@@ -30,6 +30,7 @@ import {
 } from '../../lib/projectsApi';
 import { ProjectStatusBadge, ProjectsWorkspaceFrame } from '../../components/projects/ProjectUi';
 import { OwnerProjectRecommendationsPanel } from '../../components/projects/ProjectRecommendationsPanel';
+import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 const EMPTY_FORM = {
   title: '', short_description: '', description: '', problem_statement: '', objectives: '',
@@ -201,6 +202,25 @@ export default function ProjectOwnerWorkspace() {
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Soumission impossible.');
+    }
+  };
+
+  const removeProject = async (project: OmniaProject) => {
+    const important = !['draft', 'changes_requested', 'rejected'].includes(project.status);
+    const question = important
+      ? `Demander la suppression de « ${project.title} » ? Le projet sera retiré uniquement après confirmation administrative.`
+      : `Supprimer « ${project.title} » ? Si aucun participant ni livrable n’y est lié, la suppression sera immédiate.`;
+    if (!window.confirm(question)) return;
+    setMessage('');
+    try {
+      const result = await deleteOrRequestContent('project', project.id);
+      setMessage(result.message);
+      if (result.deleted) {
+        setProjects(items => items.filter(item => item.id !== project.id));
+        if (selectedProject?.id === project.id) setSelectedProject(null);
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Suppression impossible.');
     }
   };
 
@@ -397,7 +417,7 @@ export default function ProjectOwnerWorkspace() {
           {loading ? <div className="h-64 animate-pulse bg-slate-50" /> : projects.length ? <div className="divide-y" style={{ borderColor: '#EEF0F3' }}>{projects.map(project => (
             <div key={project.id} className="grid gap-4 px-5 py-5 lg:grid-cols-[1fr_auto] lg:items-center">
               <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#BF8813' }}>{PROJECT_TYPE_LABELS[project.project_type]}</span><ProjectStatusBadge status={project.status} /></div><h3 className="mt-2 text-lg font-bold" style={{ color: '#002050' }}>{project.title}</h3><p className="mt-1 line-clamp-2 text-sm text-slate-600">{project.short_description || project.description}</p><p className="mt-2 text-xs text-slate-500">{project.application_count || 0} candidature(s) · {project.team_count || 0} équipe(s)</p></div>
-              <div className="flex flex-wrap gap-2"><button onClick={() => openApplications(project)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}><Users size={15} /> Candidatures</button>{['draft', 'changes_requested', 'rejected'].includes(project.status) && <button onClick={() => openEdit(project)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}><Edit3 size={15} /> Modifier</button>}{['draft', 'changes_requested', 'rejected'].includes(project.status) && <button onClick={() => sendExisting(project)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#BF8813' }}><Send size={15} /> Soumettre</button>}<a href={`/projects/${project.slug}`} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#002050' }}><Eye size={15} /> Voir</a></div>
+              <div className="flex flex-wrap gap-2"><button onClick={() => openApplications(project)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}><Users size={15} /> Candidatures</button>{['draft', 'changes_requested', 'rejected'].includes(project.status) && <button onClick={() => openEdit(project)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}><Edit3 size={15} /> Modifier</button>}{['draft', 'changes_requested', 'rejected'].includes(project.status) && <button onClick={() => sendExisting(project)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#BF8813' }}><Send size={15} /> Soumettre</button>}<button type="button" onClick={() => void removeProject(project)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700"><Trash2 size={15} /> {['draft', 'changes_requested', 'rejected'].includes(project.status) ? 'Supprimer' : 'Demander la suppression'}</button><a href={`/projects/${project.slug}`} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: '#002050' }}><Eye size={15} /> Voir</a></div>
             </div>
           ))}</div> : <div className="px-5 py-14 text-center"><FolderKanban className="mx-auto" size={34} style={{ color: '#BF8813' }} /><h3 className="mt-4 font-bold" style={{ color: '#002050' }}>Aucun projet créé</h3><p className="mt-1 text-sm text-slate-600">Commencez avec un projet réel, un challenge ou une mission.</p></div>}
         </section>

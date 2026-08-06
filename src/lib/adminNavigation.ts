@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature
+  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -36,6 +36,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/courses', label: 'Catalogue & reconnaissances', icon: BookOpen },
       { path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: GraduationCap },
+      { path: '/admin/courses/new', label: 'Création de formation', icon: FileText },
       { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/quality-center', label: 'Centre Qualité', icon: ShieldCheck },
@@ -102,7 +103,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/career-studio', label: 'Gestion Omnia Career Studio', icon: Briefcase },
       { path: '/admin/coaching', label: 'Gestion Omnia Coaching', icon: Users },
-      { path: '/admin/talent', label: 'Supervision Omnia Talent', icon: Shield },
+      { path: '/admin/talent', label: 'Gestion Omnia Talent', icon: Shield },
       { path: '/admin/employabilite', label: 'Employabilité intégrée', icon: ShieldCheck },
       { path: '/admin/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
     ],
@@ -114,6 +115,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/forum', label: 'Communauté & Modération', icon: MessageSquare },
       { path: '/admin/omnia-live', label: 'Gestion Omnia Live', icon: Radio },
+    ],
+  },
+  {
+    id: 'governance',
+    label: 'Gouvernance',
+    icon: ShieldCheck,
+    items: [
+      { path: '/admin/suppressions', label: 'Demandes de suppression', icon: Trash2 },
     ],
   },
   {

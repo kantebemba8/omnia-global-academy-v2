@@ -443,6 +443,12 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
   const bundle = await loadProfileBundle(sb, targetUserId, undefined, false);
   if (!bundle) return json({ error: "PROFILE_NOT_FOUND" }, 404);
 
+  // Le compte interne de gestion de la plateforme ne possède jamais de profil public.
+  // L'absence est volontaire, y compris pour une URL directe ou une consultation interne.
+  if (bundle.roles.includes("super_admin")) {
+    return json({ error: "PROFILE_NOT_FOUND" }, 404);
+  }
+
   const profile = bundle.profile as Record<string, unknown>;
   const viewerIsOwner = optionalSession?.userId === targetUserId;
   const viewerIsAdmin = optionalSession?.roles.includes("super_admin") || false;
@@ -818,6 +824,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const profileUpdates = sanitizeProfile(requestedProfile);
+    if (session.roles.includes("super_admin")) {
+      profileUpdates.visibility = "private";
+      profileUpdates.show_email = false;
+      profileUpdates.show_phone = false;
+      profileUpdates.show_location = false;
+      profileUpdates.show_roles = false;
+      profileUpdates.show_achievements = false;
+      profileUpdates.allow_messages = false;
+    }
     const roleDetails = sanitizeRoleDetails(requestedRoleDetails);
     if (Object.keys(roleDetails).length) {
       const currentProfile = await ensureProfile(sb, userId);

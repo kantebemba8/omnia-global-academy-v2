@@ -5,12 +5,11 @@ import {
   BarChart3,
   ExternalLink,
   LayoutDashboard,
-  Menu,
   UsersRound,
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import UserAccountMenu from '../UserAccountMenu';
+import { DashboardTopbar } from '../DashboardTopbar';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -50,7 +49,7 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
         <button type="button" onClick={() => goTo('overview')} className="flex min-w-0 items-center gap-3 text-left">
           <img src="/omnia-sidebar-logo.png" alt="Omnia Talent" className="h-10 w-10 flex-shrink-0 object-contain" />
           <div className="min-w-0 font-bold leading-tight">
-            <div className="truncate text-base text-white">Supervision Omnia</div>
+            <div className="truncate text-base text-white">Omnia</div>
             <div className="truncate text-base" style={{ color: GOLD }}>Talent</div>
           </div>
         </button>
@@ -78,7 +77,7 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
+    <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-[#F8FAFC]">
       <div className="hidden w-[270px] flex-shrink-0 lg:block">{sidebar}</div>
       {open && (
         <div className="fixed inset-0 z-[90] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation de supervision Omnia Talent">
@@ -87,19 +86,15 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
-            style={{ color: BLUE }}
-            aria-expanded={open}
-            aria-controls="admin-talent-mobile-navigation"
-          >
-            <Menu size={18} /> Supervision Omnia Talent
-          </button>
-          <UserAccountMenu dashboardPath="/admin/dashboard" />
-        </div>
+        <DashboardTopbar
+          title="Gestion Omnia Talent"
+          subtitle="Recruteurs, activité et statistiques"
+          onOpenNavigation={() => setOpen(true)}
+          navigationOpen={open}
+          navigationId="admin-talent-mobile-navigation"
+          dashboardPath="/admin/dashboard"
+          actions={<Link to="/talent" className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50 sm:inline-flex"><ExternalLink size={16} /> Voir Omnia Talent</Link>}
+        />
         <main className="min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>
       </div>
     </div>

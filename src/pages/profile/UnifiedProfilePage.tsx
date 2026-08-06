@@ -128,7 +128,7 @@ const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-white px-3
 const labelClass = 'block text-sm font-semibold text-[#002050]';
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: 'Super-admin', moderateur: 'Modérateur', structure: 'Structure', recruteur_structure: 'Recruteur de structure',
+  super_admin: 'Administration', moderateur: 'Modérateur', structure: 'Structure', recruteur_structure: 'Recruteur de structure',
   organisateur: 'Organisateur Omnia Live', organizer: 'Organisateur Omnia Live', recruteur: 'Recruteur',
   recruteur_independant: 'Recruteur', professeur: 'Professeur', formateur: 'Professeur', coach: 'Coach', apprenant: 'Apprenant',
 };
@@ -220,7 +220,7 @@ function profileErrorMessage(error: unknown) {
     PROFILE_SUSPENDED: 'Ce profil est temporairement indisponible.', INVALID_PASSWORD: 'Mot de passe actuel incorrect.',
     SUSPENSION_CONFIRMATION_REQUIRED: 'La confirmation de suspension est invalide.', INVALID_SUSPENSION_REASON: 'Choisissez un motif de suspension valide.',
     INVALID_SUSPENSION_UNTIL: 'La date de retour prévue est invalide.', ACCOUNT_NOT_ACTIVE: 'Seul un compte actif peut être suspendu volontairement.',
-    LAST_SUPER_ADMIN_PROTECTED: 'Le dernier Super-admin actif ne peut pas suspendre ou supprimer son compte.',
+    LAST_SUPER_ADMIN_PROTECTED: 'Le dernier compte d’administration actif ne peut pas être suspendu ou supprimé.',
     DEMO_ACCOUNT_PROTECTED: 'Le compte de démonstration est protégé.', DELETION_CONFIRMATION_REQUIRED: 'La confirmation de suppression est invalide.',
   };
   return labels[error.code] || error.message || 'Mise à jour impossible.';
@@ -245,7 +245,7 @@ function accountImpactForRoles(roles: string[]) {
   if (roles.some(role => ['structure', 'responsable_structure', 'gestionnaire_partenaire', 'recruteur_structure'].includes(role))) impacts.add('La suspension de votre compte personnel ne supprime pas la Structure. Vérifiez qu’un autre responsable peut assurer la continuité avant une suppression définitive.');
   if (roles.some(role => ['organisateur', 'organizer'].includes(role))) impacts.add('Les événements, inscriptions et documents déjà produits restent conservés. Vous perdez temporairement la gestion des événements à venir.');
   if (roles.includes('moderateur')) impacts.add('Les journaux de modération nécessaires à la sécurité sont conservés sous une forme pseudonymisée.');
-  if (roles.includes('super_admin')) impacts.add('Le dernier Super-admin actif ne peut ni suspendre ni supprimer son compte.');
+  if (roles.includes('super_admin')) impacts.add('Le dernier compte d’administration actif ne peut ni être suspendu ni être supprimé.');
   if (!impacts.size) impacts.add('La suspension désactive l’accès sans supprimer vos données. La suppression définitive efface ou anonymise les données personnelles, sous réserve des obligations légales et de sécurité.');
   return [...impacts];
 }
@@ -307,7 +307,11 @@ export default function UnifiedProfilePage() {
   }, [bundle, location.hash, tab]);
 
   const roles = bundle?.roles || [];
-  const roleLabels = useMemo(() => [...new Set(roles.map(role => ROLE_LABELS[role] || role))], [roles]);
+  const isAdministration = roles.includes('super_admin');
+  const roleLabels = useMemo(
+    () => isAdministration ? ['Administration'] : [...new Set(roles.map(role => ROLE_LABELS[role] || role))],
+    [isAdministration, roles],
+  );
   const isLearner = roles.includes('apprenant');
   const isProfessor = roles.some(role => ['professeur', 'formateur'].includes(role));
   const isOrganizer = roles.some(role => ['organisateur', 'organizer'].includes(role));
@@ -497,11 +501,18 @@ export default function UnifiedProfilePage() {
   if (!bundle) return <ProfileRoleLayout><div className="mx-auto max-w-3xl p-6"><Notice value={message || { ok: false, text: 'Profil indisponible.' }} /></div></ProfileRoleLayout>;
 
   const avatar = bundle.user.avatar_url;
-  const tabs: Array<{ key: Tab; label: string; icon: ElementType }> = [
-    { key: 'apercu', label: 'Aperçu', icon: User }, { key: 'identite', label: 'Informations', icon: Mail },
-    { key: 'professionnel', label: 'Professionnel', icon: Briefcase }, { key: 'visibilite', label: 'Confidentialité', icon: Eye },
-    { key: 'notifications', label: 'Notifications', icon: Bell }, { key: 'securite', label: 'Sécurité', icon: Lock },
-  ];
+  const tabs: Array<{ key: Tab; label: string; icon: ElementType }> = isAdministration
+    ? [
+        { key: 'apercu', label: 'Compte', icon: User },
+        { key: 'identite', label: 'Informations', icon: Mail },
+        { key: 'notifications', label: 'Notifications', icon: Bell },
+        { key: 'securite', label: 'Sécurité', icon: Lock },
+      ]
+    : [
+        { key: 'apercu', label: 'Aperçu', icon: User }, { key: 'identite', label: 'Informations', icon: Mail },
+        { key: 'professionnel', label: 'Professionnel', icon: Briefcase }, { key: 'visibilite', label: 'Confidentialité', icon: Eye },
+        { key: 'notifications', label: 'Notifications', icon: Bell }, { key: 'securite', label: 'Sécurité', icon: Lock },
+      ];
 
   return <ProfileRoleLayout>
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
@@ -516,17 +527,17 @@ export default function UnifiedProfilePage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full bg-[#002050]/5 px-3 py-1 text-xs font-bold text-[#002050]">{label}</span>)}</div>
             <h1 className="mt-3 truncate text-2xl font-black text-[#002050] sm:text-3xl">{profileForm.display_name || userForm.full_name}</h1>
-            <p className="mt-1 text-sm text-slate-600">{profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.'}</p>
+            <p className="mt-1 text-sm text-slate-600">{isAdministration ? 'Compte interne de gestion de la plateforme.' : (profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.')}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050]"><Upload size={16} /> {avatarSaving ? 'Traitement...' : 'Ajouter une photo'}</button>
               {avatar && <button type="button" onClick={() => void deleteAvatar()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-600"><Trash2 size={16} /> Retirer</button>}
-              <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-3 py-2 text-sm font-bold text-[#002050]"><ExternalLink size={16} /> Voir mon profil public</Link>
+              {!isAdministration && <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-3 py-2 text-sm font-bold text-[#002050]"><ExternalLink size={16} /> Voir mon profil public</Link>}
             </div>
           </div>
           <div className="w-full rounded-2xl bg-slate-50 p-4 md:w-56">
-            <div className="flex items-center justify-between text-sm font-bold text-[#002050]"><span>Profil complété</span><span>{completion}%</span></div>
+            <div className="flex items-center justify-between text-sm font-bold text-[#002050]"><span>{isAdministration ? 'Compte configuré' : 'Profil complété'}</span><span>{completion}%</span></div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#BF8813] transition-all" style={{ width: `${completion}%` }} /></div>
-            <p className="mt-3 text-xs text-slate-500">Un profil complet améliore la cohérence de vos espaces Omnia.</p>
+            <p className="mt-3 text-xs text-slate-500">{isAdministration ? 'Ces informations restent internes et ne créent aucun profil public.' : 'Un profil complet améliore la cohérence de vos espaces Omnia.'}</p>
           </div>
         </div>
       </header>
@@ -536,7 +547,7 @@ export default function UnifiedProfilePage() {
       <Notice value={message} />
 
       {tab === 'apercu' && <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        <Section title="Votre présence Omnia" icon={Globe} description="Les informations publiques visibles dans Omnia Communauté, Talent, Career et vos autres espaces.">
+        <Section title={isAdministration ? 'Informations du compte' : 'Votre présence Omnia'} icon={Globe} description={isAdministration ? 'Données internes utilisées pour sécuriser et administrer votre accès.' : 'Les informations publiques visibles dans Omnia Communauté, Talent, Career et vos autres espaces.'}>
           <div className="space-y-5">
             {profileForm.bio ? <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{profileForm.bio}</p> : <Empty text="Ajoutez une présentation professionnelle dans l’onglet Professionnel." />}
             <InfoGrid values={[
@@ -556,9 +567,11 @@ export default function UnifiedProfilePage() {
               {isOrganizer && <QuickLink to="/omnia-live/profil-organisateur" icon={Shield} label="Dossier organisateur Omnia Live" />}
             </div>
           </Section>
-          <Section title="Confidentialité actuelle" icon={Eye}>
-            <p className="text-sm text-slate-600">Visibilité : <strong className="text-[#002050]">{profileForm.visibility === 'public' ? 'Tout le monde' : profileForm.visibility === 'members' ? 'Membres connectés' : 'Privé'}</strong></p>
-            <p className="mt-2 text-xs text-slate-500">Les coordonnées privées ne sont jamais affichées sauf si vous activez explicitement leur visibilité.</p>
+          <Section title={isAdministration ? 'Protection du compte' : 'Confidentialité actuelle'} icon={Eye}>
+            {isAdministration ? <p className="text-sm text-slate-600">Ce compte ne possède aucune page publique et n’apparaît dans aucun annuaire de la plateforme.</p> : <>
+              <p className="text-sm text-slate-600">Visibilité : <strong className="text-[#002050]">{profileForm.visibility === 'public' ? 'Tout le monde' : profileForm.visibility === 'members' ? 'Membres connectés' : 'Privé'}</strong></p>
+              <p className="mt-2 text-xs text-slate-500">Les coordonnées privées ne sont jamais affichées sauf si vous activez explicitement leur visibilité.</p>
+            </>}
           </Section>
         </div>
       </div>}
@@ -579,7 +592,7 @@ export default function UnifiedProfilePage() {
         <SaveButton saving={saving} onClick={() => void save('identity')} />
       </Section>}
 
-      {tab === 'professionnel' && <div className="space-y-6">
+      {!isAdministration && tab === 'professionnel' && <div className="space-y-6">
         <Section title="Présentation professionnelle" icon={Briefcase} description="Une seule présentation synchronisée avec Career, Talent, Skills Passport et les espaces compatibles.">
           <div className="grid gap-5 md:grid-cols-2">
             <Field label="Titre ou accroche" icon={Briefcase} wide><input className={inputClass} value={profileForm.headline} onChange={e => setProfileForm(v => ({ ...v, headline: e.target.value }))} placeholder="Ex. Analyste data, Formateur en gestion, Recruteur..." /></Field>
@@ -634,8 +647,8 @@ export default function UnifiedProfilePage() {
         <SaveButton saving={saving} onClick={() => void save('professional')} label="Synchroniser le profil professionnel" />
       </div>}
 
-      {tab === 'visibilite' && <Section title="Visibilité et confidentialité" icon={Eye} description="Choisissez précisément ce que les autres peuvent consulter. Les données sensibles restent privées par défaut.">
-        <label className={labelClass}>Qui peut voir votre profil ?<select className={inputClass} value={profileForm.visibility} onChange={e => setProfileForm(v => ({ ...v, visibility: e.target.value as ProfileForm['visibility'] }))}><option value="public">Tout le monde, même sans connexion</option><option value="members">Uniquement les membres Omnia connectés</option><option value="private">Uniquement moi et le Super-admin</option></select></label>
+      {!isAdministration && tab === 'visibilite' && <Section title="Visibilité et confidentialité" icon={Eye} description="Choisissez précisément ce que les autres peuvent consulter. Les données sensibles restent privées par défaut.">
+        <label className={labelClass}>Qui peut voir votre profil ?<select className={inputClass} value={profileForm.visibility} onChange={e => setProfileForm(v => ({ ...v, visibility: e.target.value as ProfileForm['visibility'] }))}><option value="public">Tout le monde, même sans connexion</option><option value="members">Uniquement les membres Omnia connectés</option><option value="private">Uniquement moi et l’équipe chargée de la sécurité</option></select></label>
         <div className="mt-6 divide-y divide-slate-100 rounded-2xl border border-slate-200">{([
           ['show_email', 'Afficher mon e-mail public', 'L’e-mail du compte reste toujours privé.'],
           ['show_phone', 'Afficher mon téléphone public', 'Le téléphone privé du compte reste masqué.'],
