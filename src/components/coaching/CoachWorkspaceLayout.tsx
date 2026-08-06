@@ -4,6 +4,7 @@ import {
   Package, Settings2, Star, User,
 } from 'lucide-react';
 import { DashboardLayout, type NavItem } from '../DashboardLayout';
+import ContextualHeaderSearch from '../ContextualHeaderSearch';
 
 const items: NavItem[] = [
   { path: '/coach/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
@@ -26,6 +27,7 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
       brandTitle="Omnia"
       brandAccent="Coaching"
       headerSubtitle="Espace Coach"
+      headerSearch={<ContextualHeaderSearch items={items.map(item => ({ id: item.path, label: item.label, description: 'Navigation Omnia Coaching', path: item.path }))} placeholder="Rechercher dans mon espace Coach..." />}
       spaceHomePath="/coaching"
       spaceHomeLabel="Retour à Omnia Coaching"
       contentClassName="bg-slate-50"

@@ -4,8 +4,16 @@ import {
   MessageSquare, Search, Settings, ShieldCheck, UserRound,
 } from 'lucide-react';
 import { DashboardLayout, type NavItem } from '../DashboardLayout';
+import ContextualHeaderSearch, { type ContextualHeaderSearchItem } from '../ContextualHeaderSearch';
 
-type Props = { children: ReactNode; title?: string; subtitle?: string };
+type Props = {
+  children: ReactNode;
+  title?: string;
+  subtitle?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchItems?: ContextualHeaderSearchItem[];
+};
 
 const NAV: NavItem[] = [
   { path: '/talent/recruteur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
@@ -21,13 +29,15 @@ const NAV: NavItem[] = [
   { path: '/talent/recruteur/parametres', label: 'Paramètres', icon: Settings },
 ];
 
-export function RecruiterLayout({ children, title, subtitle }: Props) {
+export function RecruiterLayout({ children, title, subtitle, searchValue, onSearchChange, searchItems }: Props) {
+  const items = searchItems || NAV.map(item => ({ id: item.path, label: item.label, description: 'Navigation Omnia Talent', path: item.path }));
   return (
     <DashboardLayout
       role="recruteur"
       navItems={NAV}
       headerTitle={title}
       headerSubtitle={subtitle || 'Omnia Talent'}
+      headerSearch={<ContextualHeaderSearch items={items} placeholder="Rechercher dans Omnia Talent..." value={searchValue} onChange={onSearchChange} />}
       brandTitle="Omnia"
       brandAccent="Talent"
       spaceHomePath="/talent"

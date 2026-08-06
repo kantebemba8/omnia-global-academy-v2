@@ -4,6 +4,7 @@ import AdminTalentManagementLayout from '../../components/admin/AdminTalentManag
 import { adminLoadTalentSupervision, adminUpdateRecruiterStatus, loadTalentAnalytics, TalentAnalytics } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 import { CheckCircle2, Clock3, Contact, ExternalLink, RefreshCw, ShieldCheck, UserX, UsersRound } from 'lucide-react';
+import type { ContextualHeaderSearchItem } from '../../components/ContextualHeaderSearch';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -90,6 +91,17 @@ export default function AdminTalent() {
     return (data.recruiters || []).filter((r: any) => [r.users?.full_name, r.users?.email, r.company_name, r.job_title, r.professional_email].filter(Boolean).join(' ').toLowerCase().includes(q));
   }, [data.recruiters, query]);
 
+  const searchItems = useMemo<ContextualHeaderSearchItem[]>(() => (data.recruiters || []).slice(0, 100).map((recruiter: any) => ({
+    id: `recruiter-${recruiter.user_id}`,
+    label: recruiter.users?.full_name || recruiter.company_name || 'Recruteur',
+    description: [recruiter.job_title, recruiter.company_name, recruiter.professional_email || recruiter.users?.email].filter(Boolean).join(' · '),
+    keywords: [recruiter.status, recruiter.country].filter(Boolean),
+    onSelect: () => {
+      setQuery(recruiter.users?.full_name || recruiter.company_name || recruiter.professional_email || '');
+      requestAnimationFrame(() => document.getElementById('recruteurs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    },
+  })), [data.recruiters]);
+
   const metrics = [
     ['En attente', data.metrics?.pending || 0, Clock3],
     ['Validés', data.metrics?.approved || 0, CheckCircle2],
@@ -97,7 +109,7 @@ export default function AdminTalent() {
     ['Contacts', data.metrics?.contacts || 0, Contact],
   ] as const;
 
-  return <AdminTalentManagementLayout>
+  return <AdminTalentManagementLayout searchValue={query} onSearchChange={setQuery} searchItems={searchItems}>
     <div id="overview" className="mx-auto max-w-7xl scroll-mt-4 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Supervision Omnia Talent</h1><p className="mt-1 text-sm text-gray-500">Validez les recruteurs, contrôlez les activités sensibles et ouvrez l’espace public Omnia Talent.</p></div>
@@ -107,8 +119,8 @@ export default function AdminTalent() {
       <div className="mt-5 flex justify-end"><PeriodSelector value={periodDays} onChange={setPeriodDays}/></div>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label,value,Icon])=><div key={label} className="rounded-xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center justify-between"><div><p className="text-sm text-gray-500">{label}</p><p className="mt-2 text-2xl font-semibold" style={{color:BLUE}}>{value}</p></div><Icon color={GOLD}/></div></div>)}</div>
       <div id="recruteurs" className="mt-6 scroll-mt-4 rounded-xl border bg-white" style={{borderColor:BORDER}}>
-        <div className="flex flex-wrap items-center gap-3 border-b p-4" style={{borderColor:BORDER}}>
-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nom, entreprise, email…" className="min-w-[240px] flex-1 rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4" style={{borderColor:BORDER}}>
+          <p className="text-sm text-gray-500">La recherche des recruteurs se trouve dans l’en-tête de cet espace.</p>
           <select value={status} onChange={e=>setStatus(e.target.value as Status)} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="all">Tous les statuts</option><option value="pending">En attente</option><option value="approved">Validés</option><option value="rejected">Refusés</option><option value="suspended">Suspendus</option></select>
         </div>
         {loading ? <p className="p-6 text-sm text-gray-500">Chargement…</p> : recruiters.length === 0 ? <div className="p-12 text-center"><UsersRound className="mx-auto" color={GOLD}/><p className="mt-3 text-sm text-gray-500">Aucun recruteur dans cette catégorie.</p></div> : <div className="divide-y">{recruiters.map((r:any)=><div key={r.user_id} className="flex flex-wrap items-center gap-4 p-4"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold" style={{color:BLUE}}>{(r.users?.full_name||r.company_name||'RE').slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" style={{color:BLUE}}>{r.users?.full_name||'Recruteur'}</p><p className="truncate text-xs text-gray-500">{r.job_title||'Fonction non renseignée'} · {r.company_name||'Entreprise non renseignée'}</p><p className="truncate text-xs text-gray-400">{r.professional_email||r.users?.email||''}</p></div><span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:'rgba(191,136,19,.12)',color:GOLD}}>{r.status}</span><div className="flex flex-wrap gap-2">{r.status!=='approved'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'approved')} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white">Valider</button>}{r.status!=='rejected'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'rejected')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Refuser</button>}{r.status!=='suspended'&&r.status==='approved'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'suspended')} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:BORDER,color:BLUE}}>Suspendre</button>}{r.status==='suspended'&&<button disabled={busy!==''} onClick={()=>update(r.user_id,'approved')} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{background:BLUE}}>Réactiver</button>}</div></div>)}</div>}

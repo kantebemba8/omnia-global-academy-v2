@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { DashboardTopbar } from '../DashboardTopbar';
+import ContextualHeaderSearch, { type ContextualHeaderSearchItem } from '../ContextualHeaderSearch';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -21,7 +22,14 @@ const NAV_ITEMS = [
   { hash: 'activite', label: 'Activité & contacts', icon: Activity },
 ];
 
-export default function AdminTalentManagementLayout({ children }: { children: ReactNode }) {
+type Props = {
+  children: ReactNode;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchItems?: ContextualHeaderSearchItem[];
+};
+
+export default function AdminTalentManagementLayout({ children, searchValue, onSearchChange, searchItems = [] }: Props) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -42,6 +50,16 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
     setOpen(false);
     requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
+
+  const contextualItems: ContextualHeaderSearchItem[] = [
+    ...NAV_ITEMS.map(item => ({
+      id: `section-${item.hash}`,
+      label: item.label,
+      description: 'Section de gestion Omnia Talent',
+      onSelect: () => goTo(item.hash),
+    })),
+    ...searchItems,
+  ];
 
   const sidebar = (
     <aside className="flex h-full min-h-0 flex-col" style={{ background: BLUE }}>
@@ -93,6 +111,7 @@ export default function AdminTalentManagementLayout({ children }: { children: Re
           navigationOpen={open}
           navigationId="admin-talent-mobile-navigation"
           dashboardPath="/admin/dashboard"
+          search={<ContextualHeaderSearch items={contextualItems} placeholder="Rechercher un recruteur ou une section..." value={searchValue} onChange={onSearchChange} />}
           actions={<Link to="/talent" className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50 sm:inline-flex"><ExternalLink size={16} /> Voir Omnia Talent</Link>}
         />
         <main className="min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>

@@ -4,6 +4,7 @@ import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import { DashboardTopbar } from '../../components/DashboardTopbar';
+import ContextualHeaderSearch from '../../components/ContextualHeaderSearch';
 import {
   AlertCircle,
   BarChart2,
@@ -567,6 +568,19 @@ export default function AdminCareerStudio() {
             title="Gestion Omnia Career Studio"
             subtitle="Modèles, règles, jetons et exports"
             dashboardPath="/admin/dashboard"
+            search={
+              <ContextualHeaderSearch
+                items={SUB_MENUS.map(item => ({
+                  id: item.key,
+                  label: item.label,
+                  description: 'Gestion Omnia Career Studio',
+                  keywords: [item.key, 'career', 'cv', 'lettre de motivation'],
+                  onSelect: () => setSubTab(item.key),
+                }))}
+                placeholder="Rechercher dans Career Studio…"
+                ariaLabel="Rechercher une rubrique de Career Studio"
+              />
+            }
             actions={
               <div className="hidden items-center gap-2 md:flex">
                 <button type="button" onClick={openLearnerCareerPreview} className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>

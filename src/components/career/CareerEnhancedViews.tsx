@@ -52,21 +52,42 @@ export function EnhancedDashboard({displayName,loading,cvDocs,lmDocs,cvTemplates
   const applications=readJson<any[]>('omnia_manual_applications',[]);
   const allDocs=[...cvDocs,...lmDocs];
   const progress=allDocs.length?Math.round((completedCv.length+completedLm.length)/allDocs.length*100):0;
-  const recent=[...allDocs].sort((a,b)=>new Date(b.updated_at||b.created_at||0).getTime()-new Date(a.updated_at||a.created_at||0).getTime()).slice(0,5);
-  const [advice,setAdvice]=useState<{text:string;loading:boolean}>({text:'',loading:false});
-  useEffect(()=>{
-    const day=new Date().toISOString().slice(0,10); const cached=readJson<any>('omnia_career_daily_advice',null);
-    if(cached?.day===day&&cached?.text){setAdvice({text:cached.text,loading:false});return}
-    setAdvice({text:'',loading:true});
-    callAi(`Génère un seul conseil du jour concret, professionnel et bref (maximum 45 mots), destiné à ${displayName}, pour améliorer un CV, une lettre de motivation, une candidature ou une préparation entretien. Données réelles: ${completedCv.length} CV terminés, ${completedLm.length} LM terminées, ${applications.length} candidatures. N'invente aucune donnée personnelle.`)
-      .then(text=>{if(text){saveJson('omnia_career_daily_advice',{day,text});setAdvice({text,loading:false})}else setAdvice({text:'',loading:false})})
-      .catch(()=>setAdvice({text:'',loading:false}));
-  },[displayName,completedCv.length,completedLm.length,applications.length]);
-  return <div className="space-y-6">
-    <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>{dashboardGreeting(displayName)}</h1></div>
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4"><Stat label="CV terminés" value={loading?'…':completedCv.length} icon={FileText} onClick={()=>onView('cv')}/><Stat label="LM terminées" value={loading?'…':completedLm.length} icon={Mail} onClick={()=>onView('lm')}/><Stat label="Candidatures" value={applications.length} icon={Briefcase} onClick={()=>onView('applications')}/><Stat label="Ma progression" value={`${progress}%`} icon={Target}/></div>
-    <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]"><Card className="p-5"><h2 className="mb-4 font-semibold" style={{color:BLUE}}>Activité récente</h2>{recent.length?<div className="space-y-3">{recent.map(doc=><button key={doc.id} onClick={()=>onOpen(doc.id,doc.doc_type)} className="flex w-full items-center gap-3 rounded-xl border p-3 text-left hover:bg-slate-50" style={{borderColor:BORDER}}><div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}>{doc.doc_type==='cv'?<FileText size={16} color={BLUE}/>:<Mail size={16} color={BLUE}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold" style={{color:BLUE}}>{doc.title}</div><div className="text-xs" style={{color:MUTED}}>{doc.status==='completed'?'Terminé':'Brouillon'}</div></div><ChevronRight size={15} color={MUTED}/></button>)}</div>:<Empty text="Aucune activité récente."/>}</Card><Card className="p-5"><div className="mb-4 flex items-center gap-2"><Sparkles size={18} color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Conseil du jour</h2></div>{advice.loading?<p className="text-sm" style={{color:MUTED}}>Génération du conseil IA…</p>:advice.text?<p className="text-sm leading-6" style={{color:'#374151'}}>{advice.text}</p>:<Empty text="Conseil IA indisponible pour le moment."/>}</Card></div>
-    <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold" style={{color:BLUE}}>Modèles recommandés</h2></div><div className="grid gap-5 lg:grid-cols-2"><div><div className="mb-3 text-sm font-semibold" style={{color:BLUE}}>3 modèles CV</div><div className="grid grid-cols-3 gap-3">{cvTemplates.slice(0,3).map(t=><TemplateLiveCard key={t.template_key} template={t} docType="cv" onClick={()=>onCreate('cv',t.template_key)}/>)}</div></div><div><div className="mb-3 text-sm font-semibold" style={{color:BLUE}}>3 modèles LM</div><div className="grid grid-cols-3 gap-3">{lmTemplates.slice(0,3).map(t=><TemplateLiveCard key={t.template_key} template={t} docType="lm" onClick={()=>onCreate('lm',t.template_key)}/>)}</div></div></div></Card>
+  const recent=[...allDocs]
+    .sort((a,b)=>new Date(b.updated_at||b.created_at||0).getTime()-new Date(a.updated_at||a.created_at||0).getTime())
+    .slice(0,4);
+  const actions=[
+    {label:'Créer un CV',description:`${cvTemplates.length || 12} modèles officiels`,icon:FileText,onClick:()=>onCreate('cv')},
+    {label:'Créer une lettre',description:`${lmTemplates.length || 6} modèles officiels`,icon:Mail,onClick:()=>onCreate('lm')},
+    {label:'Préparer un entretien',description:'Questions, simulation et conseils',icon:MessageSquare,onClick:()=>onView('interview')},
+    {label:'Suivre mes candidatures',description:`${applications.length} candidature${applications.length>1?'s':''}`,icon:Briefcase,onClick:()=>onView('applications')},
+  ];
+
+  return <div className="space-y-7">
+    <div>
+      <h1 className="text-2xl font-semibold" style={{color:BLUE}}>{dashboardGreeting(displayName)}</h1>
+      <p className="mt-1 text-sm" style={{color:MUTED}}>Créez vos documents, préparez vos entretiens et suivez vos candidatures depuis un seul espace.</p>
+    </div>
+
+    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <Stat label="CV terminés" value={loading?'…':completedCv.length} icon={FileText} onClick={()=>onView('cv')}/>
+      <Stat label="LM terminées" value={loading?'…':completedLm.length} icon={Mail} onClick={()=>onView('lm')}/>
+      <Stat label="Candidatures" value={applications.length} icon={Briefcase} onClick={()=>onView('applications')}/>
+      <Stat label="Progression" value={`${progress}%`} icon={Target}/>
+    </div>
+
+    <section className="border-y bg-white" style={{borderColor:BORDER}}>
+      <div className="grid md:grid-cols-2 xl:grid-cols-4">
+        {actions.map(({label,description,icon:Icon,onClick},index)=><button key={label} onClick={onClick} className={`flex items-center gap-3 px-4 py-5 text-left transition hover:bg-slate-50 ${index>0?'border-t md:border-t-0 md:border-l':''}`} style={{borderColor:BORDER}}><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}><Icon size={18} color={BLUE}/></span><span className="min-w-0"><span className="block text-sm font-semibold" style={{color:BLUE}}>{label}</span><span className="mt-1 block truncate text-xs" style={{color:MUTED}}>{description}</span></span></button>)}
+      </div>
+    </section>
+
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold" style={{color:BLUE}}>Documents récents</h2>
+        <button onClick={()=>onView('cv')} className="text-sm font-semibold" style={{color:GOLD}}>Voir mes documents</button>
+      </div>
+      {recent.length?<div className="divide-y border-y bg-white" style={{borderColor:BORDER}}>{recent.map(doc=><button key={doc.id} onClick={()=>onOpen(doc.id,doc.doc_type)} className="flex w-full items-center gap-3 px-3 py-4 text-left transition hover:bg-slate-50"><span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}>{doc.doc_type==='cv'?<FileText size={16} color={BLUE}/>:<Mail size={16} color={BLUE}/>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold" style={{color:BLUE}}>{doc.title}</span><span className="mt-0.5 block text-xs" style={{color:MUTED}}>{doc.status==='completed'?'Terminé':'Brouillon'}</span></span><ChevronRight size={16} color={MUTED}/></button>)}</div>:<Empty text="Aucun document récent. Commencez par créer votre premier CV ou votre première lettre."/>}
+    </section>
   </div>;
 }
 

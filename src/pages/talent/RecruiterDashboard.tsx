@@ -188,6 +188,14 @@ export default function RecruiterDashboard() {
     return talents.filter(t => [t.full_name,t.professional_title,t.location,t.country,...(t.skills||[]),...(t.sectors||[])].filter(Boolean).join(' ').toLowerCase().includes(q));
   }, [talents, query]);
 
+  const talentHeaderItems = useMemo(() => talents.slice(0, 100).map(talent => ({
+    id: `talent-${talent.id}`,
+    label: talent.full_name,
+    description: [talent.professional_title, talent.location || talent.country].filter(Boolean).join(' · '),
+    keywords: [...(talent.skills || []), ...(talent.sectors || [])],
+    path: `/profil/${talent.id}`,
+  })), [talents]);
+
   const titleMap: Record<Section,string> = {
     dashboard:'Accueil', offres:'Mes offres', talents:'Rechercher des talents', favoris:'Talents favoris', candidatures:'Candidatures', entretiens:'Entretiens', messages:'Messages', profil:'Profil recruteur', parametres:'Paramètres',
   };
@@ -201,7 +209,7 @@ export default function RecruiterDashboard() {
     return <RecruiterLayout title="Espace recruteur indépendant" subtitle="Omnia Talent"><div className="mx-auto max-w-4xl px-6 py-12"><div className="border-y border-gray-200 py-10"><h2 className="text-xl font-semibold" style={{color:BLUE}}>Accès Omnia Talent</h2><p className="mt-3 text-sm leading-6 text-gray-500">{message}</p>{accessState!=='checking'&&<Link to="/talent/recruteurs" className="mt-5 inline-flex items-center gap-2 border-b-2 py-2 text-sm font-semibold" style={{color:BLUE,borderColor:GOLD}}>Consulter mon statut <ArrowRight size={16}/></Link>}</div></div></RecruiterLayout>;
   }
 
-  return <RecruiterLayout title={titleMap[section]} subtitle="Omnia Talent">
+  return <RecruiterLayout title={titleMap[section]} subtitle="Omnia Talent" searchValue={section === 'talents' ? query : undefined} onSearchChange={section === 'talents' ? setQuery : undefined} searchItems={section === 'talents' ? talentHeaderItems : undefined}>
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       {error && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
       {section === 'dashboard' && <DashboardHome user={user} talents={talents} jobs={jobs} metrics={metrics} loading={loading} />}

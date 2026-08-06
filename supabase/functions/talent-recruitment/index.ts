@@ -5,7 +5,7 @@ import { hashSync } from "npm:bcryptjs@2.4.3";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, Accept, x-omnia-session-token",
 };
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -346,14 +346,19 @@ async function loadAnalytics(sb: ReturnType<typeof createClient>, session: Sessi
   let jobsQuery = sb.from("job_offers").select("id,status,created_at,posted_by_id").gte("created_at", since);
   if (!isAdmin) jobsQuery = jobsQuery.in("posted_by_id", actorIds.length ? actorIds : [session.userId]);
   const [favoritesResult, contactsResult, interviewsResult, jobsResult] = await Promise.all([favoritesQuery, contactsQuery, interviewsQuery, jobsQuery]);
+  for (const result of [favoritesResult, contactsResult, interviewsResult, jobsResult]) {
+    if (result.error) throw result.error;
+  }
   const jobs = jobsResult.data || [];
   const jobIds = jobs.map((row: any) => String(row.id));
   let applications: any[] = [];
   if (isAdmin) {
     const result = await sb.from("job_applications").select("id,status,submitted_at,job_id").gte("submitted_at", since);
+    if (result.error) throw result.error;
     applications = result.data || [];
   } else if (jobIds.length) {
     const result = await sb.from("job_applications").select("id,status,submitted_at,job_id").in("job_id", jobIds).gte("submitted_at", since);
+    if (result.error) throw result.error;
     applications = result.data || [];
   }
 
@@ -377,6 +382,9 @@ async function loadAnalytics(sb: ReturnType<typeof createClient>, session: Sessi
       sb.from("talent_recruiter_profiles").select("user_id", { count: "exact", head: true }).eq("status", "approved"),
       sb.from("talent_recruiter_profiles").select("organization_id").eq("status", "approved").not("organization_id", "is", null),
     ]);
+    for (const result of [profiles, recruiters, structures]) {
+      if (result.error) throw result.error;
+    }
     metrics.public_profiles = profiles.count || 0;
     metrics.approved_recruiters = recruiters.count || 0;
     metrics.recruiting_structures = new Set((structures.data || []).map((r: any) => String(r.organization_id))).size;
@@ -391,6 +399,10 @@ Deno.serve(async (req: Request) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
+
+    if (action === "health") {
+      return json({ success: true, service: "talent-recruitment", status: "ready" });
+    }
 
     // Public profile actions formerly handled by career-public-profiles.
     if (action === "public_list" || action === "list_public_profiles" || action === "list") {
@@ -491,6 +503,8 @@ Deno.serve(async (req: Request) => {
           sb.from("talent_activity_log").select("*").order("created_at", { ascending: false }).limit(150),
         ]);
         if (recruitersResult.error) throw recruitersResult.error;
+        if (contactsResult.error) throw contactsResult.error;
+        if (activityResult.error) throw activityResult.error;
         const baseRecruiters = recruitersResult.data || [];
         const userIds = [...new Set(baseRecruiters.map((r:any)=>r.user_id).filter(Boolean))];
         let usersById:any = {};
@@ -692,6 +706,9 @@ Deno.serve(async (req: Request) => {
       const contactQuery = organizationId ? sb.from("talent_contacts").select("id", { count: "exact", head: true }).eq("organization_id", organizationId) : sb.from("talent_contacts").select("id", { count: "exact", head: true }).eq("actor_user_id", session.userId).is("organization_id", null);
       const interviewQuery = organizationId ? sb.from("talent_interviews").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).gte("scheduled_at", new Date().toISOString()).in("status", ["pending","accepted"]) : sb.from("talent_interviews").select("id", { count: "exact", head: true }).eq("requested_by", session.userId).is("organization_id", null).gte("scheduled_at", new Date().toISOString()).in("status", ["pending","accepted"]);
       const [favorites, contacts, interviews] = await Promise.all([favoriteQuery, contactQuery, interviewQuery]);
+      for (const result of [favorites, contacts, interviews]) {
+        if (result.error) throw result.error;
+      }
       return json({ success: true, metrics: { favorites: favorites.count || 0, contacts: contacts.count || 0, upcoming_interviews: interviews.count || 0 } });
     }
 

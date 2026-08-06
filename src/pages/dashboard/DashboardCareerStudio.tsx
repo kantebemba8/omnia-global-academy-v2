@@ -393,7 +393,6 @@ export default function DashboardCareerStudio() {
       searchPlaceholder="Rechercher un CV, une LM, un modèle ou une page..."
     >
       <div className="min-h-[calc(100vh-72px)]" style={{ background: PAGE_BG, color: '#111827' }}>
-        {previewMode && <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900 md:px-8">Prévisualisation apprenant sécurisée : les documents restent locaux, aucun jeton n’est consommé et aucune donnée apprenant n’est modifiée.</div>}
         {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
         <main className="px-5 py-7 md:px-8">
           {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} />}

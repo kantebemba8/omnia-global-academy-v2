@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, BadgeCheck, CalendarClock, Languages, Search, SlidersHorizontal, Star, UserRoundCheck } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowRight, BadgeCheck, CalendarClock, Languages, SlidersHorizontal, Star, UserRoundCheck } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import { CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 
@@ -46,10 +46,12 @@ function CoachCard({ coach }: { coach: CoachProfile }) {
 }
 
 export default function CoachingCatalogue() {
+  const [params] = useSearchParams();
+  const headerQuery = params.get('q') || '';
   const [data, setData] = useState<Bootstrap>({ success: true, coaches: [], domains: [], levels: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => headerQuery);
   const [domain, setDomain] = useState('');
   const [level, setLevel] = useState('');
   const [language, setLanguage] = useState('');
@@ -58,6 +60,10 @@ export default function CoachingCatalogue() {
   useEffect(() => {
     coachingRequest<Bootstrap>('public_bootstrap').then(setData).catch(e => setError(e instanceof Error ? e.message : 'Catalogue indisponible.')).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    setQuery(headerQuery);
+  }, [headerQuery]);
 
   const languages = useMemo(() => [...new Set(data.coaches.flatMap(coach => coach.languages || []))].sort((a, b) => a.localeCompare(b, 'fr')), [data.coaches]);
   const coaches = useMemo(() => {
@@ -92,8 +98,7 @@ export default function CoachingCatalogue() {
     <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
       <section className="rounded-2xl border bg-white p-4" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: BLUE }}><SlidersHorizontal size={17} color={GOLD}/>Rechercher et filtrer</div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label className="relative xl:col-span-2"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} className="h-10 w-full rounded-lg border pl-9 pr-3 text-sm outline-none focus:border-[#BF8813]" style={{ borderColor: BORDER }} placeholder="Nom, spécialité, domaine…"/></label>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <select value={domain} onChange={e => setDomain(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les domaines</option>{data.domains.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <select value={language} onChange={e => setLanguage(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Toutes les langues</option>{languages.map(item => <option key={item}>{item}</option>)}</select>
           <select value={level} onChange={e => setLevel(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les niveaux</option>{data.levels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>

@@ -100,33 +100,85 @@ export type TalentContact = {
   talent?: PublicTalent | null;
 };
 
-async function recruitmentRequest<T>(action: string, payload: Record<string, unknown> = {}, scope: 'recruiter'|'structure' = 'recruiter'): Promise<T> {
-  const response = await fetch(ENDPOINTS.talentRecruitment, {
-    method: 'POST',
-    headers: edgeAuthHeaders(),
-    body: JSON.stringify({ action, scope, ...payload }),
-  });
+type TalentRequestScope = 'public'|'recruiter'|'structure'|'admin';
+
+type TalentRequestOptions = {
+  authenticated?: boolean;
+  timeoutMs?: number;
+};
+
+function talentEndpointCandidates() {
+  const candidates = [
+    ENDPOINTS.talentRecruitment,
+    SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/talent-recruitment` : '',
+  ].filter(Boolean);
+  return [...new Set(candidates)];
+}
+
+async function parseTalentResponse(response: Response) {
   const raw = await response.text();
-  let data: any = {};
-  if (raw) {
-    try { data = JSON.parse(raw); }
-    catch { data = { message: raw }; }
+  if (!raw) return {};
+  try { return JSON.parse(raw); }
+  catch { return { message: raw }; }
+}
+
+async function recruitmentRequest<T>(
+  action: string,
+  payload: Record<string, unknown> = {},
+  scope: TalentRequestScope = 'recruiter',
+  options: TalentRequestOptions = {},
+): Promise<T> {
+  const endpoints = talentEndpointCandidates();
+  if (!endpoints.length) {
+    throw new Error('Configuration Omnia Talent absente : VITE_SUPABASE_URL n’est pas défini.');
   }
-  if (!response.ok) {
-    throw new Error(apiErrorMessage(data, `Opération Omnia Talent indisponible (${response.status}).`));
+
+  const authenticated = options.authenticated ?? scope !== 'public';
+  const timeoutMs = Math.max(5000, options.timeoutMs || 20000);
+  const networkErrors: string[] = [];
+
+  for (const [endpointIndex, endpoint] of endpoints.entries()) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: authenticated ? edgeAuthHeaders() : edgeGatewayHeaders(),
+        body: JSON.stringify({ action, scope, ...payload }),
+        signal: controller.signal,
+        credentials: 'omit',
+      });
+      const data = await parseTalentResponse(response);
+      if (!response.ok) {
+        const message = apiErrorMessage(data, `Opération Omnia Talent indisponible (${response.status}).`);
+        const canTryAlternate = endpointIndex < endpoints.length - 1 && [404, 502, 503, 504].includes(response.status);
+        if (canTryAlternate) {
+          networkErrors.push(`${endpoint} : HTTP ${response.status} — ${message}`);
+          continue;
+        }
+        throw new Error(message);
+      }
+      return data as T;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        networkErrors.push(`${endpoint} : délai dépassé`);
+        continue;
+      }
+      if (error instanceof TypeError) {
+        networkErrors.push(`${endpoint} : ${error.message || 'connexion refusée'}`);
+        continue;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
-  return data as T;
+
+  throw new Error(`Connexion à l’Edge Function talent-recruitment impossible. Vérifiez le déploiement, l’URL Supabase et les règles CORS. Tentatives : ${networkErrors.join(' | ')}`);
 }
 
 export async function loadPublicTalents(): Promise<PublicTalent[]> {
-  if (!SUPABASE_URL) return [];
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/talent-recruitment`, {
-    method: 'POST',
-    headers: edgeGatewayHeaders(),
-    body: JSON.stringify({ action: 'public_list' }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(apiErrorMessage(data, 'Impossible de charger les profils publics.'));
+  const data = await recruitmentRequest<{ success: true; profiles: PublicTalent[] }>('public_list', {}, 'public', { authenticated: false });
   return data.profiles || [];
 }
 
@@ -242,10 +294,10 @@ export async function revokeRecruitmentInvite(inviteId: string) {
   return recruitmentRequest<{ success: true }>('revoke_recruitment_invite', { invite_id: inviteId }, 'structure');
 }
 export async function adminLoadTalentSupervision(status?: string) {
-  return recruitmentRequest<{ success: true; recruiters: any[]; contacts: any[]; activity: any[]; metrics: Record<string, number> }>('admin_talent_supervision', status ? { status } : {});
+  return recruitmentRequest<{ success: true; recruiters: any[]; contacts: any[]; activity: any[]; metrics: Record<string, number> }>('admin_talent_supervision', status ? { status } : {}, 'admin');
 }
 export async function adminUpdateRecruiterStatus(userId: string, status: 'approved'|'rejected'|'suspended'|'pending', reason?: string) {
-  return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('admin_update_recruiter_status', { user_id: userId, status, reason });
+  return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('admin_update_recruiter_status', { user_id: userId, status, reason }, 'admin');
 }
 
 export type TalentAnalytics = {
@@ -260,7 +312,7 @@ export type TalentAnalytics = {
 };
 
 export async function loadTalentAnalytics(scope: 'recruiter'|'structure'|'admin' = 'recruiter', periodDays = 30) {
-  return recruitmentRequest<{ success: true; analytics: TalentAnalytics }>('analytics', { period_days: periodDays }, scope === 'admin' ? 'recruiter' : scope);
+  return recruitmentRequest<{ success: true; analytics: TalentAnalytics }>('analytics', { period_days: periodDays }, scope);
 }
 
 export async function logTalentProfileView(talentUserId: string) {

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, Building2, UserCheck, Shield, Briefcase, Search,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout, type NavGroup } from './DashboardLayout';
 import { getStoredUser } from '../lib/session';
+import ContextualHeaderSearch from './ContextualHeaderSearch';
 
 const STRUCTURE_NAV_GROUPS: NavGroup[] = [
   {
@@ -95,6 +97,7 @@ const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
 type StoredUser = { roles?: string[] };
 
 export function StructureLayout({ children }: { children: ReactNode; displayName?: string }) {
+  const location = useLocation();
   const visibleGroups = useMemo(() => {
     const user = getStoredUser<StoredUser>();
     const previewRole = sessionStorage.getItem('omnia_admin_role_preview');
@@ -106,12 +109,16 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
     return recruitmentOnly ? STRUCTURE_RECRUITER_NAV_GROUPS : STRUCTURE_NAV_GROUPS;
   }, []);
 
+  const recruitmentItems = visibleGroups.find(group => group.id === 'recruitment')?.items || [];
+  const showRecruitmentSearch = location.pathname.startsWith('/structure/recrutement') || location.pathname === '/structure/offres-emploi';
+
   return (
     <DashboardLayout
       role="directeur"
       navGroups={visibleGroups}
       brandTitle="Omnia"
       brandAccent="Structure"
+      headerSearch={showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined}
       spaceHomePath="/"
       spaceHomeLabel="Retour au site Omnia"
     >

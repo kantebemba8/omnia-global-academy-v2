@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout, type NavItem } from '../DashboardLayout';
+import ContextualHeaderSearch from '../ContextualHeaderSearch';
 
 const NAV_ITEMS: NavItem[] = [
   { path: '/admin/coaching', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
@@ -24,6 +25,7 @@ export default function AdminCoachingManagementLayout({ children }: { children: 
       role="super_admin"
       navItems={NAV_ITEMS}
       headerSubtitle="Gestion Omnia Coaching"
+      headerSearch={<ContextualHeaderSearch items={NAV_ITEMS.map(item => ({ id: item.path, label: item.label, description: 'Navigation Omnia Coaching', path: item.path }))} placeholder="Rechercher dans la gestion Coaching..." />}
       headerActions={<Link to="/coaching" className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50 sm:inline-flex"><ExternalLink size={16} /> Voir Omnia Coaching</Link>}
       dashboardPath="/admin/dashboard"
       brandTitle="Omnia"
