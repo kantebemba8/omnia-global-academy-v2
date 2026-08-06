@@ -53,7 +53,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     icon: BookOpen,
     items: [
       { path: '/structure/formations', label: 'Mes formations', icon: BookOpen },
-      { path: '/structure/studio/new', label: 'Créer une formation', icon: PlusCircle },
+      { path: '/structure/courses/new', label: 'Créer une formation', icon: PlusCircle },
       { path: '/structure/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
       { path: '/structure/jurys', label: 'Jurys & révisions', icon: Users },
       { path: '/structure/projects', label: 'Omnia Projects', icon: FolderKanban },

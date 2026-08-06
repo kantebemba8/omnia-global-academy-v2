@@ -765,7 +765,8 @@ export default function App() {
 <Route path="/structure/assessment-center" element={<ProfesseurAssessmentCenter />} />
 <Route path="/structure/jurys" element={<ProfesseurJuries />} />
 <Route path="/structure/studio/:courseId" element={<StudioConceptionFormation />} />
-<Route path="/structure/formations/nouvelle" element={<Navigate to="/structure/studio/new" replace />} />
+<Route path="/structure/courses/new" element={<ProfessorCourseStart />} />
+<Route path="/structure/formations/nouvelle" element={<Navigate to="/structure/courses/new" replace />} />
 
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />

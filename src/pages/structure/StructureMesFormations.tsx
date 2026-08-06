@@ -111,7 +111,7 @@ export default function StructureMesFormations() {
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Mes formations</h1>
             <p className="text-sm text-gray-500 mt-1">{formations.length} formation{formations.length !== 1 ? 's' : ''}</p>
           </div>
-          <Link to="/structure/studio/new" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: '#002050' }}>
+          <Link to="/structure/courses/new" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: '#002050' }}>
             <PlusCircle size={16} /> Créer une formation
           </Link>
         </div>
@@ -130,7 +130,7 @@ export default function StructureMesFormations() {
             <BookOpen className="mx-auto mb-4 h-12 w-12 text-gray-200" />
             <h2 className="font-semibold" style={{ color: '#002050' }}>Aucune formation</h2>
             <p className="mt-1 text-sm text-gray-500">Créez votre première formation dans le Studio unifié.</p>
-            <Link to="/structure/studio/new" className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>
+            <Link to="/structure/courses/new" className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>
               <PlusCircle size={15} /> Créer une formation
             </Link>
           </div>

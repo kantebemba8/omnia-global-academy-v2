@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import JSZip from "npm:jszip@3.10.1";
+import * as XLSX from "npm:xlsx@0.18.5";
+import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
 
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
@@ -159,6 +162,154 @@ async function resolveCertificationRegistry(sb:any,courseId:string,input:any):Pr
   return {recognition_partner_id:partner.id,recognition_program_id:program?.id||null,logo_permission_id:(certificatePermission||coursePermission)?.id||null,certification_type:partner.partner_type==='cpd'?'cpd':String(input.type||'partner'),organization_name:partner.name,certification_name:String(input.certification_name||program?.certificate_label||program?.title||'').trim(),credit_value:input.credit_value==null?(program?.credit_value??null):Number(input.credit_value),credit_unit:input.credit_unit||program?.credit_unit||null,logo_url:coursePermission?partner.logo_url:null,badge_url:certificatePermission?partner.logo_url:null,verification_url:String(input.verification_url||partner.website||'').trim()||null,partner_website_url:partner.website||null,partner_description:partner.description||null,course_logo_authorized:!!coursePermission,certificate_logo_authorized:!!certificatePermission,permission_snapshot:{source:'recognition_partner',partner_id:partner.id,program_id:program?.id||null,course_permission:coursePermission||null,certificate_permission:certificatePermission||null,captured_at:new Date().toISOString()}};
  }
  return {certification_type:String(input.type||'other'),organization_name:String(input.organization_name||'').trim(),certification_name:String(input.certification_name||'').trim(),credit_value:input.credit_value==null?null:Number(input.credit_value),credit_unit:input.credit_unit||null,logo_url:null,badge_url:null,signature_url:null,stamp_url:null,verification_url:String(input.verification_url||'').trim()||null,partner_website_url:null,partner_description:null,course_logo_authorized:false,certificate_logo_authorized:false,permission_snapshot:{source:'custom_request',assets_blocked_until_admin_validation:true,captured_at:new Date().toISOString()}};
+}
+
+
+type CourseImportQuestion={question:string;options:string[];correctIndex:number;explanation?:string};
+type CourseImportLesson={title:string;objective?:string;content:string;summary?:string;questions?:CourseImportQuestion[]};
+type CourseImportModule={title:string;objective?:string;lessons:CourseImportLesson[]};
+type CourseImportBlueprint={title:string;short_description:string;objectives:string[];target_audience:string;learning_outcomes:string[];modules:CourseImportModule[]};
+
+const COURSE_IMPORT_BUCKET="course-imports";
+const COURSE_IMPORT_MAX_BYTES=25*1024*1024;
+const COURSE_IMPORT_MAX_TEXT=120000;
+const COURSE_IMPORT_ALLOWED=new Set(["pdf","docx","xlsx","zip","txt","md","csv"]);
+const COURSE_IMPORT_DANGEROUS=new Set(["exe","dll","msi","bat","cmd","com","scr","ps1","psm1","vbs","js","mjs","cjs","jar","apk","ipa","sh","php","py","rb"]);
+
+function importExtension(name:string){const clean=String(name||"").split(/[?#]/)[0];const part=clean.split(".").pop();return part&&part!==clean?part.toLowerCase():""}
+function safeImportName(name:string){const ext=importExtension(name);const base=String(name||"document").replace(/\.[^.]+$/,"" ).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80)||"document";return ext?`${base}.${ext}`:base}
+function cleanImportedText(value:string){return String(value||"").replace(/\u0000/g,"").replace(/\r\n?/g,"\n").replace(/[\t ]+\n/g,"\n").replace(/\n{4,}/g,"\n\n\n").replace(/[ \t]{2,}/g," ").trim().slice(0,COURSE_IMPORT_MAX_TEXT)}
+function decodeXmlEntities(value:string){return value.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&#x([0-9a-f]+);/gi,(_,hex)=>String.fromCodePoint(parseInt(hex,16))).replace(/&#(\d+);/g,(_,num)=>String.fromCodePoint(Number(num)))}
+function stripOfficeXml(xml:string){return cleanImportedText(decodeXmlEntities(xml.replace(/<w:tab\/?\s*>/gi,"\t").replace(/<w:br\/?\s*>/gi,"\n").replace(/<\/w:p>/gi,"\n").replace(/<\/w:tr>/gi,"\n").replace(/<\/w:tc>/gi,"\t").replace(/<[^>]+>/g," ")))}
+function escapeHtml(value:string){return String(value||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
+function textToHtml(value:string){const paragraphs=cleanImportedText(value).split(/\n{2,}/).map(x=>x.trim()).filter(Boolean).slice(0,80);return paragraphs.map(p=>`<p>${escapeHtml(p).replace(/\n/g,"<br>")}</p>`).join("")||"<p>Contenu à vérifier et compléter.</p>"}
+function titleFromFilename(name:string){return String(name||"Nouvelle formation").replace(/\.[^.]+$/,"" ).replace(/[_-]+/g," ").replace(/\s+/g," ").trim().slice(0,500)||"Nouvelle formation"}
+function firstSentence(value:string,max=240){const clean=cleanImportedText(value);const sentence=clean.split(/(?<=[.!?])\s+/)[0]||clean;return sentence.slice(0,max)}
+function stringList(value:any,limit=12){return (Array.isArray(value)?value:[]).map(x=>String(x||"").trim()).filter(Boolean).slice(0,limit)}
+
+async function extractPdfText(bytes:Uint8Array){
+ const document=await getDocumentProxy(bytes);const extracted=await extractPdfDocumentText(document,{mergePages:true});
+ return cleanImportedText(Array.isArray(extracted.text)?extracted.text.join("\n\n"):String(extracted.text||""));
+}
+async function extractDocxText(bytes:Uint8Array){
+ const archive=await JSZip.loadAsync(bytes,{checkCRC32:true});
+ const names=Object.keys(archive.files).filter(name=>/^word\/(document|header\d+|footer\d+)\.xml$/i.test(name)).slice(0,30);
+ const parts:string[]=[];for(const name of names){const file=archive.file(name);if(file)parts.push(stripOfficeXml(await file.async("string")))}
+ return cleanImportedText(parts.join("\n\n"));
+}
+function extractXlsxText(bytes:Uint8Array){
+ const workbook=XLSX.read(bytes,{type:"array",cellDates:false});const parts:string[]=[];
+ for(const sheetName of workbook.SheetNames.slice(0,30)){
+  const sheet=workbook.Sheets[sheetName];if(!sheet)continue;
+  const csv=XLSX.utils.sheet_to_csv(sheet,{FS:"\t",RS:"\n",blankrows:false});
+  if(csv.trim())parts.push(`Feuille : ${sheetName}\n${csv}`);
+ }
+ return cleanImportedText(parts.join("\n\n"));
+}
+async function extractZipText(bytes:Uint8Array,depth=0){
+ if(depth>1)throw new Error("Les archives ZIP imbriquées ne sont pas prises en charge.");
+ const archive=await JSZip.loadAsync(bytes,{checkCRC32:true});const entries=Object.values(archive.files).filter((entry:any)=>!entry.dir);
+ if(entries.length>60)throw new Error("L’archive contient trop de fichiers. Limite : 60.");
+ let expanded=0;const parts:string[]=[];let supportedCount=0;
+ for(const entry of entries as any[]){
+  const normalized=String(entry.name||"").replace(/\\/g,"/");
+  if(normalized.startsWith("/")||normalized.split("/").includes(".."))throw new Error("L’archive contient un chemin de fichier non sécurisé.");
+  const extension=importExtension(normalized);
+  if(COURSE_IMPORT_DANGEROUS.has(extension))throw new Error(`Fichier dangereux refusé dans l’archive : ${normalized}`);
+  if(!COURSE_IMPORT_ALLOWED.has(extension))continue;
+  const size=Number(entry?._data?.uncompressedSize||0);expanded+=Math.max(0,size);
+  if(expanded>40*1024*1024)throw new Error("Le contenu décompressé dépasse la limite de sécurité de 40 Mo.");
+  const nestedBytes=await entry.async("uint8array");const text=await extractCourseImportText(nestedBytes,normalized,depth+1);
+  if(text.trim()){parts.push(`DOCUMENT : ${normalized}\n${text}`);supportedCount++}
+  if(parts.join("\n\n").length>=COURSE_IMPORT_MAX_TEXT||supportedCount>=20)break;
+ }
+ if(!supportedCount)throw new Error("L’archive ne contient aucun document pris en charge.");
+ return cleanImportedText(parts.join("\n\n"));
+}
+async function extractCourseImportText(bytes:Uint8Array,name:string,depth=0){
+ const extension=importExtension(name);if(!COURSE_IMPORT_ALLOWED.has(extension))throw new Error("Format de fichier non pris en charge.");
+ if(extension==="pdf")return await extractPdfText(bytes);
+ if(extension==="docx")return await extractDocxText(bytes);
+ if(extension==="xlsx")return extractXlsxText(bytes);
+ if(extension==="zip")return await extractZipText(bytes,depth);
+ return cleanImportedText(new TextDecoder("utf-8",{fatal:false}).decode(bytes));
+}
+
+function heuristicImportBlueprint(text:string,suggestedTitle:string):CourseImportBlueprint{
+ const clean=cleanImportedText(text);const rawLines=clean.split("\n").map(x=>x.trim()).filter(Boolean);
+ const modules:CourseImportModule[]=[];let currentModule:CourseImportModule={title:"Module 1",objective:"Comprendre et appliquer les notions du document importé",lessons:[]};
+ let lessonTitle="Leçon 1";let buffer:string[]=[];
+ const flushLesson=()=>{const content=cleanImportedText(buffer.join("\n"));if(!content)return;currentModule.lessons.push({title:lessonTitle,objective:firstSentence(content,180),content,summary:firstSentence(content,320)});buffer=[];lessonTitle=`Leçon ${currentModule.lessons.length+1}`};
+ const flushModule=()=>{flushLesson();if(currentModule.lessons.length)modules.push(currentModule);currentModule={title:`Module ${modules.length+1}`,objective:"Approfondir les notions extraites du document",lessons:[]};lessonTitle="Leçon 1"};
+ for(const line of rawLines){
+  const moduleMatch=line.match(/^(module|partie|chapitre)\s*([0-9ivx.-]*)\s*[:\-–]?\s*(.*)$/i);
+  const lessonMatch=line.match(/^(le[cç]on|section|unit[eé])\s*([0-9ivx.-]*)\s*[:\-–]?\s*(.*)$/i);
+  if(moduleMatch&&line.length<180){flushModule();currentModule.title=(moduleMatch[3]||line).trim().slice(0,500);continue}
+  if(lessonMatch&&line.length<180){flushLesson();lessonTitle=(lessonMatch[3]||line).trim().slice(0,500);continue}
+  buffer.push(line);
+  if(buffer.join(" ").length>3500)flushLesson();
+ }
+ flushModule();
+ if(!modules.length){
+  const chunks=clean.match(/[\s\S]{1,3200}(?:\s|$)/g)||[clean];
+  const lessons=chunks.filter(Boolean).slice(0,18).map((chunk,index)=>({title:`Leçon ${index+1}`,objective:firstSentence(chunk,180),content:cleanImportedText(chunk),summary:firstSentence(chunk,320)}));
+  for(let index=0;index<lessons.length;index+=3)modules.push({title:`Module ${Math.floor(index/3)+1}`,objective:"Étudier les contenus importés et les mettre en pratique",lessons:lessons.slice(index,index+3)});
+ }
+ const bounded=modules.slice(0,8).map((module,index)=>({...module,title:module.title||`Module ${index+1}`,lessons:module.lessons.slice(0,10)}));
+ const title=suggestedTitle.trim()||titleFromFilename(suggestedTitle)||"Formation importée";
+ return {title,short_description:`Brouillon créé à partir d’un document importé. ${firstSentence(clean,260)}`.slice(0,500),objectives:["Comprendre les notions principales du document importé","Appliquer les acquis dans des situations pratiques"],target_audience:"Public à préciser par le créateur",learning_outcomes:["Identifier les notions essentielles","Mettre en pratique les contenus étudiés"],modules:bounded};
+}
+
+function normalizeImportBlueprint(value:any,fallback:CourseImportBlueprint):CourseImportBlueprint{
+ const source=value&&typeof value==="object"?value:{};const modules=(Array.isArray(source.modules)?source.modules:[]).slice(0,8).map((module:any,moduleIndex:number)=>({
+  title:String(module?.title||`Module ${moduleIndex+1}`).trim().slice(0,500),
+  objective:String(module?.objective||"").trim().slice(0,2000),
+  lessons:(Array.isArray(module?.lessons)?module.lessons:[]).slice(0,10).map((lesson:any,lessonIndex:number)=>({
+   title:String(lesson?.title||`Leçon ${lessonIndex+1}`).trim().slice(0,500),objective:String(lesson?.objective||"").trim().slice(0,1000),content:cleanImportedText(String(lesson?.content||lesson?.text||"" )).slice(0,7000),summary:cleanImportedText(String(lesson?.summary||"" )).slice(0,1200),questions:(Array.isArray(lesson?.questions)?lesson.questions:[]).slice(0,2).map((question:any)=>({question:String(question?.question||"").trim().slice(0,1000),options:stringList(question?.options,4).map(x=>x.slice(0,500)),correctIndex:Math.min(3,Math.max(0,Number(question?.correctIndex)||0)),explanation:String(question?.explanation||"").trim().slice(0,1500)})).filter((question:any)=>question.question&&question.options.length===4)
+  })).filter((lesson:any)=>lesson.content)
+ })).filter((module:any)=>module.lessons.length);
+ return {title:String(source.title||fallback.title).trim().slice(0,500)||fallback.title,short_description:String(source.short_description||fallback.short_description).trim().slice(0,500),objectives:stringList(source.objectives,12).length?stringList(source.objectives,12):fallback.objectives,target_audience:String(source.target_audience||fallback.target_audience).trim().slice(0,2000),learning_outcomes:stringList(source.learning_outcomes,12).length?stringList(source.learning_outcomes,12):fallback.learning_outcomes,modules:modules.length?modules:fallback.modules};
+}
+async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint){
+ const key=Deno.env.get("ANTHROPIC_API_KEY");if(!key)return {blueprint:fallback,ai_used:false};
+ const excerpt=cleanImportedText(text).slice(0,50000);const prompt=`Transforme le contenu suivant en brouillon de formation éditable. N'invente aucun fait. Réponds uniquement avec un JSON valide, sans Markdown, conforme à ce schéma : {"title":"","short_description":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","lessons":[{"title":"","objective":"","content":"texte brut","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}]}]}. Limites : 8 modules, 10 leçons par module, 2 QCM par leçon. Les questions sont facultatives si le contenu ne permet pas une réponse certaine. Le résultat reste un brouillon non publié.\n\nTITRE SUGGÉRÉ : ${fallback.title}\n\nCONTENU :\n${excerpt}`;
+ try{
+  const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:Deno.env.get("ANTHROPIC_MODEL")||"claude-3-5-haiku-latest",max_tokens:5000,messages:[{role:"user",content:prompt}]})});
+  if(!response.ok)return {blueprint:fallback,ai_used:false};const output=await response.json();const raw=String(output?.content?.[0]?.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false};
+  return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback),ai_used:true};
+ }catch{return {blueprint:fallback,ai_used:false}}
+}
+async function sha256Hex(bytes:Uint8Array){const input=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const digest=await crypto.subtle.digest("SHA-256",input);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("")}
+
+async function createImportedCourse(sb:any,userId:string,creatorContext:string,blueprint:CourseImportBlueprint,source:any,aiUsed:boolean){
+ let structureId:string|null=null;if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null}
+ const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
+ const wordCount=blueprint.modules.flatMap(module=>module.lessons).reduce((sum,lesson)=>sum+cleanImportedText(lesson.content).split(/\s+/).filter(Boolean).length,0);
+ const learningDesign={delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:"",import_source:{bucket:source.bucket,path:source.path,name:source.name,mime:source.mime,size:source.size,sha256:source.sha256,imported_at:new Date().toISOString(),ai_assisted:aiUsed}};
+ const insert:any={title:blueprint.title||"Formation importée",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,template_used:"file_import",studio_mode:"simple",studio_status:"draft",is_published:false,short_description:blueprint.short_description||"Brouillon créé depuis un fichier",long_description:"",language:"fr",prerequisites:"",objectives:blueprint.objectives,target_audience:blueprint.target_audience,learning_outcomes:blueprint.learning_outcomes,course_intro_title:"Bienvenue dans cette formation",course_intro_summary:"Cette formation a été préparée depuis un document importé. Vérifiez chaque contenu avant soumission.",free_preview_mode:"introduction",lesson_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.lesson_passing_score??80))),module_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.module_passing_score??80))),final_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.final_passing_score??70))),assessment_policy:{default_retry_cooldown_hours:Number(thresholdDefaults.default_retry_cooldown_hours??24),default_remediation_after_attempts:Number(thresholdDefaults.default_remediation_after_attempts??3),competency_mastery_score:Number(thresholdDefaults.competency_mastery_score??80)},learning_design_settings:learningDesign,quality_status:"incomplete",ready_to_submit:false,current_version:"1.0",word_count:wordCount,estimated_read_min:Math.max(1,Math.ceil(wordCount/200))};
+ const {data:course,error:courseError}=await sb.from("courses").insert(insert).select("*").single();if(courseError)throw courseError;
+ const moduleRows:any[]=[];
+ const {data:introModule,error:introModuleError}=await sb.from("course_modules").insert({course_id:course.id,title:"Introduction",objective:"Présenter la formation importée et les vérifications attendues",position:-1,is_intro:true}).select("*").single();if(introModuleError)throw introModuleError;
+ const {data:introLesson,error:introLessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:introModule.id,title:"Bienvenue dans cette formation",position:0,is_intro:true}).select("*").single();if(introLessonError)throw introLessonError;
+ const introBlocks=[{block_type:"heading",content_json:{text:"Bienvenue dans cette formation",level:1,alignment:"left"}},{block_type:"text",content_json:{html:"<p>Ce brouillon a été généré depuis un fichier. Contrôlez les titres, les explications, les évaluations et les droits d’utilisation avant toute soumission.</p>"}},{block_type:"callout",content_json:{type:"warning",content:`Document source : ${escapeHtml(source.name)}. Aucune publication automatique n’a été effectuée.`}}];
+ for(const [position,block] of introBlocks.entries()){const {error}=await sb.from("lesson_blocks").insert({course_id:course.id,module_id:introModule.id,lesson_id:introLesson.id,block_type:block.block_type,position,content_json:block.content_json,settings_json:{},source_type:"file_import",ai_generated:false,created_by:userId});if(error)throw error}
+ moduleRows.push({...introModule,lessons:[{...introLesson,has_blocks:true,block_count:introBlocks.length}]});
+ for(const [moduleIndex,module] of blueprint.modules.entries()){
+  const {data:moduleRow,error:moduleError}=await sb.from("course_modules").insert({course_id:course.id,title:module.title||`Module ${moduleIndex+1}`,objective:module.objective||"",position:moduleIndex,is_intro:false}).select("*").single();if(moduleError)throw moduleError;const lessonRows:any[]=[];
+  for(const [lessonIndex,lesson] of module.lessons.entries()){
+   const {data:lessonRow,error:lessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:moduleRow.id,title:lesson.title||`Leçon ${lessonIndex+1}`,position:lessonIndex,is_intro:false,is_module_intro:false,content_text:lesson.content,lesson_summary:lesson.summary||""}).select("*").single();if(lessonError)throw lessonError;
+   const blocks:any[]=[{block_type:"heading",content_json:{text:lesson.title||`Leçon ${lessonIndex+1}`,level:1,alignment:"left"}}];
+   if(lesson.objective)blocks.push({block_type:"objective",content_json:{title:"Objectif pédagogique",html:textToHtml(lesson.objective)}});
+   blocks.push({block_type:"text",content_json:{html:textToHtml(lesson.content)}});
+   if(lesson.summary)blocks.push({block_type:"summary",content_json:{title:"Résumé",html:textToHtml(lesson.summary)}});
+   for(const question of lesson.questions||[])blocks.push({block_type:"qcm",content_json:{question:question.question,options:question.options,correctIndex:question.correctIndex,explanation:question.explanation||""}});
+   for(const [position,block] of blocks.entries()){const {error}=await sb.from("lesson_blocks").insert({course_id:course.id,module_id:moduleRow.id,lesson_id:lessonRow.id,block_type:block.block_type,position,content_json:block.content_json,settings_json:{draft_from_import:true},source_type:"file_import",ai_generated:aiUsed,created_by:userId});if(error)throw error}
+   lessonRows.push({...lessonRow,has_blocks:true,block_count:blocks.length});
+  }
+  moduleRows.push({...moduleRow,lessons:lessonRows});
+ }
+ await log(sb,course.id,userId,"course_import_completed",{source_name:source.name,source_mime:source.mime,source_size:source.size,source_sha256:source.sha256,ai_used:aiUsed,module_count:blueprint.modules.length,lesson_count:blueprint.modules.reduce((sum,module)=>sum+module.lessons.length,0),draft_only:true});
+ return {course,modules:moduleRows,summary:{modules:blueprint.modules.length,lessons:blueprint.modules.reduce((sum,module)=>sum+module.lessons.length,0),questions:blueprint.modules.reduce((sum,module)=>sum+module.lessons.reduce((lessonSum,lesson)=>lessonSum+(lesson.questions?.length||0),0),0),ai_used:aiUsed,draft_only:true}};
 }
 
 Deno.serve(async(req)=>{
@@ -352,6 +503,43 @@ Deno.serve(async(req)=>{
     modules=[{...introModule,lessons:[{...introLesson,has_blocks:true,block_count:introBlocks.length}]}];
    }
    await log(sb,data.id,userId,"course_created",{template:data.template_used}); return json({success:true,course:data,modules});
+  }
+
+  if(action==="prepare_course_import_upload"){
+   const creatorContext=["professeur","structure"].includes(String(b.creator_context))?String(b.creator_context):"professeur";
+   const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const fileSize=Number(b.file_size||0);
+   if(!originalName||!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Utilisez PDF, DOCX, XLSX, ZIP, TXT, MD ou CSV."},400);
+   if(fileSize<=0||fileSize>COURSE_IMPORT_MAX_BYTES)return json({success:false,error:"IMPORT_SIZE_INVALID",message:"Le fichier doit être compris entre 1 octet et 25 Mo."},400);
+   const safeName=safeImportName(originalName);const path=`imports/${userId}/${crypto.randomUUID()}/${safeName}`;
+   const {data,error}=await sb.storage.from(COURSE_IMPORT_BUCKET).createSignedUploadUrl(path,{upsert:false});if(error)throw error;
+   return json({success:true,signedUrl:data.signedUrl,token:data.token,path,bucket:COURSE_IMPORT_BUCKET,creator_context:creatorContext,max_bytes:COURSE_IMPORT_MAX_BYTES,allowed_extensions:Array.from(COURSE_IMPORT_ALLOWED)});
+  }
+  if(action==="convert_course_import"){
+   const creatorContext=["professeur","structure"].includes(String(b.creator_context))?String(b.creator_context):"professeur";
+   const bucket=String(b.bucket_name||"");const path=String(b.storage_path||"");const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const declaredSize=Number(b.file_size||0);
+   if(bucket!==COURSE_IMPORT_BUCKET||!path.startsWith(`imports/${userId}/`))return json({success:false,error:"INVALID_IMPORT_PATH",message:"Le fichier importé n’appartient pas à cette session."},403);
+   if(!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Format de fichier non pris en charge."},400);
+   if(declaredSize<=0||declaredSize>COURSE_IMPORT_MAX_BYTES)return json({success:false,error:"IMPORT_SIZE_INVALID",message:"Le fichier dépasse la limite autorisée."},400);
+   let createdCourseId:string|null=null;
+   try{
+    const {data:blob,error:downloadError}=await sb.storage.from(bucket).download(path);if(downloadError||!blob)throw downloadError||new Error("IMPORT_DOWNLOAD_FAILED");
+    const bytes=new Uint8Array(await blob.arrayBuffer());if(bytes.byteLength<=0||bytes.byteLength>COURSE_IMPORT_MAX_BYTES)throw new Error("La taille réelle du fichier est invalide.");
+    const sourceHash=await sha256Hex(bytes);
+    const {data:recentLogs}=await sb.from("course_studio_logs").select("course_id,details").eq("user_id",userId).eq("action","course_import_completed").order("created_at",{ascending:false}).limit(100);
+    const duplicate=(recentLogs||[]).find((row:any)=>String(row?.details?.source_sha256||"")===sourceHash);
+    if(duplicate)return json({success:false,error:"DUPLICATE_IMPORT",message:"Ce fichier a déjà servi à créer un brouillon.",course_id:duplicate.course_id},409);
+    const extracted=await extractCourseImportText(bytes,originalName);
+    if(extracted.length<80)throw new Error("Aucun texte exploitable n’a été détecté. Pour un PDF scanné, utilisez un fichier contenant du texte sélectionnable.");
+    const requestedTitle=String(b.title||"").trim()||titleFromFilename(originalName);const fallback=heuristicImportBlueprint(extracted,requestedTitle);fallback.title=requestedTitle;
+    const generated=b.allow_ai===true?await aiImportBlueprint(extracted,fallback):{blueprint:fallback,ai_used:false};const blueprint=normalizeImportBlueprint(generated.blueprint,fallback);
+    const source={bucket,path,name:originalName,mime:String(b.file_mime||blob.type||"application/octet-stream"),size:bytes.byteLength,sha256:sourceHash};
+    const created=await createImportedCourse(sb,userId,creatorContext,blueprint,source,generated.ai_used);createdCourseId=created.course.id;
+    return json({success:true,...created,message:"Brouillon créé. Vérifiez chaque contenu avant de le soumettre."});
+   }catch(error){
+    if(createdCourseId)await sb.from("courses").delete().eq("id",createdCourseId).then(()=>{}).catch(()=>{});
+    await sb.storage.from(bucket).remove([path]).then(()=>{}).catch(()=>{});
+    throw error;
+   }
   }
   const courseId=b.course_id;
   if(["admin_validate","admin_publish","admin_request_changes","admin_reject","admin_archive"].includes(action)){
