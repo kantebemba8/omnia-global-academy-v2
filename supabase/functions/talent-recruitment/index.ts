@@ -151,6 +151,55 @@ async function queueNotification(sb: ReturnType<typeof createClient>, userId: st
   await sb.from("talent_notifications").insert({ user_id: userId, notification_type: type, title, message, action_url: actionUrl, payload }).catch(() => {});
 }
 
+const TALENT_VISIBILITY_DEFAULTS: Record<string, boolean> = {
+  display_name: true,
+  avatar_url: true,
+  headline: true,
+  bio: true,
+  city: true,
+  country_code: true,
+  languages: true,
+  skills: true,
+  target_sectors: true,
+  achievements: true,
+  availability_text: true,
+  years_experience: true,
+  portfolio_url: true,
+  linkedin_url: true,
+  messages: true,
+  public_email: false,
+  public_phone: false,
+};
+
+function talentFieldVisibility(value: unknown) {
+  const result = { ...TALENT_VISIBILITY_DEFAULTS };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key in result && typeof raw === "boolean") result[key] = raw;
+  }
+  return result;
+}
+
+function maskTalentProfile(profile: any, privacy: any) {
+  const fields = talentFieldVisibility(privacy?.field_visibility);
+  return {
+    ...profile,
+    full_name: fields.display_name ? profile.full_name : "Membre Omnia",
+    professional_title: fields.headline ? profile.professional_title : null,
+    location: fields.city || fields.country_code ? profile.location : null,
+    bio: fields.bio ? profile.bio : null,
+    skills: fields.skills ? profile.skills || [] : [],
+    sectors: fields.target_sectors ? profile.sectors || [] : [],
+    languages: fields.languages ? profile.languages || [] : [],
+    certifications: fields.achievements ? profile.certifications || [] : [],
+    photo_url: fields.avatar_url ? profile.photo_url : null,
+    availability: fields.availability_text ? profile.availability : null,
+    experience_level: fields.years_experience ? profile.experience_level : null,
+    portfolio_url: fields.portfolio_url ? profile.portfolio_url : null,
+    contact_enabled: fields.messages && profile.contact_enabled !== false,
+  };
+}
+
 async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
   const [{ data, error }, { data: internalRoleRows, error: roleError }] = await Promise.all([
     sb
@@ -162,10 +211,29 @@ async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
   ]);
   if (error) throw error;
   if (roleError) throw roleError;
+
   const internalUserIds = new Set((internalRoleRows || []).map((row: any) => String(row.user_id)));
-  return (data || [])
-    .filter((profile: any) => !internalUserIds.has(String(profile.user_id)))
-    .map((profile: any) => ({ ...profile, id: profile.user_id }));
+  const candidates = (data || []).filter((profile: any) => !internalUserIds.has(String(profile.user_id)));
+  const userIds = candidates.map((profile: any) => String(profile.user_id));
+  const privacyByUser = new Map<string, any>();
+  if (userIds.length) {
+    const { data: privacyRows, error: privacyError } = await sb
+      .from("user_profiles")
+      .select("user_id,visibility,field_visibility")
+      .in("user_id", userIds);
+    if (privacyError) throw privacyError;
+    for (const row of privacyRows || []) privacyByUser.set(String(row.user_id), row);
+  }
+
+  return candidates
+    .filter((profile: any) => {
+      const privacy = privacyByUser.get(String(profile.user_id));
+      return !privacy || privacy.visibility === "public";
+    })
+    .map((profile: any) => ({
+      ...maskTalentProfile(profile, privacyByUser.get(String(profile.user_id))),
+      id: profile.user_id,
+    }));
 }
 
 async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Request, body: any) {
@@ -184,25 +252,32 @@ async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Reque
     return json({ error: "PUBLIC_PROFILE_NOT_AVAILABLE" }, 403);
   }
   const profile = body.profile || {};
+  const { data: privacy, error: privacyError } = await sb
+    .from("user_profiles")
+    .select("visibility,field_visibility")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (privacyError) throw privacyError;
+  const fields = talentFieldVisibility(privacy?.field_visibility);
   const row = {
     user_id: userId,
-    full_name: profile.full_name || "",
-    professional_title: profile.title || profile.professional_title || null,
-    email: profile.email || null,
-    phone: profile.phone || null,
-    location: profile.location || null,
-    linkedin: profile.linkedin || null,
-    bio: profile.summary || profile.bio || null,
-    skills: Array.isArray(profile.skills) ? profile.skills : [],
-    sectors: Array.isArray(profile.sectors) ? profile.sectors : [],
-    languages: Array.isArray(profile.languages) ? profile.languages : [],
-    certifications: Array.isArray(profile.certifications) ? profile.certifications : [],
-    photo_url: profile.photo_url || null,
-    availability: profile.availability || null,
-    experience_level: profile.experience_level || null,
-    portfolio_url: profile.portfolio_url || null,
-    contact_enabled: profile.contact_enabled !== false,
-    visibility: profile.visibility || "private",
+    full_name: fields.display_name ? profile.full_name || "" : "Membre Omnia",
+    professional_title: fields.headline ? profile.title || profile.professional_title || null : null,
+    email: fields.public_email ? profile.email || null : null,
+    phone: fields.public_phone ? profile.phone || null : null,
+    location: fields.city || fields.country_code ? profile.location || null : null,
+    linkedin: fields.linkedin_url !== false ? profile.linkedin || null : null,
+    bio: fields.bio ? profile.summary || profile.bio || null : null,
+    skills: fields.skills && Array.isArray(profile.skills) ? profile.skills : [],
+    sectors: fields.target_sectors && Array.isArray(profile.sectors) ? profile.sectors : [],
+    languages: fields.languages && Array.isArray(profile.languages) ? profile.languages : [],
+    certifications: fields.achievements && Array.isArray(profile.certifications) ? profile.certifications : [],
+    photo_url: fields.avatar_url ? profile.photo_url || null : null,
+    availability: fields.availability_text ? profile.availability || null : null,
+    experience_level: fields.years_experience ? profile.experience_level || null : null,
+    portfolio_url: fields.portfolio_url ? profile.portfolio_url || null : null,
+    contact_enabled: fields.messages && profile.contact_enabled !== false,
+    visibility: privacy?.visibility === "public" ? "public" : privacy?.visibility === "members" ? "recruiters" : "private",
     documents_visibility: profile.documents_visibility || "private",
     updated_at: new Date().toISOString(),
   };

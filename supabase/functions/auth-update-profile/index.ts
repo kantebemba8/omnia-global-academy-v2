@@ -76,6 +76,52 @@ const PROFILE_BOOLEAN_FIELDS = [
   "allow_messages",
 ] as const;
 
+const FIELD_VISIBILITY_DEFAULTS: Record<string, boolean> = {
+  display_name: true,
+  avatar_url: true,
+  headline: true,
+  bio: true,
+  city: true,
+  country_code: true,
+  languages: true,
+  skills: true,
+  interests: true,
+  website_url: true,
+  linkedin_url: true,
+  portfolio_url: true,
+  github_url: true,
+  availability_text: true,
+  public_email: false,
+  public_phone: false,
+  roles: true,
+  achievements: true,
+  messages: true,
+  education_level: true,
+  field_of_study: true,
+  career_goal: true,
+  target_roles: true,
+  target_sectors: true,
+  contract_preferences: true,
+  years_experience: true,
+  expertise_domain: true,
+  teaching_languages: true,
+  qualifications: true,
+  teaching_formats: true,
+  experience_summary: true,
+  organizer_type: true,
+  organization_name: true,
+  event_topics: true,
+  moderation_domains: true,
+  recruitment_sectors: true,
+  recruitment_countries: true,
+  coaching_topics: true,
+  session_languages: true,
+  organizer_metrics: true,
+  coach_metrics: true,
+  structure: true,
+};
+const FIELD_VISIBILITY_KEYS = new Set(Object.keys(FIELD_VISIBILITY_DEFAULTS));
+
 const ROLE_DETAIL_TEXT_FIELDS: Record<string, number> = {
   education_level: 160,
   field_of_study: 180,
@@ -221,6 +267,47 @@ function validHttpUrl(value: string | null) {
   }
 }
 
+function normalizeFieldVisibility(
+  value: unknown,
+  legacy: Record<string, unknown> = {},
+): Record<string, boolean> {
+  const result: Record<string, boolean> = { ...FIELD_VISIBILITY_DEFAULTS };
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      if (FIELD_VISIBILITY_KEYS.has(key) && typeof raw === "boolean") result[key] = raw;
+    }
+  } else {
+    result.public_email = Boolean(legacy.show_email);
+    result.public_phone = Boolean(legacy.show_phone);
+    const showLocation = legacy.show_location === undefined ? true : Boolean(legacy.show_location);
+    result.city = showLocation;
+    result.country_code = showLocation;
+    result.roles = legacy.show_roles === undefined ? true : Boolean(legacy.show_roles);
+    result.achievements = legacy.show_achievements === undefined ? true : Boolean(legacy.show_achievements);
+    result.messages = legacy.allow_messages === undefined ? true : Boolean(legacy.allow_messages);
+  }
+  return result;
+}
+
+function sanitizeFieldVisibility(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_FIELD_VISIBILITY");
+  const result: Record<string, boolean> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!FIELD_VISIBILITY_KEYS.has(key)) continue;
+    if (typeof raw !== "boolean") throw new Error("INVALID_FIELD_VISIBILITY");
+    result[key] = raw;
+  }
+  return { ...FIELD_VISIBILITY_DEFAULTS, ...result };
+}
+
+function isFieldVisible(
+  fieldVisibility: Record<string, boolean>,
+  field: string,
+  fallback = true,
+) {
+  return fieldVisibility[field] === undefined ? fallback : fieldVisibility[field];
+}
+
 function sanitizeProfile(input: Record<string, unknown>) {
   const result: Record<string, unknown> = {};
   for (const [field, maxLength] of Object.entries(PROFILE_TEXT_FIELDS)) {
@@ -239,6 +326,9 @@ function sanitizeProfile(input: Record<string, unknown>) {
     const visibility = String(input.visibility || "");
     if (!PROFILE_VISIBILITIES.has(visibility)) throw new Error("INVALID_VISIBILITY");
     result.visibility = visibility;
+  }
+  if (input.field_visibility !== undefined) {
+    result.field_visibility = sanitizeFieldVisibility(input.field_visibility);
   }
   return result;
 }
@@ -340,6 +430,7 @@ async function loadProfileBundle(
         show_roles: true,
         show_achievements: true,
         allow_messages: true,
+        field_visibility: { ...FIELD_VISIBILITY_DEFAULTS },
         role_details: {},
       });
   return {
@@ -361,40 +452,42 @@ async function synchronizeRoleProfiles(
   profile: Record<string, unknown>,
 ) {
   const roleDetails = (profile.role_details && typeof profile.role_details === "object" ? profile.role_details : {}) as Record<string, unknown>;
-  const displayName = cleanText(profile.display_name, 160) || cleanText(user.full_name, 160) || "Membre Omnia";
-  const country = cleanText(user.country_code, 20);
-  const city = cleanText(profile.city, 160);
+  const fieldVisibility = normalizeFieldVisibility(profile.field_visibility, profile);
+  const displayName = isFieldVisible(fieldVisibility, "display_name")
+    ? cleanText(profile.display_name, 160) || cleanText(user.full_name, 160) || "Membre Omnia"
+    : "Membre Omnia";
+  const country = isFieldVisible(fieldVisibility, "country_code") ? cleanText(user.country_code, 20) : null;
+  const city = isFieldVisible(fieldVisibility, "city") ? cleanText(profile.city, 160) : null;
   const location = [city, country].filter(Boolean).join(", ") || null;
-  const languages = cleanArray(profile.languages, 20, 80);
-  const skills = cleanArray(profile.skills, 50, 120);
+  const languages = isFieldVisible(fieldVisibility, "languages") ? cleanArray(profile.languages, 20, 80) : [];
+  const skills = isFieldVisible(fieldVisibility, "skills") ? cleanArray(profile.skills, 50, 120) : [];
   const visibility = profile.visibility === "public" ? "public" : profile.visibility === "members" ? "recruiters" : "private";
 
-  // La présentation Career/Skills Passport est synchronisée pour les rôles individuels.
   const individualRoles = roles.some(role => ["apprenant", "professeur", "formateur", "coach", "organizer", "organisateur", "recruteur", "recruteur_independant"].includes(role));
   if (individualRoles) {
     await ignoreFailure(sb.from("career_public_profiles").upsert({
       user_id: userId,
       full_name: displayName,
-      professional_title: cleanText(profile.headline, 220),
-      email: profile.show_email ? cleanText(profile.public_email, 255) : null,
-      phone: profile.show_phone ? cleanText(profile.public_phone, 80) : null,
+      professional_title: isFieldVisible(fieldVisibility, "headline") ? cleanText(profile.headline, 220) : null,
+      email: isFieldVisible(fieldVisibility, "public_email", false) ? cleanText(profile.public_email, 255) : null,
+      phone: isFieldVisible(fieldVisibility, "public_phone", false) ? cleanText(profile.public_phone, 80) : null,
       location,
-      linkedin: cleanText(profile.linkedin_url, 700),
-      bio: cleanText(profile.bio, 3000),
+      linkedin: isFieldVisible(fieldVisibility, "linkedin_url") ? cleanText(profile.linkedin_url, 700) : null,
+      bio: isFieldVisible(fieldVisibility, "bio") ? cleanText(profile.bio, 3000) : null,
       skills,
       languages,
-      photo_url: cleanText(user.avatar_url, 1200),
+      photo_url: isFieldVisible(fieldVisibility, "avatar_url") ? cleanText(user.avatar_url, 1200) : null,
       visibility,
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" }));
 
     await ignoreFailure(sb.from("skills_passports").update({
-      professional_headline: cleanText(profile.headline, 220),
-      professional_summary: cleanText(profile.bio, 3000),
-      target_roles: cleanArray(roleDetails.target_roles, 20, 120),
+      professional_headline: isFieldVisible(fieldVisibility, "headline") ? cleanText(profile.headline, 220) : null,
+      professional_summary: isFieldVisible(fieldVisibility, "bio") ? cleanText(profile.bio, 3000) : null,
+      target_roles: isFieldVisible(fieldVisibility, "target_roles") ? cleanArray(roleDetails.target_roles, 20, 120) : [],
       languages,
       location_text: location,
-      availability_text: cleanText(profile.availability_text, 300),
+      availability_text: isFieldVisible(fieldVisibility, "availability_text") ? cleanText(profile.availability_text, 300) : null,
       updated_at: new Date().toISOString(),
     }).eq("user_id", userId));
   }
@@ -403,7 +496,7 @@ async function synchronizeRoleProfiles(
     await ignoreFailure(sb.from("professeur_profiles").upsert({
       user_id: userId,
       bio: cleanText(profile.bio, 3000),
-      expertise_domain: cleanText(roleDetails.expertise_domain, 300) || skills.slice(0, 5).join(", ") || null,
+      expertise_domain: cleanText(roleDetails.expertise_domain, 300) || cleanArray(profile.skills, 50, 120).slice(0, 5).join(", ") || null,
     }, { onConflict: "user_id" }));
   }
 
@@ -411,7 +504,7 @@ async function synchronizeRoleProfiles(
     await ignoreFailure(sb.from("live_organizer_profiles").update({
       display_name: displayName,
       bio: cleanText(profile.bio, 3000),
-      country,
+      country: cleanText(user.country_code, 20),
       website: cleanText(profile.website_url, 700),
       updated_at: new Date().toISOString(),
     }).eq("user_id", userId));
@@ -421,11 +514,11 @@ async function synchronizeRoleProfiles(
     await ignoreFailure(sb.from("coach_profiles").update({
       professional_title: cleanText(profile.headline, 220),
       biography: cleanText(profile.bio, 3000),
-      specialties: skills,
+      specialties: cleanArray(profile.skills, 50, 120),
       languages: cleanArray(roleDetails.session_languages, 15, 80).length
         ? cleanArray(roleDetails.session_languages, 15, 80)
-        : languages,
-      country,
+        : cleanArray(profile.languages, 20, 80),
+      country: cleanText(user.country_code, 20),
       photo_url: cleanText(user.avatar_url, 1200),
       linkedin_url: cleanText(profile.linkedin_url, 700),
       website_url: cleanText(profile.website_url, 700),
@@ -443,8 +536,6 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
   const bundle = await loadProfileBundle(sb, targetUserId, undefined, false);
   if (!bundle) return json({ error: "PROFILE_NOT_FOUND" }, 404);
 
-  // Le compte interne de gestion de la plateforme ne possède jamais de profil public.
-  // L'absence est volontaire, y compris pour une URL directe ou une consultation interne.
   if (bundle.roles.includes("super_admin")) {
     return json({ error: "PROFILE_NOT_FOUND" }, 404);
   }
@@ -457,6 +548,7 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
   if (visibility === "members" && !optionalSession) return json({ error: "MEMBER_ACCESS_REQUIRED" }, 401);
 
   const roleDetails = (profile.role_details && typeof profile.role_details === "object" ? profile.role_details : {}) as Record<string, unknown>;
+  const fieldVisibility = normalizeFieldVisibility(profile.field_visibility, profile);
   const safeRoleDetails: Record<string, unknown> = {};
   for (const key of [
     "education_level", "field_of_study", "career_goal", "target_roles", "target_sectors", "contract_preferences",
@@ -464,6 +556,7 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
     "experience_summary", "organizer_type", "organization_name", "event_topics", "moderation_domains",
     "recruitment_sectors", "recruitment_countries", "coaching_topics", "session_languages",
   ]) {
+    if (!isFieldVisible(fieldVisibility, key)) continue;
     if (roleDetails[key] !== undefined && roleDetails[key] !== null && roleDetails[key] !== "") safeRoleDetails[key] = roleDetails[key];
   }
 
@@ -471,51 +564,56 @@ async function publicProfileAction(sb: DbClient, req: Request, body: Record<stri
   if (String(user.status || "") === "suspendu" && !viewerIsAdmin) {
     return json({ error: "PROFILE_SUSPENDED", message: "Ce profil est temporairement indisponible." }, 404);
   }
+
+  const showCity = isFieldVisible(fieldVisibility, "city");
+  const showCountry = isFieldVisible(fieldVisibility, "country_code");
   const response = {
     id: user.id,
-    display_name: profile.display_name || user.full_name || "Membre Omnia",
-    avatar_url: user.avatar_url || null,
-    headline: profile.headline || null,
-    bio: profile.bio || null,
-    city: profile.show_location ? profile.city || null : null,
-    country_code: profile.show_location ? user.country_code || null : null,
-    languages: profile.languages || [],
-    skills: profile.skills || [],
-    interests: profile.interests || [],
-    website_url: profile.website_url || null,
-    linkedin_url: profile.linkedin_url || null,
-    portfolio_url: profile.portfolio_url || null,
-    github_url: profile.github_url || null,
-    availability_text: profile.availability_text || null,
-    email: profile.show_email ? profile.public_email || null : null,
-    phone: profile.show_phone ? profile.public_phone || null : null,
-    roles: profile.show_roles ? bundle.roles : [],
-    show_achievements: Boolean(profile.show_achievements),
-    allow_messages: Boolean(profile.allow_messages),
+    display_name: isFieldVisible(fieldVisibility, "display_name")
+      ? profile.display_name || user.full_name || "Membre Omnia"
+      : "Membre Omnia",
+    avatar_url: isFieldVisible(fieldVisibility, "avatar_url") ? user.avatar_url || null : null,
+    headline: isFieldVisible(fieldVisibility, "headline") ? profile.headline || null : null,
+    bio: isFieldVisible(fieldVisibility, "bio") ? profile.bio || null : null,
+    city: showCity ? profile.city || null : null,
+    country_code: showCountry ? user.country_code || null : null,
+    languages: isFieldVisible(fieldVisibility, "languages") ? profile.languages || [] : [],
+    skills: isFieldVisible(fieldVisibility, "skills") ? profile.skills || [] : [],
+    interests: isFieldVisible(fieldVisibility, "interests") ? profile.interests || [] : [],
+    website_url: isFieldVisible(fieldVisibility, "website_url") ? profile.website_url || null : null,
+    linkedin_url: isFieldVisible(fieldVisibility, "linkedin_url") ? profile.linkedin_url || null : null,
+    portfolio_url: isFieldVisible(fieldVisibility, "portfolio_url") ? profile.portfolio_url || null : null,
+    github_url: isFieldVisible(fieldVisibility, "github_url") ? profile.github_url || null : null,
+    availability_text: isFieldVisible(fieldVisibility, "availability_text") ? profile.availability_text || null : null,
+    email: isFieldVisible(fieldVisibility, "public_email", false) ? profile.public_email || null : null,
+    phone: isFieldVisible(fieldVisibility, "public_phone", false) ? profile.public_phone || null : null,
+    roles: isFieldVisible(fieldVisibility, "roles") ? bundle.roles : [],
+    show_achievements: isFieldVisible(fieldVisibility, "achievements"),
+    allow_messages: isFieldVisible(fieldVisibility, "messages"),
     role_details: safeRoleDetails,
-    professor_profile: bundle.professor_profile ? {
+    professor_profile: bundle.professor_profile && isFieldVisible(fieldVisibility, "expertise_domain") ? {
       expertise_domain: (bundle.professor_profile as Record<string, unknown>).expertise_domain || null,
     } : null,
-    organizer_profile: bundle.organizer_profile ? {
+    organizer_profile: bundle.organizer_profile && isFieldVisible(fieldVisibility, "organizer_metrics") ? {
       verification_status: (bundle.organizer_profile as Record<string, unknown>).verification_status || null,
       public_rating: (bundle.organizer_profile as Record<string, unknown>).public_rating || 0,
       review_count: (bundle.organizer_profile as Record<string, unknown>).review_count || 0,
       completed_events: (bundle.organizer_profile as Record<string, unknown>).completed_events || 0,
     } : null,
-    coach_profile: bundle.coach_profile ? {
+    coach_profile: bundle.coach_profile && isFieldVisible(fieldVisibility, "coach_metrics") ? {
       public_slug: (bundle.coach_profile as Record<string, unknown>).public_slug || null,
       status: (bundle.coach_profile as Record<string, unknown>).status || null,
       average_rating: (bundle.coach_profile as Record<string, unknown>).average_rating || 0,
       rating_count: (bundle.coach_profile as Record<string, unknown>).rating_count || 0,
       completed_sessions_count: (bundle.coach_profile as Record<string, unknown>).completed_sessions_count || 0,
     } : null,
-    structure: bundle.structure ? {
+    structure: bundle.structure && isFieldVisible(fieldVisibility, "structure") ? {
       id: (bundle.structure as Record<string, unknown>).id,
       name: (bundle.structure as Record<string, unknown>).org_name,
       type: (bundle.structure as Record<string, unknown>).org_type,
       logo_url: (bundle.structure as Record<string, unknown>).logo_url,
-      city: profile.show_location ? (bundle.structure as Record<string, unknown>).city : null,
-      country: profile.show_location ? (bundle.structure as Record<string, unknown>).country : null,
+      city: showCity ? (bundle.structure as Record<string, unknown>).city : null,
+      country: showCountry ? (bundle.structure as Record<string, unknown>).country : null,
     } : null,
     visibility,
   };
@@ -824,6 +922,29 @@ Deno.serve(async (req: Request) => {
     }
 
     const profileUpdates = sanitizeProfile(requestedProfile);
+    const legacyVisibilityRequested = PROFILE_BOOLEAN_FIELDS.some(field => requestedProfile[field] !== undefined);
+    if (profileUpdates.field_visibility && typeof profileUpdates.field_visibility === "object") {
+      const map = profileUpdates.field_visibility as Record<string, boolean>;
+      profileUpdates.show_email = isFieldVisible(map, "public_email", false);
+      profileUpdates.show_phone = isFieldVisible(map, "public_phone", false);
+      profileUpdates.show_location = isFieldVisible(map, "city") || isFieldVisible(map, "country_code");
+      profileUpdates.show_roles = isFieldVisible(map, "roles");
+      profileUpdates.show_achievements = isFieldVisible(map, "achievements");
+      profileUpdates.allow_messages = isFieldVisible(map, "messages");
+    } else if (legacyVisibilityRequested) {
+      const currentProfile = await ensureProfile(sb, userId);
+      const map = normalizeFieldVisibility(currentProfile.field_visibility, currentProfile);
+      if (requestedProfile.show_email !== undefined) map.public_email = Boolean(requestedProfile.show_email);
+      if (requestedProfile.show_phone !== undefined) map.public_phone = Boolean(requestedProfile.show_phone);
+      if (requestedProfile.show_location !== undefined) {
+        map.city = Boolean(requestedProfile.show_location);
+        map.country_code = Boolean(requestedProfile.show_location);
+      }
+      if (requestedProfile.show_roles !== undefined) map.roles = Boolean(requestedProfile.show_roles);
+      if (requestedProfile.show_achievements !== undefined) map.achievements = Boolean(requestedProfile.show_achievements);
+      if (requestedProfile.allow_messages !== undefined) map.messages = Boolean(requestedProfile.allow_messages);
+      profileUpdates.field_visibility = map;
+    }
     if (session.roles.includes("super_admin")) {
       profileUpdates.visibility = "private";
       profileUpdates.show_email = false;
@@ -832,6 +953,9 @@ Deno.serve(async (req: Request) => {
       profileUpdates.show_roles = false;
       profileUpdates.show_achievements = false;
       profileUpdates.allow_messages = false;
+      profileUpdates.field_visibility = Object.fromEntries(
+        Object.keys(FIELD_VISIBILITY_DEFAULTS).map(key => [key, false]),
+      );
     }
     const roleDetails = sanitizeRoleDetails(requestedRoleDetails);
     if (Object.keys(roleDetails).length) {
@@ -874,7 +998,7 @@ Deno.serve(async (req: Request) => {
     console.error("auth-update-profile", error);
     const message = error instanceof Error ? error.message : "SERVER_ERROR";
     if (message.startsWith("INVALID_URL:")) return json({ error: "INVALID_URL", field: message.split(":")[1] }, 400);
-    if (["INVALID_VISIBILITY", "INVALID_AVATAR_DATA", "INVALID_AVATAR_TYPE", "AVATAR_TOO_LARGE"].includes(message)) {
+    if (["INVALID_VISIBILITY", "INVALID_FIELD_VISIBILITY", "INVALID_AVATAR_DATA", "INVALID_AVATAR_TYPE", "AVATAR_TOO_LARGE"].includes(message)) {
       return json({ error: message }, 400);
     }
     return json({ error: "SERVER_ERROR" }, 500);

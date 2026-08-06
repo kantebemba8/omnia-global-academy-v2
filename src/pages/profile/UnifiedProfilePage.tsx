@@ -39,6 +39,8 @@ import {
   unblockProfileUser,
   updateUnifiedProfile,
   uploadProfileAvatar,
+  type ProfileFieldVisibility,
+  type ProfileVisibleField,
   type UnifiedProfileBundle,
 } from '../../lib/profileApi';
 import { clearSession, getDashboardPathForRoles, getSessionToken, saveSession } from '../../lib/session';
@@ -84,6 +86,7 @@ type ProfileForm = {
   show_roles: boolean;
   show_achievements: boolean;
   allow_messages: boolean;
+  field_visibility: ProfileFieldVisibility;
 };
 
 type RoleForm = {
@@ -110,11 +113,57 @@ type RoleForm = {
 };
 
 const EMPTY_USER: UserForm = { full_name: '', email: '', phone_number: '', country_code: '', birth_date: '' };
+const DEFAULT_FIELD_VISIBILITY: Required<ProfileFieldVisibility> = {
+  display_name: true,
+  avatar_url: true,
+  headline: true,
+  bio: true,
+  city: true,
+  country_code: true,
+  languages: true,
+  skills: true,
+  interests: true,
+  website_url: true,
+  linkedin_url: true,
+  portfolio_url: true,
+  github_url: true,
+  availability_text: true,
+  public_email: false,
+  public_phone: false,
+  roles: true,
+  achievements: true,
+  messages: true,
+  education_level: true,
+  field_of_study: true,
+  career_goal: true,
+  target_roles: true,
+  target_sectors: true,
+  contract_preferences: true,
+  years_experience: true,
+  expertise_domain: true,
+  teaching_languages: true,
+  qualifications: true,
+  teaching_formats: true,
+  experience_summary: true,
+  organizer_type: true,
+  organization_name: true,
+  event_topics: true,
+  moderation_domains: true,
+  recruitment_sectors: true,
+  recruitment_countries: true,
+  coaching_topics: true,
+  session_languages: true,
+  organizer_metrics: true,
+  coach_metrics: true,
+  structure: true,
+};
+
 const EMPTY_PROFILE: ProfileForm = {
   display_name: '', headline: '', bio: '', city: '', languages: [], skills: [], interests: [],
   website_url: '', linkedin_url: '', portfolio_url: '', github_url: '', availability_text: '',
   public_email: '', public_phone: '', visibility: 'members', show_email: false, show_phone: false,
   show_location: true, show_roles: true, show_achievements: true, allow_messages: true,
+  field_visibility: { ...DEFAULT_FIELD_VISIBILITY },
 };
 const EMPTY_ROLE: RoleForm = {
   education_level: '', field_of_study: '', career_goal: '', target_roles: [], target_sectors: [],
@@ -167,9 +216,82 @@ const TAB_ALIASES: Record<string, Tab> = {
   parametres: 'visibilite', preferences: 'visibilite', notifications: 'notifications', securite: 'securite', security: 'securite',
 };
 
+type VisibilityItem = {
+  field: ProfileVisibleField;
+  title: string;
+  description: string;
+};
+
+const IDENTITY_VISIBILITY_ITEMS: VisibilityItem[] = [
+  { field: 'display_name', title: 'Nom affiché', description: 'Si vous le masquez, la page publique affichera « Membre Omnia ».' },
+  { field: 'avatar_url', title: 'Photo de profil', description: 'Masquez la photo sans supprimer le fichier de votre compte.' },
+  { field: 'city', title: 'Ville', description: 'Affiche uniquement la ville, jamais une adresse précise.' },
+  { field: 'country_code', title: 'Pays', description: 'Affiche le pays associé à votre compte.' },
+  { field: 'languages', title: 'Langues', description: 'Langues renseignées dans votre profil.' },
+  { field: 'public_email', title: 'E-mail public', description: 'L’adresse de connexion reste toujours privée.' },
+  { field: 'public_phone', title: 'Téléphone public', description: 'Le numéro privé du compte reste toujours masqué.' },
+];
+
+const PROFESSIONAL_VISIBILITY_ITEMS: VisibilityItem[] = [
+  { field: 'headline', title: 'Titre professionnel', description: 'Accroche affichée sous votre nom.' },
+  { field: 'bio', title: 'Présentation', description: 'Résumé public de votre parcours.' },
+  { field: 'skills', title: 'Compétences', description: 'Compétences utilisées dans votre profil et Omnia Talent.' },
+  { field: 'interests', title: 'Centres d’intérêt', description: 'Thématiques que vous avez choisi de renseigner.' },
+  { field: 'availability_text', title: 'Disponibilité', description: 'Disponibilité professionnelle ou pédagogique.' },
+  { field: 'website_url', title: 'Site web', description: 'Lien vers votre site professionnel.' },
+  { field: 'linkedin_url', title: 'LinkedIn', description: 'Lien vers votre profil LinkedIn.' },
+  { field: 'portfolio_url', title: 'Portfolio', description: 'Lien vers votre portfolio externe.' },
+  { field: 'github_url', title: 'GitHub', description: 'Lien vers votre profil GitHub.' },
+  { field: 'roles', title: 'Rôles Omnia', description: 'Ex. Apprenant, Professeur, Coach ou Organisateur.' },
+  { field: 'achievements', title: 'Réalisations', description: 'Badges, certificats et preuves autorisées.' },
+  { field: 'messages', title: 'Messages des membres', description: 'Autorise les membres connectés à vous contacter.' },
+];
+
+const ROLE_VISIBILITY_LABELS: Partial<Record<ProfileVisibleField, [string, string]>> = {
+  education_level: ['Niveau d’étude', 'Niveau d’étude renseigné dans le parcours apprenant.'],
+  field_of_study: ['Domaine d’étude', 'Domaine ou spécialité d’étude.'],
+  career_goal: ['Objectif professionnel', 'Objectif professionnel détaillé.'],
+  target_roles: ['Postes recherchés', 'Postes ou fonctions ciblés.'],
+  target_sectors: ['Secteurs ciblés', 'Secteurs professionnels recherchés.'],
+  contract_preferences: ['Types de contrat', 'Préférences de contrat ou de collaboration.'],
+  years_experience: ['Années d’expérience', 'Expérience déclarée dans votre rôle professionnel.'],
+  expertise_domain: ['Domaine d’expertise', 'Domaine principal d’expertise.'],
+  teaching_languages: ['Langues d’enseignement', 'Langues utilisées pour enseigner.'],
+  qualifications: ['Diplômes et qualifications', 'Qualifications rendues visibles.'],
+  teaching_formats: ['Formats d’enseignement', 'Formats pédagogiques proposés.'],
+  experience_summary: ['Expérience détaillée', 'Résumé de votre expérience de rôle.'],
+  organizer_type: ['Type d’organisateur', 'Catégorie de votre activité Omnia Live.'],
+  organization_name: ['Organisation', 'Organisation associée à votre activité.'],
+  event_topics: ['Thématiques d’événements', 'Sujets de vos événements Omnia Live.'],
+  moderation_domains: ['Domaines de modération', 'Domaines publics de contribution à la communauté.'],
+  recruitment_sectors: ['Secteurs de recrutement', 'Secteurs dans lesquels vous recrutez.'],
+  recruitment_countries: ['Pays de recrutement', 'Pays ou zones de recrutement.'],
+  coaching_topics: ['Thématiques de coaching', 'Domaines dans lesquels vous accompagnez.'],
+  session_languages: ['Langues de session', 'Langues proposées pour les séances.'],
+  organizer_metrics: ['Indicateurs organisateur', 'Notes et volumes publics liés à Omnia Live.'],
+  coach_metrics: ['Indicateurs coach', 'Notes et volumes publics liés au coaching.'],
+  structure: ['Structure associée', 'Nom, type, logo et localisation autorisée de la structure.'],
+};
+
 function asText(value: unknown) { return typeof value === 'string' ? value : ''; }
 function asList(value: unknown) { return Array.isArray(value) ? value.map(String).filter(Boolean) : []; }
 function asBoolean(value: unknown, fallback: boolean) { return typeof value === 'boolean' ? value : fallback; }
+function visibilityFromProfile(profile: UnifiedProfileBundle['profile']): ProfileFieldVisibility {
+  const stored = profile.field_visibility && typeof profile.field_visibility === 'object'
+    ? profile.field_visibility
+    : {};
+  return {
+    ...DEFAULT_FIELD_VISIBILITY,
+    ...stored,
+    public_email: stored.public_email ?? asBoolean(profile.show_email, false),
+    public_phone: stored.public_phone ?? asBoolean(profile.show_phone, false),
+    city: stored.city ?? asBoolean(profile.show_location, true),
+    country_code: stored.country_code ?? asBoolean(profile.show_location, true),
+    roles: stored.roles ?? asBoolean(profile.show_roles, true),
+    achievements: stored.achievements ?? asBoolean(profile.show_achievements, true),
+    messages: stored.messages ?? asBoolean(profile.allow_messages, true),
+  };
+}
 function monogram(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
@@ -194,6 +316,7 @@ function formsFromBundle(bundle: UnifiedProfileBundle) {
       public_phone: asText(profile.public_phone), visibility: profile.visibility || 'members', show_email: asBoolean(profile.show_email, false),
       show_phone: asBoolean(profile.show_phone, false), show_location: asBoolean(profile.show_location, true), show_roles: asBoolean(profile.show_roles, true),
       show_achievements: asBoolean(profile.show_achievements, true), allow_messages: asBoolean(profile.allow_messages, true),
+      field_visibility: visibilityFromProfile(profile),
     } satisfies ProfileForm,
     role: {
       education_level: asText(details.education_level), field_of_study: asText(details.field_of_study), career_goal: asText(details.career_goal),
@@ -216,7 +339,7 @@ function profileErrorMessage(error: unknown) {
     PHONE_REQUIRED: 'Le numéro de téléphone est obligatoire.', COUNTRY_REQUIRED: 'Le pays est obligatoire.',
     BIRTH_DATE_REQUIRED: 'La date de naissance est obligatoire.', INVALID_URL: 'Une adresse web n’est pas valide.',
     AVATAR_TOO_LARGE: 'La photo dépasse 3 Mo.', INVALID_AVATAR_TYPE: 'Utilisez une image PNG, JPG ou WebP.',
-    INVALID_AVATAR_DATA: 'La photo n’a pas pu être lue.', PROFILE_PRIVATE: 'Ce profil est privé.',
+    INVALID_AVATAR_DATA: 'La photo n’a pas pu être lue.', INVALID_FIELD_VISIBILITY: 'Les réglages de visibilité sont invalides.', PROFILE_PRIVATE: 'Ce profil est privé.',
     PROFILE_SUSPENDED: 'Ce profil est temporairement indisponible.', INVALID_PASSWORD: 'Mot de passe actuel incorrect.',
     SUSPENSION_CONFIRMATION_REQUIRED: 'La confirmation de suspension est invalide.', INVALID_SUSPENSION_REASON: 'Choisissez un motif de suspension valide.',
     INVALID_SUSPENSION_UNTIL: 'La date de retour prévue est invalide.', ACCOUNT_NOT_ACTIVE: 'Seul un compte actif peut être suspendu volontairement.',
@@ -319,6 +442,20 @@ export default function UnifiedProfilePage() {
   const isRecruiter = roles.some(role => ['recruteur', 'recruteur_independant', 'recruteur_structure'].includes(role));
   const isCoach = roles.includes('coach');
   const isStructure = roles.some(role => ['structure', 'recruteur_structure'].includes(role));
+  const roleVisibilityItems = useMemo<VisibilityItem[]>(() => {
+    const fields: ProfileVisibleField[] = [];
+    if (isLearner) fields.push('education_level', 'field_of_study', 'career_goal', 'target_roles', 'target_sectors', 'contract_preferences');
+    if (isProfessor) fields.push('years_experience', 'expertise_domain', 'teaching_languages', 'qualifications', 'teaching_formats');
+    if (isOrganizer) fields.push('organizer_type', 'organization_name', 'event_topics', 'experience_summary', 'organizer_metrics');
+    if (isModerator) fields.push('moderation_domains');
+    if (isRecruiter) fields.push('organization_name', 'recruitment_sectors', 'recruitment_countries');
+    if (isCoach) fields.push('coaching_topics', 'session_languages', 'coach_metrics');
+    if (isStructure) fields.push('structure');
+    return [...new Set(fields)].flatMap(field => {
+      const label = ROLE_VISIBILITY_LABELS[field];
+      return label ? [{ field, title: label[0], description: label[1] }] : [];
+    });
+  }, [isCoach, isLearner, isModerator, isOrganizer, isProfessor, isRecruiter, isStructure]);
   const accountImpacts = useMemo(() => accountImpactForRoles(roles), [roles]);
 
   const completion = useMemo(() => {
@@ -361,10 +498,16 @@ export default function UnifiedProfilePage() {
           role_details: roleForm,
         });
       } else if (section === 'privacy') {
+        const fields = profileForm.field_visibility;
         next = await updateUnifiedProfile({ profile: {
-          visibility: profileForm.visibility, show_email: profileForm.show_email, show_phone: profileForm.show_phone,
-          show_location: profileForm.show_location, show_roles: profileForm.show_roles,
-          show_achievements: profileForm.show_achievements, allow_messages: profileForm.allow_messages,
+          visibility: profileForm.visibility,
+          field_visibility: fields,
+          show_email: fields.public_email !== false,
+          show_phone: fields.public_phone !== false,
+          show_location: fields.city !== false || fields.country_code !== false,
+          show_roles: fields.roles !== false,
+          show_achievements: fields.achievements !== false,
+          allow_messages: fields.messages !== false,
         } });
       } else {
         next = await updateUnifiedProfile({ user: {
@@ -647,18 +790,42 @@ export default function UnifiedProfilePage() {
         <SaveButton saving={saving} onClick={() => void save('professional')} label="Synchroniser le profil professionnel" />
       </div>}
 
-      {!isAdministration && tab === 'visibilite' && <Section title="Visibilité et confidentialité" icon={Eye} description="Choisissez précisément ce que les autres peuvent consulter. Les données sensibles restent privées par défaut.">
-        <label className={labelClass}>Qui peut voir votre profil ?<select className={inputClass} value={profileForm.visibility} onChange={e => setProfileForm(v => ({ ...v, visibility: e.target.value as ProfileForm['visibility'] }))}><option value="public">Tout le monde, même sans connexion</option><option value="members">Uniquement les membres Omnia connectés</option><option value="private">Uniquement moi et l’équipe chargée de la sécurité</option></select></label>
-        <div className="mt-6 divide-y divide-slate-100 rounded-2xl border border-slate-200">{([
-          ['show_email', 'Afficher mon e-mail public', 'L’e-mail du compte reste toujours privé.'],
-          ['show_phone', 'Afficher mon téléphone public', 'Le téléphone privé du compte reste masqué.'],
-          ['show_location', 'Afficher ma ville et mon pays', 'Aucune adresse précise n’est publiée.'],
-          ['show_roles', 'Afficher mes rôles Omnia', 'Ex. Apprenant, Professeur ou Organisateur.'],
-          ['show_achievements', 'Afficher mes réalisations', 'Certifications, badges et preuves autorisées.'],
-          ['allow_messages', 'Autoriser les messages des membres', 'Les outils de blocage et de signalement restent disponibles.'],
-        ] as Array<[keyof Pick<ProfileForm, 'show_email' | 'show_phone' | 'show_location' | 'show_roles' | 'show_achievements' | 'allow_messages'>, string, string]>).map(([key, title, description]) => <ToggleRow key={key} title={title} description={description} checked={profileForm[key]} onChange={checked => setProfileForm(v => ({ ...v, [key]: checked }))} />)}</div>
+      {!isAdministration && tab === 'visibilite' && <div className="space-y-6">
+        <Section title="Accès au profil" icon={Eye} description="Définissez d’abord qui peut ouvrir votre page publique.">
+          <label className={labelClass}>Qui peut voir votre profil ?<select className={inputClass} value={profileForm.visibility} onChange={e => setProfileForm(v => ({ ...v, visibility: e.target.value as ProfileForm['visibility'] }))}><option value="public">Tout le monde, même sans connexion</option><option value="members">Uniquement les membres Omnia connectés</option><option value="private">Uniquement moi et l’équipe chargée de la sécurité</option></select></label>
+          <div className="mt-4 rounded-2xl border border-[#002050]/10 bg-[#002050]/[0.03] p-4 text-sm leading-6 text-slate-600">La page publique utilise exactement ces réglages. Masquer un champ ne le supprime pas de votre compte.</div>
+        </Section>
+
+        <VisibilityGroup
+          title="Identité publique"
+          description="Choisissez séparément les informations d’identité visibles."
+          items={IDENTITY_VISIBILITY_ITEMS}
+          values={profileForm.field_visibility}
+          onChange={(field, checked) => setProfileForm(value => ({ ...value, field_visibility: { ...value.field_visibility, [field]: checked } }))}
+        />
+
+        <VisibilityGroup
+          title="Présentation professionnelle"
+          description="Contrôlez chaque élément affiché dans le profil et les résultats Omnia Talent."
+          items={PROFESSIONAL_VISIBILITY_ITEMS}
+          values={profileForm.field_visibility}
+          onChange={(field, checked) => setProfileForm(value => ({ ...value, field_visibility: { ...value.field_visibility, [field]: checked } }))}
+        />
+
+        {roleVisibilityItems.length > 0 && <VisibilityGroup
+          title="Informations liées à vos rôles"
+          description="Les réglages sont communs à votre page publique, quel que soit l’espace depuis lequel elle est ouverte."
+          items={roleVisibilityItems}
+          values={profileForm.field_visibility}
+          onChange={(field, checked) => setProfileForm(value => ({ ...value, field_visibility: { ...value.field_visibility, [field]: checked } }))}
+        />}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-600">Vérifiez le rendu exact avant d’enregistrer.</p>
+          {bundle && <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl border border-[#002050]/15 px-4 py-2.5 text-sm font-bold text-[#002050]"><ExternalLink size={16} /> Voir mon profil public</Link>}
+        </div>
         <SaveButton saving={saving} onClick={() => void save('privacy')} label="Enregistrer la confidentialité" />
-      </Section>}
+      </div>}
 
       {tab === 'notifications' && <Section title="Préférences de communication" icon={Bell} description="Ces préférences s’appliquent à votre compte, quel que soit le rôle utilisé.">
         <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">{([
@@ -736,6 +903,25 @@ function TagEditor({ values, onChange, placeholder = 'Saisissez puis appuyez sur
   const [value, setValue] = useState('');
   function add() { const items = value.split(',').map(item => item.trim()).filter(Boolean); if (!items.length) return; onChange([...new Set([...values, ...items])]); setValue(''); }
   return <div className="mt-1 rounded-xl border border-slate-200 bg-white p-2 focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15"><div className="flex flex-wrap gap-1.5">{values.map(item => <button key={item} type="button" onClick={() => onChange(values.filter(valueItem => valueItem !== item))} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[#002050]" title="Cliquer pour retirer">{item} ×</button>)}</div><div className="flex items-center gap-2"><input value={value} onChange={e => setValue(e.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }} onBlur={add} className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm outline-none" placeholder={placeholder} /><button type="button" onClick={add} className="rounded-lg bg-[#002050] px-2.5 py-1.5 text-xs font-bold text-white">Ajouter</button></div></div>;
+}
+function VisibilityGroup({ title, description, items, values, onChange }: {
+  title: string;
+  description: string;
+  items: VisibilityItem[];
+  values: ProfileFieldVisibility;
+  onChange: (field: ProfileVisibleField, checked: boolean) => void;
+}) {
+  return <Section title={title} icon={Eye} description={description}>
+    <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
+      {items.map(item => <ToggleRow
+        key={item.field}
+        title={item.title}
+        description={item.description}
+        checked={values[item.field] !== false}
+        onChange={checked => onChange(item.field, checked)}
+      />)}
+    </div>
+  </Section>;
 }
 function ToggleRow({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) { return <label className="flex cursor-pointer items-center justify-between gap-5 p-4"><span><span className="block text-sm font-bold text-[#002050]">{title}</span><span className="mt-0.5 block text-xs text-slate-500">{description}</span></span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-5 w-5 accent-[#002050]" /></label>; }
 function SaveButton({ saving, onClick, label = 'Enregistrer les modifications' }: { saving: boolean; onClick: () => void; label?: string }) { return <div className="mt-6 flex justify-end"><button type="button" disabled={saving} onClick={onClick} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"><Save size={16} />{saving ? 'Enregistrement...' : label}</button></div>; }

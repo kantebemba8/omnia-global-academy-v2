@@ -1,6 +1,52 @@
 import { ENDPOINTS } from './config';
 import { edgeAuthHeaders } from './edgeAuth';
 
+export type ProfileVisibleField =
+  | 'display_name'
+  | 'avatar_url'
+  | 'headline'
+  | 'bio'
+  | 'city'
+  | 'country_code'
+  | 'languages'
+  | 'skills'
+  | 'interests'
+  | 'website_url'
+  | 'linkedin_url'
+  | 'portfolio_url'
+  | 'github_url'
+  | 'availability_text'
+  | 'public_email'
+  | 'public_phone'
+  | 'roles'
+  | 'achievements'
+  | 'messages'
+  | 'education_level'
+  | 'field_of_study'
+  | 'career_goal'
+  | 'target_roles'
+  | 'target_sectors'
+  | 'contract_preferences'
+  | 'years_experience'
+  | 'expertise_domain'
+  | 'teaching_languages'
+  | 'qualifications'
+  | 'teaching_formats'
+  | 'experience_summary'
+  | 'organizer_type'
+  | 'organization_name'
+  | 'event_topics'
+  | 'moderation_domains'
+  | 'recruitment_sectors'
+  | 'recruitment_countries'
+  | 'coaching_topics'
+  | 'session_languages'
+  | 'organizer_metrics'
+  | 'coach_metrics'
+  | 'structure';
+
+export type ProfileFieldVisibility = Partial<Record<ProfileVisibleField, boolean>>;
+
 export type UnifiedUser = {
   id: string;
   full_name: string;
@@ -40,6 +86,7 @@ export type UnifiedProfile = {
   show_roles: boolean;
   show_achievements: boolean;
   allow_messages: boolean;
+  field_visibility: ProfileFieldVisibility;
   role_details: Record<string, unknown>;
   avatar_storage_path?: string | null;
 };
