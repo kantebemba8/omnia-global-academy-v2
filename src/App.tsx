@@ -104,6 +104,8 @@ const ModerateurMissions = lazy(() => import('./pages/moderateur/ModerateurMissi
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminDeletionRequests = lazy(() => import('./pages/admin/AdminDeletionRequests'));
 const AdminRoleUsers = lazy(() => import('./pages/admin/AdminRoleUsers'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
+const AdminUserDetail = lazy(() => import('./pages/admin/AdminUserDetail'));
 const AdminActivityToday = lazy(() => import('./pages/admin/AdminActivityToday'));
 const AdminCMS = lazy(() => import('./pages/admin/AdminCMS'));
 const AdminTranslations = lazy(() => import('./pages/admin/AdminTranslations'));
@@ -639,6 +641,8 @@ export default function App() {
         {/* Admin — always accessible */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/dashboard/roles/:roleKey" element={<AdminRoleUsers />} />
+        <Route path="/admin/utilisateurs" element={<AdminUsers />} />
+        <Route path="/admin/utilisateurs/:userId" element={<AdminUserDetail />} />
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
         <Route path="/admin/suppressions" element={<AdminDeletionRequests />} />
         <Route path="/admin/profil" element={<Navigate to="/mon-profil" replace />} />

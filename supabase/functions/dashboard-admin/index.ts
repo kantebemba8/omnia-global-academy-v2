@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { createAccessInvitation } from "../_shared/access-invitations.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -118,6 +119,207 @@ function roleGroup(key: string) {
   return PRIMARY_ROLE_GROUPS.find((group) => group.key === key);
 }
 
+
+
+const PRIMARY_ROLE_LABELS: Record<string, string> = {
+  apprenant: "Apprenant",
+  professeur: "Professeur",
+  structure: "Structure",
+  organisateur: "Organisateur Omnia Live",
+  recruteur: "Recruteur indépendant",
+  coach: "Coach",
+  moderateur: "Modérateur",
+};
+const DELEGATION_LABELS: Record<string, string> = {
+  gestionnaire_structure: "Gestionnaire de Structure",
+  recruteur_structure: "Recruteur rattaché à une Structure",
+};
+const CANONICAL_PRIMARY_BY_STORED: Record<string, string> = {
+  apprenant: "apprenant", professeur: "professeur", formateur: "professeur", enseignant: "professeur", etablissement_enseignant: "professeur",
+  structure: "structure", responsable_structure: "structure", directeur: "structure", etablissement_directeur: "structure",
+  organisateur: "organisateur", organizer: "organisateur", recruteur: "recruteur", recruteur_independant: "recruteur",
+  coach: "coach", moderateur: "moderateur", moderator: "moderateur",
+};
+const DELEGATED_ROLES = new Set(["gestionnaire_structure", "recruteur_structure"]);
+const TEST_EMAILS = new Set([
+  "test@omniaglobalacademy.com", "apprenant.test@omniaglobalacademy.com", "mod.test@omniaglobalacademy.com",
+  "prof.test@omniaglobalacademy.com", "structure.test@omniaglobalacademy.com", "organisateur.test@omniaglobalacademy.com",
+  "recruteur.test@omniaglobalacademy.com", "coach.test@omniaglobalacademy.com",
+]);
+function isTestUser(email: unknown) {
+  const value = String(email || "").trim().toLowerCase();
+  return TEST_EMAILS.has(value) || value.endsWith(".test@omniaglobalacademy.com");
+}
+function accountStatusGroup(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  if (["actif", "active"].includes(status)) return "active";
+  if (["en_attente_validation", "en_attente", "pending", "pending_validation"].includes(status)) return "pending";
+  if (["suspendu", "suspended"].includes(status)) return "suspended";
+  if (["supprime", "deleted"].includes(status)) return "deleted";
+  return "other";
+}
+function maskPhone(value: unknown) {
+  const phone = String(value || "").trim();
+  if (!phone) return null;
+  const visible = phone.slice(-3);
+  return `${"•".repeat(Math.max(4, phone.length - 3))}${visible}`;
+}
+async function protectedUserIds(sb: any) {
+  const { data, error } = await sb.from("user_roles").select("user_id").eq("role", "super_admin");
+  if (error) throw error;
+  return new Set((data ?? []).map((row: any) => String(row.user_id)));
+}
+async function loadAdminUserDirectory(sb: any) {
+  const [usersResult, rolesResult, managersResult, orgsResult] = await Promise.all([
+    sb.from("users").select("id,full_name,email,phone_number,status,country_code,created_at,updated_at,last_login_at,force_password_change,suspension_source,self_suspended_at,self_suspension_until,deleted_at").order("created_at", { ascending: false }).limit(5000),
+    sb.from("user_roles").select("user_id,role,granted_at").limit(20000),
+    sb.from("partner_managers").select("user_id,organization_id,status,role_in_org,is_primary").in("status", ["actif", "active"]).limit(10000),
+    sb.from("partner_organizations").select("id,org_name,status").limit(5000),
+  ]);
+  if (usersResult.error) throw usersResult.error;
+  if (rolesResult.error) throw rolesResult.error;
+  const protectedIds = new Set((rolesResult.data ?? []).filter((row: any) => row.role === "super_admin").map((row: any) => String(row.user_id)));
+  const roleMap = new Map<string, string[]>();
+  for (const row of rolesResult.data ?? []) {
+    const id = String(row.user_id); if (protectedIds.has(id)) continue;
+    const list = roleMap.get(id) ?? []; list.push(String(row.role)); roleMap.set(id, list);
+  }
+  const orgMap = new Map((orgsResult.data ?? []).map((row: any) => [String(row.id), String(row.org_name || "Structure")]));
+  const managerMap = new Map<string, any[]>();
+  for (const row of managersResult.data ?? []) {
+    const id = String(row.user_id); const list = managerMap.get(id) ?? []; list.push(row); managerMap.set(id, list);
+  }
+  return (usersResult.data ?? []).filter((user: any) => !protectedIds.has(String(user.id))).map((user: any) => {
+    const storedRoles = roleMap.get(String(user.id)) ?? [];
+    const primary = [...new Set(storedRoles.map(role => CANONICAL_PRIMARY_BY_STORED[role]).filter(Boolean))];
+    const delegated = [...new Set(storedRoles.filter(role => DELEGATED_ROLES.has(role)))];
+    const organizations = (managerMap.get(String(user.id)) ?? []).map((row: any) => ({
+      id: String(row.organization_id), name: orgMap.get(String(row.organization_id)) || "Structure", access: String(row.role_in_org || (row.is_primary ? "Responsable principal" : "Collaborateur")),
+    }));
+    const statusGroup = accountStatusGroup(user.status);
+    return {
+      id: String(user.id), full_name: String(user.full_name || ""), email: String(user.email || ""), phone_number: user.phone_number || null,
+      status: String(user.status || ""), status_group: statusGroup, country_code: user.country_code || null, created_at: user.created_at || null,
+      updated_at: user.updated_at || null, last_login_at: user.last_login_at || null, force_password_change: user.force_password_change === true,
+      suspension_source: user.suspension_source || null, self_suspended_at: user.self_suspended_at || null, self_suspension_until: user.self_suspension_until || null,
+      deleted_at: user.deleted_at || null, primary_roles: primary, delegated_access: delegated, organizations, is_test: isTestUser(user.email),
+      signal: statusGroup === "pending" && user.created_at && Date.parse(user.created_at) < Date.now() - 14 * 86400000 ? "Validation en attente depuis plus de 14 jours" : null,
+    };
+  });
+}
+async function insertAdminUserAudit(sb: any, actorId: string, targetId: string, action: string, reason: string | null, metadata: Record<string, unknown> = {}) {
+  const { error } = await sb.from("admin_user_account_audit").insert({ actor_user_id: actorId, target_user_id: targetId, action, reason, metadata });
+  if (error) throw error;
+}
+async function handleAdminUserGet(sb: any, adminId: string, url: URL) {
+  const action = url.searchParams.get("action");
+  if (!action || !["users_list", "users_overview", "user_detail"].includes(action)) return null;
+  const directory = await loadAdminUserDirectory(sb);
+  const baseForOverview = directory.filter((row: any) => !row.is_test);
+  const overview = {
+    active: baseForOverview.filter((row: any) => row.status_group === "active").length,
+    pending: baseForOverview.filter((row: any) => row.status_group === "pending").length,
+    suspended: baseForOverview.filter((row: any) => row.status_group === "suspended").length,
+    new_30d: baseForOverview.filter((row: any) => row.created_at && Date.parse(row.created_at) >= Date.now() - 30 * 86400000).length,
+    total: baseForOverview.length,
+  };
+  if (action === "users_overview") return json({ success: true, overview });
+  if (action === "users_list") {
+    const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
+    const role = String(url.searchParams.get("role") || ""); const status = String(url.searchParams.get("status") || "");
+    const delegation = String(url.searchParams.get("delegation") || ""); const includeTest = url.searchParams.get("include_test") === "true";
+    const page = Math.max(1, Number(url.searchParams.get("page") || 1)); const pageSize = Math.min(100, Math.max(10, Number(url.searchParams.get("page_size") || 40)));
+    const filtered = directory.filter((row: any) => {
+      if (!includeTest && row.is_test) return false;
+      if (q && !`${row.full_name} ${row.email} ${row.id}`.toLowerCase().includes(q)) return false;
+      if (role && !row.primary_roles.includes(role)) return false;
+      if (status && row.status_group !== status) return false;
+      if (delegation && !row.delegated_access.includes(delegation)) return false;
+      return true;
+    });
+    const start = (page - 1) * pageSize;
+    return json({ success: true, overview, users: filtered.slice(start, start + pageSize).map(({ phone_number, ...row }: any) => row), total: filtered.length, page, page_size: pageSize,
+      available_roles: Object.entries(PRIMARY_ROLE_LABELS).map(([key, label]) => ({ key, label })),
+      available_delegations: Object.entries(DELEGATION_LABELS).map(([key, label]) => ({ key, label })),
+    });
+  }
+  const userId = String(url.searchParams.get("user_id") || "");
+  const user = directory.find((row: any) => row.id === userId);
+  if (!user) return json({ error: "USER_NOT_FOUND", message: "Ce compte est introuvable ou protégé." }, 404);
+  const [sessionsResult, invitationsResult, lifecycleResult, adminHistoryResult, profileResult] = await Promise.all([
+    sb.from("user_sessions").select("id,ip_address,user_agent,expires_at,created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(100),
+    sb.from("platform_access_invitations").select("id,invitation_type,email,organization_id,internal_role,status,expires_at,accepted_at,created_at").or(`target_user_id.eq.${userId},email.eq.${user.email}`).order("created_at", { ascending: false }).limit(100),
+    sb.from("account_lifecycle_audit").select("id,action,request_source,reason_code,planned_reactivation_at,metadata,created_at").eq("former_user_id", userId).order("created_at", { ascending: false }).limit(100),
+    sb.from("admin_user_account_audit").select("id,action,reason,metadata,created_at").eq("target_user_id", userId).order("created_at", { ascending: false }).limit(100),
+    sb.from("user_profiles").select("visibility,updated_at").eq("user_id", userId).maybeSingle(),
+  ]);
+  const now = Date.now();
+  return json({ success: true, user: { ...user, phone_masked: maskPhone(user.phone_number) },
+    sessions: (sessionsResult.data ?? []).map((row: any) => ({ ...row, active: !!row.expires_at && Date.parse(row.expires_at) > now })),
+    invitations: invitationsResult.data ?? [],
+    lifecycle: (lifecycleResult.data ?? []).map((row: any) => ({ ...row, label: String(row.action || "").replaceAll("_", " "), reason: accountReasonLabel(row.reason_code) })),
+    administrative_history: (adminHistoryResult.data ?? []).map((row: any) => ({ ...row, label: String(row.action || "").replaceAll("_", " ") })),
+    profile: profileResult.data ?? null,
+  });
+}
+async function handleAdminUserPost(sb: any, session: SessionContext, body: any) {
+  const action = String(body?.action || "");
+  if (!["user_suspend", "user_reactivate", "user_revoke_sessions", "user_force_password_change", "user_resend_invitation", "user_delete"].includes(action)) return null;
+  if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+  const userId = String(body?.user_id || "").trim(); const reason = String(body?.reason || "").trim();
+  if (!userId) return json({ error: "INVALID_REQUEST", message: "Compte cible manquant." }, 400);
+  const protectedIds = await protectedUserIds(sb); if (protectedIds.has(userId)) return json({ error: "PROTECTED_ACCOUNT", message: "Le compte système d’administration est protégé." }, 403);
+  const { data: user, error: userError } = await sb.from("users").select("id,status,email").eq("id", userId).maybeSingle();
+  if (userError) throw userError; if (!user) return json({ error: "USER_NOT_FOUND", message: "Compte introuvable." }, 404);
+  const now = new Date().toISOString();
+  if (action === "user_suspend") {
+    if (reason.length < 5) return json({ error: "REASON_REQUIRED", message: "Un motif précis est obligatoire." }, 400);
+    if (accountStatusGroup(user.status) !== "active") return json({ error: "ACCOUNT_NOT_ACTIVE", message: "Seul un compte actif peut être suspendu." }, 409);
+    const { error } = await sb.from("users").update({ status: "suspendu", suspension_source: "administrative", updated_at: now }).eq("id", userId); if (error) throw error;
+    await sb.from("user_sessions").delete().eq("user_id", userId);
+    await insertAdminUserAudit(sb, session.userId, userId, "account_suspended", reason, { previous_status: user.status });
+    return json({ success: true, message: "Le compte a été suspendu et toutes ses sessions ont été fermées." });
+  }
+  if (action === "user_reactivate") {
+    if (reason.length < 5) return json({ error: "REASON_REQUIRED", message: "Un motif précis est obligatoire." }, 400);
+    if (accountStatusGroup(user.status) !== "suspended") return json({ error: "ACCOUNT_NOT_SUSPENDED", message: "Ce compte n’est pas suspendu." }, 409);
+    const { error } = await sb.from("users").update({ status: "actif", self_suspended_at: null, self_suspension_until: null, self_suspension_reason_code: null, self_suspension_reference: null, suspension_source: null, last_reactivated_at: now, updated_at: now }).eq("id", userId); if (error) throw error;
+    await sb.from("user_sessions").delete().eq("user_id", userId);
+    await insertAdminUserAudit(sb, session.userId, userId, "account_reactivated", reason, { previous_status: user.status });
+    return json({ success: true, message: "Le compte a été réactivé. La personne devra se reconnecter." });
+  }
+  if (action === "user_revoke_sessions") {
+    const { count, error } = await sb.from("user_sessions").delete({ count: "exact" }).eq("user_id", userId); if (error) throw error;
+    await insertAdminUserAudit(sb, session.userId, userId, "sessions_revoked", reason || null, { sessions_revoked: count ?? 0 });
+    return json({ success: true, message: `${count ?? 0} session(s) ont été fermées.` });
+  }
+  if (action === "user_resend_invitation") {
+    const invitationId = String(body?.invitation_id || "").trim();
+    if (!invitationId) return json({ error: "INVITATION_REQUIRED", message: "Invitation introuvable." }, 400);
+    const { data: invitation, error: invitationError } = await sb.from("platform_access_invitations").select("*").eq("id", invitationId).maybeSingle();
+    if (invitationError) throw invitationError;
+    if (!invitation || String(invitation.target_user_id || "") !== userId) return json({ error: "INVITATION_NOT_FOUND", message: "Cette invitation ne correspond pas au compte." }, 404);
+    const result = await createAccessInvitation(sb, {
+      invitationType: invitation.invitation_type, email: invitation.email, fullName: invitation.full_name, organizationId: invitation.organization_id, invitedBy: session.userId,
+      internalRole: invitation.internal_role, permissions: invitation.permissions || {}, message: invitation.message || null,
+    });
+    await insertAdminUserAudit(sb, session.userId, userId, "invitation_resent", null, { invitation_type: invitation.invitation_type, email_sent: result.emailSent });
+    return json({ success: true, message: result.emailSent ? "L’invitation a été renvoyée par e-mail." : "L’e-mail n’a pas pu être envoyé. Le nouveau lien a été généré.", invitation_url: result.emailSent ? null : result.invitationUrl });
+  }
+  if (action === "user_delete") {
+    if (String(body?.confirmation || "") !== "SUPPRIMER") return json({ error: "CONFIRMATION_REQUIRED", message: "Saisissez SUPPRIMER pour confirmer." }, 400);
+    if (reason.length < 10) return json({ error: "REASON_REQUIRED", message: "Un motif détaillé d’au moins 10 caractères est obligatoire." }, 400);
+    if (isTestUser(user.email)) return json({ error: "TEST_ACCOUNT_PROTECTED", message: "Les comptes de test doivent être gérés depuis Accès spéciaux." }, 403);
+    const { data: deletionResult, error: deletionError } = await sb.rpc("omnia_delete_user_account", { p_user_id: userId, p_reason: reason, p_source: "admin" });
+    if (deletionError) throw deletionError;
+    await insertAdminUserAudit(sb, session.userId, userId, "account_deleted", reason, { deletion_reference: deletionResult?.deletion_reference || null });
+    return json({ success: true, message: "Le compte a été fermé et ses données personnelles ont été anonymisées conformément à la procédure protégée." });
+  }
+  const { error } = await sb.from("users").update({ force_password_change: true, updated_at: now }).eq("id", userId); if (error) throw error;
+  await sb.from("user_sessions").delete().eq("user_id", userId);
+  await insertAdminUserAudit(sb, session.userId, userId, "password_change_required", reason || null);
+  return json({ success: true, message: "Le changement de mot de passe sera exigé à la prochaine connexion." });
+}
 
 type SessionContext = {
   userId: string;
@@ -534,12 +736,16 @@ Deno.serve(async (req: Request) => {
 
     if (req.method === "POST") {
       const body = await req.json().catch(() => ({}));
+      const adminUserResponse = await handleAdminUserPost(sb, session, body);
+      if (adminUserResponse) return adminUserResponse;
       return await handleDeletionPost(sb, session, body);
     }
 
     if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
     const adminId = session.userId;
     const url = new URL(req.url);
+    const adminUsersResponse = await handleAdminUserGet(sb, adminId, url);
+    if (adminUsersResponse) return adminUsersResponse;
 
     // Détail d'un rôle : uniquement nom, e-mail et date d'inscription.
     // Aucun mot de passe, téléphone, adresse, KYC ou autre donnée sensible n'est exposé.

@@ -73,6 +73,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'Utilisateurs & Structures',
     icon: Users,
     items: [
+      { path: '/admin/utilisateurs', label: 'Utilisateurs', icon: Users },
       { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
       { path: '/admin/structures', label: 'Structures', icon: Building2 },
       { path: '/admin/structures/b2b', label: 'Commerce B2B & contrats', icon: FileSignature },
