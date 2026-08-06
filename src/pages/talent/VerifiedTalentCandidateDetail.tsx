@@ -1,13 +1,19 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { ArrowLeft, Award, Briefcase, FileCheck2, MapPin, MessageSquare, ShieldCheck } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
+import { StructureLayout } from '../../components/StructureLayout';
 import { employabilityRequest } from '../../lib/employabilityApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 
 export default function VerifiedTalentCandidateDetail() {
+  const location = useLocation();
+  const structureContext = location.pathname.startsWith('/structure/recrutement');
+  const listPath = structureContext
+    ? '/structure/recrutement/competences-verifiees'
+    : '/talent/recruteur/competences-verifiees';
   const { userId = '' } = useParams();
   const [candidate, setCandidate] = useState<any>(null);
   const [form, setForm] = useState({ subject: '', message: '', job_id: '' });
@@ -34,9 +40,8 @@ export default function VerifiedTalentCandidateDetail() {
     finally { setBusy(false); }
   };
 
-  return <RecruiterLayout title="Profil vérifié" subtitle="Données partagées avec consentement">
-    <main className="mx-auto max-w-6xl p-5 md:p-8">
-      <Link to="/talent/recruteur/competences-verifiees" className="flex items-center gap-2 text-sm font-bold" style={{color:BLUE}}><ArrowLeft size={16}/>Retour à la recherche</Link>
+  const content = <main className="mx-auto max-w-6xl p-5 md:p-8">
+      <Link to={listPath} className="flex items-center gap-2 text-sm font-bold" style={{color:BLUE}}><ArrowLeft size={16}/>Retour à la recherche</Link>
       {error&&<p className="mt-5 border-l-4 border-red-500 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {!candidate&&!error&&<p className="mt-8 text-sm text-gray-500">Chargement du profil autorisé…</p>}
       {candidate&&<>
@@ -61,8 +66,11 @@ export default function VerifiedTalentCandidateDetail() {
           {(candidate.contact_requests||[]).length>0&&<div className="mt-5 border-t pt-4"><p className="text-xs font-bold uppercase text-gray-500">Vos demandes précédentes</p>{candidate.contact_requests.map((item:any)=><div key={item.id} className="mt-3 border p-3 text-xs"><p className="font-semibold">{item.subject||'Demande'}</p><p className="mt-1 text-gray-500">{item.status} · {new Date(item.requested_at).toLocaleDateString('fr-FR')}</p></div>)}</div>}</section></aside>
         </section>
       </>}
-    </main>
-  </RecruiterLayout>;
+    </main>;
+
+  return structureContext
+    ? <StructureLayout>{content}</StructureLayout>
+    : <RecruiterLayout title="Profil vérifié" subtitle="Données partagées avec consentement">{content}</RecruiterLayout>;
 }
 
 function initials(name:string){return name.split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'OT'}

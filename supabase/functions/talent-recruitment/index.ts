@@ -71,13 +71,25 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
 }
 
 function hasRole(s: Session, ...roles: string[]) { return roles.some(r => s.roles.includes(r)); }
+const STRUCTURE_RECRUITER_CORE_PERMISSIONS = [
+  "can_post_job",
+  "can_search_talent",
+  "can_contact_talent",
+  "can_manage_jobs",
+  "can_view_applications",
+  "can_schedule_interview",
+] as const;
+
 function isIndependentRecruiter(s: Session) {
   return hasRole(s, "recruteur_independant", "recruteur")
     && s.recruiterProfile?.recruiter_type === "independent"
     && s.recruiterProfile.status === "approved";
 }
+function isStructureRecruiter(s: Session) {
+  return hasRole(s, "recruteur_structure") && !!s.organizationId;
+}
 function canUseRecruiter(s: Session) {
-  if (hasRole(s, "super_admin")) return true;
+  if (hasRole(s, "super_admin") || isStructureRecruiter(s)) return true;
   const hasStructureRecruitmentPermission = [
     "can_post_job",
     "can_search_talent",
@@ -92,7 +104,8 @@ function canUseRecruiter(s: Session) {
 }
 function can(s: Session, permission: string) {
   if (hasRole(s, "super_admin") || s.isPrimaryManager) return true;
-  if (isIndependentRecruiter(s) && ["can_search_talent","can_contact_talent","can_schedule_interview","can_post_job","can_manage_jobs","can_view_applications"].includes(permission)) return true;
+  if (isIndependentRecruiter(s) && STRUCTURE_RECRUITER_CORE_PERMISSIONS.includes(permission as typeof STRUCTURE_RECRUITER_CORE_PERMISSIONS[number])) return true;
+  if (isStructureRecruiter(s) && STRUCTURE_RECRUITER_CORE_PERMISSIONS.includes(permission as typeof STRUCTURE_RECRUITER_CORE_PERMISSIONS[number])) return true;
   return s.permissions[permission] === true;
 }
 function scopeOrg(s: Session, scope: string) { return scope === "structure" ? s.organizationId : null; }
@@ -620,12 +633,12 @@ Deno.serve(async (req: Request) => {
       }).select("id,full_name,email,created_at").single();
       if (userError) throw userError;
       const permissions = {
-        can_post_job: body.permissions?.can_post_job !== false,
-        can_search_talent: body.permissions?.can_search_talent !== false,
-        can_contact_talent: body.permissions?.can_contact_talent !== false,
-        can_manage_jobs: body.permissions?.can_manage_jobs !== false,
-        can_view_applications: body.permissions?.can_view_applications !== false,
-        can_schedule_interview: body.permissions?.can_schedule_interview !== false,
+        can_post_job: true,
+        can_search_talent: true,
+        can_contact_talent: true,
+        can_manage_jobs: true,
+        can_view_applications: true,
+        can_schedule_interview: true,
         can_manage_team: body.permissions?.can_manage_team === true,
       };
       try {
@@ -848,9 +861,18 @@ Deno.serve(async (req: Request) => {
       if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
       const targetUserId = String(body.user_id || "");
       if (!targetUserId) return json({ error: "USER_REQUIRED" }, 400);
-      const keys = ["can_post_job","can_search_talent","can_contact_talent","can_manage_jobs","can_view_applications","can_schedule_interview","can_manage_team"];
-      const row: Record<string, unknown> = { organization_id: organizationId, user_id: targetUserId, updated_at: new Date().toISOString() };
-      for (const key of keys) if (body.permissions?.[key] !== undefined) row[key] = !!body.permissions[key];
+      const row: Record<string, unknown> = {
+        organization_id: organizationId,
+        user_id: targetUserId,
+        can_post_job: true,
+        can_search_talent: true,
+        can_contact_talent: true,
+        can_manage_jobs: true,
+        can_view_applications: true,
+        can_schedule_interview: true,
+        can_manage_team: body.permissions?.can_manage_team === true,
+        updated_at: new Date().toISOString(),
+      };
       const { data, error } = await sb.from("talent_structure_permissions").upsert(row, { onConflict: "organization_id,user_id" }).select().single();
       if (error) throw error;
       await logActivity(sb, session, organizationId, targetUserId, "recruitment_permissions_updated", "user", targetUserId, row);

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
   BarChart2, Bell, Settings, Building2, UserCheck, Shield, Briefcase, Search,
   CalendarDays, Heart, MessageSquare, UserRoundSearch, User, Radio, Layers3,
-  ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart,
+  ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, ShieldCheck,
 } from 'lucide-react';
 import { DashboardLayout, type NavGroup } from './DashboardLayout';
 import { getStoredUser } from '../lib/session';
@@ -46,6 +46,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
       { path: '/structure/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
       { path: '/structure/recrutement/dashboard', label: 'Accueil recrutement', icon: UserRoundSearch, exact: true },
       { path: '/structure/recrutement/talents', label: 'Recherche de talents', icon: Search },
+      { path: '/structure/recrutement/competences-verifiees', label: 'Compétences vérifiées', icon: ShieldCheck },
       { path: '/structure/recrutement/favoris', label: 'Talents favoris', icon: Heart },
       { path: '/structure/recrutement/candidats', label: 'Candidats', icon: Users },
       { path: '/structure/recrutement/entretiens', label: 'Entretiens', icon: CalendarDays },
@@ -100,12 +101,9 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
   const location = useLocation();
   const visibleGroups = useMemo(() => {
     const user = getStoredUser<StoredUser>();
-    const previewRole = sessionStorage.getItem('omnia_admin_role_preview');
     const roles = user?.roles || [];
-    const recruitmentOnly = previewRole === 'recruteur_structure' || (
-      roles.includes('recruteur_structure')
-      && !roles.some(role => ['responsable_structure', 'gestionnaire_partenaire', 'structure', 'structure_admin', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role))
-    );
+    const recruitmentOnly = roles.includes('recruteur_structure')
+      && !roles.some(role => ['responsable_structure', 'gestionnaire_partenaire', 'structure', 'structure_admin', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role));
     return recruitmentOnly ? STRUCTURE_RECRUITER_NAV_GROUPS : STRUCTURE_NAV_GROUPS;
   }, []);
 

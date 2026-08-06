@@ -46,7 +46,8 @@ function settingsPathForUser(user: AuthUser) {
   const roles = normalizePlatformRoles(user.roles);
   if (roles.includes('super_admin')) return '/mon-profil';
   if (roles.includes('structure')) return '/mon-profil';
-  if (roles.includes('recruteur_structure') || roles.includes('recruteur')) return '/talent/recruteur/parametres';
+  if (roles.includes('recruteur_structure')) return '/mon-profil?tab=notifications';
+  if (roles.includes('recruteur')) return '/talent/recruteur/parametres';
   if (roles.includes('organisateur')) return '/omnia-live/organisateur/parametres';
   if (roles.includes('professeur')) return '/mon-profil';
   if (roles.includes('moderateur')) return '/moderateur/dashboard';

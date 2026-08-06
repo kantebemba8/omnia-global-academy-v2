@@ -104,19 +104,22 @@ function accountReasonLabel(value: unknown) {
   return ACCOUNT_REASON_LABELS[key] || "Motif non communiqué";
 }
 
-const ROLE_GROUPS = [
+const PRIMARY_ROLE_GROUPS = [
   { key: "apprenant", label: "Apprenants", aliases: ["apprenant"] },
   { key: "professeur", label: "Professeurs", aliases: ["professeur", "formateur", "enseignant", "etablissement_enseignant"] },
   { key: "structure", label: "Structures", aliases: ["structure", "responsable_structure", "gestionnaire_partenaire", "structure_admin", "directeur", "etablissement_directeur"] },
-  { key: "recruteur_structure", label: "Recruteurs Structure", aliases: ["recruteur_structure"] },
   { key: "organisateur", label: "Organisateurs Omnia Live", aliases: ["organisateur", "organizer"] },
   { key: "moderateur", label: "Modérateurs", aliases: ["moderateur", "moderator"] },
   { key: "recruteur", label: "Recruteurs", aliases: ["recruteur", "recruteur_independant"] },
   { key: "coach", label: "Coachs", aliases: ["coach"] },
 ] as const;
 
+const DELEGATED_ACCESS_GROUPS = [
+  { key: "recruteur_structure", label: "Accès recrutement rattachés aux Structures", aliases: ["recruteur_structure"] },
+] as const;
+
 function roleGroup(key: string) {
-  return ROLE_GROUPS.find((group) => group.key === key);
+  return [...PRIMARY_ROLE_GROUPS, ...DELEGATED_ACCESS_GROUPS].find((group) => group.key === key);
 }
 
 
@@ -768,7 +771,7 @@ Deno.serve(async (req: Request) => {
       : [];
     const usersById = new Map((userRows ?? []).map((user:any) => [user.id, user]));
 
-    const usersByRole = ROLE_GROUPS.map((group) => {
+    const usersByRole = PRIMARY_ROLE_GROUPS.map((group) => {
       const ids = [...new Set(
         (userRoles ?? [])
           .filter((row:any) => group.aliases.includes(row.role))

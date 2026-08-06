@@ -21,6 +21,7 @@ type Session = {
   isPrimaryManager: boolean;
   permissions: Record<string, boolean>;
   recruiterApproved: boolean;
+  structureRecruiter: boolean;
 };
 
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
@@ -61,6 +62,7 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
     isPrimaryManager: !!manager?.is_primary,
     permissions,
     recruiterApproved: recruiter?.recruiter_type === "independent" && recruiter?.status === "approved",
+    structureRecruiter: !!organizationId && (roles || []).some((row: any) => String(row.role) === "recruteur_structure"),
   };
 }
 
@@ -72,8 +74,17 @@ function isIndependentRecruiter(session: Session) {
   return session.recruiterApproved && session.roles.some((role) => ["recruteur_independant", "recruteur"].includes(role));
 }
 
+const STRUCTURE_RECRUITER_CORE_PERMISSIONS = [
+  "can_post_job",
+  "can_search_talent",
+  "can_contact_talent",
+  "can_manage_jobs",
+  "can_view_applications",
+  "can_schedule_interview",
+] as const;
+
 function canRecruit(session: Session) {
-  if (isSuperAdmin(session) || isIndependentRecruiter(session) || session.isPrimaryManager) return true;
+  if (isSuperAdmin(session) || isIndependentRecruiter(session) || session.structureRecruiter || session.isPrimaryManager) return true;
   return !!session.organizationId && ["can_post_job", "can_manage_jobs", "can_view_applications"]
     .some((permission) => session.permissions[permission] === true);
 }
@@ -81,6 +92,7 @@ function canRecruit(session: Session) {
 function can(session: Session, permission: string) {
   if (isSuperAdmin(session) || session.isPrimaryManager) return true;
   if (isIndependentRecruiter(session)) return true;
+  if (session.structureRecruiter && STRUCTURE_RECRUITER_CORE_PERMISSIONS.includes(permission as typeof STRUCTURE_RECRUITER_CORE_PERMISSIONS[number])) return true;
   return session.permissions[permission] === true;
 }
 

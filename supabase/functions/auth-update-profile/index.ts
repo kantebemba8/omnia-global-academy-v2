@@ -524,7 +524,7 @@ async function synchronizeRoleProfiles(
   const skills = isFieldVisible(fieldVisibility, "skills") ? cleanArray(profile.skills, 50, 120) : [];
   const visibility = profile.visibility === "public" ? "public" : profile.visibility === "members" ? "recruiters" : "private";
 
-  const individualRoles = roles.some(role => ["apprenant", "professeur", "formateur", "coach", "organizer", "organisateur", "recruteur", "recruteur_independant"].includes(role));
+  const individualRoles = roles.some(role => ["apprenant", "professeur", "formateur", "coach", "organizer", "organisateur", "recruteur", "recruteur_independant", "recruteur_structure"].includes(role));
   if (individualRoles) {
     await ignoreFailure(sb.from("career_public_profiles").upsert({
       user_id: userId,

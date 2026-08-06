@@ -27,7 +27,6 @@ import { getPublicProfile, ProfileApiError, type PublicProfile } from '../../lib
 const ROLE_LABELS: Record<string, string> = {
   moderateur: 'Modérateur',
   structure: 'Structure',
-  recruteur_structure: 'Recruteur de structure',
   organisateur: 'Organisateur Omnia Live',
   organizer: 'Organisateur Omnia Live',
   recruteur: 'Recruteur',
@@ -164,7 +163,8 @@ export default function PublicProfilePage() {
 }
 
 function ProfileHero({ profile, isOwner }: { profile: PublicProfile; isOwner: boolean }) {
-  const visibleRoles = profile.roles.filter(role => role !== 'super_admin');
+  const hasStructureRecruitmentDelegation = profile.roles.includes('recruteur_structure');
+  const visibleRoles = profile.roles.filter(role => !['super_admin', 'recruteur_structure'].includes(role));
   const location = [profile.city, profile.country_code].filter(Boolean).join(', ');
 
   return (
@@ -183,7 +183,7 @@ function ProfileHero({ profile, isOwner }: { profile: PublicProfile; isOwner: bo
 
           <div className="min-w-0 flex-1 pb-1">
             <div className="flex flex-wrap gap-2">
-              {visibleRoles.map(role => <span key={role} className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-extrabold text-[#805A0C]">{ROLE_LABELS[role] || role}</span>)}
+              {visibleRoles.map(role => <span key={role} className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-extrabold text-[#805A0C]">{ROLE_LABELS[role] || role}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-extrabold text-[#002050]">Recrutement rattaché à une Structure</span>}
             </div>
             <h1 className="mt-2 break-words text-3xl font-black tracking-tight text-[#002050] sm:text-4xl">{profile.display_name}</h1>
             {profile.headline && <p className="mt-1.5 max-w-3xl text-base leading-6 text-slate-600">{profile.headline}</p>}

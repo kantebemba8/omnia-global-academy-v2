@@ -25,14 +25,14 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
   const userId = String(active.user_id);
   const [{ data: roleRows }, { data: manager }] = await Promise.all([
     sb.from("user_roles").select("role").eq("user_id", userId),
-    sb.from("partner_managers").select("organization_id,status,is_primary").eq("user_id", userId).neq("status", "retire").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("partner_managers").select("organization_id,status,is_primary").eq("user_id", userId).eq("status", "actif").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const roles = (roleRows || []).map((row: any) => text(row.role, 80).toLowerCase());
   return {
     userId,
     roles,
     isAdmin: roles.some((role: string) => ["super_admin", "admin"].includes(role)),
-    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)),
+    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || (roles.includes("recruteur_structure") && !!manager?.organization_id),
     isLearner: roles.includes("apprenant"),
     organizationId: manager?.organization_id ? String(manager.organization_id) : null,
   };

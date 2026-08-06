@@ -18,16 +18,47 @@ function notifySessionChanged(authenticated: boolean): void {
  * technical database values are normalized below and are never presented as
  * additional user-facing roles.
  */
-export type CanonicalPlatformRole =
+export type PrimaryPlatformRole =
   | 'super_admin'
   | 'moderateur'
   | 'structure'
-  | 'recruteur_structure'
   | 'organisateur'
   | 'recruteur'
   | 'professeur'
   | 'coach'
   | 'apprenant';
+
+/**
+ * Accès délégués rattachés à un rôle principal ou à une organisation.
+ * `recruteur_structure` reste une valeur technique de contrôle d'accès,
+ * mais ne constitue pas un rôle principal de la plateforme.
+ */
+export type DelegatedPlatformAccess = 'recruteur_structure';
+
+export type CanonicalPlatformRole = PrimaryPlatformRole | DelegatedPlatformAccess;
+
+export const PRIMARY_PLATFORM_ROLES: readonly PrimaryPlatformRole[] = [
+  'super_admin',
+  'moderateur',
+  'structure',
+  'organisateur',
+  'recruteur',
+  'professeur',
+  'coach',
+  'apprenant',
+] as const;
+
+export function isPrimaryPlatformRole(role: CanonicalPlatformRole): role is PrimaryPlatformRole {
+  return (PRIMARY_PLATFORM_ROLES as readonly CanonicalPlatformRole[]).includes(role);
+}
+
+export function primaryPlatformRoles(roles: readonly string[] | null | undefined): PrimaryPlatformRole[] {
+  return normalizePlatformRoles(roles).filter(isPrimaryPlatformRole);
+}
+
+export function hasStructureRecruiterAccess(roles: readonly string[] | null | undefined): boolean {
+  return normalizePlatformRoles(roles).includes('recruteur_structure');
+}
 
 const ROLE_REDIRECT_PRIORITY: ReadonlyArray<readonly [CanonicalPlatformRole, string]> = [
   ['super_admin', '/admin/dashboard'],

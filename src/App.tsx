@@ -798,6 +798,8 @@ export default function App() {
 <Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/offres" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/talents" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/competences-verifiees" element={<VerifiedTalentCandidates />} />
+<Route path="/structure/recrutement/competences-verifiees/:userId" element={<VerifiedTalentCandidateDetail />} />
 <Route path="/structure/recrutement/favoris" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/candidats" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/entretiens" element={<StructureRecruitment />} />

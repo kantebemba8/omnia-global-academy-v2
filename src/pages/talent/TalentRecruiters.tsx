@@ -27,8 +27,8 @@ export default function TalentRecruiters() {
   }, []);
 
   const roles = user?.roles || [];
-  const learnerOnly = roles.includes('apprenant') && !roles.some(role => ['recruteur_independant', 'recruteur', 'super_admin'].includes(role));
-  const approved = profile?.status === 'approved' || roles.some(role => ['recruteur_independant', 'recruteur', 'super_admin'].includes(role));
+  const learnerOnly = roles.includes('apprenant') && !roles.some(role => ['recruteur_independant', 'recruteur', 'recruteur_structure', 'super_admin'].includes(role));
+  const approved = profile?.status === 'approved' || roles.some(role => ['recruteur_independant', 'recruteur', 'recruteur_structure', 'super_admin'].includes(role));
   const dashboardPath = profile?.recruiter_type === 'structure' ? '/structure/recrutement/dashboard' : '/talent/recruteur/dashboard';
 
   return (

@@ -25,7 +25,7 @@ async function sessionFrom(req: Request, sb: any, bodyToken = ""): Promise<Sessi
   const [{ data: user }, { data: roleRows }, { data: manager }] = await Promise.all([
     sb.from("users").select("id,full_name,email,status,avatar_url").eq("id", userId).maybeSingle(),
     sb.from("user_roles").select("role").eq("user_id", userId),
-    sb.from("partner_managers").select("organization_id,status,is_primary").eq("user_id", userId).neq("status", "retire").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("partner_managers").select("organization_id,status,is_primary").eq("user_id", userId).eq("status", "actif").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const roles = (roleRows || []).map((row: any) => text(row.role, 80).toLowerCase());
   return {
@@ -33,7 +33,7 @@ async function sessionFrom(req: Request, sb: any, bodyToken = ""): Promise<Sessi
     user: user || {},
     roles,
     isAdmin: roles.some((role: string) => ["super_admin", "admin"].includes(role)),
-    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)),
+    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || (roles.includes("recruteur_structure") && !!manager?.organization_id),
     organizationId: manager?.organization_id ? String(manager.organization_id) : null,
   };
 }
