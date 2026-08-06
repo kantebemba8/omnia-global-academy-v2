@@ -500,7 +500,7 @@ async function submitApplication(sb: Supabase, session: Session, body: Record<st
   const fullName = asText(body.full_name, 180);
   const professionalTitle = asText(body.professional_title, 180);
   const country = asText(body.country, 100);
-  const timezone = asText(body.timezone, 100) || "Africa/Bamako";
+  const timezone = asText(body.timezone, 100) || "UTC";
   const biography = asText(body.biography, 5000);
   const experienceSummary = asText(body.experience_summary, 5000);
   const motivation = asText(body.motivation, 3000);
@@ -1026,7 +1026,7 @@ async function saveAvailabilityRule(sb: Supabase, session: Session, body: Record
   const day = asInteger(body.day_of_week);
   const startTime = asTime(body.start_time);
   const endTime = asTime(body.end_time);
-  const timezone = asText(body.timezone, 80) || String(profile.timezone || "Africa/Bamako");
+  const timezone = asText(body.timezone, 80) || String(profile.timezone || "UTC");
   const validFrom = asDateOnly(body.valid_from) || toDateOnly(new Date());
   const validUntil = asDateOnly(body.valid_until);
   if (day === null || day > 6 || !startTime || !endTime || startTime >= endTime || !isValidTimeZone(timezone)) throw new Error("INVALID_AVAILABILITY");
@@ -1595,7 +1595,7 @@ async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Rec
         email: user.email,
         firstname,
         lastname,
-        ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}),
+        ...(user.phone_number && user.country_code ? { phone_number: { number: user.phone_number, country: user.country_code } } : {}),
       },
     }),
   });
@@ -2965,7 +2965,7 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   const names = String(user.full_name || "").trim().split(/\s+/); const firstname = names.shift() || String(user.email).split("@")[0]; const lastname = names.join(" ") || "-";
   const metadata = { resource_type: "coaching_advanced", coaching_order_id: order.id, product_type: context.productType, product_id: context.productId, user_id: actor.userId };
-  const transactionResponse = await fetch(`${apiBase}/transactions`, { method: "POST", headers: { Authorization: `Bearer ${fedaKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ description: `Omnia Coaching — ${context.title}`, amount: context.amountXof, currency: { iso: "XOF" }, callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`, return_url: `${appUrl}/coaching/avance/paiement/${order.id}?retour=fedapay`, cancel_url: `${appUrl}/coaching/avance/paiement/${order.id}?annule=1`, merchant_reference: `${order.order_number}-${Date.now().toString().slice(-6)}`, custom_metadata: metadata, metadata, customer: { email: user.email, firstname, lastname, ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}) } }) });
+  const transactionResponse = await fetch(`${apiBase}/transactions`, { method: "POST", headers: { Authorization: `Bearer ${fedaKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ description: `Omnia Coaching — ${context.title}`, amount: context.amountXof, currency: { iso: "XOF" }, callback_url: `${supabaseUrl}/functions/v1/fedapay-webhook`, return_url: `${appUrl}/coaching/avance/paiement/${order.id}?retour=fedapay`, cancel_url: `${appUrl}/coaching/avance/paiement/${order.id}?annule=1`, merchant_reference: `${order.order_number}-${Date.now().toString().slice(-6)}`, custom_metadata: metadata, metadata, customer: { email: user.email, firstname, lastname, ...(user.phone_number && user.country_code ? { phone_number: { number: user.phone_number, country: user.country_code } } : {}) } }) });
   if (!transactionResponse.ok) { const detail=await transactionResponse.text().catch(()=>""); await sb.from("coaching_payment_orders").update({payment_status:"failed",failed_at:new Date().toISOString(),provider_metadata:{initialization_error:detail.slice(0,1000)}}).eq("id",order.id); throw new Error("PAYMENT_INIT_FAILED"); }
   const transactionData=await transactionResponse.json(); const transaction=transactionData.v1Transaction||transactionData.transaction||transactionData; const providerId=transaction?.id?String(transaction.id):""; if(!providerId) throw new Error("PAYMENT_INIT_FAILED");
   const tokenResponse=await fetch(`${apiBase}/transactions/${providerId}/token`,{method:"POST",headers:{Authorization:`Bearer ${fedaKey}`,"Content-Type":"application/json"}}); if(!tokenResponse.ok) throw new Error("PAYMENT_LINK_FAILED"); const tokenData=await tokenResponse.json(); const paymentUrl=String(tokenData.url||tokenData.token_url||""); if(!paymentUrl) throw new Error("PAYMENT_LINK_FAILED");

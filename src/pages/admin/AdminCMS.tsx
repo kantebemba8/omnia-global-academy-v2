@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { CATEGORY_LABELS } from '../../lib/categories';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   Save, Settings, AlertTriangle, Send, Mail, MessageSquare, Clock, Bot,
   Image, Captions, ToggleLeft, ToggleRight, Upload, CheckCircle2,
@@ -163,7 +164,8 @@ export default function AdminCMS() {
   const [nlSmsText, setNlSmsText] = useState('');
   const [nlScheduleAt, setNlScheduleAt] = useState('');
   const [nlSending, setNlSending] = useState(false);
-  const [nlCampaigns, setNlCampaigns] = useState<Array<{ id: string; subject: string; channel: string; status: string; sent_at: string | null; recipients_count: number; created_at: string }>>([]);
+  const [nlCampaigns, setNlCampaigns] = useState<Array<{ id: string; subject: string; channel: string; status: string; sent_at: string | null; scheduled_at?: string | null; recipients_count: number; created_at: string; error_message?: string | null }>>([]);
+  const [nlStats, setNlStats] = useState({ active: 0, unsubscribed: 0 });
 
   function load() {
     const token = getSessionToken();
@@ -200,13 +202,20 @@ export default function AdminCMS() {
       })
       .catch(() => setLoading(false));
 
-    // Load newsletter campaigns
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    if (supabaseUrl && anonKey) {
-      fetch(`${supabaseUrl}/rest/v1/newsletter_campaigns?order=created_at.desc&limit=20`, {
-        headers: { apikey: anonKey, Authorization: `Bearer ${getSessionToken() || ''}` },
-      }).then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setNlCampaigns(d); }).catch(() => {});
+    // Load newsletter campaigns and consent statistics through the secured Edge Function.
+    if (token) {
+      fetch(ENDPOINTS.newsletterSend, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'admin_list' }),
+      })
+        .then(async response => ({ response, data: await response.json().catch(() => ({})) }))
+        .then(({ response, data }) => {
+          if (!response.ok || !data.success) return;
+          setNlCampaigns(Array.isArray(data.campaigns) ? data.campaigns : []);
+          setNlStats({ active: Number(data.stats?.active || 0), unsubscribed: Number(data.stats?.unsubscribed || 0) });
+        })
+        .catch(() => {});
     }
   }
   useEffect(() => { load(); }, []);
@@ -405,12 +414,12 @@ export default function AdminCMS() {
     await save();
 
     if (settings.maintenance_notice_email === 'true') {
-      const token = getSessionToken();
       try {
         const res = await fetch(ENDPOINTS.newsletterSend, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: edgeAuthHeaders(),
           body: JSON.stringify({
+            action: 'send',
             subject: 'Information maintenance — Omnia Global Academy',
             content_html: `<div style="font-family:Arial,sans-serif"><h2>Information maintenance</h2><p>${message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p></div>`,
             channel: 'email',
@@ -419,7 +428,7 @@ export default function AdminCMS() {
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Envoi impossible');
-        setToast(d.scheduled ? 'Annonce enregistrée et e-mail programmé.' : 'Annonce enregistrée et e-mail envoyé.');
+        setToast(d.status === 'scheduled' ? 'Annonce enregistrée et e-mail programmé.' : 'Annonce enregistrée et e-mail envoyé.');
       } catch (error) {
         setToast(error instanceof Error ? error.message : 'Annonce enregistrée mais e-mail non envoyé.');
       }
@@ -434,12 +443,12 @@ export default function AdminCMS() {
     if (nlChannel === 'email' && !nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
     if (nlChannel === 'sms' && !nlSmsText.trim()) { setToast('Texte SMS requis.'); return; }
     setNlSending(true);
-    const token = getSessionToken();
     try {
       const res = await fetch(ENDPOINTS.newsletterSend, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: edgeAuthHeaders(),
         body: JSON.stringify({
+          action: 'send',
           subject: nlSubject,
           content_html: nlHtml,
           channel: nlChannel,
@@ -449,7 +458,7 @@ export default function AdminCMS() {
       });
       const d = await res.json();
       if (d.success) {
-        setToast(d.scheduled ? 'Campagne planifiée !' : 'Campagne envoyée !');
+        setToast(d.status === 'scheduled' ? 'Campagne planifiée !' : 'Campagne envoyée !');
         setNlSubject(''); setNlHtml(''); setNlSmsText(''); setNlScheduleAt('');
         load();
       } else {
@@ -851,7 +860,11 @@ export default function AdminCMS() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-1" style={{ color: '#002050' }}>Composer une campagne</h3>
-                <p className="text-xs text-gray-400 mb-4">Envoi à la Liste Newsletter Globale Brevo #7</p>
+                <p className="text-xs text-gray-500 mb-4">Envoi aux abonnés actifs ayant donné leur consentement.</p>
+                <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4"><div className="text-2xl font-black text-green-800">{nlStats.active}</div><div className="mt-1 text-xs font-semibold text-green-700">Abonnements actifs</div></div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-2xl font-black text-slate-700">{nlStats.unsubscribed}</div><div className="mt-1 text-xs font-semibold text-slate-500">Désinscriptions enregistrées</div></div>
+                </div>
 
                 {/* Channel selector */}
                 <div className="flex gap-2 mb-5">
@@ -957,6 +970,7 @@ export default function AdminCMS() {
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                 c.status === 'sent' ? 'bg-green-50 text-green-700' :
                                 c.status === 'scheduled' ? 'bg-amber-50 text-amber-700' :
+                                c.status === 'failed' ? 'bg-red-50 text-red-700' :
                                 'bg-gray-100 text-gray-500'
                               }`}>{c.status}</span>
                             </td>

@@ -786,7 +786,7 @@ async function createFedaPay(order: Record<string, any>, user: UserContext, labe
         email: user.email,
         firstname: parts[0] || user.email.split("@")[0],
         lastname: parts.slice(1).join(" ") || "-",
-        ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}),
+        ...(user.phone_number && user.country_code ? { phone_number: { number: user.phone_number, country: user.country_code } } : {}),
       },
       custom_metadata: { commerce_order_id: order.id, resource_type: "central_commerce", buyer_user_id: user.id },
     }),

@@ -432,7 +432,7 @@ export default function AdminEquipe() {
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Téléphone (optionnel)</label>
                     <input type="tel" value={newMod.phone_number} onChange={e => setNewMod(p => ({ ...p, phone_number: e.target.value }))}
-                      placeholder="+223 70 00 00 00"
+                      placeholder="+[indicatif] numéro"
                       className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
                       style={{ borderColor: '#E4E7EC' }} />
                   </div>

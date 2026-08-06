@@ -1,10 +1,13 @@
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  CheckCircle2,
   ExternalLink,
   Facebook,
   Globe2,
   Instagram,
   Linkedin,
+  Mail,
   MessageCircle,
   Youtube,
   type LucideIcon,
@@ -15,6 +18,8 @@ import {
   type MobileAppItem,
   type SocialNetworkItem,
 } from '../types/landingCms';
+import { ENDPOINTS } from '../lib/config';
+import { edgeGatewayHeaders } from '../lib/edgeAuth';
 
 type LegacySocialNetworks = Record<string, string | null | undefined>;
 type LegacyAppDownloads = { google_play?: string | null; app_store?: string | null };
@@ -115,6 +120,41 @@ export function PageFooter({
 }: FooterProps) {
   const fallback = createDefaultLandingPage().footer;
   const config = footerConfig || fallback;
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterConsent, setNewsletterConsent] = useState(false);
+  const [newsletterWebsite, setNewsletterWebsite] = useState('');
+  const [newsletterState, setNewsletterState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [newsletterMessage, setNewsletterMessage] = useState('');
+
+  async function subscribeNewsletter(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newsletterEmail.trim() || !newsletterConsent || newsletterState === 'loading') return;
+    setNewsletterState('loading');
+    setNewsletterMessage('');
+    try {
+      const response = await fetch(ENDPOINTS.newsletterSend, {
+        method: 'POST',
+        headers: edgeGatewayHeaders(),
+        body: JSON.stringify({
+          action: 'subscribe',
+          email: newsletterEmail.trim(),
+          consent: true,
+          source: 'public_footer',
+          locale: document.documentElement.lang || navigator.language?.slice(0, 2) || 'fr',
+          website: newsletterWebsite,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.message || 'Inscription impossible.');
+      setNewsletterState('success');
+      setNewsletterMessage(data.message || 'Inscription enregistrée.');
+      setNewsletterEmail('');
+      setNewsletterConsent(false);
+    } catch (error) {
+      setNewsletterState('error');
+      setNewsletterMessage(error instanceof Error ? error.message : 'Inscription impossible.');
+    }
+  }
   const socialSource = managedOnly
     ? socialNetworksV2
     : (socialNetworksV2.length > 0 ? socialNetworksV2 : legacySocialItems(socialNetworks));
@@ -160,6 +200,34 @@ export function PageFooter({
             {config.description && (
               <p className="mt-4 max-w-sm text-xs leading-6 text-white/55">{config.description}</p>
             )}
+
+            <form onSubmit={subscribeNewsletter} className="mt-5 max-w-sm rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white"><Mail className="h-4 w-4 text-[#BF8813]" /> Newsletter Omnia</div>
+              <p className="mt-1 text-xs leading-5 text-white/55">Recevez uniquement les actualités et ressources que vous acceptez de recevoir.</p>
+              <label className="sr-only" htmlFor="footer-newsletter-email">Adresse e-mail</label>
+              <div className="mt-3 flex gap-2">
+                <input
+                  id="footer-newsletter-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={newsletterEmail}
+                  onChange={event => setNewsletterEmail(event.target.value)}
+                  placeholder="votre@email.com"
+                  className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#BF8813]"
+                />
+                <button type="submit" disabled={!newsletterConsent || newsletterState === 'loading'} className="rounded-xl bg-[#BF8813] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {newsletterState === 'loading' ? 'Envoi…' : 'S’inscrire'}
+                </button>
+              </div>
+              <input tabIndex={-1} autoComplete="off" aria-hidden="true" value={newsletterWebsite} onChange={event => setNewsletterWebsite(event.target.value)} className="hidden" />
+              <label className="mt-3 flex items-start gap-2 text-[11px] leading-4 text-white/65">
+                <input type="checkbox" checked={newsletterConsent} onChange={event => setNewsletterConsent(event.target.checked)} className="mt-0.5" />
+                <span>J’accepte de recevoir la newsletter. Je peux me désinscrire à tout moment.</span>
+              </label>
+              {newsletterMessage && <p className={`mt-2 flex items-center gap-1.5 text-xs ${newsletterState === 'success' ? 'text-green-300' : 'text-amber-200'}`}>{newsletterState === 'success' && <CheckCircle2 className="h-3.5 w-3.5" />}{newsletterMessage}</p>}
+              <Link to="/newsletter" className="mt-2 inline-block text-[11px] font-semibold text-white/70 underline decoration-white/30 underline-offset-2 hover:text-white">Gérer mon abonnement</Link>
+            </form>
 
             {socialItems.length > 0 && (
               <div className="mt-5">
@@ -276,7 +344,7 @@ export function PageFooter({
 
       <div className="border-t border-white/[0.06] bg-[#001540]">
         <p className="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-white/45">
-          © {new Date().getFullYear()} Omnia Global Academy. Tous droits réservés. Bamako, Mali.
+          © {new Date().getFullYear()} Omnia Global Academy. Tous droits réservés.
         </p>
       </div>
     </footer>

@@ -34,7 +34,7 @@ import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 const EMPTY_FORM = {
   title: '', short_description: '', description: '', problem_statement: '', objectives: '',
-  project_type: 'real_project', organization_name: '', country_code: 'ML', city: '', visibility: 'authenticated',
+  project_type: 'real_project', organization_name: '', country_code: '', city: '', visibility: 'authenticated',
   required_skills: '', languages: 'fr', level: 'all', participation_mode: 'individual_or_team',
   team_creation_mode: 'candidate_or_owner', selection_mode: 'manual',
   min_participants: '1', max_participants: '', min_team_size: '1', max_team_size: '6', estimated_hours: '',

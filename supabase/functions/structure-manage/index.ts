@@ -360,7 +360,7 @@ Deno.serve(async (req: Request) => {
         const { data: organization, error } = await sb.from("partner_organizations").insert({
           org_name: String(body.name).trim(),
           org_type: String(body.structure_type).trim(),
-          country: body.country || "ML",
+          country: body.country || null,
           city: body.city || null,
           address: body.address || null,
           phone: body.phone || null,

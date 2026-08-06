@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
       return {
         id: referral.id,
         anonymized_name: anonymized,
-        country_code: referral.users?.country_code ?? "ML",
+        country_code: referral.users?.country_code ?? null,
         status: referral.status,
         reward_xof: referral.status === "rewarded" ? (referral.reward_referrer_xof ?? 0) : 0,
         rewarded_at: referral.rewarded_at,

@@ -39,7 +39,7 @@ export function RegisterApprenant() {
     password: '',
     confirm_password: '',
     birth_date: '',
-    country_code: 'ML',
+    country_code: '',
     allow_email: true,
     allow_sms: true,
     allow_push: false,
@@ -84,6 +84,10 @@ export function RegisterApprenant() {
     }
     setError('');
     setLoading(true);
+    if (!form.country_code) {
+      setError('Sélectionnez votre pays de résidence.');
+      return;
+    }
     const phone_number = getPrefix(form.country_code) + form.phone_local.replace(/^0+/, '');
     try {
       const data = await authFetch<RegisterResponse>('auth-register', {
@@ -150,12 +154,13 @@ export function RegisterApprenant() {
               value={form.country_code}
               onChange={e => handleCountryChange(e.target.value)}
             >
+              <option value="">Indicatif</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.prefix} {c.label}</option>
               ))}
             </select>
             <input
-              className={`${inputCls} flex-1`} type="tel" placeholder="70 00 00 00" required
+              className={`${inputCls} flex-1`} type="tel" placeholder="Numéro sans indicatif" required
               value={form.phone_local} onChange={e => set('phone_local', e.target.value)}
             />
           </div>
@@ -170,6 +175,7 @@ export function RegisterApprenant() {
             onChange={e => handleCountryChange(e.target.value)}
             required
           >
+            <option value="">Choisir un pays</option>
             {COUNTRIES.map(c => (
               <option key={c.code} value={c.code}>{c.label}</option>
             ))}

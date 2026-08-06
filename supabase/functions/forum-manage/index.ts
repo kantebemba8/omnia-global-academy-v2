@@ -109,7 +109,7 @@ async function resolveSession(sb: DbClient, req: Request, required: boolean): Pr
 
   return {
     userId,
-    countryCode: String(user.country_code || "ML"),
+    countryCode: String(user.country_code || ""),
     roles,
     canModerateForum,
   };
@@ -230,8 +230,7 @@ async function listAction(sb: DbClient, req: Request) {
   const sort = safeString(url.searchParams.get("sort") || "recent", 20);
   const search = sanitizeSearch(url.searchParams.get("search") || "");
   const courseId = safeString(url.searchParams.get("course_id") || "", 80);
-  let countryCode = safeString(url.searchParams.get("country_code") || session?.countryCode || "ML", 10).toUpperCase();
-  if (!countryCode) countryCode = "ML";
+  let countryCode = safeString(url.searchParams.get("country_code") || session?.countryCode || "", 10).toUpperCase();
   let course: CourseRow | null = null;
 
   if (space === "cours") {
@@ -252,7 +251,7 @@ async function listAction(sb: DbClient, req: Request) {
 
   if (blocked.length) query = query.not("user_id", "in", `(${blocked.join(",")})`);
   if (space === "cours") query = query.eq("course_id", courseId);
-  else query = query.eq("country_code", countryCode);
+  else if (countryCode) query = query.eq("country_code", countryCode);
   if (search) query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
 
   if (sort === "popular") query = query.order("likes_count", { ascending: false }).order("created_at", { ascending: false });
@@ -404,7 +403,7 @@ async function createAction(sb: DbClient, req: Request) {
   const title = safeString(body.title, 200);
   const content = safeString(body.content, 5000);
   const courseId = safeString(body.course_id, 80);
-  const countryCode = safeString(body.country_code || session.countryCode || "ML", 10).toUpperCase();
+  const countryCode = safeString(body.country_code || session.countryCode || "", 10).toUpperCase();
 
   if (!VALID_SPACES.has(space)) return json({ error: "INVALID_SPACE" }, 400);
   if (title.length < 10 || title.length > 200) return json({ error: "TITLE_LENGTH", min: 10, max: 200 }, 422);
@@ -422,7 +421,7 @@ async function createAction(sb: DbClient, req: Request) {
     parent_id: null,
     title,
     content,
-    country_code: space === "cours" ? null : countryCode,
+    country_code: space === "cours" || !countryCode ? null : countryCode,
     is_visible: true,
     is_pinned: false,
     is_solved: false,

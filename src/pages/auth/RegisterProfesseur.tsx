@@ -72,7 +72,7 @@ export function RegisterProfesseur() {
     password: '',
     confirm_password: '',
     birth_date: '',
-    country_code: 'ML',
+    country_code: '',
     expertise_domain: '',
     bio: '',
     allow_email: true,
@@ -101,6 +101,10 @@ export function RegisterProfesseur() {
     }
     setError('');
     setLoading(true);
+    if (!form.country_code) {
+      setError('Sélectionnez votre pays de résidence.');
+      return;
+    }
     const phone_number = getPrefix(form.country_code) + form.phone_local.replace(/^0+/, '');
     try {
       const cv_diploma_base64 = await toBase64(cvFile);
@@ -168,11 +172,13 @@ export function RegisterProfesseur() {
               value={form.country_code}
               onChange={e => handleCountryChange(e.target.value)}
             >
-              {COUNTRIES.map(c => (
+              <option value="">Indicatif</option>
+              <option value="">Choisir un pays</option>
+            {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.prefix} {c.label}</option>
               ))}
             </select>
-            <input className={`${inputCls} flex-1`} type="tel" placeholder="70 00 00 00" required value={form.phone_local} onChange={e => set('phone_local', e.target.value)} />
+            <input className={`${inputCls} flex-1`} type="tel" placeholder="Numéro sans indicatif" required value={form.phone_local} onChange={e => set('phone_local', e.target.value)} />
           </div>
         </div>
 

@@ -332,7 +332,7 @@ Deno.serve(async (req: Request) => {
           email: user.email,
           firstname,
           lastname,
-          ...(user.phone_number ? { phone_number: { number: user.phone_number, country: user.country_code || "ML" } } : {}),
+          ...(user.phone_number && user.country_code ? { phone_number: { number: user.phone_number, country: user.country_code } } : {}),
         },
         custom_metadata: { order_id: order.id, order_number: order.order_number, user_id: user.id, course_id },
       }),

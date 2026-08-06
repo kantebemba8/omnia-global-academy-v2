@@ -65,7 +65,7 @@ export default function CoachCalendar() {
   useEffect(() => { load(); }, []);
 
   function newRule(day = 1) {
-    setEditingRule({ day_of_week: String(day), start_time: '09:00', end_time: '17:00', timezone: data?.profile.timezone || 'Africa/Bamako', valid_from: today(), valid_until: '', booking_notice_hours: String(data?.settings.default_booking_notice_hours ?? 24), maximum_sessions_per_day: String(data?.settings.default_max_sessions_per_day ?? 8), buffer_before_minutes: '0', buffer_after_minutes: '0', is_active: true });
+    setEditingRule({ day_of_week: String(day), start_time: '09:00', end_time: '17:00', timezone: data?.profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', valid_from: today(), valid_until: '', booking_notice_hours: String(data?.settings.default_booking_notice_hours ?? 24), maximum_sessions_per_day: String(data?.settings.default_max_sessions_per_day ?? 8), buffer_before_minutes: '0', buffer_after_minutes: '0', is_active: true });
   }
 
   function editRule(rule: CoachAvailabilityRule) {

@@ -44,7 +44,7 @@ export default function DemoExpiredModal() {
             </div>
             <div>
               <p className="text-xs text-gray-500">Téléphone / WhatsApp</p>
-              <p className="text-sm font-medium" style={{ color: '#002050' }}>+223 00 00 00 00</p>
+              <p className="text-sm font-medium" style={{ color: '#002050' }}>contact@omniaglobalacademy.com</p>
             </div>
           </div>
         </div>

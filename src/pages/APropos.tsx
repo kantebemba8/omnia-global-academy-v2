@@ -13,7 +13,7 @@ interface Settings {
 }
 
 const DEFAULT_CONTENT =
-  "Omnia Global Academy est une plateforme de formation en ligne fondée au Mali, avec l'ambition de connecter les meilleurs formateurs et les apprenants les plus motivés, partout en Afrique de l'Ouest puis sur tout le continent. Notre mission est de rendre l'éducation de qualité accessible, flexible et reconnue, en combinant une pédagogie rigoureuse, des technologies adaptées aux réalités locales et un accompagnement humain à chaque étape.";
+  "Omnia Global Academy est une plateforme internationale de formation, de compétences et d’opportunités. Elle connecte des apprenants, des formateurs, des Structures et des partenaires dans différents pays, avec une expérience accessible, flexible et reconnue.";
 
 export function APropos() {
   const [settings, setSettings] = useState<Settings>({});
@@ -67,7 +67,7 @@ export function APropos() {
                 Notre mission
               </p>
               <p className="text-white" style={{ fontSize: '16px', lineHeight: 1.7 }}>
-                Rendre l'éducation de qualité accessible, flexible et reconnue à travers toute l'Afrique.
+                Rendre la formation de qualité accessible, flexible et reconnue partout dans le monde.
               </p>
             </div>
           </div>

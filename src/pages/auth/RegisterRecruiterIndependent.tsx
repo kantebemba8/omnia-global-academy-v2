@@ -27,7 +27,7 @@ export function RegisterRecruiterIndependent() {
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>({
     full_name: '', email: '', phone_local: '', password: '', confirm_password: '',
-    country_code: 'ML', company_name: '', job_title: '', linkedin_url: '', website_url: '',
+    country_code: '', company_name: '', job_title: '', linkedin_url: '', website_url: '',
     allow_email: true, allow_sms: true,
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -42,6 +42,10 @@ export function RegisterRecruiterIndependent() {
     setError('');
     if (form.password !== form.confirm_password) {
       setError('Les mots de passe ne correspondent pas.');
+      return;
+    }
+    if (!form.country_code) {
+      setError('Sélectionnez votre pays.');
       return;
     }
     setLoading(true);
@@ -93,7 +97,7 @@ export function RegisterRecruiterIndependent() {
         <div><label className={label}>Email professionnel</label><input required type="email" className={input} value={form.email} onChange={e => set('email', e.target.value)} autoComplete="email" /></div>
         <div><label className={label}>Entreprise ou cabinet</label><div className="relative"><BriefcaseBusiness size={17} className="absolute left-3 top-3.5 text-gray-400"/><input required className={`${input} pl-10`} value={form.company_name} onChange={e => set('company_name', e.target.value)} /></div></div>
         <div><label className={label}>Fonction</label><input required className={input} value={form.job_title} onChange={e => set('job_title', e.target.value)} placeholder="Responsable recrutement, consultant RH…" /></div>
-        <div><label className={label}>Téléphone</label><div className="flex gap-2"><select className={`${input} max-w-[190px]`} value={form.country_code} onChange={e => set('country_code', e.target.value)}>{COUNTRIES.map(country => <option key={country.code} value={country.code}>{country.prefix} {country.label}</option>)}</select><input required className={input} value={form.phone_local} onChange={e => set('phone_local', e.target.value)} autoComplete="tel" /></div></div>
+        <div><label className={label}>Téléphone</label><div className="flex gap-2"><select className={`${input} max-w-[190px]`} value={form.country_code} onChange={e => set('country_code', e.target.value)}><option value="">Indicatif</option>{COUNTRIES.map(country => <option key={country.code} value={country.code}>{country.prefix} {country.label}</option>)}</select><input required className={input} value={form.phone_local} onChange={e => set('phone_local', e.target.value)} autoComplete="tel" /></div></div>
         <div><label className={label}>LinkedIn <span className="text-gray-400">(optionnel)</span></label><input type="url" className={input} value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="https://www.linkedin.com/in/..." /></div>
         <div><label className={label}>Site internet <span className="text-gray-400">(optionnel)</span></label><input type="url" className={input} value={form.website_url} onChange={e => set('website_url', e.target.value)} placeholder="https://..." /></div>
 

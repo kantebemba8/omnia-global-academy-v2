@@ -591,9 +591,9 @@ Deno.serve(async (req: Request) => {
       const phone = String(body.phone_number || "").trim();
       const jobTitle = String(body.job_title || "Recruteur Structure").trim();
       const roleLabel = String(body.role_label || "Recruteur Structure").trim();
-      const country = String(body.country_code || "ML").trim().toUpperCase();
-      if (fullName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.length < 8) {
-        return json({ error: "INVALID_RECRUITER", message: "Nom, email professionnel et téléphone valides sont requis." }, 400);
+      const country = String(body.country_code || "").trim().toUpperCase();
+      if (fullName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.length < 8 || !/^[A-Z]{2}$/.test(country)) {
+        return json({ error: "INVALID_RECRUITER", message: "Nom, email professionnel, téléphone et pays (code ISO à deux lettres) sont requis." }, 400);
       }
       const [{ data: existingEmail }, { data: existingPhone }] = await Promise.all([
         sb.from("users").select("id").eq("email", email).maybeSingle(),
@@ -609,7 +609,7 @@ Deno.serve(async (req: Request) => {
         phone_number: phone,
         password_hash: hashSync(password, 12),
         birth_date: null,
-        country_code: country || "ML",
+        country_code: country,
         email_status: "valide",
         status: "actif",
         force_password_change: true,

@@ -77,6 +77,8 @@ export default function ProfessorCourseStart() {
     };
   }, [creatorContext]);
 
+  const canRequestAssistance = creatorContext !== 'admin';
+
   const [mode, setMode] = useState<CreationMode>(null);
   const [title, setTitle] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -154,6 +156,10 @@ export default function ProfessorCourseStart() {
 
   async function submitAssisted() {
     setError('');
+    if (!canRequestAssistance) {
+      setMode(null);
+      return setError('La saisie assistée n’est pas disponible pour l’Administration.');
+    }
     if (!title.trim()) return setError('Indiquez le titre provisoire de la formation.');
     if (serviceType === 'with_certification' && !instructions.trim()) {
       return setError('Expliquez la certification externe souhaitée.');
@@ -219,7 +225,9 @@ export default function ProfessorCourseStart() {
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: GOLD }}>Création de formation</p>
           <h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>Comment souhaitez-vous créer votre formation ?</h1>
           <p className="mt-2 max-w-3xl text-sm text-gray-500">
-            Le Studio manuel reste disponible comme depuis le début. Vous pouvez aussi convertir un fichier en brouillon modifiable, sans publication automatique.
+            {creatorContext === 'admin'
+              ? 'Toute formation créée ici appartient directement à Omnia Global Academy. Utilisez le Studio manuel ou créez un brouillon modifiable à partir d’un fichier.'
+              : 'Le Studio manuel reste disponible comme depuis le début. Vous pouvez aussi convertir un fichier en brouillon modifiable, sans publication automatique.'}
           </p>
         </div>
 
@@ -338,6 +346,8 @@ export default function ProfessorCourseStart() {
           </section>
         )}
 
+        {canRequestAssistance && (
+          <>
         <div className="mt-8 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -354,8 +364,10 @@ export default function ProfessorCourseStart() {
             </button>
           </div>
         </div>
+          </>
+        )}
 
-        {mode === 'assisted' && (
+        {canRequestAssistance && mode === 'assisted' && (
           <section className="mt-4 rounded-2xl border bg-white p-6" style={{ borderColor: BORDER }}>
             <div className="mb-4 flex items-center gap-2">
               <ShieldCheck size={18} color={GOLD} />

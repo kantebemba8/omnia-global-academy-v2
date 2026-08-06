@@ -11,6 +11,7 @@ const corsHeaders = {
 function buildInvoiceHtml(order: Record<string, unknown>, course: Record<string, unknown>, buyer: Record<string, unknown>): string {
   const invoiceDate = new Date(order.paid_at as string || order.created_at as string).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
   const fmtXof = (n: number) => n.toLocaleString("fr-FR") + " XOF";
+  const legalAddress = String(Deno.env.get("OGA_LEGAL_ADDRESS") || "").trim();
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -63,7 +64,7 @@ function buildInvoiceHtml(order: Record<string, unknown>, course: Record<string,
       <div class="party-label">Émetteur</div>
       <div class="party-name">Omnia Global Academy</div>
       <div class="party-info">
-        Bamako, Mali<br>
+        ${legalAddress ? `${legalAddress}<br>` : ""}
         admission@omniaglobalacademy.com<br>
         omniaglobalacademy.com
       </div>
@@ -180,7 +181,8 @@ async function buildCoachingPdf(data: {
   page.drawText("Omnia Global Academy", { x, y, size: 12, font: bold, color: blue });
   page.drawText(cleanPdfText(data.buyerName), { x: 310, y, size: 12, font: bold, color: blue });
   y -= 17;
-  page.drawText("Bamako, Mali", { x, y, size: 10, font: regular, color: dark });
+  const legalAddress = cleanPdfText(Deno.env.get("OGA_LEGAL_ADDRESS") || "");
+  if (legalAddress) page.drawText(legalAddress, { x, y, size: 10, font: regular, color: dark });
   page.drawText(cleanPdfText(data.buyerEmail), { x: 310, y, size: 10, font: regular, color: dark });
   y -= 17;
   page.drawText("contact@omniaglobalacademy.com", { x, y, size: 10, font: regular, color: dark });

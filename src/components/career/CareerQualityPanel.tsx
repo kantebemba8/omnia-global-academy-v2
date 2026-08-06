@@ -1,7 +1,30 @@
 import { AlertTriangle, CheckCircle2, Info, ShieldCheck, XCircle } from 'lucide-react';
 import type { CareerQualityIssue, CareerQualityReport } from '../../lib/careerBuilderV2';
 
-export default function CareerQualityPanel({ report, onCreateAtsVersion }: { report: CareerQualityReport; onCreateAtsVersion?: () => void }) {
+type Props = {
+  report: CareerQualityReport | null;
+  started: boolean;
+  onCreateAtsVersion?: () => void;
+};
+
+export default function CareerQualityPanel({ report, started, onCreateAtsVersion }: Props) {
+  if (!started || !report) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+          <ShieldCheck className="h-3.5 w-3.5" /> Qualité et ATS
+        </div>
+        <h3 className="mt-4 text-lg font-semibold text-[#002050]">Diagnostic en attente</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Le contenu fourni comme exemple n’est pas évalué. Le diagnostic commencera automatiquement dès votre première modification du CV ou de la lettre.
+        </p>
+        <div className="mt-4 rounded-xl border border-[#bf8813]/25 bg-[#fff8e8] px-4 py-3 text-sm text-slate-700">
+          Aucun score n’est attribué par défaut. Les résultats refléteront uniquement le document que vous aurez réellement personnalisé.
+        </div>
+      </div>
+    );
+  }
+
   const scores = [
     ['Contenu', report.content],
     ['ATS', report.ats],
@@ -9,17 +32,18 @@ export default function CareerQualityPanel({ report, onCreateAtsVersion }: { rep
     ['Lisibilité', report.visual],
     ['Preuves', report.evidence],
   ] as const;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div><div className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"><ShieldCheck className="h-3.5 w-3.5" /> Qualité et ATS</div><h3 className="mt-3 text-lg font-semibold text-[#002050]">Diagnostic professionnel</h3></div>
         <div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-[#bf8813] text-xl font-black text-[#002050]">{report.overall}</div>
       </div>
-      <p className="mt-2 text-sm leading-5 text-slate-600">Le score global ne masque pas les différences entre contenu, compatibilité ATS, pertinence, design et preuves.</p>
+      <p className="mt-2 text-sm leading-5 text-slate-600">Le score distingue le contenu, la compatibilité ATS, la pertinence, le design et les preuves.</p>
       {onCreateAtsVersion && <button type="button" onClick={onCreateAtsVersion} className="mt-3 w-full rounded-xl border border-[#002050]/20 bg-[#002050]/5 px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-[#002050]/10">Créer une copie ATS stricte</button>}
 
       <div className="mt-4 grid grid-cols-2 gap-2">
-        {scores.map(([label,score]) => <div key={label} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between text-xs font-semibold text-slate-600"><span>{label}</span><span>{score}/100</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#002050]" style={{ width: `${score}%` }} /></div></div>)}
+        {scores.map(([label, score]) => <div key={label} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between text-xs font-semibold text-slate-600"><span>{label}</span><span>{score}/100</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#002050]" style={{ width: `${score}%` }} /></div></div>)}
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-center text-xs">

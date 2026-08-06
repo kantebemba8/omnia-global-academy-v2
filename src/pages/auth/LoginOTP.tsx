@@ -19,7 +19,7 @@ const inputCls =
 
 export function LoginOTP() {
   const navigate = useNavigate();
-  const [country, setCountry] = useState('ML');
+  const [country, setCountry] = useState('');
   const [phoneLocal, setPhoneLocal] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +29,7 @@ export function LoginOTP() {
     e.preventDefault();
     setError('');
     setReactivationRequired(false);
+    if (!country) { setError('Sélectionnez l’indicatif de votre pays.'); return; }
     setLoading(true);
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
@@ -84,13 +85,14 @@ export function LoginOTP() {
               value={country}
               onChange={e => setCountry(e.target.value)}
             >
+              <option value="">Indicatif</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.prefix} {c.label}</option>
               ))}
             </select>
             <input
               className={`${inputCls} flex-1`}
-              type="tel" placeholder="70 00 00 00" required
+              type="tel" placeholder="Numéro sans indicatif" required
               value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)}
             />
           </div>

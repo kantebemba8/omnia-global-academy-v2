@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
+import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 import {
   AlertCircle,
@@ -30,13 +31,7 @@ import {
 const OMNIA_BLUE = '#002050';
 const OMNIA_GOLD = '#bf8813';
 
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'TG', name: 'Togo' },
-  { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
-  { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'CD', name: 'RD Congo' },
-];
+const COUNTRIES = COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label }));
 
 interface Job {
   id: string;

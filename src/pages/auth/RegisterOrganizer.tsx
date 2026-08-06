@@ -10,10 +10,10 @@ const label='block text-sm font-medium text-gray-700 mb-1.5';
 
 export function RegisterOrganizer(){
  const nav=useNavigate();
- const [f,setF]=useState<any>({full_name:'',email:'',phone_local:'',password:'',confirm_password:'',birth_date:'',country_code:'ML',display_name:'',organizer_type:'independent',professional_title:'',organization_name:'',website_url:'',bio:'',experience_summary:'',event_topics:'',allow_email:true,allow_sms:true});
+ const [f,setF]=useState<any>({full_name:'',email:'',phone_local:'',password:'',confirm_password:'',birth_date:'',country_code:'',display_name:'',organizer_type:'independent',professional_title:'',organization_name:'',website_url:'',bio:'',experience_summary:'',event_topics:'',allow_email:true,allow_sms:true});
  const [show,setShow]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const set=(k:string,v:any)=>setF((x:any)=>({...x,[k]:v}));
- async function submit(e:React.FormEvent){e.preventDefault();if(f.password!==f.confirm_password){setError('Les mots de passe ne correspondent pas');return}setLoading(true);setError('');
+ async function submit(e:React.FormEvent){e.preventDefault();if(f.password!==f.confirm_password){setError('Les mots de passe ne correspondent pas');return}if(!f.country_code){setError('Sélectionnez votre pays.');return}setLoading(true);setError('');
   try{const phone_number=getPrefix(f.country_code)+f.phone_local.replace(/^0+/,'');const d:any=await authFetch('auth-register',{...f,role:'organizer',phone_number,event_topics:f.event_topics.split(',').map((x:string)=>x.trim()).filter(Boolean)});if(!d.success){setError(d.message||'Erreur');return}nav('/verifier-otp',{state:{phone_number,purpose:'inscription',user_id:d.user_id}})}catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}
  }
  return <AuthLayout title="Inscription Organisateur" subtitle="Organisez des Lives, conférences, masterclass et événements sur Omnia Live">
@@ -29,7 +29,7 @@ export function RegisterOrganizer(){
    <div><label className={label}>Nom complet</label><input required className={input} value={f.full_name} onChange={e=>set('full_name',e.target.value)}/></div>
    <div><label className={label}>Nom public / nom d’organisateur</label><input required className={input} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="Nom affiché sur vos événements"/></div>
    <div><label className={label}>Email</label><input required type="email" className={input} value={f.email} onChange={e=>set('email',e.target.value)}/></div>
-   <div><label className={label}>Téléphone</label><div className="flex gap-2"><select className={input} value={f.country_code} onChange={e=>set('country_code',e.target.value)}>{COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.prefix} {c.label}</option>)}</select><input required className={input} value={f.phone_local} onChange={e=>set('phone_local',e.target.value)}/></div></div>
+   <div><label className={label}>Téléphone</label><div className="flex gap-2"><select className={input} value={f.country_code} onChange={e=>set('country_code',e.target.value)}><option value="">Indicatif</option>{COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.prefix} {c.label}</option>)}</select><input required className={input} value={f.phone_local} onChange={e=>set('phone_local',e.target.value)}/></div></div>
    <div><label className={label}>Date de naissance</label><input required type="date" className={input} value={f.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
    <div><label className={label}>Type d’organisateur</label><select className={input} value={f.organizer_type} onChange={e=>set('organizer_type',e.target.value)}><option value="independent">Indépendant</option><option value="company">Entreprise</option><option value="association">Association</option><option value="media">Média</option><option value="expert">Expert / conférencier</option><option value="other">Autre</option></select></div>
    <div><label className={label}>Fonction / titre professionnel</label><input className={input} value={f.professional_title} onChange={e=>set('professional_title',e.target.value)}/></div>

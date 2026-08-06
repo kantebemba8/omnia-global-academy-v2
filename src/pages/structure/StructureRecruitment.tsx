@@ -206,7 +206,7 @@ function Team(){
     can_manage_team:false,
   };
   const [members,setMembers]=useState<any[]>([]);
-  const [form,setForm]=useState({full_name:'',email:'',phone_number:'',country_code:'ML',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
+  const [form,setForm]=useState({full_name:'',email:'',phone_number:'',country_code:'',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
   const [permissions,setPermissions]=useState<Record<string,boolean>>(defaultPermissions);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -223,7 +223,7 @@ function Team(){
     try{
       const result=await createStructureRecruiter({...form,permissions});
       setSuccess({email:form.email,password:result.temporary_password,emailSent:result.email_sent});
-      setForm({full_name:'',email:'',phone_number:'',country_code:'ML',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
+      setForm({full_name:'',email:'',phone_number:'',country_code:'',job_title:'Recruteur Structure',role_label:'Recruteur Structure'});
       setPermissions(defaultPermissions);
       await load();
     }catch(e){setError(e instanceof Error?e.message:'Création impossible.');}
@@ -258,7 +258,7 @@ function Team(){
         <FieldLine label="Nom complet" value={form.full_name} onChange={value=>setForm({...form,full_name:value})}/>
         <FieldLine label="Email professionnel" value={form.email} onChange={value=>setForm({...form,email:value})} type="email"/>
         <FieldLine label="Téléphone professionnel" value={form.phone_number} onChange={value=>setForm({...form,phone_number:value})}/>
-        <FieldLine label="Pays" value={form.country_code} onChange={value=>setForm({...form,country_code:value.toUpperCase()})}/>
+        <FieldLine label="Pays (code ISO requis)" value={form.country_code} onChange={value=>setForm({...form,country_code:value.toUpperCase()})}/>
         <FieldLine label="Fonction" value={form.job_title} onChange={value=>setForm({...form,job_title:value})}/>
         <label className="block"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>Rôle interne</span><select value={form.role_label} onChange={event=>setForm({...form,role_label:event.target.value})} className="h-11 w-full border-b bg-transparent px-1 text-sm" style={{borderColor:GOLD}}><option>Responsable recrutement</option><option>Recruteur Structure</option><option>Chargé de sourcing</option><option>Lecture seule</option></select></label>
       </div>

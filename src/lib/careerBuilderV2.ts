@@ -38,6 +38,8 @@ export type CareerTarget = {
 
 export type CareerDocumentMeta = {
   schema_version: 2;
+  example_content?: boolean;
+  quality_started_at?: string;
   target: CareerTarget;
   evidence: CareerEvidence[];
   section_visibility: Record<string, boolean>;
@@ -165,6 +167,20 @@ export function getCareerMeta(data: DocData | LmData, docType: CareerDocType): C
 
 export function withCareerMeta<T extends DocData | LmData>(data: T, docType: CareerDocType, next: CareerDocumentMeta): T {
   return { ...data, career_meta: { ...next, schema_version: 2 } } as T;
+}
+
+export function hasCareerQualityStarted(data: DocData | LmData, docType: CareerDocType): boolean {
+  const meta = getCareerMeta(data, docType);
+  return Boolean(meta.quality_started_at) || meta.example_content !== true;
+}
+
+export function markCareerDocumentModified<T extends DocData | LmData>(data: T, docType: CareerDocType): T {
+  const meta = getCareerMeta(data, docType);
+  return withCareerMeta(data, docType, {
+    ...meta,
+    example_content: false,
+    quality_started_at: meta.quality_started_at || new Date().toISOString(),
+  });
 }
 
 export function normalizeCareerDocument(document: CareerDocumentFull): CareerDocumentFull {

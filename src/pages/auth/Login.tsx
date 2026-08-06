@@ -68,7 +68,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
 
-  const [country, setCountry] = useState('ML');
+  const [country, setCountry] = useState('');
   const [phoneLocal, setPhoneLocal] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -179,6 +179,7 @@ export function Login() {
   const handlePhoneLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     clearErrors();
+    if (!country) { setError('Sélectionnez l’indicatif de votre pays.'); return; }
     setLoading(true);
     const phone_number = getPrefix(country) + phoneLocal.replace(/^0+/, '');
     try {
@@ -335,6 +336,7 @@ export function Login() {
                 value={country}
                 onChange={e => setCountry(e.target.value)}
               >
+                <option value="">Indicatif</option>
                 {COUNTRIES.map(c => (
                   <option key={c.code} value={c.code}>{c.prefix} {c.label}</option>
                 ))}
@@ -342,7 +344,7 @@ export function Login() {
               <input
                 className={`${inputCls} flex-1`}
                 type="tel"
-                placeholder="70 00 00 00"
+                placeholder="Numéro sans indicatif"
                 required
                 value={phoneLocal}
                 onChange={e => setPhoneLocal(e.target.value)}

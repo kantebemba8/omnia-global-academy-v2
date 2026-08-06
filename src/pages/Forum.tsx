@@ -18,21 +18,14 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
+import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E5E7EB';
 
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'TG', name: 'Togo' },
-  { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
-  { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'CD', name: 'RD Congo' },
-  { code: 'FR', name: 'France' }, { code: 'BE', name: 'Belgique' }, { code: 'LU', name: 'Luxembourg' },
-  { code: 'CA', name: 'Canada' }, { code: 'US', name: 'États-Unis' },
-];
+const COUNTRIES = COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label }));
 
 type CommunityPost = {
   id: string;
@@ -88,7 +81,7 @@ function PostAvatar({ post }: { post: CommunityPost }) {
 export default function Forum() {
   const [searchParams] = useSearchParams();
   const search = (searchParams.get('search') || '').trim();
-  const [country, setCountry] = useState('ML');
+  const [country, setCountry] = useState('');
   const [stats, setStats] = useState<CommunityStats>({ general: 0, carriere: 0, jobs: 0, courses: 0 });
   const [recentPosts, setRecentPosts] = useState<CommunityPost[]>([]);
   const [unansweredPosts, setUnansweredPosts] = useState<CommunityPost[]>([]);

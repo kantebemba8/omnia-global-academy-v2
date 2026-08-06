@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
       // Créer l'organisation
       const { data: org, error: orgError } = await sb.from("partner_organizations").insert({
-        org_name, org_type, country: country || "ML", city, address,
+        org_name, org_type, country: country || null, city, address,
         phone, email, website, description, main_need,
         logo_url, justificatif_url,
         contact_name, contact_function, contact_email, contact_phone,

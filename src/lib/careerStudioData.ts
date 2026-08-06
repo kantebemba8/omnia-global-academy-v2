@@ -112,7 +112,7 @@ export const DEFAULT_CV_DATA: DocData = {
   photo_url: '',
   contact: {
     email: 'prenom.nom@email.com',
-    phone: '+223 XX XX XX XX',
+    phone: '+[indicatif] [numéro]',
     location: 'Ville, Pays',
     linkedin: 'linkedin.com/in/votre-profil',
     portfolio: 'votre-portfolio.com',
@@ -169,7 +169,7 @@ export const DEFAULT_LM_DATA: LmData = {
   sender: {
     name: 'Votre nom complet',
     address: 'Votre adresse',
-    phone: '+223 XX XX XX XX',
+    phone: '+[indicatif] [numéro]',
     email: 'prenom.nom@email.com',
     city: 'Ville, Pays',
     date: new Date().toISOString().slice(0, 10),

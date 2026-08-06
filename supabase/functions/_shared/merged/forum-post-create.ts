@@ -36,7 +36,7 @@ export async function handler(req: Request) {
   if (title.length < 10 || title.length > 200) return json({ error: "TITLE_LENGTH", min: 10, max: 200 }, 422);
   if (content.length < 20 || content.length > 5000) return json({ error: "CONTENT_LENGTH", min: 20, max: 5000 }, 422);
 
-  const postCountry = country_code || user.country_code || "ML";
+  const postCountry = country_code || user.country_code || null;
 
   if (space === "cours") {
     if (!course_id) return json({ error: "COURSE_ID_REQUIRED" }, 400);

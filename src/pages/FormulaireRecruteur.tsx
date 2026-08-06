@@ -3,18 +3,13 @@ import { Link } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
+import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 import { Briefcase, CheckCircle, AlertCircle, Building2, User, FileText } from 'lucide-react';
 
 const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance', 'Autre'];
 const CATEGORIES = ['Tech & Digital', 'Finance', 'Marketing', 'Management', 'Santé', 'Education', 'Juridique', 'Autre'];
 const LEVELS = ['Bac', 'Bac+2', 'Bac+3/Licence', 'Bac+5/Master', 'Doctorat', 'Expérience professionnelle'];
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'TG', name: 'Togo' },
-  { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
-  { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'CD', name: 'RD Congo' },
-];
+const COUNTRIES = COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label }));
 
 const FIELD = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div>
@@ -35,6 +30,7 @@ export default function FormulaireRecruteur() {
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -68,6 +64,7 @@ export default function FormulaireRecruteur() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_name: companyName, contact_name: contactName, contact_email: contactEmail,
+          country_code: countryCode || undefined,
           contact_phone: contactPhone || undefined, job_title: jobTitle, job_description: jobDescription,
           location, contract_type: contractType, category, salary_range: salaryRange || undefined,
           deadline: deadline || undefined, required_level: requiredLevel || undefined,
@@ -154,7 +151,8 @@ export default function FormulaireRecruteur() {
                   placeholder="Ex: Omnia Tech Solutions" className={INPUT_CLS} />
               </FIELD>
               <FIELD label="Pays d'opération">
-                <select className={SELECT_CLS} defaultValue="ML">
+                <select className={SELECT_CLS} value={countryCode} onChange={e => setCountryCode(e.target.value)}>
+                  <option value="">Choisir un pays</option>
                   {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </select>
               </FIELD>
@@ -178,7 +176,7 @@ export default function FormulaireRecruteur() {
               </FIELD>
               <FIELD label="Téléphone (optionnel)">
                 <input value={contactPhone} onChange={e => setContactPhone(e.target.value)}
-                  placeholder="+223 XX XX XX XX" className={INPUT_CLS} />
+                  placeholder="+[indicatif] numéro" className={INPUT_CLS} />
               </FIELD>
             </div>
           </div>
@@ -208,7 +206,7 @@ export default function FormulaireRecruteur() {
                 </FIELD>
                 <FIELD label="Lieu du poste">
                   <input value={location} onChange={e => setLocation(e.target.value)}
-                    placeholder="Ex: Bamako, Mali / Télétravail" className={INPUT_CLS} />
+                    placeholder="Ex: Ville, pays / Télétravail" className={INPUT_CLS} />
                 </FIELD>
                 <FIELD label="Fourchette de salaire">
                   <input value={salaryRange} onChange={e => setSalaryRange(e.target.value)}

@@ -61,6 +61,8 @@ import {
   analyzeCareerDocument,
   createLinkedLetterFromCv,
   getCareerMeta,
+  hasCareerQualityStarted,
+  markCareerDocumentModified,
   normalizeCareerDocument,
   type CareerSourceProfile,
 } from '../../lib/careerBuilderV2';
@@ -412,18 +414,21 @@ export default function CareerStudioEditor() {
   const [personalizeOpen, setPersonalizeOpen] = useState(false);
   const [personalizeText, setPersonalizeText] = useState('');
   const [personalizeLoading, setPersonalizeLoading] = useState(false);
-  const [omniaAdvice, setOmniaAdvice] = useState('');
-  const [omniaAdviceLoading, setOmniaAdviceLoading] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>('content');
   const [toolPanelOpen, setToolPanelOpen] = useState(true);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [sourceProfile, setSourceProfile] = useState<CareerSourceProfile>({});
 
-  const qualityReport = useMemo(() => {
-    if (!document) return null;
-    return analyzeCareerDocument(document.doc_type, document.doc_data, document.design_options);
+  const qualityStarted = useMemo(() => {
+    if (!document) return false;
+    return hasCareerQualityStarted(document.doc_data, document.doc_type);
   }, [document]);
-  const score = qualityReport?.overall || 0;
+
+  const qualityReport = useMemo(() => {
+    if (!document || !qualityStarted) return null;
+    return analyzeCareerDocument(document.doc_type, document.doc_data, document.design_options);
+  }, [document, qualityStarted]);
+  const score = qualityReport?.overall ?? null;
 
   const selectedTemplate = useMemo(() => {
     if (!document) return getTemplateMeta(docType, requestedTemplate);
@@ -485,44 +490,24 @@ export default function CareerStudioEditor() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!document) return;
-    if (previewMode) {
-      setOmniaAdvice('Prévisualisation sécurisée : vérifiez le modèle et sa mise en page sans modifier les données d’un apprenant.');
-      setOmniaAdviceLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setOmniaAdvice('');
-    setOmniaAdviceLoading(true);
-    const dataText = document.doc_type === 'cv'
-      ? JSON.stringify(getCvData(document))
-      : JSON.stringify(getLmData(document));
-    runCareerAiAction({
-      action: 'make_professional',
-      doc_type: document.doc_type,
-      text: `Génère un seul conseil Omnia bref, concret et directement lié au document en cours. Analyse uniquement les informations réelles suivantes et n'invente rien : ${dataText}. Maximum 45 mots.`,
-      doc_data: document.doc_data,
-      target_job: document.target_job || '',
-      application_type: document.application_type || document.doc_type,
-      language: 'fr',
-    }).then(result => {
-      if (!cancelled) setOmniaAdvice(result.result || '');
-    }).catch(() => {
-      if (!cancelled) setOmniaAdvice('Le conseil IA n’est pas disponible pour le moment.');
-    }).finally(() => {
-      if (!cancelled) setOmniaAdviceLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [document?.id, previewMode]);
-
-  const updateDocument = useCallback((updater: (current: CareerDocumentFull) => CareerDocumentFull) => {
+  const updateDocument = useCallback((
+    updater: (current: CareerDocumentFull) => CareerDocumentFull,
+    options: { startQuality?: boolean } = {},
+  ) => {
     setDocument(prev => {
       if (!prev) return prev;
       const next = updater(prev);
+      const startQuality = options.startQuality !== false;
+      const nextData = startQuality
+        ? markCareerDocumentModified(next.doc_data, next.doc_type)
+        : next.doc_data;
+      const qualityIsActive = hasCareerQualityStarted(nextData, next.doc_type);
       return {
         ...next,
-        ats_score: analyzeCareerDocument(next.doc_type, next.doc_data, next.design_options).ats,
+        doc_data: nextData,
+        ats_score: qualityIsActive
+          ? analyzeCareerDocument(next.doc_type, nextData, next.design_options).ats
+          : 0,
         updated_at: new Date().toISOString(),
       };
     });
@@ -603,14 +588,14 @@ export default function CareerStudioEditor() {
   function updateCv(mutator: (data: DocData) => DocData) {
     updateDocument(doc => {
       const next = mutator(getCvData(doc));
-      return { ...doc, doc_data: { ...next, career_meta: { ...(next.career_meta || {}), example_content: false } } };
+      return { ...doc, doc_data: next };
     });
   }
 
   function updateLm(mutator: (data: LmData) => LmData) {
     updateDocument(doc => {
       const next = mutator(getLmData(doc));
-      return { ...doc, doc_data: { ...next, career_meta: { ...(next.career_meta || {}), example_content: false } } };
+      return { ...doc, doc_data: next };
     });
   }
 
@@ -667,7 +652,8 @@ export default function CareerStudioEditor() {
       design_options: createDefaultDesign(doc.doc_type),
       template_key: getDefaultTemplateKey(doc.doc_type),
       title: getDefaultDocTitle(doc.doc_type),
-    }));
+      ats_score: 0,
+    }), { startQuality: false });
   }
 
   function updateManualLayout(layout: ManualLayout) {
@@ -953,7 +939,7 @@ export default function CareerStudioEditor() {
               </div>
               <input
                 value={document.title}
-                onChange={e => updateDocument(doc => ({ ...doc, title: e.target.value }))}
+                onChange={e => updateDocument(doc => ({ ...doc, title: e.target.value }), { startQuality: false })}
                 className="mt-0.5 w-full max-w-[520px] truncate border-0 bg-transparent text-lg font-semibold text-[#002050] outline-none sm:text-xl"
                 aria-label="Nom du document"
               />
@@ -964,9 +950,25 @@ export default function CareerStudioEditor() {
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-              {previewMode ? 'Prévisualisation locale' : saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
+              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : previewMode ? 'Mode aperçu Super-admin' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
+            <button
+              type="button"
+              onClick={() => setFullPreviewOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50"
+              title="Prévisualiser le document"
+            >
+              <Eye className="h-4 w-4" /><span className="hidden lg:inline">Prévisualiser</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualEditorOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#bf8813]/40 bg-[#fff8e8] px-3 py-2 text-sm font-semibold text-[#7a5310] hover:bg-[#fff2cf]"
+              title="Ouvrir l’édition avancée"
+            >
+              <Edit3 className="h-4 w-4" /><span className="hidden xl:inline">Édition avancée</span>
+            </button>
             <button
               type="button"
               onClick={manualSave}
@@ -999,7 +1001,7 @@ export default function CareerStudioEditor() {
                   <button type="button" onClick={() => { setPersonalizeOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#bf8813]" />Personnaliser à partir d’un texte</button>
                   <button type="button" onClick={() => { setWorkspace('ai'); setToolPanelOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#002050]" />Ouvrir l’assistant IA</button>
                   {isCv && <button type="button" onClick={() => { createLinkedLetter(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail className="h-4 w-4 text-[#bf8813]" />Créer la LM associée</button>}
-                  <button type="button" onClick={() => { setManualEditorOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Ouvrir l’éditeur libre</button>
+                  <button type="button" onClick={() => { setManualEditorOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Édition avancée libre</button>
                   <div className="my-1 border-t border-slate-100" />
                   <button type="button" onClick={() => { resetDemoData(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Réinitialiser avec l’exemple</button>
                 </div>
@@ -1056,11 +1058,11 @@ export default function CareerStudioEditor() {
               <button type="button" onClick={() => setToolPanelOpen(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fermer le panneau"><X className="h-4 w-4" /></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} onCvSectionChange={setActiveCvSection} onLmSectionChange={setActiveLmSection} updateCv={updateCv} updateLm={updateLm} score={score} isExampleContent={isExampleContent} />}
+              {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} onCvSectionChange={setActiveCvSection} onLmSectionChange={setActiveLmSection} updateCv={updateCv} updateLm={updateLm} score={score ?? 0} isExampleContent={isExampleContent} />}
               {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: { ...(data as any), career_meta: { ...((data as any).career_meta || {}), example_content: false } } }))} />}
               {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
               {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
-              {workspace === 'quality' && qualityReport && <CareerQualityPanel report={qualityReport} onCreateAtsVersion={createAtsVersion} />}
+              {workspace === 'quality' && <CareerQualityPanel report={qualityReport} started={qualityStarted} onCreateAtsVersion={qualityStarted ? createAtsVersion : undefined} />}
               {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
               {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loading={aiLoading} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
               {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
@@ -1074,7 +1076,7 @@ export default function CareerStudioEditor() {
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{selectedTemplate?.name_fr || 'Modèle sélectionné'}</span>
-                  <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">Qualité {score}%</span>
+                  <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{score === null ? 'Qualité —' : `Qualité ${score}%`}</span>
                 </div>
                 <h1 className="mt-2 text-xl font-semibold text-[#002050]">Aperçu du document</h1>
               </div>

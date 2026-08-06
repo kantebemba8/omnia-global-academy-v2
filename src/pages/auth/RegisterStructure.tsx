@@ -64,7 +64,7 @@ export function RegisterStructure() {
   const [form, setForm] = useState({
     // Structure
     name: '',
-    country: 'ML',
+    country: '',
     city: '',
     address: '',
     professional_email: '',
@@ -155,6 +155,9 @@ export function RegisterStructure() {
     e.preventDefault();
     if (form.password !== form.confirm_password) {
       setError('Les mots de passe ne correspondent pas'); return;
+    }
+    if (!form.country) {
+      setError('Sélectionnez le pays de la Structure.'); return;
     }
     if (!logoFile) {
       setError('Veuillez téléverser le logo de votre structure'); return;
@@ -302,6 +305,7 @@ export function RegisterStructure() {
             <label className={labelCls}>Pays <span style={{ color: '#DC2626' }}>*</span></label>
             <select className={inputCls} value={form.country}
               onChange={e => set('country', e.target.value)} required>
+              <option value="">Choisir un pays</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.label}</option>
               ))}
@@ -310,7 +314,7 @@ export function RegisterStructure() {
           <div>
             <label className={labelCls}>Ville</label>
             <input className={inputCls} type="text" value={form.city}
-              onChange={e => set('city', e.target.value)} placeholder="ex: Bamako" />
+              onChange={e => set('city', e.target.value)} placeholder="ex: Votre ville" />
           </div>
         </div>
 
@@ -331,11 +335,12 @@ export function RegisterStructure() {
           <div className="flex gap-2">
             <select className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
               value={form.country} onChange={e => set('country', e.target.value)}>
+              <option value="">Indicatif</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{getPrefix(c.code)} {c.label}</option>
               ))}
             </select>
-            <input className={`${inputCls} flex-1`} type="tel" placeholder="70 00 00 00"
+            <input className={`${inputCls} flex-1`} type="tel" placeholder="Numéro sans indicatif"
               value={form.phone_local} onChange={e => set('phone_local', e.target.value)} />
           </div>
         </div>
@@ -396,11 +401,12 @@ export function RegisterStructure() {
           <div className="flex gap-2">
             <select className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
               value={form.country} onChange={e => set('country', e.target.value)}>
+              <option value="">Indicatif</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{getPrefix(c.code)}</option>
               ))}
             </select>
-            <input className={`${inputCls} flex-1`} type="tel" placeholder="70 00 00 00"
+            <input className={`${inputCls} flex-1`} type="tel" placeholder="Numéro sans indicatif"
               value={form.responsible_phone_local} onChange={e => set('responsible_phone_local', e.target.value)} />
           </div>
         </div>

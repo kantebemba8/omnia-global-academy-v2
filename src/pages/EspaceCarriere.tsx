@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, normalizeApplicationMode } from '../lib/jobApplicationModes';
 import { edgeGatewayHeaders } from '../lib/edgeAuth';
+import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -30,24 +31,7 @@ const CONTRACT_TYPES = ['CDI', 'CDD', 'Stage', 'Freelance', 'Alternance'];
 const CATEGORIES = ['Tech & Digital', 'Finance', 'Marketing', 'Management', 'Santé', 'Education', 'Juridique', 'Autre'];
 const JOB_COUNTRIES = [
   { code: 'remote', name: 'Télétravail / Remote' },
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'NE', name: 'Niger' },
-  { code: 'MR', name: 'Mauritanie' }, { code: 'TG', name: 'Togo' }, { code: 'BJ', name: 'Bénin' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'GM', name: 'Gambie' },
-  { code: 'GW', name: 'Guinée-Bissau' }, { code: 'SL', name: 'Sierra Leone' }, { code: 'LR', name: 'Libéria' },
-  { code: 'CV', name: 'Cap-Vert' }, { code: 'CM', name: 'Cameroun' }, { code: 'CG', name: 'Congo' },
-  { code: 'CD', name: 'RD Congo' }, { code: 'GA', name: 'Gabon' }, { code: 'MA', name: 'Maroc' },
-  { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'LY', name: 'Libye' },
-  { code: 'EG', name: 'Égypte' }, { code: 'KE', name: 'Kenya' }, { code: 'TZ', name: 'Tanzanie' },
-  { code: 'ET', name: 'Éthiopie' }, { code: 'ZA', name: 'Afrique du Sud' }, { code: 'AO', name: 'Angola' },
-  { code: 'MZ', name: 'Mozambique' }, { code: 'MG', name: 'Madagascar' }, { code: 'RW', name: 'Rwanda' },
-  { code: 'UG', name: 'Ouganda' }, { code: 'SD', name: 'Soudan' }, { code: 'TD', name: 'Tchad' },
-  { code: 'CF', name: 'Centrafrique' }, { code: 'KM', name: 'Comores' },
-  { code: 'FR', name: 'France' }, { code: 'BE', name: 'Belgique' }, { code: 'CH', name: 'Suisse' },
-  { code: 'LU', name: 'Luxembourg' }, { code: 'DE', name: 'Allemagne' }, { code: 'GB', name: 'Royaume-Uni' },
-  { code: 'ES', name: 'Espagne' }, { code: 'PT', name: 'Portugal' },
-  { code: 'CA', name: 'Canada' }, { code: 'US', name: 'États-Unis' },
-  { code: 'AE', name: 'Émirats Arabes Unis' }, { code: 'SA', name: 'Arabie Saoudite' },
+  ...COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label })),
 ];
 
 interface Job {

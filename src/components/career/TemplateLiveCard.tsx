@@ -4,15 +4,15 @@ import { BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
 import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
 
 const SAMPLE_CV: DocData = {
-  name: 'Amadou Traoré', title: 'Responsable qualité et performance', objective: '',
+  name: 'Alex Morgan', title: 'Responsable qualité et performance', objective: '',
   summary: 'Professionnel rigoureux, orienté amélioration continue, conformité et résultats mesurables.',
   photo_url: '',
-  contact: { email: 'amadou@example.com', phone: '+223 70 00 00 00', location: 'Bamako, Mali', linkedin: 'linkedin.com/in/amadou' },
+  contact: { email: 'alex@example.com', phone: '+00 000 000 000', location: 'Ville, Pays', linkedin: 'linkedin.com/in/alex' },
   experiences: [
-    { id:'e1', position:'Responsable qualité', company:'Entreprise Exemple', location:'Bamako', start_date:'2022-01-01', current:true, description:'Pilotage des audits, indicateurs et plans d’amélioration.' },
-    { id:'e2', position:'Assistant projet', company:'Organisation Exemple', location:'Dakar', start_date:'2020-01-01', end_date:'2021-12-01', current:false, description:'Suivi opérationnel et reporting.' },
+    { id:'e1', position:'Responsable qualité', company:'Entreprise Exemple', location:'Ville, Pays', start_date:'2022-01-01', current:true, description:'Pilotage des audits, indicateurs et plans d’amélioration.' },
+    { id:'e2', position:'Assistant projet', company:'Organisation Exemple', location:'Ville, Pays', start_date:'2020-01-01', end_date:'2021-12-01', current:false, description:'Suivi opérationnel et reporting.' },
   ],
-  education: [{ id:'ed1', degree:'Master Management', school:'Université Exemple', location:'Bamako', year:'2022' }],
+  education: [{ id:'ed1', degree:'Master Management', school:'Université Exemple', location:'Ville, Pays', year:'2022' }],
   omnia_formations: [],
   skills: [{ id:'s1', name:'Audit', level:88 },{ id:'s2', name:'Gestion de projet', level:82 },{ id:'s3', name:'Excel', level:78 }],
   languages: [{ id:'l1', name:'Français', level:'Courant' },{ id:'l2', name:'Anglais', level:'Intermédiaire' }],
@@ -22,14 +22,14 @@ const SAMPLE_CV: DocData = {
 };
 
 const SAMPLE_LM: LmData = {
-  sender: { name:'Amadou Traoré', address:'Bamako', phone:'+223 70 00 00 00', email:'amadou@example.com', city:'Bamako', date:'13 juillet 2026' },
-  recipient: { name:'Madame, Monsieur', company:'Entreprise Exemple', address:'Bamako' },
+  sender: { name:'Alex Morgan', address:'Votre adresse', phone:'+00 000 000 000', email:'alex@example.com', city:'Ville, Pays', date:'13 juillet 2026' },
+  recipient: { name:'Madame, Monsieur', company:'Entreprise Exemple', address:'Ville, Pays' },
   subject:'Candidature au poste de Responsable qualité', salutation:'Madame, Monsieur,',
   intro:'Je vous adresse ma candidature pour rejoindre votre organisation.',
   motivation:'Votre engagement en faveur de la qualité et de l’innovation correspond pleinement à mon projet professionnel.',
   skills_paragraph:'Mon expérience en audit, amélioration continue et pilotage d’indicateurs me permet de contribuer rapidement à vos objectifs.',
   company_link:'Je souhaite mettre ces compétences au service de vos équipes.', availability:'Je suis disponible pour un entretien à votre convenance.',
-  closing:'Je vous prie d’agréer, Madame, Monsieur, l’expression de mes salutations distinguées.', signature:'Amadou Traoré'
+  closing:'Je vous prie d’agréer, Madame, Monsieur, l’expression de mes salutations distinguées.', signature:'Alex Morgan'
 };
 
 function designFrom(template: CareerTemplateMeta): DesignOptions {

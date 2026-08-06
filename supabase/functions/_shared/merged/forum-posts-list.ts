@@ -31,7 +31,7 @@ export async function handler(req: Request) {
 
   // Resolve current user + country
   let userId: string | null = null;
-  let userCountry = "ML";
+  let userCountry = "";
   const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
   if (token) {
     const { data: sess } = await sb.from("user_sessions").select("user_id")
@@ -39,7 +39,7 @@ export async function handler(req: Request) {
     if (sess) {
       userId = sess.user_id;
       const { data: u } = await sb.from("users").select("country_code").eq("id", userId).maybeSingle();
-      userCountry = u?.country_code || "ML";
+      userCountry = u?.country_code || "";
     }
   }
   const countryCode = url.searchParams.get("country_code") || userCountry;
@@ -62,7 +62,7 @@ export async function handler(req: Request) {
 
   if (space === "cours" && courseId) {
     query = query.eq("course_id", courseId);
-  } else if (space !== "cours") {
+  } else if (space !== "cours" && countryCode) {
     query = query.eq("country_code", countryCode);
   }
 

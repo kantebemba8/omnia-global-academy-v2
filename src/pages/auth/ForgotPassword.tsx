@@ -10,7 +10,7 @@ export function ForgotPassword() {
   const navigate = useNavigate();
   const [method, setMethod] = useState<'email' | 'sms'>('email');
   const [email, setEmail] = useState('');
-  const [country, setCountry] = useState('ML');
+  const [country, setCountry] = useState('');
   const [phoneLocal, setPhoneLocal] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +20,7 @@ export function ForgotPassword() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    if (method === 'sms' && !country) { setError('Sélectionnez l’indicatif de votre pays.'); return; }
     setLoading(true);
 
     const phone_number = method === 'sms'
@@ -137,6 +138,7 @@ export function ForgotPassword() {
                 value={country}
                 onChange={e => setCountry(e.target.value)}
               >
+                <option value="">Indicatif</option>
                 {COUNTRIES.map(c => (
                   <option key={c.code} value={c.code}>
                     {c.prefix} {c.label}
@@ -146,7 +148,7 @@ export function ForgotPassword() {
               <input
                 className={`${inputCls} flex-1`}
                 type="tel"
-                placeholder="70 00 00 00"
+                placeholder="Numéro sans indicatif"
                 required
                 value={phoneLocal}
                 onChange={e => setPhoneLocal(e.target.value)}

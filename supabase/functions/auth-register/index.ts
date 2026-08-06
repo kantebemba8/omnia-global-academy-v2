@@ -94,6 +94,65 @@ async function uploadFile(
   }
 }
 
+
+async function syncRegistrationNewsletter(
+  supabase: ReturnType<typeof createClient>,
+  params: { userId: string; email: string; fullName: string },
+) {
+  const now = new Date().toISOString();
+  const normalizedEmail = params.email.trim().toLowerCase();
+  const { data: existing } = await supabase.from("newsletter_subscribers")
+    .select("id,status")
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+  const payload = {
+    email: normalizedEmail,
+    user_id: params.userId,
+    status: "active",
+    locale: "fr",
+    source: "registration",
+    consent_version: "2026-08",
+    consented_at: now,
+    unsubscribed_at: null,
+    updated_at: now,
+  };
+  const { data: subscriber, error } = existing?.id
+    ? await supabase.from("newsletter_subscribers").update(payload).eq("id", existing.id).select("id").single()
+    : await supabase.from("newsletter_subscribers").insert(payload).select("id").single();
+  if (error) throw error;
+  const { error: eventError } = await supabase.from("newsletter_consent_events").insert({
+    subscriber_id: subscriber.id,
+    email: normalizedEmail,
+    user_id: params.userId,
+    action: existing?.status === "unsubscribed" ? "resubscribe" : "registration_opt_in",
+    source: "registration",
+    locale: "fr",
+    consent_version: "2026-08",
+  });
+  if (eventError) throw eventError;
+
+  const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
+  const brevoListId = Number.parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7", 10) || 7;
+  if (!brevoApiKey) return;
+  try {
+    const response = await fetch("https://api.brevo.com/v3/contacts", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "api-key": brevoApiKey },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        attributes: { FIRSTNAME: params.fullName },
+        listIds: [brevoListId],
+        updateEnabled: true,
+      }),
+    });
+    if (response.ok) {
+      await supabase.from("newsletter_subscribers").update({ provider_synced_at: now }).eq("id", subscriber.id);
+    }
+  } catch (error) {
+    console.error("Brevo newsletter registration sync error:", error);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = makeCorsHeaders(req);
 
@@ -108,7 +167,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { role, email, phone_number, password, birth_date, country_code = "ML" } = body;
+    const { role, email, phone_number, password, birth_date, country_code = "" } = body;
 
     if (!["apprenant", "professeur", "organizer", "responsable_structure", "etablissement", "recruteur_independant"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
@@ -124,6 +183,11 @@ Deno.serve(async (req: Request) => {
     }
     if (!phone_number || phone_number.trim().length < 8) {
       return new Response(JSON.stringify({ success: false, message: "Numéro de téléphone invalide" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!country_code || !/^[A-Za-z]{2}$/.test(String(country_code))) {
+      return new Response(JSON.stringify({ success: false, message: "Pays requis" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -185,7 +249,7 @@ Deno.serve(async (req: Request) => {
         job_title: body.job_title.trim(),
         professional_email: professionalEmail,
         phone: phone_number.trim(),
-        country: country_code || "ML",
+        country: String(country_code).toUpperCase(),
         linkedin_url: body.linkedin_url?.trim() || null,
         website_url: body.website_url?.trim() || null,
         status: "pending",
@@ -292,7 +356,7 @@ Deno.serve(async (req: Request) => {
         password_hash: passwordHash,
         full_name: fullName,
         birth_date: birth_date || null,
-        country_code: country_code || "ML",
+        country_code: String(country_code).toUpperCase(),
         status: "en_attente_validation",
         allow_email: body.allow_email ?? true,
         allow_sms: body.allow_sms ?? true,
@@ -380,17 +444,7 @@ Deno.serve(async (req: Request) => {
       });
 
       if (body.subscribe_newsletter === true) {
-        const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-        const brevoListId = parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7");
-        if (brevoApiKey) {
-          try {
-            await fetch("https://api.brevo.com/v3/contacts", {
-              method: "POST",
-              headers: { accept: "application/json", "content-type": "application/json", "api-key": brevoApiKey },
-              body: JSON.stringify({ email: sanitizedEmail, attributes: { FIRSTNAME: fullName }, listIds: [brevoListId], updateEnabled: true }),
-            });
-          } catch (e) { console.error("Brevo newsletter error:", e); }
-        }
+        await syncRegistrationNewsletter(supabase, { userId, email: sanitizedEmail, fullName });
       }
       return new Response(JSON.stringify({
         success: true,
@@ -426,17 +480,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.subscribe_newsletter === true) {
-      const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-      const brevoListId = parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7");
-      if (brevoApiKey) {
-        try {
-          await fetch("https://api.brevo.com/v3/contacts", {
-            method: "POST",
-            headers: { accept: "application/json", "content-type": "application/json", "api-key": brevoApiKey },
-            body: JSON.stringify({ email: sanitizedEmail, attributes: { FIRSTNAME: fullName }, listIds: [brevoListId], updateEnabled: true }),
-          });
-        } catch (e) { console.error("Brevo newsletter error:", e); }
-      }
+      await syncRegistrationNewsletter(supabase, { userId, email: sanitizedEmail, fullName });
     }
 
     return new Response(JSON.stringify({ success: true, user_id: userId, next_step: "verify_otp" }), {

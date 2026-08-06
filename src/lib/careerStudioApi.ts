@@ -9,13 +9,12 @@ import {
   getDefaultTemplateKey,
   getCareerTemplates,
   normalizeTemplateKey,
-  calculateBasicScore,
   cacheCareerTemplates,
   mergeCareerTemplateCatalog,
 } from './careerStudioData';
 
 import { edgeAuthHeaders, edgeGatewayHeaders } from './edgeAuth';
-import { analyzeCareerDocument, normalizeCareerDocument, type CareerSourceProfile } from './careerBuilderV2';
+import { analyzeCareerDocument, hasCareerQualityStarted, normalizeCareerDocument, type CareerSourceProfile } from './careerBuilderV2';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const FUNCTIONS_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '';
@@ -55,7 +54,7 @@ function createLocalDocument(docType: CareerDocType, templateKey?: string): Care
     template_key: normalizeTemplateKey(docType, templateKey || getDefaultTemplateKey(docType)),
     language: 'fr',
     status: 'draft',
-    ats_score: calculateBasicScore(docType, data),
+    ats_score: 0,
     target_job: null,
     application_type: docType === 'cv' ? 'cv' : 'lm',
     is_primary: true,
@@ -451,7 +450,10 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
 
 export async function saveCareerDocument(document: CareerDocumentFull): Promise<{ document: CareerDocumentFull; remote: boolean }> {
   const normalizedDocument = normalizeCareerDocument(document);
-  const score = analyzeCareerDocument(normalizedDocument.doc_type, normalizedDocument.doc_data, normalizedDocument.design_options).ats;
+  const qualityStarted = hasCareerQualityStarted(normalizedDocument.doc_data, normalizedDocument.doc_type);
+  const score = qualityStarted
+    ? analyzeCareerDocument(normalizedDocument.doc_type, normalizedDocument.doc_data, normalizedDocument.design_options).ats
+    : 0;
   const payload = {
     action: 'save',
     document_id: document.id.startsWith('local_') ? undefined : document.id,
@@ -652,16 +654,36 @@ function fallbackAiResult(payload: CareerAiPayload): CareerAiResult {
       cover_letter: `Madame, Monsieur,\n\nVotre offre pour le poste de ${targetJob} a retenu toute mon attention. Mon profil correspond aux compétences recherchées et je souhaite mettre mon expérience au service de vos objectifs.\n\nJe serais ravi(e) d’échanger avec vous afin de vous présenter plus concrètement ma motivation.`
     }, null, 2);
   } else if (payload.action === 'ats_score') {
-    result = JSON.stringify({
-      lisibilite: 82,
-      structure: 86,
-      orthographe: 90,
-      compatibilite_ats: 84,
-      longueur: 78,
-      mots_cles: 76,
-      professionnalisme: 88,
-      score_global: 84,
-      conseils: ['Ajoutez plus de mots-clés métier.', 'Quantifiez vos résultats.', 'Gardez des intitulés de sections standards.', 'Évitez les paragraphes trop longs.', 'Adaptez le titre au poste ciblé.']
+    const qualityStarted = payload.doc_data
+      ? hasCareerQualityStarted(payload.doc_data as any, payload.doc_type || 'cv')
+      : false;
+    const report = qualityStarted && payload.doc_data
+      ? analyzeCareerDocument(
+          payload.doc_type || 'cv',
+          payload.doc_data as any,
+          createDefaultDesign(payload.doc_type || 'cv'),
+        )
+      : null;
+    result = JSON.stringify(report ? {
+      lisibilite: report.visual,
+      structure: report.content,
+      orthographe: report.content,
+      compatibilite_ats: report.ats,
+      longueur: report.content,
+      mots_cles: report.target,
+      professionnalisme: report.evidence,
+      score_global: report.overall,
+      conseils: report.issues.map(item => item.detail).slice(0, 5),
+    } : {
+      lisibilite: 0,
+      structure: 0,
+      orthographe: 0,
+      compatibilite_ats: 0,
+      longueur: 0,
+      mots_cles: 0,
+      professionnalisme: 0,
+      score_global: 0,
+      conseils: ['Commencez à personnaliser le document pour lancer le diagnostic Qualité et ATS.'],
     }, null, 2);
   } else {
     result = text

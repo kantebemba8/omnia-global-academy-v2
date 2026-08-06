@@ -141,7 +141,7 @@ export default function AdminJobOffers() {
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <Input label="Titre *" value={form.title} onChange={value => setForm(current => ({ ...current, title: value }))} />
         <Input label="Entreprise" value={form.recruiter_company} onChange={value => setForm(current => ({ ...current, recruiter_company: value }))} />
-        <Input label="Lieu" value={form.location} onChange={value => setForm(current => ({ ...current, location: value }))} placeholder="Bamako, télétravail…" />
+        <Input label="Lieu" value={form.location} onChange={value => setForm(current => ({ ...current, location: value }))} placeholder="Ville, pays ou télétravail…" />
         <Input label="Type de contrat" value={form.contract_type} onChange={value => setForm(current => ({ ...current, contract_type: value }))} placeholder="CDI, CDD, stage…" />
         <Input label="Catégorie" value={form.category} onChange={value => setForm(current => ({ ...current, category: value }))} />
         <Input label="Date limite" type="date" value={form.deadline} onChange={value => setForm(current => ({ ...current, deadline: value }))} />

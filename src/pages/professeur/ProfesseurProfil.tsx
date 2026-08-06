@@ -34,7 +34,7 @@ export function ProfesseurProfil() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'info' | 'securite' | 'profil_pro'>('info');
 
-  const [form, setForm] = useState({ full_name: '', email: '', phone_number: '', country_code: 'ML' });
+  const [form, setForm] = useState({ full_name: '', email: '', phone_number: '', country_code: '' });
   const [profForm, setProfForm] = useState({ bio: '', expertise_domain: '', signature_url: '' });
   const [notifs, setNotifs] = useState({ allow_email: true, allow_sms: true, allow_push: false, subscribe_newsletter: false });
   const [saving, setSaving] = useState(false);
@@ -63,7 +63,7 @@ export function ProfesseurProfil() {
         const professor = (json.professeur || null) as (ProfProfile & { signature_url?: string | null }) | null;
         setUser(u);
         setProfile(professor);
-        setForm({ full_name: u.full_name, email: u.email, phone_number: u.phone_number, country_code: u.country_code ?? 'ML' });
+        setForm({ full_name: u.full_name, email: u.email, phone_number: u.phone_number, country_code: u.country_code ?? '' });
         setNotifs({ allow_email: u.allow_email ?? true, allow_sms: u.allow_sms ?? true, allow_push: u.allow_push ?? false, subscribe_newsletter: u.subscribe_newsletter ?? false });
         setProfForm({
           bio: professor?.bio ?? '',

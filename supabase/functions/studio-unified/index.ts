@@ -287,6 +287,7 @@ async function createImportedCourse(sb:any,userId:string,creatorContext:string,b
  const wordCount=blueprint.modules.flatMap(module=>module.lessons).reduce((sum,lesson)=>sum+cleanImportedText(lesson.content).split(/\s+/).filter(Boolean).length,0);
  const learningDesign={delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:"",import_source:{bucket:source.bucket,path:source.path,name:source.name,mime:source.mime,size:source.size,sha256:source.sha256,imported_at:new Date().toISOString(),ai_assisted:aiUsed}};
  const insert:any={title:blueprint.title||"Formation importée",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,template_used:"file_import",studio_mode:"simple",studio_status:"draft",is_published:false,short_description:blueprint.short_description||"Brouillon créé depuis un fichier",long_description:"",language:"fr",prerequisites:"",objectives:blueprint.objectives,target_audience:blueprint.target_audience,learning_outcomes:blueprint.learning_outcomes,course_intro_title:"Bienvenue dans cette formation",course_intro_summary:"Cette formation a été préparée depuis un document importé. Vérifiez chaque contenu avant soumission.",free_preview_mode:"introduction",lesson_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.lesson_passing_score??80))),module_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.module_passing_score??80))),final_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.final_passing_score??70))),assessment_policy:{default_retry_cooldown_hours:Number(thresholdDefaults.default_retry_cooldown_hours??24),default_remediation_after_attempts:Number(thresholdDefaults.default_remediation_after_attempts??3),competency_mastery_score:Number(thresholdDefaults.competency_mastery_score??80)},learning_design_settings:learningDesign,quality_status:"incomplete",ready_to_submit:false,current_version:"1.0",word_count:wordCount,estimated_read_min:Math.max(1,Math.ceil(wordCount/200))};
+ if(creatorContext==="super_admin")insert.creator_type="plateforme";
  const {data:course,error:courseError}=await sb.from("courses").insert(insert).select("*").single();if(courseError)throw courseError;
  const moduleRows:any[]=[];
  const {data:introModule,error:introModuleError}=await sb.from("course_modules").insert({course_id:course.id,title:"Introduction",objective:"Présenter la formation importée et les vérifications attendues",position:-1,is_intro:true}).select("*").single();if(introModuleError)throw introModuleError;
@@ -489,6 +490,7 @@ Deno.serve(async(req)=>{
     learning_design_settings:b.learning_design_settings||{delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:""},
     quality_status:"incomplete",ready_to_submit:false,current_version:"1.0"
    };
+   if(creatorContext==="super_admin")insert.creator_type="plateforme";
    const {data,error}=await sb.from("courses").insert(insert).select("*").single(); if(error)throw error;
    let modules:any[]=[];
    if(b.create_introduction!==false){
@@ -506,7 +508,8 @@ Deno.serve(async(req)=>{
   }
 
   if(action==="prepare_course_import_upload"){
-   const creatorContext=["professeur","structure"].includes(String(b.creator_context))?String(b.creator_context):"professeur";
+   const requestedContext=String(b.creator_context||"");
+   const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
    const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const fileSize=Number(b.file_size||0);
    if(!originalName||!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Utilisez PDF, DOCX, XLSX, ZIP, TXT, MD ou CSV."},400);
    if(fileSize<=0||fileSize>COURSE_IMPORT_MAX_BYTES)return json({success:false,error:"IMPORT_SIZE_INVALID",message:"Le fichier doit être compris entre 1 octet et 25 Mo."},400);
@@ -515,7 +518,8 @@ Deno.serve(async(req)=>{
    return json({success:true,signedUrl:data.signedUrl,token:data.token,path,bucket:COURSE_IMPORT_BUCKET,creator_context:creatorContext,max_bytes:COURSE_IMPORT_MAX_BYTES,allowed_extensions:Array.from(COURSE_IMPORT_ALLOWED)});
   }
   if(action==="convert_course_import"){
-   const creatorContext=["professeur","structure"].includes(String(b.creator_context))?String(b.creator_context):"professeur";
+   const requestedContext=String(b.creator_context||"");
+   const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
    const bucket=String(b.bucket_name||"");const path=String(b.storage_path||"");const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const declaredSize=Number(b.file_size||0);
    if(bucket!==COURSE_IMPORT_BUCKET||!path.startsWith(`imports/${userId}/`))return json({success:false,error:"INVALID_IMPORT_PATH",message:"Le fichier importé n’appartient pas à cette session."},403);
    if(!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Format de fichier non pris en charge."},400);
@@ -877,7 +881,9 @@ Deno.serve(async(req)=>{
   }
   if(action==="request_assisted_entry"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
-   const rs=await roles(sb,userId);const requesterRole=rs.includes("responsable_structure")||rs.includes("structure_admin")?"structure":"professeur";
+   const rs=await roles(sb,userId);
+   if(rs.includes("super_admin"))return json({success:false,error:"ADMIN_ASSISTED_ENTRY_NOT_APPLICABLE",message:"L’Administration crée directement les formations au nom d’Omnia Global Academy."},403);
+   const requesterRole=rs.includes("responsable_structure")||rs.includes("structure_admin")?"structure":"professeur";
    const {data:existing}=await sb.from("assisted_course_requests").select("id,status").eq("course_id",courseId).in("status",["pending","in_progress"]).maybeSingle();if(existing)return json({success:false,error:"ACTIVE_REQUEST_EXISTS",message:"Une demande est déjà en cours."},409);
    const {data:reqRow,error}=await sb.from("assisted_course_requests").insert({course_id:courseId,requester_id:userId,requester_role:requesterRole,service_type:b.service_type||"without_certification",instructions:String(b.instructions||""),documents:Array.isArray(b.documents)?b.documents:[],status:"pending"}).select("*").single();if(error)throw error;
    await sb.from("courses").update({is_assisted:true,assisted_request_id:reqRow.id,assisted_status:"pending",updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"assisted_entry_requested",{request_id:reqRow.id,service_type:reqRow.service_type});return json({success:true,request:reqRow});

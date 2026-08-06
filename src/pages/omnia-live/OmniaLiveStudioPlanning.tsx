@@ -272,7 +272,7 @@ export default function OmniaLiveStudioPlanning() {
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 md:max-w-xl"
-              placeholder="Africa/Bamako"
+              placeholder="Continent/Ville ou UTC"
             />
             <p className="mt-2 text-sm text-slate-500">
               L’heure sera convertie automatiquement pour chaque participant selon son pays.

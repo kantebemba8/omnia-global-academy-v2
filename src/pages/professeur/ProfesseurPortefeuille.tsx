@@ -278,7 +278,7 @@ export function ProfesseurPortefeuille() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Numéro international</label>
                     <input type="tel" value={form.mm_phone} onChange={(e) => setForm((p) => ({ ...p, mm_phone: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400"
-                      placeholder="+223 XX XX XX XX" />
+                      placeholder="+[indicatif] numéro" />
                   </div>
                 </>
               )}

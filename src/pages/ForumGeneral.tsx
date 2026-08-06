@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
+import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 import { MessageCircle, Plus, X, Search, Globe2, ThumbsUp, MessageSquare, Pin, CheckCircle, Briefcase as BriefcaseBusiness, ArrowRight } from 'lucide-react';
 
@@ -11,15 +12,7 @@ const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E5E7EB';
 
-const COUNTRIES = [
-  { code: 'ML', name: 'Mali' }, { code: 'SN', name: 'Sénégal' }, { code: 'CI', name: "Côte d'Ivoire" },
-  { code: 'BF', name: 'Burkina Faso' }, { code: 'GN', name: 'Guinée' }, { code: 'TG', name: 'Togo' },
-  { code: 'BJ', name: 'Bénin' }, { code: 'NE', name: 'Niger' }, { code: 'CM', name: 'Cameroun' },
-  { code: 'GH', name: 'Ghana' }, { code: 'NG', name: 'Nigeria' }, { code: 'MA', name: 'Maroc' },
-  { code: 'DZ', name: 'Algérie' }, { code: 'TN', name: 'Tunisie' }, { code: 'CD', name: 'RD Congo' },
-  { code: 'FR', name: 'France' }, { code: 'BE', name: 'Belgique' }, { code: 'LU', name: 'Luxembourg' },
-  { code: 'CA', name: 'Canada' }, { code: 'US', name: 'États-Unis' },
-];
+const COUNTRIES = COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label }));
 
 interface Post {
   id: string;
@@ -66,7 +59,7 @@ export default function ForumGeneral() {
     : 'Échangez autour de l’apprentissage, de l’orientation et de la vie dans l’écosystème Omnia.';
 
   const params = new URLSearchParams(location.search);
-  const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || 'ML');
+  const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || '');
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
