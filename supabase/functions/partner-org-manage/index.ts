@@ -34,11 +34,11 @@ Deno.serve(async (req: Request) => {
 
     const { user_id, roles } = session;
     const isSuperAdmin = roles.includes("super_admin");
-    const isManager = roles.includes("gestionnaire_partenaire");
+    const isManager = roles.includes("gestionnaire_structure") || roles.includes("gestionnaire_partenaire");
     const body = await req.json().catch(() => ({}));
     const { action } = body;
 
-    // ── GET : liste des organisations (super-admin) ──────────
+    // ── GET : liste des organisations (administration Omnia) ──────────
     if (req.method === "GET") {
       if (!isSuperAdmin) return json({ error: "FORBIDDEN" }, 403);
       const url = new URL(req.url);
@@ -84,20 +84,20 @@ Deno.serve(async (req: Request) => {
       // Mettre à jour le rôle utilisateur
       await sb.from("user_roles").upsert({
         user_id,
-        role: "gestionnaire_partenaire",
+        role: "gestionnaire_structure",
       }, { onConflict: "user_id,role", ignoreDuplicates: true });
 
-      // Notifier le super-admin (fire-and-forget)
+      // Notifier l’Administration Omnia (fire-and-forget)
       fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-admin`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
         body: JSON.stringify({ type: "new_partner_org", org_id: org.id, org_name: org.org_name }),
       }).catch(() => {});
 
-      return json({ success: true, organization: org, message: "Votre demande a été envoyée au super-admin pour validation." });
+      return json({ success: true, organization: org, message: "Votre demande a été envoyée à l’Administration Omnia pour validation." });
     }
 
-    // ── Action VALIDATE : super-admin valide ─────────────────
+    // ── Action VALIDATE : administration Omnia valide ─────────────────
     if (action === "validate" || action === "refuse" || action === "suspend" || action === "request_modification") {
       if (!isSuperAdmin) return json({ error: "FORBIDDEN" }, 403);
       const { org_id, reason, note } = body;
@@ -152,7 +152,7 @@ Deno.serve(async (req: Request) => {
       const { org_id, ...fields } = body;
       if (!org_id) return json({ error: "ORG_ID_REQUIRED" }, 400);
 
-      // Vérifier que l'utilisateur est gestionnaire principal ou super-admin
+      // Vérifier que l'utilisateur est gestionnaire principal ou administration Omnia
       if (!isSuperAdmin) {
         const { data: managerCheck } = await sb.from("partner_managers")
           .select("is_primary")

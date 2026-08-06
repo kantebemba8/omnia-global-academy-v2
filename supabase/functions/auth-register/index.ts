@@ -9,6 +9,7 @@ import {
   makeCorsHeaders,
   sha256Hex,
 } from "../_shared/auth-security.ts";
+import { acceptAccessInvitation, inspectAccessInvitation } from "../_shared/access-invitations.ts";
 async function sendSMS(phone: string, otp: string, email?: string, fullName?: string): Promise<void> {
   const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
   if (!brevoKey) return;
@@ -167,7 +168,51 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+    const action = String(body.action || "");
+
+    if (action === "inspect_access_invitation") {
+      const invitation = await inspectAccessInvitation(supabase, String(body.invitation_token || ""));
+      if (!invitation) return new Response(JSON.stringify({ success: false, error: "INVITATION_NOT_FOUND", message: "Invitation introuvable." }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ success: true, invitation }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "accept_access_invitation") {
+      const sessionToken = (req.headers.get("x-omnia-session-token") || String(body.session_token || "")).replace(/^Bearer\s+/i, "").trim();
+      if (!sessionToken) return new Response(JSON.stringify({ success: false, error: "AUTH_REQUIRED", message: "Connectez-vous pour accepter cette invitation." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: session } = await supabase.from("user_sessions").select("user_id").eq("session_token", sessionToken).gt("expires_at", new Date().toISOString()).maybeSingle();
+      if (!session) return new Response(JSON.stringify({ success: false, error: "SESSION_INVALID", message: "Votre session a expiré." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: account } = await supabase.from("users").select("id,email").eq("id", session.user_id).maybeSingle();
+      if (!account) return new Response(JSON.stringify({ success: false, error: "ACCOUNT_NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      try {
+        const invitation = await acceptAccessInvitation(supabase, String(body.invitation_token || ""), String(account.id), String(account.email || ""));
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", account.id);
+        return new Response(JSON.stringify({ success: true, invitation_type: invitation.invitation_type, roles: (roles || []).map((row: { role: string }) => row.role) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : String(error);
+        const status = code.includes("MISMATCH") || code === "PROTECTED_ACCOUNT" ? 403 : code.includes("EXPIRED") ? 410 : 400;
+        return new Response(JSON.stringify({ success: false, error: code, message: "Cette invitation ne peut pas être acceptée avec ce compte." }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     const { role, email, phone_number, password, birth_date, country_code = "" } = body;
+    let accessInvitation: Awaited<ReturnType<typeof inspectAccessInvitation>> = null;
+    const accessInvitationToken = String(body.access_invitation_token || "").trim();
+    if (accessInvitationToken) {
+      accessInvitation = await inspectAccessInvitation(supabase, accessInvitationToken);
+      if (!accessInvitation || accessInvitation.status !== "pending") {
+        return new Response(JSON.stringify({ success: false, message: "Cette invitation est invalide ou a expiré." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (String(accessInvitation.email || "").toLowerCase() !== String(email || "").trim().toLowerCase()) {
+        return new Response(JSON.stringify({ success: false, message: "Utilisez l’adresse e-mail qui a reçu l’invitation." }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (role !== "apprenant") {
+        return new Response(JSON.stringify({ success: false, message: "Créez d’abord un compte personnel avant d’accepter cette invitation professionnelle." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
 
     if (!["apprenant", "professeur", "organizer", "responsable_structure", "etablissement", "recruteur_independant"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
@@ -263,7 +308,7 @@ Deno.serve(async (req: Request) => {
         });
       }
       fullName = body.full_name.trim();
-      roleForDB = "apprenant"; // organizer role is granted only after Super Admin approval
+      roleForDB = "apprenant"; // organizer role is granted only after Administration Omnia approval
       profileData = {
         display_name: body.display_name.trim(),
         organizer_type: body.organizer_type || "independent",
@@ -294,11 +339,6 @@ Deno.serve(async (req: Request) => {
 
     // Extract referral code from body or URL
     const refCode = String(body.referral_code || body.ref_code || "").trim() || null;
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
 
     const emailHash = await sha256Hex(sanitizedEmail);
     const phoneHash = await sha256Hex(sanitizedPhone);
@@ -369,8 +409,15 @@ Deno.serve(async (req: Request) => {
     if (userError) throw userError;
     const userId = newUser.id;
 
+    if (accessInvitation) {
+      const { error: invitationBindError } = await supabase.from("platform_access_invitations")
+        .update({ target_user_id: userId, updated_at: new Date().toISOString() })
+        .eq("id", accessInvitation.id).eq("status", "pending").is("target_user_id", null);
+      if (invitationBindError) throw invitationBindError;
+    }
+
     // Le parrainage est réservé aux apprenants et reste inactif tant que
-    // le Super-admin ne l'a pas explicitement activé dans les paramètres.
+    // l’Administration Omnia ne l'a pas explicitement activé dans les paramètres.
     if (role === "apprenant" && refCode && refCode !== userId) {
       const { data: referralSetting } = await supabase
         .from("site_settings")
@@ -433,7 +480,7 @@ Deno.serve(async (req: Request) => {
     // Logo et signature établissement retirés de l'inscription
     // Ils seront ajoutés dans le menu Certificats de l'établissement
 
-    // Structure : création du dossier sans OTP, puis validation manuelle par le Super Admin.
+    // Structure : création du dossier sans OTP, puis validation manuelle par l’Administration Omnia.
     // Le jeton court sert uniquement à appeler `structure-manage` et créer la fiche Structure.
     if (["responsable_structure", "etablissement"].includes(role)) {
       const registrationSessionToken = generateOpaqueToken();

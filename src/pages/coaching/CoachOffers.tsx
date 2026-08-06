@@ -99,7 +99,7 @@ export default function CoachOffers() {
         <div>
           <span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Espace coach</span>
           <h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Mes offres de coaching</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Créez vos formats de session. Toute nouvelle offre ou modification tarifaire est soumise au Super Admin avant publication.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Créez vos formats de session. Toute nouvelle offre ou modification tarifaire est soumise à l’Administration Omnia avant publication.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><RefreshCw size={16}/>Actualiser</button>
@@ -132,7 +132,7 @@ export default function CoachOffers() {
                 {offer.domain?.name && <span>{offer.domain.name}</span>}
               </div>
               {offer.offer_type === 'custom' && <p className="mt-3 text-xs text-slate-500">Durée autorisée : {offer.custom_min_minutes} à {offer.custom_max_minutes} minutes, par pas de {offer.custom_step_minutes} minutes.</p>}
-              {offer.admin_message && <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Message du Super Admin : {offer.admin_message}</div>}
+              {offer.admin_message && <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Message de l’Administration Omnia : {offer.admin_message}</div>}
               {offer.status === 'active' && offer.supersedes_offer_id && <p className="mt-3 text-xs text-slate-500">Cette version a remplacé une ancienne offre validée.</p>}
             </div>
             <div className="flex shrink-0 gap-2">
@@ -176,7 +176,7 @@ function OfferModal({ form: initial, domains, profile, limits, onClose, onDone }
         custom_max_minutes: form.offer_type === 'custom' ? Number(form.custom_max_minutes) : null,
         custom_step_minutes: form.offer_type === 'custom' ? Number(form.custom_step_minutes) : null,
       });
-      onDone(initial.offer_id ? 'La nouvelle version de l’offre a été envoyée au Super Admin.' : 'L’offre a été envoyée au Super Admin.');
+      onDone(initial.offer_id ? 'La nouvelle version de l’offre a été envoyée à l’Administration Omnia.' : 'L’offre a été envoyée à l’Administration Omnia.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement impossible.'); }
     finally { setBusy(false); }
   }

@@ -240,7 +240,7 @@ export function DashboardStructure() {
             <p>
               Un code structure ne donne pas automatiquement des avantages.
               Il permet uniquement de vous rattacher à une organisation.
-              Les avantages éventuels sont accordés après validation par le responsable et le Super Admin.
+              Les avantages éventuels sont accordés après validation par le responsable et l’Administration Omnia.
             </p>
           </div>
         </div>

@@ -454,7 +454,7 @@ async function loadProfileBundle(
     sb.from("professeur_profiles").select("bio,expertise_domain,cv_diploma_url,kyc_status,signature_url").eq("user_id", userId).maybeSingle(),
     sb.from("live_organizer_profiles").select("display_name,bio,country,website,logo_url,verification_status,public_rating,review_count,completed_events").eq("user_id", userId).maybeSingle(),
     sb.from("coach_profiles").select("id,public_slug,professional_title,biography,specialties,languages,country,timezone,photo_url,linkedin_url,website_url,status,average_rating,rating_count,completed_sessions_count").eq("user_id", userId).maybeSingle(),
-    sb.from("partner_managers").select("organization_id,role_in_org,is_primary,status").eq("user_id", userId).neq("status", "retire").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("partner_managers").select("organization_id,role_in_org,is_primary,status").eq("user_id", userId).in("status", ["actif", "active"]).order("is_primary", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   if (userResult.error) throw userResult.error;
@@ -859,7 +859,7 @@ Deno.serve(async (req: Request) => {
       if (suspensionError) {
         const message = String(suspensionError.message || "");
         if (message.includes("LAST_SUPER_ADMIN_PROTECTED")) {
-          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le dernier Super-admin actif ne peut pas suspendre son compte." }, 409);
+          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le compte système de l’Administration Omnia ne peut pas suspendre son compte." }, 409);
         }
         if (message.includes("DEMO_ACCOUNT_PROTECTED")) {
           return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être suspendu." }, 403);
@@ -920,7 +920,7 @@ Deno.serve(async (req: Request) => {
       if (deletionError) {
         const message = String(deletionError.message || "");
         if (message.includes("LAST_SUPER_ADMIN_PROTECTED")) {
-          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le dernier Super-admin actif ne peut pas supprimer son compte." }, 409);
+          return json({ error: "LAST_SUPER_ADMIN_PROTECTED", message: "Le compte système de l’Administration Omnia ne peut pas supprimer son compte." }, 409);
         }
         if (message.includes("DEMO_ACCOUNT_PROTECTED")) {
           return json({ error: "DEMO_ACCOUNT_PROTECTED", message: "Le compte de démonstration ne peut pas être supprimé." }, 403);

@@ -31,8 +31,8 @@ export const MODERATOR_PERMISSION_DEFINITIONS = [
   },
   {
     key: 'can_approve_transmit_course',
-    label: 'Approuver et transmettre au Super-admin',
-    description: 'Transmettre une formation contrôlée pour décision finale du Super-admin.',
+    label: 'Approuver et transmettre à l’Administration Omnia',
+    description: 'Transmettre une formation contrôlée pour décision finale de l’Administration Omnia.',
     workspace: '/moderator/courses',
   },
   {
@@ -80,13 +80,13 @@ export const MODERATOR_PERMISSION_DEFINITIONS = [
   {
     key: 'can_validate_structure_kyc',
     label: 'Vérifier l’identité et les justificatifs des Structures',
-    description: 'Contrôler les informations légales et les documents fournis par une Structure avant la décision finale du Super-admin.',
+    description: 'Contrôler les informations légales et les documents fournis par une Structure avant la décision finale de l’Administration Omnia.',
     workspace: '/moderator/missions',
   },
   {
     key: 'can_request_account_suspension',
     label: 'Demander la suspension temporaire d’un compte',
-    description: 'Préparer une demande motivée, sans pouvoir suspendre un Super-admin.',
+    description: 'Préparer une demande motivée, sans pouvoir agir sur le compte système de l’Administration Omnia.',
     workspace: '/moderator/users',
   },
   {
@@ -153,12 +153,6 @@ export const MODERATOR_PERMISSION_DEFINITIONS = [
     key: 'can_review_structure_codes',
     label: 'Examiner les codes Structure',
     description: 'Contrôler les demandes liées aux codes de rattachement.',
-    workspace: '/moderator/missions',
-  },
-  {
-    key: 'can_review_structure_benefits',
-    label: 'Examiner les avantages Structure',
-    description: 'Contrôler les avantages proposés avant validation du Super-admin.',
     workspace: '/moderator/missions',
   },
   {
@@ -237,7 +231,6 @@ const SECTION_CONFIG = [
     keys: [
       'can_review_structure_requests',
       'can_review_structure_codes',
-      'can_review_structure_benefits',
     ],
   },
   {

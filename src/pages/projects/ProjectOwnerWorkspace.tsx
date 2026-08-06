@@ -185,7 +185,7 @@ export default function ProjectOwnerWorkspace() {
       const result = editing ? await updateProject(editing.id, payload()) : await createProject(payload());
       if (sendForValidation) await submitProject(result.project.id);
       setShowForm(false);
-      setMessage(sendForValidation ? 'Projet enregistré et envoyé au Super Admin.' : 'Brouillon enregistré.');
+      setMessage(sendForValidation ? 'Projet enregistré et envoyé à l’Administration Omnia.' : 'Brouillon enregistré.');
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Enregistrement impossible.');
@@ -198,7 +198,7 @@ export default function ProjectOwnerWorkspace() {
     setMessage('');
     try {
       await submitProject(project.id);
-      setMessage('Projet envoyé au Super Admin pour validation.');
+      setMessage('Projet envoyé à l’Administration Omnia pour validation.');
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Soumission impossible.');
@@ -252,7 +252,7 @@ export default function ProjectOwnerWorkspace() {
       await saveProjectPartner(selectedProject.id, { partner_name: partnerName.trim(), partner_kind: 'external', partner_role: partnerRole, notes: partnerNotes.trim(), status: 'proposed' });
       setPartnerName(''); setPartnerNotes(''); setPartnerRole('participant');
       await openApplications(selectedProject);
-      setMessage('Partenaire proposé. Le Super Admin doit le confirmer.');
+      setMessage('Partenaire proposé. L’Administration Omnia doit le confirmer.');
     } catch (err) { setMessage(err instanceof Error ? err.message : 'Ajout du partenaire impossible.'); }
     finally { setDrawerBusy(false); }
   };
@@ -455,7 +455,7 @@ export default function ProjectOwnerWorkspace() {
                 <label><span className="text-sm font-semibold text-slate-700">Publication dans le portfolio</span><select value={form.portfolio_policy} onChange={event => setField('portfolio_policy', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }}><option value="forbidden">Interdite</option><option value="anonymized_only">Preuve anonymisée uniquement</option><option value="validated_summary">Résumé validé</option><option value="authorized_deliverable">Livrable autorisé</option></select></label>
                 <label><span className="text-sm font-semibold text-slate-700">Récompense</span><select value={form.reward_type} onChange={event => setField('reward_type', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }}><option value="none">Aucune récompense</option><option value="participation_certificate">Certificat de participation</option><option value="badge">Badge</option><option value="recommendation">Recommandation</option><option value="omnia_credit">Crédit Omnia</option><option value="financial_prize">Prix financier</option><option value="partner_interview">Entretien partenaire</option><option value="internship_opportunity">Opportunité de stage</option><option value="job_opportunity">Opportunité d’emploi</option><option value="training_access">Accès à une formation</option><option value="portfolio_publication">Publication portfolio</option><option value="multiple">Plusieurs récompenses</option></select></label>
                 {form.reward_type !== 'none' && <label><span className="text-sm font-semibold text-slate-700">Détails de la récompense</span><input value={form.reward_description} onChange={event => setField('reward_description', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }} placeholder="Conditions et contenu de la récompense" /></label>}
-                {form.reward_type === 'financial_prize' && <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[1fr_160px]"><label><span className="text-sm font-semibold text-slate-700">Montant annoncé</span><input type="number" min="0" step="0.01" required value={form.reward_amount} onChange={event => setField('reward_amount', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }} /></label><label><span className="text-sm font-semibold text-slate-700">Devise</span><select value={form.reward_currency} onChange={event => setField('reward_currency', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }}><option value="XOF">XOF</option><option value="EUR">EUR</option><option value="USD">USD</option></select></label><p className="text-xs text-slate-500 sm:col-span-2">Le projet peut être soumis, mais il ne pourra pas être publié avant la vérification documentée du financement par le Super Admin.</p></div>}
+                {form.reward_type === 'financial_prize' && <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[1fr_160px]"><label><span className="text-sm font-semibold text-slate-700">Montant annoncé</span><input type="number" min="0" step="0.01" required value={form.reward_amount} onChange={event => setField('reward_amount', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }} /></label><label><span className="text-sm font-semibold text-slate-700">Devise</span><select value={form.reward_currency} onChange={event => setField('reward_currency', event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }}><option value="XOF">XOF</option><option value="EUR">EUR</option><option value="USD">USD</option></select></label><p className="text-xs text-slate-500 sm:col-span-2">Le projet peut être soumis, mais il ne pourra pas être publié avant la vérification documentée du financement par l’Administration Omnia.</p></div>}
                 <label className="flex items-center gap-3 rounded-xl bg-slate-50 p-4"><input type="checkbox" checked={form.nda_required} onChange={event => setField('nda_required', event.target.checked)} /><span className="text-sm font-semibold text-slate-700">Engagement de confidentialité obligatoire</span></label>
                 <label className="flex items-center gap-3 rounded-xl bg-slate-50 p-4"><input type="checkbox" checked={form.recruitment_opportunity} onChange={event => setField('recruitment_opportunity', event.target.checked)} /><span className="text-sm font-semibold text-slate-700">Peut conduire à une opportunité, sans garantie</span></label>
               </div>
@@ -475,7 +475,7 @@ export default function ProjectOwnerWorkspace() {
 
             <section className="mt-7 rounded-xl border p-4" style={{ borderColor: '#E4E7EC', background: '#F8FAFD' }}>
               <h3 className="font-bold" style={{ color: '#002050' }}>Cycle du projet</h3>
-              <p className="mt-1 text-sm text-slate-600">Faites avancer le projet selon son état réel. Les actions administratives restent disponibles au Super Admin.</p>
+              <p className="mt-1 text-sm text-slate-600">Faites avancer le projet selon son état réel. Les actions administratives restent disponibles à l’Administration Omnia.</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {selectedProject.status === 'published' && <button disabled={drawerBusy} onClick={() => moveProject('selection')} className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}>Ouvrir la sélection</button>}
                 {selectedProject.status === 'selection' && <button disabled={drawerBusy} onClick={() => moveProject('published')} className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}>Revenir aux candidatures</button>}
@@ -486,7 +486,7 @@ export default function ProjectOwnerWorkspace() {
 
             <section className="mt-7 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
               <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><Users size={19} style={{ color: '#BF8813' }} /> Entreprises et institutions participantes</h3>
-              <p className="mt-1 text-sm text-slate-600">Ajoutez les partenaires réellement impliqués. Leur statut officiel doit être confirmé par le Super Admin.</p>
+              <p className="mt-1 text-sm text-slate-600">Ajoutez les partenaires réellement impliqués. Leur statut officiel doit être confirmé par l’Administration Omnia.</p>
               <div className="mt-4 divide-y rounded-xl border" style={{borderColor:'#E4E7EC'}}>{partners.length ? partners.map(partner=><div key={partner.id} className="flex items-start justify-between gap-3 p-4"><div><p className="font-semibold text-slate-900">{partner.partner_name}</p><p className="text-xs text-slate-500">{partner.partner_role} · {partner.status}</p>{partner.notes&&<p className="mt-1 text-sm text-slate-600">{partner.notes}</p>}</div>{partner.status!=='withdrawn'&&<button type="button" disabled={drawerBusy} onClick={()=>withdrawPartner(partner)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-bold text-red-700">Retirer</button>}</div>) : <p className="p-4 text-sm text-slate-500">Aucun partenaire supplémentaire.</p>}</div>
               <form onSubmit={addPartner} className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"><input required value={partnerName} onChange={event=>setPartnerName(event.target.value)} placeholder="Nom de l’entreprise ou institution" className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}/><select value={partnerRole} onChange={event=>setPartnerRole(event.target.value as ProjectPartner['partner_role'])} className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}>{['co_owner','client','sponsor','technical','academic','institutional','mentor','evaluator','participant'].map(role=><option key={role} value={role}>{role}</option>)}</select><textarea value={partnerNotes} onChange={event=>setPartnerNotes(event.target.value)} rows={2} placeholder="Rôle concret, convention ou contribution" className="rounded-lg border bg-white px-3 py-2.5 text-sm sm:col-span-2" style={{borderColor:'#D0D5DD'}}/><button disabled={drawerBusy} className="rounded-lg px-4 py-2.5 text-sm font-bold text-white sm:col-span-2" style={{background:'#002050'}}>Proposer ce partenaire</button></form>
             </section>

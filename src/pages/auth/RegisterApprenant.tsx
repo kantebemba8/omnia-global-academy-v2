@@ -50,9 +50,22 @@ export function RegisterApprenant() {
   const [error, setError] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [referralEnabled, setReferralEnabled] = useState(false);
+  const [accessInvitationToken, setAccessInvitationToken] = useState('');
 
   useEffect(() => {
     let active = true;
+    const params = new URLSearchParams(window.location.search);
+    const invitationToken = params.get('invite')?.trim() || '';
+    const invitedEmail = params.get('email')?.trim() || '';
+    const invitedName = params.get('name')?.trim() || '';
+    if (invitationToken) {
+      setAccessInvitationToken(invitationToken);
+      setForm(current => ({
+        ...current,
+        email: invitedEmail || current.email,
+        full_name: invitedName || current.full_name,
+      }));
+    }
     getPublicSiteSettings()
       .then(settings => {
         if (!active) return;
@@ -103,13 +116,14 @@ export function RegisterApprenant() {
         allow_push: form.allow_push,
         subscribe_newsletter: form.subscribe_newsletter,
         referral_code: referralEnabled && referralCode ? referralCode : undefined,
+        access_invitation_token: accessInvitationToken || undefined,
       });
       if (!data.success) {
         setError(data.message || 'Une erreur est survenue');
         return;
       }
       navigate('/verifier-otp', {
-        state: { phone_number, purpose: 'inscription', user_id: data.user_id },
+        state: { phone_number, purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken) },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
@@ -119,11 +133,19 @@ export function RegisterApprenant() {
   };
 
   return (
-    <AuthLayout title="Inscription Apprenant" subtitle="Créez votre espace d'apprentissage">
+    <AuthLayout
+      title={accessInvitationToken ? 'Créer votre compte personnel' : 'Inscription Apprenant'}
+      subtitle={accessInvitationToken ? 'Votre accès professionnel sera ajouté après vérification' : "Créez votre espace d'apprentissage"}
+    >
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+        {accessInvitationToken && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-800">
+            Créez votre compte personnel avec l’adresse qui a reçu l’invitation. Aucun mot de passe temporaire ne sera transmis par une Structure ou par Omnia.
           </div>
         )}
 
@@ -141,7 +163,7 @@ export function RegisterApprenant() {
           <label className={labelCls}>Email</label>
           <input
             className={inputCls} type="email" autoComplete="email" required
-            value={form.email} onChange={e => set('email', e.target.value)}
+            value={form.email} readOnly={Boolean(accessInvitationToken)} onChange={e => set('email', e.target.value)}
           />
         </div>
 

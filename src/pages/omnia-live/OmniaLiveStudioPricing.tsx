@@ -160,7 +160,7 @@ export default function OmniaLiveStudioPricing() {
             Tarification et Replay
           </h1>
           <p className="mt-2 text-slate-600">
-            Vous proposez les conditions. Le Super Admin valide les conditions commerciales finales.
+            Vous proposez les conditions. L’Administration Omnia valide les conditions commerciales finales.
           </p>
         </div>
 
@@ -317,7 +317,7 @@ export default function OmniaLiveStudioPricing() {
               Proposition de remboursement participant
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Cette proposition sera contrôlée et pourra être modifiée par le Super Admin avant validation.
+              Cette proposition sera contrôlée et pourra être modifiée par l’Administration Omnia avant validation.
             </p>
 
             <div className="mt-4 grid gap-5 md:grid-cols-3">
@@ -367,12 +367,12 @@ export default function OmniaLiveStudioPricing() {
               onChange={(e) => setCancellationNote(e.target.value)}
               rows={4}
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
-              placeholder="Facultatif. Toute annulation restera soumise au motif et à la validation Super Admin."
+              placeholder="Facultatif. Toute annulation restera soumise au motif et à la validation de l’Administration Omnia."
             />
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Le prix saisi ici est une proposition. Après examen, le Super Admin fixe les conditions
+            Le prix saisi ici est une proposition. Après examen, l’Administration Omnia fixe les conditions
             commerciales finales et la commission. L’organisateur devra les accepter avant publication.
           </div>
 

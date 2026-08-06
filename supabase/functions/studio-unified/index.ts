@@ -282,7 +282,7 @@ async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint){
 async function sha256Hex(bytes:Uint8Array){const input=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const digest=await crypto.subtle.digest("SHA-256",input);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("")}
 
 async function createImportedCourse(sb:any,userId:string,creatorContext:string,blueprint:CourseImportBlueprint,source:any,aiUsed:boolean){
- let structureId:string|null=null;if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null}
+ let structureId:string|null=null;if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).in("status",["actif","active"]).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null}
  const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
  const wordCount=blueprint.modules.flatMap(module=>module.lessons).reduce((sum,lesson)=>sum+cleanImportedText(lesson.content).split(/\s+/).filter(Boolean).length,0);
  const learningDesign={delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:"",import_source:{bucket:source.bucket,path:source.path,name:source.name,mime:source.mime,size:source.size,sha256:source.sha256,imported_at:new Date().toISOString(),ai_assisted:aiUsed}};
@@ -370,17 +370,25 @@ Deno.serve(async(req)=>{
    const {data,error}=await q;if(error)throw error;return json({success:true,rows:data||[]});
   }
   if(action==="structure_dashboard"){
-   const structureRoles=["gestionnaire_partenaire","responsable_structure","structure_admin","directeur","etablissement_directeur"];
+   const structureRoles=["structure","responsable_structure","gestionnaire_structure","gestionnaire_partenaire","structure_admin","directeur","etablissement_directeur"];
    if(!isAdmin&&!userRoles.some((r:string)=>structureRoles.includes(r)))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:manager}=await sb.from("partner_managers").select("organization_id,status").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();
+   const {data:manager,error:managerError}=await sb.from("partner_managers").select("organization_id,status").eq("user_id",userId).in("status",["actif","active"]).order("is_primary",{ascending:false}).limit(1).maybeSingle();
+   if(managerError)throw managerError;
    let organization:any=null;
    if(manager?.organization_id){
-    const {data}=await sb.from("partner_organizations").select("id,org_name,org_type,status,logo_url,admin_comment,modification_note").eq("id",manager.organization_id).maybeSingle();organization=data;
+    const {data,error}=await sb.from("partner_organizations").select("id,org_name,org_type,status,logo_url,admin_comment,modification_note").eq("id",manager.organization_id).maybeSingle();if(error)throw error;organization=data;
    }
-   const {count:courseCount}=await sb.from("courses").select("id",{count:"exact",head:true}).eq("creator_id",userId);
-   let activeCodes=0;
-   if(manager?.organization_id){const {count}=await sb.from("partner_codes").select("id",{count:"exact",head:true}).eq("organization_id",manager.organization_id).eq("status","active");activeCodes=count||0;}
-   return json({success:true,structure:organization?{id:organization.id,name:organization.org_name,display_name:organization.org_name,structure_type:organization.org_type||"autre",status:organization.status||"pending_validation",status_label:organization.status||"pending_validation",logo_url:organization.logo_url,admin_comment:organization.admin_comment,modification_note:organization.modification_note}:null,stats:{members:0,active_codes:activeCodes,active_benefits:0,courses:courseCount||0},pending_members:[]});
+   if(!manager?.organization_id)return json({success:false,error:"NO_ACTIVE_STRUCTURE"},404);
+   const organizationId=String(manager.organization_id);
+   const [memberCountResult,codeCountResult,courseCountResult,pendingResult]=await Promise.all([
+    sb.from("partner_code_users").select("id",{count:"exact",head:true}).eq("organization_id",organizationId).in("status",["validated","approved","active","actif"]),
+    sb.from("partner_codes").select("id",{count:"exact",head:true}).eq("organization_id",organizationId).in("status",["validated","active","actif"]),
+    sb.from("courses").select("id",{count:"exact",head:true}).eq("structure_id",organizationId),
+    sb.from("partner_code_users").select("id,user_id,code_id,status,created_at,users:user_id(id,full_name,email)").eq("organization_id",organizationId).eq("status","pending").order("created_at",{ascending:false}).limit(8),
+   ]);
+   for(const result of [memberCountResult,codeCountResult,courseCountResult,pendingResult])if(result.error)throw result.error;
+   const pendingMembers=(pendingResult.data||[]).map((row:any)=>({...row,requested_at:row.created_at}));
+   return json({success:true,structure:organization?{id:organization.id,name:organization.org_name,display_name:organization.org_name,structure_type:organization.org_type||"autre",status:organization.status||"pending_validation",status_label:organization.status||"pending_validation",logo_url:organization.logo_url,admin_comment:organization.admin_comment,modification_note:organization.modification_note}:null,stats:{members:memberCountResult.count||0,active_codes:codeCountResult.count||0,courses:courseCountResult.count||0},pending_members:pendingMembers});
   }
   if(action==="admin_catalogue"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
@@ -475,7 +483,7 @@ Deno.serve(async(req)=>{
    }
    const creatorContext=requestedCreatorContext;
    let structureId:string|null=null;
-   if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null;}
+   if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).in("status",["actif","active"]).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null;}
    const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
    const insert:any={
     title:b.title||"Nouvelle formation",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
@@ -761,7 +769,7 @@ Deno.serve(async(req)=>{
    return json({success:true,updated_assessments:rows.length});
   }
   if(action==="prepare_assessment_submission_upload"){
-   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation Super Admin ne crée aucune copie."},403);
+   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne crée aucune copie."},403);
    const assessmentId=String(b.assessment_id||"");const questionId=String(b.question_id||"");const fileName=String(b.file_name||"fichier").replace(/[^a-zA-Z0-9._-]+/g,"-").slice(-160);const size=Math.max(0,Number(b.size_bytes||0));
    if(!assessmentId||!questionId||size>52428800)return json({success:false,error:size>52428800?"FILE_TOO_LARGE":"ASSESSMENT_QUESTION_REQUIRED"},400);
    const {data:a}=await sb.from("course_assessments").select("id,course_id").eq("id",assessmentId).maybeSingle();if(!a)return json({success:false,error:"ASSESSMENT_NOT_FOUND"},404);
@@ -784,7 +792,7 @@ Deno.serve(async(req)=>{
    return json({success:true,assessment:{...a,session,questions:qs||[],latest_attempt:last||null,correction,can_retry:!pending&&!remediationBlocked&&(!retryAt||retryAt<=now),retry_blocked_until:retryAt>now?last.retry_available_at:null,remediation_blocked:remediationBlocked}});
   }
   if(action==="learner_complete_remediation"){
-   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation Super Admin ne modifie aucune progression."},403);
+   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne modifie aucune progression."},403);
    const assessmentId=String(b.assessment_id||"");
    const {data:a}=await sb.from("course_assessments").select("course_id,remediation_mode,is_active").eq("id",assessmentId).maybeSingle();if(!a||a.is_active===false)return json({success:false,error:"ASSESSMENT_NOT_FOUND"},404);
    const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",a.course_id).maybeSingle();if(!enroll)return json({success:false,error:"NOT_ENROLLED"},403);
@@ -793,7 +801,7 @@ Deno.serve(async(req)=>{
    const {error}=await sb.from("assessment_attempts").update({remediation_completed_at:new Date().toISOString(),remediation_note:String(b.note||"Contenu révisé par l’apprenant")}).eq("id",last.id);if(error)throw error;return json({success:true});
   }
   if(action==="learner_submit_assessment"){
-   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation Super Admin ne crée aucune tentative."},403);
+   if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne crée aucune tentative."},403);
    const assessmentId=String(b.assessment_id||"");const {data:a,error:ae}=await sb.from("course_assessments").select("*").eq("id",assessmentId).eq("is_active",true).single();if(ae)throw ae;
    const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",a.course_id).maybeSingle();if(!enroll&&!isAdmin)return json({success:false,error:"NOT_ENROLLED"},403);
    const {data:last}=await sb.from("assessment_attempts").select("id,status,retry_available_at,remediation_required,remediation_completed_at,attempt_number").eq("assessment_id",assessmentId).eq("user_id",userId).order("attempt_number",{ascending:false}).limit(1).maybeSingle();
@@ -883,7 +891,7 @@ Deno.serve(async(req)=>{
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
    const rs=await roles(sb,userId);
    if(rs.includes("super_admin"))return json({success:false,error:"ADMIN_ASSISTED_ENTRY_NOT_APPLICABLE",message:"L’Administration crée directement les formations au nom d’Omnia Global Academy."},403);
-   const requesterRole=rs.includes("responsable_structure")||rs.includes("structure_admin")?"structure":"professeur";
+   const requesterRole=rs.includes("responsable_structure")||rs.includes("gestionnaire_structure")||rs.includes("structure_admin")?"structure":"professeur";
    const {data:existing}=await sb.from("assisted_course_requests").select("id,status").eq("course_id",courseId).in("status",["pending","in_progress"]).maybeSingle();if(existing)return json({success:false,error:"ACTIVE_REQUEST_EXISTS",message:"Une demande est déjà en cours."},409);
    const {data:reqRow,error}=await sb.from("assisted_course_requests").insert({course_id:courseId,requester_id:userId,requester_role:requesterRole,service_type:b.service_type||"without_certification",instructions:String(b.instructions||""),documents:Array.isArray(b.documents)?b.documents:[],status:"pending"}).select("*").single();if(error)throw error;
    await sb.from("courses").update({is_assisted:true,assisted_request_id:reqRow.id,assisted_status:"pending",updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"assisted_entry_requested",{request_id:reqRow.id,service_type:reqRow.service_type});return json({success:true,request:reqRow});
@@ -1006,7 +1014,7 @@ Deno.serve(async(req)=>{
     const pricing=await calculateCoursePricing(sb,courseId);
     await sb.from("courses").update({score_calcule:pricing.score,prix_provisoire_xof:pricing.price_xof,pricing_snapshot:pricing,pricing_status:"en_attente_validation_prix_admin",professor_price_accepted:false,is_free:false,updated_at:new Date().toISOString()}).eq("id",courseId);
     await log(sb,courseId,userId,"course_pricing_calculated",pricing);
-    return json({success:true,pricing_required:true,pricing_status:"en_attente_validation_prix_admin",score_calcule:pricing.score,prix_provisoire_xof:pricing.price_xof,message:"Le prix automatique et votre proposition ont été transmis au Super-admin."});
+    return json({success:true,pricing_required:true,pricing_status:"en_attente_validation_prix_admin",score_calcule:pricing.score,prix_provisoire_xof:pricing.price_xof,message:"Le prix automatique et votre proposition ont été transmis à l’Administration Omnia."});
    }
    const snapshot={course_id:courseId,modules:mods||[],lessons:lessons||[],blocks:blocks||[],assessments:assessments||[],captured_at:new Date().toISOString()};
    await sb.from("course_versions").upsert({course_id:courseId,version_label:c.current_version||"1.0",snapshot,status:"submitted",created_by:userId},{onConflict:"course_id,version_label"});

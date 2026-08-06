@@ -42,7 +42,7 @@ type Props = {
 export function getDashboardPath(roles: string[] = []) {
   if (roles.includes('super_admin')) return '/admin/dashboard';
   if (roles.includes('organizer') || roles.includes('organisateur')) return '/omnia-live/organisateur';
-  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/dashboard';
+  if (roles.includes('responsable_structure') || roles.includes('gestionnaire_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/dashboard';
   if (roles.includes('recruteur')) return '/talent/recruteur/dashboard';
   if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/dashboard';
   if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
@@ -98,7 +98,7 @@ export default function SubspaceHamburgerLayout({
   const dashboardPath = getDashboardPath(roles);
   const profilePath = getProfilePath(roles);
   const isSuperAdmin = roles.includes('super_admin');
-  const isOrganizer = roles.some(r => ['organizer', 'organisateur', 'professeur', 'formateur', 'responsable_structure', 'structure_admin', 'directeur'].includes(r))
+  const isOrganizer = roles.some(r => ['organizer', 'organisateur', 'professeur', 'formateur', 'responsable_structure', 'gestionnaire_structure', 'structure_admin', 'directeur'].includes(r))
     || Boolean((user as any)?.omnia_live_organizer);
   const resolvedSearchValue = searchValue ?? internalSearch;
 

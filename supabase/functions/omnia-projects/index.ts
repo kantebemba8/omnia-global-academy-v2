@@ -10,6 +10,7 @@ const corsHeaders = {
 
 const STRUCTURE_CREATOR_ROLES = new Set([
   "responsable_structure",
+  "gestionnaire_structure",
   "structure_admin",
   "gestionnaire_partenaire",
   "directeur",
@@ -103,7 +104,7 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
     sb.from("partner_managers")
       .select("organization_id,status,is_primary")
       .eq("user_id", userId)
-      .neq("status", "retire")
+      .in("status", ["actif", "active"])
       .order("is_primary", { ascending: false })
       .limit(1)
       .maybeSingle(),

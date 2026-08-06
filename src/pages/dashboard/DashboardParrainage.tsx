@@ -118,7 +118,7 @@ export function DashboardParrainage() {
       <div className="mx-auto max-w-3xl p-6 lg:p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Programme de parrainage</h1>
-          <p className="mt-1 text-sm text-gray-500">Le programme est entièrement piloté par le Super-admin.</p>
+          <p className="mt-1 text-sm text-gray-500">Le programme est entièrement piloté par l’Administration Omnia.</p>
         </div>
 
         {loading ? (
@@ -130,7 +130,7 @@ export function DashboardParrainage() {
             <Gift className="mx-auto h-10 w-10 text-gray-300" />
             <h2 className="mt-4 text-lg font-bold" style={{ color: '#002050' }}>Parrainage actuellement désactivé</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-gray-500">
-              Aucun lien, bonus ou récompense n’est actif pour le moment. Le programme apparaîtra automatiquement lorsque le Super-admin l’activera et définira ses montants.
+              Aucun lien, bonus ou récompense n’est actif pour le moment. Le programme apparaîtra automatiquement lorsque l’Administration Omnia l’activera et définira ses montants.
             </p>
           </div>
         ) : (

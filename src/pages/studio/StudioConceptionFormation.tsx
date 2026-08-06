@@ -975,7 +975,7 @@ export default function StudioConceptionFormation() {
 
                 {course?.admin_comment && (
                   <div className="p-4 rounded-xl border" style={{ background: '#FEF3C7', borderColor: '#FDE68A' }}>
-                    <p className="text-xs font-bold mb-1" style={{ color: '#92400E' }}>Message du super-admin</p>
+                    <p className="text-xs font-bold mb-1" style={{ color: '#92400E' }}>Message de l’Administration Omnia</p>
                     <p className="text-sm" style={{ color: '#92400E' }}>{course.admin_comment}</p>
                   </div>
                 )}
@@ -1404,7 +1404,7 @@ export default function StudioConceptionFormation() {
             <div className="p-6 grid gap-3">
               <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apercu`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Monitor size={18} style={{ color: '#BF8813' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Visiteur avant achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Fiche publique et introduction gratuite uniquement.</p></div></button>
               <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apprendre?preview=learner`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Users size={18} style={{ color: '#002050' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Apprenant après achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Lecteur complet avec modules, leçons et évaluations.</p></div></button>
-              <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apprendre?preview=admin`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><UserCheck size={18} style={{ color: '#1E7A52' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Contrôle créateur / Super Admin</p><p className="text-xs" style={{ color: '#6B7280' }}>Rendu complet destiné au contrôle qualité avant soumission.</p></div></button>
+              <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apprendre?preview=admin`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><UserCheck size={18} style={{ color: '#1E7A52' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Contrôle créateur / Administration Omnia</p><p className="text-xs" style={{ color: '#6B7280' }}>Rendu complet destiné au contrôle qualité avant soumission.</p></div></button>
             </div>
           </div>
         </div>

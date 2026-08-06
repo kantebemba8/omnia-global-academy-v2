@@ -1,11 +1,13 @@
 import { getSessionToken } from '../../lib/session';
+import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
 import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import {
-  Users, QrCode, Gift, Clock, CheckCircle,
+  Users, QrCode, BookOpen, Clock, CheckCircle,
   AlertCircle, PlusCircle, ChevronRight, RefreshCw,
   Building2, Shield, XCircle,
 } from 'lucide-react';
@@ -33,7 +35,7 @@ interface Structure {
 interface Stats {
   members: number;
   active_codes: number;
-  active_benefits: number;
+  courses: number;
 }
 
 interface Membership {
@@ -50,10 +52,11 @@ export default function StructureDashboard() {
   const [pendingMembers, setPendingMembers] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [membershipBusy, setMembershipBusy] = useState('');
 
  const token = () => getSessionToken() || '';
 
-  // Mode prévisualisation super admin
+  // Mode prévisualisation administrative
   const isPreview = new URLSearchParams(window.location.search).get('preview') === 'true' &&
     (() => { try { return JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false; } catch { return false; } })();
 
@@ -64,7 +67,7 @@ export default function StructureDashboard() {
         display_name: '', status_label: 'Lecture seule', logo_url: undefined,
         admin_comment: undefined,
       });
-      setStats({ members: 0, active_codes: 0, active_benefits: 0 });
+      setStats({ members: 0, active_codes: 0, courses: 0 });
       setPendingMembers([]);
       setLoading(false);
       return;
@@ -93,12 +96,12 @@ export default function StructureDashboard() {
       if (!data?.structure) {
         setError('no_structure');
         setStructure(null);
-        setStats(data?.stats ?? { members: 0, active_codes: 0, active_benefits: 0 });
+        setStats(data?.stats ?? { members: 0, active_codes: 0, courses: 0 });
         setPendingMembers([]);
         return;
       }
       setStructure(data.structure);
-      setStats(data.stats ?? { members: 0, active_codes: 0, active_benefits: 0 });
+      setStats(data.stats ?? { members: 0, active_codes: 0, courses: 0 });
       setPendingMembers(data.pending_members ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur réseau');
@@ -109,8 +112,32 @@ export default function StructureDashboard() {
 
   useEffect(() => { load(); }, []);
 
-  async function handleMembership(_membershipId: string, _decision: 'approve' | 'reject') {
-    setError('La gestion des rattachements est disponible dans le menu « Demandes de rattachement ».');
+  async function handleMembership(membershipId: string, decision: 'approve' | 'reject') {
+    if (!structure?.id || isPreview) return;
+    setMembershipBusy(membershipId);
+    setError('');
+    try {
+      const response = await fetch(ENDPOINTS.structureManage, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          action: 'handle_membership',
+          structure_id: structure.id,
+          membership_id: membershipId,
+          decision,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.success !== true) {
+        throw new Error(payload.message || payload.error || 'Décision impossible.');
+      }
+      setPendingMembers(current => current.filter(item => item.id !== membershipId));
+      setStats(current => current ? { ...current, members: decision === 'approve' ? current.members + 1 : current.members } : current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Décision impossible.');
+    } finally {
+      setMembershipBusy('');
+    }
   }
 
   // ── Pas encore de structure ──────────────────────────────────────────────
@@ -221,7 +248,7 @@ export default function StructureDashboard() {
             <AlertCircle size={18} style={{ color: '#1D4ED8', flexShrink: 0, marginTop: 1 }} />
             <div>
               <p className="font-bold text-sm" style={{ color: '#1D4ED8' }}>
-                Modification demandée par le Super Admin
+                Modification demandée par l’Administration Omnia
               </p>
               {structure.admin_comment && (
                 <p className="text-sm mt-1" style={{ color: '#1E40AF' }}>
@@ -240,8 +267,8 @@ export default function StructureDashboard() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <RoleDashboardStatCard label="Membres liés" value={stats.members} icon={Users} accent="#002050" onClick={() => navigate('/structure/membres')} />
             <RoleDashboardStatCard label="Codes actifs" value={stats.active_codes} icon={QrCode} accent="#1E7A52" onClick={() => navigate('/structure/codes')} />
-            <RoleDashboardStatCard label="Avantages actifs" value={stats.active_benefits} icon={Gift} accent="#BF8813" onClick={() => navigate('/structure/abonnements')} />
-            <RoleDashboardStatCard label="Demandes de rattachement" value={pendingMembers.length} icon={Clock} accent="#7C3AED" onClick={() => navigate('/structure/demandes')} />
+            <RoleDashboardStatCard label="Formations" value={stats.courses} icon={BookOpen} accent="#BF8813" onClick={() => navigate('/structure/formations')} />
+            <RoleDashboardStatCard label="Demandes de rattachement" value={pendingMembers.length} icon={Clock} accent="#7C3AED" onClick={() => navigate('/structure/rattachements')} />
           </div>
         )}
 
@@ -278,12 +305,12 @@ export default function StructureDashboard() {
                     </p>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => handleMembership(m.id, 'approve')}
+                    <button disabled={membershipBusy === m.id} onClick={() => handleMembership(m.id, 'approve')}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                       style={{ background: '#1E7A52' }}>
                       <CheckCircle size={12} /> Accepter
                     </button>
-                    <button onClick={() => handleMembership(m.id, 'reject')}
+                    <button disabled={membershipBusy === m.id} onClick={() => handleMembership(m.id, 'reject')}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border"
                       style={{ borderColor: '#FECACA', color: '#DC2626' }}>
                       <XCircle size={12} /> Refuser

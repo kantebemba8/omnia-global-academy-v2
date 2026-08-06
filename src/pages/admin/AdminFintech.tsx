@@ -136,7 +136,7 @@ export default function AdminFintech() {
         <header className="border-b border-gray-200 pb-5">
           <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Finance & Commercial</p>
           <h1 className="mt-1 text-2xl font-black" style={{ color: '#002050' }}>Configuration Fintech</h1>
-          <p className="mt-1 text-sm text-gray-500">Prestataire de paiement, retraits et programmes financiers contrôlés par le Super-admin.</p>
+          <p className="mt-1 text-sm text-gray-500">Prestataire de paiement, retraits et programmes financiers contrôlés par l’Administration Omnia.</p>
         </header>
 
         <section className="border-y border-gray-200 py-4">

@@ -32,7 +32,7 @@ export default function OmniaLivePropose() {
     <OmniaLiveLayout>
       <section className="mx-auto max-w-3xl px-4 py-12 md:px-8">
         <h1 className="text-3xl font-black" style={{ color: '#002050' }}>Proposer un contenu Omnia Live</h1>
-        <p className="mt-3 text-slate-600">Créez un brouillon. Aucun contenu ne sera publié avant validation du Super Admin et, pour un contenu payant, acceptation des conditions commerciales.</p>
+        <p className="mt-3 text-slate-600">Créez un brouillon. Aucun contenu ne sera publié avant validation de l’Administration Omnia et, pour un contenu payant, acceptation des conditions commerciales.</p>
         <div className="mt-8 space-y-5 rounded-2xl border bg-white p-6 shadow-sm">
           <label className="block">
             <span className="text-sm font-bold">Titre</span>

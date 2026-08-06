@@ -126,7 +126,7 @@ export default function TalentHome() {
           {[
             { icon: ShieldCheck, title: 'Profils sous contrôle', text: 'Seuls les profils rendus visibles par les apprenants apparaissent dans Talent.' },
             { icon: UsersRound, title: 'Une donnée unique', text: 'Le profil principal et Omnia Career alimentent la même fiche publique, sans double saisie.' },
-            { icon: Briefcase, title: 'Contact encadré', text: 'Les demandes de contact sont enregistrées et peuvent être suivies par le Super Admin.' },
+            { icon: Briefcase, title: 'Contact encadré', text: 'Les demandes de contact sont enregistrées et peuvent être suivies par l’Administration Omnia.' },
           ].map(item => (
             <div key={item.title} className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
               <item.icon size={20} color={GOLD} />

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { createAccessInvitation } from "../_shared/access-invitations.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -172,10 +173,6 @@ function codeMeta(row: Record<string, any>) {
   return row.advantages && typeof row.advantages === "object" ? row.advantages : {};
 }
 
-function isBenefitRow(row: Record<string, any>) {
-  return codeMeta(row).__omnia_kind === "structure_benefit";
-}
-
 function mapCode(row: Record<string, any>) {
   const meta = codeMeta(row);
   const type = meta.code_type || "rattachement_simple";
@@ -195,31 +192,6 @@ function mapCode(row: Record<string, any>) {
     pin: row.pin || "",
     status: expired ? "expired" : (CODE_STATUS_TO_UI[row.status] ?? row.status ?? "draft"),
     admin_comment: meta.admin_comment || row.refusal_reason || null,
-  };
-}
-
-function mapBenefit(row: Record<string, any>) {
-  const meta = codeMeta(row);
-  const storedStatus = meta.benefit_status || CODE_STATUS_TO_UI[row.status] || row.status || "draft";
-  return {
-    id: row.id,
-    structure_id: row.organization_id,
-    benefit_name: meta.benefit_name || row.code_name || "Avantage",
-    benefit_type: meta.benefit_type || "autre",
-    description: meta.description || "",
-    eligibility_conditions: meta.eligibility_conditions || "",
-    discount_percentage: Number(meta.discount_percentage || 0),
-    max_beneficiaries: Number(meta.max_beneficiaries || row.max_users || 0),
-    starts_at: meta.starts_at || null,
-    ends_at: meta.ends_at || row.expires_at || null,
-    structure_comment: meta.structure_comment || "",
-    free_access: !!meta.free_access,
-    omnia_career_access: !!meta.omnia_career_access,
-    cv_token_bonus: Number(meta.cv_token_bonus || 0),
-    status: storedStatus,
-    admin_comment: meta.admin_comment || row.refusal_reason || null,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
   };
 }
 
@@ -246,7 +218,7 @@ async function managerLink(sb: ReturnType<typeof createClient>, userId: string, 
   let query = sb.from("partner_managers")
     .select("organization_id,user_id,role_in_org,is_primary,status,permissions")
     .eq("user_id", userId)
-    .neq("status", "retire");
+    .in("status", ["actif", "active"]);
   if (organizationId) query = query.eq("organization_id", organizationId);
   const { data } = await query.order("is_primary", { ascending: false }).limit(1).maybeSingle();
   return data as Record<string, any> | null;
@@ -283,7 +255,7 @@ async function addRole(sb: ReturnType<typeof createClient>, userId: string, role
 }
 
 async function structureCapacity(sb: ReturnType<typeof createClient>, organizationId: string, benefitKey: string) {
-  const { data: manager } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true).neq("status", "retire").maybeSingle();
+  const { data: manager } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true).in("status", ["actif", "active"]).maybeSingle();
   if (!manager?.user_id) return null;
   const { data: definition } = await sb.from("commerce_benefit_definitions").select("id").eq("benefit_key", benefitKey).eq("is_active", true).maybeSingle();
   if (!definition) return null;
@@ -397,7 +369,6 @@ Deno.serve(async (req: Request) => {
             can_manage_members: true,
             can_approve_memberships: true,
             can_manage_structure_codes: true,
-            can_request_structure_benefits: true,
             can_view_statistics: true,
             can_view_logs: true,
             can_manage_notifications: true,
@@ -554,14 +525,11 @@ Deno.serve(async (req: Request) => {
         sb.from("partner_organizations").select("*").in("status", ["pending", "modification_requested"]),
         sb.from("partner_codes").select("*").in("status", ["pending"]),
       ]);
-      const benefits = (codeRows || []).filter(isBenefitRow).map(mapBenefit);
-      const codes = (codeRows || []).filter((row: any) => !isBenefitRow(row)).map(mapCode);
       return json({
         success: true,
         pending: {
           structures: (organizations || []).map(mapStructure),
-          codes,
-          benefits,
+          codes: (codeRows || []).map(mapCode),
         },
       });
     }
@@ -635,8 +603,13 @@ Deno.serve(async (req: Request) => {
       const membershipId = String(body.membership_id || "");
       const decision = String(body.decision || "");
       if (!membershipId || !["approve", "reject"].includes(decision)) return json({ error: "INVALID_REQUEST" }, 400);
-      const { data: membership } = await sb.from("partner_code_users").select("*").eq("id", membershipId).eq("organization_id", organizationId).maybeSingle();
+      const { data: membership, error: membershipError } = await sb.from("partner_code_users").select("*").eq("id", membershipId).eq("organization_id", organizationId).maybeSingle();
+      if (membershipError) throw membershipError;
       if (!membership) return json({ error: "MEMBERSHIP_NOT_FOUND" }, 404);
+      const pendingStatuses = ["pending", "requested", "en_attente"];
+      if (!pendingStatuses.includes(String(membership.status || ""))) {
+        return json({ error: "MEMBERSHIP_ALREADY_PROCESSED", message: "Cette demande a déjà été traitée." }, 409);
+      }
       const newStatus = decision === "approve" ? "validated" : "rejected";
       if (decision === "approve") {
         const capacity = await structureCapacity(sb, organizationId, "structure_member_limit");
@@ -645,8 +618,17 @@ Deno.serve(async (req: Request) => {
           if (Number(count || 0) >= capacity) return json({ error: "STRUCTURE_MEMBER_LIMIT_REACHED", message: "La capacité de membres prévue par l'abonnement de la Structure est atteinte." }, 409);
         }
       }
-      const { error } = await sb.from("partner_code_users").update({ status: newStatus }).eq("id", membershipId);
+      const { data: updatedMembership, error } = await sb.from("partner_code_users")
+        .update({ status: newStatus })
+        .eq("id", membershipId)
+        .eq("organization_id", organizationId)
+        .in("status", pendingStatuses)
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!updatedMembership) {
+        return json({ error: "MEMBERSHIP_ALREADY_PROCESSED", message: "Cette demande vient d’être traitée par une autre action." }, 409);
+      }
       if (decision === "approve" && membership.code_id) {
         const { data: code } = await sb.from("partner_codes").select("used_count,advantages").eq("id", membership.code_id).maybeSingle();
         if (code) {
@@ -665,14 +647,21 @@ Deno.serve(async (req: Request) => {
     if (action === "list_team") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
-      const { data: rows, error } = await sb.from("partner_managers").select("*").eq("organization_id", organizationId).order("is_primary", { ascending: false });
+      const [{ data: rows, error }, { data: invitations, error: invitationError }] = await Promise.all([
+        sb.from("partner_managers").select("*").eq("organization_id", organizationId).order("is_primary", { ascending: false }),
+        sb.from("platform_access_invitations")
+          .select("id,email,full_name,internal_role,permissions,status,created_at,expires_at,target_user_id")
+          .eq("organization_id", organizationId).eq("invitation_type", "structure_team").eq("status", "pending")
+          .order("created_at", { ascending: false }),
+      ]);
       if (error) throw error;
+      if (invitationError) throw invitationError;
       const ids = [...new Set((rows || []).map((r: any) => String(r.user_id)).filter(Boolean))];
       const { data: users } = ids.length ? await sb.from("users").select("id,full_name,email").in("id", ids) : { data: [] as any[] };
       const userMap = new Map((users || []).map((u: any) => [String(u.id), u]));
-      const team = (rows || []).map((row: any) => {
+      const statusMap: Record<string, string> = { actif: "active", active: "active", invite: "invited", invited: "invited", inactif: "inactive", inactive: "inactive", suspendu: "suspended", suspended: "suspended", retire: "removed", removed: "removed" };
+      const activeTeam = (rows || []).map((row: any) => {
         const user = userMap.get(String(row.user_id));
-        const statusMap: Record<string, string> = { actif: "active", active: "active", invite: "invited", invited: "invited", inactif: "inactive", inactive: "inactive", suspendu: "suspended", suspended: "suspended", retire: "removed", removed: "removed" };
         return {
           ...row,
           invited_email: user?.email || "",
@@ -683,43 +672,88 @@ Deno.serve(async (req: Request) => {
           users: user || null,
         };
       });
-      return json({ success: true, team });
+      const pendingTeam = (invitations || []).map((invitation: any) => ({
+        id: `invitation:${invitation.id}`,
+        user_id: invitation.target_user_id || null,
+        invited_email: invitation.email,
+        invited_name: invitation.full_name || "",
+        internal_role: invitation.internal_role || "lecture_seule",
+        permissions_json: invitation.permissions || {},
+        status: "invited",
+        is_primary: false,
+        invitation_expires_at: invitation.expires_at,
+        users: invitation.target_user_id ? { id: invitation.target_user_id, full_name: invitation.full_name || "", email: invitation.email } : null,
+      }));
+      return json({ success: true, team: [...activeTeam, ...pendingTeam] });
     }
 
     if (action === "invite_team_member") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
       const email = String(body.email || "").trim().toLowerCase();
+      const fullName = [body.firstname, body.lastname].map(value => String(value || "").trim()).filter(Boolean).join(" ") || String(body.full_name || "").trim();
       if (!email) return json({ error: "EMAIL_REQUIRED" }, 400);
       const managerCapacity = await structureCapacity(sb, organizationId, "structure_manager_limit");
       if (managerCapacity !== null) {
-        const { count } = await sb.from("partner_managers").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["actif", "active", "invite", "invited"]);
-        if (Number(count || 0) >= managerCapacity) return json({ error: "STRUCTURE_MANAGER_LIMIT_REACHED", message: "La limite de gestionnaires prévue par l'abonnement est atteinte." }, 409);
+        const [{ count }, { count: pendingCount }] = await Promise.all([
+          sb.from("partner_managers").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["actif", "active"]),
+          sb.from("platform_access_invitations").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("invitation_type", "structure_team").eq("status", "pending"),
+        ]);
+        if (Number(count || 0) + Number(pendingCount || 0) >= managerCapacity) return json({ error: "STRUCTURE_MANAGER_LIMIT_REACHED", message: "La limite de gestionnaires prévue par l'abonnement est atteinte." }, 409);
       }
-      const { data: user } = await sb.from("users").select("id,full_name,email").ilike("email", email).maybeSingle();
-      if (!user) return json({ error: "USER_ACCOUNT_REQUIRED", message: "Cette personne doit d'abord créer un compte Omnia avec cette adresse e-mail." }, 404);
-      const permissions = body.permissions && typeof body.permissions === "object" ? body.permissions : {};
-      const { data: member, error } = await sb.from("partner_managers").upsert({
-        organization_id: organizationId,
-        user_id: user.id,
-        role_in_org: body.internal_role || "lecture_seule",
-        is_primary: false,
-        status: "actif",
-        permissions,
-      }, { onConflict: "organization_id,user_id" }).select("*").single();
-      if (error) throw error;
-      return json({ success: true, member: { ...member, invited_email: user.email, invited_name: user.full_name, internal_role: member.role_in_org, permissions_json: member.permissions, status: "active" } });
+      const permissions = body.permissions && typeof body.permissions === "object" ? body.permissions as Record<string, boolean> : {};
+      try {
+        const result = await createAccessInvitation(sb, {
+          invitationType: "structure_team",
+          email,
+          fullName,
+          organizationId,
+          invitedBy: session.userId,
+          internalRole: String(body.internal_role || "lecture_seule"),
+          permissions,
+          message: String(body.message || "").trim() || null,
+        });
+        return json({
+          success: true,
+          invitation: result.invitation,
+          invitation_url: result.invitationUrl,
+          email_sent: result.emailSent,
+          account_exists: result.accountExists,
+          member: {
+            id: `invitation:${result.invitation.id}`,
+            invited_email: email,
+            invited_name: fullName,
+            internal_role: result.invitation.internal_role,
+            permissions_json: permissions,
+            status: "invited",
+          },
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : String(error);
+        if (code === "PROTECTED_ACCOUNT") return json({ error: code, message: "Ce compte système protégé ne peut pas rejoindre une équipe Structure." }, 403);
+        if (code === "INVALID_EMAIL") return json({ error: code, message: "L’adresse e-mail est invalide." }, 400);
+        throw error;
+      }
     }
 
     if (action === "remove_team_member") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
       const memberId = String(body.member_id || "");
-      const { data: row } = await sb.from("partner_managers").select("is_primary").eq("id", memberId).eq("organization_id", organizationId).maybeSingle();
+      if (memberId.startsWith("invitation:")) {
+        const invitationId = memberId.slice("invitation:".length);
+        const { error } = await sb.from("platform_access_invitations").update({ status: "revoked", updated_at: new Date().toISOString() })
+          .eq("id", invitationId).eq("organization_id", organizationId).eq("invitation_type", "structure_team").eq("status", "pending");
+        if (error) throw error;
+        return json({ success: true, invitation_revoked: true });
+      }
+      const { data: row } = await sb.from("partner_managers").select("is_primary,user_id").eq("id", memberId).eq("organization_id", organizationId).maybeSingle();
       if (!row) return json({ error: "MEMBER_NOT_FOUND" }, 404);
       if (row.is_primary) return json({ error: "PRIMARY_MANAGER_CANNOT_BE_REMOVED" }, 403);
       const { error } = await sb.from("partner_managers").update({ status: "retire" }).eq("id", memberId).eq("organization_id", organizationId);
       if (error) throw error;
+      const { count } = await sb.from("partner_managers").select("id", { count: "exact", head: true }).eq("user_id", row.user_id).in("status", ["actif", "active"]);
+      if (!Number(count || 0)) await sb.from("user_roles").delete().eq("user_id", row.user_id).eq("role", "gestionnaire_structure");
       return json({ success: true });
     }
 
@@ -728,7 +762,7 @@ Deno.serve(async (req: Request) => {
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_codes"))) return json({ error: "FORBIDDEN" }, 403);
       const { data, error } = await sb.from("partner_codes").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false });
       if (error) throw error;
-      return json({ success: true, codes: (data || []).filter((row: any) => !isBenefitRow(row)).map(mapCode) });
+      return json({ success: true, codes: (data || []).map(mapCode) });
     }
 
     if (action === "create_code") {
@@ -772,7 +806,7 @@ Deno.serve(async (req: Request) => {
       const codeId = String(body.code_id || "");
       const decision = String(body.decision || "");
       const { data: current } = await sb.from("partner_codes").select("*").eq("id", codeId).maybeSingle();
-      if (!current || isBenefitRow(current)) return json({ error: "CODE_NOT_FOUND" }, 404);
+      if (!current) return json({ error: "CODE_NOT_FOUND" }, 404);
       const statusMap: Record<string, string> = { activate: "validated", reject: "refused", suspend: "suspended", deactivate: "draft" };
       if (!statusMap[decision]) return json({ error: "INVALID_DECISION" }, 400);
       const meta = { ...codeMeta(current), admin_comment: body.admin_comment || null };
@@ -792,7 +826,7 @@ Deno.serve(async (req: Request) => {
       if (!codeValue) return json({ error: "CODE_REQUIRED" }, 400);
       const { data: code, error } = await sb.from("partner_codes").select("*").eq("code", codeValue).maybeSingle();
       if (error) throw error;
-      if (!code || isBenefitRow(code)) return json({ error: "INVALID_CODE", message: "Code structure invalide." }, 400);
+      if (!code) return json({ error: "INVALID_CODE", message: "Code structure invalide." }, 400);
       if (code.pin && String(body.pin || "").trim() !== String(code.pin)) return json({ error: "INVALID_PIN", message: "Le PIN est incorrect." }, 400);
       if (!["validated", "active"].includes(String(code.status))) return json({ error: "CODE_NOT_ACTIVE", message: "Ce code n'est pas actif." }, 400);
       if (code.expires_at && Date.parse(code.expires_at) < Date.now()) return json({ error: "CODE_EXPIRED", message: "Ce code a expiré." }, 400);
@@ -819,80 +853,6 @@ Deno.serve(async (req: Request) => {
         message: needsValidation ? "Votre demande de rattachement a été envoyée à la Structure." : "Votre rattachement à la Structure est actif.",
       });
     }
-
-    if (action === "list_benefits") {
-      const organizationId = String(body.structure_id || "");
-      if (!(await requireStructureAccess(sb, session, organizationId, "can_request_structure_benefits"))) return json({ error: "FORBIDDEN" }, 403);
-      const { data, error } = await sb.from("partner_codes").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false });
-      if (error) throw error;
-      return json({ success: true, benefits: (data || []).filter(isBenefitRow).map(mapBenefit) });
-    }
-
-    if (action === "propose_benefit") {
-      const organizationId = String(body.structure_id || "");
-      if (!(await requireStructureAccess(sb, session, organizationId, "can_request_structure_benefits"))) return json({ error: "FORBIDDEN" }, 403);
-      if (!String(body.benefit_name || "").trim()) return json({ error: "BENEFIT_NAME_REQUIRED" }, 400);
-      const meta = {
-        __omnia_kind: "structure_benefit",
-        benefit_status: "pending_admin_validation",
-        benefit_name: body.benefit_name,
-        benefit_type: body.benefit_type || "autre",
-        description: body.description || "",
-        eligibility_conditions: body.eligibility_conditions || "",
-        discount_percentage: Number(body.discount_percentage || 0),
-        max_beneficiaries: Number(body.max_beneficiaries || 0),
-        starts_at: body.starts_at || null,
-        ends_at: body.ends_at || null,
-        structure_comment: body.structure_comment || "",
-        free_access: !!body.free_access,
-        omnia_career_access: !!body.omnia_career_access,
-        cv_token_bonus: Number(body.cv_token_bonus || 0),
-        admin_comment: null,
-      };
-      const { data, error } = await sb.from("partner_codes").insert({
-        organization_id: organizationId,
-        created_by: session.userId,
-        code_name: String(body.benefit_name),
-        code: generateCode("BEN"),
-        pin: generatePin(),
-        max_users: Number(body.max_beneficiaries || 0) || 999999,
-        expires_at: body.ends_at || null,
-        advantages: meta,
-        requires_manual_validation: true,
-        qr_code_enabled: false,
-        status: "pending",
-      }).select("*").single();
-      if (error) throw error;
-      return json({ success: true, benefit: mapBenefit(data) });
-    }
-
-    if (action === "admin_validate_benefit") {
-      if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
-      const benefitId = String(body.benefit_id || "");
-      const decision = String(body.decision || "");
-      const { data: current } = await sb.from("partner_codes").select("*").eq("id", benefitId).maybeSingle();
-      if (!current || !isBenefitRow(current)) return json({ error: "BENEFIT_NOT_FOUND" }, 404);
-      const statusMap: Record<string, { db: string; ui: string }> = {
-        validate: { db: "validated", ui: "validated" },
-        activate: { db: "validated", ui: "active" },
-        reject: { db: "refused", ui: "rejected" },
-        suspend: { db: "suspended", ui: "suspended" },
-        request_changes: { db: "draft", ui: "changes_requested" },
-      };
-      const target = statusMap[decision];
-      if (!target) return json({ error: "INVALID_DECISION" }, 400);
-      const meta = { ...codeMeta(current), benefit_status: target.ui, admin_comment: body.admin_comment || null };
-      const patch: Record<string, unknown> = { status: target.db, advantages: meta, updated_at: new Date().toISOString() };
-      if (decision === "activate" || decision === "validate") {
-        patch.validated_by = session.userId;
-        patch.validated_at = new Date().toISOString();
-      }
-      if (decision === "reject") patch.refusal_reason = body.admin_comment || null;
-      const { data, error } = await sb.from("partner_codes").update(patch).eq("id", benefitId).select("*").single();
-      if (error) throw error;
-      return json({ success: true, benefit: mapBenefit(data) });
-    }
-
 
 
     // Programme 3 / GM2 — organisation, cohortes et formations obligatoires

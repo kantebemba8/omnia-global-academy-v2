@@ -266,7 +266,7 @@ export function DashboardProfil() {
       if (!response.ok || !payload.success) {
         const messages: Record<string, string> = {
           INVALID_PASSWORD: 'Le mot de passe actuel est incorrect.',
-          LAST_SUPER_ADMIN_PROTECTED: 'Le dernier Super-admin actif ne peut pas supprimer son compte.',
+          LAST_SUPER_ADMIN_PROTECTED: 'Le compte système de l’Administration Omnia ne peut pas supprimer son compte.',
           DEMO_ACCOUNT_PROTECTED: 'Le compte de démonstration ne peut pas être supprimé.',
           DELETION_CONFIRMATION_REQUIRED: 'La confirmation de suppression est invalide.',
         };

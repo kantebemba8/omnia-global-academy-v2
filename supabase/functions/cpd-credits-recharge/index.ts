@@ -58,7 +58,7 @@ Deno.serve(async req=>{
 
   const {data:u}=await sb.from("users").select("full_name,email").eq("id",uid).maybeSingle();
   const {error:historyError}=await sb.from("cpd_credit_transactions").insert({
-    credits_added:add,created_by:uid,operator_name:u?.full_name||u?.email||"Super-admin"
+    credits_added:add,created_by:uid,operator_name:u?.full_name||u?.email||"Administration Omnia"
   });
   if(historyError)throw historyError;
 

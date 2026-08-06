@@ -21,7 +21,7 @@ export function SuperAdminPreviewBadge() {
       <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M14.7 6.3a4 4 0 0 0-5-5L7 4l3 3-2 2-3-3-2.7 2.7a4 4 0 0 0 5 5L17 23l6-6-8.3-10.7Z" />
       </svg>
-      <span>Mode aperçu Super-admin — la plateforme est en maintenance pour le public</span>
+      <span>Mode aperçu administratif — la plateforme est en maintenance pour le public</span>
     </div>
   );
 }

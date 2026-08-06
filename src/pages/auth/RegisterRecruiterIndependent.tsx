@@ -106,7 +106,7 @@ export function RegisterRecruiterIndependent() {
 
         <div className="flex items-start gap-3 border-y border-gray-200 py-3 text-sm text-gray-600">
           <ShieldCheck size={17} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
-          <p>Après la vérification du téléphone, le dossier sera soumis au Super-admin. L’espace recruteur sera activé uniquement après validation.</p>
+          <p>Après la vérification du téléphone, le dossier sera soumis à l’Administration Omnia. L’espace recruteur sera activé uniquement après validation.</p>
         </div>
 
         <button disabled={loading} className="w-full rounded-lg bg-[#002050] py-3 font-semibold text-white disabled:opacity-60">

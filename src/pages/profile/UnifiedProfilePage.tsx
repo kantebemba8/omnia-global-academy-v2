@@ -366,7 +366,7 @@ function accountImpactForRoles(roles: string[]) {
   const impacts = new Set<string>();
   if (roles.includes('apprenant')) impacts.add('Vos formations, progressions et espaces personnels deviennent inaccessibles pendant la suspension. Les certificats et preuves déjà émis restent conservés selon leurs règles.');
   if (roles.some(role => ['professeur', 'formateur', 'enseignant', 'etablissement_enseignant'].includes(role))) impacts.add('Vos formations publiées et les dossiers nécessaires aux apprenants ne sont pas supprimés automatiquement. Vous ne pourrez plus les gérer pendant la suspension.');
-  if (roles.some(role => ['structure', 'responsable_structure', 'gestionnaire_partenaire'].includes(role))) impacts.add('La suspension de votre compte personnel ne supprime pas la Structure. Vérifiez qu’un autre responsable peut assurer la continuité avant une suppression définitive.');
+  if (roles.some(role => ['structure', 'responsable_structure', 'gestionnaire_structure', 'gestionnaire_partenaire'].includes(role))) impacts.add('La suspension de votre compte personnel ne supprime pas la Structure. Vérifiez qu’un autre responsable peut assurer la continuité avant une suppression définitive.');
   if (roles.includes('recruteur_structure')) impacts.add('La suspension retire votre accès délégué au recrutement sans supprimer la Structure ni ses données. Le responsable de la Structure conserve la continuité des opérations.');
   if (roles.some(role => ['organisateur', 'organizer'].includes(role))) impacts.add('Les événements, inscriptions et documents déjà produits restent conservés. Vous perdez temporairement la gestion des événements à venir.');
   if (roles.includes('moderateur')) impacts.add('Les journaux de modération nécessaires à la sécurité sont conservés sous une forme pseudonymisée.');
@@ -435,7 +435,7 @@ export default function UnifiedProfilePage() {
   const roles = bundle?.roles || [];
   const isAdministration = roles.includes('super_admin');
   const roleLabels = useMemo(
-    () => isAdministration ? ['Administration'] : [...new Set(roles.filter(role => role !== 'recruteur_structure').map(role => ROLE_LABELS[role] || role))],
+    () => isAdministration ? ['Administration'] : [...new Set(roles.filter(role => !['recruteur_structure', 'gestionnaire_structure'].includes(role)).map(role => ROLE_LABELS[role] || role))],
     [isAdministration, roles],
   );
   const isLearner = roles.includes('apprenant');
@@ -446,6 +446,7 @@ export default function UnifiedProfilePage() {
   const isCoach = roles.includes('coach');
   const isStructure = roles.includes('structure');
   const hasStructureRecruitmentDelegation = roles.includes('recruteur_structure');
+  const hasStructureManagementDelegation = roles.includes('gestionnaire_structure');
   const roleVisibilityItems = useMemo<VisibilityItem[]>(() => {
     const fields: ProfileVisibleField[] = [];
     if (isLearner) fields.push('education_level', 'field_of_study', 'career_goal', 'target_roles', 'target_sectors', 'contract_preferences');
@@ -672,7 +673,7 @@ export default function UnifiedProfilePage() {
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => void selectAvatar(event.target.files?.[0])} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full bg-[#002050]/5 px-3 py-1 text-xs font-bold text-[#002050]">{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}</div>
+            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full bg-[#002050]/5 px-3 py-1 text-xs font-bold text-[#002050]">{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}{hasStructureManagementDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès interne à une Structure</span>}</div>
             <h1 className="mt-3 truncate text-2xl font-black text-[#002050] sm:text-3xl">{profileForm.display_name || userForm.full_name}</h1>
             <p className="mt-1 text-sm text-slate-600">{isAdministration ? 'Compte interne de gestion de la plateforme.' : (profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.')}</p>
             <div className="mt-4 flex flex-wrap gap-2">

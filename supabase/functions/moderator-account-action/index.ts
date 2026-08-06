@@ -169,7 +169,7 @@ Deno.serve(async (req: Request) => {
     }).select("id").single();
     if (insertError) throw insertError;
 
-    return json({ success: true, request_id: created.id, message: "Demande transmise au Super-admin." }, 201);
+    return json({ success: true, request_id: created.id, message: "Demande transmise à l’Administration Omnia." }, 201);
   } catch (error) {
     console.error("moderator-account-action", error);
     return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : String(error) }, 500);

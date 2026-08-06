@@ -116,7 +116,7 @@ function UserTable({
                         onClick={() => onRequest(u, 'suspend')}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
                       >
-                        <Send className="w-3.5 h-3.5" /> Soumettre au Super-admin
+                        <Send className="w-3.5 h-3.5" /> Soumettre à l’Administration Omnia
                       </button>
                     )}
                     {u.status === 'suspendu' && (
@@ -124,7 +124,7 @@ function UserTable({
                         onClick={() => onRequest(u, 'reactivate')}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
                       >
-                        <Send className="w-3.5 h-3.5" /> Soumettre au Super-admin
+                        <Send className="w-3.5 h-3.5" /> Soumettre à l’Administration Omnia
                       </button>
                     )}
                     {u.status === 'en_attente_validation' && (
@@ -132,7 +132,7 @@ function UserTable({
                         onClick={() => onRequest(u, 'validate_kyc')}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
                       >
-                        <Send className="w-3.5 h-3.5" /> Soumettre au Super-admin
+                        <Send className="w-3.5 h-3.5" /> Soumettre à l’Administration Omnia
                       </button>
                     )}
                   </div>
@@ -217,7 +217,7 @@ export default function ModerateurUtilisateurs() {
       if (!res.ok) throw new Error(data.message || data.error || 'Échec de la soumission');
       setRequestModal(null);
       setReason('');
-      showToast(data.message || 'Votre demande a été soumise au Super-admin pour validation.');
+      showToast(data.message || 'Votre demande a été soumise à l’Administration Omnia pour validation.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Erreur lors de la soumission. Réessayez.', false);
     } finally {
@@ -243,13 +243,13 @@ export default function ModerateurUtilisateurs() {
 
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Consultation des utilisateurs</h1>
-          <p className="text-gray-500 text-sm mt-1">Consultation uniquement — les actions sont soumises au Super-admin pour validation</p>
+          <p className="text-gray-500 text-sm mt-1">Consultation uniquement — les actions sont soumises à l’Administration Omnia pour validation</p>
         </div>
 
         <div className="rounded-xl p-3 bg-blue-50 border border-blue-100 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700">
-            Aucune action directe n'est possible sur les comptes. Utilisez "Soumettre au Super-admin" pour proposer une action. Elle sera exécutée uniquement après validation du Super-admin.
+            Aucune action directe n'est possible sur les comptes. Utilisez "Soumettre à l’Administration Omnia" pour proposer une action. Elle sera exécutée uniquement après validation de l’Administration Omnia.
           </p>
         </div>
 
@@ -301,7 +301,7 @@ export default function ModerateurUtilisateurs() {
           <div role="dialog" aria-modal="true" aria-labelledby="moderator-request-title" className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
             <div>
               <h3 id="moderator-request-title" className="font-bold text-lg" style={{ color: '#002050' }}>
-                Soumettre une demande au Super-admin
+                Soumettre une demande à l’Administration Omnia
               </h3>
               <p className="text-sm text-gray-500 mt-1">
                 Action proposée : <strong>{ACTION_LABELS[requestModal.actionType] ?? requestModal.actionType}</strong> pour{' '}
@@ -311,7 +311,7 @@ export default function ModerateurUtilisateurs() {
 
             <div className="rounded-lg p-3 bg-amber-50 border border-amber-100">
               <p className="text-xs text-amber-700">
-                Cette action ne sera pas exécutée immédiatement. Elle sera soumise au Super-admin qui décidera de l'approuver ou de la rejeter.
+                Cette action ne sera pas exécutée immédiatement. Elle sera soumise à l’Administration Omnia qui décidera de l'approuver ou de la rejeter.
               </p>
             </div>
 

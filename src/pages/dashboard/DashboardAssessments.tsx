@@ -68,7 +68,7 @@ export default function DashboardAssessments() {
     setSaving(sessionId); setError(''); setSuccess('');
     try {
       await call('learner_request_accommodation', { session_id: sessionId, extra_time_minutes: Number(draft.extra_time_minutes || 0), break_minutes: Number(draft.break_minutes || 0), reason: draft.reason });
-      setSuccess('Votre demande d’aménagement a été transmise au Super Admin.'); setOpenAccommodation(''); await load();
+      setSuccess('Votre demande d’aménagement a été transmise à l’Administration Omnia.'); setOpenAccommodation(''); await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Demande impossible.'); }
     finally { setSaving(''); }
   }

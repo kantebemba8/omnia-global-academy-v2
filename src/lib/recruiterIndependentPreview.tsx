@@ -8,7 +8,7 @@ export type AdminPreviewSpace = {
 };
 
 /**
- * Prévisualisation Super-admin de l'espace Recruteur indépendant.
+ * Prévisualisation administrative Omnia de l'espace Recruteur indépendant.
  *
  * Ce fichier ne modifie aucun autre rôle ni aucun autre écran.
  */

@@ -18,10 +18,10 @@ const LABELS:Record<string,string>={
  default_max_participants:'Participants maximum par défaut',
  max_speakers_per_event:'Intervenants maximum par événement',
  max_sessions_per_training:'Sessions maximum par formation Live',
- media_review_required:'Validation Super Admin des médias obligatoire',
+ media_review_required:'Validation de l’Administration Omnia obligatoire pour les médias',
  commercial_terms_required_for_paid:'Conditions commerciales obligatoires pour les Lives payants',
  review_required_before_publish:'Validation obligatoire avant publication',
- cancellation_admin_approval_required:'Validation Super Admin obligatoire pour une annulation',
+ cancellation_admin_approval_required:'Validation de l’Administration Omnia obligatoire pour une annulation',
 };
 
 const HELP:Record<string,string>={
@@ -32,9 +32,9 @@ const HELP:Record<string,string>={
  default_max_participants:'Capacité proposée par défaut pour un Live. Elle peut ensuite être limitée selon le Pack ou l’événement.',
  max_speakers_per_event:'Nombre maximal d’intervenants autorisés dans un même événement.',
  max_sessions_per_training:'Nombre maximal de sessions d’une formation synchrone multi-sessions.',
- media_review_required:'Si activé, les vidéos et replays doivent être validés par le Super Admin avant publication.',
+ media_review_required:'Si activé, les vidéos et replays doivent être validés par l’Administration Omnia avant publication.',
  commercial_terms_required_for_paid:'Si activé, un contenu payant ne peut pas être publié tant que prix, commission et conditions commerciales ne sont pas validés.',
- review_required_before_publish:'Impose la validation Super Admin aux contenus proposés par les organisateurs. Les créations officielles OGA du Super Admin suivent leur workflow administratif.',
+ review_required_before_publish:'Impose la validation de l’Administration Omnia aux contenus proposés par les organisateurs. Les créations officielles OGA suivent leur workflow administratif.',
  cancellation_admin_approval_required:'Empêche un organisateur d’annuler directement un événement sans contrôle administratif.',
 };
 

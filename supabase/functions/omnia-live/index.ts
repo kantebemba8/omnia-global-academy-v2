@@ -142,6 +142,7 @@ function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
     "professeur",
     "etablissement_directeur",
     "responsable_structure",
+    "gestionnaire_structure",
     "structure_admin",
     "directeur",
     "gestionnaire_partenaire",
@@ -200,6 +201,7 @@ function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
       [
         "etablissement_directeur",
         "responsable_structure",
+        "gestionnaire_structure",
         "structure_admin",
         "directeur",
         "gestionnaire_partenaire",
@@ -7924,7 +7926,7 @@ async function adminCreateLive(
   if (publishNow) {
     payload.approved_at = now;
     payload.published_at = now;
-    payload.admin_review_message = "Créé et publié directement par le Super Admin au nom d’Omnia Global Academy.";
+    payload.admin_review_message = "Créé et publié directement par l’Administration Omnia au nom d’Omnia Global Academy.";
   }
 
   const { data: event, error } = await sb.from("live_events").insert(payload).select("*").single();
@@ -7951,8 +7953,8 @@ async function adminCreateLive(
     fromStatus: null,
     toStatus: event.status,
     message: publishNow
-      ? "Créé et publié directement par le Super Admin au nom d’Omnia Global Academy."
-      : "Brouillon créé par le Super Admin.",
+      ? "Créé et publié directement par l’Administration Omnia au nom d’Omnia Global Academy."
+      : "Brouillon créé par l’Administration Omnia.",
     snapshot: event,
   });
 
@@ -7975,7 +7977,7 @@ async function adminDeleteSuspended(
 ) {
   try {
     if (!ctx || !isSuperAdmin(ctx)) {
-      return json({ error: "FORBIDDEN", message: "Accès Super Admin requis." }, 403);
+      return json({ error: "FORBIDDEN", message: "Accès administratif Omnia requis." }, 403);
     }
 
     const url = new URL(req.url);

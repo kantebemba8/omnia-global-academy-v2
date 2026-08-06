@@ -55,7 +55,7 @@ export default function AdminCpdCredits(){
      </section>
 
      <section><h2 className="font-bold mb-3" style={{color:BLUE}}>Historique des crédits enregistrés</h2>
-       {data?.history?.length?<div className="border-t border-gray-200">{data.history.map((x:any)=><div key={x.id} className="grid grid-cols-[1fr_auto] py-3 border-b border-gray-100"><div><p className="text-sm text-gray-700">+{x.credits_added} crédits</p><p className="text-xs text-gray-400">{new Date(x.created_at).toLocaleString('fr-FR')}</p></div><span className="text-xs text-gray-500">{x.operator_name||'Super-admin'}</span></div>)}</div>:<p className="text-sm text-gray-500">Aucun achat de crédits enregistré.</p>}
+       {data?.history?.length?<div className="border-t border-gray-200">{data.history.map((x:any)=><div key={x.id} className="grid grid-cols-[1fr_auto] py-3 border-b border-gray-100"><div><p className="text-sm text-gray-700">+{x.credits_added} crédits</p><p className="text-xs text-gray-400">{new Date(x.created_at).toLocaleString('fr-FR')}</p></div><span className="text-xs text-gray-500">{x.operator_name||'Administration Omnia'}</span></div>)}</div>:<p className="text-sm text-gray-500">Aucun achat de crédits enregistré.</p>}
      </section>
    </>}
  </div></AdminLayout>

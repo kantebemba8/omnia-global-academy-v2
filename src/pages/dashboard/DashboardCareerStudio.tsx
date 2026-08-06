@@ -352,7 +352,7 @@ export default function DashboardCareerStudio() {
   }
 
   async function deleteDoc(docId: string) {
-    if (previewMode) { showToast('La prévisualisation Super-admin est en lecture seule.'); return; }
+    if (previewMode) { showToast('La prévisualisation administrative Omnia est en lecture seule.'); return; }
     if (!confirm('Supprimer ce document ?')) return;
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=save`, {

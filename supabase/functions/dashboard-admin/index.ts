@@ -107,19 +107,15 @@ function accountReasonLabel(value: unknown) {
 const PRIMARY_ROLE_GROUPS = [
   { key: "apprenant", label: "Apprenants", aliases: ["apprenant"] },
   { key: "professeur", label: "Professeurs", aliases: ["professeur", "formateur", "enseignant", "etablissement_enseignant"] },
-  { key: "structure", label: "Structures", aliases: ["structure", "responsable_structure", "gestionnaire_partenaire", "structure_admin", "directeur", "etablissement_directeur"] },
+  { key: "structure", label: "Structures", aliases: ["structure", "responsable_structure", "directeur", "etablissement_directeur"] },
   { key: "organisateur", label: "Organisateurs Omnia Live", aliases: ["organisateur", "organizer"] },
   { key: "moderateur", label: "Modérateurs", aliases: ["moderateur", "moderator"] },
   { key: "recruteur", label: "Recruteurs", aliases: ["recruteur", "recruteur_independant"] },
   { key: "coach", label: "Coachs", aliases: ["coach"] },
 ] as const;
 
-const DELEGATED_ACCESS_GROUPS = [
-  { key: "recruteur_structure", label: "Accès recrutement rattachés aux Structures", aliases: ["recruteur_structure"] },
-] as const;
-
 function roleGroup(key: string) {
-  return [...PRIMARY_ROLE_GROUPS, ...DELEGATED_ACCESS_GROUPS].find((group) => group.key === key);
+  return PRIMARY_ROLE_GROUPS.find((group) => group.key === key);
 }
 
 
@@ -658,7 +654,7 @@ Deno.serve(async (req: Request) => {
       ),
       rows(sb, "wallets", "balance_xof"),
       rows(sb, "user_sessions", "user_id,created_at", q => q.gte("created_at", dauStart.toISOString())),
-      countRows(sb, "users", q => q.gte("created_at", todayStart.toISOString())),
+      countRows(sb, "users", q => q.gte("created_at", todayStart.toISOString()).neq("id", adminId)),
       countRows(sb, "courses", q => q.eq("studio_status", "pending_validation").gte("submitted_at", todayStart.toISOString())),
       countRows(sb, "live_events", q => q.gte("created_at", todayStart.toISOString())),
       countRows(sb, "payout_requests", q => q.gte("requested_at", todayStart.toISOString())),
@@ -719,7 +715,7 @@ Deno.serve(async (req: Request) => {
       : Number(walletBalance ?? 0) + Number(organizerDue ?? 0);
 
     const dau = activeSessions
-      ? new Set(activeSessions.map((row: any) => row.user_id).filter(Boolean)).size
+      ? new Set(activeSessions.map((row: any) => row.user_id).filter((id: unknown) => Boolean(id) && String(id) !== adminId)).size
       : null;
 
     const salesMap: Record<string, { amount_xof: number; count: number }> = {};
@@ -765,7 +761,12 @@ Deno.serve(async (req: Request) => {
 
     // Seuls les rôles officiels sont exposés dans le Dashboard.
     // Les anciens alias restent regroupés silencieusement pour la compatibilité des comptes existants.
-    const allUserIds = [...new Set((userRoles ?? []).map((row:any) => row.user_id).filter(Boolean))];
+    const protectedUserIds = new Set((userRoles ?? [])
+      .filter((row:any) => String(row.role) === "super_admin")
+      .map((row:any) => String(row.user_id)));
+    const allUserIds = [...new Set((userRoles ?? [])
+      .map((row:any) => row.user_id)
+      .filter((id: unknown) => Boolean(id) && !protectedUserIds.has(String(id))))];
     const userRows = allUserIds.length
       ? await rows(sb, "users", "id,full_name,email", query => query.in("id", allUserIds))
       : [];
@@ -776,7 +777,7 @@ Deno.serve(async (req: Request) => {
         (userRoles ?? [])
           .filter((row:any) => group.aliases.includes(row.role))
           .map((row:any) => row.user_id)
-          .filter(Boolean),
+          .filter((id: unknown) => Boolean(id) && !protectedUserIds.has(String(id))),
       )];
       return {
         role: group.label,

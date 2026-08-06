@@ -365,7 +365,7 @@ export function CoursLecteur() {
   }, [user?.id, courseId, resilientMessage]);
 
   useEffect(() => {
-    // L'aperçu Super Admin reste accessible avec la session active et ne doit pas
+    // L'aperçu Administration Omnia reste accessible avec la session active et ne doit pas
     // rediriger vers la connexion pendant l'initialisation du hook d'authentification.
     if (!authLoading && !user && !isAdminPreview) navigate('/connexion');
   }, [authLoading, user, navigate, isAdminPreview]);
@@ -745,11 +745,11 @@ export function CoursLecteur() {
         <button
           onClick={() => navigate(isAdminPreview ? '/admin/dashboard' : `/cours/${courseId}`)}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
-          title={isAdminPreview ? 'Retour au dashboard Super Admin' : 'Retour à la formation'}
-          aria-label={isAdminPreview ? 'Retour au dashboard Super Admin' : 'Retour à la formation'}
+          title={isAdminPreview ? 'Retour au Centre de pilotage Omnia' : 'Retour à la formation'}
+          aria-label={isAdminPreview ? 'Retour au Centre de pilotage Omnia' : 'Retour à la formation'}
         >
           <ArrowLeft size={18} style={{ color: '#FFFFFF' }} />
-          {isAdminPreview && <span className="hidden sm:inline text-xs font-semibold text-white">Dashboard Super Admin</span>}
+          {isAdminPreview && <span className="hidden sm:inline text-xs font-semibold text-white">Centre de pilotage Omnia</span>}
         </button>
         <button
           type="button"

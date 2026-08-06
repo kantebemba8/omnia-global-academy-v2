@@ -149,7 +149,7 @@ export default function ProjectDetail() {
       await reportProject(project.id, reportType, reportDescription.trim());
       setShowReport(false);
       setReportDescription('');
-      setMessage('Votre signalement a été transmis au Super Admin.');
+      setMessage('Votre signalement a été transmis à l’Administration Omnia.');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Le signalement n’a pas pu être envoyé.');
     } finally {
@@ -253,7 +253,7 @@ export default function ProjectDetail() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowReport(false); }}>
           <form onSubmit={submitReport} className="w-full max-w-xl bg-white p-6 sm:p-8" style={{ borderRadius: 20 }}>
             <h2 className="text-2xl font-bold" style={{ color: '#002050' }}>Signaler ce projet</h2>
-            <p className="mt-2 text-sm text-slate-600">Le signalement sera examiné par le Super Admin et restera associé à votre compte.</p>
+            <p className="mt-2 text-sm text-slate-600">Le signalement sera examiné par l’Administration Omnia et restera associé à votre compte.</p>
             <label className="mt-6 block"><span className="text-sm font-semibold text-slate-700">Motif</span><select value={reportType} onChange={event => setReportType(event.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }}><option value="misleading_information">Informations trompeuses</option><option value="unfunded_reward">Récompense non financée</option><option value="confidentiality">Confidentialité</option><option value="intellectual_property">Propriété intellectuelle</option><option value="abuse">Abus</option><option value="discrimination">Discrimination</option><option value="technical">Problème technique</option><option value="other">Autre</option></select></label>
             <label className="mt-5 block"><span className="text-sm font-semibold text-slate-700">Description *</span><textarea required value={reportDescription} onChange={event => setReportDescription(event.target.value)} rows={5} className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm" style={{ borderColor: '#D0D5DD' }} /></label>
             <div className="mt-7 flex justify-end gap-3"><button type="button" onClick={() => setShowReport(false)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#D0D5DD' }}>Annuler</button><button disabled={reporting} className="rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#002050' }}>{reporting ? 'Envoi...' : 'Envoyer le signalement'}</button></div>

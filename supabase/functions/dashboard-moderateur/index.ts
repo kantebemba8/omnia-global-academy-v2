@@ -52,7 +52,6 @@ const EMPTY_PERMS: Record<string, boolean> = {
   can_review_live_organizers: false,
   can_review_structure_requests: false,
   can_review_structure_codes: false,
-  can_review_structure_benefits: false,
   can_view_analytics: false,
 };
 
@@ -73,7 +72,7 @@ function normalizePermissions(row: Record<string, unknown> | null) {
   merged.can_validate_course_price = merged.can_recommend_course_price;
   merged.can_approve_transmit_course = merged.can_approve_transmit_course || merged.can_transmit_course_to_admin;
   merged.can_transmit_course_to_admin = merged.can_approve_transmit_course;
-  // Compatibilité historique uniquement. La validation des Structures reste réservée au Super-admin.
+  // Compatibilité historique uniquement. La validation des Structures reste réservée à l’Administration Omnia.
   merged.can_validate_structure_kyc = merged.can_validate_structure_kyc || merged.can_validate_establishment_kyc;
   merged.can_validate_establishment_kyc = merged.can_validate_structure_kyc;
   merged.can_request_account_suspension = merged.can_request_account_suspension || merged.can_suspend_account;
@@ -314,7 +313,7 @@ Deno.serve(async (req: Request) => {
       "can_moderate_forum", "can_moderate_jobs", "can_manage_support", "can_view_ai_conversations",
       "can_manage_reports", "can_review_live_events", "can_review_live_reports",
       "can_review_live_refunds", "can_review_live_organizers", "can_review_structure_requests",
-      "can_review_structure_codes", "can_review_structure_benefits", "can_view_analytics",
+      "can_review_structure_codes", "can_view_analytics",
     ];
 
     return json({

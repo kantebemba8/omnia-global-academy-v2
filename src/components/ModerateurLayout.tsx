@@ -67,7 +67,6 @@ const COMPLEMENTARY_KEYS: ModeratorPermissionKey[] = [
   'can_review_live_organizers',
   'can_review_structure_requests',
   'can_review_structure_codes',
-  'can_review_structure_benefits',
 ];
 
 function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNavGroup[] {

@@ -113,7 +113,7 @@ export default function ModerateurCours() {
         <div className="rounded-xl p-4 bg-amber-50 border border-amber-200 flex items-start gap-3">
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700">
-            Vous ne publiez jamais directement. Approuver = transmettre au Super-admin qui décide de la publication finale.
+            Vous ne publiez jamais directement. Approuver = transmettre à l’Administration Omnia qui décide de la publication finale.
           </p>
         </div>
 
@@ -177,7 +177,7 @@ export default function ModerateurCours() {
                           <button onClick={() => setModal({ course: c, action: 'transmit' })}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                             style={{ backgroundColor: '#1E7A52' }}>
-                            <Send className="w-3.5 h-3.5" /> Transmettre au Super-admin
+                            <Send className="w-3.5 h-3.5" /> Transmettre à l’Administration Omnia
                           </button>
                         )}
                         {perms?.can_reject_course && c.status === 'en_attente_validation_manuelle' && (
@@ -216,7 +216,7 @@ export default function ModerateurCours() {
                                 onClick={() => { setModal({ course: c, action: 'oral_recommend' }); setOralJustification(''); }}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-green-200 hover:bg-green-50 transition-colors"
                                 style={{ color: '#166534' }}>
-                                <Send className="w-3.5 h-3.5" /> Recommander au Super-admin
+                                <Send className="w-3.5 h-3.5" /> Recommander à l’Administration Omnia
                               </button>
                             )}
                           </div>
@@ -236,8 +236,8 @@ export default function ModerateurCours() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
               {modal.action === 'transmit' && (
                 <>
-                  <h3 className="font-bold text-lg" style={{ color: '#002050' }}>Transmettre au Super-admin</h3>
-                  <p className="text-sm text-gray-600">La formation <strong>{modal.course.title}</strong> sera transmise au Super-admin pour approbation finale et publication. Vous ne pouvez pas publier directement.</p>
+                  <h3 className="font-bold text-lg" style={{ color: '#002050' }}>Transmettre à l’Administration Omnia</h3>
+                  <p className="text-sm text-gray-600">La formation <strong>{modal.course.title}</strong> sera transmise à l’Administration Omnia pour approbation finale et publication. Vous ne pouvez pas publier directement.</p>
                   <div className="flex gap-3 justify-end pt-2">
                     <button onClick={() => setModal(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Annuler</button>
                     <button onClick={() => doAction(modal.course.id, 'transmit_to_admin')} disabled={submitting}
@@ -288,7 +288,7 @@ export default function ModerateurCours() {
                     <Mic className="w-5 h-5" style={{ color: '#1E7A52' }} />
                     <h3 className="font-bold text-lg" style={{ color: '#002050' }}>Recommander l'examen oral</h3>
                   </div>
-                  <p className="text-sm text-gray-600">Transmettez votre recommandation au Super-admin pour validation finale de l'examen oral de <strong>{modal.course.title}</strong>.</p>
+                  <p className="text-sm text-gray-600">Transmettez votre recommandation à l’Administration Omnia pour validation finale de l'examen oral de <strong>{modal.course.title}</strong>.</p>
                   <div>
                     <label className="text-xs font-medium text-gray-500 block mb-1">Justification (optionnel)</label>
                     <textarea value={oralJustification} onChange={(e) => setOralJustification(e.target.value)} rows={3}

@@ -227,10 +227,23 @@ export async function updateRecruitmentPermissions(userId: string, permissions: 
   return recruitmentRequest<{ success: true }>('update_team_permissions', { user_id: userId, permissions }, 'structure');
 }
 export async function createStructureRecruiter(input: {
-  full_name: string; email: string; phone_number: string; country_code?: string;
-  job_title?: string; role_label?: string; permissions?: Record<string, boolean>;
+  full_name: string;
+  email: string;
+  job_title?: string;
+  role_label?: string;
+  message?: string;
+  permissions?: Record<string, boolean>;
 }) {
-  return recruitmentRequest<{ success: true; member: any; temporary_password: string; email_sent: boolean }>('create_structure_recruiter', input, 'structure');
+  return recruitmentRequest<{
+    success: true;
+    invitation: { id: string; status: string; expires_at?: string | null };
+    invitation_url: string;
+    account_exists: boolean;
+    email_sent: boolean;
+  }>('create_structure_recruiter', input, 'structure');
+}
+export async function revokeStructureRecruiterInvitation(invitationId: string) {
+  return recruitmentRequest<{ success: true }>('revoke_structure_recruiter_invitation', { invitation_id: invitationId }, 'structure');
 }
 export async function setStructureRecruiterStatus(userId: string, status: 'actif'|'suspendu'|'retire') {
   return recruitmentRequest<{ success: true }>('set_structure_recruiter_status', { user_id: userId, status }, 'structure');
@@ -271,9 +284,6 @@ export async function loadRecruiterStatus() {
 export async function submitRecruiterApplication(input: Record<string, unknown>) {
   return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('submit_recruiter_application', input);
 }
-export async function joinRecruitmentStructure(code: string) {
-  return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('join_structure_by_code', { code });
-}
 export async function updateRecruiterPreferences(input: { visibility?: 'public'|'private'; notifications_enabled?: boolean }) {
   return recruitmentRequest<{ success: true; profile: RecruiterStatus }>('update_recruiter_preferences', input);
 }
@@ -283,15 +293,6 @@ export async function loadTalentNotifications() {
 }
 export async function markTalentNotificationRead(notificationId?: string) {
   return recruitmentRequest<{ success: true }>('mark_notification_read', { notification_id: notificationId || null });
-}
-export async function createRecruitmentInvite(input: { email?: string; max_uses?: number; expires_at?: string; permissions?: Record<string, boolean> }) {
-  return recruitmentRequest<{ success: true; invite: { id: string; code: string } }>('create_recruitment_invite', input, 'structure');
-}
-export async function loadRecruitmentInvites() {
-  return recruitmentRequest<{ success: true; invites: any[] }>('list_recruitment_invites', {}, 'structure');
-}
-export async function revokeRecruitmentInvite(inviteId: string) {
-  return recruitmentRequest<{ success: true }>('revoke_recruitment_invite', { invite_id: inviteId }, 'structure');
 }
 export async function adminLoadTalentSupervision(status?: string) {
   return recruitmentRequest<{ success: true; recruiters: any[]; contacts: any[]; activity: any[]; metrics: Record<string, number> }>('admin_talent_supervision', status ? { status } : {}, 'admin');

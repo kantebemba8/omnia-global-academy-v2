@@ -9,6 +9,7 @@ const corsHeaders = {
 
 const STRUCTURE_MANAGER_ROLES = new Set([
   "gestionnaire_partenaire",
+  "gestionnaire_structure",
   "responsable_structure",
   "structure_admin",
   "directeur",
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
         .from("partner_managers")
         .select("organization_id")
         .eq("user_id", me.userId)
-        .neq("status", "retire")
+        .in("status", ["actif", "active"])
         .order("is_primary", { ascending: false })
         .limit(1)
         .maybeSingle();

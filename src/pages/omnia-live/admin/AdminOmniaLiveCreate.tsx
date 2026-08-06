@@ -32,7 +32,7 @@ export default function AdminOmniaLiveCreate(){
     }finally{setSaving(false)}
   }
 
-  return <AdminOmniaLiveShell title="Créer un Live" subtitle="Le Super Admin utilise le même Studio complet que les autres créateurs.">
+  return <AdminOmniaLiveShell title="Créer un Live" subtitle="L’Administration Omnia utilise le même Studio complet que les autres créateurs.">
     <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="border-b border-slate-100 px-6 py-5">
         <h2 className="text-lg font-bold text-[#002050]">Démarrer un nouveau contenu</h2>

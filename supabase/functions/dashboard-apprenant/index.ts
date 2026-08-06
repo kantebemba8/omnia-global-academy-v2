@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
       .order("updated_at", { ascending: false })
       .limit(5);
 
-    // Le parrainage est invisible et inactif tant que le Super-admin ne l'a
+    // Le parrainage est invisible et inactif tant que l’Administration Omnia ne l'a
     // pas activé. Les lignes désactivées ne sont jamais comptées.
     const { data: referralSetting } = await sb
       .from("site_settings")

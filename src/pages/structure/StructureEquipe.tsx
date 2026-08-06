@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { Shield, PlusCircle, RefreshCw, XCircle, UserMinus, UserRoundCheck, Ban } from 'lucide-react';
+import { Shield, PlusCircle, RefreshCw, XCircle, UserMinus, UserRoundCheck, Ban, Copy } from 'lucide-react';
 import { coachingRequest } from '../../lib/coachingApi';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -36,7 +36,6 @@ const PERMISSIONS = [
   { key: 'can_manage_members',            label: 'Gérer les membres' },
   { key: 'can_approve_memberships',       label: 'Valider les rattachements' },
   { key: 'can_manage_structure_codes',    label: 'Gérer les codes' },
-  { key: 'can_request_structure_benefits',label: 'Demander des avantages' },
   { key: 'can_view_statistics',           label: 'Voir les statistiques' },
   { key: 'can_view_logs',                 label: 'Voir les journaux' },
   { key: 'can_manage_notifications',      label: 'Gérer les notifications' },
@@ -60,6 +59,8 @@ export default function StructureEquipe() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [toast, setToast] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
   const [coachEmail, setCoachEmail] = useState('');
   const [coachDesignations, setCoachDesignations] = useState<any[]>([]);
   const [coachBusy, setCoachBusy] = useState(false);
@@ -79,8 +80,9 @@ export default function StructureEquipe() {
       headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_team', structure_id: id }),
     });
-    const data = await res.json();
-    if (data.success) setTeam(data.team ?? []);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) setTeam(data.team ?? []);
+    else showToast(data.message || data.error || 'Impossible de charger l’équipe.');
     setLoading(false);
   }
 
@@ -101,7 +103,7 @@ export default function StructureEquipe() {
     try {
       await coachingRequest('structure_coach_designate', { organization_id: structureId, email: email.trim(), active });
       setCoachEmail('');
-      showToast(active ? '✅ Membre désigné pour candidater comme coach' : 'Désignation coach retirée');
+      showToast(active ? 'Membre désigné pour candidater comme coach' : 'Désignation coach retirée');
       await loadCoachDesignations();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Action impossible');
@@ -129,29 +131,45 @@ export default function StructureEquipe() {
 
   async function handleInvite() {
     if (!form.email || !form.internal_role) { showToast('Email et rôle requis'); return; }
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: edgeAuthHeaders(),
-      body: JSON.stringify({ action: 'invite_team_member', structure_id: structureId, ...form }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast('✅ Invitation envoyée par email');
+    setActionBusy(true);
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'invite_team_member', structure_id: structureId, ...form }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success !== true) throw new Error(data.message || data.error || 'Invitation impossible.');
+      setShareLink(!data.email_sent && data.invitation_url ? String(data.invitation_url) : '');
+      showToast(data.email_sent ? 'Invitation envoyée par e-mail' : 'Invitation créée. Copiez le lien personnel affiché.');
       setShowModal(false);
       setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', permissions: {} });
-      load();
-    } else showToast(data.error ?? 'Erreur');
+      await load();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Invitation impossible.');
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   async function handleRemove(memberId: string) {
-    if (!confirm('Retirer ce membre de l\'équipe ?')) return;
-    await fetch(API, {
-      method: 'POST',
-      headers: edgeAuthHeaders(),
-      body: JSON.stringify({ action: 'remove_team_member', structure_id: structureId, member_id: memberId }),
-    });
-    showToast('Membre retiré');
-    load();
+    if (!confirm(memberId.startsWith('invitation:') ? 'Annuler cette invitation ?' : 'Retirer ce membre de l’équipe ?')) return;
+    setActionBusy(true);
+    try {
+      const response = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'remove_team_member', structure_id: structureId, member_id: memberId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success !== true) throw new Error(data.message || data.error || 'Action impossible.');
+      showToast(memberId.startsWith('invitation:') ? 'Invitation annulée' : 'Membre retiré');
+      await load();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Action impossible.');
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   const getRoleLabel = (role: string) => INTERNAL_ROLES.find(r => r.value === role)?.label ?? role;
@@ -164,17 +182,29 @@ export default function StructureEquipe() {
             style={{ background: 'white', borderColor: '#E4E7EC', color: '#002050' }}>{toast}</div>
         )}
 
+        {shareLink && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-bold" style={{ color: '#002050' }}>Lien personnel à transmettre</p>
+            <p className="mt-1 text-xs text-amber-800">L’e-mail automatique n’a pas été envoyé. Copiez ce lien maintenant et transmettez-le uniquement à la personne invitée.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input readOnly value={shareLink} className="min-w-0 flex-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs" />
+              <button type="button" onClick={() => void navigator.clipboard.writeText(shareLink).then(() => showToast('Lien copié')).catch(() => showToast('Sélectionnez le lien manuellement'))} className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: '#002050' }}><Copy size={14} /> Copier</button>
+              <button type="button" onClick={() => setShareLink('')} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900">Masquer</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe de la structure</h1>
             <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
-              Invitez des collaborateurs pour gérer votre structure avec des rôles définis
+              Invitez des collaborateurs par e-mail, qu’ils possèdent déjà ou non un compte Omnia
             </p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => load()} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm border"
               style={{ borderColor: '#E4E7EC', color: '#6B7280' }}><RefreshCw size={13} /></button>
-            <button onClick={() => setShowModal(true)}
+            <button disabled={actionBusy} onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"
               style={{ background: '#002050' }}>
               <PlusCircle size={15} /> Inviter un membre
@@ -185,7 +215,7 @@ export default function StructureEquipe() {
         {/* Info */}
         <div className="flex items-start gap-2 p-3 rounded-xl text-sm" style={{ background: '#EEF2FF', color: '#002050' }}>
           <Shield size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-          <p>Ces utilisateurs ont des rôles <strong>internes</strong> à votre structure uniquement. Ils ne sont pas Super Admins.
+          <p>Ces utilisateurs ont des rôles <strong>internes</strong> à votre structure uniquement. Ils disposent uniquement des accès internes que vous leur attribuez.
           Chaque rôle dispose de permissions précises que vous pouvez personnaliser.</p>
         </div>
 
@@ -194,7 +224,7 @@ export default function StructureEquipe() {
             <div>
               <div className="flex items-center gap-2"><UserRoundCheck size={18} style={{ color: '#BF8813' }} /><h2 className="font-bold" style={{ color: '#002050' }}>Désignation Coach Omnia</h2></div>
               <p className="mt-2 max-w-3xl text-sm leading-6" style={{ color: '#6B7280' }}>
-                Désignez un membre déjà lié à votre Structure. Cette désignation l’autorise à déposer une candidature coach, mais le Super Admin conserve la validation finale.
+                Désignez un membre déjà lié à votre Structure. Cette désignation l’autorise à déposer une candidature coach, mais la validation finale reste assurée par l’Administration Omnia.
               </p>
             </div>
           </div>
@@ -310,7 +340,7 @@ export default function StructureEquipe() {
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
                       {member.status !== 'removed' && (
-                        <button onClick={() => handleRemove(member.id)}
+                        <button disabled={actionBusy} onClick={() => handleRemove(member.id)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border"
                           style={{ borderColor: '#FECACA', color: '#DC2626' }}>
                           <UserMinus size={12} /> Retirer
@@ -379,7 +409,7 @@ export default function StructureEquipe() {
               <div>
                 <label className="block text-xs font-semibold mb-1.5 text-gray-500">Message (optionnel)</label>
                 <textarea className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050] resize-none"
-                  rows={2} placeholder="Message personnalisé dans l'invitation..."
+                  rows={2} placeholder="Message facultatif pour la personne invitée..."
                   value={form.message} onChange={e => set('message', e.target.value)} />
               </div>
 
@@ -387,9 +417,9 @@ export default function StructureEquipe() {
                 <button onClick={() => setShowModal(false)}
                   className="flex-1 py-3 rounded-xl font-semibold text-sm border"
                   style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>Annuler</button>
-                <button onClick={handleInvite}
+                <button disabled={actionBusy} onClick={handleInvite}
                   className="flex-1 py-3 rounded-xl font-bold text-white text-sm"
-                  style={{ background: '#002050' }}>Envoyer l'invitation</button>
+                  style={{ background: '#002050' }}>{actionBusy ? 'Envoi…' : "Envoyer l'invitation"}</button>
               </div>
             </div>
           </div>

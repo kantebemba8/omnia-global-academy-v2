@@ -33,7 +33,7 @@ export default function ProfesseurAssessmentCenter() {
     setSaving(true); setError(''); setSuccess('');
     try {
       await call('creator_create_session', { ...form, title: form.title || selected?.title, capacity: form.capacity ? Number(form.capacity) : null, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString(), security_level: selected?.security_level || 2, proctoring_settings: selected?.proctoring_settings || {}, identity_verification_required: selected?.identity_verification_required || false });
-      setSuccess('La session a été créée et transmise au Super Admin pour validation.');
+      setSuccess('La session a été créée et transmise à l’Administration Omnia pour validation.');
       setForm(current => ({ ...current, assessment_id: '', title: '', starts_at: '', ends_at: '', capacity: '', meeting_url: '', location: '' }));
       await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Création impossible.'); }

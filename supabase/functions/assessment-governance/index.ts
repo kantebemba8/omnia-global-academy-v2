@@ -64,7 +64,7 @@ async function ownsAssessment(sb: Sb, session: Session, assessmentId: string) {
 }
 function sourceForRoles(roles: string[]) {
   if (roles.includes("super_admin")) return "super_admin";
-  if (roles.includes("responsable_structure") || roles.includes("structure_admin")) return "structure";
+  if (roles.includes("responsable_structure") || roles.includes("gestionnaire_structure") || roles.includes("structure_admin")) return "structure";
   return "professeur";
 }
 function permissions(value: any, role = "member") {
@@ -443,7 +443,7 @@ Deno.serve(async (req) => {
         sb.from("users").select("id").ilike("email", email).maybeSingle(),
       ]);
       if (existing?.status === "approved") return json({ success: true, expert: existing, already_approved: true });
-      if (existing?.status === "suspended") return json({ success: false, error: "EXPERT_SUSPENDED", message: "Cet expert est suspendu. Seul le Super Admin peut réexaminer son dossier." }, 409);
+      if (existing?.status === "suspended") return json({ success: false, error: "EXPERT_SUSPENDED", message: "Cet expert est suspendu. Seul l’Administration Omnia peut réexaminer son dossier." }, 409);
       const payload = {
         user_id: existingUser?.id || existing?.user_id || null,
         email,

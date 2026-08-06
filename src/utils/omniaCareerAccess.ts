@@ -21,6 +21,7 @@ export function isStructureOrTrainer(user: CareerAuthUser) {
     'teacher',
     'enseignant',
     'responsable_structure',
+    'gestionnaire_structure',
     'structure_admin',
     'gestionnaire_partenaire',
     'directeur',
@@ -32,7 +33,7 @@ export function getCareerRedirectForRole(user: CareerAuthUser) {
   if (isOmniaCareerLearner(user)) return '/omnia-career';
   if (isOmniaCareerSuperAdmin(user)) return '/admin/omnia-career';
   if (hasAnyRole(user, ['professeur', 'formateur'])) return '/professeur/dashboard';
-  if (hasAnyRole(user, ['responsable_structure', 'structure_admin', 'directeur', 'gestionnaire_partenaire'])) return '/structure/dashboard';
+  if (hasAnyRole(user, ['responsable_structure', 'gestionnaire_structure', 'structure_admin', 'directeur', 'gestionnaire_partenaire'])) return '/structure/dashboard';
   if (hasAnyRole(user, ['enseignant'])) return '/professeur/dashboard';
   return '/dashboard';
 }

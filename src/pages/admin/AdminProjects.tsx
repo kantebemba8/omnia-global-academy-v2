@@ -139,7 +139,7 @@ export default function AdminProjects() {
     <AdminLayout>
       <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Super Admin</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Validation, supervision, récompenses, signalements et clôture.</p></div>
+          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Administration Omnia</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Validation, supervision, récompenses, signalements et clôture.</p></div>
           <div className="flex flex-wrap gap-2">
             <Link to="/admin/projects/gestion" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#BF8813' }}>Créer un projet</Link>
             <Link to="/projects" className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: '#002050', color: '#002050' }}><Eye size={17} /> Aller à Omnia Projects</Link>

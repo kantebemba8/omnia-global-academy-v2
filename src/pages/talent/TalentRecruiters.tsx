@@ -53,7 +53,7 @@ export default function TalentRecruiters() {
         {!loading && user && profile && !approved && (
           <div className="flex items-start gap-3 border-b border-gray-200 py-6">
             <Clock3 size={21} style={{ color: GOLD, flexShrink: 0 }}/>
-            <div><p className="font-semibold" style={{ color: BLUE }}>Dossier recruteur : {profile.status}</p><p className="mt-1 text-sm leading-6 text-gray-500">{profile.status === 'pending' ? 'Votre dossier attend la validation du Super-admin.' : profile.rejection_reason || (profile.status === 'suspended' ? 'Votre accès recruteur est suspendu.' : 'Votre dossier n’a pas été validé.')}</p></div>
+            <div><p className="font-semibold" style={{ color: BLUE }}>Dossier recruteur : {profile.status}</p><p className="mt-1 text-sm leading-6 text-gray-500">{profile.status === 'pending' ? 'Votre dossier attend la validation de l’Administration Omnia.' : profile.rejection_reason || (profile.status === 'suspended' ? 'Votre accès recruteur est suspendu.' : 'Votre dossier n’a pas été validé.')}</p></div>
           </div>
         )}
 
@@ -86,7 +86,7 @@ export default function TalentRecruiters() {
 
         <section className="border-t border-gray-200 pt-7">
           <div className="flex items-center gap-3"><ShieldCheck size={21} style={{ color: GOLD }}/><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Validation et confiance</h2></div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">{['Email professionnel vérifié', 'Validation du compte par le Super-admin', 'Traçabilité des prises de contact', 'Respect de la visibilité choisie par le talent'].map(text => <div key={text} className="flex items-center gap-2 text-sm text-gray-600"><Check size={16} style={{ color: GOLD }}/>{text}</div>)}</div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">{['Email professionnel vérifié', 'Validation du compte par l’Administration Omnia', 'Traçabilité des prises de contact', 'Respect de la visibilité choisie par le talent'].map(text => <div key={text} className="flex items-center gap-2 text-sm text-gray-600"><Check size={16} style={{ color: GOLD }}/>{text}</div>)}</div>
         </section>
       </div>
     </TalentLayout>

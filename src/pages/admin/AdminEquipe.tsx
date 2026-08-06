@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Copy,
   Info,
   Plus,
   RefreshCw,
@@ -58,6 +59,14 @@ interface OverviewResponse {
     permissions?: Record<string, boolean>;
   }>;
   requests?: ActionRequest[];
+  invitations?: Array<{
+    id: string;
+    email: string;
+    full_name?: string | null;
+    created_at: string;
+    expires_at: string;
+    target_user_id?: string | null;
+  }>;
 }
 
 const PERMISSION_SECTIONS: PermissionSection[] = MODERATOR_PERMISSION_SECTIONS.map(section => ({
@@ -118,7 +127,7 @@ async function moderatorRequest<T>(
       }
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error('Votre session Super-admin n’est plus valide. Reconnectez-vous avant de continuer.');
+        throw new Error('Votre session d’administration n’est plus valide. Reconnectez-vous avant de continuer.');
       }
       throw new Error(message);
     } catch (cause) {
@@ -153,10 +162,12 @@ export default function AdminEquipe() {
   const [savingModeratorId, setSavingModeratorId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [newMod, setNewMod] = useState({ full_name: '', email: '', phone_number: '' });
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [newMod, setNewMod] = useState({ full_name: '', email: '' });
   const [newModPermissions, setNewModPermissions] = useState<Record<string, boolean>>({});
   const [creatingMod, setCreatingMod] = useState(false);
   const [actionRequests, setActionRequests] = useState<ActionRequest[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<NonNullable<OverviewResponse['invitations']>>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -171,6 +182,7 @@ export default function AdminEquipe() {
 
     setModerators(moderatorsData);
     setActionRequests(data.requests || []);
+    setPendingInvitations(data.invitations || []);
     setLocalPermissions(Object.fromEntries(
       moderatorsData.map(mod => [mod.user_id, { ...mod.permissions }]),
     ));
@@ -267,26 +279,43 @@ export default function AdminEquipe() {
     setCreatingMod(true);
     setError(null);
     try {
-      const data = await moderatorRequest<{ error?: string }>('create', {
+      const data = await moderatorRequest<{ error?: string; account_exists?: boolean; email_sent?: boolean; invitation_url?: string }>('create', {
         method: 'POST',
         body: JSON.stringify({
           full_name: newMod.full_name.trim(),
           email: newMod.email.trim(),
-          phone_number: newMod.phone_number.trim() || undefined,
           permissions: newModPermissions,
         }),
       });
-      if (data.error === 'EMAIL_TAKEN') throw new Error('Cet email est déjà utilisé.');
-      setSuccessMessage(`Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
+      if (data.error) throw new Error(data.error);
+      setShareLink(!data.email_sent && data.invitation_url ? data.invitation_url : null);
+      setSuccessMessage(data.email_sent
+        ? `Invitation envoyée à ${newMod.full_name}. La personne utilisera son compte Omnia existant ou créera son compte personnel.`
+        : `Invitation enregistrée pour ${newMod.full_name}. Configurez Brevo pour envoyer automatiquement le lien personnel.`);
       window.setTimeout(() => setSuccessMessage(null), 6000);
       setShowAddModal(false);
-      setNewMod({ full_name: '', email: '', phone_number: '' });
+      setNewMod({ full_name: '', email: '' });
       setNewModPermissions({});
       await fetchOverview();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Erreur lors de la création.');
     } finally {
       setCreatingMod(false);
+    }
+  };
+
+  const revokeInvitation = async (id: string) => {
+    try {
+      setError(null);
+      await moderatorRequest('revoke_invitation', {
+        method: 'POST',
+        body: JSON.stringify({ invitation_id: id }),
+      });
+      setPendingInvitations(previous => previous.filter(invitation => invitation.id !== id));
+      setSuccessMessage('Invitation annulée.');
+      window.setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Annulation impossible.');
     }
   };
 
@@ -316,7 +345,7 @@ export default function AdminEquipe() {
             <Shield size={32} style={{ color: '#002050' }} />
             <div>
               <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe & Modérateurs</h1>
-              <p className="mt-1 text-gray-600">Créez les comptes de modération et choisissez précisément ce que chaque personne peut consulter ou préparer.</p>
+              <p className="mt-1 text-gray-600">Invitez les personnes chargées de la modération et choisissez précisément ce qu’elles peuvent consulter ou préparer.</p>
             </div>
           </div>
           <button
@@ -365,6 +394,40 @@ export default function AdminEquipe() {
           <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
             <Check size={20} /> {successMessage}
           </div>
+        )}
+
+        {shareLink && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-[#002050]">Lien personnel à transmettre</p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">L’envoi automatique n’a pas abouti. Copiez ce lien maintenant et transmettez-le uniquement à la personne invitée.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input readOnly value={shareLink} className="min-w-0 flex-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-gray-700" />
+              <button type="button" onClick={() => void navigator.clipboard.writeText(shareLink).then(() => setSuccessMessage('Lien d’invitation copié.')).catch(() => setError('La copie automatique a échoué. Sélectionnez le lien manuellement.'))} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white"><Copy size={14} /> Copier le lien</button>
+              <button type="button" onClick={() => setShareLink(null)} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900">Masquer</button>
+            </div>
+          </div>
+        )}
+
+        {!loading && pendingInvitations.length > 0 && (
+          <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Clock size={18} className="text-amber-700" />
+              <h2 className="font-bold text-[#002050]">Invitations de modération en attente</h2>
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{pendingInvitations.length}</span>
+            </div>
+            <div className="divide-y divide-amber-200">
+              {pendingInvitations.map(invitation => (
+                <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{invitation.full_name || 'Personne invitée'}</p>
+                    <p className="text-xs text-gray-600">{invitation.email}</p>
+                    <p className="mt-1 text-xs text-gray-500">Expire le {new Date(invitation.expires_at).toLocaleDateString('fr-FR')}</p>
+                  </div>
+                  <button type="button" onClick={() => void revokeInvitation(invitation.id)} className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700">Annuler l’invitation</button>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {loading && (
@@ -525,7 +588,7 @@ export default function AdminEquipe() {
 
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
           <p className="mb-1 font-semibold">Limite de délégation</p>
-          <p>Les paiements, retraits, remboursements, paramètres financiers, changements de rôles et décisions finales sensibles restent exclusivement réservés au Super-admin.</p>
+          <p>Les paiements, retraits, remboursements, paramètres financiers, changements de rôles et décisions finales sensibles restent exclusivement réservés à l’Administration Omnia.</p>
         </div>
       </div>
 
@@ -534,17 +597,17 @@ export default function AdminEquipe() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: '#E4E7EC' }}>
               <div>
-                <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Créer un modérateur</h2>
-                <p className="mt-0.5 text-xs text-gray-500">Un email avec un mot de passe temporaire sera envoyé automatiquement.</p>
+                <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Inviter un modérateur</h2>
+                <p className="mt-0.5 text-xs text-gray-500">La personne utilisera son compte Omnia existant ou créera son compte depuis un lien personnel. Aucun mot de passe ne vous sera communiqué.</p>
               </div>
-              <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }}>
+              <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '' }); setNewModPermissions({}); setError(null); }}>
                 <X size={24} className="text-gray-500" />
               </button>
             </div>
 
             <div className="space-y-5 p-6">
               <div>
-                <h3 className="mb-3 text-sm font-semibold" style={{ color: '#002050' }}>Informations du compte</h3>
+                <h3 className="mb-3 text-sm font-semibold" style={{ color: '#002050' }}>Informations de la personne</h3>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Nom complet *</label>
@@ -553,10 +616,6 @@ export default function AdminEquipe() {
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">Email *</label>
                     <input type="email" value={newMod.email} onChange={event => setNewMod(previous => ({ ...previous, email: event.target.value }))} placeholder="moderateur@example.com" className="w-full rounded-lg border px-3 py-2.5 text-sm focus:border-[#002050] focus:outline-none" />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-gray-500">Téléphone (optionnel)</label>
-                    <input type="tel" value={newMod.phone_number} onChange={event => setNewMod(previous => ({ ...previous, phone_number: event.target.value }))} placeholder="+[indicatif] numéro" className="w-full rounded-lg border px-3 py-2.5 text-sm focus:border-[#002050] focus:outline-none" />
                   </div>
                 </div>
               </div>
@@ -591,9 +650,9 @@ export default function AdminEquipe() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }} className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-500">Annuler</button>
+                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '' }); setNewModPermissions({}); setError(null); }} className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-500">Annuler</button>
                 <button onClick={() => void createModerator()} disabled={creatingMod || !newMod.full_name.trim() || !newMod.email.trim()} className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: '#002050' }}>
-                  {creatingMod ? 'Création…' : 'Créer le compte'}
+                  {creatingMod ? 'Envoi…' : 'Envoyer l’invitation'}
                 </button>
               </div>
             </div>

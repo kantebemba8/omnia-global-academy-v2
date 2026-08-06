@@ -48,7 +48,7 @@ Deno.serve(async (req: Request) => {
 
     const sb = createClient(url, key);
     const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return json({ error: "FORBIDDEN", message: "Accès Super-admin requis." }, 403);
+    if (!adminId) return json({ error: "FORBIDDEN", message: "Accès administratif Omnia requis." }, 403);
 
     const body = await req.json().catch(() => ({}));
     const postId = String(body.post_id || "");

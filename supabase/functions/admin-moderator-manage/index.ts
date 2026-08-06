@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { hashSync } from "npm:bcryptjs@2.4.3";
+import { createAccessInvitation } from "../_shared/access-invitations.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +47,6 @@ const CANONICAL_PERMISSION_KEYS = [
   "can_review_live_organizers",
   "can_review_structure_requests",
   "can_review_structure_codes",
-  "can_review_structure_benefits",
   "can_view_analytics",
 ] as const;
 
@@ -69,17 +68,6 @@ const LEGACY_BOOLEAN_KEYS = [
   "can_view_ai_conversations",
   "can_view_analytics",
 ] as const;
-
-function generatePassword(length = 14) {
-  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const lower = "abcdefghjkmnpqrstuvwxyz";
-  const digits = "23456789";
-  const symbols = "!@#$%&*";
-  const all = upper + lower + digits + symbols;
-  const mandatory = [upper, lower, digits, symbols].map((pool) => pool[Math.floor(Math.random() * pool.length)]);
-  const rest = Array.from({ length: Math.max(0, length - mandatory.length) }, () => all[Math.floor(Math.random() * all.length)]);
-  return [...mandatory, ...rest].sort(() => Math.random() - 0.5).join("");
-}
 
 function asPermissionMap(value: unknown): PermissionMap {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -189,6 +177,17 @@ async function listModerators(sb: SupabaseClient) {
   });
 }
 
+async function listPendingModeratorInvitations(sb: SupabaseClient) {
+  const { data, error } = await sb.from("platform_access_invitations")
+    .select("id,email,full_name,permissions,status,created_at,expires_at,target_user_id")
+    .eq("invitation_type", "moderator")
+    .is("organization_id", null)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 async function listPendingRequests(sb: SupabaseClient) {
   const { data: requests, error } = await sb
     .from("moderator_action_requests")
@@ -211,56 +210,41 @@ async function listPendingRequests(sb: SupabaseClient) {
   }));
 }
 
-async function createModerator(sb: SupabaseClient, body: Record<string, unknown>) {
+async function createModerator(sb: SupabaseClient, adminId: string, body: Record<string, unknown>) {
   const fullName = String(body.full_name || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
-  const phoneNumber = String(body.phone_number || "").trim() || null;
   if (!fullName || !email) return json({ error: "INVALID_PARAMS", message: "Le nom et l’email sont requis." }, 400);
 
-  const { data: existing, error: existingError } = await sb.from("users").select("id").ilike("email", email).maybeSingle();
-  if (existingError) throw existingError;
-  if (existing) return json({ error: "EMAIL_TAKEN" }, 409);
-
-  const temporaryPassword = generatePassword();
-  const { data: newUser, error: userError } = await sb.from("users").insert({
-    full_name: fullName,
-    email,
-    phone_number: phoneNumber,
-    password_hash: hashSync(temporaryPassword, 12),
-    status: "actif",
-    force_password_change: true,
-  }).select("id").single();
-  if (userError || !newUser) throw userError || new Error("USER_CREATION_FAILED");
-
-  const userId = String(newUser.id);
   try {
-    const { error: roleError } = await sb.from("user_roles").insert({ user_id: userId, role: "moderateur" });
-    if (roleError) throw roleError;
-    await savePermissions(sb, userId, body.permissions);
+    const result = await createAccessInvitation(sb, {
+      invitationType: "moderator",
+      email,
+      fullName,
+      invitedBy: adminId,
+      internalRole: "Modérateur",
+      permissions: sanitizePermissions(body.permissions),
+      message: String(body.message || "").trim() || null,
+    });
+    return json({
+      success: true,
+      invitation_id: result.invitation.id,
+      invitation_url: result.invitationUrl,
+      email_sent: result.emailSent,
+      account_exists: result.accountExists,
+      status: "invited",
+    });
   } catch (error) {
-    await sb.from("moderator_permissions").delete().eq("moderator_user_id", userId);
-    await sb.from("user_roles").delete().eq("user_id", userId).eq("role", "moderateur");
-    await sb.from("users").delete().eq("id", userId);
+    const code = error instanceof Error ? error.message : String(error);
+    if (code === "PROTECTED_ACCOUNT") return json({ error: code, message: "Ce compte système protégé ne peut pas recevoir une fonction de modération." }, 403);
+    if (code === "INVALID_EMAIL") return json({ error: code, message: "L’adresse e-mail est invalide." }, 400);
     throw error;
   }
+}
 
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (brevoKey) {
-    const loginUrl = Deno.env.get("PUBLIC_APP_URL") ? `${Deno.env.get("PUBLIC_APP_URL")}/connexion` : "/connexion";
-    const emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        templateId: 1,
-        to: [{ email, name: fullName }],
-        params: { ROLE_NAME: "Modérateur", EMAIL: email, TEMPORARY_PASSWORD: temporaryPassword, LOGIN_URL: loginUrl },
-        sender: { name: "Omnia Global Academy", email: "support@omniaglobalacademy.com" },
-      }),
-    });
-    if (!emailResponse.ok) console.error("admin-moderator-manage: temporary password email failed", emailResponse.status);
-  }
-
-  return json({ success: true, moderator_id: userId });
+async function ensureTargetNotProtected(sb: SupabaseClient, userId: string) {
+  const { data, error } = await sb.from("user_roles").select("role").eq("user_id", userId).eq("role", "super_admin").maybeSingle();
+  if (error) throw error;
+  if (data) throw new Error("PROTECTED_ACCOUNT");
 }
 
 async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<string, unknown>) {
@@ -337,7 +321,7 @@ Deno.serve(async (req: Request) => {
     if (!url || !serviceKey) return json({ error: "SERVER_CONFIG_ERROR", message: "Configuration Supabase incomplète pour Équipe & Modérateurs." }, 500);
     const sb = createClient(url, serviceKey);
     const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return json({ error: "FORBIDDEN", message: "Session Super-admin invalide ou expirée." }, 403);
+    if (!adminId) return json({ error: "FORBIDDEN", message: "Session d’administration invalide ou expirée." }, 403);
 
     const action = requestedAction;
 
@@ -345,18 +329,43 @@ Deno.serve(async (req: Request) => {
       if (action === "list") return json({ moderators: await listModerators(sb) });
       if (action === "requests") return json({ requests: await listPendingRequests(sb) });
       if (action === "overview") {
-        const [moderators, requests] = await Promise.all([listModerators(sb), listPendingRequests(sb)]);
-        return json({ success: true, moderators, requests });
+        const [moderators, requests, invitations] = await Promise.all([
+          listModerators(sb),
+          listPendingRequests(sb),
+          listPendingModeratorInvitations(sb),
+        ]);
+        return json({ success: true, moderators, requests, invitations });
       }
       return json({ error: "UNKNOWN_ACTION", action }, 400);
     }
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    if (action === "create") return await createModerator(sb, body);
+    if (action === "create") return await createModerator(sb, adminId, body);
+
+    if (action === "revoke_invitation") {
+      const invitationId = String(body.invitation_id || "");
+      if (!invitationId) return json({ error: "INVALID_PARAMS" }, 400);
+      const { data: invitation, error: invitationError } = await sb.from("platform_access_invitations")
+        .select("id,status")
+        .eq("id", invitationId)
+        .eq("invitation_type", "moderator")
+        .is("organization_id", null)
+        .maybeSingle();
+      if (invitationError) throw invitationError;
+      if (!invitation) return json({ error: "INVITATION_NOT_FOUND" }, 404);
+      if (invitation.status !== "pending") return json({ error: "INVITATION_NOT_PENDING" }, 409);
+      const { error: revokeError } = await sb.from("platform_access_invitations")
+        .update({ status: "revoked", updated_at: new Date().toISOString() })
+        .eq("id", invitationId)
+        .eq("status", "pending");
+      if (revokeError) throw revokeError;
+      return json({ success: true });
+    }
 
     if (action === "update") {
       const moderatorId = String(body.moderator_id || "");
       if (!moderatorId || body.action !== "update_permissions") return json({ error: "INVALID_PARAMS" }, 400);
+      try { await ensureTargetNotProtected(sb, moderatorId); } catch { return json({ error: "PROTECTED_ACCOUNT" }, 403); }
       const permissions = await savePermissions(sb, moderatorId, body.permissions);
       return json({ success: true, permissions });
     }
@@ -364,6 +373,7 @@ Deno.serve(async (req: Request) => {
     if (action === "delete") {
       const userId = String(body.user_id || "");
       if (!userId) return json({ error: "INVALID_PARAMS" }, 400);
+      try { await ensureTargetNotProtected(sb, userId); } catch { return json({ error: "PROTECTED_ACCOUNT" }, 403); }
       const now = new Date().toISOString();
       const [{ error: roleError }, { error: permissionError }, { error: sessionError }] = await Promise.all([
         sb.from("user_roles").delete().eq("user_id", userId).eq("role", "moderateur"),

@@ -7,6 +7,7 @@ import {
   makeCorsHeaders,
   sha256Hex,
 } from "../_shared/auth-security.ts";
+import { acceptPendingInvitationsForUser } from "../_shared/access-invitations.ts";
 
 async function sendBrevoWelcome(
   apiKey: string,
@@ -145,6 +146,15 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, message: "Utilisateur introuvable" }, 404);
     }
 
+    if (purpose === "inscription") {
+      try {
+        await acceptPendingInvitationsForUser(supabase, String(user.id), String(user.email || ""));
+      } catch (error) {
+        console.error("access invitation finalization failed", error);
+        throw error;
+      }
+    }
+
     const { data: rolesData, error: rolesError } = await supabase
       .from("user_roles")
       .select("role")
@@ -173,8 +183,8 @@ Deno.serve(async (req: Request) => {
               brevoApiKey,
               user.email,
               user.full_name,
-              "Apprenant",
-              "Votre compte est actif. Explorez nos formations !",
+              userRoles.includes("moderateur") ? "Équipe de modération" : userRoles.includes("recruteur_structure") ? "Recrutement Structure" : userRoles.includes("gestionnaire_structure") ? "Équipe Structure" : "Apprenant",
+              "Votre compte est actif. Vous pouvez maintenant accéder aux espaces qui vous ont été attribués.",
             );
           } catch (error) {
             console.error("Brevo welcome error:", error);

@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     const { data: permsRow } = await sb.from("moderator_permissions").select("can_validate_professor_kyc").eq("moderator_user_id", modId).maybeSingle();
     const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
 
-    // GET — list pending professor KYC. Structure validation is reserved for the Super Admin.
+    // GET — list pending professor KYC. Structure validation is reserved for the Administration Omnia.
     if (req.method === "GET") {
       const result: Record<string, unknown[]> = { professeurs: [] };
       if (perms.can_validate_professor_kyc) {

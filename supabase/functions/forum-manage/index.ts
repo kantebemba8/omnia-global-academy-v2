@@ -67,7 +67,7 @@ function roleBadge(roles: string[]) {
   if (roles.includes("moderateur")) return "Modération";
   if (roles.some((role) => ["professeur", "formateur", "enseignant", "etablissement_enseignant"].includes(role))) return "Formateur";
   if (roles.some((role) => ["organizer", "organisateur"].includes(role))) return "Organisateur";
-  if (roles.some((role) => ["responsable_structure", "structure_admin", "directeur", "gestionnaire_partenaire"].includes(role))) return "Structure";
+  if (roles.some((role) => ["responsable_structure", "gestionnaire_structure", "structure_admin", "directeur", "gestionnaire_partenaire"].includes(role))) return "Structure";
   return null;
 }
 

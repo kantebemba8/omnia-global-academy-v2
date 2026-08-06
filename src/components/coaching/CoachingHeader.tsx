@@ -46,7 +46,7 @@ type Props = {
 function dashboardPathForRoles(roles: string[]): string {
   if (roles.includes('super_admin')) return '/admin/dashboard';
   if (roles.includes('coach')) return '/coach/dashboard';
-  if (roles.includes('responsable_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/dashboard';
+  if (roles.includes('responsable_structure') || roles.includes('gestionnaire_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/dashboard';
   if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/dashboard';
   if (roles.includes('recruteur_structure')) return '/structure/recrutement/dashboard';
   if (roles.includes('professeur') || roles.includes('formateur') || roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
@@ -59,6 +59,7 @@ function canStartCoachApplication(roles: string[]) {
     'professeur',
     'formateur',
     'responsable_structure',
+    'gestionnaire_structure',
     'structure_admin',
     'directeur',
     'gestionnaire_partenaire',

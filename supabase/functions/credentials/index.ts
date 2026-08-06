@@ -88,7 +88,7 @@ function requireAdmin(session: Session | null): asserts session is Session {
 
 function requireLearner(session: Session | null): asserts session is Session {
   requireSession(session);
-  // Le Super Admin ne devient jamais apprenant pendant une prévisualisation,
+  // L’Administration Omnia ne devient jamais apprenant pendant une prévisualisation,
   // même si une ancienne donnée lui a attribué ce rôle par erreur.
   if (session.roles.includes("super_admin") || !session.roles.includes("apprenant")) {
     throw new Error("LEARNER_ROLE_REQUIRED");
@@ -1899,7 +1899,7 @@ async function importClr(sb: Supabase, session: Session, body: JsonRecord) {
     verification_result: {
       structure_recognized: Boolean(credentials.length),
       signature_checked: false,
-      note: "Contrôle Super Admin requis avant intégration.",
+      note: "Contrôle de l’Administration Omnia requis avant intégration.",
     },
     imported_entries_count: credentials.length,
   }).select("*").single();

@@ -138,7 +138,7 @@ Deno.serve(async req=>{
     }
 
     if(a==="upload_my_signature"){
-      const allowed=c.roles.some((r:string)=>["professeur","responsable_structure","gestionnaire_partenaire"].includes(r));
+      const allowed=c.roles.some((r:string)=>["professeur","responsable_structure","gestionnaire_structure","gestionnaire_partenaire"].includes(r));
       if(!allowed)return json({success:false,error:"FORBIDDEN"},403);
       const url=await uploadBase64(sb,"signatures",String(b.filename||"signature.png"),String(b.mime||"image/png"),String(b.data_url||""));
       if(c.roles.includes("professeur")){

@@ -18,8 +18,9 @@ function notifySessionChanged(authenticated: boolean): void {
  * technical database values are normalized below and are never presented as
  * additional user-facing roles.
  */
+export type InternalSystemRole = 'super_admin';
+
 export type PrimaryPlatformRole =
-  | 'super_admin'
   | 'moderateur'
   | 'structure'
   | 'organisateur'
@@ -33,12 +34,11 @@ export type PrimaryPlatformRole =
  * `recruteur_structure` reste une valeur technique de contrôle d'accès,
  * mais ne constitue pas un rôle principal de la plateforme.
  */
-export type DelegatedPlatformAccess = 'recruteur_structure';
+export type DelegatedPlatformAccess = 'recruteur_structure' | 'gestionnaire_structure';
 
-export type CanonicalPlatformRole = PrimaryPlatformRole | DelegatedPlatformAccess;
+export type CanonicalPlatformRole = InternalSystemRole | PrimaryPlatformRole | DelegatedPlatformAccess;
 
 export const PRIMARY_PLATFORM_ROLES: readonly PrimaryPlatformRole[] = [
-  'super_admin',
   'moderateur',
   'structure',
   'organisateur',
@@ -56,6 +56,10 @@ export function primaryPlatformRoles(roles: readonly string[] | null | undefined
   return normalizePlatformRoles(roles).filter(isPrimaryPlatformRole);
 }
 
+export function isInternalSystemRole(role: CanonicalPlatformRole): role is InternalSystemRole {
+  return role === 'super_admin';
+}
+
 export function hasStructureRecruiterAccess(roles: readonly string[] | null | undefined): boolean {
   return normalizePlatformRoles(roles).includes('recruteur_structure');
 }
@@ -64,6 +68,7 @@ const ROLE_REDIRECT_PRIORITY: ReadonlyArray<readonly [CanonicalPlatformRole, str
   ['super_admin', '/admin/dashboard'],
   ['moderateur', '/moderateur/dashboard'],
   ['structure', '/structure/dashboard'],
+  ['gestionnaire_structure', '/structure/dashboard'],
   ['recruteur_structure', '/structure/recrutement/dashboard'],
   ['organisateur', '/omnia-live/organisateur'],
   ['recruteur', '/talent/recruteur/dashboard'],
@@ -78,6 +83,7 @@ const CANONICAL_ROLE_BY_STORED_ROLE: Readonly<Record<string, CanonicalPlatformRo
   structure: 'structure',
   responsable_structure: 'structure',
   recruteur_structure: 'recruteur_structure',
+  gestionnaire_structure: 'gestionnaire_structure',
   organisateur: 'organisateur',
   organizer: 'organisateur',
   recruteur: 'recruteur',
@@ -88,8 +94,8 @@ const CANONICAL_ROLE_BY_STORED_ROLE: Readonly<Record<string, CanonicalPlatformRo
 
   // Compatibilité temporaire avec d'anciens identifiants techniques.
   // Ils ne constituent pas de nouveaux rôles visibles dans la plateforme.
-  gestionnaire_partenaire: 'structure',
-  structure_admin: 'structure',
+  gestionnaire_partenaire: 'gestionnaire_structure',
+  structure_admin: 'gestionnaire_structure',
   directeur: 'structure',
   etablissement_directeur: 'structure',
   formateur: 'professeur',

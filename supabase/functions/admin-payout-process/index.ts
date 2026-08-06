@@ -54,6 +54,7 @@ function roleLabel(roles: string[]): string {
     roles.some((role) =>
       [
         "responsable_structure",
+        "gestionnaire_structure",
         "gestionnaire_partenaire",
         "structure",
       ].includes(role)

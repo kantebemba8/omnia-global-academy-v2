@@ -86,7 +86,7 @@ export const STATIC_TRANSLATIONS: Record<StaticCatalogLanguage, Record<string, s
     "Durée": "Duration",
     "Déblocage progressif": "Drip release",
     "Débutant": "Beginner",
-    "Décision du Super-admin": "Super-admin decision",
+    "Décision de l’Administration Omnia": "Omnia Administration decision",
     "Déconnexion": "Sign out",
     "Délivré par": "Issued by",
     "Délivré à": "Issued to",

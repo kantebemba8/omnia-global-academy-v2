@@ -41,6 +41,7 @@ const ExamenModule = lazy(() => import('./pages/ExamenModule').then((module) => 
 const ValidationFinale = lazy(() => import('./pages/ValidationFinale').then((module) => ({ default: module.ValidationFinale })));
 const SelectRole = lazy(() => import('./pages/auth/SelectRole').then((module) => ({ default: module.SelectRole })));
 const RegisterApprenant = lazy(() => import('./pages/auth/RegisterApprenant').then((module) => ({ default: module.RegisterApprenant })));
+const AccessInvitationPage = lazy(() => import('./pages/auth/AccessInvitationPage'));
 const RegisterProfesseur = lazy(() => import('./pages/auth/RegisterProfesseur').then((module) => ({ default: module.RegisterProfesseur })));
 const RegisterOrganizer = lazy(() => import('./pages/auth/RegisterOrganizer').then((module) => ({ default: module.RegisterOrganizer })));
 const RegisterRecruiterIndependent = lazy(() => import('./pages/auth/RegisterRecruiterIndependent').then((module) => ({ default: module.RegisterRecruiterIndependent })));
@@ -623,6 +624,7 @@ export default function App() {
         <Route path="/connexion-rapide" element={<LoginOTP />} />
         <Route path="/inscription" element={<SelectRole />} />
         <Route path="/inscription/apprenant" element={<RegisterApprenant />} />
+        <Route path="/invitation/:token" element={<AccessInvitationPage />} />
         <Route path="/inscription/professeur" element={<RegisterProfesseur />} />
           <Route path="/inscription/organisateur" element={<RegisterOrganizer />} />
           <Route path="/inscription/recruteur" element={<RegisterRecruiterIndependent />} />
@@ -697,7 +699,6 @@ export default function App() {
           <Route path="/admin/structures" element={<AdminStructures />} />
 <Route path="/admin/structure-codes" element={<AdminStructureCodes />} />
 <Route path="/admin/structures/b2b" element={<AdminStructureB2B />} />
-<Route path="/admin/structure-avantages" element={<Navigate to="/admin/monetization" replace />} />
           
         {/* Moderator — always accessible (English + French paths) */}
         <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
@@ -788,7 +789,10 @@ export default function App() {
 <Route path="/structure/codes" element={<StructureCodes />} />
 <Route path="/structure/membres" element={<StructureMembres />} />
 <Route path="/structure/rattachements" element={<StructureMembres />} />
-<Route path="/structure/avantages" element={<Navigate to="/structure/abonnements" replace />} />
+<Route path="/structure/demandes" element={<Navigate to="/structure/rattachements" replace />} />
+<Route path="/structure/statistiques" element={<Navigate to="/structure/suivi-rh" replace />} />
+<Route path="/structure/notifications" element={<Navigate to="/mon-profil?tab=notifications" replace />} />
+<Route path="/structure/parametres" element={<Navigate to="/mon-profil?tab=visibilite" replace />} />
 <Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
 <Route path="/structure/commerce-b2b" element={<StructureB2B />} />
 <Route path="/structure/organisation" element={<StructureOrganisation />} />

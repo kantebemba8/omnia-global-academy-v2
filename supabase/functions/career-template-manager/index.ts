@@ -274,7 +274,7 @@ Deno.serve(async (req: Request) => {
       name_fr: String(template.name_fr || existing?.name_fr || key).trim(),
       description_fr: String(template.description_fr ?? existing?.description_fr ?? "").trim(),
       category: String(template.category || existing?.category || "custom"),
-      // Tout nouveau modèle est disponible gratuitement. Le Super-admin peut ensuite
+      // Tout nouveau modèle est disponible gratuitement. L’Administration Omnia peut ensuite
       // le réserver en Premium depuis le tableau de gestion du catalogue.
       is_free: existing
         ? (typeof template.is_free === "boolean" ? template.is_free : existing.is_free !== false)

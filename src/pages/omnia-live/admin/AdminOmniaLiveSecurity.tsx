@@ -6,7 +6,7 @@ import {omniaDialog} from '../../../lib/omniaDialog';
 const BLUE='#002050';
 const FLAG_LABELS:any={omnia_live_enabled:'Omnia Live',fedapay_live_payments:'Paiements FedaPay',sms_notifications:'Notifications SMS',push_notifications:'Notifications Push',server_recording:'Enregistrement serveur'};
 const LEGACY_COMMERCE_FLAGS=new Set(['omnia_live_pass','oga_premium_live']);
-const ROLE_LABELS:any={learner:'Apprenant',professor:'Professeur',structure:'Structure',organizer:'Organisateur',super_admin:'Super-admin',moderator:'Modérateur'};
+const ROLE_LABELS:any={learner:'Apprenant',professor:'Professeur',structure:'Structure',organizer:'Organisateur',super_admin:'Administration Omnia',moderator:'Modérateur'};
 
 export default function AdminOmniaLiveSecurity(){
  const [policies,setPolicies]=useState<any[]>([]),[flags,setFlags]=useState<any[]>([]),[permissions,setPermissions]=useState<any[]>([]),[msg,setMsg]=useState('');

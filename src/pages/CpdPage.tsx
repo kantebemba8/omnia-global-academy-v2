@@ -34,7 +34,7 @@ const LEARNER_BENEFITS = [
 const CREATOR_STEPS = [
   'Choisir un organisme déjà validé ou proposer un nouvel organisme.',
   'Préciser le type de certification, reconnaissance, crédits ou unités.',
-  'Soumettre l’association au contrôle du Super-admin.',
+  'Soumettre l’association au contrôle de l’Administration Omnia.',
   'Afficher automatiquement les éléments autorisés sur la formation et le certificat.',
 ];
 

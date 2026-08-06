@@ -64,9 +64,9 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     id: 'management', label: 'Pilotage & réglages', icon: Settings,
     items: [
       { path: '/mon-profil', label: 'Mon profil personnel', icon: User },
-      { path: '/structure/statistiques', label: 'Statistiques', icon: BarChart2 },
-      { path: '/structure/notifications', label: 'Notifications', icon: Bell },
-      { path: '/structure/parametres', label: 'Paramètres', icon: Settings },
+      { path: '/structure/suivi-rh', label: 'Statistiques & suivi', icon: BarChart2 },
+      { path: '/mon-profil?tab=notifications', label: 'Notifications', icon: Bell },
+      { path: '/mon-profil?tab=visibilite', label: 'Paramètres et confidentialité', icon: Settings },
     ],
   },
 ];
@@ -97,13 +97,17 @@ const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
 
 type StoredUser = { roles?: string[] };
 
+function recruitmentOnlyPath(groups: NavGroup[]) {
+  return groups === STRUCTURE_RECRUITER_NAV_GROUPS ? '/structure/recrutement/dashboard' : '/structure/dashboard';
+}
+
 export function StructureLayout({ children }: { children: ReactNode; displayName?: string }) {
   const location = useLocation();
   const visibleGroups = useMemo(() => {
     const user = getStoredUser<StoredUser>();
     const roles = user?.roles || [];
     const recruitmentOnly = roles.includes('recruteur_structure')
-      && !roles.some(role => ['responsable_structure', 'gestionnaire_partenaire', 'structure', 'structure_admin', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role));
+      && !roles.some(role => ['responsable_structure', 'gestionnaire_structure', 'gestionnaire_partenaire', 'structure', 'structure_admin', 'directeur', 'etablissement_directeur', 'super_admin'].includes(role));
     return recruitmentOnly ? STRUCTURE_RECRUITER_NAV_GROUPS : STRUCTURE_NAV_GROUPS;
   }, []);
 
@@ -117,8 +121,8 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
       brandTitle="Omnia"
       brandAccent="Structure"
       headerSearch={showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined}
-      spaceHomePath="/"
-      spaceHomeLabel="Retour au site Omnia"
+      spaceHomePath={recruitmentOnlyPath(visibleGroups)}
+      spaceHomeLabel="Accueil de mon espace"
     >
       {children}
     </DashboardLayout>

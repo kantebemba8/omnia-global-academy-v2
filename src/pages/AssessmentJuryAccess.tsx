@@ -178,7 +178,7 @@ export default function AssessmentJuryAccess() {
                 <button disabled={working === 'terms'} onClick={() => void acceptTerms()} className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>{working === 'terms' ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />}Valider mes déclarations</button>
               </section>
             ) : data.member?.conflict_status === 'declared' ? (
-              <section className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">Votre accès aux dossiers est bloqué à la suite de la déclaration de conflit d’intérêts. Le Super Admin pourra vous remplacer.</section>
+              <section className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">Votre accès aux dossiers est bloqué à la suite de la déclaration de conflit d’intérêts. L’Administration Omnia pourra vous remplacer.</section>
             ) : data.cases?.length ? data.cases.map((juryCase: any) => {
               const current = reviews[juryCase.id] || { score: '', recommendation: 'pass', comment: '', complement_request: '' };
               return (

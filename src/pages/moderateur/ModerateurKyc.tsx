@@ -95,7 +95,7 @@ export default function ModerateurKyc() {
         {toast && <div className="fixed right-4 top-4 z-50 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium shadow-lg" style={{ color: '#002050' }}>{toast}</div>}
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Vérification de l’identité des professeurs</h1>
-          <p className="mt-1 text-sm text-gray-500">Contrôlez l’identité et les justificatifs transmis par les professeurs. Les Structures sont vérifiées dans l’espace Super-admin dédié.</p>
+          <p className="mt-1 text-sm text-gray-500">Contrôlez l’identité et les justificatifs transmis par les professeurs. Les Structures sont vérifiées dans l’espace Administration Omnia dédié.</p>
         </div>
 
         {professeurs.length === 0 ? (

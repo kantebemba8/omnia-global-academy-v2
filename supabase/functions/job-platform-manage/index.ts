@@ -275,7 +275,7 @@ Deno.serve(async (req: Request) => {
         updated_at: now,
       }).select("*").single();
       if (error) throw error;
-      return json({ success: true, job: data, message: directPublish ? "Offre publiée par Omnia Global Academy." : "Offre transmise au Super-admin pour validation." });
+      return json({ success: true, job: data, message: directPublish ? "Offre publiée par Omnia Global Academy." : "Offre transmise à l’Administration Omnia pour validation." });
     }
 
     if (action === "update_job") {

@@ -270,7 +270,7 @@ export function DashboardLayout({
   useEffect(() => {
     const token = getSessionToken();
     const stored = localStorage.getItem('omnia_user');
-    // Une prévisualisation conserve la session Super Admin sans lui attribuer le rôle affiché.
+    // Une prévisualisation conserve la session administrative Omnia sans lui attribuer le rôle affiché.
     if (previewMode && stored) {
       try {
         const u = JSON.parse(stored);

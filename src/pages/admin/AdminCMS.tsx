@@ -1093,7 +1093,7 @@ export default function AdminCMS() {
                       Maintenance globale {settings.maintenance_enabled === 'true' ? 'active' : 'inactive'}
                     </h3>
                     <p className="mt-1 text-sm text-gray-500">
-                      Le Super-admin conserve toujours l’accès. Les autres utilisateurs voient la page de maintenance.
+                      Le compte système de l’Administration Omnia conserve toujours l’accès. Les autres utilisateurs voient la page de maintenance.
                     </p>
                   </div>
                   <button type="button"

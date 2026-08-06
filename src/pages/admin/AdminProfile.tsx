@@ -65,13 +65,13 @@ export default function AdminProfile() {
 
   return <AdminLayout>
     <div className="mx-auto max-w-3xl p-6 lg:p-8">
-      <h1 className="text-2xl font-bold text-[#002050]">Mon profil Super Admin</h1>
-      <p className="mt-1 text-sm text-slate-500">Votre compte réel reste Super Admin, même pendant la prévisualisation d’un autre espace.</p>
+      <h1 className="text-2xl font-bold text-[#002050]">Mon compte administratif</h1>
+      <p className="mt-1 text-sm text-slate-500">Votre compte administratif reste protégé, même pendant la prévisualisation d’un autre espace.</p>
 
       <div className="mt-6 rounded-2xl border bg-white p-5">
-        <div className="font-bold text-[#002050]">{user.full_name || user.name || 'Super Admin'}</div>
+        <div className="font-bold text-[#002050]">{user.full_name || user.name || 'Compte administratif'}</div>
         <div className="text-sm text-slate-500">{user.email}</div>
-        <div className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">Super Admin</div>
+        <div className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">Administration Omnia</div>
       </div>
 
       <div className="mt-5 flex gap-1 rounded-xl bg-slate-100 p-1">
@@ -87,8 +87,8 @@ export default function AdminProfile() {
           <label className="block"><span className="text-sm font-semibold">Téléphone</span><div className="relative mt-1"><Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400"/><input className="w-full rounded-xl border py-2.5 pl-10 pr-3" value={form.phone_number} onChange={e=>setForm({...form,phone_number:e.target.value})}/></div></label>
           <button disabled={saving} onClick={save} className="rounded-xl bg-[#002050] px-5 py-3 font-bold text-white disabled:opacity-50">{saving?'Enregistrement...':'Enregistrer'}</button>
         </div>}
-        {tab==='security' && <p className="text-sm text-slate-600">La sécurité et le mot de passe restent liés à votre compte Super Admin réel. Cette page ne bascule jamais vers le contexte Apprenant.</p>}
-        {tab==='notifications' && <p className="text-sm text-slate-600">Les préférences de notifications du compte Super Admin pourront être gérées ici sans utiliser le profil Apprenant.</p>}
+        {tab==='security' && <p className="text-sm text-slate-600">La sécurité et le mot de passe restent liés à votre compte administratif réel. Cette page ne bascule jamais vers le contexte Apprenant.</p>}
+        {tab==='notifications' && <p className="text-sm text-slate-600">Les préférences de notifications du compte administratif pourront être gérées ici sans utiliser le profil Apprenant.</p>}
         {msg && <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">{msg}</div>}
       </div>
     </div>

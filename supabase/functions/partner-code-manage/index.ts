@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
 
     const { user_id, roles } = session;
     const isSuperAdmin = roles.includes("super_admin");
-    const isManager = roles.includes("gestionnaire_partenaire");
+    const isManager = roles.includes("gestionnaire_structure") || roles.includes("gestionnaire_partenaire");
     const body = await req.json().catch(() => ({}));
     const { action } = body;
 
@@ -75,7 +75,7 @@ Deno.serve(async (req: Request) => {
         if (error.code === "23505") return json({ error: "CODE_EXISTS", message: "Ce code existe déjà." }, 400);
         throw error;
       }
-      return json({ success: true, code, message: "Code créé en brouillon. Soumettez-le au super-admin pour validation." });
+      return json({ success: true, code, message: "Code créé en brouillon. Soumettez-le à l’Administration Omnia pour validation." });
     }
 
     // ── Action SUBMIT_CODE : soumettre pour validation ───────
@@ -87,10 +87,10 @@ Deno.serve(async (req: Request) => {
         submitted_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq("id", code_id);
-      return json({ success: true, message: "Votre demande a été envoyée au super-admin pour validation." });
+      return json({ success: true, message: "Votre demande a été envoyée à l’Administration Omnia pour validation." });
     }
 
-    // ── Action VALIDATE_CODE : super-admin valide ────────────
+    // ── Action VALIDATE_CODE : administration Omnia valide ────────────
     if (action === "validate_code" || action === "refuse_code" || action === "suspend_code") {
       if (!isSuperAdmin) return json({ error: "FORBIDDEN" }, 403);
       const { code_id, reason, modified_advantages } = body;

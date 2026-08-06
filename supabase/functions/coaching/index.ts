@@ -99,7 +99,7 @@ function isService(session: Session | null): boolean {
 }
 
 const DIRECT_COACH_ELIGIBILITY_ROLES = new Set(["professeur", "formateur"]);
-const STRUCTURE_MANAGER_ROLES = new Set(["gestionnaire_partenaire", "responsable_structure", "structure_admin", "directeur", "etablissement_directeur"]);
+const STRUCTURE_MANAGER_ROLES = new Set(["gestionnaire_partenaire", "gestionnaire_structure", "responsable_structure", "structure_admin", "directeur", "etablissement_directeur"]);
 
 type CoachEligibility = {
   eligible: boolean;

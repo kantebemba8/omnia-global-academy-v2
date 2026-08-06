@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Users, CheckCircle, XCircle, RefreshCw, Search, UserCheck } from 'lucide-react';
@@ -23,13 +24,16 @@ const DISPLAY: Record<string, string> = {
 };
 
 export default function StructureMembres() {
+  const location = useLocation();
   const [members, setMembers] = useState<any[]>([]);
   const [structureId, setStructureId] = useState('');
   const [displayName, setDisplayName] = useState('Espace Structure');
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(location.pathname === '/structure/rattachements' ? 'pending' : 'all');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
   async function load(sid?: string) {
@@ -41,8 +45,13 @@ export default function StructureMembres() {
       headers: edgeAuthHeaders(),
       body: JSON.stringify({ action: 'list_members', structure_id: id }),
     });
-    const data = await res.json();
-    if (data.success) setMembers(data.members ?? []);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success !== true) {
+      setError(data.message || data.error || 'Impossible de charger les membres.');
+    } else {
+      setError('');
+      setMembers(data.members ?? []);
+    }
     setLoading(false);
   }
 
@@ -58,18 +67,28 @@ export default function StructureMembres() {
         setStructureId(data.structure.id);
         setDisplayName(DISPLAY[data.structure.structure_type] ?? 'Espace Structure');
         load(data.structure.id);
-      } else setLoading(false);
+      } else { setError(data.message || data.error || 'Structure introuvable.'); setLoading(false); }
     })();
   }, []);
 
   async function handleDecision(membershipId: string, decision: 'approve' | 'reject') {
-    await fetch(API, {
-      method: 'POST',
-      headers: edgeAuthHeaders(),
-      body: JSON.stringify({ action: 'handle_membership', structure_id: structureId, membership_id: membershipId, decision }),
-    });
-    showToast(decision === 'approve' ? '✅ Membre accepté' : '❌ Demande refusée');
-    load();
+    setBusyId(membershipId);
+    setError('');
+    try {
+      const response = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'handle_membership', structure_id: structureId, membership_id: membershipId, decision }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success !== true) throw new Error(data.message || data.error || 'Décision impossible.');
+      showToast(decision === 'approve' ? 'Membre accepté' : 'Demande refusée');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Décision impossible.');
+    } finally {
+      setBusyId('');
+    }
   }
 
   const filtered = members.filter(m => {
@@ -89,10 +108,13 @@ export default function StructureMembres() {
           <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium border"
             style={{ background: 'white', borderColor: '#E4E7EC', color: '#002050' }}>{toast}</div>
         )}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        )}
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Membres liés</h1>
+            <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{location.pathname === '/structure/rattachements' ? 'Demandes de rattachement' : 'Membres liés'}</h1>
             <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
               Apprenants rattachés à votre structure via un code
               {pending > 0 && <span className="ml-2 font-bold" style={{ color: '#92400E' }}>· {pending} en attente</span>}
@@ -181,12 +203,12 @@ export default function StructureMembres() {
                       <td className="px-4 py-3">
                         {m.status === 'pending' && (
                           <div className="flex gap-1.5">
-                            <button onClick={() => handleDecision(m.id, 'approve')}
+                            <button disabled={busyId === m.id} onClick={() => handleDecision(m.id, 'approve')}
                               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
                               style={{ background: '#1E7A52' }}>
                               <CheckCircle size={11} /> Accepter
                             </button>
-                            <button onClick={() => handleDecision(m.id, 'reject')}
+                            <button disabled={busyId === m.id} onClick={() => handleDecision(m.id, 'reject')}
                               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border"
                               style={{ borderColor: '#FECACA', color: '#DC2626' }}>
                               <XCircle size={11} /> Refuser

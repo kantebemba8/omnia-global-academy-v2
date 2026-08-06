@@ -118,7 +118,7 @@ async function audienceAllowed(sb: SB, ctx: UserContext, audience: string) {
     coach: ["coach"],
     organizer: ["organizer", "organisateur"],
     recruiter: ["recruteur_independant", "recruteur"],
-    structure: ["responsable_structure", "structure_admin", "gestionnaire_partenaire", "recruteur_structure"],
+    structure: ["responsable_structure", "gestionnaire_structure", "structure_admin", "gestionnaire_partenaire", "recruteur_structure"],
     professor: ["professeur"],
   };
   if ((roleMap[audience] || []).some(role => ctx.roles.includes(role))) return true;

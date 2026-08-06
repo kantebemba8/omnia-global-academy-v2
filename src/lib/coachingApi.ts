@@ -503,7 +503,7 @@ const messages: Record<string, string> = {
   OFFER_NOT_FOUND: 'Cette offre de coaching est introuvable.',
   OFFER_INCOMPLETE: 'Complétez correctement les informations de l’offre.',
   OFFER_PRICE_OUT_OF_RANGE: 'Le tarif doit respecter la fourchette autorisée pour votre niveau.',
-  OFFER_NOT_APPROVED: 'Cette offre doit d’abord être validée par le Super Admin.',
+  OFFER_NOT_APPROVED: 'Cette offre doit d’abord être validée par l’Administration Omnia.',
   INVALID_SESSION_MODE: 'Ce format de rencontre n’est pas autorisé pour cette offre.',
   INVALID_AVAILABILITY: 'Le créneau de disponibilité saisi est invalide.',
   INVALID_AVAILABILITY_RANGE: 'La période demandée pour le calendrier est invalide.',

@@ -242,7 +242,7 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <div className="mb-5 grid gap-3 md:grid-cols-5">
             <Info icon={RotateCcw} title="Tentatives" text="La remédiation remplace le blocage définitif pour une formation achetée." />
-            <Info icon={ShieldCheck} title="Contrôle qualité" text="Le Super Admin valide les règles proposées avant publication." />
+            <Info icon={ShieldCheck} title="Contrôle qualité" text="L’Administration Omnia valide les règles proposées avant publication." />
             <Info icon={Monitor} title="Sessions" text="Les examens officiels peuvent être programmés à une date précise." />
             <Info icon={Users} title="Jurys" text="Un jury limité à l’épreuve peut être exigé sans créer un rôle permanent." />
             <Info icon={CheckCircle2} title="Compétences" text="Seules les compétences mappées et réellement réussies sont vérifiées." />

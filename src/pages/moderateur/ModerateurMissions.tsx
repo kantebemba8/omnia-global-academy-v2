@@ -79,7 +79,7 @@ export default function ModerateurMissions() {
             </div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Permissions et contrôles autorisés</h1>
             <p className="mt-2 max-w-3xl text-sm text-gray-600">
-              Cet espace rassemble toutes les permissions activées par le Super-admin. Les actions sensibles restent préparatoires et la décision finale demeure réservée au Super-admin.
+              Cet espace rassemble toutes les permissions activées par l’Administration Omnia. Les actions sensibles restent préparatoires et la décision finale demeure réservée à l’Administration Omnia.
             </p>
           </div>
           <div className="rounded-2xl border bg-white px-5 py-4 text-center" style={{ borderColor: '#E4E7EC' }}>
@@ -107,7 +107,7 @@ export default function ModerateurMissions() {
               <LockKeyhole className="mt-0.5 text-amber-700" size={22} />
               <div>
                 <p className="font-semibold text-amber-900">Aucune mission active</p>
-                <p className="mt-1 text-sm text-amber-800">Un Super-admin doit activer au moins une permission avant l’accès aux contrôles.</p>
+                <p className="mt-1 text-sm text-amber-800">L’Administration Omnia doit activer au moins une permission avant l’accès aux contrôles.</p>
               </div>
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function ModerateurMissions() {
                       </Link>
                     ) : (
                       <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: '#FFF7E8', color: '#8A5A08' }}>
-                        Contrôle préparatoire · décision finale Super-admin
+                        Contrôle préparatoire · décision finale de l’Administration Omnia
                       </span>
                     )}
                   </div>

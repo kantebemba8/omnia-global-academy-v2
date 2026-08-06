@@ -7,7 +7,7 @@ const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`
 
 const CODE_STATUS: Record<string, { label: string; color: string; bg: string }> = {
   draft:                    { label: 'Brouillon',                      color: '#6B7280', bg: '#F3F4F6' },
-  pending_admin_validation: { label: 'En attente Super Admin',         color: '#92400E', bg: '#FEF3C7' },
+  pending_admin_validation: { label: 'En attente de validation',         color: '#92400E', bg: '#FEF3C7' },
   active:                   { label: 'Actif',                          color: '#065F46', bg: '#D1FAE5' },
   inactive:                 { label: 'Inactif',                        color: '#374151', bg: '#F3F4F6' },
   expired:                  { label: 'Expiré',                         color: '#6B7280', bg: '#F3F4F6' },
@@ -140,7 +140,7 @@ export default function StructureCodes() {
         {/* Info */}
         <div className="flex items-start gap-2 p-3 rounded-xl text-sm" style={{ background: '#EEF2FF', color: '#002050' }}>
           <QrCode size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-          <p>Un code de type <strong>Rattachement simple</strong> peut être utilisé sans validation Super Admin.
+          <p>Un code de type <strong>Rattachement simple</strong> peut être utilisé sans validation de l’Administration Omnia.
           Les codes avec avantage ou accès spéciaux nécessitent une validation.</p>
         </div>
 

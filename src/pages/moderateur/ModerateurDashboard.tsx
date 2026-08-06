@@ -189,7 +189,7 @@ export default function ModerateurDashboard() {
               <p className="font-semibold text-amber-800">Aucune permission active</p>
               <p className="text-amber-700 text-sm mt-1">
                 Votre compte modérateur n'a pas encore de permissions assignées.
-                Contactez un Super-admin pour obtenir des droits d'accès.
+                Contactez l’Administration Omnia pour obtenir des droits d'accès.
               </p>
             </div>
           </div>
@@ -281,7 +281,7 @@ export default function ModerateurDashboard() {
           <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700">
             En tant que modérateur, vous ne pouvez jamais <strong>publier</strong> directement une formation.
-            Les formations validées sont transmises au Super-admin pour publication finale.
+            Les formations validées sont transmises à l’Administration Omnia pour publication finale.
           </p>
         </div>
       </div>

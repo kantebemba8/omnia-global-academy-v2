@@ -239,9 +239,9 @@ Deno.serve(async (req: Request) => {
       set_price: "Prix recommandé enregistré.",
       reject: "Formation rejetée.",
       request_modification: "Demande de modification envoyée.",
-      transmit_to_admin: "Formation transmise au Super-admin pour décision finale.",
+      transmit_to_admin: "Formation transmise à l’Administration Omnia pour décision finale.",
       confirm_oral_exam: "Examen oral confirmé.",
-      recommend_oral_exam: "Recommandation transmise au Super-admin.",
+      recommend_oral_exam: "Recommandation transmise à l’Administration Omnia.",
     };
     return json({ success: true, message: messages[action] || "Action effectuée." });
   } catch (error) {

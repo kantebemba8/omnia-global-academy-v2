@@ -205,7 +205,7 @@ export default function CareerTokenGovernancePanel({ configs, globalRules, savin
         <div>
           <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Gouvernance avancée des jetons</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6" style={{ color: MUTED }}>
-            Le Super-admin choisit les événements qui créditent les apprenants et le coût de chaque action.
+            L’Administration Omnia choisit les événements qui créditent les apprenants et le coût de chaque action.
             Une règle inactive ou réglée à zéro ne crédite et ne débite aucun jeton.
           </p>
         </div>
@@ -269,7 +269,7 @@ export default function CareerTokenGovernancePanel({ configs, globalRules, savin
           {[
             ['career_token_earning_enabled', 'Autoriser les gains', 'Active les crédits automatiques configurés ci-dessous.'],
             ['career_token_spending_enabled', 'Autoriser les dépenses', 'Active les débits configurés pour les actions apprenant.'],
-            ['career_premium_templates_enabled', 'Activer les modèles Premium', 'Applique le statut Premium aux modèles choisis par le Super-admin.'],
+            ['career_premium_templates_enabled', 'Activer les modèles Premium', 'Applique le statut Premium aux modèles choisis par l’Administration Omnia.'],
           ].map(([key, label, description]) => {
             const rule = globalRule(key);
             const checked = Boolean(rule?.value_json?.value);
@@ -405,7 +405,7 @@ export default function CareerTokenGovernancePanel({ configs, globalRules, savin
                     {effective && <CheckCircle2 size={16} className="text-emerald-600" />}
                   </div>
                   <p className="mt-1 text-sm leading-6" style={{ color: MUTED }}>
-                    {config.description_fr || 'Règle configurable par le Super-admin.'}
+                    {config.description_fr || 'Règle configurable par l’Administration Omnia.'}
                   </p>
                   <p className="mt-1 font-mono text-[11px]" style={{ color: '#98A2B3' }}>{config.config_key}</p>
                 </div>

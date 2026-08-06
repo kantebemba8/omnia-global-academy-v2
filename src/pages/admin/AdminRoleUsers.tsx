@@ -34,7 +34,8 @@ export default function AdminRoleUsers(){
   const [error,setError]=useState('');
 
   useEffect(()=>{
-    if(roleKey==='recruteur_structure'){
+    const manageableRoles = new Set(Object.keys(LABELS));
+    if(!manageableRoles.has(roleKey)){
       navigate('/admin/structures',{replace:true});
       return;
     }

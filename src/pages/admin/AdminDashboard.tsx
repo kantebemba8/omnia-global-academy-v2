@@ -150,10 +150,7 @@ export default function AdminDashboard() {
     { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true', role: 'recruteur' },
   ];
 
-  const visibleRoleRows = (data?.users_by_role || []).filter(row => {
-    const key = row.role_key || row.role;
-    return key !== 'recruteur_structure' && !/recruteur\s+structure/i.test(row.role);
-  });
+  const visibleRoleRows = data?.users_by_role || [];
 
   function openPreviewSpace(path: string, role: string) {
     sessionStorage.setItem('omnia_admin_role_preview', role);

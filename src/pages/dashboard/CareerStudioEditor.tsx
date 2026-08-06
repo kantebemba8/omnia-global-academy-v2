@@ -689,7 +689,7 @@ export default function CareerStudioEditor() {
   }
 
   async function requestAi(mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) {
-    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation Super-admin.'); return; }
+    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation administrative Omnia.'); return; }
     if (!document || aiLoading) return;
     setAiLoading(true);
     setAiSuggestion(null);
@@ -734,7 +734,7 @@ export default function CareerStudioEditor() {
   }
 
   async function personalizeWithAi() {
-    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation Super-admin.'); return; }
+    if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation administrative Omnia.'); return; }
     if (!document || !personalizeText.trim() || personalizeLoading) return;
     setPersonalizeLoading(true);
     try {
@@ -950,7 +950,7 @@ export default function CareerStudioEditor() {
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : previewMode ? 'Mode aperçu Super-admin' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
+              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
             <button
