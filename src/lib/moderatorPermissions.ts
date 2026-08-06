@@ -73,14 +73,14 @@ export const MODERATOR_PERMISSION_DEFINITIONS = [
   },
   {
     key: 'can_validate_professor_kyc',
-    label: 'Examiner le KYC des professeurs',
-    description: 'Contrôler les dossiers KYC des professeurs.',
+    label: 'Vérifier l’identité et les justificatifs des professeurs',
+    description: 'Consulter les informations et documents transmis afin de confirmer que le professeur est bien identifié avant la décision finale.',
     workspace: '/moderator/kyc',
   },
   {
     key: 'can_validate_structure_kyc',
-    label: 'Examiner le KYC des Structures',
-    description: 'Examiner les justificatifs des Structures avant décision finale.',
+    label: 'Vérifier l’identité et les justificatifs des Structures',
+    description: 'Contrôler les informations légales et les documents fournis par une Structure avant la décision finale du Super-admin.',
     workspace: '/moderator/missions',
   },
   {
@@ -195,7 +195,7 @@ const SECTION_CONFIG = [
   },
   {
     id: 'users',
-    title: 'Utilisateurs, Structures & KYC',
+    title: 'Utilisateurs, Structures et vérification d’identité',
     icon: 'users',
     keys: [
       'can_see_learners_list',

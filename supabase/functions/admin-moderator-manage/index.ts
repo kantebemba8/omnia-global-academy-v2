@@ -3,9 +3,11 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hashSync } from "npm:bcryptjs@2.4.3";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
+  "Access-Control-Max-Age": "86400",
+  "Cache-Control": "no-store",
 };
 
 function json(data: unknown, status = 200) {
@@ -316,7 +318,12 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  const requestUrl = new URL(req.url);
+  const requestedAction = requestUrl.searchParams.get("action") || (req.method === "GET" ? "list" : "");
+  if (req.method === "GET" && requestedAction === "health") {
+    return json({ success: true, service: "admin-moderator-manage", status: "available", timestamp: new Date().toISOString() });
+  }
   if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "")
@@ -327,16 +334,20 @@ Deno.serve(async (req: Request) => {
   try {
     const url = Deno.env.get("SUPABASE_URL") || "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    if (!url || !serviceKey) return json({ error: "SERVER_CONFIG_ERROR" }, 500);
+    if (!url || !serviceKey) return json({ error: "SERVER_CONFIG_ERROR", message: "Configuration Supabase incomplète pour Équipe & Modérateurs." }, 500);
     const sb = createClient(url, serviceKey);
     const adminId = await verifySuperAdmin(sb, token);
-    if (!adminId) return json({ error: "FORBIDDEN" }, 403);
+    if (!adminId) return json({ error: "FORBIDDEN", message: "Session Super-admin invalide ou expirée." }, 403);
 
-    const action = new URL(req.url).searchParams.get("action") || (req.method === "GET" ? "list" : "");
+    const action = requestedAction;
 
     if (req.method === "GET") {
-      if (["list", "create"].includes(action)) return json({ moderators: await listModerators(sb) });
+      if (action === "list") return json({ moderators: await listModerators(sb) });
       if (action === "requests") return json({ requests: await listPendingRequests(sb) });
+      if (action === "overview") {
+        const [moderators, requests] = await Promise.all([listModerators(sb), listPendingRequests(sb)]);
+        return json({ success: true, moderators, requests });
+      }
       return json({ error: "UNKNOWN_ACTION", action }, 400);
     }
 

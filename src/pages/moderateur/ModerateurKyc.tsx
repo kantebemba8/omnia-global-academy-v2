@@ -2,6 +2,7 @@ import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModerateurLayout } from '../../components/ModerateurLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Shield, CheckCircle, XCircle, User, Calendar } from 'lucide-react';
 
 interface ProfKyc {
@@ -44,7 +45,8 @@ export default function ModerateurKyc() {
       return;
     }
     const token = getSessionToken();
-    fetch(ENDPOINTS.moderatorKycAction, { headers: { Authorization: `Bearer ${token}` } })
+    if (!token) { setLoading(false); return; }
+    fetch(ENDPOINTS.moderatorKycAction, { headers: edgeAuthHeaders() })
       .then((response) => response.json())
       .then((payload) => { setData(payload); setLoading(false); })
       .catch(() => setLoading(false));
@@ -56,15 +58,16 @@ export default function ModerateurKyc() {
     if (!modal) return;
     setSubmitting(true);
     const token = getSessionToken();
+    if (!token) { setToast('Session expirée. Veuillez vous reconnecter.'); setSubmitting(false); return; }
     const response = await fetch(ENDPOINTS.moderatorKycAction, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: edgeAuthHeaders(),
       body: JSON.stringify({ user_id: modal.userId, kyc_type: 'professeur', action: modal.action, reason }),
     });
     const payload = await response.json();
     setSubmitting(false);
     if (payload.success) {
-      setToast(modal.action === 'approve' ? 'KYC professeur approuvé.' : 'KYC professeur rejeté.');
+      setToast(modal.action === 'approve' ? 'Identité et justificatifs du professeur approuvés.' : 'Vérification d’identité du professeur refusée.');
       setModal(null);
       setReason('');
       load();
@@ -91,14 +94,14 @@ export default function ModerateurKyc() {
       <div className="mx-auto max-w-5xl space-y-6 p-6">
         {toast && <div className="fixed right-4 top-4 z-50 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium shadow-lg" style={{ color: '#002050' }}>{toast}</div>}
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Validation KYC des professeurs</h1>
-          <p className="mt-1 text-sm text-gray-500">Les Structures sont contrôlées dans l’espace de gestion Super Admin dédié.</p>
+          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Vérification de l’identité des professeurs</h1>
+          <p className="mt-1 text-sm text-gray-500">Contrôlez l’identité et les justificatifs transmis par les professeurs. Les Structures sont vérifiées dans l’espace Super-admin dédié.</p>
         </div>
 
         {professeurs.length === 0 ? (
           <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
             <Shield className="mx-auto mb-3 h-10 w-10 opacity-20" style={{ color: '#1E7A52' }} />
-            <p className="text-sm text-gray-400">Aucun professeur en attente de validation KYC</p>
+            <p className="text-sm text-gray-400">Aucun professeur en attente de vérification d’identité</p>
           </div>
         ) : professeurs.map((professeur) => (
           <article key={professeur.id} className="space-y-4 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -126,7 +129,7 @@ export default function ModerateurKyc() {
         {modal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-              <div className="flex items-center gap-3"><User className="h-5 w-5" style={{ color: '#BF8813' }} /><h3 className="text-lg font-bold" style={{ color: '#002050' }}>{modal.action === 'approve' ? 'Approuver le KYC' : 'Rejeter le KYC'}</h3></div>
+              <div className="flex items-center gap-3"><User className="h-5 w-5" style={{ color: '#BF8813' }} /><h3 className="text-lg font-bold" style={{ color: '#002050' }}>{modal.action === 'approve' ? 'Approuver la vérification' : 'Refuser la vérification'}</h3></div>
               <p className="text-sm text-gray-600">{modal.action === 'approve' ? `Confirmer l’approbation de ${modal.name} ?` : `Indiquez le motif du rejet pour ${modal.name}.`}</p>
               {modal.action === 'reject' && <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Motif obligatoire…" />}
               <div className="flex justify-end gap-3">

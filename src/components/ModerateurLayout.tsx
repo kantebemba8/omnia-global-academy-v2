@@ -91,13 +91,13 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
 
   const userItems: ModeratorNavItem[] = [];
   if (permissions.can_validate_professor_kyc) {
-    userItems.push({ path: '/moderator/kyc', label: 'Validation KYC', icon: Shield });
+    userItems.push({ path: '/moderator/kyc', label: 'Vérification d’identité', icon: Shield });
   }
   if (moderatorHasAnyPermission(permissions, USER_WORKSPACE_KEYS)) {
     userItems.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users });
   }
   if (userItems.length) {
-    groups.push({ id: 'users', label: 'Utilisateurs & KYC', icon: Users, items: userItems });
+    groups.push({ id: 'users', label: 'Utilisateurs et identité', icon: Users, items: userItems });
   }
 
   const moderationItems: ModeratorNavItem[] = [];

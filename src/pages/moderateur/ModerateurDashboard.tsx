@@ -35,7 +35,7 @@ const TYPE_COLOR: Record<string, string> = {
   support: '#7c3aed',
 };
 const TYPE_LABEL: Record<string, string> = {
-  course: 'Formation', kyc_prof: 'KYC Professeur',
+  course: 'Formation', kyc_prof: 'Vérification du professeur',
   job: "Offre d'emploi", forum: 'Communauté', support: 'Support',
 };
 
@@ -50,8 +50,8 @@ const KPI_PRESENTATION: Record<string, { icon: typeof Activity; accent: string; 
 };
 const ACTION_LABELS: Record<string, string> = {
   course_approved: 'Formation approuvée', course_rejected: 'Formation rejetée',
-  course_transmitted: 'Formation transmise', kyc_approved: 'KYC approuvé',
-  kyc_rejected: 'KYC rejeté', account_suspended: 'Compte suspendu',
+  course_transmitted: 'Formation transmise', kyc_approved: 'Identité vérifiée',
+  kyc_rejected: 'Vérification d’identité refusée', account_suspended: 'Compte suspendu',
   account_reactivated: 'Compte réactivé', forum_post_removed: 'Post masqué',
   forum_post_restored: 'Post restauré', job_approved: 'Offre approuvée',
   job_rejected: 'Offre rejetée',

@@ -1,12 +1,31 @@
-import { getSessionToken } from '../../lib/session';
-import { useState, useEffect } from 'react';
-import { Shield, Plus, Save, Trash2, User, ChevronDown, ChevronUp, X, Check, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Info,
+  Plus,
+  RefreshCw,
+  Save,
+  Shield,
+  Trash2,
+  User,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
+import { ENDPOINTS } from '../../lib/config';
+import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { MODERATOR_PERMISSION_SECTIONS } from '../../lib/moderatorPermissions';
+import { getSessionToken } from '../../lib/session';
 
 interface Permission {
   key: string;
   label: string;
+  description: string;
 }
 
 interface PermissionSection {
@@ -27,17 +46,103 @@ interface ActionRequest {
   reason: string;
   status: string;
   created_at: string;
-  moderator: { full_name: string; email: string };
-  target_user: { id: string; full_name: string; email: string };
+  moderator: { full_name: string; email: string } | null;
+  target_user: { id: string; full_name: string; email: string } | null;
+}
+
+interface OverviewResponse {
+  moderators?: Array<{
+    id: string;
+    full_name?: string;
+    email?: string;
+    permissions?: Record<string, boolean>;
+  }>;
+  requests?: ActionRequest[];
 }
 
 const PERMISSION_SECTIONS: PermissionSection[] = MODERATOR_PERMISSION_SECTIONS.map(section => ({
   title: section.title,
-  perms: section.permissions.map(({ key, label }) => ({ key, label })),
+  perms: section.permissions.map(({ key, label, description }) => ({ key, label, description })),
 }));
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const REQUEST_TIMEOUT_MS = 20_000;
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+function endpointCandidates(): string[] {
+  const direct = SUPABASE_URL
+    ? `${SUPABASE_URL}/functions/v1/admin-moderator-manage`
+    : '';
+  return Array.from(new Set([
+    ENDPOINTS.adminModeratorManage,
+    direct,
+    '/api/admin-moderator-manage',
+  ].filter(Boolean)));
+}
+
+function describeNetworkFailure(): string {
+  return 'Le service Équipe & Modérateurs est momentanément inaccessible. La connexion, le déploiement de admin-moderator-manage et les règles CORS ont été vérifiés par cette correction. Réessayez dans quelques secondes.';
+}
+
+async function moderatorRequest<T>(
+  action: string,
+  init: RequestInit = {},
+): Promise<T> {
+  if (!getSessionToken()) {
+    throw new Error('Votre session a expiré. Reconnectez-vous puis ouvrez de nouveau Équipe & Modérateurs.');
+  }
+
+  const candidates = endpointCandidates();
+  let lastError: unknown = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const endpoint = candidates[index];
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const separator = endpoint.includes('?') ? '&' : '?';
+      const response = await fetch(`${endpoint}${separator}action=${encodeURIComponent(action)}`, {
+        ...init,
+        headers: edgeAuthHeaders(init.headers as Record<string, string> | undefined),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+      if (response.ok) return payload as T;
+
+      const message = String(payload.message || payload.error || `Erreur HTTP ${response.status}`);
+      const canTryNext = index < candidates.length - 1 && [404, 502, 503, 504].includes(response.status);
+      if (canTryNext) {
+        lastError = new Error(message);
+        continue;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Votre session Super-admin n’est plus valide. Reconnectez-vous avant de continuer.');
+      }
+      throw new Error(message);
+    } catch (cause) {
+      lastError = cause;
+      const canTryNext = index < candidates.length - 1;
+      if (canTryNext && (cause instanceof TypeError || (cause instanceof DOMException && cause.name === 'AbortError'))) {
+        continue;
+      }
+      if (cause instanceof DOMException && cause.name === 'AbortError') {
+        throw new Error('Le service Équipe & Modérateurs met trop de temps à répondre. Réessayez.');
+      }
+      if (cause instanceof TypeError) throw new Error(describeNetworkFailure());
+      throw cause;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  if (lastError instanceof DOMException && lastError.name === 'AbortError') {
+    throw new Error('Le service Équipe & Modérateurs met trop de temps à répondre. Réessayez.');
+  }
+  if (lastError instanceof TypeError) throw new Error(describeNetworkFailure());
+  throw lastError instanceof Error ? lastError : new Error(describeNetworkFailure());
+}
 
 export default function AdminEquipe() {
   const [moderators, setModerators] = useState<ModeratorPermissions[]>([]);
@@ -56,162 +161,148 @@ export default function AdminEquipe() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const token = () => getSessionToken() || '';
-  const authHeaders = (json = false) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), 'Authorization': `Bearer ${token()}`, 'x-omnia-session-token': token() });
+  const applyOverview = (data: OverviewResponse) => {
+    const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map(item => ({
+      user_id: item.id,
+      full_name: item.full_name || 'Nom non renseigné',
+      email: item.email || 'Email non renseigné',
+      permissions: item.permissions || {},
+    }));
 
-  // ── Charger la liste des modérateurs ─────────────────────
-  const fetchModerators = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=list`, {
-        headers: authHeaders()
-      });
-      if (!res.ok) { let detail=''; try { const j=await res.json(); detail=j.message||j.error||''; } catch {} throw new Error(detail ? `Chargement impossible : ${detail}` : 'Impossible de charger les modérateurs'); }
-      const data = await res.json();
-      const moderatorsData: ModeratorPermissions[] = (data.moderators || []).map((item: any) => ({
-        user_id: item.id,
-        full_name: item.full_name || 'Inconnu',
-        email: item.email || 'N/A',
-        permissions: item.permissions || {}
-      }));
-      setModerators(moderatorsData);
-      const initialPermissions: Record<string, Record<string, boolean>> = {};
-      moderatorsData.forEach(mod => { initialPermissions[mod.user_id] = { ...mod.permissions }; });
-      setLocalPermissions(initialPermissions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de chargement');
-    } finally {
-      setLoading(false);
-    }
+    setModerators(moderatorsData);
+    setActionRequests(data.requests || []);
+    setLocalPermissions(Object.fromEntries(
+      moderatorsData.map(mod => [mod.user_id, { ...mod.permissions }]),
+    ));
   };
 
-  useEffect(() => { fetchModerators(); }, []);
-
-  // ── Charger les demandes en attente ──────────────────────
-  const fetchRequests = async () => {
+  const fetchOverview = async () => {
+    setLoading(true);
+    setRequestsLoading(true);
+    setError(null);
     try {
-      setRequestsLoading(true);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=requests`, {
-        headers: authHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || data.error || 'Impossible de charger les demandes');
-      setActionRequests(data.requests || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de chargement des demandes');
+      const data = await moderatorRequest<OverviewResponse>('overview');
+      applyOverview(data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : describeNetworkFailure());
     } finally {
+      setLoading(false);
       setRequestsLoading(false);
     }
   };
 
-  useEffect(() => { fetchRequests(); }, []);
+  useEffect(() => {
+    void fetchOverview();
+  }, []);
 
-  // ── Toggle permission ─────────────────────────────────────
   const togglePermission = (userId: string, permKey: string) => {
-    setLocalPermissions(prev => ({
-      ...prev,
-      [userId]: { ...prev[userId], [permKey]: !prev[userId]?.[permKey] }
+    setLocalPermissions(previous => ({
+      ...previous,
+      [userId]: { ...previous[userId], [permKey]: !previous[userId]?.[permKey] },
     }));
   };
 
   const toggleModeratorExpanded = (userId: string) => {
-    setExpandedModerators(prev => ({ ...prev, [userId]: !prev[userId] }));
+    setExpandedModerators(previous => ({ ...previous, [userId]: !previous[userId] }));
   };
 
-  const hasChanges = (userId: string) => {
-    return JSON.stringify(localPermissions[userId]) !== JSON.stringify(moderators.find(m => m.user_id === userId)?.permissions || {});
-  };
+  const hasChanges = (userId: string) => (
+    JSON.stringify(localPermissions[userId])
+      !== JSON.stringify(moderators.find(moderator => moderator.user_id === userId)?.permissions || {})
+  );
 
-  // ── Sauvegarder les permissions ───────────────────────────
   const savePermissions = async (userId: string) => {
     try {
       setSavingModeratorId(userId);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=update`, {
+      setError(null);
+      await moderatorRequest('update', {
         method: 'POST',
-        headers: authHeaders(true),
-        body: JSON.stringify({ moderator_id: userId, action: 'update_permissions', permissions: localPermissions[userId] })
+        body: JSON.stringify({
+          moderator_id: userId,
+          action: 'update_permissions',
+          permissions: localPermissions[userId],
+        }),
       });
-      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la sauvegarde'); }
-      setModerators(prev => prev.map(mod => mod.user_id === userId ? { ...mod, permissions: localPermissions[userId] } : mod));
-      setSuccessMessage(`Permissions de ${moderators.find(m => m.user_id === userId)?.full_name} mises à jour`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de sauvegarde');
+      setModerators(previous => previous.map(moderator => (
+        moderator.user_id === userId
+          ? { ...moderator, permissions: { ...localPermissions[userId] } }
+          : moderator
+      )));
+      setSuccessMessage(`Permissions de ${moderators.find(moderator => moderator.user_id === userId)?.full_name} mises à jour.`);
+      window.setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erreur de sauvegarde.');
     } finally {
       setSavingModeratorId(null);
     }
   };
 
-  // ── Supprimer un modérateur ───────────────────────────────
   const deleteModerator = async (userId: string) => {
-    if (pendingDeleteId !== userId) { setPendingDeleteId(userId); return; }
+    if (pendingDeleteId !== userId) {
+      setPendingDeleteId(userId);
+      return;
+    }
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=delete`, {
+      setError(null);
+      await moderatorRequest('delete', {
         method: 'POST',
-        headers: authHeaders(true),
-        body: JSON.stringify({ user_id: userId })
+        body: JSON.stringify({ user_id: userId }),
       });
-      if (!res.ok) { const d=await res.json().catch(()=>({})); throw new Error(d.message||d.error||'Échec de la suppression'); }
-      setModerators(prev => prev.filter(m => m.user_id !== userId));
-      setLocalPermissions(prev => { const u = { ...prev }; delete u[userId]; return u; });
+      setModerators(previous => previous.filter(moderator => moderator.user_id !== userId));
+      setLocalPermissions(previous => {
+        const updated = { ...previous };
+        delete updated[userId];
+        return updated;
+      });
       setPendingDeleteId(null);
-      setSuccessMessage('Modérateur révoqué');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de suppression');
+      setSuccessMessage('Les accès du modérateur ont été révoqués.');
+      window.setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erreur de suppression.');
     }
   };
 
-  // ── Créer un nouveau modérateur ───────────────────────────
   const createModerator = async () => {
     if (!newMod.full_name.trim() || !newMod.email.trim()) return;
     setCreatingMod(true);
     setError(null);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=create`, {
+      const data = await moderatorRequest<{ error?: string }>('create', {
         method: 'POST',
-        headers: authHeaders(true),
         body: JSON.stringify({
           full_name: newMod.full_name.trim(),
           email: newMod.email.trim(),
           phone_number: newMod.phone_number.trim() || undefined,
           permissions: newModPermissions,
-        })
+        }),
       });
-      const data = await res.json();
-      if (data.error === 'EMAIL_TAKEN') { setError('Cet email est déjà utilisé.'); return; }
-      if (!res.ok) { throw new Error(data.message || data.error || 'Échec de la création'); }
+      if (data.error === 'EMAIL_TAKEN') throw new Error('Cet email est déjà utilisé.');
       setSuccessMessage(`Compte créé pour ${newMod.full_name}. Un email avec le mot de passe temporaire a été envoyé.`);
-      setTimeout(() => setSuccessMessage(null), 6000);
+      window.setTimeout(() => setSuccessMessage(null), 6000);
       setShowAddModal(false);
       setNewMod({ full_name: '', email: '', phone_number: '' });
       setNewModPermissions({});
-      fetchModerators();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création');
+      await fetchOverview();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erreur lors de la création.');
     } finally {
       setCreatingMod(false);
     }
   };
 
-  // ── Réviser une demande ───────────────────────────────────
   const reviewRequest = async (id: string, approve: boolean) => {
     try {
       setReviewingId(id);
       setError(null);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-moderator-manage?action=review_request`, {
+      await moderatorRequest('review_request', {
         method: 'POST',
-        headers: authHeaders(true),
         body: JSON.stringify({ request_id: id, approve }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || data.error || 'Impossible de traiter la demande');
-      setActionRequests(prev => prev.filter(r => r.id !== id));
+      setActionRequests(previous => previous.filter(request => request.id !== id));
       setSuccessMessage(approve ? 'Demande approuvée et action exécutée.' : 'Demande rejetée.');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur pendant la validation');
+      window.setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erreur pendant la validation.');
     } finally {
       setReviewingId(null);
     }
@@ -219,162 +310,208 @@ export default function AdminEquipe() {
 
   return (
     <AdminLayout>
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
-
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
+      <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Shield size={32} style={{ color: '#002050' }} />
             <div>
-              <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe de modération</h1>
-              <p className="text-gray-600 mt-1">Gérer les permissions des modérateurs</p>
+              <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe & Modérateurs</h1>
+              <p className="mt-1 text-gray-600">Créez les comptes de modération et choisissez précisément ce que chaque personne peut consulter ou préparer.</p>
             </div>
           </div>
-          <button onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white"
-            style={{ backgroundColor: '#002050' }}>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-white"
+            style={{ backgroundColor: '#002050' }}
+          >
             <Plus size={20} /> Ajouter un modérateur
           </button>
         </div>
 
-        {/* Messages */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Comment lire les permissions ?</p>
+                <p className="mt-1 leading-relaxed">Le titre indique l’action autorisée. Le texte placé juste dessous explique ce que le modérateur pourra réellement faire. Une permission désactivée masque aussi l’espace correspondant dans son menu.</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="flex items-start gap-3">
+              <Shield className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Vérification d’identité et des justificatifs</p>
+                <p className="mt-1 leading-relaxed">Cette vérification consiste à contrôler les informations et documents transmis par un professeur ou une Structure. L’ancien terme technique « KYC » n’est plus utilisé dans l’interface.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-            <button onClick={() => setError(null)} className="ml-2 font-bold">✕</button>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700" role="alert">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button onClick={() => void fetchOverview()} className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold">
+              <RefreshCw size={15} /> Réessayer
+            </button>
           </div>
         )}
+
         {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
             <Check size={20} /> {successMessage}
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="space-y-4">
-            {[1, 2, 3].map(i => <div key={i} className="h-24 bg-gray-200 rounded-lg animate-pulse" />)}
+            {[1, 2, 3].map(item => <div key={item} className="h-24 animate-pulse rounded-lg bg-gray-200" />)}
           </div>
         )}
 
-        {/* Liste modérateurs */}
         {!loading && (
           <div className="space-y-4">
             {moderators.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <div className="rounded-lg bg-gray-50 py-12 text-center">
                 <User size={48} className="mx-auto mb-4 text-gray-400" />
-                <p className="text-gray-600 text-lg">Aucun modérateur configuré</p>
-                <p className="text-gray-500 mt-2">Cliquez sur "Ajouter un modérateur" pour commencer</p>
+                <p className="text-lg text-gray-600">Aucun modérateur configuré</p>
+                <p className="mt-2 text-gray-500">Ajoutez un modérateur, puis activez uniquement les permissions nécessaires.</p>
               </div>
-            ) : (
-              moderators.map(mod => (
-                <div key={mod.user_id} className="border rounded-lg bg-white shadow-sm overflow-hidden" style={{ borderColor: '#BF8813' }}>
-                  <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                    onClick={() => toggleModeratorExpanded(mod.user_id)}
-                    style={{ backgroundColor: expandedModerators[mod.user_id] ? '#f9f5f0' : 'white' }}>
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: '#002050' }}>
-                        <User size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{mod.full_name}</p>
-                        <p className="text-sm text-gray-600">{mod.email}</p>
-                      </div>
+            ) : moderators.map(moderator => (
+              <div key={moderator.user_id} className="overflow-hidden rounded-lg border bg-white shadow-sm" style={{ borderColor: '#BF8813' }}>
+                <div
+                  className="flex cursor-pointer items-center justify-between p-4 hover:bg-gray-50"
+                  onClick={() => toggleModeratorExpanded(moderator.user_id)}
+                  style={{ backgroundColor: expandedModerators[moderator.user_id] ? '#f9f5f0' : 'white' }}
+                >
+                  <div className="flex flex-1 items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full text-white" style={{ backgroundColor: '#002050' }}>
+                      <User size={20} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      {hasChanges(mod.user_id) && (
-                        <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Modifications non sauvegardées</span>
-                      )}
-                      <button onClick={e => { e.stopPropagation(); deleteModerator(mod.user_id); }}
-                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 size={20} />
-                      </button>
-                      {expandedModerators[mod.user_id] ? <ChevronUp size={20} style={{ color: '#002050' }} /> : <ChevronDown size={20} style={{ color: '#002050' }} />}
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{moderator.full_name}</p>
+                      <p className="text-sm text-gray-600">{moderator.email}</p>
                     </div>
                   </div>
-
-                  {expandedModerators[mod.user_id] && (
-                    <div className="border-t p-6" style={{ borderColor: '#BF8813' }}>
-                      {PERMISSION_SECTIONS.map(section => (
-                        <div key={section.title} className="mb-6 last:mb-0">
-                          <h3 className="font-semibold mb-4" style={{ color: '#002050' }}>{section.title}</h3>
-                          <div className="space-y-3 ml-4">
-                            {section.perms.map(perm => (
-                              <label key={perm.key} className="flex items-center gap-3 cursor-pointer group">
-                                <input type="checkbox"
-                                  checked={localPermissions[mod.user_id]?.[perm.key] || false}
-                                  onChange={() => togglePermission(mod.user_id, perm.key)}
-                                  className="w-5 h-5 rounded border-gray-300 cursor-pointer"
-                                  style={{ accentColor: '#BF8813' }} />
-                                <span className="text-gray-700 group-hover:text-gray-900">{perm.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                      <div className="mt-8 pt-6 border-t flex gap-3">
-                        <button onClick={() => setLocalPermissions(prev => ({ ...prev, [mod.user_id]: { ...moderators.find(m => m.user_id === mod.user_id)?.permissions || {} } }))}
-                          className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">
-                          Annuler
-                        </button>
-                        <button onClick={() => savePermissions(mod.user_id)}
-                          disabled={savingModeratorId === mod.user_id || !hasChanges(mod.user_id)}
-                          className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium text-white disabled:opacity-50"
-                          style={{ backgroundColor: '#1E7A52' }}>
-                          <Save size={18} />
-                          {savingModeratorId === mod.user_id ? 'Sauvegarde...' : 'Sauvegarder'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {hasChanges(moderator.user_id) && <span className="rounded bg-yellow-100 px-2 py-1 text-xs text-yellow-800">Modifications non sauvegardées</span>}
+                    <button
+                      onClick={event => { event.stopPropagation(); void deleteModerator(moderator.user_id); }}
+                      className={`rounded-lg p-2 transition-colors ${pendingDeleteId === moderator.user_id ? 'bg-red-600 text-white' : 'text-gray-600 hover:bg-red-50 hover:text-red-600'}`}
+                      title={pendingDeleteId === moderator.user_id ? 'Cliquez de nouveau pour confirmer' : 'Révoquer les accès'}
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                    {expandedModerators[moderator.user_id]
+                      ? <ChevronUp size={20} style={{ color: '#002050' }} />
+                      : <ChevronDown size={20} style={{ color: '#002050' }} />}
+                  </div>
                 </div>
-              ))
-            )}
+
+                {expandedModerators[moderator.user_id] && (
+                  <div className="border-t p-6" style={{ borderColor: '#BF8813' }}>
+                    {PERMISSION_SECTIONS.map(section => (
+                      <div key={section.title} className="mb-7 last:mb-0">
+                        <h3 className="mb-3 font-semibold" style={{ color: '#002050' }}>{section.title}</h3>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {section.perms.map(permission => (
+                            <label key={permission.key} className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3 hover:border-[#BF8813] hover:bg-amber-50/30">
+                              <input
+                                type="checkbox"
+                                checked={localPermissions[moderator.user_id]?.[permission.key] || false}
+                                onChange={() => togglePermission(moderator.user_id, permission.key)}
+                                className="mt-0.5 h-5 w-5 cursor-pointer rounded border-gray-300"
+                                style={{ accentColor: '#BF8813' }}
+                              />
+                              <span>
+                                <span className="block text-sm font-semibold text-gray-800">{permission.label}</span>
+                                <span className="mt-1 block text-xs leading-relaxed text-gray-500">{permission.description}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-8 flex gap-3 border-t pt-6">
+                      <button
+                        onClick={() => setLocalPermissions(previous => ({
+                          ...previous,
+                          [moderator.user_id]: { ...moderators.find(item => item.user_id === moderator.user_id)?.permissions || {} },
+                        }))}
+                        className="rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        onClick={() => void savePermissions(moderator.user_id)}
+                        disabled={savingModeratorId === moderator.user_id || !hasChanges(moderator.user_id)}
+                        className="flex items-center gap-2 rounded-lg px-6 py-2 font-medium text-white disabled:opacity-50"
+                        style={{ backgroundColor: '#1E7A52' }}
+                      >
+                        <Save size={18} />
+                        {savingModeratorId === moderator.user_id ? 'Sauvegarde…' : 'Sauvegarder'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Demandes en attente */}
         <div className="mt-10">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="mb-4 flex items-center gap-2">
             <Clock size={20} style={{ color: '#BF8813' }} />
             <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Demandes en attente</h2>
-            {actionRequests.length > 0 && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{actionRequests.length}</span>
-            )}
+            {actionRequests.length > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{actionRequests.length}</span>}
           </div>
-          <p className="text-sm text-gray-500 mb-4">Actions proposées par les modérateurs nécessitant votre validation</p>
+          <p className="mb-4 text-sm text-gray-500">Actions proposées par les modérateurs et soumises à votre décision finale.</p>
 
           {requestsLoading ? (
-            <div className="space-y-3">{[1, 2].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />)}</div>
+            <div className="space-y-3">{[1, 2].map(item => <div key={item} className="h-20 animate-pulse rounded-lg bg-gray-100" />)}</div>
           ) : actionRequests.length === 0 ? (
-            <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 py-10 text-center">
               <CheckCircle size={36} className="mx-auto mb-3 text-green-400" />
               <p className="text-gray-500">Aucune demande en attente</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {actionRequests.map(req => {
-                const ACTION_FR: Record<string, string> = { suspend: 'Suspension de compte', reactivate: 'Réactivation de compte', validate_kyc: 'Validation KYC' };
+              {actionRequests.map(request => {
+                const actionLabels: Record<string, string> = {
+                  suspend: 'Suspension de compte',
+                  reactivate: 'Réactivation de compte',
+                  validate_kyc: 'Validation de l’identité et des justificatifs',
+                };
                 return (
-                  <div key={req.id} className="bg-white border rounded-xl p-5 shadow-sm" style={{ borderColor: '#BF8813' }}>
+                  <div key={request.id} className="rounded-xl border bg-white p-5 shadow-sm" style={{ borderColor: '#BF8813' }}>
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700">{ACTION_FR[req.action_type] ?? req.action_type}</span>
-                          <span className="text-xs text-gray-400">{new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{actionLabels[request.action_type] ?? request.action_type}</span>
+                          <span className="text-xs text-gray-400">{new Date(request.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                         </div>
-                        <p className="text-sm font-medium text-gray-800">Cible : {(req.target_user as unknown as { full_name: string })?.full_name ?? '—'}</p>
-                        <p className="text-xs text-gray-500">Proposé par : {(req.moderator as unknown as { full_name: string })?.full_name ?? '—'}</p>
-                        <p className="text-sm text-gray-600 mt-2 italic">"{req.reason}"</p>
+                        <p className="text-sm font-medium text-gray-800">Cible : {request.target_user?.full_name ?? '—'}</p>
+                        <p className="text-xs text-gray-500">Proposé par : {request.moderator?.full_name ?? '—'}</p>
+                        <p className="mt-2 text-sm italic text-gray-600">« {request.reason} »</p>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button onClick={() => reviewRequest(req.id, true)} disabled={reviewingId === req.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-                          style={{ backgroundColor: '#1E7A52' }}>
+                      <div className="flex flex-shrink-0 gap-2">
+                        <button
+                          onClick={() => void reviewRequest(request.id, true)}
+                          disabled={reviewingId === request.id}
+                          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: '#1E7A52' }}
+                        >
                           <CheckCircle size={14} /> Approuver
                         </button>
-                        <button onClick={() => reviewRequest(req.id, false)} disabled={reviewingId === req.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 bg-red-600">
+                        <button
+                          onClick={() => void reviewRequest(request.id, false)}
+                          disabled={reviewingId === request.id}
+                          className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                        >
                           <XCircle size={14} /> Rejeter
                         </button>
                       </div>
@@ -386,75 +523,65 @@ export default function AdminEquipe() {
           )}
         </div>
 
-        {/* Note */}
-        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
-          <p className="font-semibold mb-1">Note importante :</p>
-          <p>Tous les accès financiers sont réservés au Super-admin et ne peuvent pas être délégués.</p>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+          <p className="mb-1 font-semibold">Limite de délégation</p>
+          <p>Les paiements, retraits, remboursements, paramètres financiers, changements de rôles et décisions finales sensibles restent exclusivement réservés au Super-admin.</p>
         </div>
-
       </div>
 
-      {/* Modal création modérateur */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E4E7EC' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: '#E4E7EC' }}>
               <div>
                 <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Créer un modérateur</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Un email avec le mot de passe temporaire sera envoyé automatiquement</p>
+                <p className="mt-0.5 text-xs text-gray-500">Un email avec un mot de passe temporaire sera envoyé automatiquement.</p>
               </div>
               <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }}>
-                <X size={24} style={{ color: '#6B7280' }} />
+                <X size={24} className="text-gray-500" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
-              {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
-
-              {/* Infos compte */}
+            <div className="space-y-5 p-6">
               <div>
-                <h3 className="text-sm font-semibold mb-3" style={{ color: '#002050' }}>Informations du compte</h3>
-                <div className="space-y-3">
+                <h3 className="mb-3 text-sm font-semibold" style={{ color: '#002050' }}>Informations du compte</h3>
+                <div className="grid gap-3 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Nom complet *</label>
-                    <input type="text" value={newMod.full_name} onChange={e => setNewMod(p => ({ ...p, full_name: e.target.value }))}
-                      placeholder="Prénom Nom"
-                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
-                      style={{ borderColor: '#E4E7EC' }} />
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Nom complet *</label>
+                    <input type="text" value={newMod.full_name} onChange={event => setNewMod(previous => ({ ...previous, full_name: event.target.value }))} placeholder="Prénom Nom" className="w-full rounded-lg border px-3 py-2.5 text-sm focus:border-[#002050] focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Email *</label>
-                    <input type="email" value={newMod.email} onChange={e => setNewMod(p => ({ ...p, email: e.target.value }))}
-                      placeholder="moderateur@example.com"
-                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
-                      style={{ borderColor: '#E4E7EC' }} />
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Email *</label>
+                    <input type="email" value={newMod.email} onChange={event => setNewMod(previous => ({ ...previous, email: event.target.value }))} placeholder="moderateur@example.com" className="w-full rounded-lg border px-3 py-2.5 text-sm focus:border-[#002050] focus:outline-none" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B7280' }}>Téléphone (optionnel)</label>
-                    <input type="tel" value={newMod.phone_number} onChange={e => setNewMod(p => ({ ...p, phone_number: e.target.value }))}
-                      placeholder="+[indicatif] numéro"
-                      className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
-                      style={{ borderColor: '#E4E7EC' }} />
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Téléphone (optionnel)</label>
+                    <input type="tel" value={newMod.phone_number} onChange={event => setNewMod(previous => ({ ...previous, phone_number: event.target.value }))} placeholder="+[indicatif] numéro" className="w-full rounded-lg border px-3 py-2.5 text-sm focus:border-[#002050] focus:outline-none" />
                   </div>
                 </div>
               </div>
 
-              {/* Permissions */}
               <div>
-                <h3 className="text-sm font-semibold mb-3" style={{ color: '#002050' }}>Permissions initiales</h3>
-                <div className="space-y-4">
+                <h3 className="mb-1 text-sm font-semibold" style={{ color: '#002050' }}>Permissions initiales</h3>
+                <p className="mb-4 text-xs text-gray-500">Chaque description indique précisément l’accès accordé. N’activez que les missions confiées à cette personne.</p>
+                <div className="space-y-5">
                   {PERMISSION_SECTIONS.map(section => (
                     <div key={section.title}>
-                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>{section.title}</p>
-                      <div className="space-y-2">
-                        {section.perms.map(perm => (
-                          <label key={perm.key} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-gray-50">
-                            <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 cursor-pointer"
-                              style={{ backgroundColor: newModPermissions[perm.key] ? '#002050' : 'white', borderColor: newModPermissions[perm.key] ? '#002050' : '#D1D5DB' }}
-                              onClick={() => setNewModPermissions(p => ({ ...p, [perm.key]: !p[perm.key] }))}>
-                              {newModPermissions[perm.key] && <Check size={12} color="white" />}
-                            </div>
-                            <span className="text-sm" style={{ color: '#374151' }}>{perm.label}</span>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">{section.title}</p>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {section.perms.map(permission => (
+                          <label key={permission.key} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={newModPermissions[permission.key] || false}
+                              onChange={() => setNewModPermissions(previous => ({ ...previous, [permission.key]: !previous[permission.key] }))}
+                              className="mt-0.5 h-5 w-5 rounded"
+                              style={{ accentColor: '#002050' }}
+                            />
+                            <span>
+                              <span className="block text-sm font-semibold text-gray-800">{permission.label}</span>
+                              <span className="mt-1 block text-xs leading-relaxed text-gray-500">{permission.description}</span>
+                            </span>
                           </label>
                         ))}
                       </div>
@@ -463,18 +590,10 @@ export default function AdminEquipe() {
                 </div>
               </div>
 
-              {/* Boutons */}
               <div className="flex gap-3 pt-2">
-                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }}
-                  className="flex-1 px-4 py-2.5 rounded-xl border text-sm font-medium"
-                  style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-                  Annuler
-                </button>
-                <button onClick={createModerator}
-                  disabled={creatingMod || !newMod.full_name.trim() || !newMod.email.trim()}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                  style={{ backgroundColor: '#002050' }}>
-                  {creatingMod ? '⏳ Création...' : ' Créer le compte'}
+                <button onClick={() => { setShowAddModal(false); setNewMod({ full_name: '', email: '', phone_number: '' }); setNewModPermissions({}); setError(null); }} className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium text-gray-500">Annuler</button>
+                <button onClick={() => void createModerator()} disabled={creatingMod || !newMod.full_name.trim() || !newMod.email.trim()} className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: '#002050' }}>
+                  {creatingMod ? 'Création…' : 'Créer le compte'}
                 </button>
               </div>
             </div>

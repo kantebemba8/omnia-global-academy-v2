@@ -171,7 +171,7 @@ export default function ModerateurAnalytique() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Users className="w-4 h-4" style={{ color: '#1E7A52' }} />
-                  <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>KYC traités par semaine</h3>
+                  <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Vérifications d’identité traitées par semaine</h3>
                 </div>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={ana.kyc_by_week}>
