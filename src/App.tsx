@@ -674,7 +674,8 @@ export default function App() {
         <Route path="/admin/payouts" element={<AdminRetraits />} />
         <Route path="/admin/marketing" element={<AdminMarketing />} />
         <Route path="/admin/courses" element={<AdminCatalogue />} />
-        <Route path="/admin/courses/new" element={<ProfessorCourseStart />} />
+        <Route path="/admin/courses/new" element={<Navigate to="/admin/studio/new" replace />} />
+        <Route path="/admin/courses/import" element={<ProfessorCourseStart />} />
         <Route path="/admin/courses/:id/edit" element={<StudioConceptionFormation />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/demo-access" element={<AdminDemoAccess />} />

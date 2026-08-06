@@ -54,7 +54,7 @@ export default function NewsletterPreferencesPage() {
       <main className="px-5 pb-20 pt-28">
         <section className="mx-auto max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/40">
           <div className="bg-[#002050] px-6 py-8 text-white sm:px-10">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold"><Mail className="h-4 w-4 text-[#BF8813]" /> Newsletter Omnia</div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#BF8813]/50 bg-[#BF8813]/15 px-4 py-2 text-sm font-bold"><Mail className="h-4 w-4 text-[#BF8813]" /> Omnia Newsletter</div>
             <h1 className="mt-4 text-3xl font-bold">Gérer mon abonnement</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">Inscrivez-vous aux actualités d’Omnia Global Academy ou retirez votre consentement à tout moment.</p>
           </div>

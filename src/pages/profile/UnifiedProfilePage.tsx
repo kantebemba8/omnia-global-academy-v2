@@ -855,7 +855,7 @@ export default function UnifiedProfilePage() {
             ['allow_email', 'Notifications par e-mail', 'Informations importantes, inscriptions et activités.'],
             ['allow_sms', 'Notifications par SMS', 'Uniquement lorsque le canal SMS est disponible.'],
             ['allow_push', 'Notifications push', 'Alertes mobiles et web autorisées.'],
-            ['subscribe_newsletter', 'Newsletter Omnia', 'Actualités, programmes et opportunités.'],
+            ['subscribe_newsletter', 'Omnia Newsletter', 'Actualités, programmes et opportunités.'],
           ] as Array<['allow_email' | 'allow_sms' | 'allow_push' | 'subscribe_newsletter', string, string]>).map(([key, title, description]) => <ToggleRow key={key} title={title} description={description} checked={Boolean(bundle.user[key])} onChange={checked => setBundle(current => current ? { ...current, user: { ...current.user, [key]: checked } } : current)} />)}</div>
           <SaveButton saving={saving} onClick={() => void save('notifications')} label="Enregistrer les notifications" />
         </Section>

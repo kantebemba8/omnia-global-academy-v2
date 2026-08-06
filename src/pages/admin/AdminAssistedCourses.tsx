@@ -21,12 +21,12 @@ export default function AdminAssistedCourses(){
  return <AdminLayout><div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between border-b border-gray-200 pb-5">
      <div><p className="text-xs font-semibold uppercase tracking-[.14em]" style={{color:GOLD}}>Formations & reconnaissances</p>
-       <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Saisie assistée & certifications</h1>
+       <h1 className="text-2xl font-black mt-1" style={{color:BLUE}}>Demandes assistées & certifications</h1>
        <p className="text-sm text-gray-500 mt-1">Traitez les demandes reçues depuis le Studio de formation.</p></div>
      <button onClick={load} className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600"><RefreshCw size={15}/>Actualiser</button>
    </div>
    <div className="flex gap-6 border-b border-gray-200">
-     <button onClick={()=>setTab('assisted')} className="pb-3 text-sm font-semibold border-b-2" style={{color:tab==='assisted'?BLUE:'#667085',borderColor:tab==='assisted'?GOLD:'transparent'}}>Saisie assistée</button>
+     <button onClick={()=>setTab('assisted')} className="pb-3 text-sm font-semibold border-b-2" style={{color:tab==='assisted'?BLUE:'#667085',borderColor:tab==='assisted'?GOLD:'transparent'}}>Demandes assistées</button>
      <button onClick={()=>setTab('certifications')} className="pb-3 text-sm font-semibold border-b-2" style={{color:tab==='certifications'?BLUE:'#667085',borderColor:tab==='certifications'?GOLD:'transparent'}}>Certifications de formations</button>
    </div>
    {error&&<div className="border-l-4 border-red-500 pl-4 py-2 text-sm text-red-700">{error}</div>}

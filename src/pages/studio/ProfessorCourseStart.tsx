@@ -78,8 +78,9 @@ export default function ProfessorCourseStart() {
   }, [creatorContext]);
 
   const canRequestAssistance = creatorContext !== 'admin';
+  const isAdminFileImport = creatorContext === 'admin' && location.pathname === '/admin/courses/import';
 
-  const [mode, setMode] = useState<CreationMode>(null);
+  const [mode, setMode] = useState<CreationMode>(() => isAdminFileImport ? 'file' : null);
   const [title, setTitle] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
@@ -222,16 +223,20 @@ export default function ProfessorCourseStart() {
     <CreationLayout context={creatorContext}>
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6">
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: GOLD }}>Création de formation</p>
-          <h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>Comment souhaitez-vous créer votre formation ?</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: GOLD }}>
+            {isAdminFileImport ? 'Import de formation OGA' : 'Création de formation'}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold" style={{ color: BLUE }}>
+            {isAdminFileImport ? 'Créer une formation à partir d’un fichier' : 'Comment souhaitez-vous créer votre formation ?'}
+          </h1>
           <p className="mt-2 max-w-3xl text-sm text-gray-500">
-            {creatorContext === 'admin'
-              ? 'Toute formation créée ici appartient directement à Omnia Global Academy. Utilisez le Studio manuel ou créez un brouillon modifiable à partir d’un fichier.'
+            {isAdminFileImport
+              ? 'Le fichier est converti en brouillon modifiable. La formation reste directement rattachée à Omnia Global Academy et doit être vérifiée dans le Studio avant publication.'
               : 'Le Studio manuel reste disponible comme depuis le début. Vous pouvez aussi convertir un fichier en brouillon modifiable, sans publication automatique.'}
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        {!isAdminFileImport && <div className="grid gap-4 md:grid-cols-2">
           <button
             type="button"
             onClick={() => navigate(routes.manual)}
@@ -263,7 +268,7 @@ export default function ProfessorCourseStart() {
             </p>
             <span className="mt-4 inline-flex text-sm font-semibold" style={{ color: GOLD }}>Importer et convertir →</span>
           </button>
-        </div>
+        </div>}
 
         {mode === 'file' && (
           <section className="mt-6 rounded-2xl border bg-white p-6" style={{ borderColor: BORDER }}>
@@ -332,7 +337,9 @@ export default function ProfessorCourseStart() {
             {error && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
             <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-              <button type="button" onClick={() => resetPanels(null)} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: BORDER, color: '#374151' }}>Annuler</button>
+              <button type="button" onClick={() => isAdminFileImport ? navigate(routes.courses) : resetPanels(null)} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: BORDER, color: '#374151' }}>
+                {isAdminFileImport ? 'Retour à mes formations' : 'Annuler'}
+              </button>
               <button
                 type="button"
                 onClick={submitFileImport}

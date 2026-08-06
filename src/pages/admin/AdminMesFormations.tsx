@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import {
-  BookOpen, PlusCircle, Edit2, Eye, RefreshCw,
+  BookOpen, PlusCircle, Edit2, Eye, RefreshCw, FileUp,
   Clock, CheckCircle, AlertCircle, Archive,
   BarChart2, Send, XCircle, Trash2
 } from 'lucide-react';
@@ -140,6 +140,11 @@ export default function AdminMesFormations() {
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border"
               style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
               <RefreshCw size={14} /> Actualiser
+            </button>
+            <button onClick={() => navigate('/admin/courses/import')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border bg-white"
+              style={{ borderColor: '#BF8813', color: '#9A6D0F' }}>
+              <FileUp size={15} /> Importer un fichier
             </button>
             <button onClick={() => navigate('/admin/studio/new')}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"

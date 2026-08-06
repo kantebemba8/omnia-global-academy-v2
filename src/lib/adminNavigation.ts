@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2, Languages
+  Shield, Radio, FileText, FileUp, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2, Languages, User
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -27,6 +27,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: LayoutDashboard,
     items: [
       { path: '/admin/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
+      { path: '/mon-profil', label: 'Mon profil', icon: User },
     ],
   },
   {
@@ -36,8 +37,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/courses', label: 'Catalogue & reconnaissances', icon: BookOpen },
       { path: '/admin/studio-mes-formations', label: 'Mes formations OGA', icon: GraduationCap },
-      { path: '/admin/courses/new', label: 'Création de formation', icon: FileText },
-      { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
+      { path: '/admin/studio/new', label: 'Créer une formation', icon: FileText },
+      { path: '/admin/courses/import', label: 'Importer une formation', icon: FileUp },
+      { path: '/admin/assisted-courses', label: 'Demandes assistées & certifications', icon: FileText },
       { path: '/admin/course-pricing', label: 'Validation tarifaire', icon: Landmark },
       { path: '/admin/quality-center', label: 'Centre Qualité', icon: ShieldCheck },
       { path: '/admin/recognition-hub', label: 'Partenaires & reconnaissances', icon: Building2 },

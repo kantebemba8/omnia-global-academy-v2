@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Award, FileText, Users, User, LogOut,
   ChevronRight, ChevronDown, Sparkles, Wallet, BarChart2, MessageSquare, Settings, PlusCircle,
   Building2, Key, Shield, Briefcase, CreditCard, Tag, Monitor, Gift,
-  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Route, X,
+  Search, ExternalLink, UserRoundCheck, BadgeCheck, FileCheck2, FileUp, ClipboardCheck, FolderKanban, Route, X,
 } from 'lucide-react';
 
 export interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
@@ -174,12 +174,15 @@ const PARTNER_NAV = [
 
 const ADMIN_NAV = [
   { path: '/admin/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true },
+  { path: '/mon-profil', label: 'Mon profil', icon: User },
   { path: '/admin/cms-branding', label: 'Configuration CMS', icon: Settings },
   { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
   { path: '/admin/payouts', label: 'Gestion des Retraits', icon: Wallet },
   { path: '/admin/marketing', label: 'Offres & Licences B2B', icon: Tag },
   { path: '/admin/courses', label: 'Catalogue & reconnaissances', icon: BookOpen },
-  { path: '/admin/assisted-courses', label: 'Saisie assistée & certifications', icon: FileText },
+  { path: '/admin/studio/new', label: 'Créer une formation', icon: PlusCircle },
+  { path: '/admin/courses/import', label: 'Importer une formation', icon: FileUp },
+  { path: '/admin/assisted-courses', label: 'Demandes assistées & certifications', icon: FileText },
   { path: '/admin/team', label: 'Équipe & Modérateurs', icon: Users },
   { path: '/admin/cpd-credits', label: 'Crédits Open CPD', icon: Award },
   { path: '/admin/certificates', label: 'Documents délivrés', icon: Award },
@@ -392,26 +395,31 @@ export function DashboardLayout({
               const open = expandedGroups[group.id] ?? containsActive;
               const GroupIcon = group.icon;
 
-              if (group.id === 'dashboard' && group.items.length === 1) {
-                const item = group.items[0];
-                const active = isActive(item);
+              if (group.id === 'dashboard') {
                 return (
-                  <Link
-                    key={group.id}
-                    to={buildPath(item.path)}
-                    onClick={() => setSidebarOpen(false)}
-                    aria-current={active ? 'page' : undefined}
-                    className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: active ? '#BF8813' : 'rgba(255,255,255,0.72)'
-                    }}
-                  >
-                    {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
-                    <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
-                    <span className="flex-1 text-sm font-semibold">{group.label}</span>
-                    {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
-                  </Link>
+                  <div key={group.id} className="space-y-1">
+                    {group.items.map((item) => {
+                      const active = isActive(item);
+                      return (
+                        <Link
+                          key={item.path}
+                          to={buildPath(item.path)}
+                          onClick={() => setSidebarOpen(false)}
+                          aria-current={active ? 'page' : undefined}
+                          className="relative flex items-center gap-3 px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
+                          style={{
+                            backgroundColor: 'transparent',
+                            color: active ? '#BF8813' : 'rgba(255,255,255,0.72)'
+                          }}
+                        >
+                          {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
+                          <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+                          <span className="flex-1 text-sm font-semibold">{item.label}</span>
+                          {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 );
               }
 
