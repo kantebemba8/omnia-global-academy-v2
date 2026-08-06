@@ -2,7 +2,7 @@ import type React from 'react';
 import {
   LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
-  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2
+  Shield, Radio, FileText, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2, Languages
 } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -131,6 +131,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Settings,
     items: [
       { path: '/admin/cms-branding', label: 'Configuration CMS', icon: Settings },
+      { path: '/admin/traductions', label: 'Traductions de l’interface', icon: Languages },
       { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
     ],
   },

@@ -44,6 +44,7 @@ import {
   type UnifiedProfileBundle,
 } from '../../lib/profileApi';
 import { clearSession, getDashboardPathForRoles, getSessionToken, saveSession } from '../../lib/session';
+import { PLATFORM_LANGUAGES, useLanguage } from '../../i18n/LanguageContext';
 
 type Tab = 'apercu' | 'identite' | 'professionnel' | 'visibilite' | 'notifications' | 'securite';
 type Message = { ok: boolean; text: string } | null;
@@ -376,6 +377,7 @@ function accountImpactForRoles(roles: string[]) {
 export default function UnifiedProfilePage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { language, setLanguage } = useLanguage();
   const fileInput = useRef<HTMLInputElement>(null);
   const queryTab = new URLSearchParams(location.search).get('tab') || '';
   const [tab, setTab] = useState<Tab>(TAB_ALIASES[queryTab] || (queryTab as Tab) || 'apercu');
@@ -827,15 +829,37 @@ export default function UnifiedProfilePage() {
         <SaveButton saving={saving} onClick={() => void save('privacy')} label="Enregistrer la confidentialité" />
       </div>}
 
-      {tab === 'notifications' && <Section title="Préférences de communication" icon={Bell} description="Ces préférences s’appliquent à votre compte, quel que soit le rôle utilisé.">
-        <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">{([
-          ['allow_email', 'Notifications par e-mail', 'Informations importantes, inscriptions et activités.'],
-          ['allow_sms', 'Notifications par SMS', 'Uniquement lorsque le canal SMS est disponible.'],
-          ['allow_push', 'Notifications push', 'Alertes mobiles et web autorisées.'],
-          ['subscribe_newsletter', 'Newsletter Omnia', 'Actualités, programmes et opportunités.'],
-        ] as Array<['allow_email' | 'allow_sms' | 'allow_push' | 'subscribe_newsletter', string, string]>).map(([key, title, description]) => <ToggleRow key={key} title={title} description={description} checked={Boolean(bundle.user[key])} onChange={checked => setBundle(current => current ? { ...current, user: { ...current.user, [key]: checked } } : current)} />)}</div>
-        <SaveButton saving={saving} onClick={() => void save('notifications')} label="Enregistrer les notifications" />
-      </Section>}
+      {tab === 'notifications' && <div className="space-y-6">
+        <Section title="Préférences de langue" icon={Languages} description="La langue s’applique immédiatement à l’ensemble de la plateforme.">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] md:items-center">
+            <div>
+              <p className="text-sm leading-6 text-slate-600">Choisissez la langue de l’interface pour tous vos rôles et tous vos espaces Omnia.</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">Les contenus créés par les utilisateurs conservent leur langue d’origine.</p>
+            </div>
+            <label className={labelClass}>Langue de la plateforme
+              <select
+                className={inputClass}
+                value={language}
+                onChange={event => setLanguage(event.target.value as typeof language)}
+              >
+                {PLATFORM_LANGUAGES.map(option => (
+                  <option key={option.code} value={option.code} dir={option.direction}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </Section>
+
+        <Section title="Préférences de communication" icon={Bell} description="Ces préférences s’appliquent à votre compte, quel que soit le rôle utilisé.">
+          <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">{([
+            ['allow_email', 'Notifications par e-mail', 'Informations importantes, inscriptions et activités.'],
+            ['allow_sms', 'Notifications par SMS', 'Uniquement lorsque le canal SMS est disponible.'],
+            ['allow_push', 'Notifications push', 'Alertes mobiles et web autorisées.'],
+            ['subscribe_newsletter', 'Newsletter Omnia', 'Actualités, programmes et opportunités.'],
+          ] as Array<['allow_email' | 'allow_sms' | 'allow_push' | 'subscribe_newsletter', string, string]>).map(([key, title, description]) => <ToggleRow key={key} title={title} description={description} checked={Boolean(bundle.user[key])} onChange={checked => setBundle(current => current ? { ...current, user: { ...current.user, [key]: checked } } : current)} />)}</div>
+          <SaveButton saving={saving} onClick={() => void save('notifications')} label="Enregistrer les notifications" />
+        </Section>
+      </div>}
 
       {tab === 'securite' && <div className="space-y-6">
         <Section title="Mot de passe" icon={Lock} description="La modification révoque les anciennes sessions pour protéger votre compte.">

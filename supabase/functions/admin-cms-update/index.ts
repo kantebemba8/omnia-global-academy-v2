@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token",
 };
 
 function json(d: unknown, s = 200) {
@@ -16,6 +16,67 @@ async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: stri
   const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as { user_id: string }).user_id).eq("role", "super_admin").maybeSingle();
   if (!role) return null;
   return (sess as { user_id: string }).user_id;
+}
+
+
+const UI_LANGUAGES = new Set(["en", "es", "pt", "ar", "zh", "ru", "de"]);
+const UI_LANGUAGE_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", pt: "Portuguese", ar: "Arabic",
+  zh: "Simplified Chinese", ru: "Russian", de: "German",
+};
+
+function aiTranslationEnabled() {
+  return Boolean(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || Deno.env.get("OPENAI_API_KEY"));
+}
+
+function extractTranslationArray(raw: string): string[] | null {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    return Array.isArray(parsed) && parsed.every(item => typeof item === "string") ? parsed : null;
+  } catch { return null; }
+}
+
+async function generateTranslationValues(language: string, sources: string[]) {
+  const target = UI_LANGUAGE_NAMES[language] || language;
+  const prompt = [
+    `Translate this French software-interface JSON array into ${target}.`,
+    "Return ONLY a JSON array of strings in the same order and with the same number of items.",
+    "Keep Omnia, OGA, CPD, URLs, file formats, placeholders and technical identifiers unchanged.",
+    "Use concise, natural, professional interface language. Do not add explanations.",
+    JSON.stringify(sources),
+  ].join("\n");
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "";
+  if (anthropicKey) {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: Deno.env.get("ANTHROPIC_MODEL") || "claude-3-5-haiku-latest", max_tokens: 6000, temperature: 0, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      const raw = Array.isArray(payload?.content) ? payload.content.map((item: { text?: string }) => item?.text || "").join("") : "";
+      const parsed = extractTranslationArray(raw);
+      if (parsed?.length === sources.length) return parsed;
+    } else console.error("Admin i18n Anthropic error", response.status, await response.text());
+  }
+  const openAiKey = Deno.env.get("OPENAI_API_KEY") || "";
+  if (openAiKey) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: Deno.env.get("OPENAI_TEXT_MODEL") || "gpt-4o-mini", temperature: 0, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      const parsed = extractTranslationArray(String(payload?.choices?.[0]?.message?.content || ""));
+      if (parsed?.length === sources.length) return parsed;
+    } else console.error("Admin i18n OpenAI error", response.status, await response.text());
+  }
+  return [];
 }
 
 // Clés interdites — ne peuvent jamais être modifiées via le CMS
@@ -289,7 +350,7 @@ async function uploadSiteAsset(
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
   try {
@@ -348,7 +409,76 @@ Deno.serve(async (req: Request) => {
       landing_page?: unknown;
       social_networks?: unknown;
       mobile_apps?: unknown;
+      language?: string;
+      query?: string;
+      status?: string;
+      page?: number;
+      page_size?: number;
+      limit?: number;
+      source_hash?: string;
+      translation?: string;
     };
+
+    if (body.action === "translation_overview") {
+      const { data, error } = await sb.rpc("oga_i18n_overview");
+      if (error) return json({ error: "TRANSLATION_OVERVIEW_FAILED", detail: error.message }, 500);
+      return json({ success: true, overview: { ...(data || {}), ai_enabled: aiTranslationEnabled() } });
+    }
+
+    if (body.action === "translation_list") {
+      const language = String(body.language || "").trim().toLowerCase();
+      if (!UI_LANGUAGES.has(language)) return json({ error: "INVALID_LANGUAGE" }, 400);
+      const page = Math.max(1, Math.trunc(Number(body.page || 1)));
+      const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(body.page_size || 25))));
+      const status = ["all", "missing", "reviewed", "automatic"].includes(String(body.status)) ? String(body.status) : "all";
+      const { data, error } = await sb.rpc("oga_i18n_list", {
+        p_language: language,
+        p_query: cleanText(body.query, 200),
+        p_status: status,
+        p_offset: (page - 1) * pageSize,
+        p_limit: pageSize,
+      });
+      if (error) return json({ error: "TRANSLATION_LIST_FAILED", detail: error.message }, 500);
+      return json({ success: true, rows: data?.rows || [], total: Number(data?.total || 0), page, page_size: pageSize });
+    }
+
+    if (body.action === "translation_save") {
+      const language = String(body.language || "").trim().toLowerCase();
+      const sourceHash = cleanText(body.source_hash, 80);
+      const translation = cleanText(body.translation, 1000);
+      if (!UI_LANGUAGES.has(language) || !sourceHash || !translation) return json({ error: "INVALID_TRANSLATION" }, 400);
+      const { data, error } = await sb.rpc("oga_i18n_save", { p_source_hash: sourceHash, p_language: language, p_translation: translation });
+      if (error) return json({ error: "TRANSLATION_SAVE_FAILED", detail: error.message }, 500);
+      return json({ success: true, row: data });
+    }
+
+    if (body.action === "translation_generate_missing") {
+      const language = String(body.language || "").trim().toLowerCase();
+      const limit = Math.min(25, Math.max(1, Math.trunc(Number(body.limit || 25))));
+      if (!UI_LANGUAGES.has(language)) return json({ error: "INVALID_LANGUAGE" }, 400);
+      if (!aiTranslationEnabled()) return json({ error: "TRANSLATION_AI_NOT_CONFIGURED" }, 503);
+      const { data: listData, error: listError } = await sb.rpc("oga_i18n_list", { p_language: language, p_query: "", p_status: "missing", p_offset: 0, p_limit: limit });
+      if (listError) return json({ error: "TRANSLATION_LIST_FAILED", detail: listError.message }, 500);
+      const rows = Array.isArray(listData?.rows) ? listData.rows : [];
+      if (!rows.length) return json({ success: true, generated: 0, remaining: 0 });
+      const values = await generateTranslationValues(language, rows.map((row: { source_text: string }) => String(row.source_text)));
+      if (values.length !== rows.length) return json({ error: "TRANSLATION_AI_INVALID_RESPONSE" }, 502);
+      let generated = 0;
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index] as Record<string, unknown>;
+        const translated = cleanText(values[index], 1000);
+        if (!translated) continue;
+        const { data: current, error: currentError } = await sb.from("platform_ui_translations").select("translations,machine_generated_languages").eq("source_hash", row.source_hash).single();
+        if (currentError) throw currentError;
+        const translations = current?.translations && typeof current.translations === "object" ? current.translations : {};
+        const machineLanguages = Array.isArray(current?.machine_generated_languages) ? [...new Set([...current.machine_generated_languages.map(String), language])] : [language];
+        const { error: updateError } = await sb.from("platform_ui_translations").update({ translations: { ...translations, [language]: translated }, machine_generated_languages: machineLanguages, updated_at: new Date().toISOString() }).eq("source_hash", row.source_hash);
+        if (updateError) throw updateError;
+        generated += 1;
+      }
+      const { data: remainingData } = await sb.rpc("oga_i18n_list", { p_language: language, p_query: "", p_status: "missing", p_offset: 0, p_limit: 1 });
+      return json({ success: true, generated, remaining: Number(remainingData?.total || 0) });
+    }
 
     // Favicon library management
     if (body.action === "upload_favicon") {

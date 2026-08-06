@@ -12,6 +12,7 @@ const PROFILE_BUCKET = "profile-avatars";
 const MAX_AVATAR_BYTES = 3 * 1024 * 1024;
 const ALLOWED_AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const PROFILE_VISIBILITIES = new Set(["public", "members", "private"]);
+const PLATFORM_LANGUAGES = new Set(["fr", "en", "es", "pt", "ar", "zh", "ru", "de"]);
 const URL_FIELDS = new Set(["website_url", "linkedin_url", "portfolio_url", "github_url"]);
 
 const SUSPENSION_REASON_LABELS: Record<string, string> = {
@@ -641,6 +642,18 @@ Deno.serve(async (req: Request) => {
     if (isResponse(session)) return session;
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
     const userId = session.userId;
+
+    if (action === "set_preferred_language") {
+      const language = cleanText(body.language, 10)?.toLowerCase() || "";
+      if (!PLATFORM_LANGUAGES.has(language)) return json({ error: "INVALID_LANGUAGE" }, 400);
+      const { error } = await sb.from("user_profiles").upsert({
+        user_id: userId,
+        preferred_language: language,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+      if (error) throw error;
+      return json({ success: true, preferred_language: language });
+    }
 
     if (action === "get_profile") {
       const bundle = await loadProfileBundle(sb, userId, session.roles);
