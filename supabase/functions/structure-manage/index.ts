@@ -32,6 +32,7 @@ class ClientError extends Error {
 }
 
 const STRUCTURE_ASSET_BUCKET = "omnia-global-academy";
+const B2B_DOCUMENT_BUCKET = "b2b-documents";
 const LOGO_MIMES = new Set(["image/png", "image/jpeg"]);
 const DOCUMENT_MIMES = new Set(["application/pdf", "image/png", "image/jpeg"]);
 
@@ -90,6 +91,83 @@ async function uploadStructureAsset(
 
   const publicUrl = sb.storage.from(STRUCTURE_ASSET_BUCKET).getPublicUrl(path).data.publicUrl;
   return { path, publicUrl };
+}
+
+
+async function uploadB2BDocument(
+  sb: ReturnType<typeof createClient>,
+  organizationId: string,
+  userId: string,
+  base64: unknown,
+  mimeValue: unknown,
+  originalNameValue: unknown,
+) {
+  const mime = String(mimeValue || "").toLowerCase();
+  const originalName = String(originalNameValue || "preuve");
+  if (!DOCUMENT_MIMES.has(mime)) {
+    throw new ClientError("FILE_TYPE_NOT_ALLOWED", "La preuve doit être au format PDF, PNG ou JPG.");
+  }
+  const bytes = decodeBase64(base64);
+  if (bytes.byteLength > 8 * 1024 * 1024) {
+    throw new ClientError("FILE_TOO_LARGE", "La preuve de paiement ne doit pas dépasser 8 MB.");
+  }
+  const path = `b2b/${organizationId}/payments/${userId}/${crypto.randomUUID()}.${extensionFor(mime, originalName)}`;
+  const { error } = await sb.storage.from(B2B_DOCUMENT_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+  if (error) throw new Error(`B2B_STORAGE_UPLOAD_FAILED: ${error.message}`);
+  return { path };
+}
+
+async function signedB2BDocumentUrl(sb: ReturnType<typeof createClient>, pathValue: unknown) {
+  const path = String(pathValue || "").trim();
+  if (!path) return null;
+  const { data, error } = await sb.storage.from(B2B_DOCUMENT_BUCKET).createSignedUrl(path, 3600);
+  if (error) return null;
+  return data?.signedUrl || null;
+}
+
+async function b2bBenefitsSnapshot(sb: ReturnType<typeof createClient>, commercePlanId: string | null) {
+  if (!commercePlanId) return [];
+  const { data, error } = await sb.from("commerce_plan_benefits")
+    .select("benefit_definition_id,value_json,display_label,display_order,commerce_benefit_definitions(benefit_key,name,value_type,reset_period,unit_label)")
+    .eq("plan_id", commercePlanId)
+    .eq("is_active", true)
+    .order("display_order");
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    benefit_definition_id: row.benefit_definition_id,
+    value_json: row.value_json || {},
+    display_label: row.display_label || row.commerce_benefit_definitions?.name || "Avantage",
+    benefit_key: row.commerce_benefit_definitions?.benefit_key || null,
+    value_type: row.commerce_benefit_definitions?.value_type || null,
+    reset_period: row.commerce_benefit_definitions?.reset_period || null,
+    unit_label: row.commerce_benefit_definitions?.unit_label || null,
+  }));
+}
+
+async function appendB2BAudit(
+  sb: ReturnType<typeof createClient>,
+  organizationId: string | null,
+  actorUserId: string | null,
+  eventType: string,
+  entityType: string,
+  entityId: string | null,
+  metadata: Record<string, unknown> = {},
+) {
+  const { error } = await sb.from("b2b_audit_log").insert({
+    organization_id: organizationId,
+    actor_user_id: actorUserId,
+    event_type: eventType,
+    entity_type: entityType,
+    entity_id: entityId,
+    metadata,
+  });
+  if (error) throw error;
+}
+
+async function refreshB2BEntitlements(sb: ReturnType<typeof createClient>, organizationId: string) {
+  const { data, error } = await sb.rpc("oga_refresh_b2b_contract_entitlements", { p_organization_id: organizationId });
+  if (error) throw error;
+  return data;
 }
 
 function randomPart(length = 6) {
@@ -962,6 +1040,7 @@ Deno.serve(async (req: Request) => {
         code_id: result.code_id || null,
         comment: body.comment || null,
       }, String(result.user_id || "") || null);
+      if (decision === "approve") await refreshB2BEntitlements(sb, organizationId);
       return json({ success: true, status: result.status });
     }
 
@@ -983,6 +1062,7 @@ Deno.serve(async (req: Request) => {
         code_id: result.code_id || null,
         comment: body.comment || null,
       }, String(result.user_id || "") || null);
+      await refreshB2BEntitlements(sb, organizationId);
       return json({ success: true, status: "removed" });
     }
 
@@ -1759,15 +1839,24 @@ Deno.serve(async (req: Request) => {
 
     // Programme 3 / GM1 — commerce B2B et contrats (consolidé dans structure-manage)
     if (action === "catalogue") {
+      if (isSuperAdmin(session)) return json({ error: "ACTION_RESERVED_FOR_STRUCTURE" }, 403);
+      const requestedOrganizationId = String(body.organization_id || body.structure_id || "");
+      const link = await managerLink(sb, session.userId, requestedOrganizationId || undefined);
+      if (!link) return json({ error: "STRUCTURE_ACCESS_DENIED" }, 403);
+      const organizationId = String(link.organization_id);
+      const organization = await getOrganization(sb, organizationId);
+      if (!organization || String(organization.status || "") !== "validated") {
+        return json({ error: "STRUCTURE_NOT_ACTIVE", message: "La Structure doit être validée et active pour accéder aux services B2B." }, 403);
+      }
       const { data: plans, error } = await sb.from("b2b_plan_templates")
-        .select("*,b2b_plan_tiers(*)")
+        .select("*,b2b_plan_tiers(*),commerce_plans(id,name,subtitle,status,audience,commerce_plan_benefits(benefit_definition_id,value_json,display_label,commerce_benefit_definitions(name,unit_label)))")
         .eq("is_active", true)
         .order("created_at");
       if (error) throw error;
       return json({ success: true, plans: plans || [] });
     }
 
-    if (["tableau_structure", "creer_devis", "signer_contrat", "envoyer_preuve", "demander_renouvellement"].includes(action)) {
+    if (["tableau_structure", "creer_devis", "modifier_devis", "signer_contrat", "envoyer_preuve", "demander_renouvellement"].includes(action)) {
       if (isSuperAdmin(session)) return json({ error: "ACTION_RESERVED_FOR_STRUCTURE" }, 403);
       const requestedOrganizationId = String(body.organization_id || body.structure_id || "");
       const link = await managerLink(sb, session.userId, requestedOrganizationId || undefined);
@@ -1779,129 +1868,306 @@ Deno.serve(async (req: Request) => {
       }
 
       if (action === "tableau_structure") {
-        const [quotes, contracts, proofs, invoices, renewals] = await Promise.all([
-          sb.from("b2b_quotes").select("*,b2b_plan_templates(name)").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+        await refreshB2BEntitlements(sb, organizationId);
+        const [quotes, contracts, proofs, invoices, renewals, proformas] = await Promise.all([
+          sb.from("b2b_quotes").select("*,b2b_plan_templates(name,template_kind)").eq("organization_id", organizationId).order("created_at", { ascending: false }),
           sb.from("b2b_contracts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
           sb.from("b2b_payment_proofs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
           sb.from("b2b_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
           sb.from("b2b_renewals").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+          sb.from("b2b_proformas").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
         ]);
-        for (const result of [quotes, contracts, proofs, invoices, renewals]) if (result.error) throw result.error;
-        return json({ success: true, quotes: quotes.data || [], contracts: contracts.data || [], proofs: proofs.data || [], invoices: invoices.data || [], renewals: renewals.data || [] });
+        for (const result of [quotes, contracts, proofs, invoices, renewals, proformas]) if (result.error) throw result.error;
+        const signedProofs = await Promise.all((proofs.data || []).map(async (proof: any) => ({
+          ...proof,
+          signed_url: proof.document_path ? await signedB2BDocumentUrl(sb, proof.document_path) : proof.proof_url || null,
+        })));
+        return json({
+          success: true,
+          quotes: quotes.data || [], contracts: contracts.data || [], proofs: signedProofs,
+          invoices: invoices.data || [], renewals: renewals.data || [], proformas: proformas.data || [],
+        });
       }
 
-      if (action === "creer_devis") {
-        const memberCount = Math.max(1, Number(body.member_count || 1));
+      const computeQuote = async (planId: string, tierId: string | null, memberCount: number) => {
+        const { data: plan, error: planError } = await sb.from("b2b_plan_templates").select("*").eq("id", planId).eq("is_active", true).maybeSingle();
+        if (planError) throw planError;
+        if (!plan) throw new ClientError("PLAN_NOT_FOUND", "Le modèle B2B sélectionné n'est plus disponible.", 404);
         let tier: Record<string, any> | null = null;
-        if (body.tier_id) {
-          const { data, error } = await sb.from("b2b_plan_tiers").select("*").eq("id", String(body.tier_id)).eq("is_active", true).maybeSingle();
+        if (tierId) {
+          const { data, error } = await sb.from("b2b_plan_tiers").select("*").eq("id", tierId).eq("plan_id", plan.id).eq("is_active", true).maybeSingle();
           if (error) throw error;
+          if (!data) throw new ClientError("TIER_NOT_FOUND", "Le palier sélectionné n'est plus disponible.", 404);
           tier = data;
-          if (!tier) return json({ error: "TIER_NOT_FOUND" }, 404);
-          if (body.plan_id && String(tier.plan_id) !== String(body.plan_id)) return json({ error: "TIER_PLAN_MISMATCH" }, 400);
           if (memberCount < Number(tier.min_members || 1) || (tier.max_members !== null && memberCount > Number(tier.max_members))) {
-            return json({ error: "MEMBER_COUNT_OUTSIDE_TIER" }, 400);
+            throw new ClientError("MEMBER_COUNT_OUTSIDE_TIER", "Le nombre de membres ne correspond pas au palier sélectionné.");
           }
         }
-        const { data: plan, error: planError } = await sb.from("b2b_plan_templates").select("id,billing_cycle,currency,base_price,is_active").eq("id", String(body.plan_id || "")).maybeSingle();
-        if (planError) throw planError;
-        if (!plan?.is_active) return json({ error: "PLAN_NOT_FOUND" }, 404);
         const subtotal = Number(plan.base_price || 0) + Number(tier?.fixed_price || 0) + Number(tier?.unit_price || 0) * memberCount;
-        const { data, error } = await sb.from("b2b_quotes").insert({
+        return { plan, tier, subtotal };
+      };
+
+      if (action === "creer_devis") {
+        const planId = String(body.plan_id || "");
+        const tierId = String(body.tier_id || "") || null;
+        const memberCount = Math.max(1, Number(body.member_count || 1));
+        if (!planId) return json({ error: "PLAN_REQUIRED" }, 400);
+        const { plan, tier, subtotal } = await computeQuote(planId, tierId, memberCount);
+        const quotePayload = {
           quote_number: generateCode("DEV"), organization_id: organizationId, plan_id: plan.id,
-          tier_id: tier?.id || null, member_count: memberCount, billing_cycle: body.billing_cycle || plan.billing_cycle || "annual",
-          subtotal, total_amount: subtotal, currency: body.currency || plan.currency || "XOF",
-          valid_until: body.valid_until || null, notes: body.notes || null, status: "submitted", created_by: session.userId,
-        }).select("*").single();
+          tier_id: tier?.id || null, member_count: memberCount, billing_cycle: plan.billing_cycle || "annual",
+          subtotal, discount_amount: 0, tax_amount: 0, total_amount: subtotal, currency: plan.currency || "XOF",
+          valid_until: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+          notes: body.notes || null, status: "submitted", created_by: session.userId, submitted_at: new Date().toISOString(),
+          plan_snapshot: { id: plan.id, name: plan.name, description: plan.description, template_kind: plan.template_kind, commerce_plan_id: plan.commerce_plan_id },
+          pricing_snapshot: { base_price: plan.base_price, tier_id: tier?.id || null, tier_name: tier?.name || null, fixed_price: tier?.fixed_price || 0, unit_price: tier?.unit_price || 0, member_count: memberCount },
+        };
+        const { data, error } = await sb.from("b2b_quotes").insert(quotePayload).select("*").single();
         if (error) throw error;
+        await appendB2BAudit(sb, organizationId, session.userId, "quote_submitted", "quote", data.id, { member_count: memberCount, total_amount: subtotal });
+        return json({ success: true, quote: data });
+      }
+
+      if (action === "modifier_devis") {
+        const quoteId = String(body.quote_id || "");
+        const { data: existing, error: existingError } = await sb.from("b2b_quotes").select("*").eq("id", quoteId).eq("organization_id", organizationId).eq("status", "changes_requested").maybeSingle();
+        if (existingError) throw existingError;
+        if (!existing) return json({ error: "QUOTE_NOT_EDITABLE" }, 409);
+        const planId = String(body.plan_id || existing.plan_id || "");
+        const tierId = String(body.tier_id || existing.tier_id || "") || null;
+        const memberCount = Math.max(1, Number(body.member_count || existing.member_count || 1));
+        const { plan, tier, subtotal } = await computeQuote(planId, tierId, memberCount);
+        const { data, error } = await sb.from("b2b_quotes").update({
+          plan_id: plan.id, tier_id: tier?.id || null, member_count: memberCount,
+          billing_cycle: plan.billing_cycle || existing.billing_cycle, subtotal, discount_amount: 0, tax_amount: 0,
+          total_amount: subtotal, currency: plan.currency || existing.currency, notes: body.notes ?? existing.notes,
+          status: "submitted", reviewed_by: null, reviewed_at: null, admin_comment: null, submitted_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          plan_snapshot: { id: plan.id, name: plan.name, description: plan.description, template_kind: plan.template_kind, commerce_plan_id: plan.commerce_plan_id },
+          pricing_snapshot: { base_price: plan.base_price, tier_id: tier?.id || null, tier_name: tier?.name || null, fixed_price: tier?.fixed_price || 0, unit_price: tier?.unit_price || 0, member_count: memberCount },
+        }).eq("id", quoteId).select("*").single();
+        if (error) throw error;
+        await appendB2BAudit(sb, organizationId, session.userId, "quote_resubmitted", "quote", quoteId, { member_count: memberCount });
         return json({ success: true, quote: data });
       }
 
       if (action === "signer_contrat") {
+        const contractId = String(body.contract_id || "");
+        const signatoryName = String(body.signatory_name || "").trim();
+        if (body.accept_terms !== true || !signatoryName) return json({ error: "SIGNATURE_CONFIRMATION_REQUIRED" }, 400);
         const { data, error } = await sb.from("b2b_contracts").update({
-          status: "signed_by_structure", structure_signed_by: session.userId,
-          structure_signed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).eq("id", String(body.contract_id || "")).eq("organization_id", organizationId).in("status", ["draft", "sent"]).select("*").maybeSingle();
+          status: "signed_by_structure", structure_signed_by: session.userId, structure_signed_at: new Date().toISOString(),
+          structure_signatory_name: signatoryName, structure_signature_note: String(body.signature_note || "").trim() || null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", contractId).eq("organization_id", organizationId).eq("status", "sent").select("*").maybeSingle();
         if (error) throw error;
         if (!data) return json({ error: "CONTRACT_NOT_FOUND_OR_NOT_SIGNABLE" }, 404);
+        await appendB2BAudit(sb, organizationId, session.userId, "contract_signed_by_structure", "contract", data.id, { signatory_name: signatoryName });
         return json({ success: true, contract: data });
       }
 
       if (action === "envoyer_preuve") {
-        const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("id,currency,status").eq("id", String(body.contract_id || "")).eq("organization_id", organizationId).maybeSingle();
+        const contractId = String(body.contract_id || "");
+        const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("id,currency,status,total_amount").eq("id", contractId).eq("organization_id", organizationId).maybeSingle();
         if (contractError) throw contractError;
         if (!contract) return json({ error: "CONTRACT_NOT_FOUND" }, 404);
-        if (!body.proof_url || !body.paid_on || Number(body.amount) <= 0) return json({ error: "INVALID_PAYMENT_PROOF" }, 400);
+        if (!["signed_by_structure", "active"].includes(String(contract.status))) return json({ error: "CONTRACT_NOT_READY_FOR_PAYMENT" }, 409);
+        if (!body.paid_on || Number(body.amount) <= 0) return json({ error: "INVALID_PAYMENT_PROOF" }, 400);
+        const reference = String(body.reference || "").trim() || null;
+        if (reference) {
+          const { data: duplicate } = await sb.from("b2b_payment_proofs").select("id").eq("organization_id", organizationId).eq("reference", reference).in("status", ["submitted", "verified"]).limit(1).maybeSingle();
+          if (duplicate) return json({ error: "PAYMENT_REFERENCE_ALREADY_USED" }, 409);
+        }
+        let documentPath = String(body.document_path || "").trim() || null;
+        if (body.proof_base64) {
+          const uploaded = await uploadB2BDocument(sb, organizationId, session.userId, body.proof_base64, body.proof_mime, body.proof_name);
+          documentPath = uploaded.path;
+        }
+        if (!documentPath && !String(body.proof_url || "").trim()) return json({ error: "PAYMENT_PROOF_FILE_REQUIRED" }, 400);
         const { data, error } = await sb.from("b2b_payment_proofs").insert({
           contract_id: contract.id, organization_id: organizationId, amount: Number(body.amount),
-          currency: body.currency || contract.currency || "XOF", paid_on: body.paid_on,
-          reference: body.reference || null, proof_url: body.proof_url, submitted_by: session.userId,
+          currency: body.currency || contract.currency || "XOF", paid_on: body.paid_on, reference,
+          proof_url: String(body.proof_url || documentPath || ""), document_path: documentPath,
+          submitted_by: session.userId, metadata: { submitted_from: "structure_b2b" },
         }).select("*").single();
         if (error) throw error;
+        await appendB2BAudit(sb, organizationId, session.userId, "payment_proof_submitted", "payment_proof", data.id, { contract_id: contract.id, amount: Number(body.amount), reference });
         return json({ success: true, proof: data });
       }
 
       if (action === "demander_renouvellement") {
-        const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("id").eq("id", String(body.contract_id || "")).eq("organization_id", organizationId).maybeSingle();
+        const contractId = String(body.contract_id || "");
+        const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("*").eq("id", contractId).eq("organization_id", organizationId).eq("status", "active").maybeSingle();
         if (contractError) throw contractError;
-        if (!contract) return json({ error: "CONTRACT_NOT_FOUND" }, 404);
+        if (!contract) return json({ error: "ACTIVE_CONTRACT_REQUIRED" }, 409);
+        const { data: openRenewal } = await sb.from("b2b_renewals").select("id").eq("contract_id", contract.id).in("status", ["requested", "under_review", "approved"]).limit(1).maybeSingle();
+        if (openRenewal) return json({ error: "RENEWAL_ALREADY_OPEN" }, 409);
         if (!body.requested_start || !body.requested_end || String(body.requested_end) < String(body.requested_start)) return json({ error: "INVALID_RENEWAL_DATES" }, 400);
         const { data, error } = await sb.from("b2b_renewals").insert({
           contract_id: contract.id, organization_id: organizationId, requested_start: body.requested_start,
-          requested_end: body.requested_end, requested_member_count: Math.max(1, Number(body.requested_member_count || 1)),
+          requested_end: body.requested_end, requested_member_count: Math.max(1, Number(body.requested_member_count || contract.member_limit || 1)),
           notes: body.notes || null, requested_by: session.userId,
         }).select("*").single();
         if (error) throw error;
+        await appendB2BAudit(sb, organizationId, session.userId, "renewal_requested", "renewal", data.id, { contract_id: contract.id });
         return json({ success: true, renewal: data });
       }
     }
 
-    if (["tableau_admin", "examiner_devis", "valider_contrat", "examiner_preuve", "examiner_renouvellement"].includes(action)) {
+    if (["tableau_admin", "enregistrer_modele_b2b", "dupliquer_modele_b2b", "changer_statut_modele_b2b", "examiner_devis", "valider_contrat", "changer_statut_contrat", "examiner_preuve", "examiner_renouvellement"].includes(action)) {
       if (!isSuperAdmin(session)) return json({ error: "SUPER_ADMIN_REQUIRED" }, 403);
 
       if (action === "tableau_admin") {
-        const [quotes, contracts, proofs, invoices, renewals] = await Promise.all([
+        const [plans, commercePlans, quotes, contracts, proofs, invoices, renewals, proformas, auditRows] = await Promise.all([
+          sb.from("b2b_plan_templates").select("*,b2b_plan_tiers(*),commerce_plans(id,name,status,audience)").order("created_at", { ascending: false }),
+          sb.from("commerce_plans").select("id,name,subtitle,status,audience,commerce_plan_benefits(benefit_definition_id,value_json,display_label,commerce_benefit_definitions(name,unit_label))").eq("audience", "structure").order("display_order"),
           sb.from("b2b_quotes").select("*,partner_organizations(org_name),b2b_plan_templates(name)").order("created_at", { ascending: false }),
           sb.from("b2b_contracts").select("*,partner_organizations(org_name)").order("created_at", { ascending: false }),
           sb.from("b2b_payment_proofs").select("*,partner_organizations(org_name)").order("created_at", { ascending: false }),
           sb.from("b2b_invoices").select("*,partner_organizations(org_name)").order("created_at", { ascending: false }),
           sb.from("b2b_renewals").select("*,partner_organizations(org_name)").order("created_at", { ascending: false }),
+          sb.from("b2b_proformas").select("*,partner_organizations(org_name)").order("created_at", { ascending: false }),
+          sb.from("b2b_audit_log").select("*").order("created_at", { ascending: false }).limit(100),
         ]);
-        for (const result of [quotes, contracts, proofs, invoices, renewals]) if (result.error) throw result.error;
-        return json({ success: true, quotes: quotes.data || [], contracts: contracts.data || [], proofs: proofs.data || [], invoices: invoices.data || [], renewals: renewals.data || [] });
+        for (const result of [plans, commercePlans, quotes, contracts, proofs, invoices, renewals, proformas, auditRows]) if (result.error) throw result.error;
+        const signedProofs = await Promise.all((proofs.data || []).map(async (proof: any) => ({
+          ...proof,
+          signed_url: proof.document_path ? await signedB2BDocumentUrl(sb, proof.document_path) : proof.proof_url || null,
+        })));
+        return json({
+          success: true, plans: plans.data || [], commerce_plans: commercePlans.data || [], quotes: quotes.data || [],
+          contracts: contracts.data || [], proofs: signedProofs, invoices: invoices.data || [], renewals: renewals.data || [],
+          proformas: proformas.data || [], audit: auditRows.data || [],
+        });
+      }
+
+      if (action === "enregistrer_modele_b2b") {
+        const rawId = String(body.id || "").trim();
+        const { data: result, error } = await sb.rpc("oga_save_b2b_plan", {
+          p_plan_id: rawId || null,
+          p_name: String(body.name || "").trim(),
+          p_description: String(body.description || "").trim(),
+          p_template_kind: String(body.template_kind || "custom"),
+          p_billing_cycle: String(body.billing_cycle || "annual"),
+          p_currency: String(body.currency || "XOF").trim().toUpperCase(),
+          p_base_price: Math.max(0, Number(body.base_price || 0)),
+          p_commerce_plan_id: String(body.commerce_plan_id || "").trim() || null,
+          p_terms_text: String(body.terms_text || "").trim(),
+          p_is_active: body.is_active !== false,
+          p_tiers: Array.isArray(body.tiers) ? body.tiers : [],
+          p_actor_user_id: session.userId,
+        });
+        if (error) throw error;
+        if (!result?.ok) return json({ error: result?.error || "B2B_PLAN_SAVE_FAILED" }, 400);
+        const { data: saved, error: savedError } = await sb.from("b2b_plan_templates").select("*,b2b_plan_tiers(*)").eq("id", result.plan_id).single();
+        if (savedError) throw savedError;
+        return json({ success: true, plan: saved });
+      }
+
+      if (action === "dupliquer_modele_b2b") {
+        const sourceId = String(body.plan_id || "");
+        const { data: source, error } = await sb.from("b2b_plan_templates").select("*,b2b_plan_tiers(*)").eq("id", sourceId).maybeSingle();
+        if (error) throw error;
+        if (!source) return json({ error: "B2B_PLAN_NOT_FOUND" }, 404);
+        const { data: copy, error: copyError } = await sb.from("b2b_plan_templates").insert({
+          name: String(body.name || `${source.name} — copie`).trim(), description: source.description, template_kind: source.template_kind,
+          billing_cycle: source.billing_cycle, currency: source.currency, base_price: source.base_price, commerce_plan_id: source.commerce_plan_id,
+          terms_text: source.terms_text, metadata: source.metadata || {}, is_active: false, created_by: session.userId,
+        }).select("*").single();
+        if (copyError) throw copyError;
+        const tiers = (source.b2b_plan_tiers || []).map((tier: any) => ({
+          plan_id: copy.id, name: tier.name, min_members: tier.min_members, max_members: tier.max_members,
+          unit_price: tier.unit_price, fixed_price: tier.fixed_price, benefits: tier.benefits || [], position: tier.position, is_active: tier.is_active,
+        }));
+        if (tiers.length) {
+          const { error: tierError } = await sb.from("b2b_plan_tiers").insert(tiers);
+          if (tierError) throw tierError;
+        }
+        await appendB2BAudit(sb, null, session.userId, "b2b_plan_duplicated", "plan", copy.id, { source_plan_id: source.id });
+        return json({ success: true, plan: copy });
+      }
+
+      if (action === "changer_statut_modele_b2b") {
+        const { data, error } = await sb.from("b2b_plan_templates").update({ is_active: body.is_active === true, updated_at: new Date().toISOString() }).eq("id", String(body.plan_id || "")).select("*").maybeSingle();
+        if (error) throw error;
+        if (!data) return json({ error: "B2B_PLAN_NOT_FOUND" }, 404);
+        await appendB2BAudit(sb, null, session.userId, data.is_active ? "b2b_plan_activated" : "b2b_plan_paused", "plan", data.id);
+        return json({ success: true, plan: data });
       }
 
       if (action === "examiner_devis") {
         const status = String(body.status || "");
         if (!["accepted", "rejected", "changes_requested"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
-        const { data: quote, error } = await sb.from("b2b_quotes").update({
-          status, reviewed_by: session.userId, reviewed_at: new Date().toISOString(),
-          admin_comment: body.comment || null, updated_at: new Date().toISOString(),
-        }).eq("id", String(body.quote_id || "")).in("status", ["submitted", "changes_requested"]).select("*").maybeSingle();
-        if (error) throw error;
-        if (!quote) return json({ error: "QUOTE_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
-        if (status === "accepted" && body.create_contract !== false) {
-          const startsOn = body.starts_on || new Date().toISOString().slice(0, 10);
-          const endsOn = body.ends_on || new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
-          const { error: contractError } = await sb.from("b2b_contracts").insert({
-            contract_number: generateCode("CTR"), quote_id: quote.id, organization_id: quote.organization_id,
-            title: `Contrat ${quote.quote_number}`, terms: body.terms || "Conditions contractuelles validées par les parties.",
-            starts_on: startsOn, ends_on: endsOn, total_amount: quote.total_amount, currency: quote.currency,
-            status: "sent", created_by: session.userId,
-          });
-          if (contractError) throw contractError;
-          const { error: convertedError } = await sb.from("b2b_quotes").update({ status: "converted", updated_at: new Date().toISOString() }).eq("id", quote.id);
-          if (convertedError) throw convertedError;
+        const quoteId = String(body.quote_id || "");
+        if (status !== "accepted") {
+          const { data: quote, error } = await sb.from("b2b_quotes").update({
+            status, reviewed_by: session.userId, reviewed_at: new Date().toISOString(),
+            admin_comment: body.comment || null, updated_at: new Date().toISOString(),
+          }).eq("id", quoteId).eq("status", "submitted").select("*").maybeSingle();
+          if (error) throw error;
+          if (!quote) return json({ error: "QUOTE_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
+          await appendB2BAudit(sb, quote.organization_id, session.userId, `quote_${status}`, "quote", quote.id, { comment: body.comment || null });
+          return json({ success: true, quote });
         }
-        return json({ success: true, quote });
+
+        const { data: current, error: currentError } = await sb.from("b2b_quotes")
+          .select("*,b2b_plan_templates(commerce_plan_id,terms_text)")
+          .eq("id", quoteId).eq("status", "submitted").maybeSingle();
+        if (currentError) throw currentError;
+        if (!current) return json({ error: "QUOTE_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
+        const subtotal = Math.max(0, Number(body.subtotal ?? current.subtotal ?? 0));
+        const discount = Math.max(0, Number(body.discount_amount ?? current.discount_amount ?? 0));
+        const tax = Math.max(0, Number(body.tax_amount ?? current.tax_amount ?? 0));
+        const total = Math.max(0, Number(body.total_amount ?? (subtotal - discount + tax)));
+        const startsOn = String(body.starts_on || new Date().toISOString().slice(0, 10));
+        const endsOn = String(body.ends_on || new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10));
+        const terms = String(body.terms || current.b2b_plan_templates?.terms_text || "").trim();
+        const commercePlanId = String(current.b2b_plan_templates?.commerce_plan_id || "") || null;
+        const benefitsSnapshot = await b2bBenefitsSnapshot(sb, commercePlanId);
+        const { data: result, error } = await sb.rpc("oga_accept_b2b_quote", {
+          p_quote_id: quoteId, p_admin_user_id: session.userId, p_subtotal: subtotal,
+          p_discount: discount, p_tax: tax, p_total: total, p_starts_on: startsOn, p_ends_on: endsOn,
+          p_terms: terms, p_title: String(body.title || `Contrat ${current.quote_number}`).trim(),
+          p_payment_method: String(body.payment_method || "bank_transfer"), p_benefits_snapshot: benefitsSnapshot,
+          p_due_on: String(body.due_on || current.valid_until || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)),
+          p_comment: body.comment || null,
+        });
+        if (error) throw error;
+        if (!result?.ok) return json({ error: result?.error || "QUOTE_ACCEPTANCE_FAILED" }, 409);
+        return json({ success: true, ...result });
       }
 
       if (action === "valider_contrat") {
-        const { data, error } = await sb.from("b2b_contracts").update({
-          status: "active", admin_signed_by: session.userId, admin_signed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).eq("id", String(body.contract_id || "")).eq("status", "signed_by_structure").select("*").maybeSingle();
+        const contractId = String(body.contract_id || "");
+        const { data: result, error } = await sb.rpc("oga_finalize_b2b_contract", {
+          p_contract_id: contractId, p_admin_user_id: session.userId, p_admin_comment: body.comment || null,
+        });
         if (error) throw error;
-        if (!data) return json({ error: "CONTRACT_NOT_SIGNABLE" }, 409);
+        if (!result?.ok) return json({ error: result?.error || "CONTRACT_VALIDATION_FAILED" }, 409);
+        return json({ success: true, ...result });
+      }
+
+      if (action === "changer_statut_contrat") {
+        const contractId = String(body.contract_id || "");
+        const targetStatus = String(body.status || "");
+        if (targetStatus === "active") {
+          const { data: result, error } = await sb.rpc("oga_finalize_b2b_contract", {
+            p_contract_id: contractId, p_admin_user_id: session.userId, p_admin_comment: body.comment || null,
+          });
+          if (error) throw error;
+          if (!result?.ok) return json({ error: result?.error || "CONTRACT_REACTIVATION_FAILED" }, 409);
+          return json({ success: true, ...result });
+        }
+        if (!["suspended", "terminated"].includes(targetStatus)) return json({ error: "INVALID_CONTRACT_STATUS" }, 400);
+        const patch: Record<string, unknown> = {
+          status: targetStatus, status_reason: String(body.comment || "").trim() || null, updated_at: new Date().toISOString(),
+        };
+        if (targetStatus === "suspended") patch.suspended_at = new Date().toISOString();
+        if (targetStatus === "terminated") patch.terminated_at = new Date().toISOString();
+        const { data, error } = await sb.from("b2b_contracts").update(patch).eq("id", contractId).in("status", ["active", "suspended"]).select("*").maybeSingle();
+        if (error) throw error;
+        if (!data) return json({ error: "CONTRACT_STATUS_CHANGE_NOT_ALLOWED" }, 409);
+        await refreshB2BEntitlements(sb, data.organization_id);
+        await appendB2BAudit(sb, data.organization_id, session.userId, `contract_${targetStatus}`, "contract", data.id, { reason: body.comment || null });
         return json({ success: true, contract: data });
       }
 
@@ -1913,28 +2179,53 @@ Deno.serve(async (req: Request) => {
         }).eq("id", String(body.proof_id || "")).eq("status", "submitted").select("*").maybeSingle();
         if (error) throw error;
         if (!proof) return json({ error: "PAYMENT_PROOF_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
+        await appendB2BAudit(sb, proof.organization_id, session.userId, `payment_proof_${status}`, "payment_proof", proof.id, { contract_id: proof.contract_id, amount: proof.amount });
+        const { error: syncError } = await sb.rpc("oga_sync_b2b_payment_totals", { p_contract_id: proof.contract_id });
+        if (syncError) throw syncError;
+        let activation: any = null;
         if (status === "verified") {
-          const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("id,organization_id").eq("id", proof.contract_id).single();
+          const { data: contract, error: contractError } = await sb.from("b2b_contracts").select("admin_signed_at,admin_signed_by").eq("id", proof.contract_id).single();
           if (contractError) throw contractError;
-          const { error: invoiceError } = await sb.from("b2b_invoices").insert({
-            invoice_number: generateCode("FAC"), contract_id: contract.id, organization_id: contract.organization_id,
-            amount: proof.amount, currency: proof.currency, status: "paid", created_by: session.userId,
-          });
-          if (invoiceError) throw invoiceError;
+          if (contract.admin_signed_at && contract.admin_signed_by) {
+            const { data: result, error: finalizeError } = await sb.rpc("oga_finalize_b2b_contract", {
+              p_contract_id: proof.contract_id, p_admin_user_id: contract.admin_signed_by, p_admin_comment: "Activation après vérification du paiement",
+            });
+            if (finalizeError) throw finalizeError;
+            activation = result;
+          }
         }
-        return json({ success: true, proof });
+        return json({ success: true, proof, activation });
       }
 
       if (action === "examiner_renouvellement") {
         const status = String(body.status || "");
         if (!["approved", "rejected", "under_review"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
-        const { data, error } = await sb.from("b2b_renewals").update({
-          status, reviewed_by: session.userId, reviewed_at: new Date().toISOString(),
-          admin_comment: body.comment || null, updated_at: new Date().toISOString(),
-        }).eq("id", String(body.renewal_id || "")).select("*").maybeSingle();
+        const renewalId = String(body.renewal_id || "");
+        if (status !== "approved") {
+          const { data, error } = await sb.from("b2b_renewals").update({
+            status, reviewed_by: session.userId, reviewed_at: new Date().toISOString(),
+            admin_comment: body.comment || null, updated_at: new Date().toISOString(),
+          }).eq("id", renewalId).in("status", ["requested", "under_review"]).select("*").maybeSingle();
+          if (error) throw error;
+          if (!data) return json({ error: "RENEWAL_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
+          await appendB2BAudit(sb, data.organization_id, session.userId, `renewal_${status}`, "renewal", data.id, { comment: body.comment || null });
+          return json({ success: true, renewal: data });
+        }
+        const { data: renewal, error: renewalError } = await sb.from("b2b_renewals").select("*,b2b_contracts(total_amount,title,terms,payment_method)").eq("id", renewalId).in("status", ["requested", "under_review"]).maybeSingle();
+        if (renewalError) throw renewalError;
+        if (!renewal) return json({ error: "RENEWAL_NOT_FOUND_OR_ALREADY_REVIEWED" }, 404);
+        const previous = renewal.b2b_contracts;
+        const { data: result, error } = await sb.rpc("oga_approve_b2b_renewal", {
+          p_renewal_id: renewalId, p_admin_user_id: session.userId,
+          p_total_amount: Math.max(0, Number(body.total_amount ?? previous?.total_amount ?? 0)),
+          p_title: String(body.title || `${previous?.title || 'Contrat'} — renouvellement`).trim(),
+          p_terms: String(body.terms || previous?.terms || "").trim(),
+          p_payment_method: String(body.payment_method || previous?.payment_method || "bank_transfer"),
+          p_due_on: String(body.due_on || renewal.requested_start), p_comment: body.comment || null,
+        });
         if (error) throw error;
-        if (!data) return json({ error: "RENEWAL_NOT_FOUND" }, 404);
-        return json({ success: true, renewal: data });
+        if (!result?.ok) return json({ error: result?.error || "RENEWAL_APPROVAL_FAILED" }, 409);
+        return json({ success: true, ...result });
       }
     }
 
