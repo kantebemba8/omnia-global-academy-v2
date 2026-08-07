@@ -40,6 +40,9 @@ const PERMISSIONS = [
   { key: 'can_view_logs',                 label: 'Voir les journaux' },
   { key: 'can_manage_notifications',      label: 'Gérer les notifications' },
   { key: 'can_manage_settings',           label: 'Gérer les paramètres' },
+  { key: 'can_manage_b2b_contracts',      label: 'Gérer le B2B et les contrats' },
+  { key: 'can_manage_omnia_live',         label: 'Gérer Omnia Live pour la Structure' },
+  { key: 'can_manage_projects',           label: 'Gérer Omnia Projects pour la Structure' },
 ];
 
 const DISPLAY: Record<string, string> = {

@@ -259,12 +259,14 @@ export function getMyProjectsWorkspace() {
   }>({ action: 'my_workspace' });
 }
 
-export function getOwnerProjects() {
-  return projectsPost<{ projects: OmniaProject[]; can_create: boolean }>({ action: 'owner_dashboard' });
+export type ProjectOwnerScope = 'personal' | 'structure' | '';
+
+export function getOwnerProjects(ownerScope: ProjectOwnerScope = '') {
+  return projectsPost<{ projects: OmniaProject[]; can_create: boolean }>({ action: 'owner_dashboard', ...(ownerScope ? { owner_scope: ownerScope } : {}) });
 }
 
-export function createProject(data: Record<string, unknown>) {
-  return projectsPost<{ success: true; project: OmniaProject }>({ action: 'create', ...data });
+export function createProject(data: Record<string, unknown>, ownerScope: ProjectOwnerScope = '') {
+  return projectsPost<{ success: true; project: OmniaProject }>({ action: 'create', ...(ownerScope ? { owner_scope: ownerScope } : {}), ...data });
 }
 
 export function updateProject(projectId: string, data: Record<string, unknown>) {

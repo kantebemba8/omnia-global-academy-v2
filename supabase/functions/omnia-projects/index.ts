@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { hasStructurePermission, validatedStructureAccess, type ValidatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,6 +84,7 @@ type Session = {
   user: Record<string, unknown> | null;
   organizationId: string | null;
   organizationName: string | null;
+  structureAccess: ValidatedStructureAccess | null;
 };
 
 async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Session | null> {
@@ -111,6 +112,7 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
     user: user || null,
     organizationId: structureAccess?.organizationId || null,
     organizationName: structureAccess?.organizationName || null,
+    structureAccess: structureAccess || null,
   };
 }
 
@@ -122,19 +124,29 @@ function isAdmin(session: Session | null) {
   return Boolean(session?.roles.some((role) => ADMIN_ROLES.has(role)));
 }
 
-function canUseOwnerWorkspace(session: Session | null) {
-  return Boolean(session && (
-    isAdmin(session)
-    || (session.organizationId && session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase())))
-    || session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))
-  ));
+function hasStructureCreatorRole(session: Session | null) {
+  return Boolean(session?.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase())));
 }
 
-async function canCreate(sb: any, session: Session | null, projectType = "") {
+function canManageStructureProjects(session: Session | null) {
+  return Boolean(session && hasStructureCreatorRole(session) && hasStructurePermission(session.structureAccess, "can_manage_projects"));
+}
+
+function canUseOwnerWorkspace(session: Session | null, ownerScope = "") {
   if (!session) return false;
   if (isAdmin(session)) return true;
-  if (session.organizationId && session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))) return true;
-  if (!session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))) return false;
+  if (ownerScope === "structure") return canManageStructureProjects(session);
+  if (ownerScope === "personal") return session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()));
+  return canManageStructureProjects(session) || session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()));
+}
+
+async function canCreate(sb: any, session: Session | null, projectType = "", ownerScope = "") {
+  if (!session) return false;
+  if (isAdmin(session)) return true;
+  if (ownerScope === "structure") return canManageStructureProjects(session);
+
+  const professor = session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()));
+  if (!professor) return ownerScope ? false : canManageStructureProjects(session);
 
   const { data: permission } = await sb
     .from("omnia_project_creator_permissions")
@@ -157,9 +169,9 @@ async function canManageProject(sb: any, session: Session, project: any) {
   if (isAdmin(session)) return true;
   if (String(project.creator_user_id) === session.userId) {
     if (!project.organization_id) return true;
-    return session.organizationId === String(project.organization_id) && await canCreate(sb, session, String(project.project_type || ""));
+    return session.organizationId === String(project.organization_id) && canManageStructureProjects(session);
   }
-  if (project.organization_id && session.organizationId === String(project.organization_id)) return canCreate(sb, session, String(project.project_type || ""));
+  if (project.organization_id && session.organizationId === String(project.organization_id)) return canManageStructureProjects(session);
   const { data: projectTeams } = await sb.from("omnia_project_teams").select("id").eq("project_id", project.id);
   const teamIds = (projectTeams || []).map((row: any) => row.id);
   if (!teamIds.length) return false;
@@ -485,33 +497,43 @@ Deno.serve(async (req: Request) => {
 
     if (action === "owner_dashboard") {
       requireSession(session);
-      if (!canUseOwnerWorkspace(session)) return json({ error: "FORBIDDEN" }, 403);
+      const ownerScope = text(body.owner_scope, 20);
+      if (!canUseOwnerWorkspace(session, ownerScope)) return json({ error: "FORBIDDEN" }, 403);
       let query = sb.from("omnia_projects").select("*").order("created_at", { ascending: false });
       if (!isAdmin(session)) {
-        if (session.organizationId) query = query.or(`creator_user_id.eq.${session.userId},organization_id.eq.${session.organizationId}`);
-        else query = query.eq("creator_user_id", session.userId);
+        if (ownerScope === "structure") {
+          if (!session.organizationId || !canManageStructureProjects(session)) return json({ error: "STRUCTURE_PROJECT_PERMISSION_REQUIRED" }, 403);
+          query = query.eq("organization_id", session.organizationId);
+        } else {
+          query = query.eq("creator_user_id", session.userId).is("organization_id", null);
+        }
       }
       const { data: projects, error } = await query;
       if (error) throw error;
-      return json({ projects: await enrichProjects(sb, projects || [], session), can_create: await canCreate(sb, session) });
+      return json({ projects: await enrichProjects(sb, projects || [], session), can_create: await canCreate(sb, session, "", ownerScope) });
     }
 
     if (action === "create") {
       requireSession(session);
       const requestedType = text(body.project_type, 60) || "real_project";
-      if (!(await canCreate(sb, session, requestedType))) {
-        const professor = session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()));
-        return json({ error: professor ? "PROFESSOR_PROJECT_PERMISSION_REQUIRED" : "CREATOR_ROLE_REQUIRED" }, 403);
+      const ownerScope = text(body.owner_scope, 20) || (hasStructureCreatorRole(session) && !session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase())) ? "structure" : "personal");
+      if (!(await canCreate(sb, session, requestedType, ownerScope))) {
+        const error = ownerScope === "structure" ? "STRUCTURE_PROJECT_PERMISSION_REQUIRED" : "PROFESSOR_PROJECT_PERMISSION_REQUIRED";
+        return json({ error }, 403);
       }
       if (!text(body.title, 180) || !text(body.description, 30000)) return json({ error: "TITLE_AND_DESCRIPTION_REQUIRED" }, 400);
 
       const patch = projectPatch(body);
       const title = text(body.title, 180);
       const slug = await uniqueSlug(sb, title);
-      const organizationId = isAdmin(session) && body.organization_id ? text(body.organization_id, 80) : session.organizationId;
+      const organizationId = isAdmin(session) && body.organization_id
+        ? text(body.organization_id, 80)
+        : ownerScope === "structure" ? session.organizationId : null;
       const organizationName = isAdmin(session)
         ? text(body.organization_name, 180) || session.organizationName || "Omnia Global Academy"
-        : session.organizationName || text(session.user?.full_name, 180) || "Omnia Global Academy";
+        : ownerScope === "structure"
+          ? session.organizationName || "Structure"
+          : text(session.user?.full_name, 180) || "Créateur Omnia";
       if (patch.visibility === "structure" && !patch.visibility_structure_id) patch.visibility_structure_id = organizationId || null;
       if (patch.reward_type === "financial_prize") patch.reward_funding_status = "unverified";
       const { data: project, error } = await sb.from("omnia_projects").insert({

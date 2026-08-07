@@ -1,5 +1,6 @@
 import { openExternalUrl } from '../../lib/mobile';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   CalendarDays, Check, ClipboardList, Edit3, Eye, FileCheck2, FolderKanban, Mail, Plus, RefreshCw,
   Send, Trash2, Users, X,
@@ -96,6 +97,10 @@ function fromProject(project: OmniaProject): ProjectForm {
 }
 
 export default function ProjectOwnerWorkspace() {
+  const location = useLocation();
+  const ownerScope = location.pathname.startsWith('/structure/') ? 'structure' as const
+    : location.pathname.startsWith('/professeur/') ? 'personal' as const
+    : '' as const;
   const [projects, setProjects] = useState<OmniaProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -128,7 +133,7 @@ export default function ProjectOwnerWorkspace() {
     setLoading(true);
     setError('');
     try {
-      const result = await getOwnerProjects();
+      const result = await getOwnerProjects(ownerScope);
       setProjects(result.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Impossible de charger les projets.');
@@ -137,7 +142,7 @@ export default function ProjectOwnerWorkspace() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [ownerScope]);
 
   const metrics = useMemo(() => ({
     total: projects.length,
@@ -182,7 +187,7 @@ export default function ProjectOwnerWorkspace() {
     setSaving(true);
     setMessage('');
     try {
-      const result = editing ? await updateProject(editing.id, payload()) : await createProject(payload());
+      const result = editing ? await updateProject(editing.id, payload()) : await createProject(payload(), ownerScope);
       if (sendForValidation) await submitProject(result.project.id);
       setShowForm(false);
       setMessage(sendForValidation ? 'Projet enregistré et envoyé à l’Administration Omnia.' : 'Brouillon enregistré.');

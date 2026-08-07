@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 import { settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 import {
@@ -114,7 +114,10 @@ async function creatorAllowed(sb: SB, ctx: UserContext, moduleKey: string) {
 async function audienceAllowed(sb: SB, ctx: UserContext, audience: string) {
   if (audience === "global") return true;
   if (isAdmin(ctx)) return false;
-  if (audience === "structure") return Boolean(await validatedStructureAccess(sb, ctx.id));
+  if (audience === "structure") {
+    const access = await validatedStructureAccess(sb, ctx.id);
+    return hasStructurePermission(access, "can_manage_settings");
+  }
   const roleMap: Record<string, string[]> = {
     learner: ["apprenant"],
     coach: ["coach"],

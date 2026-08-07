@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { hasStructurePermission, validatedStructureAccess, type ValidatedStructureAccess } from "../_shared/structure-access.ts";
 
 /*
   OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
@@ -52,7 +52,7 @@ async function sessionContext(sb: ReturnType<typeof createClient>, token: string
   if (!token) return null;
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("DB_SERVICE_ROLE_KEY") || "";
   if (serviceRole && token === serviceRole) {
-    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"], structureOrganizationId: null };
+    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"], structureOrganizationId: null, structureAccess: null as ValidatedStructureAccess | null };
   }
 
   const { data: session } = await sb
@@ -81,7 +81,7 @@ async function sessionContext(sb: ReturnType<typeof createClient>, token: string
   const roles = (roleRows ?? []).map((r: { role: string }) => r.role);
   const structureAccess = await validatedStructureAccess(sb, userId);
 
-  return { user, userId, roles, structureOrganizationId: structureAccess?.organizationId || null };
+  return { user, userId, roles, structureOrganizationId: structureAccess?.organizationId || null, structureAccess: structureAccess || null };
 }
 
 function isSuperAdmin(ctx: Awaited<ReturnType<typeof sessionContext>>) {
@@ -92,12 +92,23 @@ function isService(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return !!ctx?.roles.includes("service_role");
 }
 
+function hasStructureOrganizerRole(ctx: Awaited<ReturnType<typeof sessionContext>>) {
+  return Boolean(ctx?.roles.some((r) => [
+    "etablissement_directeur", "responsable_structure", "gestionnaire_structure",
+    "structure_admin", "directeur", "gestionnaire_partenaire",
+  ].includes(r)));
+}
+
+function canManageStructureLive(ctx: Awaited<ReturnType<typeof sessionContext>>) {
+  return Boolean(ctx && hasStructureOrganizerRole(ctx) && hasStructurePermission(ctx.structureAccess, "can_manage_omnia_live"));
+}
+
 function ownerEventAccess(
   ctx: Awaited<ReturnType<typeof sessionContext>>,
   event: any,
 ) {
   if (!ctx || !event || String(event.owner_user_id || "") !== ctx.userId) return false;
-  if (String(event.organizer_kind || "") === "structure") return Boolean(ctx.structureOrganizationId);
+  if (String(event.organizer_kind || "") === "structure") return canManageStructureLive(ctx);
   return true;
 }
 
@@ -146,15 +157,7 @@ async function ensureOrganizerLiveCapacity(sb: ReturnType<typeof createClient>, 
 function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return false;
   if (ctx.roles.some((r) => ["super_admin", "organizer", "organisateur", "professeur"].includes(r))) return true;
-  const hasStructureRole = ctx.roles.some((r) => [
-    "etablissement_directeur",
-    "responsable_structure",
-    "gestionnaire_structure",
-    "structure_admin",
-    "directeur",
-    "gestionnaire_partenaire",
-  ].includes(r));
-  return hasStructureRole && Boolean(ctx.structureOrganizationId);
+  return canManageStructureLive(ctx);
 }
 
 const ORGANIZER_PREVIEW_EMAIL = "organisateur.test@omniaglobalacademy.com";
@@ -196,29 +199,19 @@ async function organizerPreviewContext(
     userId: String(user.id),
     roles: ["organisateur"],
     structureOrganizationId: null,
+    structureAccess: null,
   };
 }
 
-function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
+function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>, requestedScope = "") {
   if (!ctx) return "user";
   if (ctx.roles.includes("super_admin")) return "omnia";
 
-  if (
-    ctx.structureOrganizationId &&
-    ctx.roles.some((r) =>
-      [
-        "etablissement_directeur",
-        "responsable_structure",
-        "gestionnaire_structure",
-        "structure_admin",
-        "directeur",
-        "gestionnaire_partenaire",
-      ].includes(r)
-    )
-  ) {
-    return "structure";
-  }
-
+  const structureAllowed = canManageStructureLive(ctx);
+  const independentCreator = ctx.roles.some((r) => ["organizer", "organisateur", "professeur"].includes(r));
+  if (requestedScope === "structure") return structureAllowed ? "structure" : "forbidden";
+  if (requestedScope === "personal") return independentCreator ? "user" : "forbidden";
+  if (structureAllowed && !independentCreator) return "structure";
   return "user";
 }
 
@@ -704,12 +697,15 @@ async function createDraft(
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const payload = cleanEventInput(body, true);
+  const requestedScope = String(body.organizer_scope || "").trim().toLowerCase();
+  const resolvedOrganizerKind = organizerKind(ctx, requestedScope);
+  if (resolvedOrganizerKind === "forbidden") return json({ error: "STRUCTURE_LIVE_PERMISSION_REQUIRED" }, 403);
 
   payload.owner_user_id = ctx.userId;
-  payload.organizer_kind = organizerKind(ctx);
+  payload.organizer_kind = resolvedOrganizerKind;
   payload.organizer_display_name =
     body.organizer_display_name ??
-    (organizerKind(ctx) === "omnia"
+    (resolvedOrganizerKind === "omnia"
       ? "Omnia Global Academy"
       : ctx.user.full_name);
 

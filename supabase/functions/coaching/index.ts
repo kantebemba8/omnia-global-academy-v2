@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 
 const corsHeaders = {
@@ -148,6 +148,7 @@ async function structureManagerOrganization(sb: Supabase, session: Session, requ
   if (!session.roles.some(role => STRUCTURE_MANAGER_ROLES.has(role))) throw new Error("FORBIDDEN");
   const structureAccess = await validatedStructureAccess(sb, session.userId, requestedOrganizationId);
   if (!structureAccess?.organizationId) throw new Error("STRUCTURE_NOT_VALIDATED");
+  if (!hasStructurePermission(structureAccess, "can_manage_structure_users")) throw new Error("STRUCTURE_TEAM_PERMISSION_REQUIRED");
   return structureAccess.organizationId;
 }
 

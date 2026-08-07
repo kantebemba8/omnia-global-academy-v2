@@ -53,6 +53,15 @@ export async function validatedStructureAccess(
   };
 }
 
+export function hasStructurePermission(
+  access: ValidatedStructureAccess | null | undefined,
+  permission: string,
+) {
+  if (!access) return false;
+  if (access.isPrimary) return true;
+  return access.permissions?.[permission] === true;
+}
+
 export async function hasValidatedStructureAccess(
   sb: any,
   userId: string,

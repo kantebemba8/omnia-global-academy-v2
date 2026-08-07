@@ -234,6 +234,9 @@ const STRUCTURE_TEAM_PERMISSION_KEYS = new Set([
   "can_view_logs",
   "can_manage_notifications",
   "can_manage_settings",
+  "can_manage_b2b_contracts",
+  "can_manage_omnia_live",
+  "can_manage_projects",
 ]);
 
 const SENSITIVE_STRUCTURE_INPUTS: Record<string, string> = {
@@ -572,6 +575,9 @@ Deno.serve(async (req: Request) => {
             can_view_logs: true,
             can_manage_notifications: true,
             can_manage_settings: true,
+            can_manage_b2b_contracts: true,
+            can_manage_omnia_live: true,
+            can_manage_projects: true,
           },
         });
         if (managerError) throw managerError;
@@ -601,11 +607,16 @@ Deno.serve(async (req: Request) => {
       const organizationId = String(link.organization_id);
       const organization = await getOrganization(sb, organizationId);
       if (!organization) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
-      const profileChange = await getOpenProfileChange(sb, organizationId);
+      const [profileChange, recruitmentResult] = await Promise.all([
+        getOpenProfileChange(sb, organizationId),
+        sb.from("talent_structure_permissions").select("can_post_job,can_search_talent,can_contact_talent,can_manage_jobs,can_view_applications,can_schedule_interview,can_manage_team").eq("organization_id", organizationId).eq("user_id", session.userId).maybeSingle(),
+      ]);
+      if (recruitmentResult.error) throw recruitmentResult.error;
       return json({
         success: true,
         structure: mapStructure(organization),
         my_permissions: link.is_primary ? normalizeStructurePermissions(Object.fromEntries([...STRUCTURE_TEAM_PERMISSION_KEYS].map(key => [key, true]))) : normalizeStructurePermissions(link.permissions || {}),
+        my_recruitment_permissions: recruitmentResult.data || {},
         my_role: link.role_in_org,
         is_primary: !!link.is_primary,
         operational_access: String(organization.status || "") === "validated",
@@ -1865,6 +1876,9 @@ Deno.serve(async (req: Request) => {
       const organization = await getOrganization(sb, organizationId);
       if (!organization || String(organization.status || "") !== "validated") {
         return json({ error: "STRUCTURE_NOT_ACTIVE", message: "La Structure doit être validée et active pour accéder aux services B2B." }, 403);
+      }
+      if (!hasPermission(link, "can_manage_b2b_contracts")) {
+        return json({ error: "PERMISSION_DENIED", message: "La gestion B2B et des contrats n’est pas autorisée pour ce membre de l’équipe Structure." }, 403);
       }
 
       if (action === "tableau_structure") {

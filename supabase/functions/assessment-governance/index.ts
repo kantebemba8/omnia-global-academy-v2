@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -59,7 +59,8 @@ async function ownsCourse(sb: Sb, session: Session, courseId: string) {
   if (!data || String(data.creator_id) !== session.userId) return false;
   if (String(data.creator_context || "") !== "structure") return true;
   if (!data.structure_id) return false;
-  return Boolean(await validatedStructureAccess(sb, session.userId, String(data.structure_id)));
+  const access = await validatedStructureAccess(sb, session.userId, String(data.structure_id));
+  return hasStructurePermission(access, "can_edit_courses");
 }
 async function ownsAssessment(sb: Sb, session: Session, assessmentId: string) {
   const { data } = await sb.from("course_assessments").select("id,course_id").eq("id", assessmentId).maybeSingle();

@@ -51,7 +51,7 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
   if (startsWithSpace(pathname, '/professeur') || startsWithSpace(pathname, '/staff')) {
     return { allowedRoles: ['professeur'], previewRole: 'professeur' };
   }
-  if (startsWithSpace(pathname, '/structure/recrutement')) {
+  if (startsWithSpace(pathname, '/structure/recrutement') || pathname === '/structure/offres-emploi') {
     return { allowedRoles: ['structure', 'gestionnaire_structure', 'recruteur_structure'], previewRole: 'structure' };
   }
   if (startsWithSpace(pathname, '/structure') || startsWithSpace(pathname, '/partner') || startsWithSpace(pathname, '/school')) {
