@@ -3,6 +3,7 @@ import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ArrowLeft, Bell, ChevronDown, Home, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
+import { OMNIA_OFFICIAL_SLOGAN } from './OmniaBrandLockup';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -212,28 +213,33 @@ export default function SubspaceHamburgerLayout({
           >
             <Menu size={23} />
           </button>
-          <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-9 w-9 rounded-lg object-cover" />
-          {title === 'Omnia Live' ? (
-            <button type="button" onClick={() => navigate('/omnia-live')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Live">
-              <span>Omnia </span><span style={{ color: GOLD }}>Live</span>
-            </button>
-          ) : title === 'Omnia Talent' ? (
-            <button type="button" onClick={() => navigate('/talent')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Talent">
-              <span>Omnia </span><span style={{ color: GOLD }}>Talent</span>
-            </button>
-          ) : title === 'Omnia Projects' ? (
-            <button type="button" onClick={() => navigate('/projects')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Projects">
-              <span>Omnia </span><span style={{ color: GOLD }}>Projects</span>
-            </button>
-          ) : title === 'Omnia Communauté' ? (
-            <button type="button" onClick={() => navigate('/forum')} className="truncate text-lg font-bold transition hover:opacity-80 md:text-xl" aria-label="Accueil Omnia Communauté">
-              <span>Omnia </span><span style={{ color: GOLD }}>Communauté</span>
-            </button>
-          ) : title === 'Omnia Career Studio' ? (
-            <div className="truncate text-lg font-bold md:text-xl"><span>Omnia </span><span style={{ color: GOLD }}>Career Studio</span></div>
-          ) : (
-            <div className="truncate text-lg font-bold md:text-xl">{title}</div>
-          )}
+          <img src="/IMG_0349.png" alt="" className="h-9 w-auto object-contain" />
+          <div className="min-w-0">
+            {title === 'Omnia Live' ? (
+              <button type="button" onClick={() => navigate('/omnia-live')} className="block truncate text-base font-bold transition hover:opacity-80 md:text-lg" aria-label="Accueil Omnia Live">
+                <span>Omnia </span><span style={{ color: GOLD }}>Live</span>
+              </button>
+            ) : title === 'Omnia Talent' ? (
+              <button type="button" onClick={() => navigate('/talent')} className="block truncate text-base font-bold transition hover:opacity-80 md:text-lg" aria-label="Accueil Omnia Talent">
+                <span>Omnia </span><span style={{ color: GOLD }}>Talent</span>
+              </button>
+            ) : title === 'Omnia Projects' ? (
+              <button type="button" onClick={() => navigate('/projects')} className="block truncate text-base font-bold transition hover:opacity-80 md:text-lg" aria-label="Accueil Omnia Projects">
+                <span>Omnia </span><span style={{ color: GOLD }}>Projects</span>
+              </button>
+            ) : title === 'Omnia Communauté' ? (
+              <button type="button" onClick={() => navigate('/forum')} className="block truncate text-base font-bold transition hover:opacity-80 md:text-lg" aria-label="Accueil Omnia Communauté">
+                <span>Omnia </span><span style={{ color: GOLD }}>Communauté</span>
+              </button>
+            ) : title === 'Omnia Career Studio' ? (
+              <div className="truncate text-base font-bold md:text-lg"><span>Omnia </span><span style={{ color: GOLD }}>Career Studio</span></div>
+            ) : (
+              <div className="truncate text-base font-bold md:text-lg">{title}</div>
+            )}
+            <div className="mt-1 hidden max-w-[310px] truncate text-[7px] font-semibold tracking-[0.055em] text-slate-500 xl:block">
+              {OMNIA_OFFICIAL_SLOGAN}
+            </div>
+          </div>
         </div>
 
         {showSearch && <div className="relative mx-5 hidden w-full max-w-[420px] lg:block">{searchField()}</div>}
@@ -313,10 +319,11 @@ export default function SubspaceHamburgerLayout({
           <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Fermer le menu en cliquant à l’extérieur" />
           <aside id="subspace-navigation-drawer" className="absolute left-3 top-[84px] flex max-h-[calc(100dvh-100px)] w-[286px] max-w-[86vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
-              <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-12 w-12 rounded-xl object-cover" />
+              <img src="/IMG_0349.png" alt="" className="h-11 w-auto object-contain" />
               <div className="min-w-0">
-                <div className="truncate text-base font-bold tracking-wide" style={{ color: BLUE }}>OMNIA</div>
-                <div className="text-[10px] font-semibold tracking-[0.15em] text-slate-500">GLOBAL ACADEMY</div>
+                <div className="truncate text-base font-black tracking-[0.09em]" style={{ color: BLUE }}>OMNIA</div>
+                <div className="mt-1 text-[9px] font-bold tracking-[0.15em]" style={{ color: GOLD }}>GLOBAL ACADEMY</div>
+                <div className="mt-1.5 max-w-[185px] text-[7px] font-semibold leading-[1.4] tracking-[0.05em] text-slate-500">{OMNIA_OFFICIAL_SLOGAN}</div>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

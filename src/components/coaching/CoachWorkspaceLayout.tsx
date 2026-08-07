@@ -49,7 +49,7 @@ export default function CoachWorkspaceLayout({ children }: { children: ReactNode
       headerSearch={<ContextualHeaderSearch items={SEARCH_ITEMS} placeholder="Rechercher dans mon espace Coach..." />}
       spaceHomePath="/coaching"
       spaceHomeLabel="Retour à Omnia Coaching"
-      contentClassName="bg-slate-50"
+      contentClassName="bg-white"
     >
       <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
     </DashboardLayout>

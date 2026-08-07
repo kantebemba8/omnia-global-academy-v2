@@ -3,6 +3,7 @@ import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import { DashboardTopbar } from './DashboardTopbar';
+import OmniaBrandLockup from './OmniaBrandLockup';
 import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users,
@@ -19,6 +20,7 @@ function navigationItemMatchesPath(item: NavItem, pathname: string) {
   if (item.exact) return pathname === itemPath;
   return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
 }
+
 interface Props {
   children: ReactNode;
   role?: 'apprenant' | 'professeur' | 'directeur' | 'moderateur' | 'super_admin' | 'recruteur' | 'coach' | 'organisateur';
@@ -115,6 +117,17 @@ const PROFESSEUR_GROUPS: NavGroup[] = [
   },
 ];
 
+function roleLabel(role: Props['role']) {
+  if (role === 'super_admin') return 'Administration';
+  if (role === 'directeur') return 'Espace Structure';
+  if (role === 'professeur') return 'Espace Professeur';
+  if (role === 'moderateur') return 'Espace Modération';
+  if (role === 'recruteur') return 'Espace Recruteur';
+  if (role === 'coach') return 'Espace Coach';
+  if (role === 'organisateur') return 'Espace Organisateur';
+  return 'Espace Apprenant';
+}
+
 export function DashboardLayout({
   children,
   role = 'apprenant',
@@ -133,15 +146,16 @@ export function DashboardLayout({
 }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [openDesktopGroup, setOpenDesktopGroup] = useState<string | null>(null);
+  const [expandedMobileGroups, setExpandedMobileGroups] = useState<Record<string, boolean>>({});
   const [referralEnabled, setReferralEnabled] = useState(false);
 
   useEffect(() => {
-    if (!sidebarOpen) return;
+    if (!mobileNavigationOpen) return;
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSidebarOpen(false);
+      if (event.key === 'Escape') setMobileNavigationOpen(false);
     };
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
@@ -149,10 +163,11 @@ export function DashboardLayout({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sidebarOpen]);
+  }, [mobileNavigationOpen]);
 
   useEffect(() => {
-    setSidebarOpen(false);
+    setMobileNavigationOpen(false);
+    setOpenDesktopGroup(null);
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -160,7 +175,6 @@ export function DashboardLayout({
       setReferralEnabled(false);
       return;
     }
-
     let active = true;
     getPublicSiteSettings()
       .then(settings => {
@@ -169,7 +183,6 @@ export function DashboardLayout({
       .catch(() => {
         if (active) setReferralEnabled(false);
       });
-
     return () => { active = false; };
   }, [role]);
 
@@ -181,6 +194,7 @@ export function DashboardLayout({
   const previewRole = role === 'directeur' ? 'structure' : role;
   const storedPreviewRole = typeof window !== 'undefined' ? sessionStorage.getItem('omnia_admin_role_preview') : null;
   const previewMode = isSuperAdmin && (isPreview || storedPreviewRole === previewRole);
+
   const buildPath = (path: string) => {
     if (!previewMode) return path;
     const [withoutHash, hash = ''] = path.split('#', 2);
@@ -193,17 +207,15 @@ export function DashboardLayout({
   useEffect(() => {
     const token = getSessionToken();
     const stored = localStorage.getItem('omnia_user');
-    // Une prévisualisation conserve la session administrative Omnia sans lui attribuer le rôle affiché.
     if (previewMode && stored) {
       try {
-        const u = JSON.parse(stored);
-        if (u?.roles?.includes('super_admin')) {
-          return; // pas de vérification de rôle
-        }
-      } catch { /* ignore */ }
+        const user = JSON.parse(stored);
+        if (user?.roles?.includes('super_admin')) return;
+      } catch {
+        // La vérification normale de session s'applique.
+      }
     }
-    // Mode normal : vérification token
-    if (!token) { navigate('/connexion'); return; }
+    if (!token) navigate('/connexion');
   }, [navigate, previewMode]);
 
   const NAV_ITEMS = useMemo(() => {
@@ -231,223 +243,283 @@ export function DashboardLayout({
       .filter(group => group.items.length > 0);
   }, [navGroups, referralEnabled, role]);
 
-  useEffect(() => {
-    if (!ACTIVE_NAV_GROUPS?.length) return;
-    const activeGroup = ACTIVE_NAV_GROUPS.find(group =>
-      group.items.some(item => navigationItemMatchesPath(item, location.pathname))
-    );
-    if (activeGroup) {
-      setExpandedGroups({ [activeGroup.id]: true });
-    }
-  }, [location.pathname, ACTIVE_NAV_GROUPS]);
-
-  const toggleGroup = (id: string) => {
-    setExpandedGroups(prev => (prev[id] ? {} : { [id]: true }));
-  };
+  const allNavigationItems = useMemo(
+    () => ACTIVE_NAV_GROUPS?.flatMap(group => group.items) ?? NAV_ITEMS,
+    [ACTIVE_NAV_GROUPS, NAV_ITEMS],
+  );
 
   const activeNavigation = useMemo(() => {
-    const items = ACTIVE_NAV_GROUPS?.flatMap(group => group.items) ?? NAV_ITEMS;
-    return items
+    return allNavigationItems
       .filter(item => navigationItemMatchesPath(item, location.pathname))
-      .sort((a, b) => b.path.split('?', 1)[0].length - a.path.split('?', 1)[0].length)[0] || null;
-  }, [ACTIVE_NAV_GROUPS, NAV_ITEMS, location.pathname]);
+      .sort((a, b) => b.path.length - a.path.length)[0];
+  }, [allNavigationItems, location.pathname]);
 
-  function isActive(item: NavItem) {
-    return activeNavigation?.path === item.path;
-  }
+  const activeGroup = useMemo(
+    () => ACTIVE_NAV_GROUPS?.find(group => group.items.some(item => navigationItemMatchesPath(item, location.pathname))),
+    [ACTIVE_NAV_GROUPS, location.pathname],
+  );
 
-  const roleSubtitle = role === 'super_admin'
-    ? 'Gestion de la plateforme'
-    : role === 'moderateur'
-      ? 'Espace de modération'
-      : role === 'directeur'
-        ? 'Espace Structure'
-        : role === 'professeur'
-          ? 'Espace Professeur'
-          : role === 'recruteur'
-            ? 'Espace Recruteur'
-            : role === 'coach'
-              ? 'Espace Coach'
-              : role === 'organisateur'
-                ? 'Espace Organisateur'
-                : 'Espace Apprenant';
+  useEffect(() => {
+    if (activeGroup) setExpandedMobileGroups({ [activeGroup.id]: true });
+  }, [activeGroup?.id]);
 
+  const isActive = (item: NavItem) => activeNavigation?.path === item.path;
+  const roleSubtitle = roleLabel(role);
   const contextualTitle = headerTitle
     || (location.pathname === '/mon-profil' ? (role === 'super_admin' ? 'Mon compte' : 'Mon profil') : activeNavigation?.label)
-    || 'Tableau de bord';
+    || roleSubtitle;
 
-  const sidebar = (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden" style={{ backgroundColor: '#002050' }}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
-        <Link to="/" className="flex min-w-0 items-center gap-3">
-          <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="w-10 h-10 object-contain" />
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-[15px] font-extrabold text-white">{brandTitle}</span>
-            <span className="block truncate text-sm font-bold" style={{ color: '#BF8813' }}>{brandAccent}</span>
-            <span className="mt-1 block truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">{roleSubtitle}</span>
-          </span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(false)}
-          className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
-          aria-label="Fermer le menu du tableau de bord"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-      <nav
-        className="oga-sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#BF8813 transparent' }}
-      >
-        {ACTIVE_NAV_GROUPS?.length ? (
-          <div className="space-y-1">
-            {ACTIVE_NAV_GROUPS.map((group) => {
-              const containsActive = group.items.some(item => isActive(item));
-              const open = expandedGroups[group.id] ?? containsActive;
-              const GroupIcon = group.icon;
+  const adminMode = role === 'super_admin';
 
-              if (group.id === 'dashboard') {
-                return (
-                  <div key={group.id} className="space-y-1">
-                    {group.items.map((item) => {
+  const navigationContents = (mobile = false) => (
+    <>
+      {ACTIVE_NAV_GROUPS?.length ? (
+        <div className={mobile ? 'space-y-1' : 'flex items-center gap-1'}>
+          {ACTIVE_NAV_GROUPS.map(group => {
+            const GroupIcon = group.icon;
+            const containsActive = group.items.some(item => isActive(item));
+            const isDashboardGroup = group.id === 'dashboard' && group.items.length === 1;
+            const directItem = group.items[0];
+
+            if (!mobile && isDashboardGroup) {
+              return (
+                <Link
+                  key={group.id}
+                  to={buildPath(directItem.path)}
+                  className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                >
+                  <GroupIcon size={16} />
+                  {group.label}
+                </Link>
+              );
+            }
+
+            if (!mobile) {
+              const open = openDesktopGroup === group.id;
+              return (
+                <div key={group.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDesktopGroup(current => current === group.id ? null : group.id)}
+                    className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive || open ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                    aria-expanded={open}
+                  >
+                    <GroupIcon size={16} />
+                    <span>{group.label}</span>
+                    <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </button>
+                  {open && (
+                    <>
+                      <button type="button" className="fixed inset-0 z-30 cursor-default" onClick={() => setOpenDesktopGroup(null)} aria-label="Fermer le menu" />
+                      <div className="absolute left-0 top-[calc(100%+8px)] z-40 min-w-[270px] border border-slate-200 bg-white py-2 shadow-xl">
+                        {group.items.map(item => {
+                          const ItemIcon = item.icon;
+                          const active = isActive(item);
+                          return (
+                            <Link
+                              key={item.path}
+                              to={buildPath(item.path)}
+                              onClick={() => setOpenDesktopGroup(null)}
+                              className={`flex items-center gap-3 px-4 py-2.5 text-sm transition ${active ? 'bg-slate-50 font-bold text-[#002050]' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-[#002050]'}`}
+                            >
+                              <ItemIcon size={16} style={{ color: active ? '#BF8813' : '#64748B' }} />
+                              <span className="flex-1">{item.label}</span>
+                              {item.badge && <span className="text-xs font-bold text-[#BF8813]">{item.badge}</span>}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            }
+
+            const open = expandedMobileGroups[group.id] ?? containsActive;
+            return (
+              <div key={group.id} className="border-b border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setExpandedMobileGroups(current => ({ ...current, [group.id]: !open }))}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-white/80"
+                  aria-expanded={open}
+                >
+                  <GroupIcon size={17} style={{ color: containsActive ? '#BF8813' : 'rgba(255,255,255,.65)' }} />
+                  <span className="flex-1">{group.label}</span>
+                  <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                </button>
+                {open && (
+                  <div className="pb-2">
+                    {group.items.map(item => {
+                      const ItemIcon = item.icon;
                       const active = isActive(item);
                       return (
                         <Link
                           key={item.path}
                           to={buildPath(item.path)}
-                          onClick={() => setSidebarOpen(false)}
-                          aria-current={active ? 'page' : undefined}
-                          className="relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
-                          style={{
-                            backgroundColor: 'transparent',
-                            color: active ? '#BF8813' : 'rgba(255,255,255,0.72)'
-                          }}
+                          onClick={() => setMobileNavigationOpen(false)}
+                          className={`flex items-center gap-3 px-6 py-2.5 text-[13px] ${active ? 'font-bold text-[#F4C45E]' : 'font-medium text-white/65'}`}
                         >
-                          {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
-                          <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
-                          <span className="flex-1 text-sm font-semibold">{item.label}</span>
-                          {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+                          <ItemIcon size={15} />
+                          <span className="flex-1">{item.label}</span>
+                          {active && <ChevronRight size={13} />}
                         </Link>
                       );
                     })}
                   </div>
-                );
-              }
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={mobile ? 'space-y-1' : 'flex items-center gap-1'}>
+          {NAV_ITEMS.map(item => {
+            const ItemIcon = item.icon;
+            const active = isActive(item);
+            return (
+              <Link
+                key={item.path}
+                to={buildPath(item.path)}
+                onClick={() => mobile && setMobileNavigationOpen(false)}
+                className={mobile
+                  ? `flex items-center gap-3 px-5 py-3 text-sm ${active ? 'font-bold text-[#F4C45E]' : 'font-medium text-white/70'}`
+                  : `inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${active ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`
+                }
+              >
+                <ItemIcon size={16} />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
 
-              return (
-                <div key={group.id}>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.id)}
-                    aria-expanded={open}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
-                    style={{
-                      backgroundColor: containsActive ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      color: containsActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)'
-                    }}
-                  >
-                    <GroupIcon style={{ width: 18, height: 18, flexShrink: 0 }} />
-                    <span className="flex-1 text-left text-sm font-semibold">{group.label}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {open && (
-                    <div className="mb-2 ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-3">
-                      {group.items.map((item) => {
-                        const active = isActive(item);
-                        return (
-                          <Link
-                            key={item.path}
-                            to={buildPath(item.path)}
-                            onClick={() => setSidebarOpen(false)}
-                            aria-current={active ? 'page' : undefined}
-                            className="relative flex items-center gap-2.5 rounded-lg px-3 py-2 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
-                            style={{
-                              backgroundColor: active ? 'rgba(191,136,19,0.10)' : 'transparent',
-                              color: active ? '#F4C45E' : 'rgba(255,255,255,0.62)'
-                            }}
-                          >
-                            {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
-                            <item.icon style={{ width: 15, height: 15, flexShrink: 0 }} />
-                            <span className="flex-1 text-[13px] font-medium leading-snug">{item.label}</span>
-                            {active && <ChevronRight className="w-3 h-3 opacity-60" />}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const active = isActive(item);
-              return (
-                <Link key={item.path} to={buildPath(item.path)} onClick={() => setSidebarOpen(false)}
-                  aria-current={active ? 'page' : undefined}
-                  className="relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#BF8813]"
-                  style={{ backgroundColor: active ? 'rgba(191,136,19,0.10)' : 'transparent', color: active ? '#F4C45E' : 'rgba(255,255,255,0.65)' }}>
-                  {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ backgroundColor: '#BF8813' }} />}
-                  <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
-                  <span className="flex-1 text-sm font-medium">{item.label}</span>
-                  {(item as { badge?: string }).badge && (
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#BF8813', color: '#002050' }}>
-                      {(item as { badge?: string }).badge}
-                    </span>
-                  )}
-                  {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
-                </Link>
-              );
-            })}
-          </div>
-        )}
+  const adminSidebar = (
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-[#002050]">
+      <div className="border-b border-white/10 px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <OmniaBrandLockup href="/home" inverse compact className="min-w-0 flex-1" />
+          <button
+            type="button"
+            onClick={() => setMobileNavigationOpen(false)}
+            className="p-2 text-white/75 transition hover:bg-white/10 hover:text-white lg:hidden"
+            aria-label="Fermer la navigation"
+          >
+            <X size={19} />
+          </button>
+        </div>
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#BF8813]">{brandTitle}</p>
+          <p className="mt-1 text-sm font-semibold text-white/75">{brandAccent === 'Global Academy' ? roleSubtitle : brandAccent}</p>
+        </div>
+      </div>
+      <nav className="oga-sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
+        {navigationContents(true)}
       </nav>
-
       {spaceHomePath && (
-        <div className="flex-shrink-0 border-t border-white/10 px-3 py-3">
+        <div className="border-t border-white/10 p-3">
           <Link
             to={buildPath(spaceHomePath)}
-            onClick={() => setSidebarOpen(false)}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-white/5"
-            style={{ color: '#D8B35D' }}
+            className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#D8B35D]"
           >
-            <ExternalLink style={{ width: 17, height: 17 }} />
-            <span>{spaceHomeLabel}</span>
+            <ExternalLink size={16} />
+            {spaceHomeLabel}
           </Link>
         </div>
       )}
     </aside>
   );
 
-  return (
-    <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-gray-50">
-      <div className="hidden h-[100dvh] flex-shrink-0 flex-col overflow-hidden lg:flex" style={{ width: 276 }}>{sidebar}</div>
-
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation du tableau de bord">
-          <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />
-          <div id="dashboard-mobile-navigation" className="relative z-10 flex h-[100dvh] flex-col overflow-hidden" style={{ width: 276, maxWidth: '88vw' }}>{sidebar}</div>
-        </div>
-      )}
-
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <DashboardTopbar
-          title={contextualTitle}
-          subtitle={headerSubtitle || roleSubtitle}
-          onOpenNavigation={() => setSidebarOpen(true)}
-          navigationOpen={sidebarOpen}
-          navigationId="dashboard-mobile-navigation"
-          actions={headerActions}
-          search={headerSearch}
-          dashboardPath={dashboardPath}
-        />
-        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`}>
-          {children}
-        </main>
+  const mobileDrawer = (
+    mobileNavigationOpen && (
+      <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation de l’espace">
+        <button type="button" className="fixed inset-0 bg-black/50" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
+        <aside className="relative z-10 flex h-[100dvh] w-[min(88vw,320px)] flex-col bg-[#002050] shadow-2xl">
+          <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+            <OmniaBrandLockup href="/home" inverse compact className="min-w-0 flex-1" />
+            <button type="button" onClick={() => setMobileNavigationOpen(false)} className="p-2 text-white/75" aria-label="Fermer la navigation"><X size={19} /></button>
+          </div>
+          <div className="border-b border-white/10 px-5 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#BF8813]">{roleSubtitle}</p>
+            <p className="mt-1 text-sm font-semibold text-white">{contextualTitle}</p>
+          </div>
+          <nav className="min-h-0 flex-1 overflow-y-auto py-2">{navigationContents(true)}</nav>
+          {spaceHomePath && (
+            <div className="border-t border-white/10 p-3">
+              <Link to={buildPath(spaceHomePath)} onClick={() => setMobileNavigationOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#D8B35D]">
+                <ExternalLink size={16} />
+                {spaceHomeLabel}
+              </Link>
+            </div>
+          )}
+        </aside>
       </div>
+    )
+  );
+
+  if (adminMode) {
+    return (
+      <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-white">
+        <div className="hidden h-[100dvh] w-[258px] flex-shrink-0 flex-col overflow-hidden lg:flex">{adminSidebar}</div>
+        {mobileNavigationOpen && (
+          <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administrative">
+            <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
+            <div className="relative z-10 h-[100dvh] w-[min(88vw,320px)]">{adminSidebar}</div>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <DashboardTopbar
+            title={contextualTitle}
+            subtitle={headerSubtitle || roleSubtitle}
+            onOpenNavigation={() => setMobileNavigationOpen(true)}
+            navigationOpen={mobileNavigationOpen}
+            actions={headerActions}
+            search={headerSearch}
+            dashboardPath={dashboardPath}
+            showBrand={false}
+          />
+          <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white ${contentClassName}`}>{children}</main>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-white">
+      <DashboardTopbar
+        title={contextualTitle}
+        subtitle={headerSubtitle || roleSubtitle}
+        onOpenNavigation={() => setMobileNavigationOpen(true)}
+        navigationOpen={mobileNavigationOpen}
+        actions={headerActions}
+        search={headerSearch}
+        dashboardPath={dashboardPath}
+        showBrand
+        brandHref="/home"
+      />
+
+      <div className="relative z-20 hidden flex-shrink-0 border-b border-slate-200 bg-white lg:block">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-2 overflow-visible px-5">
+          <nav className="min-w-0 flex-1" aria-label={`Navigation ${roleSubtitle}`}>
+            {navigationContents(false)}
+          </nav>
+          {spaceHomePath && (
+            <Link to={buildPath(spaceHomePath)} className="ml-auto inline-flex min-h-11 items-center gap-2 border-l border-slate-200 px-4 text-sm font-semibold text-[#002050] hover:bg-slate-50">
+              <ExternalLink size={15} style={{ color: '#BF8813' }} />
+              {spaceHomeLabel}
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {mobileDrawer}
+
+      <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white ${contentClassName}`}>
+        {children}
+      </main>
     </div>
   );
 }

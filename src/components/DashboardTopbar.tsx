@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Menu } from 'lucide-react';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import UserAccountMenu from './UserAccountMenu';
+import OmniaBrandLockup from './OmniaBrandLockup';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -15,6 +16,8 @@ type Props = {
   actions?: ReactNode;
   search?: ReactNode;
   dashboardPath?: string;
+  showBrand?: boolean;
+  brandHref?: string;
 };
 
 export function DashboardTopbar({
@@ -26,14 +29,16 @@ export function DashboardTopbar({
   actions,
   search,
   dashboardPath,
+  showBrand = true,
+  brandHref = '/home',
 }: Props) {
   return (
-    <header className="relative z-30 flex min-h-[72px] flex-shrink-0 flex-wrap items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-2.5 backdrop-blur md:px-6">
+    <header className="relative z-30 flex min-h-[78px] flex-shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
       {onOpenNavigation && (
         <button
           type="button"
           onClick={onOpenNavigation}
-          className="flex h-10 w-10 flex-none items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
+          className="flex h-10 w-10 flex-none items-center justify-center border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
           aria-label="Ouvrir la navigation"
           aria-expanded={navigationOpen}
           aria-controls={navigationId}
@@ -42,12 +47,13 @@ export function DashboardTopbar({
         </button>
       )}
 
-      <div className="min-w-0 flex-1 xl:max-w-[330px]">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="hidden h-5 w-1 rounded-full sm:block" style={{ background: GOLD }} />
-          <h1 className="truncate text-[15px] font-extrabold sm:text-base" style={{ color: BLUE }}>{title}</h1>
-        </div>
-        {subtitle && <p className="mt-0.5 hidden truncate text-xs font-medium text-slate-500 sm:block sm:pl-3">{subtitle}</p>}
+      {showBrand && (
+        <OmniaBrandLockup href={brandHref} compact className="mr-1 hidden sm:flex" />
+      )}
+
+      <div className="min-w-0 flex-1 border-l border-slate-200 pl-4 xl:max-w-[360px]">
+        <h1 className="truncate text-[15px] font-extrabold sm:text-base" style={{ color: BLUE }}>{title}</h1>
+        {subtitle && <p className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">{subtitle}</p>}
       </div>
 
       {search && <div className="order-3 flex w-full min-w-0 justify-center xl:order-none xl:flex-1">{search}</div>}
@@ -57,6 +63,8 @@ export function DashboardTopbar({
         <LanguageSwitcher compact />
         <UserAccountMenu dashboardPath={dashboardPath} />
       </div>
+
+      <span className="absolute bottom-0 left-0 h-[2px] w-16" style={{ backgroundColor: GOLD }} aria-hidden="true" />
     </header>
   );
 }

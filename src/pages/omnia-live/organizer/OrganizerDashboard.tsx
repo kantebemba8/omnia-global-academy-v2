@@ -36,7 +36,7 @@ export default function OrganizerDashboard() {
     <OrganizerShell title={dashboardGreeting()}>
       {err && <div className="mb-6 border-l-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid border-t border-slate-200 sm:grid-cols-2 lg:grid-cols-4">
         {overview.map(item => (
           <RoleDashboardStatCard
             key={item.label}

@@ -183,7 +183,7 @@ export default function ModerateurDashboard() {
 
         {/* No permissions banner */}
         {!data?.has_any_permission && (
-          <div className="rounded-xl p-6 flex items-start gap-4 border border-amber-200 bg-amber-50">
+          <div className="flex items-start gap-4 border-y border-amber-200 bg-amber-50 px-4 py-5">
             <Lock className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-amber-800">Aucune permission active</p>
@@ -216,7 +216,7 @@ export default function ModerateurDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Priority queue */}
           {data?.priority_queue?.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-hidden border-y border-slate-200 bg-white">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                 <Clock className="w-4 h-4" style={{ color: '#BF8813' }} />
                 <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>File de priorité</h2>
@@ -245,7 +245,7 @@ export default function ModerateurDashboard() {
           )}
 
           {/* Today's decisions */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-hidden border-y border-slate-200 bg-white">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
               <CheckCircle className="w-4 h-4" style={{ color: '#1E7A52' }} />
               <h2 className="font-semibold text-sm" style={{ color: '#002050' }}>Décisions aujourd'hui</h2>
@@ -277,7 +277,7 @@ export default function ModerateurDashboard() {
         </div>
 
         {/* Important notice */}
-        <div className="rounded-xl p-4 bg-blue-50 border border-blue-100 flex items-start gap-3">
+        <div className="flex items-start gap-3 border-y border-blue-100 bg-blue-50 px-4 py-4">
           <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700">
             En tant que modérateur, vous ne pouvez jamais <strong>publier</strong> directement une formation.

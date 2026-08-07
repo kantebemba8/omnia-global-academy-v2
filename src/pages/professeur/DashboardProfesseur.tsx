@@ -166,7 +166,7 @@ export function DashboardProfesseur() {
       <div className="p-6 lg:p-8 max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{dashboardGreeting(data?.user.full_name)}</h1>
+            <h1 className="text-2xl font-bold text-[#002050]">{dashboardGreeting(data?.user.full_name)}</h1>
           </div>
           {bypassAuth ? (
             <button onClick={handlePreviewAction}
@@ -189,7 +189,7 @@ export function DashboardProfesseur() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="mb-8 grid grid-cols-2 border-t border-slate-200 lg:grid-cols-4">
               <RoleDashboardStatCard label="Formations publiées" value={publishedCount} icon={BookOpen} accent="#002050" to="/professeur/courses" />
               <RoleDashboardStatCard label="Élèves accompagnés" value={data?.kpis.total_eleves ?? 0} icon={Users} accent="#1E7A52" to="/professeur/analytics" />
               <RoleDashboardStatCard label="Projets à corriger" value={projectsToReview} icon={ClipboardCheck} accent="#DC2626" to="/professeur/courses" />
@@ -219,7 +219,7 @@ export function DashboardProfesseur() {
 
                 <div className="space-y-3">
                   {formations.length === 0 ? (
-                    <div className="bg-white rounded-xl p-8 border border-gray-100 text-center">
+                    <div className="border-y border-slate-200 bg-white py-10 text-center">
                       <PlusCircle className="w-10 h-10 mx-auto mb-3 text-gray-200" />
                       <p className="text-gray-500 text-sm">Aucune formation</p>
                       {bypassAuth ? (
@@ -236,9 +236,9 @@ export function DashboardProfesseur() {
                     formations.slice(0, 6).map((f) => {
                       const sc = STATUS_CONFIG[f.status] ?? STATUS_CONFIG.brouillon;
                       return (
-                        <div key={f.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                        <div key={f.id} className="border-b border-slate-200 bg-white py-4">
                           <div className="flex items-start gap-3">
-                            <div className="w-16 h-12 rounded-lg flex-shrink-0 overflow-hidden bg-gray-100 flex items-center justify-center"
+                            <div className="flex h-12 w-16 flex-shrink-0 items-center justify-center overflow-hidden border border-slate-200 bg-slate-50"
                               style={{ backgroundColor: '#002050' + '15' }}>
                               {f.cover_image_url
                                 ? <img src={f.cover_image_url} alt="" className="w-full h-full object-cover" />

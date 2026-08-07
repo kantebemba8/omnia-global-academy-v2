@@ -85,7 +85,7 @@ export function DashboardApprenant() {
 
         {data && (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="mb-8 grid grid-cols-2 border-t border-slate-200 lg:grid-cols-4">
               <RoleDashboardStatCard label="Formations en cours" value={data.kpis.formations_en_cours} icon={BookOpen} accent="#002050" to={withLearnerPreview('/dashboard/mes-cours')} />
               <RoleDashboardStatCard label="Formations terminées" value={data.kpis.formations_terminees} icon={TrendingUp} accent="#1E7A52" to={withLearnerPreview('/dashboard/mes-cours')} />
               <RoleDashboardStatCard label="Certificats obtenus" value={data.kpis.certificats_obtenus} icon={Award} accent="#BF8813" to={withLearnerPreview('/dashboard/certificats')} />
@@ -111,9 +111,9 @@ export function DashboardApprenant() {
                 ) : (
                   data.courses_en_cours.map((c) => (
                     <Link key={c.course_id} to={`/cours/${c.slug}/apprendre`}
-                      className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
-                      <div className="w-14 h-14 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-lg"
-                        style={{ backgroundColor: '#002050' }}>
+                      className="flex items-center gap-4 border-b border-slate-200 bg-white py-4 transition hover:bg-slate-50">
+                      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center border border-slate-200 bg-white text-base font-black text-[#002050]"
+                        >
                         {c.title[0]}
                       </div>
                       <div className="flex-1 min-w-0">

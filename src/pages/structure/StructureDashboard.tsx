@@ -274,7 +274,7 @@ export default function StructureDashboard() {
 
         {/* Demandes de rattachement en attente */}
         {isValidated && pendingMembers.length > 0 && (
-          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E4E7EC' }}>
+          <div className="border-y border-slate-200 bg-white py-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-sm" style={{ color: '#002050' }}>
                 Demandes de rattachement
@@ -290,7 +290,7 @@ export default function StructureDashboard() {
             </div>
             <div className="space-y-3">
               {pendingMembers.slice(0, 3).map(m => (
-                <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl"
+                <div key={m.id} className="flex items-center gap-3 border-b border-slate-100 py-3"
                   style={{ background: '#F8F9FA', border: '1px solid #E4E7EC' }}>
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                     style={{ background: '#EEF2FF', color: '#002050' }}>
@@ -324,7 +324,7 @@ export default function StructureDashboard() {
 
         {/* Menu de navigation rapide si non validée */}
         {!isValidated && (
-          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E4E7EC' }}>
+          <div className="border-y border-slate-200 bg-white py-5">
             <h2 className="font-bold text-sm mb-4" style={{ color: '#002050' }}>
               En attendant la validation
             </h2>
@@ -336,7 +336,7 @@ export default function StructureDashboard() {
                 const Icon = item.icon;
                 return (
                   <button key={item.path} onClick={() => navigate(item.path)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all hover:shadow-sm"
+                    className="flex w-full items-center gap-3 border-b border-slate-100 py-3 text-left transition hover:bg-slate-50"
                     style={{ borderColor: '#E4E7EC' }}>
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center"
                       style={{ background: '#EEF2FF' }}>

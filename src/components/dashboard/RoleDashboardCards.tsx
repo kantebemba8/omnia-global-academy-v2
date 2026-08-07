@@ -4,9 +4,9 @@ import { ArrowRight } from 'lucide-react';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
-const BORDER = '#E4E7EC';
+const BORDER = '#E2E8F0';
 
-type SharedCardProps = {
+type SharedItemProps = {
   className?: string;
   to?: string;
   onClick?: () => void;
@@ -14,19 +14,15 @@ type SharedCardProps = {
   ariaLabel?: string;
 };
 
-function SharedCard({ className = '', to, onClick, children, ariaLabel }: SharedCardProps) {
-  const classes = `block h-full rounded-2xl border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${className}`;
-  const style = { borderColor: BORDER };
-
+function SharedItem({ className = '', to, onClick, children, ariaLabel }: SharedItemProps) {
+  const classes = `block h-full border-b border-slate-200 bg-white px-1 py-5 text-left transition hover:bg-slate-50/70 ${className}`;
   if (to) {
-    return <Link to={to} className={classes} style={style} aria-label={ariaLabel}>{children}</Link>;
+    return <Link to={to} className={classes} aria-label={ariaLabel}>{children}</Link>;
   }
-
   if (onClick) {
-    return <button type="button" onClick={onClick} className={`w-full ${classes}`} style={style} aria-label={ariaLabel}>{children}</button>;
+    return <button type="button" onClick={onClick} className={`w-full ${classes}`} aria-label={ariaLabel}>{children}</button>;
   }
-
-  return <div className={classes} style={style}>{children}</div>;
+  return <div className={classes}>{children}</div>;
 }
 
 export function RoleDashboardStatCard({
@@ -49,21 +45,18 @@ export function RoleDashboardStatCard({
   className?: string;
 }) {
   return (
-    <SharedCard to={to} onClick={onClick} className={className} ariaLabel={label}>
-      <div className="flex items-start justify-between gap-4">
+    <SharedItem to={to} onClick={onClick} className={className} ariaLabel={label}>
+      <div className="flex min-h-[82px] items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</p>
           <p className="mt-2 text-2xl font-black leading-tight" style={{ color: BLUE }}>{value}</p>
-          {detail && <p className="mt-2 text-xs leading-5 text-slate-400">{detail}</p>}
+          {detail && <p className="mt-1.5 text-xs leading-5 text-slate-500">{detail}</p>}
         </div>
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-          style={{ backgroundColor: `${accent}14`, color: accent }}
-        >
-          <Icon size={21} aria-hidden="true" />
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-white" style={{ color: accent }}>
+          <Icon size={18} aria-hidden="true" />
         </span>
       </div>
-    </SharedCard>
+    </SharedItem>
   );
 }
 
@@ -85,23 +78,18 @@ export function RoleDashboardActionCard({
   onClick?: () => void;
 }) {
   return (
-    <SharedCard to={to} onClick={onClick} ariaLabel={title}>
-      <div className="flex items-start gap-4">
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-          style={{ backgroundColor: `${accent}14`, color: accent }}
-        >
-          <Icon size={20} aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1">
+    <SharedItem to={to} onClick={onClick} ariaLabel={title}>
+      <div className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-start gap-3">
+        <Icon size={18} className="mt-0.5" style={{ color: accent }} aria-hidden="true" />
+        <div className="min-w-0">
           <h3 className="font-bold" style={{ color: BLUE }}>{title}</h3>
           <p className="mt-1 text-sm leading-6 text-slate-500">{text}</p>
-          <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: GOLD }}>
-            {cta} <ArrowRight size={15} aria-hidden="true" />
-          </span>
         </div>
+        <span className="inline-flex items-center gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold" style={{ color: GOLD }}>
+          {cta} <ArrowRight size={15} aria-hidden="true" />
+        </span>
       </div>
-    </SharedCard>
+    </SharedItem>
   );
 }
 
@@ -113,7 +101,7 @@ export function RoleDashboardPanel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border bg-white p-5 shadow-sm ${className}`} style={{ borderColor: BORDER }}>
+    <section className={`border-y bg-white py-5 ${className}`} style={{ borderColor: BORDER }}>
       {children}
     </section>
   );

@@ -35,10 +35,10 @@ export default function CoachDashboard() {
   return (
     <CoachWorkspaceLayout>
       <div>
-        <h1 className="text-3xl font-bold" style={{ color: BLUE }}>{dashboardGreeting(data?.profile?.full_name)}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: BLUE }}>{dashboardGreeting(data?.profile?.full_name)}</h1>
         {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid border-t border-slate-200 sm:grid-cols-2 xl:grid-cols-4">
           <RoleDashboardStatCard label="Sessions à venir" value={metrics?.upcoming_sessions || 0} icon={CalendarDays} accent={BLUE} to={withCoachPreview('/coach/sessions')} />
           <RoleDashboardStatCard label="Sessions terminées" value={metrics?.completed_sessions || 0} icon={CheckCircle2} accent="#1E7A52" to={withCoachPreview('/coach/sessions')} />
           <RoleDashboardStatCard label="Demandes personnalisées" value={metrics?.pending_custom_requests || 0} icon={Package} accent="#7C3AED" to={withCoachPreview('/coach/offres')} />

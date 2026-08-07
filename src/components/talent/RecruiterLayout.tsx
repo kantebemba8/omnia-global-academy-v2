@@ -66,7 +66,7 @@ export function RecruiterLayout({ children, title, subtitle, searchValue, onSear
       brandAccent="Talent"
       spaceHomePath="/talent"
       spaceHomeLabel="Retour à Omnia Talent"
-      contentClassName="bg-slate-50"
+      contentClassName="bg-white"
     >
       {children}
     </DashboardLayout>

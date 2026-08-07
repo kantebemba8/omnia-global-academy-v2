@@ -44,7 +44,7 @@ export default function AdminCredentialsManagementLayout({ children }: { childre
       brandAccent="Credentials"
       spaceHomePath="/admin/dashboard"
       spaceHomeLabel="Retour à l’administration"
-      contentClassName="bg-slate-50"
+      contentClassName="bg-white"
     >
       {children}
     </DashboardLayout>
