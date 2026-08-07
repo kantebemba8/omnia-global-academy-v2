@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -54,8 +55,11 @@ function requireAdmin(session: Session | null): asserts session is Session { if 
 
 async function ownsCourse(sb: Sb, session: Session, courseId: string) {
   if (isAdmin(session)) return true;
-  const { data } = await sb.from("courses").select("creator_id").eq("id", courseId).maybeSingle();
-  return Boolean(data?.creator_id === session.userId);
+  const { data } = await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id", courseId).maybeSingle();
+  if (!data || String(data.creator_id) !== session.userId) return false;
+  if (String(data.creator_context || "") !== "structure") return true;
+  if (!data.structure_id) return false;
+  return Boolean(await validatedStructureAccess(sb, session.userId, String(data.structure_id)));
 }
 async function ownsAssessment(sb: Sb, session: Session, assessmentId: string) {
   const { data } = await sb.from("course_assessments").select("id,course_id").eq("id", assessmentId).maybeSingle();

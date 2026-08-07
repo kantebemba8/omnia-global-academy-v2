@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 
 const corsHeaders = {
@@ -145,16 +146,9 @@ async function structureManagerOrganization(sb: Supabase, session: Session, requ
     return requestedOrganizationId;
   }
   if (!session.roles.some(role => STRUCTURE_MANAGER_ROLES.has(role))) throw new Error("FORBIDDEN");
-  let query = sb
-    .from("partner_managers")
-    .select("organization_id,is_primary,status,permissions")
-    .eq("user_id", session.userId)
-    .in("status", ["actif", "active"]);
-  if (requestedOrganizationId) query = query.eq("organization_id", requestedOrganizationId);
-  const { data: manager, error } = await query.limit(1).maybeSingle();
-  if (error) throw error;
-  if (!manager?.organization_id) throw new Error("STRUCTURE_MANAGER_REQUIRED");
-  return String(manager.organization_id);
+  const structureAccess = await validatedStructureAccess(sb, session.userId, requestedOrganizationId);
+  if (!structureAccess?.organizationId) throw new Error("STRUCTURE_NOT_VALIDATED");
+  return structureAccess.organizationId;
 }
 
 async function isLinkedStructureMember(sb: Supabase, organizationId: string, userId: string): Promise<boolean> {

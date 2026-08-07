@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 import JSZip from "npm:jszip@3.10.1";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
@@ -17,7 +18,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
  return authData?.user?.id||null;
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
-async function owns(sb:any,userId:string,courseId:string){const {data}=await sb.from("courses").select("creator_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);return data.creator_id===userId||rs.includes("super_admin")}
+async function owns(sb:any,userId:string,courseId:string){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_id)!==userId)return false;if(String(data.creator_context||"")!=="structure")return true;if(!data.structure_id)return false;return Boolean(await validatedStructureAccess(sb,userId,String(data.structure_id)))}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 async function triggerCertificate(userId:string,courseId:string,source:string){
@@ -282,7 +283,7 @@ async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint){
 async function sha256Hex(bytes:Uint8Array){const input=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const digest=await crypto.subtle.digest("SHA-256",input);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("")}
 
 async function createImportedCourse(sb:any,userId:string,creatorContext:string,blueprint:CourseImportBlueprint,source:any,aiUsed:boolean){
- let structureId:string|null=null;if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).in("status",["actif","active"]).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null}
+ let structureId:string|null=null;if(creatorContext==="structure"){const access=await validatedStructureAccess(sb,userId);if(!access)throw new Error("STRUCTURE_NOT_VALIDATED");structureId=access.organizationId}
  const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
  const wordCount=blueprint.modules.flatMap(module=>module.lessons).reduce((sum,lesson)=>sum+cleanImportedText(lesson.content).split(/\s+/).filter(Boolean).length,0);
  const learningDesign={delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:"",import_source:{bucket:source.bucket,path:source.path,name:source.name,mime:source.mime,size:source.size,sha256:source.sha256,imported_at:new Date().toISOString(),ai_assisted:aiUsed}};
@@ -451,6 +452,8 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,submitted_at,updated_at,admin_comment,word_count").eq("studio_status","pending_validation").order("submitted_at",{ascending:true});if(error)throw error;return json({success:true,courses:data||[]});
   }
   if(action==="create_course"){
+   const requestedStructureContext=String(b.creator_context||"")==="structure";
+   if(requestedStructureContext&&!isAdmin&&!(await validatedStructureAccess(sb,userId)))return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);
    if(b.client_draft_key){
     const requestedContext=["professeur","structure","super_admin"].includes(String(b.creator_context))?String(b.creator_context):(isAdmin?"super_admin":"professeur");
     const {data:existing}=await sb.from("courses").select("*").eq("creator_id",userId).eq("creator_context",requestedContext).eq("client_draft_key",b.client_draft_key).maybeSingle();
@@ -483,7 +486,7 @@ Deno.serve(async(req)=>{
    }
    const creatorContext=requestedCreatorContext;
    let structureId:string|null=null;
-   if(creatorContext==="structure"){const {data:manager}=await sb.from("partner_managers").select("organization_id").eq("user_id",userId).in("status",["actif","active"]).order("is_primary",{ascending:false}).limit(1).maybeSingle();structureId=manager?.organization_id||null;}
+   if(creatorContext==="structure"){const access=await validatedStructureAccess(sb,userId);if(!access)return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);structureId=access.organizationId;}
    const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
    const insert:any={
     title:b.title||"Nouvelle formation",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
@@ -518,6 +521,7 @@ Deno.serve(async(req)=>{
   if(action==="prepare_course_import_upload"){
    const requestedContext=String(b.creator_context||"");
    const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
+   if(creatorContext==="structure"&&!isAdmin&&!(await validatedStructureAccess(sb,userId)))return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);
    const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const fileSize=Number(b.file_size||0);
    if(!originalName||!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Utilisez PDF, DOCX, XLSX, ZIP, TXT, MD ou CSV."},400);
    if(fileSize<=0||fileSize>COURSE_IMPORT_MAX_BYTES)return json({success:false,error:"IMPORT_SIZE_INVALID",message:"Le fichier doit être compris entre 1 octet et 25 Mo."},400);
@@ -528,6 +532,7 @@ Deno.serve(async(req)=>{
   if(action==="convert_course_import"){
    const requestedContext=String(b.creator_context||"");
    const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
+   if(creatorContext==="structure"&&!isAdmin&&!(await validatedStructureAccess(sb,userId)))return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);
    const bucket=String(b.bucket_name||"");const path=String(b.storage_path||"");const originalName=String(b.original_name||"").trim();const extension=importExtension(originalName);const declaredSize=Number(b.file_size||0);
    if(bucket!==COURSE_IMPORT_BUCKET||!path.startsWith(`imports/${userId}/`))return json({success:false,error:"INVALID_IMPORT_PATH",message:"Le fichier importé n’appartient pas à cette session."},403);
    if(!COURSE_IMPORT_ALLOWED.has(extension))return json({success:false,error:"UNSUPPORTED_IMPORT_FORMAT",message:"Format de fichier non pris en charge."},400);

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,19 +69,8 @@ Deno.serve(async (req) => {
 
     async function managerOrganizationId() {
       if (!structureManager) return null;
-      const { data, error } = await sb
-        .from("partner_managers")
-        .select("organization_id")
-        .eq("user_id", me.userId)
-        .in("status", ["actif", "active"])
-        .order("is_primary", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) {
-        console.error("partner_managers lookup failed", error);
-        return null;
-      }
-      return data?.organization_id ? String(data.organization_id) : null;
+      const access = await validatedStructureAccess(sb, me.userId);
+      return access?.organizationId || null;
     }
 
     async function partnerAccess(partnerId: string) {

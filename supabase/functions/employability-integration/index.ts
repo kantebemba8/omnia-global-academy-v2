@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,18 +24,18 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
   const { data: active } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!active?.user_id) return null;
   const userId = String(active.user_id);
-  const [{ data: roleRows }, { data: manager }] = await Promise.all([
+  const [{ data: roleRows }, structureAccess] = await Promise.all([
     sb.from("user_roles").select("role").eq("user_id", userId),
-    sb.from("partner_managers").select("organization_id,status,is_primary").eq("user_id", userId).eq("status", "actif").order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+    validatedStructureAccess(sb, userId),
   ]);
   const roles = (roleRows || []).map((row: any) => text(row.role, 80).toLowerCase());
   return {
     userId,
     roles,
     isAdmin: roles.some((role: string) => ["super_admin", "admin"].includes(role)),
-    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || (roles.includes("recruteur_structure") && !!manager?.organization_id),
+    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || (roles.includes("recruteur_structure") && !!structureAccess),
     isLearner: roles.includes("apprenant"),
-    organizationId: manager?.organization_id ? String(manager.organization_id) : null,
+    organizationId: structureAccess?.organizationId || null,
   };
 }
 function requireSession(session: Session | null): asserts session is Session { if (!session) throw new Error("AUTH_REQUIRED"); }

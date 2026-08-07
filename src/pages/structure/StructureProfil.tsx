@@ -44,12 +44,13 @@ export default function StructureProfil() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [pendingProfileChange, setPendingProfileChange] = useState<any>(null);
 
   const set = (key: string, value: unknown) => setForm((current: any) => ({ ...current, [key]: value }));
 
   const logoPreview = useMemo(
-    () => logoSelection?.dataUrl || structure?.logo_url || '',
-    [logoSelection, structure?.logo_url],
+    () => logoSelection?.dataUrl || pendingProfileChange?.requested_changes?.logo_url || structure?.logo_url || '',
+    [logoSelection, pendingProfileChange?.requested_changes?.logo_url, structure?.logo_url],
   );
 
   function showToast(msg: string, ok: boolean) {
@@ -68,20 +69,23 @@ export default function StructureProfil() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Chargement impossible');
 
+      const pending = data.pending_profile_change ?? null;
+      const proposed = pending?.requested_changes ?? {};
       setStructure(data.structure);
+      setPendingProfileChange(pending);
       setForm({
-        name: data.structure.name ?? '',
+        name: proposed.org_name ?? data.structure.name ?? '',
         city: data.structure.city ?? '',
         address: data.structure.address ?? '',
-        professional_email: data.structure.professional_email ?? '',
+        professional_email: proposed.email ?? data.structure.professional_email ?? '',
         phone: data.structure.phone ?? '',
         website: data.structure.website ?? '',
         description: data.structure.description ?? '',
         objective: data.structure.objective ?? '',
-        responsible_name: data.structure.responsible_name ?? '',
-        responsible_function: data.structure.responsible_function ?? '',
-        responsible_email: data.structure.responsible_email ?? '',
-        responsible_phone: data.structure.responsible_phone ?? '',
+        responsible_name: proposed.contact_name ?? data.structure.responsible_name ?? '',
+        responsible_function: proposed.contact_function ?? data.structure.responsible_function ?? '',
+        responsible_email: proposed.contact_email ?? data.structure.responsible_email ?? '',
+        responsible_phone: proposed.contact_phone ?? data.structure.responsible_phone ?? '',
       });
       setLogoSelection(null);
     } catch (error) {
@@ -149,8 +153,11 @@ export default function StructureProfil() {
       }
 
       setStructure(data.structure);
+      setPendingProfileChange(data.pending_profile_change ?? null);
       setLogoSelection(null);
-      showToast('Profil mis à jour avec succès', true);
+      showToast(data.requires_admin_review
+        ? 'Les informations courantes ont été enregistrées. Les changements d’identité seront appliqués après validation de l’Administration Omnia.'
+        : 'Profil mis à jour avec succès', true);
       await load();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Erreur lors de la sauvegarde', false);
@@ -199,6 +206,25 @@ export default function StructureProfil() {
             <Save size={15} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
           </button>
         </div>
+
+        {pendingProfileChange && (
+          <div className="rounded-xl border p-4" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
+            <div className="flex items-start gap-2">
+              <AlertCircle size={16} style={{ color: '#4F46E5', flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#002050' }}>Modification d’identité en cours d’examen</p>
+                <p className="mt-1 text-xs leading-5" style={{ color: '#4F46E5' }}>
+                  Le nom officiel, l’email institutionnel, le logo et les informations du responsable restent inchangés publiquement jusqu’à validation par l’Administration Omnia.
+                </p>
+                {pendingProfileChange.admin_comment && (
+                  <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs" style={{ color: '#374151' }}>
+                    <strong>Commentaire Omnia :</strong> {pendingProfileChange.admin_comment}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E4E7EC' }}>
           <h2 className="font-bold text-sm mb-4" style={{ color: '#002050' }}>Logo de la structure</h2>

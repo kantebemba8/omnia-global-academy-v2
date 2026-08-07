@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const cors={
   "Access-Control-Allow-Origin":"*",
@@ -138,8 +139,10 @@ Deno.serve(async req=>{
     }
 
     if(a==="upload_my_signature"){
-      const allowed=c.roles.some((r:string)=>["professeur","responsable_structure","gestionnaire_structure","gestionnaire_partenaire"].includes(r));
-      if(!allowed)return json({success:false,error:"FORBIDDEN"},403);
+      const professorAllowed=c.roles.includes("professeur");
+      const structureRole=c.roles.some((r:string)=>["responsable_structure","gestionnaire_structure","gestionnaire_partenaire"].includes(r));
+      const structureAllowed=structureRole ? Boolean(await validatedStructureAccess(sb,c.user_id)) : false;
+      if(!professorAllowed&&!structureAllowed)return json({success:false,error:"FORBIDDEN"},403);
       const url=await uploadBase64(sb,"signatures",String(b.filename||"signature.png"),String(b.mime||"image/png"),String(b.data_url||""));
       if(c.roles.includes("professeur")){
         await sb.from("professeur_profiles").upsert({user_id:c.user_id,signature_url:url},{onConflict:"user_id"});

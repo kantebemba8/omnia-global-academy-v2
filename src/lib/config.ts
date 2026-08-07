@@ -48,8 +48,6 @@ export const ENDPOINTS ={
   careerStudioList: `${API_BASE_URL}/career-studio-manage?action=list`,
   careerStudioSave: `${API_BASE_URL}/career-studio-manage?action=save`,
   careerStudioAi: `${API_BASE_URL}/career-studio-manage?action=ai`,
-  partnerOrgManage: `${API_BASE_URL}/partner-org-manage`,
-  partnerCodeManage: `${API_BASE_URL}/partner-code-manage`,
   careerTokenManage: `${API_BASE_URL}/career-token-manage`,
   adminModeratorManage: `${API_BASE_URL}/admin-moderator-manage`,
   adminCouponManage: `${API_BASE_URL}/admin-coupon-manage`,

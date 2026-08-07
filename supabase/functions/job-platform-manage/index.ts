@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
@@ -37,14 +38,14 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
   if (!session) return null;
 
   const userId = String(session.user_id);
-  const [{ data: roles }, { data: manager }, { data: recruiter }] = await Promise.all([
+  const [{ data: roles }, { data: recruiter }, structureAccess] = await Promise.all([
     sb.from("user_roles").select("role").eq("user_id", userId),
-    sb.from("partner_managers").select("organization_id,is_primary,permissions,status").eq("user_id", userId).eq("status", "actif").maybeSingle(),
     sb.from("talent_recruiter_profiles").select("recruiter_type,status").eq("user_id", userId).maybeSingle(),
+    validatedStructureAccess(sb, userId),
   ]);
 
-  const organizationId = manager?.organization_id ? String(manager.organization_id) : null;
-  let permissions: Record<string, boolean> = (manager?.permissions as Record<string, boolean>) || {};
+  const organizationId = structureAccess?.organizationId || null;
+  let permissions: Record<string, boolean> = structureAccess?.permissions || {};
   if (organizationId) {
     const { data: explicit } = await sb
       .from("talent_structure_permissions")
@@ -59,7 +60,7 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
     userId,
     roles: (roles || []).map((row: any) => String(row.role)),
     organizationId,
-    isPrimaryManager: !!manager?.is_primary,
+    isPrimaryManager: !!structureAccess?.isPrimary,
     permissions,
     recruiterApproved: recruiter?.recruiter_type === "independent" && recruiter?.status === "approved",
     structureRecruiter: !!organizationId && (roles || []).some((row: any) => String(row.role) === "recruteur_structure"),

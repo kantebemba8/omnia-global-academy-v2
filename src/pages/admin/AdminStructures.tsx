@@ -1,11 +1,8 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import {
-  Building2, Search, RefreshCw, CheckCircle, XCircle,
-  AlertCircle, Clock, Eye, Filter, ChevronDown, Users,
-  QrCode, Gift, BarChart2, Archive
+  Building2, Search, RefreshCw, XCircle, Clock, Eye, Users, QrCode
 } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -40,6 +37,16 @@ const DISPLAY_NAMES: Record<string, string> = {
   cabinet_formation: 'Espace Cabinet de formation', autre: 'Espace Structure professionnelle',
 };
 
+const CHANGE_FIELD_LABELS: Record<string, string> = {
+  org_name: 'Nom officiel',
+  email: 'Email institutionnel',
+  logo_url: 'Logo',
+  contact_name: 'Responsable',
+  contact_function: 'Fonction du responsable',
+  contact_email: 'Email du responsable',
+  contact_phone: 'Téléphone du responsable',
+};
+
 interface Structure {
   id: string; name: string; structure_type: string; status: string;
   country: string; city: string; professional_email: string;
@@ -49,6 +56,7 @@ interface Structure {
 
 interface DetailModal {
   structure: Structure & Record<string, any>;
+  governance?: Record<string, any>;
   loading: boolean;
 }
 
@@ -62,7 +70,8 @@ export default function AdminStructures() {
   const [actionLoading, setActionLoading] = useState('');
   const [toast, setToast] = useState('');
   const [adminComment, setAdminComment] = useState('');
-  const [showPending, setShowPending] = useState<{ structures: number; codes: number; benefits: number } | null>(null);
+  const [showPending, setShowPending] = useState<{ structures: number; codes: number; profileChanges: number } | null>(null);
+  const [stats, setStats] = useState({ total: 0, validated: 0, pending: 0, suspended: 0 });
 
   const token = () => getSessionToken() || '';
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
@@ -83,11 +92,14 @@ export default function AdminStructures() {
     ]);
     const listData = await listRes.json();
     const pendingData = await pendingRes.json();
-    if (listData.success) setStructures(listData.structures ?? []);
+    if (listData.success) {
+      setStructures(listData.structures ?? []);
+      if (listData.stats) setStats(listData.stats);
+    }
     if (pendingData.success) setShowPending({
-      structures: pendingData.pending.structures.length,
-      codes: pendingData.pending.codes.length,
-      benefits: pendingData.pending.benefits.length,
+      structures: pendingData.pending.structures?.length ?? 0,
+      codes: pendingData.pending.codes?.length ?? 0,
+      profileChanges: pendingData.pending.profile_changes?.length ?? 0,
     });
     setLoading(false);
   }
@@ -102,7 +114,7 @@ export default function AdminStructures() {
       body: JSON.stringify({ action: 'get_structure', structure_id: structure.id }),
     });
     const data = await res.json();
-    if (data.success) setDetail({ structure: data.structure, loading: false });
+    if (data.success) setDetail({ structure: data.structure, governance: data.governance ?? {}, loading: false });
   }
 
   async function handleDecision(structureId: string, decision: string) {
@@ -137,12 +149,33 @@ export default function AdminStructures() {
     setActionLoading('');
   }
 
-  const stats = {
-    total: structures.length,
-    validated: structures.filter(s => s.status === 'validated').length,
-    pending: structures.filter(s => s.status === 'pending_validation').length,
-    suspended: structures.filter(s => s.status === 'suspended').length,
-  };
+  async function handleProfileDecision(structureId: string, requestId: string, decision: string) {
+    if (!adminComment && ['reject', 'request_changes'].includes(decision)) {
+      showToast('Un commentaire est requis pour ce type de décision');
+      return;
+    }
+    setActionLoading(`profile:${decision}`);
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'admin_review_profile_change',
+        structure_id: structureId,
+        request_id: requestId,
+        decision,
+        admin_comment: adminComment,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      showToast(decision === 'approve' ? 'Modification approuvée' : decision === 'reject' ? 'Modification refusée' : 'Corrections demandées');
+      setAdminComment('');
+      const current = detail?.structure;
+      if (current) await loadDetail({ ...current, ...(data.structure || {}) });
+      await load();
+    } else showToast(data.message ?? data.error ?? 'Erreur');
+    setActionLoading('');
+  }
 
   return (
     <AdminLayout>
@@ -167,7 +200,7 @@ export default function AdminStructures() {
         </div>
 
         {/* Actions en attente — résumé compact */}
-        {showPending && (showPending.structures > 0 || showPending.codes > 0 || showPending.benefits > 0) && (
+        {showPending && (showPending.structures > 0 || showPending.codes > 0 || showPending.profileChanges > 0) && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-gray-200 py-3 text-sm">
             {showPending.structures > 0 && (
               <button onClick={() => setStatusFilter('pending_validation')} className="inline-flex items-center gap-2 font-semibold" style={{ color: '#92400E' }}>
@@ -177,8 +210,8 @@ export default function AdminStructures() {
             {showPending.codes > 0 && (
               <span className="inline-flex items-center gap-2 text-blue-700"><QrCode size={15} /> {showPending.codes} code{showPending.codes > 1 ? 's' : ''} à valider</span>
             )}
-            {showPending.benefits > 0 && (
-              <span className="inline-flex items-center gap-2 text-emerald-700"><Gift size={15} /> {showPending.benefits} avantage{showPending.benefits > 1 ? 's' : ''} à valider</span>
+            {showPending.profileChanges > 0 && (
+              <span className="inline-flex items-center gap-2 text-indigo-700"><RefreshCw size={15} /> {showPending.profileChanges} modification{showPending.profileChanges > 1 ? 's' : ''} de profil à examiner</span>
             )}
           </div>
         )}
@@ -369,6 +402,86 @@ export default function AdminStructures() {
                       </a>
                     )}
                   </div>
+
+                  {/* Gouvernance de la Structure */}
+                  <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E4E7EC' }}>
+                    <div className="flex items-center gap-2">
+                      <Users size={15} style={{ color: '#BF8813' }} />
+                      <p className="text-sm font-bold" style={{ color: '#002050' }}>Gouvernance et rattachements</p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs" style={{ color: '#6B7280' }}>
+                      <span><strong style={{ color: '#002050' }}>{detail.governance?.team?.filter((m: any) => ['actif','active'].includes(String(m.status))).length ?? 0}</strong> gestionnaire(s) actif(s)</span>
+                      <span><strong style={{ color: '#002050' }}>{detail.governance?.pending_invitations?.length ?? 0}</strong> invitation(s) en attente</span>
+                      <span><strong style={{ color: '#002050' }}>{detail.governance?.member_counts?.active ?? 0}</strong> membre(s) lié(s)</span>
+                      <span><strong style={{ color: '#92400E' }}>{detail.governance?.member_counts?.pending ?? 0}</strong> rattachement(s) à traiter</span>
+                    </div>
+                    {(detail.governance?.team?.length ?? 0) > 0 && (
+                      <div className="space-y-2 pt-2 border-t" style={{ borderColor: '#F3F4F6' }}>
+                        {detail.governance.team.slice(0, 5).map((member: any) => (
+                          <div key={member.id} className="flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate" style={{ color: '#002050' }}>{member.user?.full_name || member.user?.email || 'Membre de la Structure'}</p>
+                              <p className="truncate" style={{ color: '#9CA3AF' }}>{member.role_in_org || 'Collaborateur'}{member.is_primary ? ' · Responsable principal' : ''}</p>
+                            </div>
+                            <span className="font-semibold" style={{ color: ['actif','active'].includes(String(member.status)) ? '#065F46' : '#6B7280' }}>{member.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {detail.governance?.pending_profile_change && (
+                    <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: '#002050' }}>Modification d’identité à examiner</p>
+                        <p className="text-xs mt-1" style={{ color: '#6366F1' }}>Les données officielles actuelles restent actives tant que cette demande n’est pas approuvée.</p>
+                      </div>
+                      <div className="space-y-2">
+                        {Object.entries(detail.governance.pending_profile_change.requested_changes ?? {}).map(([key, value]) => (
+                          <div key={key} className="rounded-lg bg-white p-2">
+                            <p className="text-[11px] font-semibold" style={{ color: '#9CA3AF' }}>{CHANGE_FIELD_LABELS[key] ?? key}</p>
+                            {key === 'logo_url' && value ? (
+                              <a href={String(value)} target="_blank" rel="noreferrer" className="text-xs font-semibold underline" style={{ color: '#002050' }}>Voir le nouveau logo</a>
+                            ) : (
+                              <p className="text-xs break-words" style={{ color: '#002050' }}>{String(value ?? '—')}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                          { decision: 'approve', label: 'Approuver', bg: '#1E7A52' },
+                          { decision: 'request_changes', label: 'Demander correction', bg: '#1D4ED8' },
+                          { decision: 'reject', label: 'Refuser', bg: '#DC2626' },
+                        ].map(item => (
+                          <button key={item.decision}
+                            disabled={actionLoading === `profile:${item.decision}`}
+                            onClick={() => handleProfileDecision(detail.structure.id, detail.governance.pending_profile_change.id, item.decision)}
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                            style={{ background: item.bg }}>
+                            {actionLoading === `profile:${item.decision}` ? '...' : item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(detail.governance?.audit?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold mb-2" style={{ color: '#9CA3AF' }}>Historique récent</p>
+                      <div className="space-y-2">
+                        {detail.governance.audit.slice(0, 6).map((entry: any) => (
+                          <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg p-2 text-xs" style={{ background: '#F8F9FA' }}>
+                            <div>
+                              <p className="font-semibold" style={{ color: '#002050' }}>{String(entry.event_type || '').replaceAll('_', ' ')}</p>
+                              <p style={{ color: '#9CA3AF' }}>{entry.actor?.full_name || entry.actor?.email || entry.actor_scope}</p>
+                            </div>
+                            <span className="whitespace-nowrap" style={{ color: '#9CA3AF' }}>{new Date(entry.created_at).toLocaleDateString('fr-FR')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Commentaire admin */}
                   <div>

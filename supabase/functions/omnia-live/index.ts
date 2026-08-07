@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 /*
   OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
@@ -51,7 +52,7 @@ async function sessionContext(sb: ReturnType<typeof createClient>, token: string
   if (!token) return null;
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("DB_SERVICE_ROLE_KEY") || "";
   if (serviceRole && token === serviceRole) {
-    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"] };
+    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"], structureOrganizationId: null };
   }
 
   const { data: session } = await sb
@@ -78,8 +79,9 @@ async function sessionContext(sb: ReturnType<typeof createClient>, token: string
     .eq("user_id", userId);
 
   const roles = (roleRows ?? []).map((r: { role: string }) => r.role);
+  const structureAccess = await validatedStructureAccess(sb, userId);
 
-  return { user, userId, roles };
+  return { user, userId, roles, structureOrganizationId: structureAccess?.organizationId || null };
 }
 
 function isSuperAdmin(ctx: Awaited<ReturnType<typeof sessionContext>>) {
@@ -88,6 +90,15 @@ function isSuperAdmin(ctx: Awaited<ReturnType<typeof sessionContext>>) {
 
 function isService(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   return !!ctx?.roles.includes("service_role");
+}
+
+function ownerEventAccess(
+  ctx: Awaited<ReturnType<typeof sessionContext>>,
+  event: any,
+) {
+  if (!ctx || !event || String(event.owner_user_id || "") !== ctx.userId) return false;
+  if (String(event.organizer_kind || "") === "structure") return Boolean(ctx.structureOrganizationId);
+  return true;
 }
 
 async function featureFlagEnabled(
@@ -134,21 +145,16 @@ async function ensureOrganizerLiveCapacity(sb: ReturnType<typeof createClient>, 
 
 function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return false;
-
-  const allowed = new Set([
-    "super_admin",
-    "organizer",
-    "organisateur",
-    "professeur",
+  if (ctx.roles.some((r) => ["super_admin", "organizer", "organisateur", "professeur"].includes(r))) return true;
+  const hasStructureRole = ctx.roles.some((r) => [
     "etablissement_directeur",
     "responsable_structure",
     "gestionnaire_structure",
     "structure_admin",
     "directeur",
     "gestionnaire_partenaire",
-  ]);
-
-  return ctx.roles.some((r) => allowed.has(r));
+  ].includes(r));
+  return hasStructureRole && Boolean(ctx.structureOrganizationId);
 }
 
 const ORGANIZER_PREVIEW_EMAIL = "organisateur.test@omniaglobalacademy.com";
@@ -189,6 +195,7 @@ async function organizerPreviewContext(
     user,
     userId: String(user.id),
     roles: ["organisateur"],
+    structureOrganizationId: null,
   };
 }
 
@@ -197,6 +204,7 @@ function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (ctx.roles.includes("super_admin")) return "omnia";
 
   if (
+    ctx.structureOrganizationId &&
     ctx.roles.some((r) =>
       [
         "etablissement_directeur",
@@ -397,7 +405,7 @@ async function canManageEvent(
   if (isSuperAdmin(ctx)) return true;
 
   const ev = await eventForAccess(sb, eventId);
-  return !!ev && ev.owner_user_id === ctx.userId;
+  return ownerEventAccess(ctx, ev);
 }
 
 async function reviewLog(
@@ -534,7 +542,7 @@ async function getEvent(
     ["published", "live", "completed"].includes(ev.status);
 
   if (ctx) {
-    if (isSuperAdmin(ctx) || ev.owner_user_id === ctx.userId) {
+    if (isSuperAdmin(ctx) || ownerEventAccess(ctx, ev)) {
       allowed = true;
     }
 
@@ -1703,7 +1711,7 @@ async function playbackAuthorize(
   const ev = await eventForAccess(sb, media.event_id);
   if (!ev) return json({ error: "EVENT_NOT_FOUND" }, 404);
 
-  let allowed = isSuperAdmin(ctx) || ev.owner_user_id === ctx.userId;
+  let allowed = isSuperAdmin(ctx) || ownerEventAccess(ctx, ev);
 
   if (!allowed) {
     const { data: reg } = await sb
@@ -2355,7 +2363,7 @@ async function deriveRoomRole(
   if (isSuperAdmin(ctx)) return "admin_supervisor";
 
   const ev = await eventForAccess(sb, eventId);
-  if (ev?.owner_user_id === ctx.userId) return "host";
+  if (ownerEventAccess(ctx, ev)) return "host";
 
   const { data: speaker } = await sb
     .from("live_event_speakers")
@@ -2387,7 +2395,7 @@ async function roomAccessAllowed(
 
   const ev = await eventForAccess(sb, eventId);
   if (!ev) return false;
-  if (ev.owner_user_id === ctx.userId) return true;
+  if (ownerEventAccess(ctx, ev)) return true;
 
   const { data: speaker } = await sb
     .from("live_event_speakers")
@@ -5916,7 +5924,7 @@ async function participantProgressUpdate(
   if(!media) return json({error:"MEDIA_NOT_FOUND"},404);
 
   const ev=await eventForAccess(sb,media.event_id);
-  let allowed=isSuperAdmin(ctx)||ev?.owner_user_id===ctx.userId;
+  let allowed=isSuperAdmin(ctx)||ownerEventAccess(ctx,ev);
 
   if(!allowed){
     const {data:reg}=await sb.from("live_registrations").select("id")

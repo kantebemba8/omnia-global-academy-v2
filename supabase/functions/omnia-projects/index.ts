@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,34 +99,18 @@ async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Sess
   if (!session?.user_id) return null;
 
   const userId = String(session.user_id);
-  const [{ data: roleRows }, { data: user }, { data: manager }] = await Promise.all([
+  const [{ data: roleRows }, { data: user }, structureAccess] = await Promise.all([
     sb.from("user_roles").select("role").eq("user_id", userId),
     sb.from("users").select("id,full_name,email,avatar_url,status,country_code").eq("id", userId).maybeSingle(),
-    sb.from("partner_managers")
-      .select("organization_id,status,is_primary")
-      .eq("user_id", userId)
-      .in("status", ["actif", "active"])
-      .order("is_primary", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    validatedStructureAccess(sb, userId),
   ]);
-
-  let organizationName: string | null = null;
-  if (manager?.organization_id) {
-    const { data: organization } = await sb
-      .from("partner_organizations")
-      .select("org_name")
-      .eq("id", manager.organization_id)
-      .maybeSingle();
-    organizationName = organization?.org_name || null;
-  }
 
   return {
     userId,
     roles: (roleRows || []).map((row: any) => String(row.role)),
     user: user || null,
-    organizationId: manager?.organization_id ? String(manager.organization_id) : null,
-    organizationName,
+    organizationId: structureAccess?.organizationId || null,
+    organizationName: structureAccess?.organizationName || null,
   };
 }
 
@@ -140,7 +125,7 @@ function isAdmin(session: Session | null) {
 function canUseOwnerWorkspace(session: Session | null) {
   return Boolean(session && (
     isAdmin(session)
-    || session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))
+    || (session.organizationId && session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase())))
     || session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))
   ));
 }
@@ -148,7 +133,7 @@ function canUseOwnerWorkspace(session: Session | null) {
 async function canCreate(sb: any, session: Session | null, projectType = "") {
   if (!session) return false;
   if (isAdmin(session)) return true;
-  if (session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))) return true;
+  if (session.organizationId && session.roles.some((role) => STRUCTURE_CREATOR_ROLES.has(String(role).toLowerCase()))) return true;
   if (!session.roles.some((role) => PROFESSOR_ROLES.has(String(role).toLowerCase()))) return false;
 
   const { data: permission } = await sb
@@ -170,7 +155,10 @@ async function projectById(sb: any, projectId: string) {
 
 async function canManageProject(sb: any, session: Session, project: any) {
   if (isAdmin(session)) return true;
-  if (String(project.creator_user_id) === session.userId) return true;
+  if (String(project.creator_user_id) === session.userId) {
+    if (!project.organization_id) return true;
+    return session.organizationId === String(project.organization_id) && await canCreate(sb, session, String(project.project_type || ""));
+  }
   if (project.organization_id && session.organizationId === String(project.organization_id)) return canCreate(sb, session, String(project.project_type || ""));
   const { data: projectTeams } = await sb.from("omnia_project_teams").select("id").eq("project_id", project.id);
   const teamIds = (projectTeams || []).map((row: any) => row.id);

@@ -141,6 +141,43 @@ const CODE_TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 };
 
+const STRUCTURE_TEAM_PERMISSION_KEYS = new Set([
+  "can_manage_structure_profile",
+  "can_manage_structure_users",
+  "can_create_courses",
+  "can_edit_courses",
+  "can_submit_courses",
+  "can_assign_trainers",
+  "can_manage_lessons",
+  "can_upload_files",
+  "can_manage_members",
+  "can_approve_memberships",
+  "can_manage_structure_codes",
+  "can_view_statistics",
+  "can_view_logs",
+  "can_manage_notifications",
+  "can_manage_settings",
+]);
+
+const SENSITIVE_STRUCTURE_INPUTS: Record<string, string> = {
+  name: "org_name",
+  professional_email: "email",
+  responsible_name: "contact_name",
+  responsible_function: "contact_function",
+  responsible_email: "contact_email",
+  responsible_phone: "contact_phone",
+  logo_url: "logo_url",
+};
+
+function normalizeStructurePermissions(value: unknown) {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return Object.fromEntries([...STRUCTURE_TEAM_PERMISSION_KEYS].map((key) => [key, source[key] === true]));
+}
+
+function sameValue(a: unknown, b: unknown) {
+  return String(a ?? "").trim() === String(b ?? "").trim();
+}
+
 function mapStructure(row: Record<string, any>) {
   return {
     ...row,
@@ -195,6 +232,38 @@ function mapCode(row: Record<string, any>) {
   };
 }
 
+async function appendStructureAudit(
+  sb: ReturnType<typeof createClient>,
+  organizationId: string,
+  actorUserId: string | null,
+  actorScope: string,
+  eventType: string,
+  metadata: Record<string, unknown> = {},
+  targetUserId: string | null = null,
+) {
+  const { error } = await sb.from("structure_governance_audit").insert({
+    organization_id: organizationId,
+    actor_user_id: actorUserId,
+    actor_scope: actorScope,
+    event_type: eventType,
+    target_user_id: targetUserId,
+    metadata,
+  });
+  if (error) throw error;
+}
+
+async function getOpenProfileChange(sb: ReturnType<typeof createClient>, organizationId: string) {
+  const { data, error } = await sb.from("structure_profile_change_requests")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .in("status", ["pending", "changes_requested"])
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Record<string, any> | null;
+}
+
 async function verifySession(sb: ReturnType<typeof createClient>, token: string) {
   const { data: session, error } = await sb.from("user_sessions")
     .select("user_id")
@@ -236,10 +305,14 @@ async function requireStructureAccess(
   session: { userId: string; roles: string[] },
   organizationId: string,
   permission?: string,
+  allowUnvalidated = false,
 ) {
   if (session.roles.includes("super_admin")) return true;
   const link = await managerLink(sb, session.userId, organizationId);
-  return hasPermission(link, permission);
+  if (!hasPermission(link, permission)) return false;
+  if (allowUnvalidated) return true;
+  const organization = await getOrganization(sb, organizationId);
+  return String(organization?.status || "") === "validated";
 }
 
 function isSuperAdmin(session: { roles: string[] }) {
@@ -379,6 +452,10 @@ Deno.serve(async (req: Request) => {
 
         await addRole(sb, session.userId, "responsable_structure");
         await sb.from("user_roles").delete().eq("user_id", session.userId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
+        await appendStructureAudit(sb, createdOrganizationId, session.userId, "structure", "structure_created", {
+          status: "pending",
+          structure_type: String(body.structure_type || "autre"),
+        }, session.userId);
 
         return json({ success: true, structure: mapStructure(organization) });
       } catch (error) {
@@ -395,9 +472,19 @@ Deno.serve(async (req: Request) => {
     if (action === "get_my_structure") {
       const link = await managerLink(sb, session.userId);
       if (!link) return json({ error: "NO_STRUCTURE" }, 404);
-      const organization = await getOrganization(sb, String(link.organization_id));
+      const organizationId = String(link.organization_id);
+      const organization = await getOrganization(sb, organizationId);
       if (!organization) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
-      return json({ success: true, structure: mapStructure(organization), my_permissions: link.permissions || {}, my_role: link.role_in_org });
+      const profileChange = await getOpenProfileChange(sb, organizationId);
+      return json({
+        success: true,
+        structure: mapStructure(organization),
+        my_permissions: link.is_primary ? normalizeStructurePermissions(Object.fromEntries([...STRUCTURE_TEAM_PERMISSION_KEYS].map(key => [key, true]))) : normalizeStructurePermissions(link.permissions || {}),
+        my_role: link.role_in_org,
+        is_primary: !!link.is_primary,
+        operational_access: String(organization.status || "") === "validated",
+        pending_profile_change: profileChange,
+      });
     }
 
     if (action === "my_memberships") {
@@ -442,14 +529,78 @@ Deno.serve(async (req: Request) => {
       const organizationId = String(body.structure_id || "");
       const organization = await getOrganization(sb, organizationId);
       if (!organization) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
-      return json({ success: true, structure: mapStructure(organization) });
+
+      const [managersResult, invitationsResult, membersResult, profileChange, auditResult] = await Promise.all([
+        sb.from("partner_managers").select("id,user_id,role_in_org,is_primary,status,permissions").eq("organization_id", organizationId).order("is_primary", { ascending: false }),
+        sb.from("platform_access_invitations").select("id,email,full_name,internal_role,status,expires_at,created_at,target_user_id").eq("organization_id", organizationId).in("invitation_type", ["structure_team", "structure_recruiter"]).eq("status", "pending"),
+        sb.from("partner_code_users").select("id,user_id,status,created_at").eq("organization_id", organizationId),
+        getOpenProfileChange(sb, organizationId),
+        sb.from("structure_governance_audit").select("id,actor_user_id,actor_scope,event_type,target_user_id,metadata,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(30),
+      ]);
+      if (managersResult.error) throw managersResult.error;
+      if (invitationsResult.error) throw invitationsResult.error;
+      if (membersResult.error) throw membersResult.error;
+      if (auditResult.error) throw auditResult.error;
+
+      const managers = managersResult.data || [];
+      const managerUserIds = [...new Set(managers.map((row: any) => String(row.user_id)).filter(Boolean))];
+      const auditUserIds = [...new Set((auditResult.data || []).flatMap((row: any) => [String(row.actor_user_id || ""), String(row.target_user_id || "")]).filter(Boolean))];
+      const userIds = [...new Set([...managerUserIds, ...auditUserIds])];
+      const { data: people, error: peopleError } = userIds.length
+        ? await sb.from("users").select("id,full_name,email").in("id", userIds)
+        : { data: [] as any[], error: null };
+      if (peopleError) throw peopleError;
+      const peopleMap = new Map((people || []).map((row: any) => [String(row.id), row]));
+
+      const team = managers.map((row: any) => ({
+        ...row,
+        user: peopleMap.get(String(row.user_id)) || null,
+        permissions: row.is_primary ? Object.fromEntries([...STRUCTURE_TEAM_PERMISSION_KEYS].map(key => [key, true])) : normalizeStructurePermissions(row.permissions || {}),
+      }));
+      const audit = (auditResult.data || []).map((row: any) => ({
+        ...row,
+        actor: row.actor_user_id ? peopleMap.get(String(row.actor_user_id)) || null : null,
+        target: row.target_user_id ? peopleMap.get(String(row.target_user_id)) || null : null,
+      }));
+      const memberships = membersResult.data || [];
+      return json({
+        success: true,
+        structure: mapStructure(organization),
+        governance: {
+          team,
+          pending_invitations: invitationsResult.data || [],
+          member_counts: {
+            total: memberships.length,
+            active: memberships.filter((row: any) => ["validated", "approved", "active"].includes(String(row.status))).length,
+            pending: memberships.filter((row: any) => ["pending", "requested"].includes(String(row.status))).length,
+          },
+          pending_profile_change: profileChange,
+          audit,
+        },
+      });
     }
 
     if (action === "update_structure") {
       const organizationId = String(body.structure_id || "");
       if (!organizationId) return json({ error: "STRUCTURE_ID_REQUIRED" }, 400);
-      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_profile"))) {
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_profile", true))) {
         return json({ error: "FORBIDDEN" }, 403);
+      }
+
+      const current = await getOrganization(sb, organizationId);
+      if (!current) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
+      const currentStatus = String(current.status || "");
+      if (["suspended", "archived"].includes(currentStatus) && !isSuperAdmin(session)) {
+        return json({ error: "STRUCTURE_LOCKED", message: "Cette Structure est suspendue ou archivée. Les modifications sont temporairement bloquées." }, 403);
+      }
+
+      if (body.name !== undefined && !String(body.name || "").trim()) {
+        return json({ error: "STRUCTURE_NAME_REQUIRED", message: "Le nom de la Structure est obligatoire." }, 400);
+      }
+      for (const key of ["professional_email", "responsible_email"]) {
+        if (body[key] !== undefined && String(body[key] || "").trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body[key]).trim())) {
+          return json({ error: "INVALID_EMAIL", message: "Une adresse e-mail transmise est invalide." }, 400);
+        }
       }
 
       const fieldMap: Record<string, string> = {
@@ -461,19 +612,19 @@ Deno.serve(async (req: Request) => {
         website: "website",
         description: "description",
         objective: "main_need",
-        logo_url: "logo_url",
         responsible_name: "contact_name",
         responsible_function: "contact_function",
         responsible_email: "contact_email",
         responsible_phone: "contact_phone",
       };
-      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      for (const [input, column] of Object.entries(fieldMap)) {
-        if (body[input] !== undefined) patch[column] = body[input] === "" ? null : body[input];
-      }
 
       let uploadedPath: string | null = null;
       try {
+        const submitted: Record<string, unknown> = {};
+        for (const [input, column] of Object.entries(fieldMap)) {
+          if (body[input] !== undefined) submitted[column] = body[input] === "" ? null : body[input];
+        }
+
         if (body.logo_base64) {
           const uploaded = await uploadStructureAsset(
             sb,
@@ -484,16 +635,79 @@ Deno.serve(async (req: Request) => {
             body.logo_name,
           );
           uploadedPath = uploaded.path;
-          patch.logo_url = uploaded.publicUrl;
+          submitted.logo_url = uploaded.publicUrl;
         }
 
-        const { data, error } = await sb.from("partner_organizations")
-          .update(patch)
-          .eq("id", organizationId)
-          .select("*")
-          .single();
+        const sensitiveColumns = new Set(Object.values(SENSITIVE_STRUCTURE_INPUTS));
+        const directPatch: Record<string, unknown> = {};
+        const sensitiveChanges: Record<string, unknown> = {};
+        for (const [column, value] of Object.entries(submitted)) {
+          if (sameValue(current[column], value)) continue;
+          if (sensitiveColumns.has(column)) sensitiveChanges[column] = value;
+          else directPatch[column] = value;
+        }
+
+        // Une Structure déjà validée conserve son identité officielle tant que
+        // l'Administration n'a pas accepté les changements sensibles.
+        if (currentStatus === "validated" && !isSuperAdmin(session)) {
+          if (Object.keys(directPatch).length > 0) {
+            directPatch.updated_at = new Date().toISOString();
+            const { error } = await sb.from("partner_organizations").update(directPatch).eq("id", organizationId);
+            if (error) throw error;
+            await appendStructureAudit(sb, organizationId, session.userId, "structure", "profile_non_sensitive_updated", { fields: Object.keys(directPatch).filter(key => key !== "updated_at") });
+          }
+
+          let profileChange = await getOpenProfileChange(sb, organizationId);
+          if (Object.keys(sensitiveChanges).length > 0) {
+            const now = new Date().toISOString();
+            const mergedChanges = { ...(profileChange?.requested_changes || {}), ...sensitiveChanges };
+            if (profileChange) {
+              const { data, error } = await sb.from("structure_profile_change_requests").update({
+                requested_by: session.userId,
+                requested_changes: mergedChanges,
+                status: "pending",
+                admin_comment: null,
+                reviewed_by: null,
+                reviewed_at: null,
+                updated_at: now,
+              }).eq("id", profileChange.id).select("*").single();
+              if (error) throw error;
+              profileChange = data;
+            } else {
+              const { data, error } = await sb.from("structure_profile_change_requests").insert({
+                organization_id: organizationId,
+                requested_by: session.userId,
+                requested_changes: sensitiveChanges,
+                status: "pending",
+              }).select("*").single();
+              if (error) throw error;
+              profileChange = data;
+            }
+            await appendStructureAudit(sb, organizationId, session.userId, "structure", "profile_change_requested", { fields: Object.keys(sensitiveChanges), request_id: profileChange?.id || null });
+          }
+
+          const refreshed = await getOrganization(sb, organizationId);
+          return json({
+            success: true,
+            structure: mapStructure(refreshed || current),
+            pending_profile_change: profileChange,
+            requires_admin_review: Object.keys(sensitiveChanges).length > 0,
+          });
+        }
+
+        const patch: Record<string, unknown> = { ...directPatch, ...sensitiveChanges, updated_at: new Date().toISOString() };
+        if (["modification_requested", "refused"].includes(currentStatus)) {
+          patch.status = "pending";
+          patch.modification_note = null;
+          patch.rejection_reason = null;
+        }
+        const { data, error } = await sb.from("partner_organizations").update(patch).eq("id", organizationId).select("*").single();
         if (error) throw error;
-        return json({ success: true, structure: mapStructure(data) });
+        await appendStructureAudit(sb, organizationId, session.userId, isSuperAdmin(session) ? "admin" : "structure", "profile_updated", {
+          fields: Object.keys(patch).filter(key => !["updated_at", "modification_note", "rejection_reason"].includes(key)),
+          resubmitted: ["modification_requested", "refused"].includes(currentStatus),
+        });
+        return json({ success: true, structure: mapStructure(data), pending_profile_change: null, requires_admin_review: false });
       } catch (error) {
         if (uploadedPath) await sb.storage.from(STRUCTURE_ASSET_BUCKET).remove([uploadedPath]).catch(() => {});
         throw error;
@@ -514,22 +728,41 @@ Deno.serve(async (req: Request) => {
         const safe = String(body.search).replace(/[,%()]/g, " ").trim();
         if (safe) query = query.or(`org_name.ilike.%${safe}%,email.ilike.%${safe}%,contact_name.ilike.%${safe}%`);
       }
-      const { data, error } = await query;
+      const [{ data, error }, { data: allStatuses, error: statusError }] = await Promise.all([
+        query,
+        sb.from("partner_organizations").select("status"),
+      ]);
       if (error) throw error;
-      return json({ success: true, structures: (data || []).map(mapStructure) });
+      if (statusError) throw statusError;
+      const rows = allStatuses || [];
+      return json({
+        success: true,
+        structures: (data || []).map(mapStructure),
+        stats: {
+          total: rows.length,
+          validated: rows.filter((row: any) => String(row.status) === "validated").length,
+          pending: rows.filter((row: any) => ["pending", "modification_requested"].includes(String(row.status))).length,
+          suspended: rows.filter((row: any) => String(row.status) === "suspended").length,
+        },
+      });
     }
 
     if (action === "admin_pending_overview") {
       if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
-      const [{ data: organizations }, { data: codeRows }] = await Promise.all([
+      const [{ data: organizations, error: organizationsError }, { data: codeRows, error: codesError }, { data: profileChanges, error: profileError }] = await Promise.all([
         sb.from("partner_organizations").select("*").in("status", ["pending", "modification_requested"]),
         sb.from("partner_codes").select("*").in("status", ["pending"]),
+        sb.from("structure_profile_change_requests").select("id,organization_id,status,created_at,updated_at").in("status", ["pending", "changes_requested"]),
       ]);
+      if (organizationsError) throw organizationsError;
+      if (codesError) throw codesError;
+      if (profileError) throw profileError;
       return json({
         success: true,
         pending: {
           structures: (organizations || []).map(mapStructure),
           codes: (codeRows || []).map(mapCode),
+          profile_changes: profileChanges || [],
         },
       });
     }
@@ -539,6 +772,8 @@ Deno.serve(async (req: Request) => {
       const organizationId = String(body.structure_id || "");
       const decision = String(body.decision || "");
       if (!organizationId) return json({ error: "STRUCTURE_ID_REQUIRED" }, 400);
+      const current = await getOrganization(sb, organizationId);
+      if (!current) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
       const statuses: Record<string, string> = {
         validate: "validated",
         reject: "refused",
@@ -557,6 +792,8 @@ Deno.serve(async (req: Request) => {
       if (decision === "validate" || decision === "restore") {
         patch.validated_by = session.userId;
         patch.validated_at = new Date().toISOString();
+        patch.modification_note = null;
+        patch.rejection_reason = null;
       }
       const { data, error } = await sb.from("partner_organizations").update(patch).eq("id", organizationId).select("*").single();
       if (error) throw error;
@@ -567,7 +804,51 @@ Deno.serve(async (req: Request) => {
           await sb.from("user_roles").delete().eq("user_id", manager.user_id).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
         }
       }
+      await appendStructureAudit(sb, organizationId, session.userId, "admin", `structure_${decision}`, {
+        from_status: String(current.status || ""),
+        to_status: String(data.status || ""),
+        comment: body.admin_comment || null,
+      });
       return json({ success: true, structure: mapStructure(data) });
+    }
+
+    if (action === "admin_review_profile_change") {
+      if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const organizationId = String(body.structure_id || "");
+      const requestId = String(body.request_id || "");
+      const decision = String(body.decision || "");
+      if (!organizationId || !requestId) return json({ error: "REQUEST_REQUIRED" }, 400);
+      if (!["approve", "reject", "request_changes"].includes(decision)) return json({ error: "INVALID_DECISION" }, 400);
+      const { data: request, error: requestError } = await sb.from("structure_profile_change_requests")
+        .select("*")
+        .eq("id", requestId)
+        .eq("organization_id", organizationId)
+        .in("status", ["pending", "changes_requested"])
+        .maybeSingle();
+      if (requestError) throw requestError;
+      if (!request) return json({ error: "PROFILE_CHANGE_NOT_FOUND" }, 404);
+      const now = new Date().toISOString();
+      if (decision === "approve") {
+        const patch = { ...(request.requested_changes || {}), updated_at: now };
+        const { error } = await sb.from("partner_organizations").update(patch).eq("id", organizationId);
+        if (error) throw error;
+      }
+      const requestStatus = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "changes_requested";
+      const { error: reviewError } = await sb.from("structure_profile_change_requests").update({
+        status: requestStatus,
+        admin_comment: body.admin_comment || null,
+        reviewed_by: session.userId,
+        reviewed_at: now,
+        updated_at: now,
+      }).eq("id", requestId);
+      if (reviewError) throw reviewError;
+      await appendStructureAudit(sb, organizationId, session.userId, "admin", `profile_change_${decision}`, {
+        request_id: requestId,
+        fields: Object.keys(request.requested_changes || {}),
+        comment: body.admin_comment || null,
+      });
+      const organization = await getOrganization(sb, organizationId);
+      return json({ success: true, structure: mapStructure(organization || {}), request_status: requestStatus });
     }
 
     if (action === "list_members") {
@@ -641,6 +922,7 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", `membership_${decision}`, { membership_id: membershipId, code_id: membership.code_id || null }, String(membership.user_id || "") || null);
       return json({ success: true, status: decision === "approve" ? "approved" : "rejected" });
     }
 
@@ -667,7 +949,7 @@ Deno.serve(async (req: Request) => {
           invited_email: user?.email || "",
           invited_name: user?.full_name || "",
           internal_role: row.role_in_org || "lecture_seule",
-          permissions_json: row.permissions || {},
+          permissions_json: row.is_primary ? Object.fromEntries([...STRUCTURE_TEAM_PERMISSION_KEYS].map(key => [key, true])) : normalizeStructurePermissions(row.permissions || {}),
           status: statusMap[row.status] || row.status,
           users: user || null,
         };
@@ -678,7 +960,7 @@ Deno.serve(async (req: Request) => {
         invited_email: invitation.email,
         invited_name: invitation.full_name || "",
         internal_role: invitation.internal_role || "lecture_seule",
-        permissions_json: invitation.permissions || {},
+        permissions_json: normalizeStructurePermissions(invitation.permissions || {}),
         status: "invited",
         is_primary: false,
         invitation_expires_at: invitation.expires_at,
@@ -701,7 +983,7 @@ Deno.serve(async (req: Request) => {
         ]);
         if (Number(count || 0) + Number(pendingCount || 0) >= managerCapacity) return json({ error: "STRUCTURE_MANAGER_LIMIT_REACHED", message: "La limite de gestionnaires prévue par l'abonnement est atteinte." }, 409);
       }
-      const permissions = body.permissions && typeof body.permissions === "object" ? body.permissions as Record<string, boolean> : {};
+      const permissions = normalizeStructurePermissions(body.permissions);
       try {
         const result = await createAccessInvitation(sb, {
           invitationType: "structure_team",
@@ -713,6 +995,12 @@ Deno.serve(async (req: Request) => {
           permissions,
           message: String(body.message || "").trim() || null,
         });
+        await appendStructureAudit(sb, organizationId, session.userId, "structure", "team_invitation_created", {
+          invitation_id: result.invitation.id,
+          email,
+          internal_role: result.invitation.internal_role,
+          permissions,
+        }, result.invitation.target_user_id || null);
         return json({
           success: true,
           invitation: result.invitation,
@@ -736,6 +1024,48 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (action === "update_team_member") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
+      const memberId = String(body.member_id || "");
+      if (!memberId || memberId.startsWith("invitation:")) return json({ error: "ACTIVE_MEMBER_REQUIRED" }, 400);
+      const { data: currentMember, error: memberError } = await sb.from("partner_managers")
+        .select("id,user_id,is_primary,role_in_org,status,permissions")
+        .eq("id", memberId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (memberError) throw memberError;
+      if (!currentMember) return json({ error: "MEMBER_NOT_FOUND" }, 404);
+      if (currentMember.is_primary) return json({ error: "PRIMARY_MANAGER_IS_PROTECTED", message: "Le responsable principal conserve l'ensemble des droits de la Structure." }, 403);
+
+      const nextStatus = String(body.status || currentMember.status || "actif");
+      if (!["actif", "active", "suspendu", "suspended"].includes(nextStatus)) return json({ error: "INVALID_MEMBER_STATUS" }, 400);
+      const normalizedStatus = ["suspendu", "suspended"].includes(nextStatus) ? "suspendu" : "actif";
+      const internalRole = String(body.internal_role || currentMember.role_in_org || "lecture_seule").trim() || "lecture_seule";
+      const permissions = normalizeStructurePermissions(body.permissions ?? currentMember.permissions);
+      const { data: updated, error } = await sb.from("partner_managers").update({
+        role_in_org: internalRole,
+        permissions,
+        status: normalizedStatus,
+      }).eq("id", memberId).eq("organization_id", organizationId).select("*").single();
+      if (error) throw error;
+
+      if (normalizedStatus === "actif") {
+        await addRole(sb, String(currentMember.user_id), "gestionnaire_structure");
+      } else {
+        const { count } = await sb.from("partner_managers").select("id", { count: "exact", head: true })
+          .eq("user_id", currentMember.user_id).neq("id", memberId).in("status", ["actif", "active"]);
+        if (!Number(count || 0)) await sb.from("user_roles").delete().eq("user_id", currentMember.user_id).eq("role", "gestionnaire_structure");
+      }
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", normalizedStatus === "actif" ? "team_member_updated" : "team_member_suspended", {
+        member_id: memberId,
+        previous_role: currentMember.role_in_org || null,
+        internal_role: internalRole,
+        permissions,
+      }, String(currentMember.user_id));
+      return json({ success: true, member: updated });
+    }
+
     if (action === "remove_team_member") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_users"))) return json({ error: "FORBIDDEN" }, 403);
@@ -745,6 +1075,7 @@ Deno.serve(async (req: Request) => {
         const { error } = await sb.from("platform_access_invitations").update({ status: "revoked", updated_at: new Date().toISOString() })
           .eq("id", invitationId).eq("organization_id", organizationId).eq("invitation_type", "structure_team").eq("status", "pending");
         if (error) throw error;
+        await appendStructureAudit(sb, organizationId, session.userId, "structure", "team_invitation_revoked", { invitation_id: invitationId });
         return json({ success: true, invitation_revoked: true });
       }
       const { data: row } = await sb.from("partner_managers").select("is_primary,user_id").eq("id", memberId).eq("organization_id", organizationId).maybeSingle();
@@ -754,6 +1085,7 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       const { count } = await sb.from("partner_managers").select("id", { count: "exact", head: true }).eq("user_id", row.user_id).in("status", ["actif", "active"]);
       if (!Number(count || 0)) await sb.from("user_roles").delete().eq("user_id", row.user_id).eq("role", "gestionnaire_structure");
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", "team_member_removed", { member_id: memberId }, String(row.user_id));
       return json({ success: true });
     }
 
@@ -833,6 +1165,10 @@ Deno.serve(async (req: Request) => {
       if (Number(code.max_users || 0) > 0 && Number(code.used_count || 0) >= Number(code.max_users)) return json({ error: "CODE_QUOTA_REACHED", message: "La limite d'utilisation de ce code est atteinte." }, 400);
       const { data: existing } = await sb.from("partner_code_users").select("id,status").eq("code_id", code.id).eq("user_id", session.userId).maybeSingle();
       if (existing) return json({ error: "ALREADY_LINKED", message: "Votre compte est déjà lié à ce code." }, 409);
+      const organization = await getOrganization(sb, String(code.organization_id));
+      if (!organization || String(organization.status || "") !== "validated") {
+        return json({ error: "STRUCTURE_NOT_ACTIVE", message: "Cette Structure n'est pas actuellement autorisée à recevoir de nouveaux rattachements." }, 403);
+      }
       const needsValidation = !!code.requires_manual_validation;
       const { data: link, error: insertError } = await sb.from("partner_code_users").insert({
         code_id: code.id,
@@ -844,7 +1180,6 @@ Deno.serve(async (req: Request) => {
       }).select("*").single();
       if (insertError) throw insertError;
       if (!needsValidation) await sb.from("partner_codes").update({ used_count: Number(code.used_count || 0) + 1 }).eq("id", code.id);
-      const organization = await getOrganization(sb, String(code.organization_id));
       return json({
         success: true,
         membership: link,
@@ -1254,6 +1589,10 @@ Deno.serve(async (req: Request) => {
       const link = await managerLink(sb, session.userId, requestedOrganizationId || undefined);
       if (!link) return json({ error: "STRUCTURE_ACCESS_DENIED" }, 403);
       const organizationId = String(link.organization_id);
+      const organization = await getOrganization(sb, organizationId);
+      if (!organization || String(organization.status || "") !== "validated") {
+        return json({ error: "STRUCTURE_NOT_ACTIVE", message: "La Structure doit être validée et active pour accéder aux services B2B." }, 403);
+      }
 
       if (action === "tableau_structure") {
         const [quotes, contracts, proofs, invoices, renewals] = await Promise.all([

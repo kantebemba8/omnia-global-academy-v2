@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StructureLayout } from '../../components/StructureLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { Shield, PlusCircle, RefreshCw, XCircle, UserMinus, UserRoundCheck, Ban, Copy } from 'lucide-react';
+import { Shield, PlusCircle, RefreshCw, XCircle, UserMinus, UserRoundCheck, Ban, Copy, Pencil } from 'lucide-react';
 import { coachingRequest } from '../../lib/coachingApi';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -61,12 +61,13 @@ export default function StructureEquipe() {
   const [toast, setToast] = useState('');
   const [shareLink, setShareLink] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [editingMember, setEditingMember] = useState<any>(null);
   const [coachEmail, setCoachEmail] = useState('');
   const [coachDesignations, setCoachDesignations] = useState<any[]>([]);
   const [coachBusy, setCoachBusy] = useState(false);
   const [form, setForm] = useState({
     email: '', firstname: '', lastname: '',
-    internal_role: 'lecture_seule', message: '',
+    internal_role: 'lecture_seule', message: '', status: 'active',
     permissions: {} as Record<string, boolean>,
   });
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
@@ -129,24 +130,51 @@ export default function StructureEquipe() {
     })();
   }, []);
 
+  function openInvite() {
+    setEditingMember(null);
+    setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', status: 'active', permissions: {} });
+    setShowModal(true);
+  }
+
+  function openEdit(member: any) {
+    if (member.is_primary || String(member.id).startsWith('invitation:')) return;
+    const names = String(member.invited_name || '').trim().split(/\s+/);
+    setEditingMember(member);
+    setForm({
+      email: member.invited_email || '',
+      firstname: names[0] || '',
+      lastname: names.slice(1).join(' '),
+      internal_role: member.internal_role || 'lecture_seule',
+      message: '',
+      status: member.status === 'suspended' ? 'suspended' : 'active',
+      permissions: member.permissions_json || {},
+    });
+    setShowModal(true);
+  }
+
   async function handleInvite() {
-    if (!form.email || !form.internal_role) { showToast('Email et rôle requis'); return; }
+    if (!editingMember && (!form.email || !form.internal_role)) { showToast('Email et rôle requis'); return; }
+    if (editingMember && !form.internal_role) { showToast('Rôle interne requis'); return; }
     setActionBusy(true);
     try {
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'invite_team_member', structure_id: structureId, ...form }),
-      });
+      const payload = editingMember
+        ? { action: 'update_team_member', structure_id: structureId, member_id: editingMember.id, internal_role: form.internal_role, permissions: form.permissions, status: form.status }
+        : { action: 'invite_team_member', structure_id: structureId, ...form };
+      const res = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify(payload) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success !== true) throw new Error(data.message || data.error || 'Invitation impossible.');
-      setShareLink(!data.email_sent && data.invitation_url ? String(data.invitation_url) : '');
-      showToast(data.email_sent ? 'Invitation envoyée par e-mail' : 'Invitation créée. Copiez le lien personnel affiché.');
+      if (!res.ok || data.success !== true) throw new Error(data.message || data.error || (editingMember ? 'Modification impossible.' : 'Invitation impossible.'));
+      if (!editingMember) {
+        setShareLink(!data.email_sent && data.invitation_url ? String(data.invitation_url) : '');
+        showToast(data.email_sent ? 'Invitation envoyée par e-mail' : 'Invitation créée. Copiez le lien personnel affiché.');
+      } else {
+        showToast('Accès du membre mis à jour');
+      }
       setShowModal(false);
-      setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', permissions: {} });
+      setEditingMember(null);
+      setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', status: 'active', permissions: {} });
       await load();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Invitation impossible.');
+      showToast(error instanceof Error ? error.message : (editingMember ? 'Modification impossible.' : 'Invitation impossible.'));
     } finally {
       setActionBusy(false);
     }
@@ -204,7 +232,7 @@ export default function StructureEquipe() {
           <div className="flex gap-2">
             <button onClick={() => load()} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm border"
               style={{ borderColor: '#E4E7EC', color: '#6B7280' }}><RefreshCw size={13} /></button>
-            <button disabled={actionBusy} onClick={() => setShowModal(true)}
+            <button disabled={actionBusy} onClick={openInvite}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"
               style={{ background: '#002050' }}>
               <PlusCircle size={15} /> Inviter un membre
@@ -287,7 +315,7 @@ export default function StructureEquipe() {
             <p className="text-sm mt-1 mb-5" style={{ color: '#9CA3AF' }}>
               Invitez des collaborateurs pour vous aider à gérer votre structure
             </p>
-            <button onClick={() => setShowModal(true)}
+            <button onClick={openInvite}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white mx-auto"
               style={{ background: '#002050' }}>
               <PlusCircle size={15} /> Inviter un membre
@@ -339,7 +367,14 @@ export default function StructureEquipe() {
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
-                      {member.status !== 'removed' && (
+                      {!member.is_primary && !String(member.id).startsWith('invitation:') && member.status !== 'removed' && (
+                        <button disabled={actionBusy} onClick={() => openEdit(member)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border"
+                          style={{ borderColor: '#E4E7EC', color: '#002050' }}>
+                          <Pencil size={12} /> Modifier
+                        </button>
+                      )}
+                      {!member.is_primary && member.status !== 'removed' && (
                         <button disabled={actionBusy} onClick={() => handleRemove(member.id)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border"
                           style={{ borderColor: '#FECACA', color: '#DC2626' }}>
@@ -359,28 +394,33 @@ export default function StructureEquipe() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.5)' }}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 my-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-black" style={{ color: '#002050' }}>Inviter un membre</h2>
-                <button onClick={() => setShowModal(false)} className="text-gray-400"><XCircle size={20} /></button>
+                <h2 className="text-lg font-black" style={{ color: '#002050' }}>{editingMember ? 'Modifier un membre' : 'Inviter un membre'}</h2>
+                <button onClick={() => { setShowModal(false); setEditingMember(null); }} className="text-gray-400"><XCircle size={20} /></button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-gray-500">Prénom</label>
-                  <input className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
-                    value={form.firstname} onChange={e => set('firstname', e.target.value)} />
+              {!editingMember ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5 text-gray-500">Prénom</label>
+                      <input className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]" value={form.firstname} onChange={e => set('firstname', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5 text-gray-500">Nom</label>
+                      <input className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]" value={form.lastname} onChange={e => set('lastname', e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5 text-gray-500">Email *</label>
+                    <input type="email" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]" value={form.email} onChange={e => set('email', e.target.value)} />
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
+                  <p className="font-semibold" style={{ color: '#002050' }}>{editingMember.invited_name || editingMember.invited_email}</p>
+                  <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>{editingMember.invited_email}</p>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 text-gray-500">Nom</label>
-                  <input className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
-                    value={form.lastname} onChange={e => set('lastname', e.target.value)} />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 text-gray-500">Email *</label>
-                <input type="email" className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
-                  value={form.email} onChange={e => set('email', e.target.value)} />
-              </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold mb-1.5 text-gray-500">Rôle interne *</label>
@@ -389,6 +429,16 @@ export default function StructureEquipe() {
                   {INTERNAL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
+
+              {editingMember && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-gray-500">État de l’accès</label>
+                  <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]" value={form.status} onChange={e => set('status', e.target.value)}>
+                    <option value="active">Actif</option>
+                    <option value="suspended">Suspendu</option>
+                  </select>
+                </div>
+              )}
 
               {/* Permissions */}
               <div>
@@ -406,20 +456,20 @@ export default function StructureEquipe() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 text-gray-500">Message (optionnel)</label>
-                <textarea className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050] resize-none"
-                  rows={2} placeholder="Message facultatif pour la personne invitée..."
-                  value={form.message} onChange={e => set('message', e.target.value)} />
-              </div>
+              {!editingMember && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-gray-500">Message (optionnel)</label>
+                  <textarea className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050] resize-none" rows={2} placeholder="Message facultatif pour la personne invitée..." value={form.message} onChange={e => set('message', e.target.value)} />
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowModal(false)}
+                <button onClick={() => { setShowModal(false); setEditingMember(null); }}
                   className="flex-1 py-3 rounded-xl font-semibold text-sm border"
                   style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>Annuler</button>
                 <button disabled={actionBusy} onClick={handleInvite}
                   className="flex-1 py-3 rounded-xl font-bold text-white text-sm"
-                  style={{ background: '#002050' }}>{actionBusy ? 'Envoi…' : "Envoyer l'invitation"}</button>
+                  style={{ background: '#002050' }}>{actionBusy ? 'Traitement…' : editingMember ? 'Enregistrer' : "Envoyer l'invitation"}</button>
               </div>
             </div>
           </div>

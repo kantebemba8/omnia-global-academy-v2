@@ -234,6 +234,9 @@ async function applyModeratorAccess(sb: Client, invitation: any, userId: string)
 async function applyStructureTeamAccess(sb: Client, invitation: any, userId: string) {
   if (!invitation.organization_id) throw new Error("ORGANIZATION_REQUIRED");
   await ensureNotProtected(sb, userId);
+  const { data: organization, error: organizationError } = await sb.from("partner_organizations").select("id,status").eq("id", invitation.organization_id).maybeSingle();
+  if (organizationError) throw organizationError;
+  if (!organization || String(organization.status || "") !== "validated") throw new Error("STRUCTURE_NOT_ACTIVE");
   const { error: linkError } = await sb.from("partner_managers").upsert({
     organization_id: invitation.organization_id,
     user_id: userId,
@@ -245,11 +248,23 @@ async function applyStructureTeamAccess(sb: Client, invitation: any, userId: str
   if (linkError) throw linkError;
   const { error: roleError } = await sb.from("user_roles").upsert({ user_id: userId, role: "gestionnaire_structure", granted_by: invitation.invited_by }, { onConflict: "user_id,role", ignoreDuplicates: true });
   if (roleError && roleError.code !== "23505") throw roleError;
+  const { error: auditError } = await sb.from("structure_governance_audit").insert({
+    organization_id: invitation.organization_id,
+    actor_user_id: invitation.invited_by,
+    actor_scope: "structure",
+    event_type: "team_member_joined",
+    target_user_id: userId,
+    metadata: { invitation_id: invitation.id, internal_role: invitation.internal_role || "collaborateur" },
+  });
+  if (auditError) throw auditError;
 }
 
 async function applyStructureRecruiterAccess(sb: Client, invitation: any, userId: string, email: string) {
   if (!invitation.organization_id) throw new Error("ORGANIZATION_REQUIRED");
   await ensureNotProtected(sb, userId);
+  const { data: organization, error: organizationError } = await sb.from("partner_organizations").select("id,status").eq("id", invitation.organization_id).maybeSingle();
+  if (organizationError) throw organizationError;
+  if (!organization || String(organization.status || "") !== "validated") throw new Error("STRUCTURE_NOT_ACTIVE");
   const permissions = { ...RECRUITER_CORE_PERMISSIONS, can_manage_team: invitation.permissions?.can_manage_team === true };
   const now = new Date().toISOString();
   const { error: managerError } = await sb.from("partner_managers").upsert({
@@ -285,6 +300,15 @@ async function applyStructureRecruiterAccess(sb: Client, invitation: any, userId
   if (profileError) throw profileError;
   const { error: roleError } = await sb.from("user_roles").upsert({ user_id: userId, role: "recruteur_structure", granted_by: invitation.invited_by }, { onConflict: "user_id,role", ignoreDuplicates: true });
   if (roleError && roleError.code !== "23505") throw roleError;
+  const { error: auditError } = await sb.from("structure_governance_audit").insert({
+    organization_id: invitation.organization_id,
+    actor_user_id: invitation.invited_by,
+    actor_scope: "structure",
+    event_type: "recruiter_joined",
+    target_user_id: userId,
+    metadata: { invitation_id: invitation.id, internal_role: invitation.internal_role || "Recruteur rattaché à la Structure" },
+  });
+  if (auditError) throw auditError;
 }
 
 export async function acceptAccessInvitation(sb: Client, rawToken: string, userId: string, userEmail: string) {

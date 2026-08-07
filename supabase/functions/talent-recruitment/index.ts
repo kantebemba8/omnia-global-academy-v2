@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,13 +27,13 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
   const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!session) return null;
   const userId = String(session.user_id);
-  const [{ data: roles }, { data: manager }, { data: recruiter }] = await Promise.all([
+  const [{ data: roles }, { data: recruiter }, structureAccess] = await Promise.all([
     sb.from("user_roles").select("role").eq("user_id", userId),
-    sb.from("partner_managers").select("organization_id,is_primary,permissions,status").eq("user_id", userId).eq("status", "actif").maybeSingle(),
     sb.from("talent_recruiter_profiles").select("recruiter_type,organization_id,status").eq("user_id", userId).maybeSingle(),
+    validatedStructureAccess(sb, userId),
   ]);
-  const organizationId = manager?.organization_id ? String(manager.organization_id) : null;
-  let permissions: Record<string, boolean> = (manager?.permissions as Record<string, boolean>) || {};
+  const organizationId = structureAccess?.organizationId || null;
+  let permissions: Record<string, boolean> = structureAccess?.permissions || {};
   if (organizationId) {
     const { data: explicit } = await sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId).eq("user_id", userId).maybeSingle();
     if (explicit) permissions = { ...permissions, ...explicit };
@@ -42,7 +43,7 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
     organization_id: recruiter.organization_id ? String(recruiter.organization_id) : null,
     status: recruiter.status,
   } : null;
-  return { userId, roles: (roles || []).map((r: any) => String(r.role)), organizationId, isPrimaryManager: !!manager?.is_primary, permissions, recruiterProfile };
+  return { userId, roles: (roles || []).map((r: any) => String(r.role)), organizationId, isPrimaryManager: !!structureAccess?.isPrimary, permissions, recruiterProfile };
 }
 
 function hasRole(s: Session, ...roles: string[]) { return roles.some(r => s.roles.includes(r)); }

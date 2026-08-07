@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { validatedStructureAccess } from "../_shared/structure-access.ts";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 import { settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 import {
@@ -113,19 +114,18 @@ async function creatorAllowed(sb: SB, ctx: UserContext, moduleKey: string) {
 async function audienceAllowed(sb: SB, ctx: UserContext, audience: string) {
   if (audience === "global") return true;
   if (isAdmin(ctx)) return false;
+  if (audience === "structure") return Boolean(await validatedStructureAccess(sb, ctx.id));
   const roleMap: Record<string, string[]> = {
     learner: ["apprenant"],
     coach: ["coach"],
     organizer: ["organizer", "organisateur"],
     recruiter: ["recruteur_independant", "recruteur"],
-    structure: ["responsable_structure", "gestionnaire_structure", "structure_admin", "gestionnaire_partenaire", "recruteur_structure"],
     professor: ["professeur"],
   };
   if ((roleMap[audience] || []).some(role => ctx.roles.includes(role))) return true;
   if (audience === "coach") return Boolean((await sb.from("coach_profiles").select("id").eq("user_id", ctx.id).maybeSingle()).data);
   if (audience === "organizer") return Boolean((await sb.from("live_organizer_profiles").select("id").eq("user_id", ctx.id).maybeSingle()).data);
   if (audience === "recruiter") return Boolean((await sb.from("talent_recruiter_profiles").select("id").eq("user_id", ctx.id).eq("status", "approved").maybeSingle()).data);
-  if (audience === "structure") return Boolean((await sb.from("partner_managers").select("id").eq("user_id", ctx.id).eq("status", "actif").maybeSingle()).data);
   return false;
 }
 
