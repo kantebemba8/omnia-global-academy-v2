@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,20 +104,23 @@ Deno.serve(async (req: Request) => {
         })().catch(() => {});
       }
 
-      // Notify instructor via Brevo
+      // Notification transactionnelle centralisée via Brevo.
       const { data: u } = await sb.from("users").select("email,full_name").eq("id", cr.instructor_id).maybeSingle();
-      const brevoKey = Deno.env.get("BREVO_API_KEY");
-      if (brevoKey && u) {
-        const uu = u as { email: string; full_name: string };
-        await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            templateId: 3,
-            to: [{ email: uu.email, name: uu.full_name }],
-            params: { STATUS: "Publiée", PRIX: String(final_price_xof ?? "") },
-            sender: { name: "Omnia Global Academy", email: "support@omniaglobalacademy.com" },
-          }),
+      if (u?.email) {
+        await sendOmniaEmail({
+          sb,
+          userId: cr.instructor_id,
+          to: { email: String(u.email), name: String(u.full_name || "") || undefined },
+          templateKey: "status_update",
+          params: {
+            PRENOM: u.full_name || "",
+            FORMATION_TITRE: cr.title,
+            STATUT: "Formation publiée",
+            MESSAGE_SPECIFIQUE: final_price_xof != null
+              ? `Votre formation est publiée. Prix final : ${Number(final_price_xof).toLocaleString("fr-FR")} XOF.`
+              : "Votre formation est publiée sur Omnia Global Academy.",
+            ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/formations`,
+          },
         });
       }
     } else if (action === "reject") {

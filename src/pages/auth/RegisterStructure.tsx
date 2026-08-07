@@ -83,7 +83,7 @@ export function RegisterStructure() {
     password: '',
     confirm_password: '',
     allow_email: true,
-    allow_sms: true,
+    allow_sms: false,
     subscribe_newsletter: false,
   });
 
@@ -135,7 +135,7 @@ export function RegisterStructure() {
           <CheckCircle size={56} style={{ color: '#1E7A52' }} />
           <h2 className="text-xl font-bold" style={{ color: '#002050' }}>Demande envoyée</h2>
           <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>
-            Votre demande d'inscription a bien été reçue.<br />
+            Votre adresse e-mail a été confirmée et votre demande a bien été reçue.<br />
             Elle est en attente de validation par notre équipe.<br />
             Vous serez notifié(e) par email dès qu’une décision sera disponible.
           </p>
@@ -233,14 +233,17 @@ export function RegisterStructure() {
       const structData = await structRes.json().catch(() => ({}));
       if (!structRes.ok || !structData.success) {
         if (structData.error === 'STRUCTURE_ALREADY_EXISTS') {
-          setSuccess(true);
+          setRegistrationSessionToken('');
+          navigate('/verifier-otp', { state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription' } });
           return;
         }
         throw new Error(structData.message ?? structData.error ?? 'Erreur lors de la création de la structure');
       }
 
       setRegistrationSessionToken('');
-      setSuccess(true);
+      navigate('/verifier-otp', {
+        state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription' },
+      });
     } catch (err) {
       setError((err as Error).message ?? 'Une erreur est survenue');
     } finally {

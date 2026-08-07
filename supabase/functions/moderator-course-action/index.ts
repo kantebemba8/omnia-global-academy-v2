@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
@@ -61,22 +62,26 @@ async function notifyInstructor(
   instructorId: string,
   params: Record<string, string>,
 ) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) return;
   const { data: instructor } = await sb.from("users").select("email,full_name").eq("id", instructorId).maybeSingle();
   if (!instructor?.email) return;
-
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      templateId: 3,
-      to: [{ email: instructor.email, name: instructor.full_name || "Formateur" }],
-      params,
-      sender: { name: "Omnia Global Academy", email: "support@omniaglobalacademy.com" },
-    }),
+  const status = params.STATUS === "rejetee" ? "Formation non validée" : "Modifications demandées";
+  const comment = params.REASON || params.COMMENT || "";
+  await sendOmniaEmail({
+    sb,
+    userId: instructorId,
+    to: { email: String(instructor.email), name: String(instructor.full_name || "") || undefined },
+    templateKey: "status_update",
+    params: {
+      PRENOM: instructor.full_name || "",
+      FORMATION_TITRE: params.COURSE_TITLE || "Formation",
+      STATUT: status,
+      MESSAGE_SPECIFIQUE: params.STATUS === "rejetee"
+        ? "Votre formation n’a pas été validée. Consultez le motif avant de poursuivre."
+        : "Des modifications sont nécessaires avant la prochaine étape de validation.",
+      COMMENTAIRE: comment,
+      ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/formations`,
+    },
   });
-  if (!response.ok) console.error("moderator-course-action: notification failed", response.status);
 }
 
 Deno.serve(async (req: Request) => {

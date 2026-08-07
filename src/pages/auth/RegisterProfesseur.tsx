@@ -76,7 +76,7 @@ export function RegisterProfesseur() {
     expertise_domain: '',
     bio: '',
     allow_email: true,
-    allow_sms: true,
+    allow_sms: false,
     allow_push: false,
     subscribe_newsletter: false,
   });
@@ -130,7 +130,7 @@ export function RegisterProfesseur() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { phone_number, purpose: 'inscription', user_id: data.user_id },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');

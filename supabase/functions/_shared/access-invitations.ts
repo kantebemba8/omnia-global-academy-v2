@@ -1,5 +1,6 @@
 import { generateOpaqueToken, sha256Hex } from "./auth-security.ts";
 import { appendModeratorTeamAudit } from "./moderator-access.ts";
+import { sendOmniaEmail } from "./brevo-mail.ts";
 
 export type AccessInvitationType = "moderator" | "structure_team" | "structure_recruiter";
 
@@ -29,22 +30,13 @@ function normalizedEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
 
-function escapeHtml(value: unknown) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 function invitationLabel(type: AccessInvitationType) {
   if (type === "moderator") return "missions de modération Omnia";
   if (type === "structure_recruiter") return "équipe de recrutement d’une Structure";
   return "équipe interne d’une Structure";
 }
 
-async function sendInvitationEmail(input: {
+async function sendInvitationEmail(sb: Client, input: {
   email: string;
   fullName?: string | null;
   invitationType: AccessInvitationType;
@@ -52,34 +44,18 @@ async function sendInvitationEmail(input: {
   organizationName?: string | null;
   message?: string | null;
 }) {
-  const apiKey = Deno.env.get("BREVO_API_KEY") || "";
-  if (!apiKey) return false;
-  const displayName = escapeHtml(input.fullName || input.email.split("@")[0] || "");
-  const context = input.organizationName
-    ? `La Structure <strong>${escapeHtml(input.organizationName)}</strong> vous invite à rejoindre ${invitationLabel(input.invitationType)}.`
-    : `L’Administration Omnia vous invite à rejoindre les ${invitationLabel(input.invitationType)}.`;
-  const note = input.message ? `<p style="color:#475467">${escapeHtml(input.message)}</p>` : "";
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: { "api-key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      sender: {
-        name: "Omnia Global Academy",
-        email: Deno.env.get("BREVO_SENDER_EMAIL") || "support@omniaglobalacademy.com",
-      },
-      to: [{ email: input.email, name: input.fullName || undefined }],
-      subject: "Invitation professionnelle — Omnia Global Academy",
-      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:580px;margin:auto;color:#1f2937">
-        <div style="border-top:5px solid #BF8813;padding:26px 4px 14px"><h1 style="font-size:22px;color:#002050;margin:0">Omnia Global Academy</h1></div>
-        <div style="border:1px solid #E4E7EC;padding:28px"><p>Bonjour ${displayName},</p><p>${context}</p>${note}
-        <p>Utilisez le bouton ci-dessous. Si vous possédez déjà un compte Omnia, connectez-vous avec cette adresse e-mail. Sinon, créez votre compte personnel.</p>
-        <p style="margin:26px 0"><a href="${escapeHtml(input.invitationUrl)}" style="display:inline-block;background:#002050;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Examiner l’invitation</a></p>
-        <p style="font-size:12px;color:#667085">Ce lien est personnel, expire automatiquement et ne contient aucun mot de passe.</p></div>
-      </div>`,
-    }),
-  }).catch(() => null);
-  if (!response?.ok) console.error("access invitation email failed", response?.status);
-  return !!response?.ok;
+  return await sendOmniaEmail({
+    sb,
+    to: { email: input.email, name: input.fullName || undefined },
+    templateKey: "platform_invitation",
+    params: {
+      PRENOM: input.fullName || "",
+      ROLE_NAME: invitationLabel(input.invitationType),
+      ORGANIZATION_NAME: input.organizationName || "",
+      MESSAGE_SPECIFIQUE: input.message || "",
+      LOGIN_URL: input.invitationUrl,
+    },
+  });
 }
 
 export async function createAccessInvitation(sb: Client, input: CreateInvitationInput) {
@@ -136,7 +112,7 @@ export async function createAccessInvitation(sb: Client, input: CreateInvitation
     const { data: organization } = await sb.from("partner_organizations").select("org_name").eq("id", input.organizationId).maybeSingle();
     organizationName = organization?.org_name || null;
   }
-  const emailSent = await sendInvitationEmail({
+  const emailSent = await sendInvitationEmail(sb, {
     email,
     fullName: payload.full_name,
     invitationType: input.invitationType,

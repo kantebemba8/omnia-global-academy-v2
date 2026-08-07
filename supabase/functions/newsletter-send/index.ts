@@ -1,27 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { makeCorsHeaders, sha256Hex } from "../_shared/auth-security.ts";
+import { brevoEmailConfig, sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { brevoSyncTemplates, omniaEmailLayout } from "../_shared/email-templates.ts";
+import {
+  NEWSLETTER_CONSENT_VERSION,
+  normalizeNewsletterEmail,
+  setNewsletterConsent,
+  syncBrevoNewsletterContact,
+} from "../_shared/newsletter.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
-};
-
-const CONSENT_VERSION = "2026-08";
 const ALLOWED_LOCALES = new Set(["fr", "en", "es", "pt", "ar", "zh", "ru", "de"]);
-
 type DbClient = ReturnType<typeof createClient>;
 
-function json(data: unknown, status = 200) {
+function json(data: unknown, status = 200, corsHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function cleanEmail(value: unknown) {
-  const email = String(value || "").trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 255 ? email : "";
 }
 
 function cleanLocale(value: unknown) {
@@ -31,11 +27,6 @@ function cleanLocale(value: unknown) {
 
 function cleanSource(value: unknown) {
   return String(value || "public_footer").replace(/[^a-z0-9_-]/gi, "").slice(0, 60) || "public_footer";
-}
-
-async function hashValue(value: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function sessionToken(req: Request) {
@@ -61,110 +52,134 @@ async function requireAdmin(sb: DbClient, req: Request) {
   return role ? String(session.user_id) : null;
 }
 
-function brevoConfig() {
-  const apiKey = Deno.env.get("BREVO_API_KEY") || "";
-  const listId = Number.parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7", 10);
-  return { apiKey, listId: Number.isFinite(listId) && listId > 0 ? listId : 7 };
+function newsletterListId() {
+  const parsed = Number.parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 7;
 }
 
-async function syncBrevoContact(email: string, active: boolean) {
-  const { apiKey, listId } = brevoConfig();
-  if (!apiKey) return false;
-  try {
-    if (active) {
-      const response = await fetch("https://api.brevo.com/v3/contacts", {
-        method: "POST",
-        headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
-        body: JSON.stringify({ email, listIds: [listId], updateEnabled: true }),
-      });
-      return response.ok;
-    }
-    const response = await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(email)}/lists/${listId}`, {
-      method: "DELETE",
-      headers: { accept: "application/json", "api-key": apiKey },
-    });
-    return response.ok || response.status === 404;
-  } catch (error) {
-    console.error("newsletter Brevo sync", error);
-    return false;
-  }
-}
+async function syncBrevoWebhook() {
+  const { apiKey } = brevoEmailConfig();
+  if (!apiKey) throw new Error("BREVO_NOT_CONFIGURED");
+  const webhookToken = Deno.env.get("BREVO_WEBHOOK_TOKEN") || "";
+  if (!webhookToken) throw new Error("BREVO_WEBHOOK_TOKEN_MISSING");
+  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  if (!supabaseUrl) throw new Error("SUPABASE_URL_MISSING");
+  const webhookUrl = `${supabaseUrl}/functions/v1/brevo-webhook-bounce`;
+  const events = ["delivered", "hardBounce", "softBounce", "blocked", "spam", "invalid", "unsubscribed"];
+  const headers = { accept: "application/json", "content-type": "application/json", "api-key": apiKey };
 
-async function registerConsent(
-  sb: DbClient,
-  params: {
-    email: string;
-    active: boolean;
-    source: string;
-    locale: string;
-    userId?: string | null;
-    req: Request;
-  },
-) {
-  const now = new Date().toISOString();
-  const ip = params.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || params.req.headers.get("cf-connecting-ip")?.trim()
-    || "unknown";
-  const ipHash = await hashValue(`${ip}:${Deno.env.get("NEWSLETTER_HASH_SALT") || "omnia-newsletter"}`);
-
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await sb.from("newsletter_consent_events")
-    .select("id", { count: "exact", head: true })
-    .eq("ip_hash", ipHash)
-    .gte("created_at", oneHourAgo);
-  if ((count || 0) >= 12) throw new Error("RATE_LIMITED");
-
-  const { data: existing } = await sb.from("newsletter_subscribers")
-    .select("id,status")
-    .eq("email", params.email)
-    .maybeSingle();
-  const previousStatus = String(existing?.status || "");
-
-  const subscriberPayload = {
-    email: params.email,
-    user_id: params.userId || null,
-    status: params.active ? "active" : "unsubscribed",
-    locale: params.locale,
-    source: params.source,
-    consent_version: CONSENT_VERSION,
-    consented_at: params.active ? now : null,
-    unsubscribed_at: params.active ? null : now,
-    updated_at: now,
+  const listResponse = await fetch("https://api.brevo.com/v3/webhooks?type=transactional&sort=desc", { headers });
+  if (!listResponse.ok) throw new Error(`BREVO_WEBHOOK_LIST_FAILED:${await listResponse.text()}`);
+  const listData = await listResponse.json() as { webhooks?: Array<{ id: number; url?: string; type?: string }> };
+  const existing = (listData.webhooks || []).find(item => item.type === "transactional" && item.url === webhookUrl);
+  const payload = {
+    url: webhookUrl,
+    description: "Omnia Global Academy — suivi transactionnel Brevo",
+    events,
+    type: "transactional",
+    channel: "email",
+    batched: false,
+    auth: { type: "bearer", token: webhookToken },
   };
 
-  const { data: subscriber, error } = existing?.id
-    ? await sb.from("newsletter_subscribers").update(subscriberPayload).eq("id", existing.id).select("id").single()
-    : await sb.from("newsletter_subscribers").insert(subscriberPayload).select("id").single();
-  if (error) throw error;
-
-  const action = params.active
-    ? (previousStatus === "unsubscribed" ? "resubscribe" : params.source === "registration" ? "registration_opt_in" : params.source === "profile" ? "profile_opt_in" : "subscribe")
-    : (params.source === "profile" ? "profile_opt_out" : "unsubscribe");
-
-  const { error: eventError } = await sb.from("newsletter_consent_events").insert({
-    subscriber_id: subscriber.id,
-    email: params.email,
-    user_id: params.userId || null,
-    action,
-    source: params.source,
-    locale: params.locale,
-    consent_version: CONSENT_VERSION,
-    ip_hash: ipHash,
-    user_agent: String(params.req.headers.get("user-agent") || "").slice(0, 500),
-  });
-  if (eventError) throw eventError;
-
-  const providerSynced = await syncBrevoContact(params.email, params.active);
-  if (providerSynced) {
-    await sb.from("newsletter_subscribers")
-      .update({ provider_synced_at: now })
-      .eq("id", subscriber.id);
+  if (existing?.id) {
+    const response = await fetch(`https://api.brevo.com/v3/webhooks/${existing.id}`, {
+      method: "PUT", headers, body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`BREVO_WEBHOOK_UPDATE_FAILED:${await response.text()}`);
+    return { id: existing.id, status: "updated", url: webhookUrl };
   }
-  return { subscriberId: subscriber.id, providerSynced };
+
+  const response = await fetch("https://api.brevo.com/v3/webhooks", {
+    method: "POST", headers, body: JSON.stringify(payload),
+  });
+  const detail = await response.text();
+  if (!response.ok) throw new Error(`BREVO_WEBHOOK_CREATE_FAILED:${detail}`);
+  const data = JSON.parse(detail || "{}") as { id?: number };
+  return { id: data.id || null, status: "created", url: webhookUrl };
+}
+
+async function syncBrevoTemplates(sb: DbClient) {
+  const { apiKey } = brevoEmailConfig();
+  if (!apiKey) throw new Error("BREVO_NOT_CONFIGURED");
+
+  const listResponse = await fetch("https://api.brevo.com/v3/smtp/templates?limit=1000&sort=desc", {
+    headers: { accept: "application/json", "api-key": apiKey },
+  });
+  if (!listResponse.ok) throw new Error(`BREVO_TEMPLATE_LIST_FAILED:${await listResponse.text()}`);
+  const listData = await listResponse.json() as { templates?: Array<{ id: number; name?: string }> };
+  const existing = new Map((listData.templates || []).map(item => [String(item.name || ""), Number(item.id)]));
+  const results: Array<{ key: string; id?: number; status: string; error?: string }> = [];
+
+  for (const template of brevoSyncTemplates()) {
+    try {
+      const existingId = existing.get(template.templateName);
+      let providerTemplateId = existingId;
+      if (existingId) {
+        const response = await fetch(`https://api.brevo.com/v3/smtp/templates/${existingId}`, {
+          method: "PUT",
+          headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
+          body: JSON.stringify({
+            templateName: template.templateName,
+            subject: template.subject,
+            htmlContent: template.htmlContent,
+            sender: template.sender,
+            replyTo: template.replyTo,
+            tag: template.tag,
+            isActive: true,
+          }),
+        });
+        if (!response.ok) throw new Error(await response.text());
+      } else {
+        const response = await fetch("https://api.brevo.com/v3/smtp/templates", {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
+          body: JSON.stringify({
+            templateName: template.templateName,
+            subject: template.subject,
+            htmlContent: template.htmlContent,
+            sender: template.sender,
+            replyTo: template.replyTo,
+            tag: template.tag,
+            isActive: true,
+          }),
+        });
+        const detail = await response.text();
+        if (!response.ok) throw new Error(detail);
+        providerTemplateId = Number((JSON.parse(detail || "{}") as { id?: number }).id || 0) || undefined;
+      }
+
+      await sb.from("email_template_registry").upsert({
+        template_key: template.key,
+        template_name: template.templateName,
+        provider: "brevo",
+        provider_template_id: providerTemplateId || null,
+        provider_synced_at: new Date().toISOString(),
+        provider_last_error: null,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "template_key" });
+      results.push({ key: template.key, id: providerTemplateId, status: "synced" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await sb.from("email_template_registry").upsert({
+        template_key: template.key,
+        template_name: template.templateName,
+        provider: "brevo",
+        provider_last_error: message.slice(0, 2000),
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "template_key" });
+      results.push({ key: template.key, status: "error", error: message });
+    }
+  }
+  return results;
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = makeCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405, corsHeaders);
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -172,140 +187,190 @@ Deno.serve(async (req: Request) => {
     const action = String(body.action || "send");
 
     if (action === "subscribe" || action === "unsubscribe") {
-      if (String(body.website || "").trim()) return json({ success: true });
-      const email = cleanEmail(body.email);
-      if (!email) return json({ error: "INVALID_EMAIL", message: "Saisissez une adresse e-mail valide." }, 400);
+      if (String(body.website || "").trim()) return json({ success: true }, 200, corsHeaders);
+      const email = normalizeNewsletterEmail(body.email);
+      if (!email) return json({ error: "INVALID_EMAIL", message: "Saisissez une adresse e-mail valide." }, 400, corsHeaders);
       if (action === "subscribe" && body.consent !== true) {
-        return json({ error: "CONSENT_REQUIRED", message: "Le consentement est obligatoire." }, 400);
+        return json({ error: "CONSENT_REQUIRED", message: "Le consentement est obligatoire." }, 400, corsHeaders);
       }
-      const result = await registerConsent(sb, {
+
+      const ip = req.headers.get("cf-connecting-ip")?.trim()
+        || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+        || "unknown";
+      const ipHash = await sha256Hex(`${ip}:${Deno.env.get("NEWSLETTER_HASH_SALT") || "omnia-newsletter"}`);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await sb.from("newsletter_consent_events").select("id", { count: "exact", head: true }).eq("ip_hash", ipHash).gte("created_at", oneHourAgo);
+      if ((count || 0) >= 12) return json({ error: "RATE_LIMITED", message: "Trop de tentatives. Réessayez plus tard." }, 429, corsHeaders);
+
+      const result = await setNewsletterConsent(sb, {
         email,
         active: action === "subscribe",
         source: cleanSource(body.source),
         locale: cleanLocale(body.locale),
-        req,
+        ipHash,
+        userAgent: req.headers.get("user-agent") || null,
       });
       return json({
         success: true,
         status: action === "subscribe" ? "active" : "unsubscribed",
         provider_synced: result.providerSynced,
         message: action === "subscribe"
-          ? "Votre inscription à la newsletter est enregistrée."
+          ? "Votre inscription à Omnia Newsletter est enregistrée."
           : "Votre désinscription est enregistrée.",
-      });
+      }, 200, corsHeaders);
     }
 
     const adminUserId = await requireAdmin(sb, req);
-    if (!adminUserId) return json({ error: "FORBIDDEN" }, 403);
+    if (!adminUserId) return json({ error: "FORBIDDEN" }, 403, corsHeaders);
 
     if (action === "admin_list") {
-      const [{ data: campaigns, error: campaignsError }, { count: active }, { count: unsubscribed }] = await Promise.all([
+      const [
+        { data: campaigns, error: campaignsError },
+        { count: active }, { count: unsubscribed }, { count: syncErrors }, { count: pendingSync },
+        { data: templates },
+      ] = await Promise.all([
         sb.from("newsletter_campaigns").select("id,subject,channel,status,sent_at,scheduled_at,recipients_count,provider,provider_campaign_id,error_message,created_at").order("created_at", { ascending: false }).limit(50),
         sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "active"),
         sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "unsubscribed"),
+        sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "active").eq("provider_sync_status", "error"),
+        sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "active").eq("provider_sync_status", "pending"),
+        sb.from("email_template_registry").select("template_key,template_name,provider_template_id,provider_synced_at,provider_last_error,is_active").order("template_key"),
       ]);
       if (campaignsError) throw campaignsError;
-      return json({ success: true, campaigns: campaigns || [], stats: { active: active || 0, unsubscribed: unsubscribed || 0 } });
+      return json({
+        success: true,
+        campaigns: campaigns || [],
+        stats: { active: active || 0, unsubscribed: unsubscribed || 0, sync_errors: syncErrors || 0, pending_sync: pendingSync || 0 },
+        templates: templates || [],
+        consent_version: NEWSLETTER_CONSENT_VERSION,
+      }, 200, corsHeaders);
     }
+
+    if (action === "sync_templates") {
+      const results = await syncBrevoTemplates(sb);
+      const failed = results.filter(item => item.status === "error");
+      return json({ success: failed.length === 0, results, failed: failed.length }, failed.length ? 502 : 200, corsHeaders);
+    }
+
+    if (action === "sync_webhook") {
+      const webhook = await syncBrevoWebhook();
+      return json({ success: true, webhook }, 200, corsHeaders);
+    }
+
+    if (action === "resync_contacts") {
+      const { data: subscribers, error } = await sb.from("newsletter_subscribers")
+        .select("id,email,user_id")
+        .eq("status", "active")
+        .neq("provider_sync_status", "synced")
+        .limit(100);
+      if (error) throw error;
+      let synced = 0;
+      let failed = 0;
+      for (const subscriber of subscribers || []) {
+        const result = await syncBrevoNewsletterContact({ email: String(subscriber.email), active: true });
+        await sb.from("newsletter_subscribers").update({
+          provider_sync_status: result.ok ? "synced" : "error",
+          provider_synced_at: result.ok ? new Date().toISOString() : null,
+          provider_last_error: result.ok ? null : result.error || "BREVO_SYNC_FAILED",
+        }).eq("id", subscriber.id);
+        result.ok ? synced++ : failed++;
+      }
+      return json({ success: failed === 0, processed: (subscribers || []).length, synced, failed, remaining_hint: (subscribers || []).length === 100 }, failed ? 207 : 200, corsHeaders);
+    }
+
+    if (action === "test_email") {
+      const { data: admin } = await sb.from("users").select("email,full_name").eq("id", adminUserId).single();
+      const sent = await sendOmniaEmail({
+        to: { email: String(admin.email), name: String(admin.full_name || "") },
+        templateKey: "status_update",
+        params: {
+          PRENOM: String(admin.full_name || "").split(" ")[0],
+          FORMATION_TITRE: "Configuration e-mail",
+          STATUT: "Test Brevo réussi",
+          MESSAGE_SPECIFIQUE: "Cet e-mail confirme que l’envoi transactionnel Omnia vers Brevo fonctionne.",
+          ACTION_URL: `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/admin/cms`,
+        },
+        userId: adminUserId,
+        sb,
+      });
+      return json({ success: sent }, sent ? 200 : 502, corsHeaders);
+    }
+
+    if (action !== "send") return json({ error: "UNKNOWN_ACTION" }, 400, corsHeaders);
 
     const subject = String(body.subject || "").trim().slice(0, 500);
-    const contentHtml = String(body.content_html || "");
-    const channel = body.channel === "sms" ? "sms" : "email";
-    const smsText = String(body.sms_text || "").trim().slice(0, 160);
+    const contentHtml = String(body.content_html || "").trim();
     const scheduleAt = body.schedule_at ? new Date(String(body.schedule_at)) : null;
-
-    if (!subject) return json({ error: "MISSING_SUBJECT" }, 400);
-    if (channel === "email" && !contentHtml.trim()) return json({ error: "MISSING_CONTENT_HTML" }, 400);
-    if (channel === "sms" && !smsText) return json({ error: "MISSING_SMS_TEXT" }, 400);
+    if (!subject) return json({ error: "MISSING_SUBJECT" }, 400, corsHeaders);
+    if (!contentHtml) return json({ error: "MISSING_CONTENT_HTML" }, 400, corsHeaders);
     if (scheduleAt && (Number.isNaN(scheduleAt.getTime()) || scheduleAt.getTime() <= Date.now())) {
-      return json({ error: "INVALID_SCHEDULE_DATE" }, 400);
+      return json({ error: "INVALID_SCHEDULE_DATE" }, 400, corsHeaders);
     }
 
-    const { apiKey, listId } = brevoConfig();
-    if (!apiKey) return json({ error: "BREVO_NOT_CONFIGURED" }, 503);
+    const { apiKey, senderEmail, senderName } = brevoEmailConfig();
+    if (!apiKey) return json({ error: "BREVO_NOT_CONFIGURED" }, 503, corsHeaders);
 
-    const { count: recipientsCount } = await sb.from("newsletter_subscribers")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "active");
+    const [{ count: recipientsCount }, { count: unsyncedCount }] = await Promise.all([
+      sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "active"),
+      sb.from("newsletter_subscribers").select("id", { count: "exact", head: true }).eq("status", "active").neq("provider_sync_status", "synced"),
+    ]);
+    if ((recipientsCount || 0) < 1) return json({ error: "NO_ACTIVE_SUBSCRIBERS" }, 400, corsHeaders);
+    if ((unsyncedCount || 0) > 0) {
+      return json({ error: "NEWSLETTER_SYNC_REQUIRED", message: `${unsyncedCount} abonné(s) actif(s) ne sont pas encore synchronisés avec Brevo.` }, 409, corsHeaders);
+    }
 
-    const campaignPayload = channel === "email"
-      ? {
-          name: `Newsletter ${new Date().toISOString().slice(0, 10)}`,
-          subject,
-          sender: {
-            name: Deno.env.get("BREVO_SENDER_NAME") || "Omnia Global Academy",
-            email: Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
-          },
-          type: "classic",
-          htmlContent: contentHtml,
-          recipients: { listIds: [listId] },
-          ...(scheduleAt ? { scheduledAt: scheduleAt.toISOString() } : {}),
-        }
-      : {
-          name: `SMS ${new Date().toISOString().slice(0, 10)}`,
-          sender: Deno.env.get("BREVO_SMS_SENDER") || "OmniaAcad",
-          content: smsText,
-          recipients: { listIds: [listId] },
-          ...(scheduleAt ? { scheduledAt: scheduleAt.toISOString() } : {}),
-        };
+    const preferencesUrl = `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/newsletter`;
+    const brandedHtml = omniaEmailLayout({
+      title: subject,
+      preheader: subject,
+      bodyHtml: `${contentHtml}<p style="margin:32px 0 0;padding-top:18px;border-top:1px solid #e7ebf0;color:#6b7788;font-size:12px">Vous recevez cet e-mail parce que vous êtes inscrit(e) à Omnia Newsletter. <a href="${preferencesUrl}" style="color:#002050">Gérer mon abonnement</a>.</p>`,
+      footerText: "Omnia Newsletter — communication envoyée uniquement aux abonnés ayant donné leur consentement.",
+    });
 
-    const createUrl = channel === "email"
-      ? "https://api.brevo.com/v3/emailCampaigns"
-      : "https://api.brevo.com/v3/smsCampaigns";
-    const createResponse = await fetch(createUrl, {
+    const campaignPayload = {
+      name: `Omnia Newsletter — ${new Date().toISOString().slice(0, 10)} — ${subject.slice(0, 80)}`,
+      subject,
+      sender: { name: senderName, email: senderEmail },
+      type: "classic",
+      htmlContent: brandedHtml,
+      recipients: { listIds: [newsletterListId()] },
+      ...(scheduleAt ? { scheduledAt: scheduleAt.toISOString() } : {}),
+    };
+
+    const createResponse = await fetch("https://api.brevo.com/v3/emailCampaigns", {
       method: "POST",
       headers: { "api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify(campaignPayload),
     });
     const createText = await createResponse.text();
     let createData: Record<string, unknown> = {};
-    if (createText) {
-      try {
-        createData = JSON.parse(createText) as Record<string, unknown>;
-      } catch {
-        createData = {};
-      }
-    }
+    try { createData = JSON.parse(createText || "{}") as Record<string, unknown>; } catch { /* noop */ }
     if (!createResponse.ok || !createData.id) {
       await sb.from("newsletter_campaigns").insert({
-        subject,
-        content_html: channel === "email" ? contentHtml : smsText,
-        channel,
-        status: "failed",
-        sent_by: adminUserId,
-        recipients_count: recipientsCount || 0,
-        error_message: createText.slice(0, 2000),
+        subject, content_html: contentHtml, channel: "email", status: "failed", sent_by: adminUserId,
+        recipients_count: recipientsCount || 0, error_message: createText.slice(0, 2000), provider: "brevo",
       });
-      return json({ error: "BREVO_CREATE_FAILED", detail: createText }, 502);
+      return json({ error: "BREVO_CREATE_FAILED", detail: createText }, 502, corsHeaders);
     }
 
     const campaignId = String(createData.id);
     if (!scheduleAt) {
-      const sendUrl = channel === "email"
-        ? `https://api.brevo.com/v3/emailCampaigns/${campaignId}/sendNow`
-        : `https://api.brevo.com/v3/smsCampaigns/${campaignId}/sendNow`;
-      const sendResponse = await fetch(sendUrl, { method: "POST", headers: { "api-key": apiKey } });
+      const sendResponse = await fetch(`https://api.brevo.com/v3/emailCampaigns/${campaignId}/sendNow`, { method: "POST", headers: { "api-key": apiKey } });
       if (!sendResponse.ok) {
         const detail = await sendResponse.text();
         await sb.from("newsletter_campaigns").insert({
-          subject,
-          content_html: channel === "email" ? contentHtml : smsText,
-          channel,
-          status: "failed",
-          sent_by: adminUserId,
-          recipients_count: recipientsCount || 0,
-          provider_campaign_id: campaignId,
-          error_message: detail.slice(0, 2000),
+          subject, content_html: contentHtml, channel: "email", status: "failed", sent_by: adminUserId,
+          recipients_count: recipientsCount || 0, provider_campaign_id: campaignId, error_message: detail.slice(0, 2000), provider: "brevo",
         });
-        return json({ error: "BREVO_SEND_FAILED", detail, campaign_id: campaignId }, 502);
+        return json({ error: "BREVO_SEND_FAILED", detail, campaign_id: campaignId }, 502, corsHeaders);
       }
     }
 
     const status = scheduleAt ? "scheduled" : "sent";
     const { data: stored, error: storeError } = await sb.from("newsletter_campaigns").insert({
       subject,
-      content_html: channel === "email" ? contentHtml : smsText,
-      channel,
+      content_html: contentHtml,
+      channel: "email",
       status,
       sent_at: scheduleAt ? null : new Date().toISOString(),
       scheduled_at: scheduleAt?.toISOString() || null,
@@ -313,15 +378,15 @@ Deno.serve(async (req: Request) => {
       recipients_count: recipientsCount || 0,
       provider: "brevo",
       provider_campaign_id: campaignId,
-      metadata: { list_id: listId },
+      metadata: { list_id: newsletterListId(), consent_version: NEWSLETTER_CONSENT_VERSION },
     }).select("id").single();
     if (storeError) throw storeError;
 
-    return json({ success: true, campaign_id: campaignId, record_id: stored.id, status, recipients_count: recipientsCount || 0 });
+    return json({ success: true, campaign_id: campaignId, record_id: stored.id, status, recipients_count: recipientsCount || 0 }, 200, corsHeaders);
   } catch (error) {
     console.error("newsletter-send", error);
     const message = error instanceof Error ? error.message : "SERVER_ERROR";
-    if (message === "RATE_LIMITED") return json({ error: "RATE_LIMITED", message: "Trop de tentatives. Réessayez plus tard." }, 429);
-    return json({ error: "SERVER_ERROR", message: "Le service newsletter est momentanément indisponible." }, 500);
+    if (message === "BREVO_NOT_CONFIGURED") return json({ error: message }, 503, makeCorsHeaders(req));
+    return json({ error: "SERVER_ERROR", message: "Le service e-mail est momentanément indisponible." }, 500, makeCorsHeaders(req));
   }
 });

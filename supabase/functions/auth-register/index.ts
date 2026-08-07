@@ -3,70 +3,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
 import {
   consumeRateLimit,
-  createHashedOtp,
+  createHashedEmailOtp,
   generateOpaqueToken,
   getClientIP,
   makeCorsHeaders,
   sha256Hex,
 } from "../_shared/auth-security.ts";
 import { acceptAccessInvitation, inspectAccessInvitation } from "../_shared/access-invitations.ts";
-async function sendSMS(phone: string, otp: string, email?: string, fullName?: string): Promise<void> {
-  const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
-  if (!brevoKey) return;
-
-  const message = `Omnia Academy : Votre code de vérification est ${otp}. Valable 5 minutes. Ne le partagez jamais.`;
-
-  const res = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-    method: "POST",
-    headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: "OmniaAcad",
-      recipient: phone,
-      content: message,
-      type: "transactional",
-    }),
-  }).catch(() => null);
-
-  if ((!res || !res.ok) && email) {
-    const prenom = fullName?.split(" ")[0] || "";
-    await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "api-key": brevoKey,
-      },
-      body: JSON.stringify({
-        sender: { name: "Omnia Global Academy", email: "admission@omniaglobalacademy.com" },
-        to: [{ email }],
-        subject: "Votre code de vérification — Omnia Academy",
-        htmlContent: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px">
-          <div style="background:#002050;padding:24px;text-align:center;border-radius:8px 8px 0 0">
-            <h2 style="color:#BF8813;margin:0">OMNIA GLOBAL ACADEMY</h2>
-          </div>
-          <div style="background:#fff;padding:32px;border:1px solid #E4E7EC;text-align:center">
-            <p style="color:#374151">Bonjour ${prenom},</p>
-            <p style="color:#374151">SMS indisponible. Voici votre code de vérification :</p>
-            <div style="font-size:36px;font-weight:900;color:#002050;
-              letter-spacing:8px;padding:16px;background:#F8F9FA;
-              border-radius:8px;margin:16px 0">${otp}</div>
-            <p style="color:#6B7280;font-size:13px">Valable 5 minutes. Ne le partagez jamais.</p>
-          </div>
-          <div style="background:#002050;padding:16px;text-align:center;border-radius:0 0 8px 8px">
-            <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0">
-              admission@omniaglobalacademy.com
-            </p>
-          </div>
-        </div>`,
-      }),
-    }).catch(() => {});
-  }
-}
-
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { setNewsletterConsent } from "../_shared/newsletter.ts";
 function base64ToBytes(b64: string): Uint8Array {
   const binStr = atob(b64);
   const bytes = new Uint8Array(binStr.length);
@@ -95,64 +40,6 @@ async function uploadFile(
   }
 }
 
-
-async function syncRegistrationNewsletter(
-  supabase: ReturnType<typeof createClient>,
-  params: { userId: string; email: string; fullName: string },
-) {
-  const now = new Date().toISOString();
-  const normalizedEmail = params.email.trim().toLowerCase();
-  const { data: existing } = await supabase.from("newsletter_subscribers")
-    .select("id,status")
-    .eq("email", normalizedEmail)
-    .maybeSingle();
-  const payload = {
-    email: normalizedEmail,
-    user_id: params.userId,
-    status: "active",
-    locale: "fr",
-    source: "registration",
-    consent_version: "2026-08",
-    consented_at: now,
-    unsubscribed_at: null,
-    updated_at: now,
-  };
-  const { data: subscriber, error } = existing?.id
-    ? await supabase.from("newsletter_subscribers").update(payload).eq("id", existing.id).select("id").single()
-    : await supabase.from("newsletter_subscribers").insert(payload).select("id").single();
-  if (error) throw error;
-  const { error: eventError } = await supabase.from("newsletter_consent_events").insert({
-    subscriber_id: subscriber.id,
-    email: normalizedEmail,
-    user_id: params.userId,
-    action: existing?.status === "unsubscribed" ? "resubscribe" : "registration_opt_in",
-    source: "registration",
-    locale: "fr",
-    consent_version: "2026-08",
-  });
-  if (eventError) throw eventError;
-
-  const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
-  const brevoListId = Number.parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7", 10) || 7;
-  if (!brevoApiKey) return;
-  try {
-    const response = await fetch("https://api.brevo.com/v3/contacts", {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json", "api-key": brevoApiKey },
-      body: JSON.stringify({
-        email: normalizedEmail,
-        attributes: { FIRSTNAME: params.fullName },
-        listIds: [brevoListId],
-        updateEnabled: true,
-      }),
-    });
-    if (response.ok) {
-      await supabase.from("newsletter_subscribers").update({ provider_synced_at: now }).eq("id", subscriber.id);
-    }
-  } catch (error) {
-    console.error("Brevo newsletter registration sync error:", error);
-  }
-}
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = makeCorsHeaders(req);
@@ -399,7 +286,7 @@ Deno.serve(async (req: Request) => {
         country_code: String(country_code).toUpperCase(),
         status: "en_attente_validation",
         allow_email: body.allow_email ?? true,
-        allow_sms: body.allow_sms ?? true,
+        allow_sms: body.allow_sms ?? false,
         allow_push: body.allow_push ?? false,
         subscribe_newsletter: body.subscribe_newsletter ?? false,
       })
@@ -480,57 +367,66 @@ Deno.serve(async (req: Request) => {
     // Logo et signature établissement retirés de l'inscription
     // Ils seront ajoutés dans le menu Certificats de l'établissement
 
-    // Structure : création du dossier sans OTP, puis validation manuelle par l’Administration Omnia.
-    // Le jeton court sert uniquement à appeler `structure-manage` et créer la fiche Structure.
-    if (["responsable_structure", "etablissement"].includes(role)) {
-      const registrationSessionToken = generateOpaqueToken();
-      await supabase.from("user_sessions").insert({
-        user_id: userId,
-        session_token: registrationSessionToken,
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      });
-
-      if (body.subscribe_newsletter === true) {
-        await syncRegistrationNewsletter(supabase, { userId, email: sanitizedEmail, fullName });
-      }
-      return new Response(JSON.stringify({
-        success: true,
-        user_id: userId,
-        session_token: registrationSessionToken,
-        next_step: "pending_validation",
-      }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Rôles avec vérification téléphonique : envoi OTP.
+    // Toutes les créations de compte confirment désormais l’adresse e-mail.
+    // Le téléphone reste une donnée de compte ; aucun OTP d’inscription n’est envoyé par SMS.
     await supabase
       .from("otp_codes")
       .update({ used: true })
-      .eq("phone_number", sanitizedPhone)
+      .eq("email", sanitizedEmail)
       .eq("purpose", "inscription")
       .eq("used", false);
 
-    const otp = await createHashedOtp(supabase, {
-      phoneNumber: sanitizedPhone,
+    const otp = await createHashedEmailOtp(supabase, {
+      email: sanitizedEmail,
       purpose: "inscription",
       expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       ipAddress,
     });
 
-    await sendSMS(sanitizedPhone, otp, sanitizedEmail, fullName);
-    const { error: smsLogError } = await supabase
-      .from("sms_rate_limits")
-      .insert({ phone_number: sanitizedPhone, ip_address: ipAddress });
-    if (smsLogError) {
-      console.error("sms_rate_limits insert failed:", smsLogError.message);
+    const emailSent = await sendOmniaEmail({
+      to: { email: sanitizedEmail, name: fullName },
+      templateKey: "auth_verification_otp",
+      params: { PRENOM: fullName.split(" ")[0] || fullName, OTP: otp, EXPIRES_MINUTES: 5 },
+      senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+      userId,
+      sb: supabase,
+    });
+    if (!emailSent) {
+      console.error("Registration OTP email delivery failed for user", userId);
     }
 
     if (body.subscribe_newsletter === true) {
-      await syncRegistrationNewsletter(supabase, { userId, email: sanitizedEmail, fullName });
+      try {
+        await setNewsletterConsent(supabase, {
+          userId, email: sanitizedEmail, active: true, source: "registration", locale: "fr",
+          firstName: fullName.split(" ")[0] || fullName, userAgent: req.headers.get("user-agent") || null,
+        });
+      } catch (error) {
+        console.error("Newsletter registration opt-in sync failed", error);
+      }
     }
 
-    return new Response(JSON.stringify({ success: true, user_id: userId, next_step: "verify_otp" }), {
+    // Les Structures ont besoin d’un jeton court pour déposer leur dossier avant
+    // la validation manuelle ; l’adresse e-mail devra néanmoins être confirmée.
+    let registrationSessionToken: string | undefined;
+    if (["responsable_structure", "etablissement"].includes(role)) {
+      registrationSessionToken = generateOpaqueToken();
+      await supabase.from("user_sessions").insert({
+        user_id: userId,
+        session_token: registrationSessionToken,
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      user_id: userId,
+      email: sanitizedEmail,
+      session_token: registrationSessionToken,
+      next_step: "verify_email_otp",
+      delivery: "email",
+      email_sent: emailSent,
+    }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

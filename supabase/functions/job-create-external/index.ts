@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,23 +75,24 @@ Deno.serve(async (req: Request) => {
     .filter((row: any) => row.can_moderate_jobs === true || row.permissions?.can_moderate_jobs === true)
     .map((row: any) => String(row.moderator_user_id));
   if (moderatorIds.length) {
-    const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
-    if (brevoKey) {
-      const { data: modUsers } = await sb.from("users").select("email").in("id", moderatorIds);
-      for (const mu of modUsers ?? []) {
-        fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender: { email: "contact@omniaglobalacademy.com", name: "Omnia Global Academy" },
-            to: [{ email: mu.email }],
-            subject: `Nouvelle offre d'emploi externe à modérer — ${job_title}`,
-            htmlContent: `<p>Une nouvelle offre d'emploi externe de <strong>${company_name}</strong> attend validation : <strong>${job_title}</strong>.</p>`,
-          }),
-        }).catch(() => {});
-      }
+    const { data: modUsers } = await sb.from("users").select("id,email,full_name").in("id", moderatorIds);
+    for (const mu of modUsers ?? []) {
+      if (!mu.email) continue;
+      await sendOmniaEmail({
+        sb,
+        userId: String(mu.id || "") || null,
+        to: { email: String(mu.email), name: String(mu.full_name || "") || undefined },
+        templateKey: "status_update",
+        params: {
+          PRENOM: mu.full_name || "",
+          FORMATION_TITRE: job_title,
+          STATUT: "Offre d’emploi à modérer",
+          MESSAGE_SPECIFIQUE: `Une nouvelle offre externe de ${company_name} attend votre contrôle.`,
+          ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/moderateur`,
+        },
+      });
     }
   }
 
-  return json({ success: true, message: "Votre offre est en cours de validation (24-48h ouvrées)." });
+  return json({ success: true, message: "Votre offre est enregistrée et sera examinée par l’équipe de modération." });
 });

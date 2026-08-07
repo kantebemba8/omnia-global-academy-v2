@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
+import { setNewsletterConsent } from "../_shared/newsletter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -197,66 +198,6 @@ async function ignoreFailure(operation: PromiseLike<unknown>) {
     await operation;
   } catch {
     // Synchronisation secondaire : le profil unifié reste la source de vérité.
-  }
-}
-
-async function syncNewsletterPreference(
-  sb: DbClient,
-  params: { userId: string; email: string; active: boolean; locale?: string | null },
-) {
-  const email = params.email.trim().toLowerCase();
-  if (!email) return;
-  const now = new Date().toISOString();
-  const { data: existing } = await sb.from("newsletter_subscribers")
-    .select("id,status")
-    .eq("email", email)
-    .maybeSingle();
-  const payload = {
-    email,
-    user_id: params.userId,
-    status: params.active ? "active" : "unsubscribed",
-    locale: PLATFORM_LANGUAGES.has(String(params.locale || "")) ? String(params.locale) : "fr",
-    source: "profile",
-    consent_version: "2026-08",
-    consented_at: params.active ? now : null,
-    unsubscribed_at: params.active ? null : now,
-    updated_at: now,
-  };
-  const { data: subscriber, error } = existing?.id
-    ? await sb.from("newsletter_subscribers").update(payload).eq("id", existing.id).select("id").single()
-    : await sb.from("newsletter_subscribers").insert(payload).select("id").single();
-  if (error) throw error;
-
-  const { error: eventError } = await sb.from("newsletter_consent_events").insert({
-    subscriber_id: subscriber.id,
-    email,
-    user_id: params.userId,
-    action: params.active ? (existing?.status === "unsubscribed" ? "resubscribe" : "profile_opt_in") : "profile_opt_out",
-    source: "profile",
-    locale: payload.locale,
-    consent_version: "2026-08",
-  });
-  if (eventError) throw eventError;
-
-  const apiKey = Deno.env.get("BREVO_API_KEY") || "";
-  const listId = Number.parseInt(Deno.env.get("BREVO_NEWSLETTER_LIST_ID") || "7", 10) || 7;
-  if (!apiKey) return;
-  try {
-    const response = params.active
-      ? await fetch("https://api.brevo.com/v3/contacts", {
-          method: "POST",
-          headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
-          body: JSON.stringify({ email, listIds: [listId], updateEnabled: true }),
-        })
-      : await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(email)}/lists/${listId}`, {
-          method: "DELETE",
-          headers: { accept: "application/json", "api-key": apiKey },
-        });
-    if (response.ok || response.status === 404) {
-      await sb.from("newsletter_subscribers").update({ provider_synced_at: now }).eq("id", subscriber.id);
-    }
-  } catch (error) {
-    console.error("newsletter preference provider sync failed", error);
   }
 }
 
@@ -1063,10 +1004,11 @@ Deno.serve(async (req: Request) => {
         .single();
       if (newsletterUserError) throw newsletterUserError;
       const currentProfile = await ensureProfile(sb, userId);
-      await syncNewsletterPreference(sb, {
+      await setNewsletterConsent(sb, {
         userId,
         email: String(newsletterUser.email || ""),
         active: Boolean(userUpdates.subscribe_newsletter),
+        source: "profile",
         locale: cleanText(currentProfile.preferred_language, 8),
       });
     }

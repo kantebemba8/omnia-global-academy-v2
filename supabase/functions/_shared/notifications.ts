@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendOmniaEmail } from "./brevo-mail.ts";
+import { templateKeyFromLegacyId } from "./email-templates.ts";
 
 export function getSupabase() {
   return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -28,35 +30,18 @@ export interface NotifyUserParams {
 }
 
 export async function sendBrevoEmail({ templateId, to, params, from, userId, sb }: SendEmailParams): Promise<boolean> {
-  const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
-  if (!brevoKey) return false;
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { email: from || "admission@omniaglobalacademy.com", name: "Omnia Global Academy" },
-      to: [to],
-      templateId,
-      params,
-    }),
-  }).catch(() => null);
-  const ok = response?.ok ?? false;
-  if (sb) {
-    await sb.from("notification_log").insert({
-      user_id: userId ?? null,
-      channel: "email",
-      template_id: String(templateId),
-      recipient: to.email,
-      status: ok ? "sent" : "failed",
-      error_message: ok ? null : (response ? await response.text().catch(() => "unknown") : "fetch_error"),
-      metadata: { templateId, params },
-    }).catch(() => {});
-  }
-  return ok;
+  const message = String(params.MESSAGE_SPECIFIQUE || "").toLowerCase();
+  const templateKey = templateId === 4 && (message.includes("validation") || message.includes("vérification") || message.includes("examin"))
+    ? "account_pending_validation"
+    : templateKeyFromLegacyId(templateId);
+  return sendOmniaEmail({
+    to,
+    templateKey,
+    params,
+    senderEmail: Deno.env.get("BREVO_SENDER_EMAIL") || from,
+    userId: userId ?? null,
+    sb,
+  });
 }
 
 export async function sendBrevoSMS({ to, message, userId, sb }: SendSMSParams): Promise<boolean> {

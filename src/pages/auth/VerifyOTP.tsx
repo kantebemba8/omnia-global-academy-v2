@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
-import { saveSession, redirectByRoles } from '../../lib/session';
+import { redirectByRoles, saveSession } from '../../lib/session';
 
 type State = {
-  phone_number: string;
+  email: string;
   purpose: 'inscription' | 'connexion' | 'reset_password';
   user_id?: string;
+  access_invitation?: boolean;
 };
 
 type VerifyResponse = {
@@ -27,11 +28,17 @@ type VerifyResponse = {
   reset_token?: string;
 };
 
+function maskEmail(email: string) {
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return email;
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${'•'.repeat(Math.max(3, Math.min(8, local.length - visible.length)))}@${domain}`;
+}
+
 export function VerifyOTP() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as State | null;
-
   const [otp, setOtp] = useState(Array<string>(6).fill(''));
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -41,7 +48,7 @@ export function VerifyOTP() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    if (!state?.phone_number) {
+    if (!state?.email) {
       navigate('/connexion', { replace: true });
       return;
     }
@@ -50,8 +57,8 @@ export function VerifyOTP() {
 
   useEffect(() => {
     if (countdown <= 0) { setCanResend(true); return; }
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCountdown(value => value - 1), 1000);
+    return () => clearTimeout(timer);
   }, [countdown]);
 
   const handleChange = (index: number, value: string) => {
@@ -62,30 +69,24 @@ export function VerifyOTP() {
     if (value && index < 5) inputRefs.current[index + 1]?.focus();
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+  const handlePaste = (event: React.ClipboardEvent) => {
+    const digits = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (digits.length === 6) {
       setOtp(digits.split(''));
       inputRefs.current[5]?.focus();
     }
-    e.preventDefault();
+    event.preventDefault();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     const code = otp.join('');
-    if (code.length < 6) { setError('Entrez les 6 chiffres du code'); return; }
+    if (code.length !== 6) { setError('Entrez les 6 chiffres du code'); return; }
     setError('');
     setLoading(true);
     try {
       const data = await authFetch<VerifyResponse>('auth-verify-otp', {
-        phone_number: state!.phone_number,
+        email: state!.email,
         otp_code: code,
         purpose: state!.purpose,
       });
@@ -98,9 +99,7 @@ export function VerifyOTP() {
       if (data.session_token && data.user) {
         saveSession(data.session_token, data.user);
         if (data.user.force_password_change) {
-          navigate('/changer-mot-de-passe', {
-            state: { session_token: data.session_token, user: data.user },
-          });
+          navigate('/changer-mot-de-passe', { state: { session_token: data.session_token, user: data.user } });
           return;
         }
         redirectByRoles(data.user.roles);
@@ -112,26 +111,25 @@ export function VerifyOTP() {
       }
       if (data.reset_token) {
         navigate('/reinitialiser-mot-de-passe', { state: { reset_token: data.reset_token } });
-        return;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleResend = async () => {
+  async function handleResend() {
     if (!canResend || resending) return;
     setCanResend(false);
     setCountdown(59);
     setError('');
     setResending(true);
     try {
-      const data = await authFetch<{ success: boolean; message?: string; retry_after?: number }>(
-        'auth-resend-otp',
-        { phone_number: state!.phone_number, purpose: state!.purpose }
-      );
+      const data = await authFetch<{ success: boolean; message?: string; retry_after?: number }>('auth-resend-otp', {
+        email: state!.email,
+        purpose: state!.purpose,
+      });
       if (!data.success) {
         setError(data.message || 'Impossible de renvoyer le code');
         setCanResend(true);
@@ -143,72 +141,41 @@ export function VerifyOTP() {
     } finally {
       setResending(false);
     }
-  };
-
-  const maskedPhone = state?.phone_number
-    ? state.phone_number.replace(/(\+\d{1,4})(\d+)(\d{2})$/, '$1 •••• $3')
-    : '';
+  }
 
   return (
-    <AuthLayout
-      title="Code de vérification"
-      subtitle={`Code envoyé au ${maskedPhone}`}
-    >
+    <AuthLayout title="Code de vérification" subtitle={`Code envoyé par e-mail à ${maskEmail(state?.email || '')}`}>
       <form onSubmit={handleSubmit} className="mt-4 space-y-6">
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-2 justify-center" onPaste={handlePaste}>
-          {otp.map((digit, i) => (
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        <div className="flex justify-center gap-2" onPaste={handlePaste}>
+          {otp.map((digit, index) => (
             <input
-              key={i}
-              ref={el => { inputRefs.current[i] = el; }}
+              key={index}
+              ref={element => { inputRefs.current[index] = element; }}
               type="text"
               inputMode="numeric"
+              autoComplete={index === 0 ? 'one-time-code' : 'off'}
               maxLength={1}
               value={digit}
-              onChange={e => handleChange(i, e.target.value)}
-              onKeyDown={e => handleKeyDown(i, e)}
-              className="w-11 h-14 text-center text-xl font-bold border-2 rounded-xl transition-all focus:outline-none"
-              style={{
-                borderColor: digit ? '#002050' : '#E5E7EB',
-                color: '#002050',
-                backgroundColor: digit ? '#F0F4FF' : '#FFFFFF',
+              onChange={event => handleChange(index, event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Backspace' && !otp[index] && index > 0) inputRefs.current[index - 1]?.focus();
               }}
+              className="h-14 w-11 rounded-xl border-2 text-center text-xl font-bold transition-all focus:outline-none"
+              style={{ borderColor: digit ? '#002050' : '#E5E7EB', color: '#002050', backgroundColor: digit ? '#F0F4FF' : '#FFFFFF' }}
             />
           ))}
         </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 rounded-lg font-semibold text-white transition-all"
-          style={{ backgroundColor: loading ? '#9CA3AF' : '#002050' }}
-        >
-          {loading ? 'Vérification...' : 'Confirmer le code'}
+        <button type="submit" disabled={loading} className="w-full rounded-lg py-3 font-semibold text-white" style={{ backgroundColor: loading ? '#9CA3AF' : '#002050' }}>
+          {loading ? 'Vérification…' : 'Confirmer le code'}
         </button>
-
-        <div className="text-center text-sm" style={{ color: '#6B7280' }}>
+        <div className="text-center text-sm text-gray-500">
           {canResend ? (
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resending}
-              className="font-semibold transition-colors"
-              style={{ color: '#BF8813' }}
-            >
-              {resending ? 'Envoi...' : 'Renvoyer le code'}
+            <button type="button" onClick={handleResend} disabled={resending} className="font-semibold" style={{ color: '#BF8813' }}>
+              {resending ? 'Envoi…' : 'Renvoyer le code par e-mail'}
             </button>
           ) : (
-            <span>
-              Renvoyer dans{' '}
-              <span className="font-semibold tabular-nums" style={{ color: '#002050' }}>
-                {countdown}s
-              </span>
-            </span>
+            <span>Renvoyer dans <span className="font-semibold tabular-nums" style={{ color: '#002050' }}>{countdown}s</span></span>
           )}
         </div>
       </form>

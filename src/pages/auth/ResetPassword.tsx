@@ -45,7 +45,7 @@ export function ResetPassword() {
 
   const state = location.state as { reset_token?: string } | null;
 
-  // Token depuis l'URL (lien email) ou depuis le state (OTP SMS)
+  // Token depuis le lien e-mail ou, pour compatibilité, depuis un flux OTP historique
   const urlToken = searchParams.get('token');
   const otpToken = state?.reset_token;
   const token = urlToken || otpToken;

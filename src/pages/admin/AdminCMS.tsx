@@ -159,14 +159,14 @@ export default function AdminCMS() {
   const [toast, setToast] = useState('');
 
   // Newsletter state
-  const [nlChannel, setNlChannel] = useState<'email' | 'sms'>('email');
   const [nlSubject, setNlSubject] = useState('');
   const [nlHtml, setNlHtml] = useState('');
-  const [nlSmsText, setNlSmsText] = useState('');
   const [nlScheduleAt, setNlScheduleAt] = useState('');
   const [nlSending, setNlSending] = useState(false);
   const [nlCampaigns, setNlCampaigns] = useState<Array<{ id: string; subject: string; channel: string; status: string; sent_at: string | null; scheduled_at?: string | null; recipients_count: number; created_at: string; error_message?: string | null }>>([]);
-  const [nlStats, setNlStats] = useState({ active: 0, unsubscribed: 0 });
+  const [nlStats, setNlStats] = useState({ active: 0, unsubscribed: 0, sync_errors: 0, pending_sync: 0 });
+  const [nlTemplates, setNlTemplates] = useState<Array<{ template_key: string; provider_template_id?: number | null; provider_synced_at?: string | null; provider_last_error?: string | null }>>([]);
+  const [nlSyncing, setNlSyncing] = useState(false);
 
   function load() {
     const token = getSessionToken();
@@ -214,7 +214,8 @@ export default function AdminCMS() {
         .then(({ response, data }) => {
           if (!response.ok || !data.success) return;
           setNlCampaigns(Array.isArray(data.campaigns) ? data.campaigns : []);
-          setNlStats({ active: Number(data.stats?.active || 0), unsubscribed: Number(data.stats?.unsubscribed || 0) });
+          setNlStats({ active: Number(data.stats?.active || 0), unsubscribed: Number(data.stats?.unsubscribed || 0), sync_errors: Number(data.stats?.sync_errors || 0), pending_sync: Number(data.stats?.pending_sync || 0) });
+          setNlTemplates(Array.isArray(data.templates) ? data.templates : []);
         })
         .catch(() => {});
     }
@@ -441,8 +442,7 @@ export default function AdminCMS() {
 
   async function sendNewsletter() {
     if (!nlSubject.trim()) { setToast('Objet requis.'); return; }
-    if (nlChannel === 'email' && !nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
-    if (nlChannel === 'sms' && !nlSmsText.trim()) { setToast('Texte SMS requis.'); return; }
+    if (!nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
     setNlSending(true);
     try {
       const res = await fetch(ENDPOINTS.newsletterSend, {
@@ -452,21 +452,40 @@ export default function AdminCMS() {
           action: 'send',
           subject: nlSubject,
           content_html: nlHtml,
-          channel: nlChannel,
-          sms_text: nlSmsText,
+          channel: 'email',
           schedule_at: nlScheduleAt || undefined,
         }),
       });
       const d = await res.json();
       if (d.success) {
         setToast(d.status === 'scheduled' ? 'Campagne planifiée !' : 'Campagne envoyée !');
-        setNlSubject(''); setNlHtml(''); setNlSmsText(''); setNlScheduleAt('');
+        setNlSubject(''); setNlHtml(''); setNlScheduleAt('');
         load();
       } else {
         setToast(d.error || 'Erreur envoi.');
       }
     } catch { setToast('Erreur réseau.'); }
     finally { setNlSending(false); setTimeout(() => setToast(''), 4000); }
+  }
+
+  async function runEmailAdminAction(action: 'sync_templates' | 'sync_webhook' | 'resync_contacts' | 'test_email') {
+    setNlSyncing(true);
+    try {
+      const res = await fetch(ENDPOINTS.newsletterSend, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.message || data.error || 'Opération impossible.');
+      setToast(action === 'sync_templates' ? 'Templates Omnia synchronisés avec Brevo.' : action === 'sync_webhook' ? 'Webhook transactionnel Brevo synchronisé.' : action === 'resync_contacts' ? `Synchronisation Brevo terminée (${data.synced || 0} contact(s)).` : 'E-mail de test envoyé à votre adresse administrateur.');
+      load();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Opération Brevo impossible.');
+    } finally {
+      setNlSyncing(false);
+      setTimeout(() => setToast(''), 4500);
+    }
   }
 
   const TABS: { key: Tab; label: string }[] = [
@@ -867,16 +886,29 @@ export default function AdminCMS() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-2xl font-black text-slate-700">{nlStats.unsubscribed}</div><div className="mt-1 text-xs font-semibold text-slate-500">Désinscriptions enregistrées</div></div>
                 </div>
 
-                {/* Channel selector */}
-                <div className="flex gap-2 mb-5">
-                  {(['email', 'sms'] as const).map(ch => (
-                    <button key={ch} onClick={() => setNlChannel(ch)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all"
-                      style={nlChannel === ch ? { backgroundColor: '#002050', color: 'white', borderColor: '#002050' } : { borderColor: '#e5e7eb', color: '#374151' }}>
-                      {ch === 'email' ? <Mail className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-                      {ch === 'email' ? 'Email' : 'SMS'}
-                    </button>
-                  ))}
+                <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <button type="button" onClick={() => runEmailAdminAction('sync_templates')} disabled={nlSyncing}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
+                    Synchroniser les templates Brevo
+                  </button>
+                  <button type="button" onClick={() => runEmailAdminAction('sync_webhook')} disabled={nlSyncing}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
+                    Synchroniser le webhook Brevo
+                  </button>
+                  <button type="button" onClick={() => runEmailAdminAction('resync_contacts')} disabled={nlSyncing}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
+                    Synchroniser les abonnés
+                  </button>
+                  <button type="button" onClick={() => runEmailAdminAction('test_email')} disabled={nlSyncing}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
+                    Envoyer un e-mail test
+                  </button>
+                </div>
+
+                <div className="mb-5 grid gap-3 sm:grid-cols-3">
+                  <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-[#002050]">{nlTemplates.filter(t => t.provider_synced_at && !t.provider_last_error).length}/{nlTemplates.length}</div><div className="mt-1 text-xs text-gray-500">Templates synchronisés</div></div>
+                  <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-amber-700">{nlStats.pending_sync}</div><div className="mt-1 text-xs text-gray-500">Abonnés en attente Brevo</div></div>
+                  <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-red-700">{nlStats.sync_errors}</div><div className="mt-1 text-xs text-gray-500">Erreurs de synchronisation</div></div>
                 </div>
 
                 <div className="space-y-4">
@@ -887,36 +919,18 @@ export default function AdminCMS() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
                   </div>
 
-                  {nlChannel === 'email' && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Contenu HTML</label>
-                        <textarea value={nlHtml} onChange={e => setNlHtml(e.target.value)} rows={8}
-                          placeholder="<h1>Bonjour !</h1><p>Votre message ici...</p>"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:border-gray-400" />
-                      </div>
-                      {nlHtml && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Prévisualisation</label>
-                          <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: 240 }}>
-                            <iframe srcDoc={nlHtml} title="preview" className="w-full h-full" sandbox="allow-same-origin" />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {nlChannel === 'sms' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Contenu HTML</label>
+                    <textarea value={nlHtml} onChange={e => setNlHtml(e.target.value)} rows={8}
+                      placeholder="<p>Votre message...</p>"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:border-gray-400" />
+                  </div>
+                  {nlHtml && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Texte SMS
-                        <span className={`ml-2 font-mono ${nlSmsText.length > 160 ? 'text-red-500' : 'text-gray-400'}`}>
-                          {nlSmsText.length}/160
-                        </span>
-                      </label>
-                      <textarea value={nlSmsText} onChange={e => setNlSmsText(e.target.value.slice(0, 160))} rows={3}
-                        placeholder="Votre message SMS (160 caractères max)"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-400" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Prévisualisation du contenu</label>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: 240 }}>
+                        <iframe srcDoc={nlHtml} title="preview" className="w-full h-full" sandbox="allow-same-origin" />
+                      </div>
                     </div>
                   )}
 

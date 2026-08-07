@@ -8,66 +8,25 @@ import {
   sha256Hex,
 } from "../_shared/auth-security.ts";
 import { acceptPendingInvitationsForUser } from "../_shared/access-invitations.ts";
-
-async function sendBrevoWelcome(
-  apiKey: string,
-  email: string,
-  firstName: string,
-  roleName: string,
-  specificMessage: string,
-): Promise<void> {
-  const templateId = parseInt(Deno.env.get("BREVO_WELCOME_TEMPLATE_ID") || "4");
-  const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
-
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "api-key": apiKey,
-    },
-    body: JSON.stringify({
-      to: [{ email, name: firstName }],
-      templateId,
-      params: {
-        PRENOM: firstName,
-        MESSAGE_SPECIFIQUE: specificMessage,
-        ROLE_NAME: roleName,
-        EMAIL: email,
-        DASHBOARD_URL: `${appUrl}/dashboard`,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    console.error("Brevo welcome email error:", await response.text());
-  }
-}
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = makeCorsHeaders(req);
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return json({ success: false, message: "Method not allowed" }, 405);
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ success: false, message: "Method not allowed" }, 405);
 
   try {
     const body = await req.json();
-    const phoneNumber = typeof body.phone_number === "string"
-      ? body.phone_number.trim()
-      : "";
+    const email = String(body.email || "").trim().toLowerCase();
     const otpCode = String(body.otp_code ?? "").trim();
-    const purpose = typeof body.purpose === "string" ? body.purpose : "";
+    const purpose = String(body.purpose || "");
 
-    if (!phoneNumber || !/^\d{6}$/.test(otpCode) || !purpose) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\d{6}$/.test(otpCode) || !purpose) {
       return json({ success: false, message: "Champs requis manquants" }, 400);
     }
     if (!["inscription", "connexion", "reset_password"].includes(purpose)) {
@@ -75,50 +34,27 @@ Deno.serve(async (req: Request) => {
     }
 
     const clientIP = getClientIP(req);
-    const phoneHash = await sha256Hex(phoneNumber);
+    const emailHash = await sha256Hex(email);
     const codeHash = await sha256Hex(otpCode);
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
-    const ipLimit = await consumeRateLimit(
-      supabase,
-      `auth-verify-otp:ip:${clientIP}`,
-      20,
-      15 * 60,
-    );
-    const phoneLimit = await consumeRateLimit(
-      supabase,
-      `auth-verify-otp:phone:${purpose}:${phoneHash}`,
-      10,
-      15 * 60,
-    );
-    if (!ipLimit.allowed || !phoneLimit.allowed) {
-      return json({
-        success: false,
-        message: "Trop de tentatives. Réessayez plus tard.",
-        retry_after: Math.max(ipLimit.retryAfter, phoneLimit.retryAfter),
-      }, 429);
+    const ipLimit = await consumeRateLimit(supabase, `auth-verify-otp:ip:${clientIP}`, 20, 15 * 60);
+    const emailLimit = await consumeRateLimit(supabase, `auth-verify-otp:email:${purpose}:${emailHash}`, 10, 15 * 60);
+    if (!ipLimit.allowed || !emailLimit.allowed) {
+      return json({ success: false, message: "Trop de tentatives. Réessayez plus tard.", retry_after: Math.max(ipLimit.retryAfter, emailLimit.retryAfter) }, 429);
     }
 
-    const { data: verificationData, error: verificationError } = await supabase.rpc(
-      "verify_omnia_otp",
-      {
-        p_phone_number: phoneNumber,
-        p_purpose: purpose,
-        p_code: otpCode,
-        p_code_hash: codeHash,
-        p_max_attempts: 5,
-      },
-    );
+    const { data: verificationData, error: verificationError } = await supabase.rpc("verify_omnia_email_otp", {
+      p_email: email,
+      p_purpose: purpose,
+      p_code: otpCode,
+      p_code_hash: codeHash,
+      p_max_attempts: 5,
+    });
     if (verificationError) throw verificationError;
 
-    const verification = Array.isArray(verificationData)
-      ? verificationData[0]
-      : verificationData;
+    const verification = Array.isArray(verificationData) ? verificationData[0] : verificationData;
     const verificationStatus = String(verification?.status ?? "not_found");
-
     if (verificationStatus !== "verified") {
       const messages: Record<string, string> = {
         not_found: "Aucun code valide trouvé",
@@ -127,7 +63,6 @@ Deno.serve(async (req: Request) => {
         locked: "Trop de codes incorrects. Demandez un nouveau code.",
         invalid_request: "Code invalide",
       };
-
       return json({
         success: false,
         message: messages[verificationStatus] || "Code invalide",
@@ -137,14 +72,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, email, full_name, phone_number, status, country_code, avatar_url, force_password_change")
-      .eq("phone_number", phoneNumber)
+      .select("id,email,full_name,phone_number,status,country_code,avatar_url,force_password_change")
+      .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
-
-    if (!user) {
-      return json({ success: false, message: "Utilisateur introuvable" }, 404);
-    }
+    if (!user) return json({ success: false, message: "Utilisateur introuvable" }, 404);
 
     if (purpose === "inscription") {
       try {
@@ -155,41 +87,32 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: rolesData, error: rolesError } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
+    const { data: rolesData, error: rolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
     if (rolesError) throw rolesError;
-
     const userRoles = (rolesData ?? []).map((row: { role: string }) => row.role);
     const requiresManualValidation = userRoles.some((role: string) =>
       ["professeur", "responsable_structure", "recruteur_independant"].includes(role)
     );
-
-    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     const now = new Date().toISOString();
 
     if (purpose === "inscription") {
       if (!requiresManualValidation) {
-        const { error: activationError } = await supabase
-          .from("users")
-          .update({ status: "actif", updated_at: now })
-          .eq("id", user.id);
+        const { error: activationError } = await supabase.from("users").update({ status: "actif", updated_at: now }).eq("id", user.id);
         if (activationError) throw activationError;
 
-        if (brevoApiKey) {
-          try {
-            await sendBrevoWelcome(
-              brevoApiKey,
-              user.email,
-              user.full_name,
-              userRoles.includes("moderateur") ? "Équipe de modération" : userRoles.includes("recruteur_structure") ? "Recrutement Structure" : userRoles.includes("gestionnaire_structure") ? "Équipe Structure" : "Apprenant",
-              "Votre compte est actif. Vous pouvez maintenant accéder aux espaces qui vous ont été attribués.",
-            );
-          } catch (error) {
-            console.error("Brevo welcome error:", error);
-          }
-        }
+        await sendOmniaEmail({
+          to: { email: user.email, name: user.full_name || undefined },
+          templateKey: "account_welcome",
+          params: {
+            PRENOM: String(user.full_name || "").split(" ")[0],
+            ROLE_NAME: userRoles.includes("moderateur") ? "Équipe de modération" : userRoles.includes("recruteur_structure") ? "Recrutement Structure" : userRoles.includes("gestionnaire_structure") ? "Équipe Structure" : "Apprenant",
+            MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée et votre compte est actif.",
+            DASHBOARD_URL: `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/home`,
+          },
+          senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+          userId: String(user.id),
+          sb: supabase,
+        });
 
         const sessionToken = generateOpaqueToken();
         const { error: sessionError } = await supabase.from("user_sessions").insert({
@@ -200,18 +123,9 @@ Deno.serve(async (req: Request) => {
           expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
         });
         if (sessionError) throw sessionError;
-
         await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
 
-        return json({
-          success: true,
-          session_token: sessionToken,
-          user: {
-            ...user,
-            status: "actif",
-            roles: userRoles,
-          },
-        });
+        return json({ success: true, session_token: sessionToken, user: { ...user, status: "actif", roles: userRoles } });
       }
 
       const roleDisplay = userRoles.includes("professeur")
@@ -220,35 +134,25 @@ Deno.serve(async (req: Request) => {
         ? "Recruteur indépendant"
         : "Structure";
 
-      if (brevoApiKey) {
-        try {
-          await sendBrevoWelcome(
-            brevoApiKey,
-            user.email,
-            user.full_name,
-            roleDisplay,
-            "Votre dossier est en cours de validation par notre équipe. Vous serez notifié dès que la vérification sera terminée.",
-          );
-        } catch (error) {
-          console.error("Brevo welcome error:", error);
-        }
-      }
-
-      return json({
-        success: true,
-        needs_validation: true,
-        user: { ...user, roles: userRoles },
+      await sendOmniaEmail({
+        to: { email: user.email, name: user.full_name || undefined },
+        templateKey: "account_pending_validation",
+        params: {
+          PRENOM: String(user.full_name || "").split(" ")[0],
+          ROLE_NAME: roleDisplay,
+          MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée. Votre dossier est maintenant en attente de décision de l’Administration Omnia.",
+          DASHBOARD_URL: `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/connexion`,
+        },
+        senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+        userId: String(user.id),
+        sb: supabase,
       });
+
+      return json({ success: true, needs_validation: true, user: { ...user, roles: userRoles } });
     }
 
     if (purpose === "connexion") {
-      if (user.status !== "actif") {
-        return json({
-          success: false,
-          message: "Compte inactif ou en attente de validation",
-        }, 403);
-      }
-
+      if (user.status !== "actif") return json({ success: false, message: "Compte inactif ou en attente de validation" }, 403);
       const sessionToken = generateOpaqueToken();
       const { error: sessionError } = await supabase.from("user_sessions").insert({
         user_id: user.id,
@@ -258,35 +162,20 @@ Deno.serve(async (req: Request) => {
         expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
       });
       if (sessionError) throw sessionError;
-
       await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
-
-      return json({
-        success: true,
-        session_token: sessionToken,
-        user: { ...user, roles: userRoles },
-      });
+      return json({ success: true, session_token: sessionToken, user: { ...user, roles: userRoles } });
     }
 
     const rawResetToken = generateOpaqueToken();
     const tokenHash = await sha256Hex(rawResetToken);
-
-    await supabase
-      .from("password_reset_tokens")
-      .update({ used: true })
-      .eq("user_id", user.id)
-      .eq("used", false);
-
-    const { error: tokenError } = await supabase
-      .from("password_reset_tokens")
-      .insert({
-        user_id: user.id,
-        reset_token: null,
-        token_hash: tokenHash,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      });
+    await supabase.from("password_reset_tokens").update({ used: true }).eq("user_id", user.id).eq("used", false);
+    const { error: tokenError } = await supabase.from("password_reset_tokens").insert({
+      user_id: user.id,
+      reset_token: null,
+      token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
     if (tokenError) throw tokenError;
-
     return json({ success: true, reset_token: rawResetToken });
   } catch (error) {
     console.error("auth-verify-otp error:", error);

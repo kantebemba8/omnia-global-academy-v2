@@ -41,7 +41,7 @@ export function RegisterApprenant() {
     birth_date: '',
     country_code: '',
     allow_email: true,
-    allow_sms: true,
+    allow_sms: false,
     allow_push: false,
     subscribe_newsletter: false,
   });
@@ -123,7 +123,7 @@ export function RegisterApprenant() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { phone_number, purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken) },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken) },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');

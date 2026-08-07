@@ -4,6 +4,7 @@ import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from 
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import { hasStructurePermission, validatedStructureAccess, type ValidatedStructureAccess } from "../_shared/structure-access.ts";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 /*
   OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
@@ -5075,27 +5076,21 @@ async function notificationDispatch(
   for (const row of rows ?? []) {
     try {
       if (row.channel === "email") {
-        const brevoKey = Deno.env.get("BREVO_API_KEY") || "";
-        if (!brevoKey || !row.users?.email) throw new Error("EMAIL_PROVIDER_NOT_CONFIGURED");
-
-        const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: {
-            "api-key": brevoKey,
-            "Content-Type": "application/json",
+        if (!row.users?.email) throw new Error("EMAIL_RECIPIENT_MISSING");
+        const emailSent = await sendOmniaEmail({
+          sb,
+          userId: row.user_id || null,
+          to: { email: String(row.users.email), name: String(row.users.full_name || "") || undefined },
+          templateKey: "status_update",
+          params: {
+            PRENOM: row.users.full_name || "",
+            FORMATION_TITRE: "Omnia Live",
+            STATUT: row.payload?.subject || "Notification Omnia Live",
+            MESSAGE_SPECIFIQUE: row.payload?.message || row.notification_type || "Une mise à jour Omnia Live est disponible.",
+            ACTION_URL: row.payload?.action_url || `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/omnia-live`,
           },
-          body: JSON.stringify({
-            sender: {
-              name: "Omnia Global Academy",
-              email: Deno.env.get("BREVO_SENDER_EMAIL") || "support@omniaglobalacademy.com",
-            },
-            to: [{ email: row.users.email, name: row.users.full_name || undefined }],
-            subject: row.payload?.subject || "Omnia Live",
-            htmlContent: row.payload?.html || `<p>${row.payload?.message || row.notification_type}</p>`,
-          }),
         });
-
-        if (!response.ok) throw new Error(`BREVO_${response.status}`);
+        if (!emailSent) throw new Error("EMAIL_DELIVERY_FAILED");
       }
 
       await sb.from("live_notification_deliveries").insert({
@@ -7738,9 +7733,8 @@ async function notificationDispatchDue(req:Request,sb:any,ctx:any){
     const payload=j.payload||{};const title=payload.subject||payload.title||"Omnia Live";const message=payload.message||payload.body||j.notification_type;
     if(j.channel==="in_app"||j.channel==="multi") await queueInboxNotification(sb,j.user_id,j.event_id,j.notification_type,title,message,payload.action_url||null,payload);
     if((j.channel==="email"||j.channel==="multi")&&user?.email){
-      const key=Deno.env.get("BREVO_API_KEY")||"";if(!key)throw new Error("BREVO_API_KEY_NOT_CONFIGURED");
-      const resp=await fetch("https://api.brevo.com/v3/smtp/email",{method:"POST",headers:{"api-key":key,"Content-Type":"application/json"},body:JSON.stringify({sender:{name:"Omnia Global Academy",email:Deno.env.get("BREVO_SENDER_EMAIL")||"support@omniaglobalacademy.com"},to:[{email:user.email,name:user.full_name||undefined}],subject:title,htmlContent:`<p>${message}</p>`})});
-      if(!resp.ok)throw new Error(`BREVO_${resp.status}`);
+      const emailSent=await sendOmniaEmail({sb,userId:j.user_id||null,to:{email:String(user.email),name:user.full_name||undefined},templateKey:"status_update",params:{PRENOM:user.full_name||"",FORMATION_TITRE:"Omnia Live",STATUT:title,MESSAGE_SPECIFIQUE:message,ACTION_URL:payload.action_url||`${(Deno.env.get("APP_URL")||"https://omniaglobalacademy.com").replace(/\/$/,"")}/omnia-live`}});
+      if(!emailSent)throw new Error("EMAIL_DELIVERY_FAILED");
     }
     await sb.from("live_notification_jobs").update({status:"sent",sent_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",j.id);sent++;
   }catch(e){await sb.from("live_notification_jobs").update({status:"failed",last_error:e instanceof Error?e.message:"SEND_FAILED",updated_at:new Date().toISOString()}).eq("id",j.id);failed++;}}

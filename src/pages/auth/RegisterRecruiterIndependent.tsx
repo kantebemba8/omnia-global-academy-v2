@@ -21,6 +21,7 @@ type FormState = {
   website_url: string;
   allow_email: boolean;
   allow_sms: boolean;
+  subscribe_newsletter: boolean;
 };
 
 export function RegisterRecruiterIndependent() {
@@ -28,7 +29,7 @@ export function RegisterRecruiterIndependent() {
   const [form, setForm] = useState<FormState>({
     full_name: '', email: '', phone_local: '', password: '', confirm_password: '',
     country_code: '', company_name: '', job_title: '', linkedin_url: '', website_url: '',
-    allow_email: true, allow_sms: true,
+    allow_email: true, allow_sms: false, subscribe_newsletter: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -65,13 +66,14 @@ export function RegisterRecruiterIndependent() {
         website_url: form.website_url.trim() || null,
         allow_email: form.allow_email,
         allow_sms: form.allow_sms,
+        subscribe_newsletter: form.subscribe_newsletter,
       });
       if (!response.success) {
         setError(response.message || 'Inscription impossible.');
         return;
       }
       navigate('/verifier-otp', {
-        state: { phone_number: phoneNumber, purpose: 'inscription', user_id: response.user_id },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: response.user_id },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue.');
@@ -104,9 +106,11 @@ export function RegisterRecruiterIndependent() {
         <div><label className={label}>Mot de passe</label><div className="relative"><input required minLength={8} type={showPassword ? 'text' : 'password'} className={input} value={form.password} onChange={e => set('password', e.target.value)} autoComplete="new-password"/><button type="button" onClick={() => setShowPassword(value => !value)} className="absolute right-3 top-3.5 text-gray-400" aria-label="Afficher le mot de passe">{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></div>
         <div><label className={label}>Confirmer le mot de passe</label><input required minLength={8} type={showPassword ? 'text' : 'password'} className={input} value={form.confirm_password} onChange={e => set('confirm_password', e.target.value)} autoComplete="new-password" /></div>
 
+        <label className="flex items-start gap-3 border-t border-gray-200 pt-4 text-sm text-gray-600"><input type="checkbox" checked={form.subscribe_newsletter} onChange={e => set('subscribe_newsletter', e.target.checked)} className="mt-0.5"/><span>S’abonner à Omnia Newsletter. Ce consentement est facultatif et peut être retiré à tout moment.</span></label>
+
         <div className="flex items-start gap-3 border-y border-gray-200 py-3 text-sm text-gray-600">
           <ShieldCheck size={17} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
-          <p>Après la vérification du téléphone, le dossier sera soumis à l’Administration Omnia. L’espace recruteur sera activé uniquement après validation.</p>
+          <p>Après la confirmation de votre adresse e-mail, le dossier sera soumis à l’Administration Omnia. L’espace recruteur sera activé uniquement après validation.</p>
         </div>
 
         <button disabled={loading} className="w-full rounded-lg bg-[#002050] py-3 font-semibold text-white disabled:opacity-60">

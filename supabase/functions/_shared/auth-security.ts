@@ -104,6 +104,34 @@ export async function consumeRateLimit(
   };
 }
 
+export async function createHashedEmailOtp(
+  supabase: SupabaseClient,
+  input: {
+    email: string;
+    purpose: "inscription" | "connexion" | "reset_password";
+    expiresAt: string;
+    ipAddress?: string | null;
+  },
+): Promise<string> {
+  const otp = generateNumericOtp();
+  const codeHash = await sha256Hex(otp);
+
+  const { error } = await supabase.from("otp_codes").insert({
+    phone_number: null,
+    email: input.email.trim().toLowerCase(),
+    code: null,
+    code_hash: codeHash,
+    purpose: input.purpose,
+    expires_at: input.expiresAt,
+    ip_address: input.ipAddress ?? null,
+    failed_attempts: 0,
+    locked_at: null,
+  });
+
+  if (error) throw error;
+  return otp;
+}
+
 export async function createHashedOtp(
   supabase: SupabaseClient,
   input: {

@@ -1,62 +1,96 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
-function json(d: unknown, s = 200) {
-  return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
+import { makeCorsHeaders } from "../_shared/auth-security.ts";
+import { normalizeNewsletterEmail, setNewsletterConsent } from "../_shared/newsletter.ts";
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  const corsHeaders = makeCorsHeaders(req);
+  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
 
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
-    const body = await req.json();
-    const { event, email } = body as { event: string; email: string };
-
-    if (!email) return json({ received: true });
-
-    if (event === "hard_bounce" || event === "spam") {
-      // Mark email as invalid — no more emails will be sent to this address
-      await sb.from("users")
-        .update({ email_status: "invalide" })
-        .eq("email", email);
-
-      // Find user for logging
-      const { data: user } = await sb.from("users").select("id").eq("email", email).maybeSingle();
-
-      await sb.from("notification_log").insert({
-        user_id: user?.id ?? null,
-        channel: "email",
-        template_id: "bounce",
-        recipient: email,
-        status: "bounced",
-        error_message: `Brevo event: ${event}`,
-        metadata: body,
-      });
+    const configuredToken = Deno.env.get("BREVO_WEBHOOK_TOKEN") || "";
+    if (configuredToken) {
+      const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
+      const custom = req.headers.get("x-brevo-webhook-token")?.trim() || "";
+      if (bearer !== configuredToken && custom !== configuredToken) {
+        return json({ error: "UNAUTHORIZED" }, 401);
+      }
     }
 
-    if (event === "soft_bounce") {
-      const { data: user } = await sb.from("users").select("id").eq("email", email).maybeSingle();
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const body = await req.json();
+    const event = String(body.event || "").trim();
+    const normalizedEvent = event.toLowerCase().replace(/[^a-z]/g, "");
+    const email = normalizeNewsletterEmail(body.email);
+    if (!email) return json({ received: true });
+
+    const { data: user } = await sb.from("users").select("id,email_status").eq("email", email).maybeSingle();
+    const hardFailureEvents = new Set(["hardbounce", "spam", "complaint", "blocked", "invalidemail", "invalid"]);
+    const unsubscribeEvents = new Set(["unsubscribe", "unsubscribed"]);
+
+    if (hardFailureEvents.has(normalizedEvent)) {
+      if (user?.id) await sb.from("users").update({ email_status: "invalide" }).eq("id", user.id);
+      const { data: subscriber } = await sb.from("newsletter_subscribers").select("id").eq("email", email).maybeSingle();
+      if (subscriber?.id) {
+        await setNewsletterConsent(sb, {
+          email,
+          userId: user?.id || null,
+          active: false,
+          source: "brevo_webhook",
+          actionOverride: "bounce_suppression",
+        });
+        await sb.from("newsletter_subscribers").update({ provider_sync_status: "suppressed" }).eq("id", subscriber.id);
+      }
+    } else if (unsubscribeEvents.has(normalizedEvent)) {
+      const { data: subscriber } = await sb.from("newsletter_subscribers").select("id").eq("email", email).maybeSingle();
+      if (subscriber?.id) {
+        await setNewsletterConsent(sb, {
+          email,
+          userId: user?.id || null,
+          active: false,
+          source: "brevo_webhook",
+          actionOverride: "provider_unsubscribe",
+        });
+      }
+    }
+
+    const trackedStatus: Record<string, string> = {
+      sent: "sent",
+      delivered: "delivered",
+      deferred: "deferred",
+      softbounce: "bounced",
+      hardbounce: "bounced",
+      spam: "bounced",
+      complaint: "bounced",
+      blocked: "bounced",
+      invalidemail: "bounced",
+      invalid: "bounced",
+      unsubscribe: "unsubscribed",
+      unsubscribed: "unsubscribed",
+    };
+    if (trackedStatus[normalizedEvent]) {
       await sb.from("notification_log").insert({
         user_id: user?.id ?? null,
         channel: "email",
-        template_id: "soft_bounce",
+        template_id: `brevo_${normalizedEvent || "event"}`,
         recipient: email,
-        status: "bounced",
-        error_message: `Brevo soft bounce`,
+        status: trackedStatus[normalizedEvent],
+        error_message: hardFailureEvents.has(normalizedEvent) || normalizedEvent === "softbounce"
+          ? `Brevo event: ${event}`
+          : null,
         metadata: body,
-      });
+      }).catch(() => {});
     }
 
     return json({ received: true });
-  } catch (err) {
-    return json({ error: "INTERNAL", message: (err as Error).message }, 500);
+  } catch (error) {
+    console.error("brevo-webhook-bounce", error);
+    return json({ error: "INTERNAL" }, 500);
   }
 });

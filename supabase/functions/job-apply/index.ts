@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,21 +45,19 @@ Deno.serve(async (req: Request) => {
   await sb.from("job_applications").insert({ job_id, applicant_id: userId, cover_letter: cover_letter || null, cv_url: cv_url || null });
   await sb.from("job_offers").update({ applications_count: (job.applications_count || 0) + 1 }).eq("id", job_id);
 
-  // Notify recruiter if email available
+  // Notification recruteur via le service transactionnel Omnia/Brevo.
   if (job.recruiter_email) {
-    const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
-    if (brevoKey) {
-      fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender: { email: "contact@omniaglobalacademy.com", name: "Omnia Global Academy" },
-          to: [{ email: job.recruiter_email }],
-          subject: `Nouvelle candidature — ${job.title}`,
-          htmlContent: `<p>Vous avez reçu une nouvelle candidature pour le poste : <strong>${job.title}</strong>.</p><p>Connectez-vous à votre espace pour consulter les détails.</p>`,
-        }),
-      }).catch(() => {});
-    }
+    await sendOmniaEmail({
+      sb,
+      to: { email: String(job.recruiter_email) },
+      templateKey: "status_update",
+      params: {
+        FORMATION_TITRE: String(job.title || "Offre d’emploi"),
+        STATUT: "Nouvelle candidature",
+        MESSAGE_SPECIFIQUE: "Une nouvelle candidature a été reçue. Connectez-vous à votre espace pour consulter les détails.",
+        ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/talent/recruteur`,
+      },
+    });
   }
 
   return json({

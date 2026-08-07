@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
             params: {
               ROLE_NAME: "Apprenant",
               MESSAGE_SPECIFIQUE: "Votre compte est actif. Explorez des centaines de formations !",
-              DASHBOARD_URL: `${appUrl}/dashboard`,
+              DASHBOARD_URL: `${appUrl}/home`,
             },
           },
           smsMessage: `Bienvenue sur Omnia Academy ! Votre compte est actif. Commencez dès maintenant : ${appUrl}`,
@@ -50,8 +50,8 @@ Deno.serve(async (req: Request) => {
             templateId: 4,
             from: "admission@omniaglobalacademy.com",
             params: {
-              ROLE_NAME: "Formateur",
-              MESSAGE_SPECIFIQUE: "Votre dossier est en cours de vérification (24-48h ouvrées). Vous serez notifié dès validation.",
+              ROLE_NAME: "Professeur",
+              MESSAGE_SPECIFIQUE: "Votre dossier a bien été reçu. Vous serez notifié dès qu’une décision de l’Administration Omnia sera disponible.",
               DASHBOARD_URL: `${appUrl}/professeur/dashboard`,
             },
           },
@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
             from: "admission@omniaglobalacademy.com",
             params: {
               ROLE_NAME: "Structure",
-              MESSAGE_SPECIFIQUE: "Votre dossier est en cours de vérification (24-48h ouvrées). Vous serez notifié dès validation.",
+              MESSAGE_SPECIFIQUE: "Votre dossier a bien été reçu. Vous serez notifié dès qu’une décision de l’Administration Omnia sera disponible.",
               DASHBOARD_URL: `${appUrl}/structure/dashboard`,
             },
           },
@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
               DASHBOARD_URL: `${appUrl}/professeur/dashboard`,
             },
           },
-          smsMessage: `Omnia Academy : Votre compte Formateur est validé ! Créez votre première formation : ${appUrl}/professeur/dashboard`,
+          smsMessage: `Omnia Academy : Votre profil Professeur est validé ! Créez votre première formation : ${appUrl}/professeur/dashboard`,
           sb,
         });
         break;
@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
               STATUT: "Rejeté",
               COMMENTAIRE: payload.raison as string || "Dossier incomplet.",
               MESSAGE_SPECIFIQUE: "Votre dossier n'a pas été validé. Veuillez corriger les éléments indiqués et resoumettre.",
-              ACTION_URL: `${appUrl}/dashboard`,
+              ACTION_URL: `${appUrl}/home`,
             },
           },
           smsMessage: `Omnia Academy : Votre dossier n'a pas été validé. Consultez votre email pour les détails et corrections nécessaires.`,
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
             params: {
               FORMATION_TITRE: payload.formation_titre as string,
               STATUT: "En attente de validation",
-              MESSAGE_SPECIFIQUE: "Votre formation a été soumise et sera examinée sous 24-48h ouvrées.",
+              MESSAGE_SPECIFIQUE: "Votre formation a été soumise et sera examinée par l’Administration Omnia. Vous serez notifié dès qu’une décision sera disponible.",
               ACTION_URL: `${appUrl}/professeur/courses`,
             },
           },
@@ -285,10 +285,10 @@ Deno.serve(async (req: Request) => {
               COMMISSION_XOF: 0,
               ACHETEUR_PAYS: "",
               SOLDE_TOTAL_XOF: payload.solde_xof as number || 0,
-              MESSAGE: `Votre retrait de ${payload.montant_xof} XOF a été approuvé. Traitement sous 24h ouvrées.`,
+              MESSAGE: `Votre retrait de ${payload.montant_xof} XOF a été approuvé. Le traitement de votre retrait a commencé.`,
             },
           },
-          smsMessage: `Omnia Academy : Votre retrait de ${payload.montant_xof} XOF a été approuvé. Traitement sous 24h ouvrées.`,
+          smsMessage: `Omnia Academy : Votre retrait de ${payload.montant_xof} XOF a été approuvé. Le traitement de votre retrait a commencé.`,
           sb,
         });
         break;
