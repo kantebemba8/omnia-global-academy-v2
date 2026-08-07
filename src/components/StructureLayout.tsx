@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
-  BarChart2, Bell, Settings, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, User, Radio, Layers3,
+  BarChart2, Building2, UserCheck, Shield, Briefcase, Search,
+  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, Layers3,
   ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, ShieldCheck,
 } from 'lucide-react';
 import { DashboardLayout, type NavGroup } from './DashboardLayout';
@@ -20,21 +20,17 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     items: [{ path: '/structure/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
-    id: 'structure-members', label: 'Structure & membres', icon: Building2,
+    id: 'organization', label: 'Organisation & accès', icon: Building2,
     items: [
-      { path: '/structure/profil', label: 'Profil de la structure', icon: Building2 },
-      { path: '/structure/membres', label: 'Membres liés', icon: Users },
-      { path: '/structure/organisation', label: 'Organisation & obligations', icon: Network },
-      { path: '/structure/suivi-rh', label: 'Suivi RH & conformité', icon: LineChart },
-      { path: '/structure/rattachements', label: 'Demandes de rattachement', icon: UserCheck },
-      { path: '/structure/codes', label: 'Codes structure', icon: QrCode },
-      { path: '/structure/abonnements', label: 'Abonnements & capacités', icon: CreditCard },
-      { path: '/structure/commerce-b2b', label: 'Commerce B2B & contrats', icon: FileSignature },
-      { path: '/structure/equipe', label: 'Équipe de la structure', icon: Shield },
+      { path: '/structure/profil', label: 'Profil de la Structure', icon: Building2 },
+      { path: '/structure/membres', label: 'Membres', icon: Users },
+      { path: '/structure/equipe', label: 'Équipe & délégations', icon: Shield },
+      { path: '/structure/rattachements', label: 'Rattachements', icon: UserCheck },
+      { path: '/structure/codes', label: 'Codes Structure', icon: QrCode },
     ],
   },
   {
-    id: 'formations', label: 'Formations', icon: BookOpen,
+    id: 'learning', label: 'Formation & projets', icon: BookOpen,
     items: [
       { path: '/structure/formations', label: 'Mes formations', icon: BookOpen },
       { path: '/structure/courses/new', label: 'Créer une formation', icon: PlusCircle },
@@ -44,32 +40,32 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'recruitment', label: 'Emploi & recrutement', icon: Briefcase,
+    id: 'recruitment', label: 'Talent & recrutement', icon: Briefcase,
     items: [
+      { path: '/structure/recrutement/dashboard', label: 'Vue recrutement', icon: UserRoundSearch, exact: true },
       { path: '/structure/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
-      { path: '/structure/recrutement/dashboard', label: 'Accueil recrutement', icon: UserRoundSearch, exact: true },
       { path: '/structure/recrutement/talents', label: 'Recherche de talents', icon: Search },
       { path: '/structure/recrutement/competences-verifiees', label: 'Compétences vérifiées', icon: ShieldCheck },
-      { path: '/structure/recrutement/favoris', label: 'Talents favoris', icon: Heart },
       { path: '/structure/recrutement/candidats', label: 'Candidats', icon: Users },
+      { path: '/structure/recrutement/favoris', label: 'Favoris', icon: Heart },
       { path: '/structure/recrutement/entretiens', label: 'Entretiens', icon: CalendarDays },
-      { path: '/structure/recrutement/messages', label: 'Messages recrutement', icon: MessageSquare },
+      { path: '/structure/recrutement/messages', label: 'Messages', icon: MessageSquare },
     ],
   },
   {
-    id: 'omnia-services', label: 'Services Omnia', icon: Layers3,
+    id: 'operations', label: 'Pilotage & contrats', icon: BarChart2,
+    items: [
+      { path: '/structure/organisation', label: 'Organisation & obligations', icon: Network },
+      { path: '/structure/suivi-rh', label: 'RH & conformité', icon: LineChart },
+      { path: '/structure/abonnements', label: 'Abonnements & capacités', icon: CreditCard },
+      { path: '/structure/commerce-b2b', label: 'B2B & contrats', icon: FileSignature },
+    ],
+  },
+  {
+    id: 'ecosystem', label: 'Écosystème Omnia', icon: Layers3,
     items: [
       { path: '/talent', label: 'Omnia Talent', icon: Search },
       { path: '/omnia-live', label: 'Omnia Live', icon: Radio },
-    ],
-  },
-  {
-    id: 'management', label: 'Pilotage & réglages', icon: Settings,
-    items: [
-      { path: '/mon-profil', label: 'Mon profil personnel', icon: User },
-      { path: '/structure/suivi-rh', label: 'Statistiques & suivi', icon: BarChart2 },
-      { path: '/mon-profil?tab=notifications', label: 'Notifications', icon: Bell },
-      { path: '/mon-profil?tab=visibilite', label: 'Paramètres et confidentialité', icon: Settings },
     ],
   },
 ];
@@ -80,20 +76,20 @@ const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
     items: [{ path: '/structure/recrutement/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
-    id: 'recruitment', label: 'Recrutement', icon: Briefcase,
+    id: 'recruitment', label: 'Talent & recrutement', icon: Briefcase,
     items: [
       { path: '/structure/offres-emploi', label: 'Offres d’emploi', icon: Briefcase },
       { path: '/structure/recrutement/talents', label: 'Recherche de talents', icon: Search },
+      { path: '/structure/recrutement/competences-verifiees', label: 'Compétences vérifiées', icon: ShieldCheck },
       { path: '/structure/recrutement/candidats', label: 'Candidats', icon: Users },
-      { path: '/structure/recrutement/favoris', label: 'Talents favoris', icon: Heart },
+      { path: '/structure/recrutement/favoris', label: 'Favoris', icon: Heart },
       { path: '/structure/recrutement/entretiens', label: 'Entretiens', icon: CalendarDays },
       { path: '/structure/recrutement/messages', label: 'Messages', icon: MessageSquare },
       { path: '/structure/recrutement/statistiques', label: 'Statistiques', icon: BarChart2 },
-      { path: '/mon-profil', label: 'Mon profil personnel', icon: User },
     ],
   },
   {
-    id: 'omnia-services', label: 'Services Omnia', icon: Layers3,
+    id: 'ecosystem', label: 'Écosystème Omnia', icon: Layers3,
     items: [{ path: '/talent', label: 'Omnia Talent', icon: Search }],
   },
 ];
@@ -125,23 +121,21 @@ function filterStructureNavigation(
     || Object.values(recruitmentPermissions).some(Boolean);
 
   return STRUCTURE_NAV_GROUPS.map(group => {
-    if (group.id === 'structure-members') {
+    if (group.id === 'organization') {
       return {
         ...group,
         items: group.items.filter(item => {
           if (item.path === '/structure/profil') return true;
           if (item.path === '/structure/membres') return hasAny(permissions, ['can_manage_members', 'can_approve_memberships']);
-          if (item.path === '/structure/organisation' || item.path === '/structure/suivi-rh') return permissions.can_manage_structure_users === true || permissions.can_view_statistics === true;
+          if (item.path === '/structure/equipe') return permissions.can_manage_structure_users === true;
           if (item.path === '/structure/rattachements') return permissions.can_approve_memberships === true;
           if (item.path === '/structure/codes') return permissions.can_manage_structure_codes === true;
-          if (item.path === '/structure/abonnements') return permissions.can_manage_settings === true;
-          if (item.path === '/structure/commerce-b2b') return permissions.can_manage_b2b_contracts === true;
-          if (item.path === '/structure/equipe') return permissions.can_manage_structure_users === true;
           return false;
         }),
       };
     }
-    if (group.id === 'formations') {
+
+    if (group.id === 'learning') {
       return {
         ...group,
         items: group.items.filter(item => {
@@ -151,19 +145,26 @@ function filterStructureNavigation(
         }),
       };
     }
-    if (group.id === 'recruitment') return recruitmentAccess ? group : { ...group, items: [] };
-    if (group.id === 'management') {
+
+    if (group.id === 'recruitment') {
+      return recruitmentAccess ? group : { ...group, items: [] };
+    }
+
+    if (group.id === 'operations') {
       return {
         ...group,
-        items: group.items.filter(item => item.path !== '/structure/suivi-rh' || permissions.can_view_statistics === true),
+        items: group.items.filter(item => {
+          if (item.path === '/structure/organisation') return permissions.can_manage_structure_users === true;
+          if (item.path === '/structure/suivi-rh') return permissions.can_manage_structure_users === true || permissions.can_view_statistics === true;
+          if (item.path === '/structure/abonnements') return permissions.can_manage_settings === true;
+          if (item.path === '/structure/commerce-b2b') return permissions.can_manage_b2b_contracts === true;
+          return false;
+        }),
       };
     }
+
     return group;
   }).filter(group => group.items.length > 0);
-}
-
-function homePath(groups: NavGroup[]) {
-  return groups === STRUCTURE_RECRUITER_NAV_GROUPS ? '/structure/recrutement/dashboard' : '/structure/dashboard';
 }
 
 export function StructureLayout({ children }: { children: ReactNode; displayName?: string }) {
@@ -217,8 +218,6 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
       brandTitle="Omnia"
       brandAccent="Structure"
       headerSearch={showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined}
-      spaceHomePath={homePath(visibleGroups)}
-      spaceHomeLabel="Accueil de mon espace"
     >
       {children}
     </DashboardLayout>

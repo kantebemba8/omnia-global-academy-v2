@@ -12,7 +12,6 @@ import {
   BarChart2,
   Shield,
   ClipboardCheck,
-  User,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
@@ -79,54 +78,35 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
     },
   ];
 
+  const controlItems: ModeratorNavItem[] = [];
   if (moderatorHasAnyPermission(permissions, COURSE_WORKSPACE_KEYS)) {
-    groups.push({
-      id: 'courses',
-      label: 'Formations',
-      icon: BookOpen,
-      items: [{ path: '/moderator/courses', label: 'Contrôle des formations', icon: BookOpen }],
-    });
+    controlItems.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen });
   }
-
-  const userItems: ModeratorNavItem[] = [];
   if (permissions.can_validate_professor_kyc) {
-    userItems.push({ path: '/moderator/kyc', label: 'Vérification d’identité', icon: Shield });
+    controlItems.push({ path: '/moderator/kyc', label: 'Vérification d’identité', icon: Shield });
   }
   if (moderatorHasAnyPermission(permissions, USER_WORKSPACE_KEYS)) {
-    userItems.push({ path: '/moderator/users', label: 'Consultation utilisateurs', icon: Users });
+    controlItems.push({ path: '/moderator/users', label: 'Utilisateurs', icon: Users });
   }
-  if (userItems.length) {
-    groups.push({ id: 'users', label: 'Utilisateurs et identité', icon: Users, items: userItems });
+  if (moderatorHasAnyPermission(permissions, COMPLEMENTARY_KEYS)) {
+    controlItems.push({ path: '/moderator/missions', label: 'Centre de missions', icon: ClipboardCheck });
+  }
+  if (controlItems.length) {
+    groups.push({ id: 'controls', label: 'Contrôles & missions', icon: ClipboardCheck, items: controlItems });
   }
 
   const moderationItems: ModeratorNavItem[] = [];
   if (permissions.can_moderate_forum) {
-    moderationItems.push({ path: '/moderator/forum', label: 'Communauté', icon: MessageSquare });
+    moderationItems.push({ path: '/moderator/forum', label: 'Omnia Communauté', icon: MessageSquare });
   }
   if (permissions.can_moderate_jobs) {
-    moderationItems.push({ path: '/moderator/jobs', label: "Offres d'emploi", icon: Briefcase });
+    moderationItems.push({ path: '/moderator/jobs', label: 'Offres d’emploi', icon: Briefcase });
   }
   if (permissions.can_manage_support) {
     moderationItems.push({ path: '/moderator/support', label: 'Support', icon: HelpCircle });
   }
   if (moderationItems.length) {
     groups.push({ id: 'moderation', label: 'Modération & support', icon: MessageSquare, items: moderationItems });
-  }
-
-  groups.push({
-    id: 'account',
-    label: 'Mon compte',
-    icon: User,
-    items: [{ path: '/mon-profil', label: 'Mon profil', icon: User }],
-  });
-
-  if (moderatorHasAnyPermission(permissions, COMPLEMENTARY_KEYS)) {
-    groups.push({
-      id: 'missions',
-      label: 'Contrôles complémentaires',
-      icon: ClipboardCheck,
-      items: [{ path: '/moderator/missions', label: 'Centre de missions', icon: ClipboardCheck }],
-    });
   }
 
   if (permissions.can_view_analytics) {
