@@ -684,7 +684,8 @@ export default function App() {
         <Route path="/admin/courses/import" element={<ProfessorCourseStart />} />
         <Route path="/admin/courses/:id/edit" element={<StudioConceptionFormation />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
-        <Route path="/admin/demo-access" element={<AdminDemoAccess />} />
+        <Route path="/admin/special-access" element={<AdminDemoAccess />} />
+        <Route path="/admin/demo-access" element={<Navigate to="/admin/special-access" replace />} />
         <Route path="/admin/cpd-credits" element={<AdminCpdCredits />} />
           <Route path="/admin/certificates" element={<AdminCertificates />} />
 <Route path="/admin/certificate-settings" element={<AdminCertificateSettings />} />

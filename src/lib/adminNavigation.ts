@@ -1,6 +1,6 @@
 import type React from 'react';
 import {
-  LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users, Monitor,
+  LayoutDashboard, Settings, CreditCard, Wallet, Tag, BookOpen, Users,
   Award, Eye, MessageSquare, Briefcase, Building2, QrCode, Gift,
   Shield, Radio, FileText, FileUp, Layers3, Landmark, GraduationCap, BadgeCheck, ShieldCheck, ClipboardCheck, FolderKanban, Route, FileSignature, Trash2, Languages, User
 } from 'lucide-react';
@@ -78,6 +78,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { path: '/admin/structures', label: 'Structures', icon: Building2 },
       { path: '/admin/structures/b2b', label: 'Commerce B2B & contrats', icon: FileSignature },
       { path: '/admin/structure-codes', label: 'Codes structure', icon: QrCode },
+      { path: '/admin/special-access', label: 'Accès spéciaux', icon: ShieldCheck },
     ],
   },
   {
@@ -135,7 +136,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { path: '/admin/cms-branding', label: 'Configuration CMS', icon: Settings },
       { path: '/admin/traductions', label: 'Traductions de l’interface', icon: Languages },
-      { path: '/admin/demo-access', label: 'Accès Démo', icon: Monitor },
     ],
   },
 ];

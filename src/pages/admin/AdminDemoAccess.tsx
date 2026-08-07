@@ -1,442 +1,409 @@
-import { getSessionToken } from '../../lib/session';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
+import { getSessionToken } from '../../lib/session';
 import {
-  Monitor, RefreshCw, AlertTriangle, Clock, CheckCircle,
-  ShieldCheck, Wifi, WifiOff, BookOpen, Copy,
+  BookOpen,
+  Building2,
+  CheckCircle,
+  Clock,
+  Copy,
+  FileText,
+  Monitor,
+  RefreshCw,
+  ShieldCheck,
+  UserCheck,
+  Users,
+  X,
 } from 'lucide-react';
 
-interface DemoConfig {
-  id: string;
-  configured_at: string;
-  expires_at: string | null;
-  configured_by_name: string;
-  demo_roles: string[];
-  demo_course_ids: string[];
-  is_online: boolean;
-  last_seen_at: string | null;
-}
+type TabKey = 'overview' | 'demo' | 'temporary' | 'inherited' | 'audit';
+type ActionSource = 'demo' | 'invitation' | 'delegation' | 'jury';
 
-interface DemoStatus {
-  is_active: boolean;
-  last_activity: string | null;
-  time_remaining_seconds: number;
-}
-
-interface Course {
+type ModalState = {
+  mode: 'extend' | 'revoke';
+  source: ActionSource;
   id: string;
   title: string;
-}
+  currentExpiry?: string | null;
+} | null;
+
+const BLUE = '#002050';
+const GOLD = '#BF8813';
 
 const ROLE_OPTIONS = [
   { key: 'apprenant', label: 'Apprenant' },
   { key: 'professeur', label: 'Professeur' },
- { key: 'responsable_structure', label: 'Responsable de structure' },
+  { key: 'responsable_structure', label: 'Responsable de structure' },
   { key: 'moderateur', label: 'Modérateur' },
 ];
 
-function generate12() {
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: 'overview', label: 'Vue d’ensemble' },
+  { key: 'demo', label: 'Démonstration' },
+  { key: 'temporary', label: 'Accès temporaires' },
+  { key: 'inherited', label: 'Structure & B2B' },
+  { key: 'audit', label: 'Audit' },
+];
+
+function generatePassword() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-  let pwd = '';
-  for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
-  return pwd;
+  return Array.from({ length: 14 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-function formatCountdown(seconds: number) {
-  if (seconds <= 0) return 'Expiré';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+function fmt(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function dateInputValue(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function isFuture(value?: string | null) {
+  return Boolean(value && new Date(value).getTime() > Date.now());
+}
+
+function badge(status?: string | null) {
+  const active = ['active', 'actif', 'accepted', 'invited', 'pending', 'validated'].includes(String(status || '').toLowerCase());
+  return active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600';
+}
+
+function errorLabel(code: string) {
+  const labels: Record<string, string> = {
+    REASON_REQUIRED: 'Un motif administratif est obligatoire.',
+    EXPIRY_IN_PAST: 'La nouvelle expiration doit être dans le futur.',
+    EXPIRY_NOT_EXTENDED: 'La nouvelle expiration doit être postérieure à l’expiration actuelle.',
+    INVITATION_NOT_EXTENDABLE: 'Cette invitation ne peut plus être prolongée.',
+    DELEGATION_REVOKED: 'Cette délégation a déjà été révoquée.',
+    JURY_ACCESS_NOT_EXTENDABLE: 'Cet accès jury ne peut plus être prolongé.',
+    PASSWORD_TOO_SHORT: 'Le mot de passe est trop court.',
+    PASSWORD_TOO_LONG: 'Le mot de passe est trop long.',
+  };
+  return labels[code] || code || 'Une erreur est survenue.';
 }
 
 export default function AdminDemoAccess() {
-  const [configs, setConfigs] = useState<DemoConfig[]>([]);
-  const [status, setStatus] = useState<DemoStatus | null>(null);
-  const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
+  const [tab, setTab] = useState<TabKey>('overview');
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [busy, setBusy] = useState('');
   const [toast, setToast] = useState('');
+  const [modal, setModal] = useState<ModalState>(null);
+  const [modalReason, setModalReason] = useState('');
+  const [modalExpiry, setModalExpiry] = useState('');
   const [form, setForm] = useState({
     password: '',
     expires_at: '',
     demo_roles: ['apprenant'] as string[],
     demo_course_ids: [] as string[],
   });
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function load() {
+  async function call(body?: Record<string, unknown>) {
     const token = getSessionToken();
-    fetch(ENDPOINTS.adminDemoConfigure, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => {
-        setConfigs(d.configs ?? []);
-        setStatus(d.status ?? null);
-        setPublishedCourses(d.published_courses ?? []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    const response = await fetch(ENDPOINTS.adminDemoConfigure, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success === false) throw new Error(result.message || result.error || 'SERVER_ERROR');
+    return result;
   }
 
-  useEffect(() => {
-    load();
-    pollRef.current = setInterval(load, 15_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
+  async function load() {
+    try {
+      setLoading(true);
+      setData(await call());
+    } catch (caught) {
+      setToast(errorLabel(caught instanceof Error ? caught.message : 'SERVER_ERROR'));
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  function setF<K extends keyof typeof form>(k: K, v: typeof form[K]) {
-    setForm((prev) => ({ ...prev, [k]: v }));
+  useEffect(() => { void load(); }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(''), 4500);
   }
 
   function toggleRole(role: string) {
-    setForm((prev) => {
-      const has = prev.demo_roles.includes(role);
-      return {
-        ...prev,
-        demo_roles: has ? prev.demo_roles.filter((r) => r !== role) : [...prev.demo_roles, role],
-      };
-    });
+    setForm((current) => ({
+      ...current,
+      demo_roles: current.demo_roles.includes(role)
+        ? current.demo_roles.filter((item) => item !== role)
+        : [...current.demo_roles, role],
+    }));
   }
 
   function toggleCourse(id: string) {
-    setForm((prev) => {
-      const has = prev.demo_course_ids.includes(id);
-      return {
-        ...prev,
-        demo_course_ids: has ? prev.demo_course_ids.filter((c) => c !== id) : [...prev.demo_course_ids, id],
-      };
-    });
+    setForm((current) => ({
+      ...current,
+      demo_course_ids: current.demo_course_ids.includes(id)
+        ? current.demo_course_ids.filter((item) => item !== id)
+        : [...current.demo_course_ids, id],
+    }));
+  }
+
+  async function configureDemo() {
+    if (!form.password || !form.expires_at || !form.demo_roles.length) {
+      showToast('Mot de passe, expiration et au moins un rôle sont obligatoires.');
+      return;
+    }
+    setBusy('demo');
+    try {
+      await call({
+        action: 'configure_demo',
+        new_password: form.password,
+        expires_at: new Date(form.expires_at).toISOString(),
+        demo_roles: form.demo_roles,
+        demo_course_ids: form.demo_course_ids,
+      });
+      setForm({ password: '', expires_at: '', demo_roles: ['apprenant'], demo_course_ids: [] });
+      showToast('Accès de démonstration configuré. Les anciennes sessions ont été invalidées.');
+      await load();
+    } catch (caught) {
+      showToast(errorLabel(caught instanceof Error ? caught.message : 'SERVER_ERROR'));
+    } finally {
+      setBusy('');
+    }
   }
 
   async function copyPassword() {
-    if (!form.password) {
-      setToast('Générez ou saisissez d’abord un mot de passe.');
-      setTimeout(() => setToast(''), 3000);
-      return;
-    }
+    if (!form.password) return;
     try {
       await navigator.clipboard.writeText(form.password);
-      setToast('Mot de passe copié.');
+      showToast('Mot de passe copié.');
     } catch {
-      setToast('Copie automatique impossible. Sélectionnez le mot de passe manuellement.');
+      showToast('Copie automatique impossible.');
     }
-    setTimeout(() => setToast(''), 3000);
   }
 
-  async function apply() {
-    if (!form.password || !form.expires_at) return;
-    if (form.demo_roles.length === 0) {
-      setToast('Sélectionnez au moins un rôle démo.');
-      setTimeout(() => setToast(''), 4000);
+  function openAction(next: NonNullable<ModalState>) {
+    setModal(next);
+    setModalReason('');
+    setModalExpiry(next.mode === 'extend' ? dateInputValue(next.currentExpiry) : '');
+  }
+
+  async function submitAction() {
+    if (!modal || !modalReason.trim()) {
+      showToast('Le motif administratif est obligatoire.');
       return;
     }
-    setSubmitting(true);
-    const token = getSessionToken();
-    const res = await fetch(ENDPOINTS.adminDemoConfigure, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        new_password: form.password,
-        expires_at: form.expires_at,
-        demo_roles: form.demo_roles,
-        demo_course_ids: form.demo_course_ids,
-      }),
-    });
-    const d = await res.json();
-    setSubmitting(false);
-    if (d.success) {
-      setToast('Configuration appliquée. Toutes les sessions démo ont été invalidées.');
-      setForm({ password: '', expires_at: '', demo_roles: ['apprenant'], demo_course_ids: [] });
-      load();
-    } else {
-      setToast(d.message ?? d.error ?? 'Erreur lors de la configuration.');
+    if (modal.mode === 'extend' && !modalExpiry) {
+      showToast('La nouvelle expiration est obligatoire.');
+      return;
     }
-    setTimeout(() => setToast(''), 5000);
+
+    const actionMap: Record<ActionSource, { revoke?: string; extend?: string; idKey?: string }> = {
+      demo: { revoke: 'revoke_demo' },
+      invitation: { revoke: 'revoke_invitation', extend: 'extend_invitation', idKey: 'invitation_id' },
+      delegation: { revoke: 'revoke_delegation', extend: 'extend_delegation', idKey: 'delegation_id' },
+      jury: { revoke: 'revoke_jury_access', extend: 'extend_jury_access', idKey: 'member_id' },
+    };
+    const config = actionMap[modal.source];
+    const action = modal.mode === 'revoke' ? config.revoke : config.extend;
+    if (!action) return;
+
+    setBusy(`action:${modal.source}:${modal.id}`);
+    try {
+      const payload: Record<string, unknown> = { action, reason: modalReason.trim() };
+      if (config.idKey) payload[config.idKey] = modal.id;
+      if (modal.mode === 'extend') payload.expires_at = new Date(modalExpiry).toISOString();
+      await call(payload);
+      setModal(null);
+      showToast(modal.mode === 'extend' ? 'Expiration mise à jour et exception auditée.' : 'Accès révoqué et audit enregistré.');
+      await load();
+    } catch (caught) {
+      showToast(errorLabel(caught instanceof Error ? caught.message : 'SERVER_ERROR'));
+    } finally {
+      setBusy('');
+    }
   }
 
-  const latestConfig = configs[0] ?? null;
-  const isExpired = latestConfig?.expires_at ? new Date(latestConfig.expires_at) < new Date() : false;
+  const latestDemo = data?.configs?.[0] || null;
+  const activeInvitations = useMemo(() => (data?.invitations || []).filter((row: any) => row.status === 'pending' && isFuture(row.expires_at)), [data]);
+  const activeDelegations = useMemo(() => (data?.delegations || []).filter((row: any) => row.status === 'active' && isFuture(row.expires_at)), [data]);
+  const activeJuries = useMemo(() => (data?.jury_accesses || []).filter((row: any) => ['invited', 'accepted'].includes(row.status) && isFuture(row.invite_expires_at)), [data]);
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
-        {toast && (
-          <div className="fixed top-4 right-4 z-50 bg-white shadow-lg rounded-xl px-5 py-3 text-sm font-medium border border-gray-200 max-w-sm"
-            style={{ color: '#002050' }}>{toast}</div>
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
+        {toast && <div className="fixed right-4 top-4 z-[70] max-w-sm rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold shadow-xl" style={{ color: BLUE }}>{toast}</div>}
+
+        <header className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white" style={{ background: BLUE }}><ShieldCheck size={21} /></div>
+            <div>
+              <h1 className="text-2xl font-black" style={{ color: BLUE }}>Accès spéciaux</h1>
+              <p className="text-sm text-gray-500">Accès temporaires, dérogations bornées et droits hérités, sans création de rôle global supplémentaire.</p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            Le Super-admin supervise et audite ces accès. Les droits Structure et B2B restent gouvernés par leur source métier ; cette page ne contourne jamais un contrat, une validation Structure ou une règle de jury.
+          </div>
+        </header>
+
+        <nav className="flex flex-wrap gap-2 rounded-xl border border-gray-100 bg-white p-2 shadow-sm">
+          {TABS.map((item) => (
+            <button key={item.key} onClick={() => setTab(item.key)} className={`rounded-lg px-3 py-2 text-sm font-semibold ${tab === item.key ? 'text-white' : 'text-gray-600 hover:bg-gray-50'}`} style={tab === item.key ? { background: BLUE } : undefined}>{item.label}</button>
+          ))}
+        </nav>
+
+        {loading && !data ? <div className="rounded-2xl bg-white p-12 text-center text-sm text-gray-500">Chargement des accès spéciaux…</div> : null}
+
+        {data && tab === 'overview' && (
+          <div className="space-y-5">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              {[
+                ['Total actifs', data.summary?.total_active || 0, ShieldCheck],
+                ['Démo', data.summary?.demo || 0, Monitor],
+                ['Invitations', data.summary?.invitations || 0, UserCheck],
+                ['Délégations', data.summary?.delegations || 0, Users],
+                ['Jurys externes', data.summary?.jury || 0, FileText],
+                ['Structure / B2B', Number(data.summary?.structure || 0) + Number(data.summary?.b2b || 0), Building2],
+              ].map(([label, value, Icon]: any) => <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm"><Icon size={18} color={GOLD} /><p className="mt-3 text-2xl font-black" style={{ color: BLUE }}>{value}</p><p className="text-xs text-gray-500">{label}</p></div>)}
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-3">
+              <InfoCard icon={<Monitor size={19} />} title="Démonstration" text={data.status?.is_configured ? `Actif jusqu’au ${fmt(latestDemo?.expires_at)}` : 'Aucun accès démo actif.'} />
+              <InfoCard icon={<Clock size={19} />} title="Accès temporaires" text={`${activeInvitations.length} invitation(s), ${activeDelegations.length} délégation(s), ${activeJuries.length} accès jury actif(s).`} />
+              <InfoCard icon={<Building2 size={19} />} title="Accès hérités" text={`${data.summary?.structure || 0} délégation(s) Structure et ${data.summary?.b2b || 0} droit(s) B2B actifs. Leur source métier reste prioritaire.`} />
+            </section>
+
+            <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <h2 className="font-black" style={{ color: BLUE }}>Règles de gouvernance</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {[
+                  'Aucun accès spécial ne crée le rôle Super-admin ni un nouveau rôle public.',
+                  'Toute prolongation exceptionnelle exige une nouvelle date d’expiration et un motif.',
+                  'La révocation coupe l’accès au niveau du moteur métier concerné.',
+                  'Les droits Structure/B2B ne peuvent pas être prolongés ici au-delà de leur validation ou contrat.',
+                ].map((text) => <div key={text} className="flex gap-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><CheckCircle className="mt-0.5 shrink-0 text-emerald-600" size={16} />{text}</div>)}
+              </div>
+            </section>
+          </div>
         )}
 
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Accès Démo</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Gestion du compte de démonstration de la plateforme</p>
-        </div>
-
-        {/* Status card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#002050' }}>
-                <Monitor className="w-5 h-5 text-white" />
+        {data && tab === 'demo' && (
+          <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
+            <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div><h2 className="font-black" style={{ color: BLUE }}>Compte de démonstration</h2><p className="mt-1 text-sm text-gray-500">test@omniaglobalacademy.com</p></div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${data.status?.is_configured ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{data.status?.is_configured ? 'Configuré' : 'Inactif'}</span>
               </div>
-              <div>
-                <p className="font-semibold text-gray-800">test@omniaglobalacademy.com</p>
-                <p className="text-xs text-gray-400 mt-0.5">Compte de démonstration — email non modifiable</p>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <Metric label="Expiration" value={fmt(latestDemo?.expires_at)} />
+                <Metric label="Dernière activité" value={fmt(data.status?.last_activity)} />
               </div>
-            </div>
+              {data.status?.is_configured && <button onClick={() => openAction({ mode: 'revoke', source: 'demo', id: String(latestDemo?.id || 'demo'), title: 'Révoquer immédiatement l’accès démo' })} className="mt-4 w-full rounded-lg border border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50">Révoquer l’accès démo</button>}
+            </section>
 
-            {!loading && status !== null && (
-              <div className="flex items-center gap-1.5">
-                {status.is_active ? (
-                  <>
-                    <Wifi className="w-4 h-4 text-green-500" />
-                    <span className="text-xs font-medium text-green-600">En ligne</span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-4 h-4 text-gray-300" />
-                    <span className="text-xs font-medium text-gray-400">Déconnecté</span>
-                  </>
-                )}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <h2 className="font-black" style={{ color: BLUE }}>Nouvelle configuration</h2>
+              <p className="mt-1 text-xs text-gray-500">Une nouvelle configuration invalide immédiatement toutes les sessions démo précédentes.</p>
+              <div className="mt-5 space-y-4">
+                <label className="block text-xs font-semibold text-gray-600">Mot de passe
+                  <div className="mt-1 flex gap-2"><input type="text" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono" /><button type="button" onClick={() => setForm((current) => ({ ...current, password: generatePassword() }))} className="rounded-lg border border-gray-200 px-3 text-gray-600"><RefreshCw size={15} /></button><button type="button" onClick={() => void copyPassword()} className="rounded-lg border border-gray-200 px-3 text-gray-600"><Copy size={15} /></button></div>
+                </label>
+                <label className="block text-xs font-semibold text-gray-600">Expiration obligatoire<input type="datetime-local" value={form.expires_at} onChange={(event) => setForm((current) => ({ ...current, expires_at: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" /></label>
+                <div><p className="text-xs font-semibold text-gray-600">Rôles visibles en démonstration</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{ROLE_OPTIONS.map((role) => <label key={role.key} className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm"><input type="checkbox" checked={form.demo_roles.includes(role.key)} onChange={() => toggleRole(role.key)} style={{ accentColor: GOLD }} />{role.label}</label>)}</div></div>
+                <div><p className="text-xs font-semibold text-gray-600">Formations accessibles</p><div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2">{(data.published_courses || []).length ? (data.published_courses || []).map((course: any) => <label key={course.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50"><input type="checkbox" checked={form.demo_course_ids.includes(course.id)} onChange={() => toggleCourse(course.id)} style={{ accentColor: GOLD }} /><BookOpen size={15} className="mt-0.5 shrink-0 text-gray-400" /><span>{course.title}</span></label>) : <p className="p-2 text-xs text-gray-400">Aucune formation publiée.</p>}</div></div>
+                <button disabled={busy === 'demo'} onClick={() => void configureDemo()} className="w-full rounded-lg px-4 py-2.5 text-sm font-black text-white disabled:opacity-50" style={{ background: BLUE }}>{busy === 'demo' ? 'Application…' : 'Appliquer la configuration'}</button>
               </div>
-            )}
+            </section>
           </div>
+        )}
 
-          {!loading && (
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Temps restant</p>
-                <p className="text-sm font-bold mt-0.5" style={{ color: isExpired ? '#DC2626' : '#002050' }}>
-                  {isExpired ? 'Expiré' : formatCountdown(status?.time_remaining_seconds ?? 0)}
-                </p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Dernière activité</p>
-                <p className="text-sm font-medium text-gray-700 mt-0.5">
-                  {status?.last_activity
-                    ? new Date(status.last_activity).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                    : '—'}
-                </p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Rôles actifs</p>
-                <p className="text-sm font-medium text-gray-700 mt-0.5">
-                  {latestConfig?.demo_roles?.length
-                    ? latestConfig.demo_roles.join(', ')
-                    : '—'}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        {data && tab === 'temporary' && (
+          <div className="space-y-5">
+            <AccessSection title="Invitations professionnelles" subtitle="Liens personnels d’onboarding : modération, équipe Structure et recrutement Structure." count={data.invitations?.length || 0}>
+              {(data.invitations || []).slice(0, 100).map((row: any) => <AccessRow key={row.id} title={row.full_name || row.email} subtitle={`${row.invitation_type} · ${row.organization_name || 'Omnia'} · ${row.email}`} status={row.status} expiry={row.expires_at} actions={['pending', 'expired'].includes(row.status) ? <><SmallButton onClick={() => openAction({ mode: 'extend', source: 'invitation', id: row.id, title: `Prolonger l’invitation de ${row.email}`, currentExpiry: row.expires_at })}>Prolonger</SmallButton><SmallButton danger onClick={() => openAction({ mode: 'revoke', source: 'invitation', id: row.id, title: `Révoquer l’invitation de ${row.email}` })}>Révoquer</SmallButton></> : null} />)}
+            </AccessSection>
 
-        {/* Config form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
-          <h3 className="font-semibold" style={{ color: '#002050' }}>Nouvelle configuration</h3>
+            <AccessSection title="Délégations temporaires des modérateurs" subtitle="Permissions additionnelles bornées dans le temps ; le rôle permanent n’est jamais transféré." count={data.delegations?.length || 0}>
+              {(data.delegations || []).slice(0, 100).map((row: any) => <AccessRow key={row.id} title={row.moderator?.full_name || row.moderator?.email || 'Modérateur'} subtitle={`${Object.values(row.permissions || {}).filter(Boolean).length} permission(s) · ${row.reason || 'Sans motif'}`} status={row.status === 'active' && !isFuture(row.expires_at) ? 'expired' : row.status} expiry={row.expires_at} actions={row.status === 'active' ? <><SmallButton onClick={() => openAction({ mode: 'extend', source: 'delegation', id: row.id, title: 'Prolonger cette délégation', currentExpiry: row.expires_at })}>Prolonger</SmallButton><SmallButton danger onClick={() => openAction({ mode: 'revoke', source: 'delegation', id: row.id, title: 'Révoquer cette délégation' })}>Révoquer</SmallButton></> : null} />)}
+            </AccessSection>
 
-          <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700">
-              Cette action invalide <strong>immédiatement</strong> toute session démo en cours et remplace le mot de passe du compte.
-            </p>
+            <AccessSection title="Jurys externes" subtitle="Accès limité au jury et aux dossiers attribués. Aucun rôle Jury global n’existe." count={data.jury_accesses?.length || 0}>
+              {(data.jury_accesses || []).slice(0, 100).map((row: any) => <AccessRow key={row.id} title={row.external_name || row.external_email || 'Membre externe'} subtitle={`${row.panel?.name || 'Jury'} · ${row.member_role} · ${row.external_email || ''}`} status={row.status} expiry={row.invite_expires_at} actions={['invited', 'accepted'].includes(row.status) ? <><SmallButton onClick={() => openAction({ mode: 'extend', source: 'jury', id: row.id, title: `Prolonger l’accès jury de ${row.external_name || row.external_email}`, currentExpiry: row.invite_expires_at })}>Prolonger</SmallButton><SmallButton danger onClick={() => openAction({ mode: 'revoke', source: 'jury', id: row.id, title: `Retirer ${row.external_name || row.external_email} du jury` })}>Révoquer</SmallButton></> : null} />)}
+            </AccessSection>
           </div>
+        )}
 
-          {/* Password */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nouveau mot de passe</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={form.password}
-                onChange={(e) => setF('password', e.target.value)}
-                placeholder="Mot de passe du compte démo"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setF('password', generate12())}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"
-              >
-                <RefreshCw className="w-3 h-3" /> Générer
-              </button>
-              <button
-                type="button"
-                onClick={copyPassword}
-                disabled={!form.password}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Copy className="w-3 h-3" /> Copier
-              </button>
-            </div>
+        {data && tab === 'inherited' && (
+          <div className="space-y-5">
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><Building2 color={GOLD} /><h2 className="mt-3 font-black" style={{ color: BLUE }}>Délégations Structure</h2><p className="mt-1 text-sm text-gray-500">{data.summary?.structure || 0} accès interne(s) actif(s). Leur validité dépend de la Structure et du rattachement interne.</p><Link to="/admin/structures" className="mt-4 inline-flex rounded-lg border border-gray-200 px-3 py-2 text-sm font-bold" style={{ color: BLUE }}>Gérer les Structures</Link></div>
+              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><FileText color={GOLD} /><h2 className="mt-3 font-black" style={{ color: BLUE }}>Droits issus des contrats B2B</h2><p className="mt-1 text-sm text-gray-500">{data.summary?.b2b || 0} droit(s) actif(s). Ils expirent ou sont révoqués avec leur contrat et ne sont jamais prolongés depuis cette page.</p><Link to="/admin/structures/b2b" className="mt-4 inline-flex rounded-lg border border-gray-200 px-3 py-2 text-sm font-bold" style={{ color: BLUE }}>Gérer B2B & contrats</Link></div>
+            </section>
+
+            <AccessSection title="Accès Structure récents" subtitle="Délégations techniques internes ; le responsable principal n’est pas compté ici." count={data.structure_accesses?.length || 0}>
+              {(data.structure_accesses || []).slice(0, 80).map((row: any, index: number) => <AccessRow key={`${row.organization_id}:${row.user_id}:${index}`} title={row.user?.full_name || row.user?.email || 'Collaborateur'} subtitle={`${row.organization?.org_name || 'Structure'} · ${row.role_in_org || 'collaborateur'}`} status={row.status} />)}
+            </AccessSection>
+
+            <AccessSection title="Droits B2B récents" subtitle="Avantages collectifs matérialisés par Commerce central et synchronisés depuis le contrat actif." count={data.b2b_accesses?.length || 0}>
+              {(data.b2b_accesses || []).slice(0, 80).map((row: any) => <AccessRow key={row.id} title={row.user?.full_name || row.user?.email || 'Membre'} subtitle={`${row.organization?.org_name || 'Structure'} · ${row.contract?.contract_number || 'Contrat'} · ${row.contract?.title || ''}`} status={row.status} expiry={row.contract?.ends_on ? `${row.contract.ends_on}T23:59:59Z` : null} />)}
+            </AccessSection>
           </div>
+        )}
 
-          {/* Expiry */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Date et heure d'expiration</label>
-            <input
-              type="datetime-local"
-              value={form.expires_at}
-              onChange={(e) => setF('expires_at', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-              min={new Date().toISOString().slice(0, 16)}
-            />
+        {data && tab === 'audit' && (
+          <div className="space-y-5">
+            <AccessSection title="Exceptions administratives bornées" subtitle="Uniquement des prolongations/réactivations documentées d’un accès déjà existant." count={data.exceptions?.length || 0}>
+              {(data.exceptions || []).map((row: any) => <AccessRow key={row.id} title={`${row.source_type} · ${row.action}`} subtitle={`${row.reason} · par ${row.created_by_name || '—'}`} status={isFuture(row.new_expires_at) ? 'active' : 'expired'} expiry={row.new_expires_at} />)}
+            </AccessSection>
+            <AccessSection title="Journal transversal" subtitle="Historique append-only des créations, prolongations et révocations d’accès spéciaux." count={data.audit?.length || 0}>
+              {(data.audit || []).map((row: any) => <AccessRow key={row.id} title={`${row.access_type} · ${row.action}`} subtitle={`${row.actor_name || '—'}${row.target_user?.full_name ? ` → ${row.target_user.full_name}` : ''}${row.organization_name ? ` · ${row.organization_name}` : ''}${row.reason ? ` · ${row.reason}` : ''}`} status="audit" expiry={row.created_at} />)}
+            </AccessSection>
           </div>
-
-          {/* Roles */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Rôles accessibles dans la démo</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {ROLE_OPTIONS.map((opt) => {
-                const checked = form.demo_roles.includes(opt.key);
-                return (
-                  <label
-                    key={opt.key}
-                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      checked ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleRole(opt.key)}
-                      className="rounded"
-                      style={{ accentColor: '#002050' }}
-                    />
-                    <span className="text-xs font-medium" style={{ color: checked ? '#002050' : '#6B7280' }}>
-                      {opt.label}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Course preloading */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              <BookOpen className="w-3.5 h-3.5 inline mr-1" />
-              Cours pré-inscrits pour la démo (optionnel)
-            </label>
-            {publishedCourses.length === 0 ? (
-              <p className="text-xs text-gray-400 py-2">Aucun cours publié disponible.</p>
-            ) : (
-              <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                {publishedCourses.map((course) => {
-                  const selected = form.demo_course_ids.includes(course.id);
-                  return (
-                    <label
-                      key={course.id}
-                      className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${selected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleCourse(course.id)}
-                        className="rounded flex-shrink-0"
-                        style={{ accentColor: '#002050' }}
-                      />
-                      <span className="text-xs text-gray-700 truncate">{course.title}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              onClick={apply}
-              disabled={submitting || !form.password || !form.expires_at}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-              style={{ backgroundColor: '#002050' }}
-            >
-              <CheckCircle className="w-4 h-4" />
-              {submitting ? 'Application…' : 'Appliquer la configuration'}
-            </button>
-          </div>
-        </div>
-
-        {/* Rules */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldCheck className="w-4 h-4" style={{ color: '#002050' }} />
-            <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Règles du compte démo</h3>
-          </div>
-          <ul className="space-y-2">
-            {[
-              'Le compte démo utilise toujours l\'adresse test@omniaglobalacademy.com — non modifiable.',
-              'Une nouvelle configuration invalide immédiatement toutes les sessions démo actives.',
-              'Une seule session simultanée : toute nouvelle connexion démo expulse la session précédente.',
-              'Le compte démo ne peut pas effectuer d\'achats réels ni de retraits.',
-              'L\'accès démo est automatiquement révoqué à la date d\'expiration configurée.',
-            ].map((r, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
-                <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"
-                  style={{ backgroundColor: '#EFF6FF', color: '#002050' }}>{i + 1}</span>
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* History */}
-        <div>
-          <h3 className="font-semibold text-sm mb-3" style={{ color: '#002050' }}>Historique des configurations</h3>
-          {loading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
-            </div>
-          ) : configs.length === 0 ? (
-            <div className="bg-white rounded-xl p-8 text-center border border-gray-100">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-20" style={{ color: '#002050' }} />
-              <p className="text-gray-400 text-sm">Aucune configuration enregistrée</p>
-            </div>
-          ) : (
-            <div className="oga-table-scroll bg-white rounded-xl shadow-sm border border-gray-100">
-              <table className="w-full min-w-[720px]">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {['Configuré le', 'Par', 'Expiration', 'Rôles'].map((h) => (
-                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {configs.map((c, idx) => {
-                    const exp = c.expires_at ? new Date(c.expires_at) < new Date() : false;
-                    return (
-                      <tr key={c.id} className={`transition-colors ${idx === 0 ? 'bg-blue-50/40' : 'hover:bg-gray-50'}`}>
-                        <td className="px-4 py-3 text-xs text-gray-600">
-                          {new Date(c.configured_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          {idx === 0 && (
-                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#EFF6FF', color: '#002050' }}>
-                              Actif
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-700">{c.configured_by_name}</td>
-                        <td className="px-4 py-3 text-xs">
-                          {c.expires_at ? (
-                            <span className={exp ? 'text-red-500' : 'text-gray-600'}>
-                              {new Date(c.expires_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              {exp && ' (expiré)'}
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
-                          {Array.isArray(c.demo_roles) && c.demo_roles.length > 0
-                            ? c.demo_roles.join(', ')
-                            : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        )}
       </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><h2 className="font-black" style={{ color: BLUE }}>{modal.title}</h2><p className="mt-1 text-xs text-gray-500">Cette action sera inscrite dans le journal des accès spéciaux.</p></div><button onClick={() => setModal(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
+            <div className="mt-5 space-y-4">
+              {modal.mode === 'extend' && <label className="block text-xs font-semibold text-gray-600">Nouvelle expiration<input type="datetime-local" value={modalExpiry} onChange={(event) => setModalExpiry(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" /></label>}
+              <label className="block text-xs font-semibold text-gray-600">Motif administratif obligatoire<textarea rows={3} value={modalReason} onChange={(event) => setModalReason(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Expliquez pourquoi cet accès doit être modifié." /></label>
+              <div className="flex justify-end gap-2"><button onClick={() => setModal(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600">Annuler</button><button disabled={busy.startsWith('action:')} onClick={() => void submitAction()} className={`rounded-lg px-4 py-2 text-sm font-black text-white disabled:opacity-50 ${modal.mode === 'revoke' ? 'bg-red-600' : ''}`} style={modal.mode === 'extend' ? { background: BLUE } : undefined}>{modal.mode === 'extend' ? 'Confirmer la prolongation' : 'Confirmer la révocation'}</button></div>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
+}
+
+function InfoCard({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
+  return <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50" style={{ color: GOLD }}>{icon}</div><h3 className="mt-3 font-black" style={{ color: BLUE }}>{title}</h3><p className="mt-1 text-sm text-gray-500">{text}</p></div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-sm font-bold text-gray-700">{value}</p></div>;
+}
+
+function AccessSection({ title, subtitle, count, children }: { title: string; subtitle: string; count: number; children: ReactNode }) {
+  return <section className="rounded-2xl border border-gray-100 bg-white shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 p-5"><div><h2 className="font-black" style={{ color: BLUE }}>{title}</h2><p className="mt-1 text-xs text-gray-500">{subtitle}</p></div><span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600">{count}</span></div><div className="divide-y divide-gray-100">{count ? children : <p className="p-5 text-sm text-gray-400">Aucun élément.</p>}</div></section>;
+}
+
+function AccessRow({ title, subtitle, status, expiry, actions }: { title: string; subtitle: string; status?: string | null; expiry?: string | null; actions?: ReactNode }) {
+  return <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-bold text-gray-800">{title}</p>{status && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status === 'audit' ? 'bg-blue-50 text-blue-700' : badge(status)}`}>{status}</span>}</div><p className="mt-1 break-words text-xs text-gray-500">{subtitle}</p>{expiry && <p className="mt-1 flex items-center gap-1 text-xs text-gray-400"><Clock size={12} />{status === 'audit' ? 'Le ' : 'Expiration : '}{fmt(expiry)}</p>}</div>{actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}</div>;
+}
+
+function SmallButton({ children, onClick, danger = false }: { children: ReactNode; onClick: () => void; danger?: boolean }) {
+  return <button onClick={onClick} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${danger ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>{children}</button>;
 }
