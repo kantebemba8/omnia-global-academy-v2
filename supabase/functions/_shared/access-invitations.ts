@@ -1,4 +1,5 @@
 import { generateOpaqueToken, sha256Hex } from "./auth-security.ts";
+import { appendModeratorTeamAudit } from "./moderator-access.ts";
 
 export type AccessInvitationType = "moderator" | "structure_team" | "structure_recruiter";
 
@@ -202,15 +203,32 @@ async function applyModeratorAccess(sb: Client, invitation: any, userId: string)
     can_view_ai_conversations: permissions.can_view_ai_conversations === true,
     can_view_analytics: permissions.can_view_analytics === true,
   };
+  const now = new Date().toISOString();
   const { error: permissionError } = await sb.from("moderator_permissions").upsert({
     moderator_user_id: userId,
     permissions,
-    permission_version: 3,
+    permission_version: 4,
     updated_by: invitation.invited_by,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
     ...legacy,
   }, { onConflict: "moderator_user_id" });
   if (permissionError) throw permissionError;
+
+  const { error: profileError } = await sb.from("moderator_team_profiles").upsert({
+    moderator_user_id: userId,
+    internal_title: String(invitation.internal_role || "Modérateur").trim() || "Modérateur",
+    status: "active",
+    joined_at: now,
+    updated_by: invitation.invited_by,
+    updated_at: now,
+  }, { onConflict: "moderator_user_id" });
+  if (profileError) throw profileError;
+
+  await appendModeratorTeamAudit(sb, invitation.invited_by, userId, "member_joined", null, {
+    invitation_id: invitation.id,
+    internal_title: invitation.internal_role || "Modérateur",
+    permissions,
+  });
 }
 
 async function applyStructureTeamAccess(sb: Client, invitation: any, userId: string) {

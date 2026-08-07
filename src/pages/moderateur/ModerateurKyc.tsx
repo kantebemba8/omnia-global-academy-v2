@@ -67,7 +67,7 @@ export default function ModerateurKyc() {
     const payload = await response.json();
     setSubmitting(false);
     if (payload.success) {
-      setToast(modal.action === 'approve' ? 'Identité et justificatifs du professeur approuvés.' : 'Vérification d’identité du professeur refusée.');
+      setToast(modal.action === 'approve' ? 'Recommandation de validation transmise à l’Administration Omnia.' : 'Recommandation de rejet transmise à l’Administration Omnia.');
       setModal(null);
       setReason('');
       load();
@@ -95,7 +95,7 @@ export default function ModerateurKyc() {
         {toast && <div className="fixed right-4 top-4 z-50 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium shadow-lg" style={{ color: '#002050' }}>{toast}</div>}
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Vérification de l’identité des professeurs</h1>
-          <p className="mt-1 text-sm text-gray-500">Contrôlez l’identité et les justificatifs transmis par les professeurs. Les Structures sont vérifiées dans l’espace Administration Omnia dédié.</p>
+          <p className="mt-1 text-sm text-gray-500">Contrôlez l’identité et les justificatifs transmis par les professeurs puis transmettez votre recommandation. La décision finale reste réservée à l’Administration Omnia.</p>
         </div>
 
         {professeurs.length === 0 ? (
@@ -120,8 +120,8 @@ export default function ModerateurKyc() {
               <p className="line-clamp-3 text-sm leading-relaxed text-gray-700">{professeur.bio || '—'}</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setModal({ userId: professeur.user_id, name: professeur.full_name, action: 'approve' })} className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white" style={{ backgroundColor: '#1E7A52' }}><CheckCircle className="h-3.5 w-3.5" />Approuver</button>
-              <button onClick={() => { setModal({ userId: professeur.user_id, name: professeur.full_name, action: 'reject' }); setReason(''); }} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"><XCircle className="h-3.5 w-3.5" />Rejeter</button>
+              <button onClick={() => setModal({ userId: professeur.user_id, name: professeur.full_name, action: 'approve' })} className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white" style={{ backgroundColor: '#1E7A52' }}><CheckCircle className="h-3.5 w-3.5" />Recommander la validation</button>
+              <button onClick={() => { setModal({ userId: professeur.user_id, name: professeur.full_name, action: 'reject' }); setReason(''); }} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"><XCircle className="h-3.5 w-3.5" />Recommander le rejet</button>
             </div>
           </article>
         ))}
@@ -129,12 +129,12 @@ export default function ModerateurKyc() {
         {modal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-              <div className="flex items-center gap-3"><User className="h-5 w-5" style={{ color: '#BF8813' }} /><h3 className="text-lg font-bold" style={{ color: '#002050' }}>{modal.action === 'approve' ? 'Approuver la vérification' : 'Refuser la vérification'}</h3></div>
-              <p className="text-sm text-gray-600">{modal.action === 'approve' ? `Confirmer l’approbation de ${modal.name} ?` : `Indiquez le motif du rejet pour ${modal.name}.`}</p>
+              <div className="flex items-center gap-3"><User className="h-5 w-5" style={{ color: '#BF8813' }} /><h3 className="text-lg font-bold" style={{ color: '#002050' }}>{modal.action === 'approve' ? 'Recommander la validation' : 'Recommander le rejet'}</h3></div>
+              <p className="text-sm text-gray-600">{modal.action === 'approve' ? `Transmettre une recommandation favorable pour ${modal.name} ?` : `Indiquez le motif de la recommandation de rejet pour ${modal.name}.`}</p>
               {modal.action === 'reject' && <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm" placeholder="Motif obligatoire…" />}
               <div className="flex justify-end gap-3">
                 <button onClick={() => { setModal(null); setReason(''); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">Annuler</button>
-                <button onClick={decide} disabled={submitting || (modal.action === 'reject' && !reason.trim())} className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60 ${modal.action === 'reject' ? 'bg-red-600 hover:bg-red-700' : ''}`} style={modal.action === 'approve' ? { backgroundColor: '#1E7A52' } : {}}>{submitting ? 'En cours…' : 'Confirmer'}</button>
+                <button onClick={decide} disabled={submitting || (modal.action === 'reject' && !reason.trim())} className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60 ${modal.action === 'reject' ? 'bg-red-600 hover:bg-red-700' : ''}`} style={modal.action === 'approve' ? { backgroundColor: '#1E7A52' } : {}}>{submitting ? 'En cours…' : 'Transmettre'}</button>
               </div>
             </div>
           </div>

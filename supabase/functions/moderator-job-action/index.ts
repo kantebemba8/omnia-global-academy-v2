@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,17 +56,9 @@ Deno.serve(async (req: Request) => {
     const moderatorId = await verifyModerator(sb, token);
     if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permissionsRow, error: permissionsError } = await sb
-      .from("moderator_permissions")
-      .select("can_moderate_jobs,permissions")
-      .eq("moderator_user_id", moderatorId)
-      .maybeSingle();
-    if (permissionsError) throw permissionsError;
-    const nested = permissionsRow?.permissions && typeof permissionsRow.permissions === "object"
-      ? permissionsRow.permissions as Record<string, unknown>
-      : {};
-    const canModerateJobs = permissionsRow?.can_moderate_jobs === true || nested.can_moderate_jobs === true;
-    if (!canModerateJobs) {
+    const access = await getModeratorAccess(sb, moderatorId);
+    if (!access.active) return json({ error: "TEAM_ACCESS_SUSPENDED", message: "Votre accès interne est suspendu ou terminé." }, 403);
+    if (!access.permissions.can_moderate_jobs) {
       return json({ error: "FORBIDDEN", message: "Permission de modération des offres requise." }, 403);
     }
 
@@ -143,6 +136,13 @@ Deno.serve(async (req: Request) => {
     }
     if (action === "reject" && !reason) {
       return json({ error: "REASON_REQUIRED", message: "Le motif du rejet est obligatoire." }, 400);
+    }
+
+    const { data: targetJob, error: targetJobError } = await sb.from("job_offers").select("id,posted_by_id,status").eq("id", jobId).maybeSingle();
+    if (targetJobError) throw targetJobError;
+    if (!targetJob) return json({ error: "JOB_NOT_FOUND", message: "Offre introuvable." }, 404);
+    if (await hasModeratorConflict(sb, moderatorId, "job_offer", jobId, [String(targetJob.posted_by_id)])) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Cette offre doit être réattribuée à un autre membre de l’équipe." }, 403);
     }
 
     const now = new Date().toISOString();

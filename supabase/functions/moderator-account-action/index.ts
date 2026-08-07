@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
@@ -15,25 +16,12 @@ function json(data: unknown, status = 200) {
 }
 
 type SupabaseClient = ReturnType<typeof createClient>;
-type PermissionMap = Record<string, boolean>;
 const PROTECTED_ROLES = ["super_admin", "moderateur"];
 
 function maskName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length <= 1) return parts[0] || "—";
   return `${parts.slice(0, -1).join(" ")} ${parts.at(-1)?.[0] || ""}.`;
-}
-
-function normalizePermissions(row: Record<string, unknown> | null): PermissionMap {
-  const nested = row?.permissions && typeof row.permissions === "object" && !Array.isArray(row.permissions)
-    ? row.permissions as Record<string, unknown>
-    : {};
-  const value = (canonical: string, legacy?: string) => nested[canonical] === true || row?.[canonical] === true || (!!legacy && (nested[legacy] === true || row?.[legacy] === true));
-  return {
-    can_see_learners_list: value("can_see_learners_list"),
-    can_see_professors_list: value("can_see_professors_list"),
-    can_request_account_suspension: value("can_request_account_suspension", "can_suspend_account"),
-  };
 }
 
 async function verifyModerator(sb: SupabaseClient, token: string) {
@@ -70,13 +58,9 @@ Deno.serve(async (req: Request) => {
     const moderatorId = await verifyModerator(sb, token);
     if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permissionRow, error: permissionError } = await sb
-      .from("moderator_permissions")
-      .select("*")
-      .eq("moderator_user_id", moderatorId)
-      .maybeSingle();
-    if (permissionError) throw permissionError;
-    const permissions = normalizePermissions(permissionRow as Record<string, unknown> | null);
+    const access = await getModeratorAccess(sb, moderatorId);
+    if (!access.active) return json({ error: "TEAM_ACCESS_SUSPENDED", message: "Votre accès interne est suspendu ou terminé." }, 403);
+    const permissions = access.permissions;
 
     if (req.method === "GET") {
       if (!permissions.can_see_learners_list && !permissions.can_see_professors_list) return json({ error: "FORBIDDEN" }, 403);
@@ -139,7 +123,7 @@ Deno.serve(async (req: Request) => {
     const targetUserId = String(body.target_user_id || "");
     const requestAction = String(body.request_action || "");
     const reason = String(body.reason || "").trim();
-    if (!targetUserId || !["suspend", "reactivate", "validate_kyc"].includes(requestAction) || reason.length < 3) {
+    if (!targetUserId || !["suspend", "reactivate"].includes(requestAction) || reason.length < 3) {
       return json({ error: "INVALID_PARAMS", message: "La cible, l’action et un motif sont requis." }, 400);
     }
 
@@ -147,6 +131,9 @@ Deno.serve(async (req: Request) => {
     if (targetRolesError) throw targetRolesError;
     if ((targetRoles || []).some((row: { role: string }) => PROTECTED_ROLES.includes(row.role))) {
       return json({ error: "PROTECTED_ACCOUNT", message: "Action interdite sur ce compte." }, 403);
+    }
+    if (await hasModeratorConflict(sb, moderatorId, "user_account", targetUserId, [targetUserId])) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Ce compte ne peut pas être traité par ce membre de l’équipe." }, 403);
     }
 
     const { data: existing, error: existingError } = await sb

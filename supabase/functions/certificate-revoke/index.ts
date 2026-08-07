@@ -20,9 +20,9 @@ Deno.serve(async (req: Request) => {
       .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (!sess) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Must be super_admin or moderateur
+    // La révocation définitive d’un certificat est une décision finale réservée au Super-admin
     const { data: role } = await sb.from("user_roles").select("role")
-      .eq("user_id", sess.user_id).in("role", ["super_admin", "moderateur"]).maybeSingle();
+      .eq("user_id", sess.user_id).eq("role", "super_admin").maybeSingle();
     if (!role) return new Response(JSON.stringify({ error: "FORBIDDEN" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json();

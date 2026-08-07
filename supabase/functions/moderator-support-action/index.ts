@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,9 +30,9 @@ Deno.serve(async (req: Request) => {
     const modId = await verifyModerator(sb, token);
     if (!modId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permsRow } = await sb.from("moderator_permissions").select("can_manage_support").eq("moderator_user_id", modId).maybeSingle();
-    const perms = permsRow as unknown as Record<string, boolean> | null ?? {};
-    if (!perms.can_manage_support) return json({ error: "FORBIDDEN", message: "Permission can_manage_support requise." }, 403);
+    const access = await getModeratorAccess(sb, modId);
+    if (!access.active) return json({ error: "TEAM_ACCESS_SUSPENDED", message: "Votre accès interne est suspendu ou terminé." }, 403);
+    if (!access.permissions.can_manage_support) return json({ error: "FORBIDDEN", message: "Permission can_manage_support requise." }, 403);
 
     // GET — list tickets
     if (req.method === "GET") {
@@ -56,6 +57,13 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { ticket_id, action, resolution } = body as { ticket_id: string; action: "take_charge" | "resolve" | "keep_open"; resolution?: string };
     if (!ticket_id || !["take_charge", "resolve", "keep_open"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
+
+    const { data: targetTicket, error: targetTicketError } = await sb.from("support_tickets").select("id,user_id,assigned_to").eq("id", ticket_id).maybeSingle();
+    if (targetTicketError) throw targetTicketError;
+    if (!targetTicket) return json({ error: "TICKET_NOT_FOUND" }, 404);
+    if (await hasModeratorConflict(sb, modId, "support_ticket", ticket_id, [String(targetTicket.user_id)])) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Ce ticket doit être réattribué à un autre membre de l’équipe." }, 403);
+    }
 
     const now = new Date().toISOString();
     if (action === "take_charge") {

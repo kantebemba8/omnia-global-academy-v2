@@ -151,7 +151,7 @@ export default function ModerateurCours() {
                         <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" />{c.modules_count} modules, {c.lessons_count} leçons</span>
                         <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />Soumis {new Date(c.created_at).toLocaleDateString('fr-FR')}</span>
                         {c.price != null && (
-                          <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />Prix actuel : {c.price.toLocaleString('fr-FR')} XOF</span>
+                          <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />Prix actuel / proposé : {c.price.toLocaleString('fr-FR')} XOF</span>
                         )}
                       </div>
 
@@ -170,7 +170,7 @@ export default function ModerateurCours() {
                         {perms?.can_recommend_course_price && (
                           <button onClick={() => { setModal({ course: c, action: 'price' }); setPrice(String(c.price ?? '')); }}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors">
-                            <DollarSign className="w-3.5 h-3.5" style={{ color: '#BF8813' }} /> Modifier le prix
+                            <DollarSign className="w-3.5 h-3.5" style={{ color: '#BF8813' }} /> Proposer un prix
                           </button>
                         )}
                         {perms?.can_approve_transmit_course && c.status === 'en_attente_validation_manuelle' && (
@@ -267,7 +267,7 @@ export default function ModerateurCours() {
               )}
               {modal.action === 'price' && (
                 <>
-                  <h3 className="font-bold text-lg" style={{ color: '#002050' }}>Modifier le prix</h3>
+                  <h3 className="font-bold text-lg" style={{ color: '#002050' }}>Proposer un prix</h3>
                   <input type="number" value={price} onChange={(e) => setPrice(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                     style={{ '--tw-ring-color': '#002050' } as React.CSSProperties}
@@ -277,7 +277,7 @@ export default function ModerateurCours() {
                     <button onClick={() => doAction(modal.course.id, 'set_price', { price_xof: Number(price) })} disabled={submitting || !price}
                       className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-60"
                       style={{ backgroundColor: '#BF8813' }}>
-                      {submitting ? 'En cours…' : 'Enregistrer le prix'}
+                      {submitting ? 'En cours…' : 'Transmettre la proposition'}
                     </button>
                   </div>
                 </>

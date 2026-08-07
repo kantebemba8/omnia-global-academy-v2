@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
@@ -93,13 +94,9 @@ Deno.serve(async (req: Request) => {
     const moderatorId = await verifyModerator(sb, token);
     if (!moderatorId) return json({ error: "FORBIDDEN" }, 403);
 
-    const { data: permissionRow, error: permissionError } = await sb
-      .from("moderator_permissions")
-      .select("*")
-      .eq("moderator_user_id", moderatorId)
-      .maybeSingle();
-    if (permissionError) throw permissionError;
-    const permissions = normalizePermissions(permissionRow as Record<string, unknown> | null);
+    const access = await getModeratorAccess(sb, moderatorId);
+    if (!access.active) return json({ error: "TEAM_ACCESS_SUSPENDED", message: "Votre accès interne est suspendu ou terminé." }, 403);
+    const permissions = access.permissions;
 
     if (req.method === "GET") {
       if (!permissions.can_see_pending_courses) {
@@ -173,8 +170,8 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (courseError) throw courseError;
     if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
-    if (String(course.instructor_id) === moderatorId) {
-      return json({ error: "CONFLICT_OF_INTEREST", message: "Vous ne pouvez pas modérer votre propre formation." }, 403);
+    if (await hasModeratorConflict(sb, moderatorId, "course", courseId, [String(course.instructor_id)])) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Ce dossier est bloqué pour conflit d’intérêts. Il doit être réattribué par l’Administration Omnia." }, 403);
     }
 
     const now = new Date().toISOString();
@@ -186,7 +183,7 @@ Deno.serve(async (req: Request) => {
     if (action === "set_price") {
       const price = Number(body.price_xof);
       if (!Number.isFinite(price) || price < 0) return json({ error: "INVALID_PRICE" }, 400);
-      update.price_xof = Math.round(price);
+      update.prix_provisoire_xof = Math.round(price);
       logAction = "course_price_recommended";
     } else if (action === "reject") {
       if (!comment) return json({ error: "COMMENT_REQUIRED" }, 400);
@@ -205,7 +202,7 @@ Deno.serve(async (req: Request) => {
       notificationParams.COMMENT = comment;
       shouldNotify = true;
     } else if (action === "transmit_to_admin") {
-      update.status = "validee";
+      // La transmission ne valide ni ne publie la formation : la décision finale reste côté Administration Omnia.
       update.rejection_reason = null;
       logAction = "course_transmitted_to_admin";
     } else if (action === "confirm_oral_exam") {

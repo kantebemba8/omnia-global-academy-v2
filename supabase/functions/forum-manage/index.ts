@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,13 +99,8 @@ async function resolveSession(sb: DbClient, req: Request, required: boolean): Pr
   const roles = (roleRows || []).map((row: { role: string }) => String(row.role));
   let canModerateForum = roles.includes("super_admin");
   if (!canModerateForum && roles.includes("moderateur")) {
-    const { data: permission } = await sb
-      .from("moderator_permissions")
-      .select("can_moderate_forum,permissions")
-      .eq("moderator_user_id", userId)
-      .maybeSingle();
-    const permissions = (permission?.permissions || {}) as Record<string, unknown>;
-    canModerateForum = permission?.can_moderate_forum === true || permissions.can_moderate_forum === true;
+    const access = await getModeratorAccess(sb, userId);
+    canModerateForum = access.active && access.permissions.can_moderate_forum === true;
   }
 
   return {
@@ -553,6 +549,12 @@ async function pinAction(sb: DbClient, req: Request) {
   if (accessResult.response) return accessResult.response;
   const canPin = session.roles.includes("super_admin") || session.canModerateForum || accessResult.access?.accessType === "instructor";
   if (!canPin) return json({ error: "FORBIDDEN" }, 403);
+  if (session.roles.includes("moderateur") && !session.roles.includes("super_admin") && session.canModerateForum) {
+    const targetPost = accessResult.post as Record<string, unknown>;
+    if (await hasModeratorConflict(sb, session.userId, "forum_post", postId, [String(targetPost.user_id || "")])) {
+      return json({ error: "CONFLICT_OF_INTEREST", message: "Cette publication doit être réattribuée à un autre membre de l’équipe." }, 403);
+    }
+  }
   const { error } = await sb.from("forum_posts").update({ is_pinned: pinned }).eq("id", postId);
   if (error) throw error;
   return json({ success: true, is_pinned: pinned });

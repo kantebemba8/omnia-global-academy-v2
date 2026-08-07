@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,14 +39,8 @@ async function authenticate(sb: ReturnType<typeof createClient>, token: string):
 async function canModerateForum(sb: ReturnType<typeof createClient>, session: Session) {
   if (session.roles.includes("super_admin")) return true;
   if (!session.roles.includes("moderateur")) return false;
-
-  const { data: permission, error } = await sb
-    .from("moderator_permissions")
-    .select("can_moderate_forum")
-    .eq("moderator_user_id", session.userId)
-    .maybeSingle();
-  if (error) return false;
-  return permission?.can_moderate_forum === true;
+  const access = await getModeratorAccess(sb, session.userId);
+  return access.active && access.permissions.can_moderate_forum === true;
 }
 
 async function enrichPosts(sb: ReturnType<typeof createClient>, rows: any[]) {
@@ -103,6 +98,15 @@ Deno.serve(async (req: Request) => {
     const action = String(body.action || "");
     if (!postId || !["hide", "restore", "unflag"].includes(action)) {
       return json({ error: "INVALID_PARAMS", message: "Publication ou action invalide." }, 400);
+    }
+
+    if (session.roles.includes("moderateur") && !session.roles.includes("super_admin")) {
+      const { data: targetPost, error: postError } = await sb.from("forum_posts").select("id,user_id").eq("id", postId).maybeSingle();
+      if (postError) throw postError;
+      if (!targetPost) return json({ error: "POST_NOT_FOUND", message: "Publication introuvable." }, 404);
+      if (await hasModeratorConflict(sb, session.userId, "forum_post", postId, [String(targetPost.user_id)])) {
+        return json({ error: "CONFLICT_OF_INTEREST", message: "Cette publication doit être réattribuée à un autre membre de l’équipe." }, 403);
+      }
     }
 
     let update: Record<string, unknown> = {};
