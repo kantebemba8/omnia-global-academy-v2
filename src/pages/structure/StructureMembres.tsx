@@ -91,6 +91,27 @@ export default function StructureMembres() {
     }
   }
 
+
+  async function handleRemove(membershipId: string) {
+    if (!window.confirm('Retirer ce membre de la Structure ?')) return;
+    setBusyId(membershipId);
+    setError('');
+    try {
+      const response = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'remove_membership', structure_id: structureId, membership_id: membershipId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success !== true) throw new Error(data.message || data.error || 'Retrait impossible.');
+      showToast('Membre retiré.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Retrait impossible.');
+    } finally {
+      setBusyId('');
+    }
+  }
   const filtered = members.filter(m => {
     const matchStatus = filter === 'all' || m.status === filter;
     const name = m.users?.full_name ?? '';
@@ -100,6 +121,7 @@ export default function StructureMembres() {
   });
 
   const pending = members.filter(m => m.status === 'pending').length;
+  const approved = members.filter(m => m.status === 'approved').length;
 
   return (
     <StructureLayout displayName={displayName}>
@@ -116,7 +138,8 @@ export default function StructureMembres() {
           <div>
             <h1 className="text-2xl font-black" style={{ color: '#002050' }}>{location.pathname === '/structure/rattachements' ? 'Demandes de rattachement' : 'Membres liés'}</h1>
             <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
-              Apprenants rattachés à votre structure via un code
+              Apprenants rattachés à votre Structure via un code
+              <span className="ml-2 font-bold" style={{ color: '#065F46' }}>· {approved} actif(s)</span>
               {pending > 0 && <span className="ml-2 font-bold" style={{ color: '#92400E' }}>· {pending} en attente</span>}
             </p>
           </div>
@@ -189,9 +212,14 @@ export default function StructureMembres() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: '#F0F4FF', color: '#002050' }}>
-                          {m.structure_code_id ? '••••' : '—'}
-                        </span>
+                        {m.code ? (
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: '#374151' }}>{m.code.code_name || 'Code Structure'}</p>
+                            <span className="text-xs font-mono px-2 py-1 rounded inline-block mt-1" style={{ background: '#F0F4FF', color: '#002050' }}>
+                              {m.code.code || '—'}
+                            </span>
+                          </div>
+                        ) : <span className="text-xs" style={{ color: '#9CA3AF' }}>—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>
                         {new Date(m.requested_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -216,9 +244,14 @@ export default function StructureMembres() {
                           </div>
                         )}
                         {m.status === 'approved' && (
-                          <span className="flex items-center gap-1 text-xs" style={{ color: '#065F46' }}>
-                            <UserCheck size={12} /> Lié
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs" style={{ color: '#065F46' }}>
+                              <UserCheck size={12} /> Lié
+                            </span>
+                            <button disabled={busyId === m.id} onClick={() => handleRemove(m.id)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border"
+                              style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>Retirer</button>
+                          </div>
                         )}
                       </td>
                     </tr>

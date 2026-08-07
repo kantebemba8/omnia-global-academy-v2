@@ -101,10 +101,6 @@ function generateCode(prefix = "OGA") {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}-${randomPart(4)}`;
 }
 
-function generatePin() {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
-
 const STRUCTURE_STATUS_TO_UI: Record<string, string> = {
   pending: "pending_validation",
   pending_validation: "pending_validation",
@@ -140,6 +136,9 @@ const CODE_TYPE_LABELS: Record<string, string> = {
   programme_special: "Programme spécial",
   autre: "Autre",
 };
+
+const CODE_TYPES = new Set(Object.keys(CODE_TYPE_LABELS));
+const SPECIAL_CODE_TYPES = new Set([...CODE_TYPES].filter((value) => value !== "rattachement_simple"));
 
 const STRUCTURE_TEAM_PERMISSION_KEYS = new Set([
   "can_manage_structure_profile",
@@ -214,6 +213,12 @@ function mapCode(row: Record<string, any>) {
   const meta = codeMeta(row);
   const type = meta.code_type || "rattachement_simple";
   const expired = row.expires_at && Date.parse(row.expires_at) < Date.now();
+  const activeUses = Number(row._active_uses ?? row.used_count ?? 0);
+  const pendingUses = Number(row._pending_uses ?? 0);
+  const maxUses = Number(row.max_users || 0);
+  const reviewState = String(meta.admin_review_state || "");
+  let status = expired ? "expired" : (CODE_STATUS_TO_UI[row.status] ?? row.status ?? "draft");
+  if (!expired && status === "draft" && reviewState === "changes_requested") status = "changes_requested";
   return {
     ...row,
     id: row.id,
@@ -223,13 +228,56 @@ function mapCode(row: Record<string, any>) {
     code_type: type,
     type_label: CODE_TYPE_LABELS[type] || type,
     description: meta.description || "",
-    max_uses: Number(row.max_users || 0),
-    used_count: Number(row.used_count || 0),
-    requires_manual_validation: !!row.requires_manual_validation,
+    max_uses: maxUses,
+    used_count: activeUses,
+    current_uses: activeUses,
+    pending_uses: pendingUses,
+    remaining_uses: Math.max(0, maxUses - activeUses),
+    requires_manual_validation: true,
     pin: row.pin || "",
-    status: expired ? "expired" : (CODE_STATUS_TO_UI[row.status] ?? row.status ?? "draft"),
+    pin_enabled: !!String(row.pin || "").trim(),
+    requires_admin_validation: SPECIAL_CODE_TYPES.has(type),
+    status,
     admin_comment: meta.admin_comment || row.refusal_reason || null,
   };
+}
+
+async function mapCodesWithUsage(sb: ReturnType<typeof createClient>, rows: Record<string, any>[]) {
+  const codeIds = rows.map((row) => String(row.id || "")).filter(Boolean);
+  const usage = new Map<string, { active: number; pending: number }>();
+  if (codeIds.length) {
+    const { data, error } = await sb.from("partner_code_users").select("code_id,status").in("code_id", codeIds);
+    if (error) throw error;
+    for (const row of data || []) {
+      const codeId = String(row.code_id || "");
+      const stats = usage.get(codeId) || { active: 0, pending: 0 };
+      const status = String(row.status || "").toLowerCase();
+      if (["validated", "approved", "active", "actif"].includes(status)) stats.active += 1;
+      else if (["pending", "requested", "en_attente"].includes(status)) stats.pending += 1;
+      usage.set(codeId, stats);
+    }
+  }
+  return rows.map((row) => {
+    const stats = usage.get(String(row.id)) || { active: 0, pending: 0 };
+    return mapCode({ ...row, _active_uses: stats.active, _pending_uses: stats.pending });
+  });
+}
+
+function validateCodeInput(body: Record<string, any>) {
+  const codeName = String(body.code_name || "").trim();
+  const codeType = String(body.code_type || "rattachement_simple").trim();
+  const description = String(body.description || "").trim();
+  const maxUses = Number(body.max_uses);
+  const pin = String(body.pin || "").trim();
+  const expiresAt = body.expires_at ? String(body.expires_at) : null;
+
+  if (codeName.length < 3 || codeName.length > 120) throw new ClientError("CODE_NAME_INVALID", "Le nom du code doit contenir entre 3 et 120 caractères.");
+  if (!CODE_TYPES.has(codeType)) throw new ClientError("CODE_TYPE_INVALID", "Le type de code est invalide.");
+  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 100000) throw new ClientError("CODE_LIMIT_INVALID", "La limite du code doit être comprise entre 1 et 100 000 membres.");
+  if (pin && (pin.length < 4 || pin.length > 20)) throw new ClientError("PIN_INVALID", "Le PIN doit contenir entre 4 et 20 caractères.");
+  if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) throw new ClientError("EXPIRATION_INVALID", "La date d'expiration doit être dans le futur.");
+
+  return { codeName, codeType, description, maxUses, pin: pin || null, expiresAt };
 }
 
 async function appendStructureAudit(
@@ -515,7 +563,7 @@ Deno.serve(async (req: Request) => {
         return {
           id: row.id,
           status,
-          requested_at: row.created_at || row.updated_at || new Date().toISOString(),
+          requested_at: row.requested_at || row.created_at || row.updated_at || new Date().toISOString(),
           approved_at: status === "approved" ? (row.validated_at || row.approved_at || row.updated_at || null) : null,
           expires_at: row.expires_at || null,
           structure: organization ? mapStructure(organization) : null,
@@ -884,46 +932,58 @@ Deno.serve(async (req: Request) => {
       const membershipId = String(body.membership_id || "");
       const decision = String(body.decision || "");
       if (!membershipId || !["approve", "reject"].includes(decision)) return json({ error: "INVALID_REQUEST" }, 400);
-      const { data: membership, error: membershipError } = await sb.from("partner_code_users").select("*").eq("id", membershipId).eq("organization_id", organizationId).maybeSingle();
-      if (membershipError) throw membershipError;
-      if (!membership) return json({ error: "MEMBERSHIP_NOT_FOUND" }, 404);
-      const pendingStatuses = ["pending", "requested", "en_attente"];
-      if (!pendingStatuses.includes(String(membership.status || ""))) {
-        return json({ error: "MEMBERSHIP_ALREADY_PROCESSED", message: "Cette demande a déjà été traitée." }, 409);
-      }
-      const newStatus = decision === "approve" ? "validated" : "rejected";
-      if (decision === "approve") {
-        const capacity = await structureCapacity(sb, organizationId, "structure_member_limit");
-        if (capacity !== null) {
-          const { count } = await sb.from("partner_code_users").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["validated", "approved", "active"]);
-          if (Number(count || 0) >= capacity) return json({ error: "STRUCTURE_MEMBER_LIMIT_REACHED", message: "La capacité de membres prévue par l'abonnement de la Structure est atteinte." }, 409);
-        }
-      }
-      const { data: updatedMembership, error } = await sb.from("partner_code_users")
-        .update({ status: newStatus })
-        .eq("id", membershipId)
-        .eq("organization_id", organizationId)
-        .in("status", pendingStatuses)
-        .select("id")
-        .maybeSingle();
+
+      const capacity = await structureCapacity(sb, organizationId, "structure_member_limit");
+      const { data: result, error } = await sb.rpc("oga_decide_structure_membership", {
+        p_membership_id: membershipId,
+        p_organization_id: organizationId,
+        p_actor_user_id: session.userId,
+        p_decision: decision,
+        p_structure_capacity: capacity,
+        p_comment: body.comment || null,
+      });
       if (error) throw error;
-      if (!updatedMembership) {
-        return json({ error: "MEMBERSHIP_ALREADY_PROCESSED", message: "Cette demande vient d’être traitée par une autre action." }, 409);
+      if (!result?.ok) {
+        const code = String(result?.error || "MEMBERSHIP_DECISION_FAILED");
+        const messages: Record<string, string> = {
+          MEMBERSHIP_NOT_FOUND: "Demande de rattachement introuvable.",
+          MEMBERSHIP_ALREADY_PROCESSED: "Cette demande a déjà été traitée.",
+          CODE_NOT_ACTIVE: "Le code utilisé n'est plus actif.",
+          CODE_EXPIRED: "Le code utilisé a expiré.",
+          CODE_QUOTA_REACHED: "La limite de membres de ce code est atteinte.",
+          STRUCTURE_MEMBER_LIMIT_REACHED: "La capacité de membres prévue pour la Structure est atteinte.",
+          STRUCTURE_NOT_ACTIVE: "La Structure n'est pas actuellement active.",
+        };
+        return json({ error: code, message: messages[code] || "Décision impossible." }, 409);
       }
-      if (decision === "approve" && membership.code_id) {
-        const { data: code } = await sb.from("partner_codes").select("used_count,advantages").eq("id", membership.code_id).maybeSingle();
-        if (code) {
-          await sb.from("partner_codes").update({ used_count: Number(code.used_count || 0) + 1 }).eq("id", membership.code_id);
-          const amount = Number(code.advantages?.cv_tokens || 0);
-          if (amount > 0) {
-            const { data: learner } = await sb.from("users").select("cv_tokens").eq("id", membership.user_id).maybeSingle();
-            const balance = Number(learner?.cv_tokens || 0) + amount;
-            await sb.from("users").update({ cv_tokens: balance }).eq("id", membership.user_id);
-          }
-        }
-      }
-      await appendStructureAudit(sb, organizationId, session.userId, "structure", `membership_${decision}`, { membership_id: membershipId, code_id: membership.code_id || null }, String(membership.user_id || "") || null);
-      return json({ success: true, status: decision === "approve" ? "approved" : "rejected" });
+
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", `membership_${decision}`, {
+        membership_id: membershipId,
+        code_id: result.code_id || null,
+        comment: body.comment || null,
+      }, String(result.user_id || "") || null);
+      return json({ success: true, status: result.status });
+    }
+
+    if (action === "remove_membership") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_members"))) return json({ error: "FORBIDDEN" }, 403);
+      const membershipId = String(body.membership_id || "");
+      if (!membershipId) return json({ error: "MEMBERSHIP_REQUIRED" }, 400);
+      const { data: result, error } = await sb.rpc("oga_remove_structure_membership", {
+        p_membership_id: membershipId,
+        p_organization_id: organizationId,
+        p_actor_user_id: session.userId,
+        p_comment: body.comment || null,
+      });
+      if (error) throw error;
+      if (!result?.ok) return json({ error: result?.error || "MEMBERSHIP_REMOVE_FAILED" }, 409);
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", "membership_removed", {
+        membership_id: membershipId,
+        code_id: result.code_id || null,
+        comment: body.comment || null,
+      }, String(result.user_id || "") || null);
+      return json({ success: true, status: "removed" });
     }
 
     if (action === "list_team") {
@@ -1094,42 +1154,117 @@ Deno.serve(async (req: Request) => {
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_codes"))) return json({ error: "FORBIDDEN" }, 403);
       const { data, error } = await sb.from("partner_codes").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false });
       if (error) throw error;
-      return json({ success: true, codes: (data || []).map(mapCode) });
+      return json({ success: true, codes: await mapCodesWithUsage(sb, data || []) });
+    }
+
+    if (action === "admin_list_codes") {
+      if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
+      const { data: rows, error } = await sb.from("partner_codes").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      const codes = await mapCodesWithUsage(sb, rows || []);
+      const organizationIds = [...new Set(codes.map((row: any) => String(row.organization_id || "")).filter(Boolean))];
+      const { data: organizations, error: organizationsError } = organizationIds.length
+        ? await sb.from("partner_organizations").select("id,org_name,org_type,status").in("id", organizationIds)
+        : { data: [], error: null } as any;
+      if (organizationsError) throw organizationsError;
+      const organizationMap = new Map((organizations || []).map((row: any) => [String(row.id), row]));
+      const statusFilter = String(body.status_filter || "all");
+      const search = String(body.search || "").trim().toLowerCase();
+      let filtered = codes.map((code: any) => ({ ...code, structure: organizationMap.get(String(code.organization_id)) || null }));
+      if (statusFilter !== "all") filtered = filtered.filter((code: any) => code.status === statusFilter);
+      if (search) filtered = filtered.filter((code: any) => [code.code_name, code.code_value, code.structure?.org_name].some((value) => String(value || "").toLowerCase().includes(search)));
+      return json({
+        success: true,
+        codes: filtered,
+        stats: {
+          total: codes.length,
+          pending: codes.filter((code: any) => code.status === "pending_admin_validation").length,
+          active: codes.filter((code: any) => code.status === "active").length,
+          changes_requested: codes.filter((code: any) => code.status === "changes_requested").length,
+          suspended: codes.filter((code: any) => code.status === "suspended").length,
+        },
+      });
     }
 
     if (action === "create_code") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_codes"))) return json({ error: "FORBIDDEN" }, 403);
-      const codeType = String(body.code_type || "rattachement_simple");
+      const input = validateCodeInput(body);
       const code = generateCode("OGA");
+      const requiresAdmin = SPECIAL_CODE_TYPES.has(input.codeType);
       const meta = {
         __omnia_kind: "structure_code",
-        code_type: codeType,
-        description: body.description || "",
+        code_type: input.codeType,
+        description: input.description,
         admin_comment: null,
+        admin_review_state: null,
       };
       const { data, error } = await sb.from("partner_codes").insert({
         organization_id: organizationId,
         created_by: session.userId,
-        code_name: body.code_name || "Code structure",
+        code_name: input.codeName,
         code,
-        pin: String(body.pin || generatePin()),
-        max_users: Number(body.max_uses || 100),
-        expires_at: body.expires_at || null,
+        pin: input.pin,
+        max_users: input.maxUses,
+        expires_at: input.expiresAt,
         advantages: meta,
-        requires_manual_validation: body.requires_manual_validation ?? true,
+        requires_manual_validation: true,
         qr_code_enabled: true,
-        status: codeType === "rattachement_simple" ? "validated" : "draft",
+        status: requiresAdmin ? "draft" : "validated",
+        used_count: 0,
       }).select("*").single();
       if (error) throw error;
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", "structure_code_created", {
+        code_id: data.id, code_type: input.codeType, max_uses: input.maxUses, requires_admin_validation: requiresAdmin,
+      });
+      return json({ success: true, code: mapCode(data) });
+    }
+
+    if (action === "update_code") {
+      const organizationId = String(body.structure_id || "");
+      if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_codes"))) return json({ error: "FORBIDDEN" }, 403);
+      const codeId = String(body.code_id || "");
+      if (!codeId) return json({ error: "CODE_ID_REQUIRED" }, 400);
+      const { data: current, error: currentError } = await sb.from("partner_codes").select("*").eq("id", codeId).eq("organization_id", organizationId).maybeSingle();
+      if (currentError) throw currentError;
+      if (!current) return json({ error: "CODE_NOT_FOUND" }, 404);
+      const mapped = mapCode(current);
+      if (["pending_admin_validation", "active", "suspended"].includes(mapped.status)) {
+        return json({ error: "CODE_NOT_EDITABLE", message: "Ce code doit être en brouillon, en modification demandée ou refusé pour être modifié." }, 409);
+      }
+      const input = validateCodeInput(body);
+      const { count } = await sb.from("partner_code_users").select("id", { count: "exact", head: true }).eq("code_id", codeId).in("status", ["validated", "approved", "active", "actif"]);
+      if (Number(count || 0) > input.maxUses) return json({ error: "CODE_LIMIT_BELOW_USAGE", message: "La nouvelle limite ne peut pas être inférieure au nombre de membres déjà rattachés." }, 409);
+      const meta = { ...codeMeta(current), code_type: input.codeType, description: input.description, admin_review_state: null };
+      const { data, error } = await sb.from("partner_codes").update({
+        code_name: input.codeName,
+        pin: input.pin,
+        max_users: input.maxUses,
+        expires_at: input.expiresAt,
+        advantages: meta,
+        requires_manual_validation: true,
+        status: SPECIAL_CODE_TYPES.has(input.codeType) ? "draft" : "validated",
+        updated_at: new Date().toISOString(),
+      }).eq("id", codeId).eq("organization_id", organizationId).select("*").single();
+      if (error) throw error;
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", "structure_code_updated", { code_id: codeId, code_type: input.codeType, max_uses: input.maxUses });
       return json({ success: true, code: mapCode(data) });
     }
 
     if (action === "submit_code") {
       const organizationId = String(body.structure_id || "");
       if (!(await requireStructureAccess(sb, session, organizationId, "can_manage_structure_codes"))) return json({ error: "FORBIDDEN" }, 403);
-      const { data, error } = await sb.from("partner_codes").update({ status: "pending", submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", body.code_id).eq("organization_id", organizationId).select("*").single();
+      const codeId = String(body.code_id || "");
+      const { data: current, error: currentError } = await sb.from("partner_codes").select("*").eq("id", codeId).eq("organization_id", organizationId).maybeSingle();
+      if (currentError) throw currentError;
+      if (!current) return json({ error: "CODE_NOT_FOUND" }, 404);
+      const type = String(codeMeta(current).code_type || "rattachement_simple");
+      if (!SPECIAL_CODE_TYPES.has(type)) return json({ error: "ADMIN_VALIDATION_NOT_REQUIRED", message: "Un code de rattachement simple est actif sans validation administrative." }, 409);
+      if (!['draft','refused','rejected'].includes(String(current.status || ''))) return json({ error: "CODE_NOT_SUBMITTABLE" }, 409);
+      const meta = { ...codeMeta(current), admin_comment: null, admin_review_state: "pending" };
+      const { data, error } = await sb.from("partner_codes").update({ status: "pending", advantages: meta, submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", codeId).eq("organization_id", organizationId).select("*").single();
       if (error) throw error;
+      await appendStructureAudit(sb, organizationId, session.userId, "structure", "structure_code_submitted", { code_id: codeId, code_type: type });
       return json({ success: true, code: mapCode(data) });
     }
 
@@ -1137,58 +1272,107 @@ Deno.serve(async (req: Request) => {
       if (!isSuperAdmin(session)) return json({ error: "FORBIDDEN" }, 403);
       const codeId = String(body.code_id || "");
       const decision = String(body.decision || "");
-      const { data: current } = await sb.from("partner_codes").select("*").eq("id", codeId).maybeSingle();
+      const { data: current, error: currentError } = await sb.from("partner_codes").select("*").eq("id", codeId).maybeSingle();
+      if (currentError) throw currentError;
       if (!current) return json({ error: "CODE_NOT_FOUND" }, 404);
-      const statusMap: Record<string, string> = { activate: "validated", reject: "refused", suspend: "suspended", deactivate: "draft" };
+      const metaCurrent = codeMeta(current);
+      const type = String(metaCurrent.code_type || "rattachement_simple");
+      if (!CODE_TYPES.has(type)) return json({ error: "CODE_TYPE_INVALID" }, 409);
+      const statusMap: Record<string, string> = { activate: "validated", reject: "refused", request_changes: "draft", suspend: "suspended", deactivate: "draft" };
       if (!statusMap[decision]) return json({ error: "INVALID_DECISION" }, 400);
-      const meta = { ...codeMeta(current), admin_comment: body.admin_comment || null };
-      const patch: Record<string, unknown> = { status: statusMap[decision], advantages: meta, updated_at: new Date().toISOString() };
-      if (decision === "activate") {
-        patch.validated_by = session.userId;
-        patch.validated_at = new Date().toISOString();
+
+      let maxUsers = Number(current.max_users || 0);
+      if (body.max_uses !== undefined) {
+        const candidate = Number(body.max_uses);
+        if (!Number.isInteger(candidate) || candidate < 1 || candidate > 100000) return json({ error: "CODE_LIMIT_INVALID" }, 400);
+        const { count } = await sb.from("partner_code_users").select("id", { count: "exact", head: true }).eq("code_id", codeId).in("status", ["validated", "approved", "active", "actif"]);
+        if (Number(count || 0) > candidate) return json({ error: "CODE_LIMIT_BELOW_USAGE" }, 409);
+        maxUsers = candidate;
       }
-      if (decision === "reject") patch.refusal_reason = body.admin_comment || null;
+      let expiresAt = current.expires_at || null;
+      if (body.expires_at !== undefined) {
+        expiresAt = body.expires_at ? String(body.expires_at) : null;
+        if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) return json({ error: "EXPIRATION_INVALID" }, 400);
+      }
+      const description = body.description !== undefined ? String(body.description || "").trim() : String(metaCurrent.description || "");
+      const adminComment = String(body.admin_comment || "").trim() || null;
+      const reviewState = decision === "request_changes" ? "changes_requested" : decision === "activate" ? "approved" : decision === "reject" ? "rejected" : decision;
+      const meta = { ...metaCurrent, description, admin_comment: adminComment, admin_review_state: reviewState };
+      const patch: Record<string, unknown> = {
+        status: statusMap[decision],
+        advantages: meta,
+        max_users: maxUsers,
+        expires_at: expiresAt,
+        requires_manual_validation: true,
+        updated_at: new Date().toISOString(),
+      };
+      if (decision === "activate") { patch.validated_by = session.userId; patch.validated_at = new Date().toISOString(); }
+      if (decision === "reject") patch.refusal_reason = adminComment;
       const { data, error } = await sb.from("partner_codes").update(patch).eq("id", codeId).select("*").single();
       if (error) throw error;
+      await appendStructureAudit(sb, String(current.organization_id), session.userId, "admin", `structure_code_${decision}`, { code_id: codeId, code_type: type, max_uses: maxUsers, comment: adminComment });
       return json({ success: true, code: mapCode(data) });
     }
 
     if (action === "use_code") {
+      if (!session.roles.includes("apprenant")) return json({ error: "CODE_LEARNER_ONLY", message: "Les Codes Structure sont réservés au rattachement des apprenants." }, 403);
       const codeValue = String(body.code_value || "").trim().toUpperCase();
       if (!codeValue) return json({ error: "CODE_REQUIRED" }, 400);
-      const { data: code, error } = await sb.from("partner_codes").select("*").eq("code", codeValue).maybeSingle();
+      const { data: codeRow, error: codeError } = await sb.from("partner_codes").select("organization_id").eq("code", codeValue).maybeSingle();
+      if (codeError) throw codeError;
+      const capacity = codeRow?.organization_id ? await structureCapacity(sb, String(codeRow.organization_id), "structure_member_limit") : null;
+      const { data: result, error } = await sb.rpc("oga_use_structure_code", {
+        p_code_value: codeValue,
+        p_user_id: session.userId,
+        p_pin: body.pin || null,
+        p_structure_capacity: capacity,
+      });
       if (error) throw error;
-      if (!code) return json({ error: "INVALID_CODE", message: "Code structure invalide." }, 400);
-      if (code.pin && String(body.pin || "").trim() !== String(code.pin)) return json({ error: "INVALID_PIN", message: "Le PIN est incorrect." }, 400);
-      if (!["validated", "active"].includes(String(code.status))) return json({ error: "CODE_NOT_ACTIVE", message: "Ce code n'est pas actif." }, 400);
-      if (code.expires_at && Date.parse(code.expires_at) < Date.now()) return json({ error: "CODE_EXPIRED", message: "Ce code a expiré." }, 400);
-      if (Number(code.max_users || 0) > 0 && Number(code.used_count || 0) >= Number(code.max_users)) return json({ error: "CODE_QUOTA_REACHED", message: "La limite d'utilisation de ce code est atteinte." }, 400);
-      const { data: existing } = await sb.from("partner_code_users").select("id,status").eq("code_id", code.id).eq("user_id", session.userId).maybeSingle();
-      if (existing) return json({ error: "ALREADY_LINKED", message: "Votre compte est déjà lié à ce code." }, 409);
-      const organization = await getOrganization(sb, String(code.organization_id));
-      if (!organization || String(organization.status || "") !== "validated") {
-        return json({ error: "STRUCTURE_NOT_ACTIVE", message: "Cette Structure n'est pas actuellement autorisée à recevoir de nouveaux rattachements." }, 403);
+      if (!result?.ok) {
+        const code = String(result?.error || "CODE_USE_FAILED");
+        const messages: Record<string, string> = {
+          INVALID_CODE: "Code structure invalide.",
+          PIN_REQUIRED: "Ce code nécessite un PIN.",
+          INVALID_PIN: "Le PIN est incorrect.",
+          CODE_NOT_ACTIVE: "Ce code n'est pas actif.",
+          CODE_EXPIRED: "Ce code a expiré.",
+          CODE_QUOTA_REACHED: "La limite d'utilisation de ce code est atteinte.",
+          CODE_LIMIT_INVALID: "Ce code n'a pas de capacité valide.",
+          ALREADY_LINKED_TO_STRUCTURE: "Votre compte possède déjà un rattachement actif ou en attente avec cette Structure.",
+          STRUCTURE_MEMBER_LIMIT_REACHED: "La Structure a atteint sa capacité de membres.",
+          STRUCTURE_NOT_ACTIVE: "Cette Structure n'est pas actuellement autorisée à recevoir de nouveaux rattachements.",
+        };
+        return json({ error: code, message: messages[code] || "Impossible d'utiliser ce code.", pin_required: code === "PIN_REQUIRED" }, code === "INVALID_CODE" ? 400 : 409);
       }
-      const needsValidation = !!code.requires_manual_validation;
-      const { data: link, error: insertError } = await sb.from("partner_code_users").insert({
-        code_id: code.id,
-        user_id: session.userId,
-        organization_id: code.organization_id,
-        status: needsValidation ? "pending" : "validated",
-        advantages_remaining: needsValidation ? {} : (code.advantages || {}),
-        expires_at: code.expires_at || null,
-      }).select("*").single();
-      if (insertError) throw insertError;
-      if (!needsValidation) await sb.from("partner_codes").update({ used_count: Number(code.used_count || 0) + 1 }).eq("id", code.id);
+      const organization = await getOrganization(sb, String(result.organization_id));
+      await appendStructureAudit(sb, String(result.organization_id), session.userId, "learner", "structure_membership_requested", { membership_id: result.membership_id, code_id: result.code_id }, session.userId);
       return json({
         success: true,
-        membership: link,
-        status: needsValidation ? "pending" : "approved",
+        membership: { id: result.membership_id, status: "pending" },
+        status: "pending",
+        requires_validation: true,
         structure: organization ? mapStructure(organization) : null,
-        message: needsValidation ? "Votre demande de rattachement a été envoyée à la Structure." : "Votre rattachement à la Structure est actif.",
+        message: "Votre demande de rattachement a été envoyée à la Structure pour vérification.",
       });
     }
 
+    if (action === "cancel_membership") {
+      const membershipId = String(body.membership_id || "");
+      if (!membershipId) return json({ error: "MEMBERSHIP_REQUIRED" }, 400);
+      const { data: membership, error: membershipError } = await sb.from("partner_code_users").select("id,user_id,organization_id,status").eq("id", membershipId).eq("user_id", session.userId).maybeSingle();
+      if (membershipError) throw membershipError;
+      if (!membership) return json({ error: "MEMBERSHIP_NOT_FOUND" }, 404);
+      const { data: result, error } = await sb.rpc("oga_remove_structure_membership", {
+        p_membership_id: membershipId,
+        p_organization_id: membership.organization_id,
+        p_actor_user_id: session.userId,
+        p_comment: body.comment || "Annulation par l'apprenant",
+      });
+      if (error) throw error;
+      if (!result?.ok) return json({ error: result?.error || "MEMBERSHIP_CANCEL_FAILED" }, 409);
+      await appendStructureAudit(sb, String(membership.organization_id), session.userId, "learner", "structure_membership_cancelled", { membership_id: membershipId }, session.userId);
+      return json({ success: true, status: "removed" });
+    }
 
     // Programme 3 / GM2 — organisation, cohortes et formations obligatoires
     if (action === "gm2_overview") {

@@ -3,7 +3,7 @@ import { DashboardLayout } from '../../components/DashboardLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   QrCode, Building2, CheckCircle, XCircle, Clock,
-  AlertCircle, Search, Users, ChevronRight, Gift, RefreshCw
+  AlertCircle, Gift, RefreshCw
 } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structure-manage`;
@@ -105,11 +105,16 @@ export function DashboardStructure() {
           CODE_NOT_ACTIVE: 'Ce code structure n’est pas actif.',
           CODE_EXPIRED: 'Ce code structure a expiré.',
           CODE_QUOTA_REACHED: 'Ce code a atteint son nombre maximum d’utilisations.',
+          PIN_REQUIRED: 'Ce code nécessite un PIN.',
           INVALID_PIN: 'Le PIN saisi est incorrect.',
           ALREADY_LINKED: 'Votre compte est déjà rattaché à ce code.',
+          ALREADY_LINKED_TO_STRUCTURE: 'Vous avez déjà un rattachement actif ou en attente avec cette Structure.',
+          STRUCTURE_MEMBER_LIMIT_REACHED: 'Cette Structure a atteint sa capacité de membres.',
+          CODE_LIMIT_INVALID: 'Ce code ne possède pas une limite valide.',
           AUTH_REQUIRED: 'Vous devez être connecté(e) pour utiliser un code.',
           SESSION_INVALID: 'Votre session a expiré. Veuillez vous reconnecter.',
         };
+        if (data.error === 'PIN_REQUIRED') setShowPin(true);
         setCodeResult({
           success: false,
           message: errorMessages[data.error] ?? data.message ?? 'Une erreur est survenue.',
@@ -122,6 +127,26 @@ export function DashboardStructure() {
     }
   }
 
+
+  async function handleCancelMembership(membershipId: string, active: boolean) {
+    const message = active
+      ? 'Quitter cette Structure ? Votre rattachement actif sera retiré.'
+      : 'Annuler cette demande de rattachement ?';
+    if (!window.confirm(message)) return;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'cancel_membership', membership_id: membershipId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success !== true) throw new Error(data.message || data.error || 'Action impossible.');
+      showToast(active ? 'Rattachement retiré.' : 'Demande annulée.');
+      await loadMemberships();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Action impossible.');
+    }
+  }
   return (
     <DashboardLayout role="apprenant">
       <div className="p-6 max-w-3xl mx-auto space-y-6">
@@ -316,6 +341,14 @@ export function DashboardStructure() {
                         {m.approved_at && ` · Accepté le ${new Date(m.approved_at).toLocaleDateString('fr-FR')}`}
                       </p>
                     </div>
+                    {(m.status === 'pending' || m.status === 'approved') && (
+                      <button
+                        onClick={() => handleCancelMembership(m.id, m.status === 'approved')}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border flex-shrink-0"
+                        style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+                        {m.status === 'approved' ? 'Quitter' : 'Annuler'}
+                      </button>
+                    )}
                   </div>
                 );
               })}
