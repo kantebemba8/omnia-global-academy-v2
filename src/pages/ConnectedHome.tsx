@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import UserAccountMenu from '../components/UserAccountMenu';
+import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
@@ -27,7 +28,6 @@ import { getDashboardPathForRoles, normalizePlatformRoles, type CanonicalPlatfor
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
-const OFFICIAL_SLOGAN = 'EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.';
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 
@@ -153,14 +153,7 @@ export default function ConnectedHome() {
     <div className="min-h-screen bg-white text-slate-900">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex min-h-[76px] max-w-7xl items-center gap-5 px-5 sm:px-6">
-          <Link to="/home" className="flex min-w-0 flex-none items-center gap-2.5" aria-label="Accueil connecté Omnia Global Academy">
-            <img src="/IMG_0349.png" alt="" className="h-10 w-auto object-contain" />
-            <div className="min-w-0">
-              <div className="text-sm font-black leading-none tracking-[0.09em] text-[#002050]">OMNIA</div>
-              <div className="mt-1 text-[8px] font-bold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div>
-              <div className="mt-1 hidden text-[7px] font-bold tracking-[0.08em] text-slate-500 sm:block">{OFFICIAL_SLOGAN}</div>
-            </div>
-          </Link>
+          <OmniaBrandLockup href="/home" className="flex-none" />
 
           <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 items-center border border-slate-300 bg-white lg:flex">
             <Search size={17} className="ml-4 shrink-0 text-slate-400" />

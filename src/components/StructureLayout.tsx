@@ -200,10 +200,8 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
     const hasNonRecruitmentDelegation = Object.values(permissions).some(Boolean);
     const dedicatedRecruiter = roles.includes('recruteur_structure') && !isPrimary && !hasNonRecruitmentDelegation;
 
+    if (!structureContext) return [];
     if (dedicatedRecruiter) return STRUCTURE_RECRUITER_NAV_GROUPS;
-    if (!structureContext) {
-      return roles.includes('recruteur_structure') ? STRUCTURE_RECRUITER_NAV_GROUPS : STRUCTURE_NAV_GROUPS;
-    }
     return filterStructureNavigation(permissions, recruitmentPermissions, isPrimary, roles);
   }, [roles, structureContext]);
 

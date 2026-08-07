@@ -22,7 +22,7 @@ export function RegisterOrganizer(){
      style={{ backgroundColor: '#FFF8E7', border: '1px solid #FDE68A' }}>
      <Info size={15} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
      <p className="text-xs" style={{ color: '#374151' }}>
-       Votre demande sera examinée par notre équipe sous 48h ouvrées.
+       Votre demande sera examinée par l’équipe Omnia avant activation.
        L’organisateur ne sera activé qu’après validation.
      </p>
    </div>

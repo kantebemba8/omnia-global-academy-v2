@@ -15,6 +15,7 @@ import { PublicChannelsManager } from '../../components/admin/PublicChannelsMana
 import { PricingRulesManager } from '../../components/admin/PricingRulesManager';
 import { PricingTiersManager } from '../../components/admin/PricingTiersManager';
 
+import { OMNIA_OFFICIAL_SLOGAN } from '../../components/OmniaBrandLockup';
 type Settings = Record<string, any>;
 type Tab = 'general' | 'landing' | 'partenaires' | 'legal' | 'avance' | 'newsletter' | 'ia' | 'maintenance';
 
@@ -50,7 +51,7 @@ function canCmsWrite(key: string) {
 }
 
 
-const OFFICIAL_SLOGAN = 'EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.';
+
 const FIXED_BRAND_COLORS = {
   primary: '#002050',
   accent: '#BF8813',
@@ -177,7 +178,7 @@ export default function AdminCMS() {
 
         const editableMap = { ...map };
         if (!editableMap.site_slogan || String(editableMap.site_slogan).trim().toLowerCase() === 'test') {
-          editableMap.site_slogan = OFFICIAL_SLOGAN;
+          editableMap.site_slogan = OMNIA_OFFICIAL_SLOGAN;
         }
 
         const faviconLibrary = parseObject<FaviconItem[]>(map.favicon_library, []);
@@ -559,7 +560,7 @@ export default function AdminCMS() {
           {tab === 'general' && (
             <div className="space-y-4">
               <h3 className="font-semibold" style={{ color: '#002050' }}>Identité de la plateforme</h3>
-              <Field label="Slogan officiel" k="site_slogan" placeholder={OFFICIAL_SLOGAN} />
+              <Field label="Slogan officiel" k="site_slogan" placeholder={OMNIA_OFFICIAL_SLOGAN} />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-3 pt-2 space-y-3">
                 <h3 className="font-semibold" style={{ color: '#002050' }}>Favicon & Identité visuelle</h3>

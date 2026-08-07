@@ -65,6 +65,7 @@ export async function initializeNativeRuntime(): Promise<void> {
 
     const rootPaths = new Set([
       '/accueil',
+      '/home',
       '/dashboard',
       '/professeur/dashboard',
       '/structure/dashboard',

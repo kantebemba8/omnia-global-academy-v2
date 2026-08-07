@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, Home, LayoutDashboard, LogOut, Menu, Settings, UserRound, X } from 'lucide-react';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import OmniaBrandLockup from './OmniaBrandLockup';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
 import {
@@ -15,7 +16,6 @@ interface NavbarProps {
   navigation?: LandingNavigationConfig;
 }
 
-const OFFICIAL_SLOGAN = 'EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.';
 
 type MenuKey = 'explore' | 'professionals';
 
@@ -44,16 +44,8 @@ function profilePathForUser(user: AuthUser) {
   return '/mon-profil';
 }
 
-function settingsPathForUser(user: AuthUser) {
-  const roles = normalizePlatformRoles(user.roles);
-  if (roles.includes('super_admin')) return '/mon-profil';
-  if (roles.includes('structure')) return '/mon-profil';
-  if (roles.includes('recruteur_structure')) return '/mon-profil?tab=notifications';
-  if (roles.includes('recruteur')) return '/talent/recruteur/parametres';
-  if (roles.includes('organisateur')) return '/omnia-live/organisateur/parametres';
-  if (roles.includes('professeur')) return '/mon-profil';
-  if (roles.includes('moderateur')) return '/moderateur/dashboard';
-  return '/mon-profil?tab=visibilite';
+function settingsPathForUser(_user: AuthUser) {
+  return '/mon-profil?tab=notifications';
 }
 
 function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' }) {
@@ -215,7 +207,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
     <>
       <nav ref={navRef} aria-label="Navigation principale" className="fixed left-0 right-0 top-0 z-50 transition-all duration-200" style={{ backgroundColor: isScrolledOrSolid ? '#FFFFFF' : 'transparent', borderBottom: isScrolledOrSolid ? '1px solid #E4E7EC' : 'none', boxShadow: scrolled ? '0 2px 14px rgba(15,23,42,0.08)' : 'none' }}>
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-6">
-          <Link to={brandHomePath} className="flex flex-shrink-0 items-center gap-2.5" aria-label="Accueil Omnia Global Academy"><img src="/IMG_0349.png" alt="" className="h-10 w-auto object-contain" /><div><div className="text-[15px] font-bold leading-none tracking-[0.09em] text-[#002050]">OMNIA</div><div className="mt-0.5 text-[8px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div><div className="mt-1 hidden max-w-[235px] text-[7px] font-bold tracking-[0.07em] text-slate-500 xl:block">{OFFICIAL_SLOGAN}</div></div></Link>
+          <OmniaBrandLockup href={brandHomePath} className="flex-shrink-0" />
           <div className="hidden items-center gap-7 lg:flex">
             {directLinks.slice(0, 1).map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]">{item.label}</Link>)}
             {dropdown('explore', config.explore_label || fallback.explore_label, exploreLinks)}
@@ -237,7 +229,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
         </div>
       </nav>
       {mobileOpen && <><button type="button" className="fixed inset-0 z-40 bg-black/45 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu de navigation" /><aside ref={mobilePanelRef} id="omnia-mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigation mobile" className="fixed right-0 top-0 z-50 flex h-full w-[min(92vw,360px)] flex-col bg-white shadow-2xl lg:hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><Link to={brandHomePath} onClick={() => setMobileOpen(false)} className="flex items-center gap-2" aria-label="Accueil Omnia Global Academy"><img src="/IMG_0349.png" alt="" className="h-9 w-auto object-contain" /><div><div className="text-[13px] font-bold leading-none tracking-[0.09em] text-[#002050]">OMNIA</div><div className="mt-0.5 text-[7px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div><div className="mt-1 text-[6px] font-bold tracking-[0.05em] text-slate-500">{OFFICIAL_SLOGAN}</div></div></Link><button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Fermer le menu"><X size={20} color="#64748B" /></button></div>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div onClick={() => setMobileOpen(false)}><OmniaBrandLockup href={brandHomePath} compact /></div><button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Fermer le menu"><X size={20} color="#64748B" /></button></div>
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <div className="space-y-1">{directLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50">{item.label}</Link>)}</div>
           {exploreLinks.length > 0 && <div className="mt-6 border-t border-slate-100 pt-5"><p className="px-3 text-xs font-bold uppercase tracking-[0.16em] text-[#9A6A08]">{config.explore_label || fallback.explore_label}</p><div className="mt-2 space-y-1">{exploreLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}</div></div>}

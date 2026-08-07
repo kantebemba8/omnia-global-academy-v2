@@ -92,7 +92,7 @@ export default function FormulaireRecruteur() {
             </div>
             <h2 className="text-2xl font-bold mb-2" style={{ color: '#002050' }}>Offre soumise avec succès !</h2>
             <p className="text-gray-500 mb-6 text-sm leading-relaxed">
-              Votre offre d'emploi est en cours de validation par notre équipe. Vous recevrez une confirmation par email dans les 24-48 heures ouvrées.
+              Votre offre d'emploi est en cours de validation par notre équipe. Vous recevrez une confirmation par email dès qu’une décision sera disponible.
             </p>
             <div className="flex flex-col gap-3">
               <Link to="/forum/emploi"

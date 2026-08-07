@@ -20,6 +20,7 @@ import {
 } from '../types/landingCms';
 import { ENDPOINTS } from '../lib/config';
 import { edgeGatewayHeaders } from '../lib/edgeAuth';
+import OmniaBrandLockup from './OmniaBrandLockup';
 
 type LegacySocialNetworks = Record<string, string | null | undefined>;
 type LegacyAppDownloads = { google_play?: string | null; app_store?: string | null };
@@ -187,7 +188,7 @@ export function PageFooter({
   return (
     <footer className="bg-[#002050] font-sans">
       <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:py-12">
-        <section aria-labelledby="omnia-newsletter-title" className="relative mb-10 overflow-hidden rounded-3xl border-2 border-[#BF8813]/70 bg-white/[0.10] p-5 shadow-2xl shadow-black/20 ring-1 ring-white/10 sm:p-7">
+        <section aria-labelledby="omnia-newsletter-title" className="relative mb-10 border-y border-white/15 py-7 sm:py-9">
           <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#BF8813]/20 blur-3xl" />
           <div className="relative grid gap-6 lg:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.15fr)] lg:items-center">
             <div>
@@ -198,7 +199,7 @@ export function PageFooter({
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/80">Recevez les actualités, nouvelles formations, ressources et opportunités importantes d’Omnia Global Academy.</p>
             </div>
 
-            <form onSubmit={subscribeNewsletter} className="rounded-2xl border border-white/20 bg-[#00183D]/70 p-4 backdrop-blur-sm sm:p-5">
+            <form onSubmit={subscribeNewsletter} className="border-t border-white/15 pt-6 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
               <label className="sr-only" htmlFor="footer-newsletter-email">Adresse e-mail</label>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <input
@@ -228,14 +229,7 @@ export function PageFooter({
 
         <div className="grid gap-9 lg:grid-cols-[minmax(230px,0.75fr)_minmax(0,1.25fr)]">
           <div>
-            <div className="flex items-center gap-2.5">
-              <img src="/IMG_0349.png" alt="" className="h-9 w-auto object-contain brightness-0 invert" />
-              <div>
-                <div className="text-sm font-bold leading-none tracking-[0.09em] text-white">OMNIA</div>
-                <div className="mt-0.5 text-[8px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div>
-                <div className="mt-1 text-[7px] font-bold tracking-[0.06em] text-white/55">EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.</div>
-              </div>
-            </div>
+            <OmniaBrandLockup href="/accueil" inverse />
 
             {config.description && (
               <p className="mt-4 max-w-sm text-xs leading-6 text-white/55">{config.description}</p>

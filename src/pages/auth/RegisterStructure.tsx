@@ -137,7 +137,7 @@ export function RegisterStructure() {
           <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>
             Votre demande d'inscription a bien été reçue.<br />
             Elle est en attente de validation par notre équipe.<br />
-            Vous serez notifié(e) par email sous 48h ouvrées.
+            Vous serez notifié(e) par email dès qu’une décision sera disponible.
           </p>
           <button
             onClick={() => navigate('/connexion')}
@@ -275,7 +275,7 @@ export function RegisterStructure() {
         style={{ backgroundColor: '#FFF8E7', border: '1px solid #FDE68A' }}>
         <Info size={15} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
         <p className="text-xs" style={{ color: '#374151' }}>
-          Votre demande sera examinée par notre équipe sous 48h ouvrées.
+          Votre demande sera examinée par l’équipe Omnia avant activation.
           La structure ne sera activée qu'après validation.
         </p>
       </div>

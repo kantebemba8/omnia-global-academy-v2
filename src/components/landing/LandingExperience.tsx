@@ -70,7 +70,6 @@ type LandingExperienceProps = {
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
-const OFFICIAL_SLOGAN = 'EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.';
 
 const ICONS: Record<string, LucideIcon> = {
   graduation: GraduationCap,
@@ -157,8 +156,7 @@ function HeroSection({
     <section id="accueil" className="border-b border-slate-200 bg-white px-5 pb-12 pt-28 sm:px-6 sm:pb-14 sm:pt-32">
       <div className="mx-auto max-w-7xl">
         <div className="max-w-4xl">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#BF8813]">{OFFICIAL_SLOGAN}</p>
-          {section.eyebrow && <p className="mt-5 text-sm font-semibold text-slate-500">{section.eyebrow}</p>}
+          {section.eyebrow && <p className="text-sm font-semibold text-slate-500">{section.eyebrow}</p>}
           <h1 className="mt-3 max-w-3xl text-3xl font-bold leading-[1.08] tracking-[-0.04em] text-[#002050] sm:text-4xl lg:text-5xl">
             {section.title}
           </h1>

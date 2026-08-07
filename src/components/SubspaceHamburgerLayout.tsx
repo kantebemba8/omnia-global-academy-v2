@@ -1,9 +1,9 @@
-import { clearSession } from '../lib/session';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ArrowLeft, Bell, ChevronDown, Home, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
-import { OMNIA_OFFICIAL_SLOGAN } from './OmniaBrandLockup';
+import OmniaBrandLockup, { OMNIA_OFFICIAL_SLOGAN } from './OmniaBrandLockup';
+import { logoutOmniaSession } from '../lib/authApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -213,7 +213,7 @@ export default function SubspaceHamburgerLayout({
           >
             <Menu size={23} />
           </button>
-          <img src="/IMG_0349.png" alt="" className="h-9 w-auto object-contain" />
+          <img src="/omnia-sidebar-logo.png" alt="" className="h-9 w-9 object-contain" />
           <div className="min-w-0">
             {title === 'Omnia Live' ? (
               <button type="button" onClick={() => navigate('/omnia-live')} className="block truncate text-base font-bold transition hover:opacity-80 md:text-lg" aria-label="Accueil Omnia Live">
@@ -296,11 +296,8 @@ export default function SubspaceHamburgerLayout({
                       type="button"
                       role="menuitem"
                       onClick={() => {
-                        localStorage.removeItem('omnia_user');
-                        clearSession();
-                        localStorage.removeItem('omnia_access_token');
-                        localStorage.removeItem('access_token');
-                        navigate('/connexion');
+                        setProfileOpen(false);
+                        void logoutOmniaSession().then(() => navigate('/connexion', { replace: true }));
                       }}
                       className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
                     >
@@ -318,13 +315,8 @@ export default function SubspaceHamburgerLayout({
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Navigation ${title}`}>
           <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Fermer le menu en cliquant à l’extérieur" />
           <aside id="subspace-navigation-drawer" className="absolute left-3 top-[84px] flex max-h-[calc(100dvh-100px)] w-[286px] max-w-[86vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5">
-              <img src="/IMG_0349.png" alt="" className="h-11 w-auto object-contain" />
-              <div className="min-w-0">
-                <div className="truncate text-base font-black tracking-[0.09em]" style={{ color: BLUE }}>OMNIA</div>
-                <div className="mt-1 text-[9px] font-bold tracking-[0.15em]" style={{ color: GOLD }}>GLOBAL ACADEMY</div>
-                <div className="mt-1.5 max-w-[185px] text-[7px] font-semibold leading-[1.4] tracking-[0.05em] text-slate-500">{OMNIA_OFFICIAL_SLOGAN}</div>
-              </div>
+            <div className="border-b border-slate-100 px-5 py-5">
+              <OmniaBrandLockup href="/home" compact />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {showSearch && <div className="px-4 pt-4 lg:hidden">{searchField(true)}</div>}

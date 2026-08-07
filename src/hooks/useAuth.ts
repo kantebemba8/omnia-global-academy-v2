@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { authGetMe, authFetch } from '../lib/authApi';
+import { authGetMe, logoutOmniaSession } from '../lib/authApi';
 import { saveSession, getSessionToken, getStoredUser, clearSession } from '../lib/session';
 
 export type AuthUser = {
@@ -88,17 +88,9 @@ export function useAuth() {
   };
 
   const logout = async (): Promise<void> => {
-    const token = sessionToken || getSessionToken();
-    clearSession();
+    await logoutOmniaSession();
     setUser(null);
     setSessionToken(null);
-    if (token) {
-      try {
-        await authFetch<{ success: boolean }>('auth-logout', { session_token: token });
-      } catch {
-        // Best effort: the local session is already cleared.
-      }
-    }
   };
 
   const hasRole = (role: string): boolean => user?.roles?.includes(role) ?? false;

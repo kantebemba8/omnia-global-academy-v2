@@ -20,9 +20,9 @@ export default function OmniaBrandLockup({
   const content = (
     <>
       <img
-        src="/IMG_0349.png"
+        src="/omnia-sidebar-logo.png"
         alt=""
-        className={`${compact ? 'h-9' : 'h-10'} w-auto shrink-0 object-contain`}
+        className={`${compact ? 'h-8 w-8' : 'h-10 w-10'} shrink-0 object-contain`}
       />
       <span className="min-w-0 leading-none">
         <span

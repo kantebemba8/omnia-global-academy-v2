@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Home, Languages, LayoutDashboard, LogOut, Settings, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { clearSession, getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
+import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
+import { logoutOmniaSession } from '../lib/authApi';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
@@ -75,13 +76,10 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
     navigate(path);
   }
 
-  function logout() {
+  async function logout() {
     setOpen(false);
-    sessionStorage.removeItem('omnia_admin_role_preview');
-    clearSession();
-    localStorage.removeItem('omnia_access_token');
-    localStorage.removeItem('access_token');
-    navigate('/connexion');
+    await logoutOmniaSession();
+    navigate('/connexion', { replace: true });
   }
 
   return (
@@ -137,7 +135,7 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
           <button
             type="button"
             role="menuitem"
-            onClick={logout}
+            onClick={() => void logout()}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
           >
             <LogOut size={17} /> {t('Se déconnecter')}

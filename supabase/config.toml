@@ -86,12 +86,6 @@ verify_jwt = false
 [functions.auth-update-profile]
 verify_jwt = false
 
-[functions.partner-org-manage]
-verify_jwt = false
-
-[functions.partner-code-manage]
-verify_jwt = false
-
 [functions.checkout-init]
 verify_jwt = false
 

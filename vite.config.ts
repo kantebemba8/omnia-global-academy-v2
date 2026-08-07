@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => {
                 orientation: 'any',
                 categories: ['education', 'productivity'],
                 prefer_related_applications: false,
-                start_url: '/accueil',
+                start_url: '/',
                 shortcuts: [
                   {
                     name: 'Explorer les formations',

@@ -318,7 +318,7 @@ export function DashboardProfesseur() {
                     <Clock className="w-4 h-4" style={{ color: '#002050' }} />
                     <p className="text-xs font-semibold" style={{ color: '#002050' }}>Délai de validation</p>
                   </div>
-                  <p className="text-xs text-gray-500">Les formations soumises sont examinées sous 24 à 48 heures ouvrables.</p>
+                  <p className="text-xs text-gray-500">Les formations soumises sont examinées par l’équipe Omnia avant publication.</p>
                 </RoleDashboardPanel>
               </div>
             </div>

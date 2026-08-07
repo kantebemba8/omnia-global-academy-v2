@@ -17,7 +17,7 @@ export function PendingValidation() {
           </p>
           <p className="text-sm leading-relaxed" style={{ color: '#6B7280' }}>
             Votre dossier est en cours d'examen par notre équipe.
-            Délai habituel : 24 à 48 heures ouvrées.
+            Vous serez notifié(e) dès qu’une décision sera disponible.
             Vous recevrez un email et un SMS dès que votre compte sera validé.
           </p>
         </div>

@@ -14,11 +14,6 @@ const LANDING_KEYS = [
   "landing_page_published",
   "collaborations_logos",
   "follow_us_label_fr",
-  "stat_formations",
-  "stat_apprenants",
-  "stat_pays",
-  "stat_formateurs",
-  "stat_etablissements",
   "stat_show_formations",
   "stat_show_apprenants",
   "stat_show_pays",
@@ -180,19 +175,14 @@ Deno.serve(async (req: Request) => {
       creator_name: course.creator_id ? creatorNames.get(course.creator_id) ?? null : null,
     }));
 
-    const customStat = (key: string, fallback: number) => {
-      const value = settings[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-      if (typeof value === "number" && Number.isFinite(value)) return String(value);
-      return fallback > 0 ? fallback.toLocaleString("fr-FR") : null;
-    };
+    const realStat = (value: number) => value > 0 ? value.toLocaleString("fr-FR") : null;
 
     const stats = {
-      formations: customStat("stat_formations", formationsCount),
-      apprenants: customStat("stat_apprenants", apprenantsCount),
-      pays: customStat("stat_pays", distinctCountries),
-      formateurs: customStat("stat_formateurs", formateursCount),
-      etablissements: customStat("stat_etablissements", structuresCount),
+      formations: realStat(formationsCount),
+      apprenants: realStat(apprenantsCount),
+      pays: realStat(distinctCountries),
+      formateurs: realStat(formateursCount),
+      etablissements: realStat(structuresCount),
     };
 
     const payload = {
