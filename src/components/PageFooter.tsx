@@ -233,6 +233,7 @@ export function PageFooter({
               <div>
                 <div className="text-sm font-bold leading-none tracking-[0.09em] text-white">OMNIA</div>
                 <div className="mt-0.5 text-[8px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div>
+                <div className="mt-1 text-[7px] font-bold tracking-[0.06em] text-white/55">EMPOWER SKILLS. TRANSFORM AFRICA. IMPACT THE WORLD.</div>
               </div>
             </div>
 

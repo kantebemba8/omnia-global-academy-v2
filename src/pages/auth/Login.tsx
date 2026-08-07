@@ -4,7 +4,7 @@ import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { authFetch } from '../../lib/authApi';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
-import { saveSession } from '../../lib/session';
+import { getPostLoginPathForRoles, saveSession } from '../../lib/session';
 
 type LoginResponse = {
   success: boolean;
@@ -112,7 +112,7 @@ export function Login() {
     }
 
     const requestedRedirect = safeLocalRedirect(new URLSearchParams(location.search).get('redirect'));
-    navigate(data.is_demo ? (data.redirect_url || '/demo/dashboard') : (requestedRedirect || data.redirect_url || '/dashboard'), { replace: true });
+    navigate(data.is_demo ? (data.redirect_url || '/demo/dashboard') : (requestedRedirect || getPostLoginPathForRoles(data.user.roles)), { replace: true });
   };
 
   const handleLoginFailure = (data: LoginResponse, phoneMode = false) => {

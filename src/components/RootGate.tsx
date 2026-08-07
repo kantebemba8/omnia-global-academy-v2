@@ -1,15 +1,19 @@
 import { lazy } from 'react';
 import { useSiteMode } from '../context/SiteModeContext';
 const LandingPage = lazy(() => import('../pages/LandingPage').then((module) => ({ default: module.LandingPage })));
+const ConnectedHome = lazy(() => import('../pages/ConnectedHome'));
 const MaintenancePage = lazy(() => import('../pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
 
-function getSuperAdminState(): { isSuperAdmin: boolean } {
+function getStoredSessionState(): { authenticated: boolean; isSuperAdmin: boolean } {
   try {
     const stored = localStorage.getItem('omnia_user');
     const user = stored ? JSON.parse(stored) : null;
-    return { isSuperAdmin: user?.roles?.includes('super_admin') ?? false };
+    return {
+      authenticated: Boolean(user),
+      isSuperAdmin: user?.roles?.includes('super_admin') ?? false,
+    };
   } catch {
-    return { isSuperAdmin: false };
+    return { authenticated: false, isSuperAdmin: false };
   }
 }
 
@@ -28,7 +32,7 @@ export function SuperAdminPreviewBadge() {
 
 export function RootGate() {
   const { loading, maintenanceActive, maintenanceMessage, maintenanceEndTime } = useSiteMode();
-  const { isSuperAdmin } = getSuperAdminState();
+  const { authenticated, isSuperAdmin } = getStoredSessionState();
 
   if (loading) {
     return (
@@ -61,5 +65,5 @@ export function RootGate() {
     );
   }
 
-  return <LandingPage />;
+  return authenticated ? <ConnectedHome /> : <LandingPage />;
 }

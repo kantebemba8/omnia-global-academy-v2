@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Languages, LayoutDashboard, LogOut, Settings, UserRound } from 'lucide-react';
+import { ChevronDown, Home, Languages, LayoutDashboard, LogOut, Settings, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clearSession, getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -105,6 +105,14 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
           <button
             type="button"
             role="menuitem"
+            onClick={() => go('/home')}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Home size={17} /> {t('Accueil Omnia')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => go('/mon-profil')}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -117,7 +125,7 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
             onClick={() => go(target)}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            <LayoutDashboard size={17} /> {t('Retour au Dashboard')}
+            <LayoutDashboard size={17} /> {t(isAdministration ? 'Administration' : 'Mon espace')}
           </button>
           <div className="my-1 border-t border-slate-100" />
           <div className="flex items-center gap-3 px-4 py-2" role="none">

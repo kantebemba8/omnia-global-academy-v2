@@ -229,6 +229,18 @@ export function getDashboardPathForRoles(roles: readonly string[]): string {
   return '/accueil';
 }
 
+/**
+ * Landing path after authentication.
+ * Operational internal roles keep their control dashboard as the first screen;
+ * learner/professional roles enter through the shared connected home.
+ */
+export function getPostLoginPathForRoles(roles: readonly string[]): string {
+  const canonicalRoles = normalizePlatformRoles(roles);
+  if (canonicalRoles.includes('super_admin')) return '/admin/dashboard';
+  if (canonicalRoles.includes('moderateur')) return '/moderateur/dashboard';
+  return canonicalRoles.length > 0 ? '/home' : '/accueil';
+}
+
 export function redirectByRoles(roles: string[], redirectUrl?: string): void {
-  window.location.href = redirectUrl || getDashboardPathForRoles(roles);
+  window.location.href = redirectUrl || getPostLoginPathForRoles(roles);
 }

@@ -26,6 +26,7 @@ const StudioEvaluations = lazy(() => import('./pages/studio/StudioEvaluations').
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
+const ConnectedHome = lazy(() => import('./pages/ConnectedHome'));
 const APropos = lazy(() => import('./pages/APropos').then((module) => ({ default: module.APropos })));
 const NewsletterPreferencesPage = lazy(() => import('./pages/NewsletterPreferencesPage'));
 const Confidentialite = lazy(() => import('./pages/Confidentialite').then((module) => ({ default: module.Confidentialite })));
@@ -478,6 +479,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={<RootGate />} />
         <Route path="/accueil" element={<LandingPage />} />
+        <Route path="/home" element={<ConnectedHome />} />
         <Route path="/newsletter" element={<NewsletterPreferencesPage />} />
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
           <Route path="/projects" element={<ProjectsHome />} />
