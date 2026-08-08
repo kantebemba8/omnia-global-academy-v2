@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import {
   consumeRateLimit,
-  generateOpaqueToken,
+  createHashedEmailOtp,
   getClientIP,
   makeCorsHeaders,
   sha256Hex,
@@ -43,37 +43,39 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (userError) throw userError;
 
-    // Réponse identique pour empêcher l’énumération des comptes.
+    // Réponse neutre pour limiter l'énumération de comptes.
     if (!user || user.status === "supprime" || (user.status === "suspendu" && user.suspension_source !== "self")) {
-      return json({ success: true, method: "email" });
+      return json({ success: true, method: "email_otp", next_step: "verify_otp", delivery: "email" });
     }
 
-    const rawToken = generateOpaqueToken();
-    const tokenHash = await sha256Hex(rawToken);
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await supabase.from("otp_codes")
+      .update({ used: true })
+      .eq("email", email)
+      .eq("purpose", "reset_password")
+      .eq("used", false);
 
-    await supabase.from("password_reset_tokens").update({ used: true }).eq("user_id", user.id).eq("used", false);
-    const { error: tokenError } = await supabase.from("password_reset_tokens").insert({
-      user_id: user.id,
-      reset_token: null,
-      token_hash: tokenHash,
-      expires_at: expiresAt,
+    const expiresInMinutes = 15;
+    const otp = await createHashedEmailOtp(supabase, {
+      email,
+      purpose: "reset_password",
+      expiresAt: new Date(Date.now() + expiresInMinutes * 60 * 1000).toISOString(),
+      ipAddress: clientIP,
     });
-    if (tokenError) throw tokenError;
 
-    const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
-    const resetUrl = `${appUrl}/reinitialiser-mot-de-passe?token=${encodeURIComponent(rawToken)}`;
     const sent = await sendOmniaEmail({
       to: { email: user.email, name: user.full_name || undefined },
       templateKey: "auth_password_reset",
-      params: { PRENOM: String(user.full_name || "").split(" ")[0], RESET_URL: resetUrl },
-      senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+      params: {
+        FIRST_NAME: String(user.full_name || "").split(" ")[0],
+        OTP_CODE: otp,
+        EXPIRY_MINUTES: expiresInMinutes,
+      },
       userId: String(user.id),
       sb: supabase,
     });
-    if (!sent) console.error("Password-reset email delivery failed for user:", user.id);
+    if (!sent) console.error("Password-reset OTP email delivery failed for user:", user.id);
 
-    return json({ success: true, method: "email" });
+    return json({ success: true, method: "email_otp", next_step: "verify_otp", delivery: "email" });
   } catch (error) {
     console.error("auth-forgot-password error:", error);
     return json({ success: false, message: "Une erreur est survenue" }, 500);

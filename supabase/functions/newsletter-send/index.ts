@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { makeCorsHeaders, sha256Hex } from "../_shared/auth-security.ts";
 import { brevoEmailConfig, sendOmniaEmail } from "../_shared/brevo-mail.ts";
-import { brevoSyncTemplates, omniaEmailLayout } from "../_shared/email-templates.ts";
+import { BREVO_TEMPLATE_DEFINITIONS, omniaEmailLayout } from "../_shared/email-templates.ts";
 import {
   NEWSLETTER_CONSENT_VERSION,
   normalizeNewsletterEmail,
@@ -100,77 +100,51 @@ async function syncBrevoWebhook() {
 }
 
 async function syncBrevoTemplates(sb: DbClient) {
+  // Les templates sont administrés manuellement dans Brevo.
+  // Cette action vérifie uniquement que les IDs 1 à 13 existent et sont actifs ;
+  // elle ne crée, ne modifie et n'écrase jamais leur design.
   const { apiKey } = brevoEmailConfig();
   if (!apiKey) throw new Error("BREVO_NOT_CONFIGURED");
 
-  const listResponse = await fetch("https://api.brevo.com/v3/smtp/templates?limit=1000&sort=desc", {
-    headers: { accept: "application/json", "api-key": apiKey },
-  });
-  if (!listResponse.ok) throw new Error(`BREVO_TEMPLATE_LIST_FAILED:${await listResponse.text()}`);
-  const listData = await listResponse.json() as { templates?: Array<{ id: number; name?: string }> };
-  const existing = new Map((listData.templates || []).map(item => [String(item.name || ""), Number(item.id)]));
-  const results: Array<{ key: string; id?: number; status: string; error?: string }> = [];
-
-  for (const template of brevoSyncTemplates()) {
+  const results: Array<{ key: string; id: number; status: string; name?: string; name_matches?: boolean; error?: string }> = [];
+  for (const template of BREVO_TEMPLATE_DEFINITIONS) {
     try {
-      const existingId = existing.get(template.templateName);
-      let providerTemplateId = existingId;
-      if (existingId) {
-        const response = await fetch(`https://api.brevo.com/v3/smtp/templates/${existingId}`, {
-          method: "PUT",
-          headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
-          body: JSON.stringify({
-            templateName: template.templateName,
-            subject: template.subject,
-            htmlContent: template.htmlContent,
-            sender: template.sender,
-            replyTo: template.replyTo,
-            tag: template.tag,
-            isActive: true,
-          }),
-        });
-        if (!response.ok) throw new Error(await response.text());
-      } else {
-        const response = await fetch("https://api.brevo.com/v3/smtp/templates", {
-          method: "POST",
-          headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
-          body: JSON.stringify({
-            templateName: template.templateName,
-            subject: template.subject,
-            htmlContent: template.htmlContent,
-            sender: template.sender,
-            replyTo: template.replyTo,
-            tag: template.tag,
-            isActive: true,
-          }),
-        });
-        const detail = await response.text();
-        if (!response.ok) throw new Error(detail);
-        providerTemplateId = Number((JSON.parse(detail || "{}") as { id?: number }).id || 0) || undefined;
-      }
+      const response = await fetch(`https://api.brevo.com/v3/smtp/templates/${template.id}`, {
+        headers: { accept: "application/json", "api-key": apiKey },
+      });
+      const detail = await response.text();
+      if (!response.ok) throw new Error(detail || `HTTP_${response.status}`);
+      const data = JSON.parse(detail || "{}") as { id?: number; name?: string; isActive?: boolean };
+      if (data.isActive === false) throw new Error("BREVO_TEMPLATE_INACTIVE");
+
+      const brevoName = String(data.name || "").trim();
+      const nameMatches = brevoName === template.name;
 
       await sb.from("email_template_registry").upsert({
         template_key: template.key,
-        template_name: template.templateName,
+        template_name: template.name,
         provider: "brevo",
-        provider_template_id: providerTemplateId || null,
+        provider_template_id: template.id,
         provider_synced_at: new Date().toISOString(),
         provider_last_error: null,
         is_active: true,
+        metadata: { mode: "manual_brevo", brevo_name: brevoName || null, fixed_id: true, name_matches: nameMatches },
         updated_at: new Date().toISOString(),
       }, { onConflict: "template_key" });
-      results.push({ key: template.key, id: providerTemplateId, status: "synced" });
+      results.push({ key: template.key, id: template.id, status: "verified", name: brevoName || template.name, name_matches: nameMatches });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await sb.from("email_template_registry").upsert({
         template_key: template.key,
-        template_name: template.templateName,
+        template_name: template.name,
         provider: "brevo",
+        provider_template_id: template.id,
         provider_last_error: message.slice(0, 2000),
         is_active: true,
+        metadata: { mode: "manual_brevo", fixed_id: true },
         updated_at: new Date().toISOString(),
       }, { onConflict: "template_key" });
-      results.push({ key: template.key, status: "error", error: message });
+      results.push({ key: template.key, id: template.id, status: "error", error: message });
     }
   }
   return results;

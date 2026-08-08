@@ -68,16 +68,19 @@ Deno.serve(async (req: Request) => {
       ipAddress: clientIP,
     });
 
-    const templateKey = purpose === "connexion" ? "auth_login_otp" : "auth_verification_otp";
+    const templateKey = purpose === "connexion"
+      ? "auth_login_otp"
+      : purpose === "reset_password"
+      ? "auth_password_reset"
+      : "auth_verification_otp";
     const sent = await sendOmniaEmail({
       to: { email, name: user.full_name || undefined },
       templateKey,
       params: {
-        PRENOM: String(user.full_name || "").split(" ")[0],
-        OTP: otp,
-        EXPIRES_MINUTES: expiresInMinutes,
+        FIRST_NAME: String(user.full_name || "").split(" ")[0],
+        OTP_CODE: otp,
+        EXPIRY_MINUTES: expiresInMinutes,
       },
-      senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
       userId: String(user.id),
       sb: supabase,
     });

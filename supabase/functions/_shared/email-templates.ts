@@ -10,20 +10,14 @@ function esc(value: unknown): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
-function value(params: Record<string, unknown>, key: string, fallback = ""): string {
-  const raw = params[key];
-  return raw === undefined || raw === null || raw === "" ? fallback : String(raw);
-}
-
-function button(label: string, href: string): string {
-  if (!href) return "";
-  return `<p style="margin:28px 0 8px"><a href="${esc(href)}" style="display:inline-block;background:${BRAND.primary};color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">${esc(label)}</a></p>`;
-}
-
+/**
+ * Mise en page réservée aux campagnes Omnia Newsletter créées depuis la plateforme.
+ * Les 13 templates transactionnels sont, eux, entièrement administrés dans Brevo.
+ */
 export function omniaEmailLayout(params: {
   title: string;
   preheader?: string;
@@ -49,212 +43,240 @@ export function omniaEmailLayout(params: {
 }
 
 export type OmniaTemplateKey =
-  | "auth_verification_otp"
-  | "auth_login_otp"
-  | "auth_password_reset"
-  | "account_welcome"
-  | "account_pending_validation"
   | "platform_invitation"
+  | "auth_password_reset"
   | "status_update"
+  | "account_welcome"
+  | "structure_pricing_proposal"
   | "professor_approved"
   | "structure_approved"
-  | "transaction_update"
+  | "payment_invoice"
   | "certificate_ready"
-  | "learning_reminder";
+  | "learning_reminder"
+  | "auth_verification_otp"
+  | "auth_login_otp"
+  | "account_pending_validation";
 
-export type RenderedEmail = { subject: string; html: string; tag: string };
+export type BrevoTemplateDefinition = {
+  id: number;
+  key: OmniaTemplateKey;
+  name: string;
+};
 
-export function renderTemplate(key: OmniaTemplateKey, params: Record<string, unknown> = {}): RenderedEmail {
-  const firstName = value(params, "PRENOM", value(params, "FIRST_NAME", ""));
-  const hello = firstName ? `<p style="margin:0 0 16px">Bonjour ${esc(firstName)},</p>` : "";
-  const appUrl = Deno.env.get("APP_URL") || "https://omniaglobalacademy.com";
+/**
+ * Catalogue Brevo manuel validé dans l'interface Brevo.
+ * Les IDs 1 à 13 sont fixes. Le code n'envoie jamais htmlContent, subject ou sender
+ * pour ces templates, afin de ne pas écraser le design ni les expéditeurs configurés.
+ */
+export const BREVO_TEMPLATE_DEFINITIONS: readonly BrevoTemplateDefinition[] = [
+  { id: 1, key: "platform_invitation", name: "OGA - 01 - Invitation à rejoindre Omnia" },
+  { id: 2, key: "auth_password_reset", name: "OGA - 02 - Réinitialisation du mot de passe" },
+  { id: 3, key: "status_update", name: "OGA - 03 - Statut et notification" },
+  { id: 4, key: "account_welcome", name: "OGA - 04 - Bienvenue sur Omnia Global Academy" },
+  { id: 5, key: "structure_pricing_proposal", name: "OGA - 05 - Proposition tarifaire Structure" },
+  { id: 6, key: "professor_approved", name: "OGA - 06 - Validation compte Professeur" },
+  { id: 7, key: "structure_approved", name: "OGA - 07 - Validation compte Structure" },
+  { id: 8, key: "payment_invoice", name: "OGA - 08 - Confirmation paiement et facture" },
+  { id: 9, key: "certificate_ready", name: "OGA - 09 - Certificat disponible" },
+  { id: 10, key: "learning_reminder", name: "OGA - 10 - Reprise de formation" },
+  { id: 11, key: "auth_verification_otp", name: "OGA - 11 - Vérification adresse e-mail OTP" },
+  { id: 12, key: "auth_login_otp", name: "OGA - 12 - Connexion sécurisée OTP" },
+  { id: 13, key: "account_pending_validation", name: "OGA - 13 - Compte en attente de validation" },
+] as const;
 
-  if (key === "auth_verification_otp" || key === "auth_login_otp") {
-    const code = value(params, "OTP");
-    const isLogin = key === "auth_login_otp";
-    const title = isLogin ? "Votre code de connexion" : "Confirmez votre adresse e-mail";
-    return {
-      subject: `${title} — Omnia Global Academy`,
-      tag: key,
-      html: omniaEmailLayout({
-        title,
-        preheader: `Code ${code}`,
-        bodyHtml: `${hello}<p style="margin:0 0 18px;line-height:1.7">${isLogin ? "Utilisez ce code pour terminer votre connexion." : "Utilisez ce code pour confirmer votre adresse e-mail et poursuivre votre inscription."}</p><div style="margin:24px 0;padding:18px;text-align:center;background:#f7f9fc;border:1px solid #e4e9f0;border-radius:10px;font-size:34px;font-weight:800;letter-spacing:8px;color:${BRAND.primary}">${esc(code)}</div><p style="margin:0;color:#6b7788;font-size:13px">Ce code expire dans ${esc(value(params, "EXPIRES_MINUTES", "5"))} minutes. Ne le partagez jamais.</p>`,
-      }),
-    };
-  }
+const TEMPLATE_ID_BY_KEY = new Map<OmniaTemplateKey, number>(
+  BREVO_TEMPLATE_DEFINITIONS.map((template) => [template.key, template.id]),
+);
 
-  if (key === "auth_password_reset") {
-    const resetUrl = value(params, "RESET_URL");
-    return {
-      subject: "Réinitialiser votre mot de passe — Omnia Global Academy",
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Réinitialiser votre mot de passe",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">Une demande de réinitialisation de mot de passe a été reçue pour votre compte.</p>${button("Choisir un nouveau mot de passe", resetUrl)}<p style="margin:18px 0 0;color:#6b7788;font-size:13px">Le lien est temporaire et ne peut être utilisé qu’une seule fois.</p>`,
-      }),
-    };
-  }
-
-  if (key === "platform_invitation") {
-    const role = value(params, "ROLE_NAME", "membre");
-    const loginUrl = value(params, "LOGIN_URL", `${appUrl}/connexion`);
-    const tempPassword = value(params, "TEMPORARY_PASSWORD");
-    const organizationName = value(params, "ORGANIZATION_NAME");
-    const message = value(params, "MESSAGE_SPECIFIQUE");
-    return {
-      subject: `Invitation Omnia — ${role}`,
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Vous êtes invité(e) sur Omnia",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">${organizationName ? `<strong>${esc(organizationName)}</strong> vous invite à rejoindre` : "Une invitation vous donne accès à"} l’espace <strong>${esc(role)}</strong>.</p>${message ? `<p style="margin:16px 0 0;line-height:1.7">${esc(message)}</p>` : ""}${tempPassword ? `<p style="margin:18px 0 0">Mot de passe temporaire : <strong>${esc(tempPassword)}</strong></p>` : ""}${button("Examiner l’invitation", loginUrl)}<p style="margin:16px 0 0;color:#6b7788;font-size:13px">Ce lien est personnel et expire automatiquement.</p>`,
-      }),
-    };
-  }
-
-  if (key === "account_welcome" || key === "account_pending_validation") {
-    const role = value(params, "ROLE_NAME", "Membre");
-    const message = value(params, "MESSAGE_SPECIFIQUE", key === "account_pending_validation" ? "Votre dossier a bien été reçu et sera examiné par l’Administration Omnia." : "Votre compte est actif.");
-    const url = value(params, "DASHBOARD_URL", `${appUrl}/home`);
-    const title = key === "account_pending_validation" ? "Votre inscription est enregistrée" : "Bienvenue sur Omnia Global Academy";
-    return {
-      subject: `${title} — Omnia Global Academy`,
-      tag: key,
-      html: omniaEmailLayout({
-        title,
-        bodyHtml: `${hello}<p style="margin:0 0 10px;line-height:1.7">Profil : <strong>${esc(role)}</strong></p><p style="margin:0;line-height:1.7">${esc(message)}</p>${button("Ouvrir Omnia", url)}`,
-      }),
-    };
-  }
-
-  if (key === "professor_approved") {
-    return {
-      subject: "Votre profil Professeur est validé — Omnia Global Academy",
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Profil Professeur validé",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">Votre profil Professeur a été validé. Vous pouvez maintenant accéder aux fonctions qui vous sont ouvertes.</p>${button("Accéder à mon espace", value(params, "DASHBOARD_URL", `${appUrl}/professeur/dashboard`))}`,
-      }),
-    };
-  }
-
-  if (key === "structure_approved") {
-    const structure = value(params, "SCHOOL_NAME", "Votre Structure");
-    return {
-      subject: "Votre Structure est validée — Omnia Global Academy",
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Structure validée",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7"><strong>${esc(structure)}</strong> a été validée par l’Administration Omnia.</p>${button("Accéder à l’espace Structure", value(params, "DASHBOARD_URL", `${appUrl}/structure/dashboard`))}`,
-      }),
-    };
-  }
-
-  if (key === "certificate_ready") {
-    const title = value(params, "FORMATION_TITRE", "Votre formation");
-    return {
-      subject: `Certificat disponible — ${title}`,
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Votre certificat est disponible",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">Votre certificat pour <strong>${esc(title)}</strong> est disponible dans votre espace Omnia.</p>${button("Consulter mon certificat", value(params, "CERTIFICATE_URL", value(params, "ACTION_URL", `${appUrl}/home`)))}`,
-      }),
-    };
-  }
-
-  if (key === "learning_reminder") {
-    const title = value(params, "FORMATION_TITRE", "Votre formation");
-    return {
-      subject: `Reprendre votre formation — ${title}`,
-      tag: key,
-      html: omniaEmailLayout({
-        title: "Continuez votre parcours",
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">Votre formation <strong>${esc(title)}</strong> vous attend${value(params, "COMPLETION_PERCENT") ? ` — progression : ${esc(value(params, "COMPLETION_PERCENT"))}%` : ""}.</p>${button("Reprendre ma formation", value(params, "COURSE_URL", `${appUrl}/home`))}`,
-      }),
-    };
-  }
-
-  if (key === "transaction_update") {
-    const title = value(params, "FORMATION_TITRE", value(params, "PRODUCT_TITLE", "Transaction Omnia"));
-    const message = value(params, "MESSAGE_SPECIFIQUE", value(params, "STATUT", "Une mise à jour est disponible."));
-    return {
-      subject: `Mise à jour — ${title}`,
-      tag: key,
-      html: omniaEmailLayout({
-        title,
-        bodyHtml: `${hello}<p style="margin:0;line-height:1.7">${esc(message)}</p>${button("Voir les détails", value(params, "ACTION_URL", `${appUrl}/home`))}`,
-      }),
-    };
-  }
-
-  const title = value(params, "FORMATION_TITRE", value(params, "ROLE_NAME", "Information Omnia"));
-  const status = value(params, "STATUT");
-  const message = value(params, "MESSAGE_SPECIFIQUE", "Une mise à jour concernant votre compte ou votre activité est disponible.");
-  const comment = value(params, "COMMENTAIRE");
-  return {
-    subject: `${status ? `${status} — ` : ""}${title}`,
-    tag: "status_update",
-    html: omniaEmailLayout({
-      title: status || title,
-      bodyHtml: `${hello}<p style="margin:0;line-height:1.7">${esc(message)}</p>${comment ? `<p style="margin:16px 0 0;padding:14px;background:#f7f9fc;border-left:3px solid ${BRAND.accent};line-height:1.6">${esc(comment)}</p>` : ""}${button("Ouvrir Omnia", value(params, "ACTION_URL", `${appUrl}/home`))}`,
-    }),
-  };
+export function brevoTemplateId(key: OmniaTemplateKey): number {
+  const id = TEMPLATE_ID_BY_KEY.get(key);
+  if (!id) throw new Error(`UNKNOWN_BREVO_TEMPLATE_KEY:${key}`);
+  return id;
 }
 
 export function templateKeyFromLegacyId(templateId: number): OmniaTemplateKey {
-  const map: Record<number, OmniaTemplateKey> = {
-    1: "platform_invitation",
-    3: "status_update",
-    4: "account_welcome",
-    5: "transaction_update",
-    6: "professor_approved",
-    7: "structure_approved",
-    8: "transaction_update",
-    9: "certificate_ready",
-    10: "learning_reminder",
-  };
-  return map[templateId] || "status_update";
+  const definition = BREVO_TEMPLATE_DEFINITIONS.find((template) => template.id === templateId);
+  return definition?.key || "status_update";
 }
 
-export type BrevoSyncTemplate = {
-  key: OmniaTemplateKey;
-  templateName: string;
-  subject: string;
-  htmlContent: string;
-  sender: { name: string; email: string };
-  replyTo: string;
-  tag: string;
-};
+function text(params: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = params[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
+  }
+  return "";
+}
 
-export function brevoSyncTemplates(): BrevoSyncTemplate[] {
-  const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com";
-  const senderName = Deno.env.get("BREVO_SENDER_NAME") || BRAND.name;
-  const replyTo = Deno.env.get("BREVO_REPLY_TO") || senderEmail;
-  const defs: Array<[OmniaTemplateKey, string, Record<string, unknown>]> = [
-    ["auth_verification_otp", "OGA — Vérification e-mail", { PRENOM: "{{params.PRENOM}}", OTP: "{{params.OTP}}", EXPIRES_MINUTES: "{{params.EXPIRES_MINUTES}}" }],
-    ["auth_login_otp", "OGA — Connexion OTP", { PRENOM: "{{params.PRENOM}}", OTP: "{{params.OTP}}", EXPIRES_MINUTES: "{{params.EXPIRES_MINUTES}}" }],
-    ["auth_password_reset", "OGA — Réinitialisation mot de passe", { PRENOM: "{{params.PRENOM}}", RESET_URL: "{{params.RESET_URL}}" }],
-    ["account_welcome", "OGA — Bienvenue", { PRENOM: "{{params.PRENOM}}", ROLE_NAME: "{{params.ROLE_NAME}}", MESSAGE_SPECIFIQUE: "{{params.MESSAGE_SPECIFIQUE}}", DASHBOARD_URL: "{{params.DASHBOARD_URL}}" }],
-    ["account_pending_validation", "OGA — Inscription en validation", { PRENOM: "{{params.PRENOM}}", ROLE_NAME: "{{params.ROLE_NAME}}", MESSAGE_SPECIFIQUE: "{{params.MESSAGE_SPECIFIQUE}}", DASHBOARD_URL: "{{params.DASHBOARD_URL}}" }],
-    ["platform_invitation", "OGA — Invitation", { PRENOM: "{{params.PRENOM}}", ROLE_NAME: "{{params.ROLE_NAME}}", ORGANIZATION_NAME: "{{params.ORGANIZATION_NAME}}", MESSAGE_SPECIFIQUE: "{{params.MESSAGE_SPECIFIQUE}}", TEMPORARY_PASSWORD: "{{params.TEMPORARY_PASSWORD}}", LOGIN_URL: "{{params.LOGIN_URL}}" }],
-    ["status_update", "OGA — Statut et notification", { PRENOM: "{{params.PRENOM}}", FORMATION_TITRE: "{{params.FORMATION_TITRE}}", STATUT: "{{params.STATUT}}", MESSAGE_SPECIFIQUE: "{{params.MESSAGE_SPECIFIQUE}}", COMMENTAIRE: "{{params.COMMENTAIRE}}", ACTION_URL: "{{params.ACTION_URL}}" }],
-    ["professor_approved", "OGA — Professeur validé", { PRENOM: "{{params.PRENOM}}", DASHBOARD_URL: "{{params.DASHBOARD_URL}}" }],
-    ["structure_approved", "OGA — Structure validée", { PRENOM: "{{params.PRENOM}}", SCHOOL_NAME: "{{params.SCHOOL_NAME}}", DASHBOARD_URL: "{{params.DASHBOARD_URL}}" }],
-    ["transaction_update", "OGA — Transaction", { PRENOM: "{{params.PRENOM}}", FORMATION_TITRE: "{{params.FORMATION_TITRE}}", MESSAGE_SPECIFIQUE: "{{params.MESSAGE_SPECIFIQUE}}", ACTION_URL: "{{params.ACTION_URL}}" }],
-    ["certificate_ready", "OGA — Certificat", { PRENOM: "{{params.PRENOM}}", FORMATION_TITRE: "{{params.FORMATION_TITRE}}", CERTIFICATE_URL: "{{params.CERTIFICATE_URL}}" }],
-    ["learning_reminder", "OGA — Reprise formation", { PRENOM: "{{params.PRENOM}}", FORMATION_TITRE: "{{params.FORMATION_TITRE}}", COMPLETION_PERCENT: "{{params.COMPLETION_PERCENT}}", COURSE_URL: "{{params.COURSE_URL}}" }],
-  ];
+function firstName(params: Record<string, unknown>, recipientName = ""): string {
+  const direct = text(params, "FIRST_NAME", "PRENOM", "CONTACT_NAME", "NOM");
+  const source = direct || recipientName;
+  return source.trim().split(/\s+/)[0] || "";
+}
 
-  return defs.map(([key, templateName, params]) => {
-    const rendered = renderTemplate(key, params);
-    return {
-      key,
-      templateName,
-      subject: rendered.subject,
-      htmlContent: rendered.html,
-      sender: { name: senderName, email: senderEmail },
-      replyTo,
-      tag: `omnia_${key}`,
-    };
-  });
+function joinInfo(parts: Array<string | null | undefined>): string {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
+}
+
+function appUrl(): string {
+  return (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+}
+
+function futureDateFr(days: number): string {
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  try {
+    return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function todayFr(): string {
+  try {
+    return new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Convertit les paramètres historiques du projet vers les variables exactes des
+ * 13 templates Brevo manuels. Cette couche de compatibilité évite de modifier
+ * toutes les fonctions productrices d'e-mails en une seule livraison.
+ */
+export function normalizeBrevoTemplateParams(
+  templateId: number,
+  params: Record<string, unknown> = {},
+  recipientName = "",
+): Record<string, unknown> {
+  const FIRST_NAME = firstName(params, recipientName);
+
+  switch (templateId) {
+    case 1: {
+      const organization = text(params, "ORGANIZATION_NAME", "SCHOOL_NAME");
+      return {
+        FIRST_NAME,
+        INVITER_NAME: text(params, "INVITER_NAME") || organization || "Omnia Global Academy",
+        ORGANIZATION_NAME: organization || "Omnia Global Academy",
+        INVITATION_URL: text(params, "INVITATION_URL", "LOGIN_URL", "ACTION_URL"),
+        EXPIRY_DATE: text(params, "EXPIRY_DATE", "EXPIRES_AT") || futureDateFr(7),
+      };
+    }
+
+    case 2:
+    case 11:
+    case 12:
+      return {
+        FIRST_NAME,
+        OTP_CODE: text(params, "OTP_CODE", "OTP"),
+        EXPIRY_MINUTES: text(params, "EXPIRY_MINUTES", "EXPIRES_MINUTES") || (templateId === 2 ? "15" : "5"),
+      };
+
+    case 3: {
+      const title = text(params, "FORMATION_TITRE", "ROLE_NAME", "PRODUCT_TITLE");
+      const status = text(params, "STATUS_LABEL", "STATUT");
+      return {
+        SUBJECT: text(params, "SUBJECT") || joinInfo([status, title]) || "Notification Omnia Global Academy",
+        FIRST_NAME,
+        MESSAGE: text(params, "MESSAGE", "MESSAGE_SPECIFIQUE") || "Une mise à jour concernant votre compte ou votre activité est disponible.",
+        STATUS_LABEL: status || "Information",
+        ADDITIONAL_INFORMATION: text(params, "ADDITIONAL_INFORMATION", "COMMENTAIRE", "COMMENT") || "",
+        CTA_LABEL: text(params, "CTA_LABEL") || "Consulter dans Omnia",
+        CTA_URL: text(params, "CTA_URL", "ACTION_URL") || `${appUrl()}/home`,
+      };
+    }
+
+    case 4:
+      return {
+        FIRST_NAME,
+        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/home`,
+      };
+
+    case 5: {
+      const schoolAmount = Number(params.SCHOOL_AMOUNT || 0);
+      const platformAmount = Number(params.PLATFORM_AMOUNT || 0);
+      const explicitAmount = text(params, "AMOUNT");
+      const totalAmount = explicitAmount || (schoolAmount + platformAmount > 0 ? String(schoolAmount + platformAmount) : "—");
+      const splitInfo = joinInfo([
+        params.SCHOOL_PERCENT != null ? `Part Structure : ${params.SCHOOL_PERCENT}%` : "",
+        params.PLATFORM_PERCENT != null ? `Part Omnia : ${params.PLATFORM_PERCENT}%` : "",
+      ]);
+      return {
+        CONTACT_NAME: text(params, "CONTACT_NAME", "DIRECTOR_NAME") || FIRST_NAME,
+        ORGANIZATION_NAME: text(params, "ORGANIZATION_NAME", "SCHOOL_NAME") || "Votre Structure",
+        OFFER_NAME: text(params, "OFFER_NAME", "FORMATION_TITRE") || "Proposition Omnia Global Academy",
+        SEAT_COUNT: text(params, "SEAT_COUNT", "BENEFICIARIES_COUNT") || "—",
+        AMOUNT: totalAmount,
+        CURRENCY: text(params, "CURRENCY") || "XOF",
+        DURATION: text(params, "DURATION") || "—",
+        ADDITIONAL_INFORMATION: text(params, "ADDITIONAL_INFORMATION") || splitInfo,
+        PROPOSAL_URL: text(params, "PROPOSAL_URL", "ACTION_URL") || `${appUrl()}/structure/dashboard`,
+        EXPIRY_DATE: text(params, "EXPIRY_DATE", "EXPIRES_AT") || "—",
+      };
+    }
+
+    case 6:
+      return {
+        FIRST_NAME,
+        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/professeur/dashboard`,
+      };
+
+    case 7:
+      return {
+        CONTACT_NAME: text(params, "CONTACT_NAME", "DIRECTOR_NAME") || FIRST_NAME,
+        ORGANIZATION_NAME: text(params, "ORGANIZATION_NAME", "SCHOOL_NAME") || "Votre Structure",
+        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/structure/dashboard`,
+      };
+
+    case 8: {
+      const details = joinInfo([
+        text(params, "ADDITIONAL_INFORMATION", "MESSAGE", "MESSAGE_SPECIFIQUE"),
+      ]);
+      const invoiceUrl = text(params, "INVOICE_URL", "FACTURE_URL");
+      return {
+        FIRST_NAME,
+        TRANSACTION_REFERENCE: text(params, "TRANSACTION_REFERENCE", "FACTURE_NUM", "INVOICE_NUMBER", "PAYMENT_ID", "ORDER_ID") || "—",
+        PAYMENT_DESCRIPTION: text(params, "PAYMENT_DESCRIPTION", "FORMATION_TITRE", "PRODUCT_TITLE") || "Transaction Omnia Global Academy",
+        AMOUNT: text(params, "AMOUNT", "MONTANT_XOF", "PRICE_XOF", "TOTAL_XOF") || "—",
+        CURRENCY: text(params, "CURRENCY") || "XOF",
+        PAYMENT_DATE: text(params, "PAYMENT_DATE", "TRANSACTION_DATE", "CREATED_AT") || todayFr(),
+        PAYMENT_STATUS: text(params, "PAYMENT_STATUS", "STATUT") || "Confirmé",
+        ADDITIONAL_INFORMATION: details,
+        PAYMENT_URL: text(params, "PAYMENT_URL", "ACTION_URL") || invoiceUrl || `${appUrl()}/home`,
+        INVOICE_URL: invoiceUrl,
+      };
+    }
+
+    case 9: {
+      const courseName = text(params, "COURSE_NAME", "FORMATION_TITRE") || "Votre formation";
+      return {
+        FIRST_NAME,
+        COURSE_NAME: courseName,
+        CERTIFICATE_NAME: text(params, "CERTIFICATE_NAME") || `Certificat — ${courseName}`,
+        ISSUE_DATE: text(params, "ISSUE_DATE", "CERTIFICATE_DATE") || todayFr(),
+        CERTIFICATE_NUMBER: text(params, "CERTIFICATE_NUMBER", "CERTIFICATE_ID") || "—",
+        PDF_URL: text(params, "PDF_URL", "CERTIFICATE_URL"),
+        VERIFY_URL: text(params, "VERIFY_URL"),
+      };
+    }
+
+    case 10:
+      return {
+        FIRST_NAME,
+        COURSE_NAME: text(params, "COURSE_NAME", "FORMATION_TITRE") || "Votre formation",
+        PROGRESS_PERCENT: text(params, "PROGRESS_PERCENT", "COMPLETION_PERCENT") || "0",
+        LAST_ACTIVITY_DATE: text(params, "LAST_ACTIVITY_DATE", "LAST_ACCESS_AT") || "Récemment",
+        COURSE_URL: text(params, "COURSE_URL", "ACTION_URL") || `${appUrl()}/home`,
+      };
+
+    case 13:
+      return {
+        FIRST_NAME,
+        ROLE_LABEL: text(params, "ROLE_LABEL", "ROLE_NAME") || "Compte Omnia",
+        ADDITIONAL_INFORMATION: text(params, "ADDITIONAL_INFORMATION", "MESSAGE_SPECIFIQUE") || "Votre dossier sera examiné par l’Administration Omnia.",
+        STATUS_URL: text(params, "STATUS_URL", "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/connexion`,
+      };
+
+    default:
+      return params;
+  }
 }
