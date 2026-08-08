@@ -3,11 +3,13 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
 import {
   consumeRateLimit,
+  createHashedEmailOtp,
   generateOpaqueToken,
   getClientIP,
   makeCorsHeaders,
   sha256Hex,
 } from "../_shared/auth-security.ts";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 async function checkIPBlocklist(supabase: any, ip: string): Promise<boolean> {
   if (ip === "unknown") return false;
@@ -184,7 +186,7 @@ Deno.serve(async (req: Request) => {
     let userQuery = supabase
       .from("users")
       .select(
-        "id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change, suspension_source, self_suspended_at, self_suspension_until, self_suspension_reason_code",
+        "id, email, full_name, phone_number, status, country_code, avatar_url, password_hash, force_password_change, suspension_source, self_suspended_at, self_suspension_until, self_suspension_reason_code, email_verified_at",
       );
 
     userQuery = email
@@ -224,6 +226,66 @@ Deno.serve(async (req: Request) => {
     }
 
     let accountReactivated = false;
+
+    if (!user.email_verified_at && user.email !== DEMO_EMAIL) {
+      const verificationEmail = String(user.email || "").trim().toLowerCase();
+      const verificationEmailHash = await sha256Hex(verificationEmail);
+      const verificationSendLimit = await consumeRateLimit(
+        supabase,
+        `auth-login:email-verification:${verificationEmailHash}`,
+        3,
+        60 * 60,
+      );
+
+      let emailSent = false;
+      let retryAfter = 0;
+
+      if (verificationSendLimit.allowed) {
+        await supabase
+          .from("otp_codes")
+          .update({ used: true })
+          .eq("email", verificationEmail)
+          .eq("purpose", "inscription")
+          .eq("used", false);
+
+        const otp = await createHashedEmailOtp(supabase, {
+          email: verificationEmail,
+          purpose: "inscription",
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          ipAddress: clientIP,
+        });
+
+        emailSent = await sendOmniaEmail({
+          to: { email: verificationEmail, name: user.full_name || undefined },
+          templateKey: "auth_verification_otp",
+          params: {
+            PRENOM: String(user.full_name || "").split(" ")[0],
+            OTP: otp,
+            EXPIRES_MINUTES: 5,
+          },
+          senderEmail:
+            Deno.env.get("BREVO_AUTH_SENDER_EMAIL") ||
+            Deno.env.get("BREVO_SENDER_EMAIL") ||
+            "contact@omniaglobalacademy.com",
+          userId: String(user.id),
+          sb: supabase,
+        });
+      } else {
+        retryAfter = verificationSendLimit.retryAfter;
+      }
+
+      return json({
+        success: false,
+        needs_email_verification: true,
+        verification_email: verificationEmail,
+        purpose: "inscription",
+        initial_email_sent: emailSent,
+        retry_after: retryAfter || undefined,
+        message: emailSent
+          ? "Votre adresse e-mail doit être confirmée. Un nouveau code vient de vous être envoyé."
+          : "Votre adresse e-mail doit être confirmée. Utilisez le renvoi du code sur l’écran de vérification.",
+      }, 403);
+    }
 
     if (user.email === DEMO_EMAIL) {
       const { data: demoConfig, error: demoError } = await supabase

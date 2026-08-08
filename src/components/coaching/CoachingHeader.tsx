@@ -14,7 +14,7 @@ import {
   UserRoundCheck,
   X,
 } from 'lucide-react';
-import { isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
+import { coachingRequest, isCoachPreviewMode, withCoachPreview } from '../../lib/coachingApi';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import UserAccountMenu from '../UserAccountMenu';
 
@@ -43,6 +43,12 @@ type Props = {
   showSearch?: boolean;
 };
 
+type CoachSelfStatus = {
+  application?: { status?: string } | null;
+  profile?: unknown | null;
+  eligibility?: { eligible?: boolean; source?: string } | null;
+};
+
 function dashboardPathForRoles(roles: string[]): string {
   if (roles.includes('super_admin')) return '/admin/dashboard';
   if (roles.includes('coach')) return '/coach/dashboard';
@@ -54,17 +60,6 @@ function dashboardPathForRoles(roles: string[]): string {
   return '/dashboard';
 }
 
-function canStartCoachApplication(roles: string[]) {
-  return roles.some(role => [
-    'professeur',
-    'formateur',
-    'responsable_structure',
-    'gestionnaire_structure',
-    'structure_admin',
-    'directeur',
-    'gestionnaire_partenaire',
-  ].includes(role));
-}
 
 export default function CoachingHeader({
   searchValue,
@@ -85,13 +80,24 @@ export default function CoachingHeader({
     }
   });
 
+  const [coachStatus, setCoachStatus] = useState<CoachSelfStatus | null>(null);
+
   const roles = user?.roles || [];
   const loggedIn = Boolean(getSessionToken()) && Boolean(user);
   const isCoach = roles.includes('coach');
   const previewMode = isCoachPreviewMode();
   const isCoachingLanding = location.pathname === '/coaching';
   const dashboardPath = dashboardPathForRoles(roles);
-  const coachSpaceTarget = loggedIn ? (isCoach ? withCoachPreview('/coach/dashboard') : dashboardPath) : '/connexion?redirect=%2Fcoach%2Fdashboard';
+  const applicationStatus = String(coachStatus?.application?.status || '');
+  const hasCoachSpace = isCoach || previewMode || Boolean(coachStatus?.profile) || applicationStatus === 'approved';
+  const coachLandingAction = hasCoachSpace
+    ? { path: withCoachPreview('/coach/dashboard'), label: 'Espace coach', icon: LayoutDashboard }
+    : coachStatus?.application
+      ? { path: '/coaching/devenir-coach', label: applicationStatus === 'changes_requested' ? 'Mettre à jour ma candidature' : 'Ma candidature coach', icon: UserRoundCheck }
+      : coachStatus?.eligibility?.eligible
+        ? { path: '/coaching/devenir-coach', label: 'Devenir coach', icon: UserRoundCheck }
+        : null;
+  const CoachLandingIcon = coachLandingAction?.icon || LayoutDashboard;
   const resolvedSearch = searchValue ?? internalSearch;
 
   useEffect(() => {
@@ -111,16 +117,29 @@ export default function CoachingHeader({
     };
   }, []);
 
+  useEffect(() => {
+    if (!loggedIn || previewMode) {
+      setCoachStatus(null);
+      return;
+    }
+    let active = true;
+    coachingRequest<CoachSelfStatus>('self_status')
+      .then(result => { if (active) setCoachStatus(result); })
+      .catch(() => { if (active) setCoachStatus(null); });
+    return () => { active = false; };
+  }, [loggedIn, previewMode, roles.join('|')]);
+
   const navItems = useMemo<NavItem[]>(() => {
     const items: NavItem[] = [
       { path: '/coaching', label: 'Trouver un coach', icon: Compass, exact: true },
       { path: '/coaching/solutions', label: 'Coaching collectif', icon: Package },
     ];
     if (loggedIn) items.push({ path: '/dashboard/coaching', label: 'Mes sessions', icon: CalendarDays });
-    if (isCoach || previewMode) items.push({ path: '/coach/dashboard', label: 'Espace coach', icon: LayoutDashboard });
-    if (!isCoach && canStartCoachApplication(roles)) items.push({ path: '/coaching/devenir-coach', label: 'Devenir coach', icon: UserRoundCheck });
+    if (hasCoachSpace) items.push({ path: '/coach/dashboard', label: 'Espace coach', icon: LayoutDashboard });
+    else if (coachStatus?.application) items.push({ path: '/coaching/devenir-coach', label: applicationStatus === 'changes_requested' ? 'Mettre à jour ma candidature' : 'Ma candidature coach', icon: UserRoundCheck });
+    else if (coachStatus?.eligibility?.eligible) items.push({ path: '/coaching/devenir-coach', label: 'Devenir coach', icon: UserRoundCheck });
     return items;
-  }, [isCoach, loggedIn, previewMode, roles]);
+  }, [applicationStatus, coachStatus, hasCoachSpace, loggedIn]);
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
@@ -188,10 +207,16 @@ export default function CoachingHeader({
         {showSearch && <div className="mx-5 hidden min-w-0 flex-1 justify-center lg:flex">{searchField()}</div>}
 
         <div className="ml-auto flex flex-none items-center gap-2">
-          {isCoachingLanding && (
-            <Link to={coachSpaceTarget} className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50 sm:inline-flex" style={{ color: BLUE }}>
-              {loggedIn ? <LayoutDashboard size={16} /> : <LogIn size={16} />}
-              <span>Espace coach</span>
+          {isCoachingLanding && loggedIn && coachLandingAction && (
+            <Link to={coachLandingAction.path} className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50 sm:inline-flex" style={{ color: BLUE }}>
+              <CoachLandingIcon size={16} />
+              <span>{coachLandingAction.label}</span>
+            </Link>
+          )}
+          {isCoachingLanding && !loggedIn && (
+            <Link to="/connexion?redirect=%2Fcoaching" className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50 sm:inline-flex" style={{ color: BLUE }}>
+              <LogIn size={16} />
+              <span>Connexion</span>
             </Link>
           )}
           {!loggedIn && !isCoachingLanding && (

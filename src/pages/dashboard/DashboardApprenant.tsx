@@ -8,6 +8,7 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { usePreviewMode } from '../../hooks/usePreviewMode';
 import { withLearnerPreview } from '../../lib/learnerPreview';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
+import CoachOpportunityNotice from '../../components/coaching/CoachOpportunityNotice';
 import {
   BookOpen, Award, Sparkles, TrendingUp, Clock, ChevronRight, ArrowRight,
 } from 'lucide-react';
@@ -72,6 +73,8 @@ export function DashboardApprenant() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">{dashboardGreeting(data?.user.full_name)}</h1>
         </div>
+
+        <CoachOpportunityNotice disabled={previewMode} />
 
         {loading && (
           <div className="flex items-center justify-center py-20">

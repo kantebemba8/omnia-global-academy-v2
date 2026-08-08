@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { StructureLayout } from '../../components/StructureLayout';
 import { RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
+import CoachOpportunityNotice from '../../components/coaching/CoachOpportunityNotice';
 import {
   Users, QrCode, BookOpen, Clock, CheckCircle,
   AlertCircle, PlusCircle, ChevronRight, RefreshCw,
@@ -225,6 +226,8 @@ export default function StructureDashboard() {
             </button>
           </div>
         </div>
+
+        <CoachOpportunityNotice disabled={isPreview} />
 
         {/* Bannière statut spécial */}
         {isPending && (

@@ -285,6 +285,7 @@ Deno.serve(async (req: Request) => {
         birth_date: birth_date || null,
         country_code: String(country_code).toUpperCase(),
         status: "en_attente_validation",
+        email_verified_at: null,
         allow_email: body.allow_email ?? true,
         allow_sms: body.allow_sms ?? false,
         allow_push: body.allow_push ?? false,

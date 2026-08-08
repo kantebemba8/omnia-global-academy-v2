@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id,email,full_name,phone_number,status,country_code,avatar_url,force_password_change")
+      .select("id,email,full_name,phone_number,status,country_code,avatar_url,force_password_change,email_verified_at")
       .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
@@ -94,6 +94,14 @@ Deno.serve(async (req: Request) => {
       ["professeur", "responsable_structure", "recruteur_independant"].includes(role)
     );
     const now = new Date().toISOString();
+
+    if (purpose === "inscription" && !user.email_verified_at) {
+      const { error: emailVerificationError } = await supabase
+        .from("users")
+        .update({ email_verified_at: now, updated_at: now })
+        .eq("id", user.id);
+      if (emailVerificationError) throw emailVerificationError;
+    }
 
     if (purpose === "inscription") {
       if (!requiresManualValidation) {

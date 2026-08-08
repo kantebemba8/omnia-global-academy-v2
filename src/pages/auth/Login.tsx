@@ -10,6 +10,9 @@ type LoginResponse = {
   success: boolean;
   message?: string;
   needs_validation?: boolean;
+  needs_email_verification?: boolean;
+  verification_email?: string;
+  initial_email_sent?: boolean;
   error?: string;
   can_reactivate?: boolean;
   suspended_at?: string | null;
@@ -128,6 +131,17 @@ export function Login() {
     if (data.demo_expired) {
       setDemoExpired(true);
       setError('');
+      return;
+    }
+    if (data.needs_email_verification && data.verification_email) {
+      navigate('/verifier-otp', {
+        replace: true,
+        state: {
+          email: data.verification_email,
+          purpose: 'inscription',
+          initial_email_sent: data.initial_email_sent !== false,
+        },
+      });
       return;
     }
     if (data.needs_validation) {

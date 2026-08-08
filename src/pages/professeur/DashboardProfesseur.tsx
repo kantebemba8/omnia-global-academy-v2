@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { RoleDashboardPanel, RoleDashboardStatCard } from '../../components/dashboard/RoleDashboardCards';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
+import CoachOpportunityNotice from '../../components/coaching/CoachOpportunityNotice';
 
 import {
   BookOpen, Users, Star, PlusCircle, AlertCircle,
@@ -182,6 +183,8 @@ export function DashboardProfesseur() {
             </Link>
           )}
         </div>
+
+        <CoachOpportunityNotice disabled={bypassAuth} />
 
         {loading ? (
           <div className="flex justify-center py-20">
