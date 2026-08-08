@@ -9,6 +9,7 @@ type State = {
   purpose: 'inscription' | 'connexion' | 'reset_password';
   user_id?: string;
   access_invitation?: boolean;
+  initial_email_sent?: boolean;
 };
 
 type VerifyResponse = {
@@ -39,12 +40,13 @@ export function VerifyOTP() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as State | null;
+  const initialDeliveryFailed = state?.initial_email_sent === false;
   const [otp, setOtp] = useState(Array<string>(6).fill(''));
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [error, setError] = useState('');
-  const [canResend, setCanResend] = useState(false);
-  const [countdown, setCountdown] = useState(59);
+  const [error, setError] = useState(initialDeliveryFailed ? 'Le premier envoi du code n’a pas abouti. Utilisez « Renvoyer le code par e-mail ».' : '');
+  const [canResend, setCanResend] = useState(initialDeliveryFailed);
+  const [countdown, setCountdown] = useState(initialDeliveryFailed ? 0 : 59);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {

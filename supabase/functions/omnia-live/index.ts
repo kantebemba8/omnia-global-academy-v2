@@ -5357,6 +5357,45 @@ async function adminOrganizerDecision(
     p_note:body.note||null,
   });
   if(error) return json({error:"ORGANIZER_DECISION_FAILED",message:error.message,code:error.code,details:error.details},400);
+
+  const result = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const targetUserId = String(result.user_id || "");
+  const decisionStatus = String(result.status || body.decision || "");
+  if (targetUserId) {
+    const { data: organizerUser } = await sb.from("users").select("email,full_name").eq("id", targetUserId).maybeSingle();
+    if (organizerUser?.email) {
+      const appUrl=(Deno.env.get("APP_URL")||"https://omniaglobalacademy.com").replace(/\/$/,"");
+      const statusLabel = decisionStatus === "approved"
+        ? "Accès Organisateur validé"
+        : decisionStatus === "changes_requested"
+        ? "Modifications demandées"
+        : decisionStatus === "suspended"
+        ? "Accès Organisateur suspendu"
+        : "Candidature non validée";
+      await sendOmniaEmail({
+        sb,
+        userId: targetUserId,
+        to: { email: String(organizerUser.email), name: organizerUser.full_name || undefined },
+        templateKey: "status_update",
+        params: {
+          SUBJECT: "Mise à jour de votre candidature Organisateur Omnia Live",
+          FIRST_NAME: String(organizerUser.full_name || "").split(" ")[0],
+          MESSAGE: decisionStatus === "approved"
+            ? "Votre accès Organisateur Omnia Live est maintenant actif."
+            : decisionStatus === "changes_requested"
+            ? "Des modifications sont nécessaires avant la validation de votre accès Organisateur."
+            : decisionStatus === "suspended"
+            ? "Votre accès Organisateur Omnia Live a été suspendu."
+            : "Votre candidature Organisateur Omnia Live n’a pas été validée.",
+          STATUS_LABEL: statusLabel,
+          ADDITIONAL_INFORMATION: body.note || "",
+          CTA_LABEL: decisionStatus === "approved" ? "Accéder à Omnia Live" : "Consulter Omnia",
+          CTA_URL: decisionStatus === "approved" ? `${appUrl}/omnia-live/organisateur` : `${appUrl}/omnia-live`,
+        },
+      });
+    }
+  }
+
   return json({success:true,result:data});
 }
 

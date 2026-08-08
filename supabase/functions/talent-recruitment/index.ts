@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -521,6 +522,44 @@ Deno.serve(async (req: Request) => {
         await sb.from("users").update({ status: "suspendu", updated_at: new Date().toISOString() }).eq("id", targetUserId);
       }
       await queueNotification(sb, targetUserId, "recruiter_status_changed", { status, reason: body.reason || null });
+
+      const { data: recruiterUser } = await sb
+        .from("users")
+        .select("email,full_name")
+        .eq("id", targetUserId)
+        .maybeSingle();
+      if (recruiterUser?.email) {
+        const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+        const statusLabel = status === "approved"
+          ? "Compte recruteur validé"
+          : status === "rejected"
+          ? "Candidature non validée"
+          : status === "suspended"
+          ? "Compte recruteur suspendu"
+          : "Candidature en attente";
+        await sendOmniaEmail({
+          sb,
+          userId: targetUserId,
+          to: { email: String(recruiterUser.email), name: recruiterUser.full_name || undefined },
+          templateKey: "status_update",
+          params: {
+            SUBJECT: "Mise à jour de votre compte Recruteur Omnia Talent",
+            FIRST_NAME: String(recruiterUser.full_name || "").split(" ")[0],
+            MESSAGE: status === "approved"
+              ? "Votre compte Recruteur indépendant est validé et peut maintenant accéder à Omnia Talent."
+              : status === "rejected"
+              ? "Votre candidature Recruteur indépendant n’a pas été validée."
+              : status === "suspended"
+              ? "Votre accès Recruteur indépendant a été suspendu."
+              : "Votre candidature Recruteur indépendant est en cours d’examen.",
+            STATUS_LABEL: statusLabel,
+            ADDITIONAL_INFORMATION: body.reason || "",
+            CTA_LABEL: status === "approved" ? "Accéder à Omnia Talent" : "Consulter Omnia",
+            CTA_URL: status === "approved" ? `${appUrl}/talent/recruteur/dashboard` : `${appUrl}/connexion`,
+          },
+        });
+      }
+
       await logActivity(sb, session, null, targetUserId, "recruiter_status_changed", "user", targetUserId, { status, reason: body.reason || null });
       return json({ success: true, profile: data });
     }

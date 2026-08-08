@@ -52,7 +52,7 @@ export function RegisterRecruiterIndependent() {
     setLoading(true);
     try {
       const phoneNumber = getPrefix(form.country_code) + form.phone_local.replace(/^0+/, '');
-      const response = await authFetch<{ success: boolean; message?: string; user_id?: string }>('auth-register', {
+      const response = await authFetch<{ success: boolean; message?: string; user_id?: string; email_sent?: boolean }>('auth-register', {
         role: 'recruteur_independant',
         full_name: form.full_name.trim(),
         email: form.email.trim(),
@@ -73,7 +73,7 @@ export function RegisterRecruiterIndependent() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: response.user_id },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: response.user_id, initial_email_sent: response.email_sent !== false },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue.');

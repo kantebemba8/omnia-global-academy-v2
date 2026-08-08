@@ -14,7 +14,7 @@ export function RegisterOrganizer(){
  const [show,setShow]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const set=(k:string,v:any)=>setF((x:any)=>({...x,[k]:v}));
  async function submit(e:React.FormEvent){e.preventDefault();if(f.password!==f.confirm_password){setError('Les mots de passe ne correspondent pas');return}if(!f.country_code){setError('Sélectionnez votre pays.');return}setLoading(true);setError('');
-  try{const phone_number=getPrefix(f.country_code)+f.phone_local.replace(/^0+/,'');const d:any=await authFetch('auth-register',{...f,role:'organizer',phone_number,event_topics:f.event_topics.split(',').map((x:string)=>x.trim()).filter(Boolean)});if(!d.success){setError(d.message||'Erreur');return}nav('/verifier-otp',{state:{email:f.email.trim().toLowerCase(),purpose:'inscription',user_id:d.user_id}})}catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}
+  try{const phone_number=getPrefix(f.country_code)+f.phone_local.replace(/^0+/,'');const d:any=await authFetch('auth-register',{...f,role:'organizer',phone_number,event_topics:f.event_topics.split(',').map((x:string)=>x.trim()).filter(Boolean)});if(!d.success){setError(d.message||'Erreur');return}nav('/verifier-otp',{state:{email:f.email.trim().toLowerCase(),purpose:'inscription',user_id:d.user_id,initial_email_sent:d.email_sent!==false}})}catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setLoading(false)}
  }
  return <AuthLayout title="Inscription Organisateur" subtitle="Organisez des Lives, conférences, masterclass et événements sur Omnia Live">
   <form onSubmit={submit} className="mt-4 space-y-4">{error&&<div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}

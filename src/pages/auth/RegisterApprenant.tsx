@@ -11,6 +11,7 @@ type RegisterResponse = {
   message?: string;
   user_id?: string;
   next_step?: string;
+  email_sent?: boolean;
 };
 
 const inputCls =
@@ -123,7 +124,7 @@ export function RegisterApprenant() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken) },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken), initial_email_sent: data.email_sent !== false },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');

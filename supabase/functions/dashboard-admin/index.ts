@@ -105,6 +105,22 @@ function accountReasonLabel(value: unknown) {
   return ACCOUNT_REASON_LABELS[key] || "Motif non communiqué";
 }
 
+const ACCOUNT_ACTION_LABELS: Record<string, string> = {
+  self_suspended: "Suspension volontaire du compte",
+  self_reactivated: "Réactivation volontaire du compte",
+  account_suspended: "Compte suspendu par l’Administration",
+  account_reactivated: "Compte réactivé par l’Administration",
+  sessions_revoked: "Toutes les sessions ont été déconnectées",
+  password_change_required: "Changement de mot de passe requis",
+  invitation_resent: "Invitation renvoyée",
+  account_deleted: "Compte fermé et anonymisé",
+};
+
+function accountActionLabel(value: unknown) {
+  const key = String(value || "");
+  return ACCOUNT_ACTION_LABELS[key] || "Action administrative";
+}
+
 const PRIMARY_ROLE_GROUPS = [
   { key: "apprenant", label: "Apprenants", aliases: ["apprenant"] },
   { key: "professeur", label: "Professeurs", aliases: ["professeur", "formateur", "enseignant", "etablissement_enseignant"] },
@@ -257,8 +273,8 @@ async function handleAdminUserGet(sb: any, adminId: string, url: URL) {
   return json({ success: true, user: { ...user, phone_masked: maskPhone(user.phone_number) },
     sessions: (sessionsResult.data ?? []).map((row: any) => ({ ...row, active: !!row.expires_at && Date.parse(row.expires_at) > now })),
     invitations: invitationsResult.data ?? [],
-    lifecycle: (lifecycleResult.data ?? []).map((row: any) => ({ ...row, label: String(row.action || "").replaceAll("_", " "), reason: accountReasonLabel(row.reason_code) })),
-    administrative_history: (adminHistoryResult.data ?? []).map((row: any) => ({ ...row, label: String(row.action || "").replaceAll("_", " ") })),
+    lifecycle: (lifecycleResult.data ?? []).map((row: any) => ({ ...row, label: accountActionLabel(row.action), reason: accountReasonLabel(row.reason_code) })),
+    administrative_history: (adminHistoryResult.data ?? []).map((row: any) => ({ ...row, label: accountActionLabel(row.action) })),
     profile: profileResult.data ?? null,
   });
 }

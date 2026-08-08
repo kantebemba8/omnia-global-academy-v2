@@ -10,6 +10,7 @@ type RegisterResponse = {
   message?: string;
   user_id?: string;
   next_step?: string;
+  email_sent?: boolean;
 };
 
 const inputCls =
@@ -130,7 +131,7 @@ export function RegisterProfesseur() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id },
+        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id, initial_email_sent: data.email_sent !== false },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');

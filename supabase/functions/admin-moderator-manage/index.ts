@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 import {
   MODERATOR_PERMISSION_KEYS,
   appendModeratorTeamAudit,
@@ -268,13 +269,44 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
     } else if (["validate_kyc", "kyc_approve"].includes(String(request.action_type))) {
       const { error: kycError } = await sb.from("professeur_profiles").update({ kyc_status: "valide", kyc_validated_by: adminId, kyc_validated_at: now, kyc_rejection_reason: null }).eq("user_id", request.target_user_id);
       if (kycError) throw kycError;
-      const { error: userError } = await sb.from("users").update({ status: "actif" }).eq("id", request.target_user_id);
+      const { error: userError } = await sb.from("users").update({ status: "actif", updated_at: now }).eq("id", request.target_user_id);
       if (userError) throw userError;
+      const { data: approvedUser } = await sb.from("users").select("email,full_name").eq("id", request.target_user_id).maybeSingle();
+      if (approvedUser?.email) {
+        await sendOmniaEmail({
+          sb,
+          userId: String(request.target_user_id),
+          to: { email: String(approvedUser.email), name: approvedUser.full_name || undefined },
+          templateKey: "professor_approved",
+          params: {
+            FIRST_NAME: String(approvedUser.full_name || "").split(" ")[0],
+            DASHBOARD_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/dashboard`,
+          },
+        });
+      }
     } else if (request.action_type === "kyc_reject") {
       const { error: kycError } = await sb.from("professeur_profiles").update({ kyc_status: "rejete", kyc_validated_by: adminId, kyc_validated_at: now, kyc_rejection_reason: request.reason }).eq("user_id", request.target_user_id);
       if (kycError) throw kycError;
-      const { error: userError } = await sb.from("users").update({ status: "en_attente_validation" }).eq("id", request.target_user_id);
+      const { error: userError } = await sb.from("users").update({ status: "en_attente_validation", updated_at: now }).eq("id", request.target_user_id);
       if (userError) throw userError;
+      const { data: rejectedUser } = await sb.from("users").select("email,full_name").eq("id", request.target_user_id).maybeSingle();
+      if (rejectedUser?.email) {
+        await sendOmniaEmail({
+          sb,
+          userId: String(request.target_user_id),
+          to: { email: String(rejectedUser.email), name: rejectedUser.full_name || undefined },
+          templateKey: "status_update",
+          params: {
+            SUBJECT: "Mise à jour de votre dossier Professeur",
+            FIRST_NAME: String(rejectedUser.full_name || "").split(" ")[0],
+            MESSAGE: "Votre dossier Professeur nécessite une nouvelle étape avant activation.",
+            STATUS_LABEL: "Dossier non validé",
+            ADDITIONAL_INFORMATION: request.reason || "Consultez les informations communiquées par l’Administration Omnia.",
+            CTA_LABEL: "Se connecter à Omnia",
+            CTA_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/connexion`,
+          },
+        });
+      }
     } else {
       return json({ error: "INVALID_REQUEST_ACTION" }, 400);
     }

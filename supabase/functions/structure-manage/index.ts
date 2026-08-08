@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
+import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -934,13 +935,87 @@ Deno.serve(async (req: Request) => {
       }
       const { data, error } = await sb.from("partner_organizations").update(patch).eq("id", organizationId).select("*").single();
       if (error) throw error;
-      if (["validate", "restore"].includes(decision)) {
-        const { data: managers } = await sb.from("partner_managers").select("user_id").eq("organization_id", organizationId).eq("is_primary", true);
-        for (const manager of managers || []) {
-          await addRole(sb, String(manager.user_id), "responsable_structure");
-          await sb.from("user_roles").delete().eq("user_id", manager.user_id).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
+
+      const { data: primaryManagers, error: managersError } = await sb
+        .from("partner_managers")
+        .select("user_id")
+        .eq("organization_id", organizationId)
+        .eq("is_primary", true);
+      if (managersError) throw managersError;
+
+      for (const manager of primaryManagers || []) {
+        const managerUserId = String(manager.user_id);
+
+        if (["validate", "restore"].includes(decision)) {
+          await addRole(sb, managerUserId, "responsable_structure");
+          await sb.from("user_roles").delete().eq("user_id", managerUserId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
+
+          // La validation de la Structure doit aussi rendre le compte du
+          // responsable utilisable. Sans cette transition, auth-login continue
+          // de bloquer le compte en "en_attente_validation".
+          const { error: activateUserError } = await sb
+            .from("users")
+            .update({ status: "actif", updated_at: new Date().toISOString() })
+            .eq("id", managerUserId);
+          if (activateUserError) throw activateUserError;
+        } else if (decision === "suspend") {
+          const { error: suspendUserError } = await sb
+            .from("users")
+            .update({ status: "suspendu", updated_at: new Date().toISOString() })
+            .eq("id", managerUserId);
+          if (suspendUserError) throw suspendUserError;
+          await sb.from("user_sessions").delete().eq("user_id", managerUserId);
+        }
+
+        const { data: managerUser } = await sb
+          .from("users")
+          .select("email,full_name")
+          .eq("id", managerUserId)
+          .maybeSingle();
+
+        if (managerUser?.email) {
+          const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+          if (["validate", "restore"].includes(decision)) {
+            await sendOmniaEmail({
+              sb,
+              userId: managerUserId,
+              to: { email: String(managerUser.email), name: managerUser.full_name || undefined },
+              templateKey: "structure_approved",
+              params: {
+                CONTACT_NAME: String(managerUser.full_name || data.contact_name || ""),
+                ORGANIZATION_NAME: String(data.org_name || "Votre Structure"),
+                DASHBOARD_URL: `${appUrl}/structure/dashboard`,
+              },
+            });
+          } else if (["reject", "request_changes", "suspend"].includes(decision)) {
+            const statusLabel = decision === "reject"
+              ? "Dossier non validé"
+              : decision === "request_changes"
+              ? "Modifications demandées"
+              : "Structure suspendue";
+            await sendOmniaEmail({
+              sb,
+              userId: managerUserId,
+              to: { email: String(managerUser.email), name: managerUser.full_name || undefined },
+              templateKey: "status_update",
+              params: {
+                SUBJECT: `Mise à jour de votre Structure — ${String(data.org_name || "Omnia")}`,
+                FIRST_NAME: String(managerUser.full_name || "").split(" ")[0],
+                MESSAGE: decision === "request_changes"
+                  ? "L’Administration Omnia demande des modifications avant de poursuivre la validation de votre Structure."
+                  : decision === "reject"
+                  ? "La demande de validation de votre Structure n’a pas été approuvée."
+                  : "L’accès opérationnel de votre Structure a été suspendu.",
+                STATUS_LABEL: statusLabel,
+                ADDITIONAL_INFORMATION: body.admin_comment || body.rejection_reason || "",
+                CTA_LABEL: "Consulter Omnia",
+                CTA_URL: `${appUrl}/connexion`,
+              },
+            });
+          }
         }
       }
+
       await appendStructureAudit(sb, organizationId, session.userId, "admin", `structure_${decision}`, {
         from_status: String(current.status || ""),
         to_status: String(data.status || ""),

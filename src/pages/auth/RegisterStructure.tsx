@@ -60,6 +60,7 @@ export function RegisterStructure() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [justifFile, setJustifFile] = useState<File | null>(null);
   const [registrationSessionToken, setRegistrationSessionToken] = useState('');
+  const [registrationEmailSent, setRegistrationEmailSent] = useState<boolean | null>(null);
 
   const [form, setForm] = useState({
     // Structure
@@ -167,6 +168,7 @@ export function RegisterStructure() {
 
     try {
       let sessionToken = registrationSessionToken;
+      let initialEmailSent = registrationEmailSent;
 
       // Le compte n'est créé qu'une seule fois. Si la création de la fiche
       // Structure échoue, le jeton temporaire permet de réessayer sans créer
@@ -192,7 +194,9 @@ export function RegisterStructure() {
           throw new Error(regData.message ?? 'Erreur lors de la création du compte');
         }
         sessionToken = String(regData.session_token);
+        initialEmailSent = regData.email_sent !== false;
         setRegistrationSessionToken(sessionToken);
+        setRegistrationEmailSent(initialEmailSent);
       }
 
       const [logoBase64, justificatifBase64] = await Promise.all([
@@ -234,7 +238,7 @@ export function RegisterStructure() {
       if (!structRes.ok || !structData.success) {
         if (structData.error === 'STRUCTURE_ALREADY_EXISTS') {
           setRegistrationSessionToken('');
-          navigate('/verifier-otp', { state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription' } });
+          navigate('/verifier-otp', { state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription', initial_email_sent: initialEmailSent !== false } });
           return;
         }
         throw new Error(structData.message ?? structData.error ?? 'Erreur lors de la création de la structure');
@@ -242,7 +246,7 @@ export function RegisterStructure() {
 
       setRegistrationSessionToken('');
       navigate('/verifier-otp', {
-        state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription' },
+        state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription', initial_email_sent: initialEmailSent !== false },
       });
     } catch (err) {
       setError((err as Error).message ?? 'Une erreur est survenue');
