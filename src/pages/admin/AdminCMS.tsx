@@ -158,9 +158,10 @@ export default function AdminCMS() {
   const [tab, setTab] = useState<Tab>('general');
   const [toast, setToast] = useState('');
 
-  // Newsletter state
+  // Newsletter state — le design reste administré manuellement dans Brevo (template #14).
   const [nlSubject, setNlSubject] = useState('');
-  const [nlHtml, setNlHtml] = useState('');
+  const [nlMessage, setNlMessage] = useState('');
+  const [nlActionUrl, setNlActionUrl] = useState('https://omniaglobalacademy.com');
   const [nlScheduleAt, setNlScheduleAt] = useState('');
   const [nlSending, setNlSending] = useState(false);
   const [nlCampaigns, setNlCampaigns] = useState<Array<{ id: string; subject: string; channel: string; status: string; sent_at: string | null; scheduled_at?: string | null; recipients_count: number; created_at: string; error_message?: string | null }>>([]);
@@ -440,32 +441,82 @@ export default function AdminCMS() {
     setTimeout(() => setToast(''), 4000);
   }
 
+  function newsletterScheduleIso() {
+    if (!nlScheduleAt) return undefined;
+    const parsed = new Date(nlScheduleAt);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  }
+
+  function validateNewsletterDraft() {
+    if (!nlSubject.trim()) { setToast('Objet requis.'); return false; }
+    if (!nlMessage.trim()) { setToast('Message principal requis.'); return false; }
+    try {
+      const url = new URL(nlActionUrl.trim());
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    } catch {
+      setToast('Le lien du bouton doit être une URL http(s) valide.');
+      return false;
+    }
+    if (nlScheduleAt && !newsletterScheduleIso()) {
+      setToast('Date de programmation invalide.');
+      return false;
+    }
+    return true;
+  }
+
   async function sendNewsletter() {
-    if (!nlSubject.trim()) { setToast('Objet requis.'); return; }
-    if (!nlHtml.trim()) { setToast('Contenu HTML requis.'); return; }
+    if (!validateNewsletterDraft()) return;
     setNlSending(true);
     try {
       const res = await fetch(ENDPOINTS.newsletterSend, {
         method: 'POST',
         headers: edgeAuthHeaders(),
         body: JSON.stringify({
-          action: 'send',
-          subject: nlSubject,
-          content_html: nlHtml,
-          channel: 'email',
-          schedule_at: nlScheduleAt || undefined,
+          action: 'send_newsletter',
+          subject: nlSubject.trim(),
+          message_principal: nlMessage.trim(),
+          action_url: nlActionUrl.trim(),
+          schedule_at: newsletterScheduleIso(),
         }),
       });
-      const d = await res.json();
-      if (d.success) {
-        setToast(d.status === 'scheduled' ? 'Campagne planifiée !' : 'Campagne envoyée !');
-        setNlSubject(''); setNlHtml(''); setNlScheduleAt('');
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        setToast(d.status === 'scheduled' ? 'Campagne planifiée avec le template Brevo #14.' : 'Campagne envoyée avec le template Brevo #14.');
+        setNlSubject('');
+        setNlMessage('');
+        setNlActionUrl('https://omniaglobalacademy.com');
+        setNlScheduleAt('');
         load();
       } else {
-        setToast(d.error || 'Erreur envoi.');
+        setToast(d.message || d.error || 'Erreur envoi.');
       }
     } catch { setToast('Erreur réseau.'); }
-    finally { setNlSending(false); setTimeout(() => setToast(''), 4000); }
+    finally { setNlSending(false); setTimeout(() => setToast(''), 4500); }
+  }
+
+  async function testNewsletter() {
+    if (!validateNewsletterDraft()) return;
+    setNlSending(true);
+    try {
+      const res = await fetch(ENDPOINTS.newsletterSend, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({
+          action: 'test_newsletter',
+          subject: nlSubject.trim(),
+          message_principal: nlMessage.trim(),
+          action_url: nlActionUrl.trim(),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) throw new Error(d.message || d.error || 'Test Newsletter impossible.');
+      setToast('Newsletter test envoyée à votre adresse Super-admin avec le template Brevo #14.');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Test Newsletter impossible.');
+    } finally {
+      setNlSending(false);
+      setTimeout(() => setToast(''), 4500);
+    }
   }
 
   async function runEmailAdminAction(action: 'sync_templates' | 'sync_webhook' | 'resync_contacts' | 'test_email') {
@@ -478,7 +529,7 @@ export default function AdminCMS() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.message || data.error || 'Opération impossible.');
-      setToast(action === 'sync_templates' ? 'Templates Omnia synchronisés avec Brevo.' : action === 'sync_webhook' ? 'Webhook transactionnel Brevo synchronisé.' : action === 'resync_contacts' ? `Synchronisation Brevo terminée (${data.synced || 0} contact(s)).` : 'E-mail de test envoyé à votre adresse administrateur.');
+      setToast(action === 'sync_templates' ? 'Templates transactionnels Brevo 1 à 13 vérifiés.' : action === 'sync_webhook' ? 'Webhook transactionnel Brevo synchronisé.' : action === 'resync_contacts' ? `Synchronisation Brevo terminée (${data.synced || 0} contact(s)).` : 'E-mail transactionnel de test envoyé à votre adresse administrateur.');
       load();
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Opération Brevo impossible.');
@@ -889,7 +940,7 @@ export default function AdminCMS() {
                 <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <button type="button" onClick={() => runEmailAdminAction('sync_templates')} disabled={nlSyncing}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
-                    Synchroniser les templates Brevo
+                    Vérifier les templates Brevo 1–13
                   </button>
                   <button type="button" onClick={() => runEmailAdminAction('sync_webhook')} disabled={nlSyncing}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
@@ -901,14 +952,19 @@ export default function AdminCMS() {
                   </button>
                   <button type="button" onClick={() => runEmailAdminAction('test_email')} disabled={nlSyncing}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
-                    Envoyer un e-mail test
+                    Tester un e-mail transactionnel
                   </button>
                 </div>
 
                 <div className="mb-5 grid gap-3 sm:grid-cols-3">
-                  <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-[#002050]">{nlTemplates.filter(t => t.provider_synced_at && !t.provider_last_error).length}/{nlTemplates.length}</div><div className="mt-1 text-xs text-gray-500">Templates synchronisés</div></div>
+                  <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-[#002050]">{nlTemplates.filter(t => t.provider_synced_at && !t.provider_last_error).length}/{nlTemplates.length}</div><div className="mt-1 text-xs text-gray-500">Templates transactionnels vérifiés</div></div>
                   <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-amber-700">{nlStats.pending_sync}</div><div className="mt-1 text-xs text-gray-500">Abonnés en attente Brevo</div></div>
                   <div className="border-y border-gray-100 py-3"><div className="text-xl font-black text-red-700">{nlStats.sync_errors}</div><div className="mt-1 text-xs text-gray-500">Erreurs de synchronisation</div></div>
+                </div>
+
+                <div className="mb-5 rounded-xl border border-[#BF8813]/25 bg-amber-50/40 p-4 text-sm text-gray-700">
+                  <div className="font-semibold text-[#002050]">Design Newsletter géré dans Brevo</div>
+                  <div className="mt-1 text-xs leading-relaxed text-gray-600">Template manuel <strong>#14</strong> · Liste abonnés <strong>#7</strong>. Omnia ne modifie ni le HTML, ni le design du template Newsletter.</div>
                 </div>
 
                 <div className="space-y-4">
@@ -920,19 +976,20 @@ export default function AdminCMS() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Contenu HTML</label>
-                    <textarea value={nlHtml} onChange={e => setNlHtml(e.target.value)} rows={8}
-                      placeholder="<p>Votre message...</p>"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:border-gray-400" />
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Message principal</label>
+                    <textarea value={nlMessage} onChange={e => setNlMessage(e.target.value)} rows={7}
+                      placeholder="Rédigez le contenu principal de cette newsletter…"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-gray-400" />
+                    <p className="mt-1 text-xs text-gray-400">Ce texte remplit uniquement la variable MESSAGE_PRINCIPAL du template Brevo #14.</p>
                   </div>
-                  {nlHtml && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Prévisualisation du contenu</label>
-                      <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: 240 }}>
-                        <iframe srcDoc={nlHtml} title="preview" className="w-full h-full" sandbox="allow-same-origin" />
-                      </div>
-                    </div>
-                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Lien du bouton</label>
+                    <input type="url" value={nlActionUrl} onChange={e => setNlActionUrl(e.target.value)}
+                      placeholder="https://omniaglobalacademy.com"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
+                    <p className="mt-1 text-xs text-gray-400">Ce lien remplit uniquement la variable ACTION_URL du template Brevo #14.</p>
+                  </div>
 
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -943,12 +1000,19 @@ export default function AdminCMS() {
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400" />
                   </div>
 
-                  <button onClick={sendNewsletter} disabled={nlSending}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: '#BF8813' }}>
-                    <Send className="w-4 h-4" />
-                    {nlSending ? 'Envoi en cours…' : nlScheduleAt ? 'Planifier la campagne' : 'Envoyer maintenant'}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    <button type="button" onClick={testNewsletter} disabled={nlSending}
+                      className="flex items-center gap-2 rounded-lg border border-[#002050]/20 px-5 py-2.5 text-sm font-semibold text-[#002050] disabled:opacity-60">
+                      <Mail className="w-4 h-4" />
+                      M'envoyer un test
+                    </button>
+                    <button onClick={sendNewsletter} disabled={nlSending}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: '#BF8813' }}>
+                      <Send className="w-4 h-4" />
+                      {nlSending ? 'Traitement en cours…' : nlScheduleAt ? 'Planifier la campagne' : 'Envoyer maintenant'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
