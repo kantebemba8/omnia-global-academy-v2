@@ -267,6 +267,10 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
       if (updateError) throw updateError;
       await sb.from("admin_user_account_audit").insert({ actor_user_id: adminId, target_user_id: request.target_user_id, action: "account_reactivated", reason: request.reason, metadata: { moderator_request_id: request.id } });
     } else if (["validate_kyc", "kyc_approve"].includes(String(request.action_type))) {
+      const { data: verificationUser } = await sb.from("users").select("email_status").eq("id", request.target_user_id).maybeSingle();
+      if (!verificationUser || String(verificationUser.email_status || "valide") !== "valide") {
+        return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "L’adresse e-mail du professeur doit être confirmée avant validation." }, 409);
+      }
       const { error: kycError } = await sb.from("professeur_profiles").update({ kyc_status: "valide", kyc_validated_by: adminId, kyc_validated_at: now, kyc_rejection_reason: null }).eq("user_id", request.target_user_id);
       if (kycError) throw kycError;
       const { error: userError } = await sb.from("users").update({ status: "actif", updated_at: now }).eq("id", request.target_user_id);
@@ -285,6 +289,10 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
         });
       }
     } else if (request.action_type === "kyc_reject") {
+      const { data: verificationUser } = await sb.from("users").select("email_status").eq("id", request.target_user_id).maybeSingle();
+      if (!verificationUser || String(verificationUser.email_status || "valide") !== "valide") {
+        return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "L’adresse e-mail du professeur doit être confirmée avant examen du dossier." }, 409);
+      }
       const { error: kycError } = await sb.from("professeur_profiles").update({ kyc_status: "rejete", kyc_validated_by: adminId, kyc_validated_at: now, kyc_rejection_reason: request.reason }).eq("user_id", request.target_user_id);
       if (kycError) throw kycError;
       const { error: userError } = await sb.from("users").update({ status: "en_attente_validation", updated_at: now }).eq("id", request.target_user_id);

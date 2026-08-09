@@ -284,8 +284,8 @@ Deno.serve(async (req: Request) => {
         full_name: fullName,
         birth_date: birth_date || null,
         country_code: String(country_code).toUpperCase(),
-        status: "en_attente_validation",
-        email_verified_at: null,
+        status: "verification_email",
+        email_status: "a_verifier",
         allow_email: body.allow_email ?? true,
         allow_sms: body.allow_sms ?? false,
         allow_push: body.allow_push ?? false,
@@ -340,24 +340,8 @@ Deno.serve(async (req: Request) => {
         "talent_recruiter_profiles";
       const { error: profileError } = await supabase.from(tableName).insert({ user_id: userId, ...profileData });
       if (profileError) throw profileError;
-      if (role === "recruteur_independant") {
-        const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");
-        for (const admin of admins || []) {
-          await supabase.from("notification_queue").insert({
-            notification_type: "recruiter_application_submitted",
-            user_id: admin.user_id,
-            payload: { recruiter_user_id: userId },
-          }).catch(() => {});
-          await supabase.from("talent_notifications").insert({
-            user_id: admin.user_id,
-            notification_type: "recruiter_application_submitted",
-            title: "Nouvelle demande recruteur indépendant",
-            message: "Un compte recruteur indépendant attend votre validation.",
-            action_url: "/admin/talent",
-            payload: { recruiter_user_id: userId },
-          }).catch(() => {});
-        }
-      }
+      // Une demande professionnelle n'entre dans la file d'examen qu'après
+      // confirmation de l'adresse e-mail dans auth-verify-otp.
     }
 
     // Upload files to storage

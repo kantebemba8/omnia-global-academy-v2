@@ -477,11 +477,13 @@ Deno.serve(async (req: Request) => {
         const userIds = [...new Set(baseRecruiters.map((r:any)=>r.user_id).filter(Boolean))];
         let usersById:any = {};
         if(userIds.length){
-          const {data:userRows,error:userError}=await sb.from("users").select("id,full_name,email").in("id",userIds);
+          const {data:userRows,error:userError}=await sb.from("users").select("id,full_name,email,email_status,status").in("id",userIds);
           if(userError) throw userError;
           usersById=Object.fromEntries((userRows||[]).map((u:any)=>[u.id,u]));
         }
-        const recruiters = baseRecruiters.map((r:any)=>({...r,users:usersById[r.user_id]||null}));
+        const recruiters = baseRecruiters
+          .filter((r:any)=>String(usersById[r.user_id]?.email_status || "valide") === "valide")
+          .map((r:any)=>({...r,users:usersById[r.user_id]||null}));
         return json({ success: true, recruiters, contacts: contactsResult.data || [], activity: activityResult.data || [], metrics: {
           pending: recruiters.filter((r: any) => r.status === "pending").length,
           approved: recruiters.filter((r: any) => r.status === "approved").length,
@@ -492,10 +494,14 @@ Deno.serve(async (req: Request) => {
       const targetUserId = String(body.user_id || "");
       const status = String(body.status || "");
       if (!targetUserId || !["pending","approved","rejected","suspended"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
-      const [{ data: currentProfile }, { data: targetRoles }] = await Promise.all([
+      const [{ data: currentProfile }, { data: targetRoles }, { data: targetUser }] = await Promise.all([
         sb.from("talent_recruiter_profiles").select("recruiter_type,status").eq("user_id", targetUserId).maybeSingle(),
         sb.from("user_roles").select("role").eq("user_id", targetUserId),
+        sb.from("users").select("email_status").eq("id", targetUserId).maybeSingle(),
       ]);
+      if (!targetUser || String(targetUser.email_status || "valide") !== "valide") {
+        return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "Le recruteur doit d’abord confirmer son adresse e-mail avant l’examen de sa demande." }, 409);
+      }
       const targetRoleNames = (targetRoles || []).map((row: any) => String(row.role));
       if (status === "approved" && currentProfile?.recruiter_type === "independent" && targetRoleNames.includes("apprenant") && !targetRoleNames.includes("recruteur_independant")) {
         return json({ error: "PROFESSIONAL_ACCOUNT_REQUIRED", message: "Cette demande provient d’un compte apprenant. Le candidat doit créer un compte recruteur professionnel distinct." }, 409);

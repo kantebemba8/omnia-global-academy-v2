@@ -43,10 +43,11 @@ Deno.serve(async (req: Request) => {
       if (profsError) throw profsError;
       const result = await Promise.all((profs ?? []).map(async (profile) => {
         const row = profile as { id: string; user_id: string; expertise_domain: string; bio: string; kyc_status: string; created_at: string };
-        const { data: user } = await sb.from("users").select("full_name,email").eq("id", row.user_id).maybeSingle();
-        return { ...row, ...((user as { full_name: string; email: string } | null) ?? {}) };
+        const { data: user } = await sb.from("users").select("full_name,email,email_status").eq("id", row.user_id).maybeSingle();
+        if (!user || String(user.email_status || "valide") !== "valide") return null;
+        return { ...row, full_name: user.full_name, email: user.email };
       }));
-      return json({ professeurs: result, permissions: { can_validate_professor_kyc: true }, decision_mode: "recommendation" });
+      return json({ professeurs: result.filter(Boolean), permissions: { can_validate_professor_kyc: true }, decision_mode: "recommendation" });
     }
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -56,6 +57,11 @@ Deno.serve(async (req: Request) => {
     const reason = String(body.reason || "").trim();
     if (!userId || kycType !== "professeur" || !["approve", "reject"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
     if (action === "reject" && reason.length < 3) return json({ error: "REASON_REQUIRED", message: "Le motif de la recommandation de rejet est obligatoire." }, 400);
+
+    const { data: targetUser } = await sb.from("users").select("email_status").eq("id", userId).maybeSingle();
+    if (!targetUser || String(targetUser.email_status || "valide") !== "valide") {
+      return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "Le professeur doit d’abord confirmer son adresse e-mail avant l’examen du dossier." }, 409);
+    }
 
     if (await hasModeratorConflict(sb, modId, "professor_kyc", userId, [userId])) {
       return json({ error: "CONFLICT_OF_INTEREST", message: "Ce dossier ne peut pas être traité par ce membre de l’équipe." }, 403);

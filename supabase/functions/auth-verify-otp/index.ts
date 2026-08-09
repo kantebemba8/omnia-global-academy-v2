@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id,email,full_name,phone_number,status,country_code,avatar_url,force_password_change,email_verified_at")
+      .select("id,email,full_name,phone_number,status,email_status,country_code,avatar_url,force_password_change")
       .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
@@ -95,17 +95,9 @@ Deno.serve(async (req: Request) => {
     );
     const now = new Date().toISOString();
 
-    if (purpose === "inscription" && !user.email_verified_at) {
-      const { error: emailVerificationError } = await supabase
-        .from("users")
-        .update({ email_verified_at: now, updated_at: now })
-        .eq("id", user.id);
-      if (emailVerificationError) throw emailVerificationError;
-    }
-
     if (purpose === "inscription") {
       if (!requiresManualValidation) {
-        const { error: activationError } = await supabase.from("users").update({ status: "actif", updated_at: now }).eq("id", user.id);
+        const { error: activationError } = await supabase.from("users").update({ status: "actif", email_status: "valide", updated_at: now }).eq("id", user.id);
         if (activationError) throw activationError;
 
         await sendOmniaEmail({
@@ -136,11 +128,35 @@ Deno.serve(async (req: Request) => {
         return json({ success: true, session_token: sessionToken, user: { ...user, status: "actif", roles: userRoles } });
       }
 
+      const { error: pendingStatusError } = await supabase.from("users")
+        .update({ status: "en_attente_validation", email_status: "valide", updated_at: now })
+        .eq("id", user.id);
+      if (pendingStatusError) throw pendingStatusError;
+
       const roleDisplay = userRoles.includes("professeur")
         ? "Professeur"
         : userRoles.includes("recruteur_independant")
         ? "Recruteur indépendant"
         : "Structure";
+
+      if (userRoles.includes("recruteur_independant")) {
+        const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");
+        for (const admin of admins || []) {
+          await supabase.from("notification_queue").insert({
+            notification_type: "recruiter_application_submitted",
+            user_id: admin.user_id,
+            payload: { recruiter_user_id: user.id },
+          }).catch(() => {});
+          await supabase.from("talent_notifications").insert({
+            user_id: admin.user_id,
+            notification_type: "recruiter_application_submitted",
+            title: "Nouvelle demande recruteur indépendant",
+            message: "Une adresse e-mail confirmée attend maintenant votre validation.",
+            action_url: "/admin/talent",
+            payload: { recruiter_user_id: user.id },
+          }).catch(() => {});
+        }
+      }
 
       await sendOmniaEmail({
         to: { email: user.email, name: user.full_name || undefined },
@@ -156,7 +172,7 @@ Deno.serve(async (req: Request) => {
         sb: supabase,
       });
 
-      return json({ success: true, needs_validation: true, user: { ...user, roles: userRoles } });
+      return json({ success: true, needs_validation: true, user: { ...user, status: "en_attente_validation", email_status: "valide", roles: userRoles } });
     }
 
     if (purpose === "connexion") {

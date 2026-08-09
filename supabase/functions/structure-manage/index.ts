@@ -430,6 +430,25 @@ function hasPermission(link: Record<string, any> | null, permission?: string) {
   return link.permissions?.[permission] === true;
 }
 
+async function primaryManagerEmailVerified(
+  sb: ReturnType<typeof createClient>,
+  organizationId: string,
+): Promise<boolean> {
+  const { data: manager, error: managerError } = await sb.from("partner_managers")
+    .select("user_id")
+    .eq("organization_id", organizationId)
+    .eq("is_primary", true)
+    .maybeSingle();
+  if (managerError) throw managerError;
+  if (!manager?.user_id) return false;
+  const { data: user, error: userError } = await sb.from("users")
+    .select("email_status")
+    .eq("id", manager.user_id)
+    .maybeSingle();
+  if (userError) throw userError;
+  return String(user?.email_status || "valide") === "valide";
+}
+
 async function requireStructureAccess(
   sb: ReturnType<typeof createClient>,
   session: { userId: string; roles: string[] },
@@ -868,14 +887,22 @@ Deno.serve(async (req: Request) => {
       }
       const [{ data, error }, { data: allStatuses, error: statusError }] = await Promise.all([
         query,
-        sb.from("partner_organizations").select("status"),
+        sb.from("partner_organizations").select("id,status"),
       ]);
       if (error) throw error;
       if (statusError) throw statusError;
-      const rows = allStatuses || [];
+      const filterReviewable = async (rows: any[]) => {
+        const decisions = await Promise.all(rows.map(async (row: any) => {
+          const pending = ["pending", "modification_requested"].includes(String(row.status));
+          return !pending || await primaryManagerEmailVerified(sb, String(row.id));
+        }));
+        return rows.filter((_: any, index: number) => decisions[index]);
+      };
+      const visibleData = await filterReviewable(data || []);
+      const rows = await filterReviewable(allStatuses || []);
       return json({
         success: true,
-        structures: (data || []).map(mapStructure),
+        structures: visibleData.map(mapStructure),
         stats: {
           total: rows.length,
           validated: rows.filter((row: any) => String(row.status) === "validated").length,
@@ -895,10 +922,12 @@ Deno.serve(async (req: Request) => {
       if (organizationsError) throw organizationsError;
       if (codesError) throw codesError;
       if (profileError) throw profileError;
+      const structureVisibility = await Promise.all((organizations || []).map((row: any) => primaryManagerEmailVerified(sb, String(row.id))));
+      const reviewableOrganizations = (organizations || []).filter((_: any, index: number) => structureVisibility[index]);
       return json({
         success: true,
         pending: {
-          structures: (organizations || []).map(mapStructure),
+          structures: reviewableOrganizations.map(mapStructure),
           codes: (codeRows || []).map(mapCode),
           profile_changes: profileChanges || [],
         },
@@ -912,6 +941,9 @@ Deno.serve(async (req: Request) => {
       if (!organizationId) return json({ error: "STRUCTURE_ID_REQUIRED" }, 400);
       const current = await getOrganization(sb, organizationId);
       if (!current) return json({ error: "STRUCTURE_NOT_FOUND" }, 404);
+      if (["pending", "modification_requested"].includes(String(current.status)) && !(await primaryManagerEmailVerified(sb, organizationId))) {
+        return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "Le responsable de la Structure doit d’abord confirmer son adresse e-mail avant l’examen du dossier." }, 409);
+      }
       const statuses: Record<string, string> = {
         validate: "validated",
         reject: "refused",

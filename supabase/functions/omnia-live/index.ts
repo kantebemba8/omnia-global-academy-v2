@@ -5302,18 +5302,19 @@ async function adminOrganizers(
 
   const { data: applications, error: appError } = await sb
     .from("live_organizer_applications")
-    .select("*,users(id,full_name,email,status)")
+    .select("*,users(id,full_name,email,status,email_status)")
     .order("created_at",{ascending:false});
   if (appError) throw appError;
 
   const { data: profiles, error: profileError } = await sb
     .from("live_organizer_profiles")
-    .select("*,users(id,full_name,email,status)")
+    .select("*,users(id,full_name,email,status,email_status)")
     .order("updated_at",{ascending:false});
   if (profileError) throw profileError;
 
   const byUser=new Map((profiles??[]).map((p:any)=>[p.user_id,p]));
-  const organizers=(applications??[]).map((a:any)=>{
+  const verifiedApplications=(applications??[]).filter((a:any)=>String(a?.users?.email_status || "valide") === "valide");
+  const organizers=verifiedApplications.map((a:any)=>{
     const p=byUser.get(a.user_id) as any;
     return {
       ...(p||{}),
@@ -5336,7 +5337,7 @@ async function adminOrganizers(
     };
   });
 
-  return json({ success:true, organizers, applications, profiles:profiles??[] });
+  return json({ success:true, organizers, applications:verifiedApplications, profiles:profiles??[] });
 }
 
 
@@ -5349,6 +5350,15 @@ async function adminOrganizerDecision(
   const body=await req.json().catch(()=>({})) as any;
   const applicationId=body.application_id||body.profile_id;
   if(!applicationId||!body.decision) return json({error:"MISSING_PARAMS"},400);
+
+  const { data: applicationUser } = await sb.from("live_organizer_applications")
+    .select("user_id,users(email_status)")
+    .eq("id", applicationId)
+    .maybeSingle();
+  const organizerEmailStatus = String((applicationUser as any)?.users?.email_status || "valide");
+  if (!applicationUser || organizerEmailStatus !== "valide") {
+    return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "L’organisateur doit d’abord confirmer son adresse e-mail avant l’examen de sa demande." }, 409);
+  }
 
   const {data,error}=await sb.rpc("omnia_live_approve_organizer",{
     p_application_id:applicationId,
