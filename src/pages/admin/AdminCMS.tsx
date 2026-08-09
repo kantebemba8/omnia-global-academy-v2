@@ -529,7 +529,7 @@ export default function AdminCMS() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.message || data.error || 'Opération impossible.');
-      setToast(action === 'sync_templates' ? 'Templates transactionnels Brevo 1 à 13 vérifiés.' : action === 'sync_webhook' ? 'Webhook transactionnel Brevo synchronisé.' : action === 'resync_contacts' ? `Synchronisation Brevo terminée (${data.synced || 0} contact(s)).` : 'E-mail transactionnel de test envoyé à votre adresse administrateur.');
+      setToast(action === 'sync_templates' ? 'Templates transactionnels Brevo 1 à 13 vérifiés.' : action === 'sync_webhook' ? 'Webhooks Brevo transactionnel et Newsletter synchronisés.' : action === 'resync_contacts' ? `Synchronisation Brevo terminée (${data.synced || 0} contact(s)).` : 'E-mail transactionnel de test envoyé à votre adresse administrateur.');
       load();
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Opération Brevo impossible.');
@@ -944,7 +944,7 @@ export default function AdminCMS() {
                   </button>
                   <button type="button" onClick={() => runEmailAdminAction('sync_webhook')} disabled={nlSyncing}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">
-                    Synchroniser le webhook Brevo
+                    Synchroniser les webhooks Brevo
                   </button>
                   <button type="button" onClick={() => runEmailAdminAction('resync_contacts')} disabled={nlSyncing}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#002050] disabled:opacity-50">

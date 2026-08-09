@@ -158,7 +158,64 @@ async function deleteBrevoCampaignBestEffort(apiKey: string, campaignId: string)
   }
 }
 
-async function syncBrevoWebhook() {
+type BrevoWebhookType = "transactional" | "marketing";
+
+const BREVO_WEBHOOK_EVENTS: Record<BrevoWebhookType, string[]> = {
+  transactional: [
+    "request", "delivered", "hardBounce", "softBounce", "blocked", "spam",
+    "invalid", "deferred", "click", "opened", "uniqueOpened", "unsubscribed",
+  ],
+  marketing: ["spam", "opened", "click", "hardBounce", "softBounce", "unsubscribed", "delivered"],
+};
+
+async function syncBrevoWebhookType(
+  type: BrevoWebhookType,
+  webhookUrl: string,
+  webhookToken: string,
+  apiKey: string,
+) {
+  const apiHeaders = { accept: "application/json", "content-type": "application/json", "api-key": apiKey };
+  const listResponse = await fetch(`https://api.brevo.com/v3/webhooks?type=${type}&sort=desc`, { headers: apiHeaders });
+  if (!listResponse.ok) throw new Error(`BREVO_WEBHOOK_LIST_FAILED:${type}:${await listResponse.text()}`);
+
+  const listData = await listResponse.json() as { webhooks?: Array<{ id: number; url?: string; type?: string }> };
+  const existing = (listData.webhooks || []).find(item => item.type === type && item.url === webhookUrl);
+  const payload = {
+    url: webhookUrl,
+    description: type === "transactional"
+      ? "Omnia Global Academy — suivi transactionnel Brevo"
+      : "Omnia Global Academy — suivi Newsletter Brevo",
+    events: BREVO_WEBHOOK_EVENTS[type],
+    type,
+    channel: "email",
+    batched: false,
+    auth: { type: "bearer", token: webhookToken },
+    headers: [{ key: "x-omnia-brevo-scope", value: type }],
+  };
+
+  if (existing?.id) {
+    const { type: _type, channel: _channel, ...updatePayload } = payload;
+    const response = await fetch(`https://api.brevo.com/v3/webhooks/${existing.id}`, {
+      method: "PUT",
+      headers: apiHeaders,
+      body: JSON.stringify(updatePayload),
+    });
+    if (!response.ok) throw new Error(`BREVO_WEBHOOK_UPDATE_FAILED:${type}:${await response.text()}`);
+    return { id: existing.id, type, status: "updated", url: webhookUrl, events: BREVO_WEBHOOK_EVENTS[type] };
+  }
+
+  const response = await fetch("https://api.brevo.com/v3/webhooks", {
+    method: "POST",
+    headers: apiHeaders,
+    body: JSON.stringify(payload),
+  });
+  const detail = await response.text();
+  if (!response.ok) throw new Error(`BREVO_WEBHOOK_CREATE_FAILED:${type}:${detail}`);
+  const data = JSON.parse(detail || "{}") as { id?: number };
+  return { id: data.id || null, type, status: "created", url: webhookUrl, events: BREVO_WEBHOOK_EVENTS[type] };
+}
+
+async function syncBrevoWebhooks() {
   const { apiKey } = brevoEmailConfig();
   if (!apiKey) throw new Error("BREVO_NOT_CONFIGURED");
   const webhookToken = Deno.env.get("BREVO_WEBHOOK_TOKEN") || "";
@@ -166,38 +223,10 @@ async function syncBrevoWebhook() {
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   if (!supabaseUrl) throw new Error("SUPABASE_URL_MISSING");
   const webhookUrl = `${supabaseUrl}/functions/v1/brevo-webhook-bounce`;
-  const events = ["delivered", "hardBounce", "softBounce", "blocked", "spam", "invalid", "unsubscribed"];
-  const headers = { accept: "application/json", "content-type": "application/json", "api-key": apiKey };
 
-  const listResponse = await fetch("https://api.brevo.com/v3/webhooks?type=transactional&sort=desc", { headers });
-  if (!listResponse.ok) throw new Error(`BREVO_WEBHOOK_LIST_FAILED:${await listResponse.text()}`);
-  const listData = await listResponse.json() as { webhooks?: Array<{ id: number; url?: string; type?: string }> };
-  const existing = (listData.webhooks || []).find(item => item.type === "transactional" && item.url === webhookUrl);
-  const payload = {
-    url: webhookUrl,
-    description: "Omnia Global Academy — suivi transactionnel Brevo",
-    events,
-    type: "transactional",
-    channel: "email",
-    batched: false,
-    auth: { type: "bearer", token: webhookToken },
-  };
-
-  if (existing?.id) {
-    const response = await fetch(`https://api.brevo.com/v3/webhooks/${existing.id}`, {
-      method: "PUT", headers, body: JSON.stringify(payload),
-    });
-    if (!response.ok) throw new Error(`BREVO_WEBHOOK_UPDATE_FAILED:${await response.text()}`);
-    return { id: existing.id, status: "updated", url: webhookUrl };
-  }
-
-  const response = await fetch("https://api.brevo.com/v3/webhooks", {
-    method: "POST", headers, body: JSON.stringify(payload),
-  });
-  const detail = await response.text();
-  if (!response.ok) throw new Error(`BREVO_WEBHOOK_CREATE_FAILED:${detail}`);
-  const data = JSON.parse(detail || "{}") as { id?: number };
-  return { id: data.id || null, status: "created", url: webhookUrl };
+  const transactional = await syncBrevoWebhookType("transactional", webhookUrl, webhookToken, apiKey);
+  const marketing = await syncBrevoWebhookType("marketing", webhookUrl, webhookToken, apiKey);
+  return { transactional, marketing };
 }
 
 async function syncBrevoTemplates(sb: DbClient) {
@@ -327,9 +356,9 @@ Deno.serve(async (req: Request) => {
       return json({ success: failed.length === 0, results, failed: failed.length }, failed.length ? 502 : 200, corsHeaders);
     }
 
-    if (action === "sync_webhook") {
-      const webhook = await syncBrevoWebhook();
-      return json({ success: true, webhook }, 200, corsHeaders);
+    if (action === "sync_webhook" || action === "sync_webhooks") {
+      const webhooks = await syncBrevoWebhooks();
+      return json({ success: true, webhooks }, 200, corsHeaders);
     }
 
     if (action === "resync_contacts") {
