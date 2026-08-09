@@ -395,6 +395,57 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   );
 }
 
+function EditorialSection({ section, id, muted = false }: { section: LandingSectionConfig; id?: string; muted?: boolean }) {
+  const items = visibleItems(section);
+  return (
+    <section id={id} className={`border-b border-slate-200 px-5 py-12 sm:px-6 lg:px-8 ${muted ? 'bg-[#F8FAFC]' : 'bg-white'}`}>
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-12">
+          <div>
+            <SectionHeading section={section} />
+            {(section.primary_cta_label || section.secondary_cta_label) && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                {section.primary_cta_label && (
+                  <Link to={safeHref(section.primary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
+                    {section.primary_cta_label}<ArrowRight size={15} />
+                  </Link>
+                )}
+                {section.secondary_cta_label && (
+                  <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-black text-[#002050] transition hover:border-[#002050]">
+                    {section.secondary_cta_label}<ArrowRight size={15} />
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+          {items.length > 0 && (
+            <div className="border-t border-slate-300">
+              {items.map(item => {
+                const Icon = ICONS[item.icon_key] || ArrowRight;
+                return (
+                  <div key={item.id} className="grid gap-2 border-b border-slate-200 py-5 sm:grid-cols-[32px_minmax(0,1fr)_auto] sm:items-start">
+                    <Icon size={18} className="mt-0.5 text-[#BF8813]" aria-hidden="true" />
+                    <div>
+                      {item.label && <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{item.label}</p>}
+                      <h3 className="text-base font-black text-[#002050]">{item.title}</h3>
+                      {item.description && <p className="mt-1 text-sm leading-6 text-slate-600">{item.description}</p>}
+                    </div>
+                    {item.action_url && item.action_label && (
+                      <Link to={safeHref(item.action_url)} className="inline-flex items-center gap-1 text-sm font-bold text-[#002050] hover:underline">
+                        {item.action_label}<ArrowRight size={14} />
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PartnersSection({ section, partners }: { section: LandingSectionConfig; partners: LandingPublicPartner[] }) {
   const visible = partners.filter(partner => partner.show_homepage && partner.logo_url);
   if (visible.length === 0) return null;
@@ -413,53 +464,96 @@ function PartnersSection({ section, partners }: { section: LandingSectionConfig;
   );
 }
 
-function ConnectionsSection({ apps, networks }: { apps: MobileAppItem[]; networks: SocialNetworkItem[] }) {
-  const visibleApps = apps.filter(item => item.enabled && item.show_homepage && /^https:\/\//i.test(item.url || ''));
-  const visibleNetworks = networks.filter(item => item.enabled && item.show_homepage && /^https:\/\//i.test(item.url || ''));
-  if (visibleApps.length === 0 && visibleNetworks.length === 0) return null;
+function ConnectionsSection({ section, apps, networks }: { section: LandingSectionConfig; apps: MobileAppItem[]; networks: SocialNetworkItem[] }) {
+  if (section.type === 'mobile_apps') {
+    const visibleApps = apps
+      .filter(item => item.enabled && item.show_homepage && /^https:\/\//i.test(item.url || ''))
+      .sort((a, b) => a.display_order - b.display_order);
+    if (visibleApps.length === 0) return null;
+    return (
+      <section className="border-b border-slate-200 bg-white px-5 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <SectionHeading section={section} />
+          <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+            {visibleApps.map(item => (
+              <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#00183E]">
+                {item.name || (item.store === 'ios' ? 'App Store' : 'Google Play')}
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const visibleNetworks = networks
+    .filter(item => item.enabled && item.show_homepage && /^https:\/\//i.test(item.url || ''))
+    .sort((a, b) => a.display_order - b.display_order);
+  if (visibleNetworks.length === 0) return null;
   return (
-    <section className="border-b border-slate-200 bg-white px-5 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-2">
-        {visibleNetworks.length > 0 && (
-          <article className="rounded-2xl border border-slate-200 bg-white p-6">
-            <h2 className="text-lg font-black text-[#002050]">Réseaux sociaux</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {visibleNetworks.map(item => <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-[#002050] hover:border-[#BF8813]">{item.name}</a>)}
-            </div>
-          </article>
-        )}
-        {visibleApps.length > 0 && (
-          <article className="rounded-2xl border border-slate-200 bg-white p-6">
-            <h2 className="text-lg font-black text-[#002050]">Applications</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {visibleApps.map(item => <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-bold text-white hover:bg-[#00183E]">{item.name}</a>)}
-            </div>
-          </article>
-        )}
+    <section className="border-b border-slate-200 bg-[#F8FAFC] px-5 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <SectionHeading section={section} />
+        <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+          {visibleNetworks.map(item => (
+            <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-[#002050] transition hover:border-[#BF8813]">
+              {item.name}
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FinalCta({ section }: { section: LandingSectionConfig }) {
+  return (
+    <section id="rejoindre-omnia" className="border-b border-slate-200 bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-3xl">
+          {section.eyebrow && <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE63]">{section.eyebrow}</p>}
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] sm:text-3xl">{section.title}</h2>
+          {section.subtitle && <p className="mt-3 text-base leading-7 text-blue-100">{section.subtitle}</p>}
+          {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-white/65">{section.body}</p>}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {section.primary_cta_label && (
+            <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
+              {section.primary_cta_label}<ArrowRight size={16} />
+            </Link>
+          )}
+          {section.secondary_cta_label && (
+            <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/35 px-5 py-3 text-sm font-black text-white transition hover:border-white">
+              {section.secondary_cta_label}<ArrowRight size={16} />
+            </Link>
+          )}
+        </div>
       </div>
     </section>
   );
 }
 
 export function LandingExperience({ data }: LandingExperienceProps) {
-  const enabledSections = data.landingPage.sections.filter(section => section.enabled);
-  const byType = new Map(enabledSections.map(section => [section.type, section]));
-  const hero = byType.get('hero');
-  const goals = byType.get('goal_selector');
-  const courses = byType.get('featured_courses');
-  const journey = byType.get('omnia_journey');
-  const ecosystem = byType.get('ecosystem');
-  const partners = byType.get('partners');
+  const sections = [...data.landingPage.sections]
+    .filter(section => section.enabled)
+    .sort((a, b) => a.order - b.order);
 
   return (
-    <main>
-      {hero && <HeroSection section={hero} stats={data.stats} statsVisibility={data.statsVisibility} />}
-      {goals && <GoalsSection section={goals} />}
-      {courses && <CourseList section={courses} courses={data.featuredCourses} />}
-      {journey && <JourneySection section={journey} />}
-      {ecosystem && <EcosystemSection section={ecosystem} />}
-      {partners && <PartnersSection section={partners} partners={data.partners} />}
-      <ConnectionsSection apps={data.mobileApps} networks={data.socialNetworks} />
+    <main aria-label="Contenu principal de la page d’accueil">
+      {sections.map(section => {
+        if (section.type === 'hero') return <HeroSection key={section.id} section={section} stats={data.stats} statsVisibility={data.statsVisibility} />;
+        if (section.type === 'goal_selector') return <GoalsSection key={section.id} section={section} />;
+        if (section.type === 'featured_courses') return <CourseList key={section.id} section={section} courses={data.featuredCourses} />;
+        if (section.type === 'omnia_journey') return <JourneySection key={section.id} section={section} />;
+        if (section.type === 'ecosystem') return <EcosystemSection key={section.id} section={section} />;
+        if (section.type === 'credentials') return <EditorialSection key={section.id} section={section} id="preuves" />;
+        if (section.type === 'career_recruitment') return <EditorialSection key={section.id} section={section} id="carriere" muted />;
+        if (section.type === 'structures') return <EditorialSection key={section.id} section={section} id="structures" />;
+        if (section.type === 'partners') return <PartnersSection key={section.id} section={section} partners={data.partners} />;
+        if (section.type === 'mobile_apps' || section.type === 'social_networks') return <ConnectionsSection key={section.id} section={section} apps={data.mobileApps} networks={data.socialNetworks} />;
+        if (section.type === 'final_cta') return <FinalCta key={section.id} section={section} />;
+        return <EditorialSection key={section.id} section={section} muted={section.order % 2 === 0} />;
+      })}
     </main>
   );
 }
