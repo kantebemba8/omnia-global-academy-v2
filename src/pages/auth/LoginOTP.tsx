@@ -9,6 +9,14 @@ type LoginOtpResponse = {
   not_found?: boolean;
   error?: string;
   can_reactivate?: boolean;
+  needs_validation?: boolean;
+  needs_email_verification?: boolean;
+  verification_purpose?: 'inscription' | 'connexion';
+  purpose?: 'inscription' | 'connexion';
+  email?: string;
+  verification_email?: string;
+  email_sent?: boolean;
+  initial_email_sent?: boolean;
 };
 
 const inputCls = 'w-full px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#002050]/20 focus:border-[#002050] transition-colors';
@@ -29,6 +37,23 @@ export function LoginOTP() {
     try {
       const data = await authFetch<LoginOtpResponse>('auth-login-otp', { email: normalizedEmail });
       if (!data.success) {
+        if (data.needs_email_verification) {
+          const verificationEmail = (data.email || data.verification_email || normalizedEmail).trim().toLowerCase();
+          const initialEmailSent = data.email_sent ?? data.initial_email_sent;
+          navigate('/verifier-otp', {
+            replace: true,
+            state: {
+              email: verificationEmail,
+              purpose: 'inscription',
+              initial_email_sent: initialEmailSent !== false,
+            },
+          });
+          return;
+        }
+        if (data.needs_validation) {
+          navigate('/en-attente-validation', { replace: true });
+          return;
+        }
         if (data.can_reactivate && data.error === 'ACCOUNT_SELF_SUSPENDED') {
           setReactivationRequired(true);
           setError(data.message || 'Ce compte doit être réactivé avec son mot de passe.');
@@ -37,7 +62,13 @@ export function LoginOTP() {
         }
         return;
       }
-      navigate('/verifier-otp', { state: { email: normalizedEmail, purpose: 'connexion' } });
+      navigate('/verifier-otp', {
+        state: {
+          email: normalizedEmail,
+          purpose: data.verification_purpose === 'inscription' ? 'inscription' : 'connexion',
+          initial_email_sent: data.email_sent !== false,
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {

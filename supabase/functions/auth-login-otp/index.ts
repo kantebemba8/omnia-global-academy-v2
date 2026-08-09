@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id,status,email,full_name,suspension_source,self_suspension_until")
+      .select("id,status,email,email_status,full_name,suspension_source,self_suspension_until")
       .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
@@ -56,7 +56,51 @@ Deno.serve(async (req: Request) => {
           : "Ce compte a été suspendu par l’équipe Omnia. Contactez le support.",
       }, 403);
     }
-    if (user.status !== "actif") return json({ success: false, message: "Compte inactif ou en attente de validation" }, 403);
+    if (user.status === "supprime") return json({ success: false, error: "ACCOUNT_DELETED", message: "Ce compte a été supprimé." }, 410);
+
+    if (String(user.email_status || "valide") === "a_verifier") {
+      await supabase.from("otp_codes").update({ used: true }).eq("email", email).eq("purpose", "inscription").eq("used", false);
+      const otp = await createHashedEmailOtp(supabase, {
+        email,
+        purpose: "inscription",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        ipAddress: clientIP,
+      });
+      const sent = await sendOmniaEmail({
+        to: { email, name: user.full_name || undefined },
+        templateKey: "auth_verification_otp",
+        params: { FIRST_NAME: String(user.full_name || "").split(" ")[0], OTP_CODE: otp, EXPIRY_MINUTES: 5 },
+        userId: String(user.id),
+        sb: supabase,
+      });
+      if (!sent) return json({
+        success: false,
+        needs_email_verification: true,
+        verification_purpose: "inscription",
+        purpose: "inscription",
+        email,
+        verification_email: email,
+        email_sent: false,
+        initial_email_sent: false,
+        message: "Le code de confirmation n’a pas pu être envoyé par e-mail. Vous pouvez le renvoyer depuis l’écran de vérification.",
+      }, 503);
+      return json({
+        success: true,
+        next_step: "verify_email_otp",
+        verification_purpose: "inscription",
+        purpose: "inscription",
+        email,
+        verification_email: email,
+        email_sent: true,
+        initial_email_sent: true,
+        delivery: "email",
+      });
+    }
+
+    if (user.status === "en_attente_validation") {
+      return json({ success: false, needs_validation: true, message: "Votre adresse e-mail est confirmée. Votre dossier est en attente de validation par notre équipe." }, 403);
+    }
+    if (user.status !== "actif") return json({ success: false, message: "Compte inactif" }, 403);
 
     await supabase.from("otp_codes").update({ used: true }).eq("email", email).eq("purpose", "connexion").eq("used", false);
     const otp = await createHashedEmailOtp(supabase, {

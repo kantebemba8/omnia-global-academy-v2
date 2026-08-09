@@ -11,8 +11,13 @@ type LoginResponse = {
   message?: string;
   needs_validation?: boolean;
   needs_email_verification?: boolean;
+  verification_purpose?: 'inscription';
+  purpose?: 'inscription';
+  email?: string;
   verification_email?: string;
+  email_sent?: boolean;
   initial_email_sent?: boolean;
+  retry_after?: number;
   error?: string;
   can_reactivate?: boolean;
   suspended_at?: string | null;
@@ -133,15 +138,24 @@ export function Login() {
       setError('');
       return;
     }
-    if (data.needs_email_verification && data.verification_email) {
-      navigate('/verifier-otp', {
-        replace: true,
-        state: {
-          email: data.verification_email,
-          purpose: 'inscription',
-          initial_email_sent: data.initial_email_sent !== false,
-        },
-      });
+    if (data.needs_email_verification) {
+      // Compatibilité de déploiement : les versions précédentes de l'Edge Function
+      // utilisaient verification_email / initial_email_sent. Accepter les deux
+      // formats évite de bloquer l'utilisateur pendant un déploiement progressif.
+      const verificationEmail = (data.email || data.verification_email || '').trim().toLowerCase();
+      const initialEmailSent = data.email_sent ?? data.initial_email_sent;
+      if (verificationEmail) {
+        navigate('/verifier-otp', {
+          replace: true,
+          state: {
+            email: verificationEmail,
+            purpose: 'inscription',
+            initial_email_sent: initialEmailSent !== false,
+          },
+        });
+        return;
+      }
+      setError('Aucune adresse e-mail de vérification n’est associée à ce compte. Contactez le support Omnia.');
       return;
     }
     if (data.needs_validation) {
