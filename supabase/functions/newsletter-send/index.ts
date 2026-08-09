@@ -176,9 +176,29 @@ async function syncBrevoWebhookType(
 ) {
   const apiHeaders = { accept: "application/json", "content-type": "application/json", "api-key": apiKey };
   const listResponse = await fetch(`https://api.brevo.com/v3/webhooks?type=${type}&sort=desc`, { headers: apiHeaders });
-  if (!listResponse.ok) throw new Error(`BREVO_WEBHOOK_LIST_FAILED:${type}:${await listResponse.text()}`);
+  const listDetail = await listResponse.text();
 
-  const listData = await listResponse.json() as { webhooks?: Array<{ id: number; url?: string; type?: string }> };
+  let listData: { webhooks?: Array<{ id: number; url?: string; type?: string }> } = { webhooks: [] };
+  if (listResponse.ok) {
+    try {
+      listData = JSON.parse(listDetail || "{}") as { webhooks?: Array<{ id: number; url?: string; type?: string }> };
+    } catch {
+      throw new Error(`BREVO_WEBHOOK_LIST_INVALID_JSON:${type}`);
+    }
+  } else {
+    let missingList = false;
+    try {
+      const parsed = JSON.parse(listDetail || "{}") as { code?: string; message?: string };
+      missingList = parsed.code === "document_not_found"
+        || /webhook record does not exist/i.test(String(parsed.message || ""));
+    } catch {
+      missingList = /document_not_found|webhook record does not exist/i.test(listDetail);
+    }
+    // Brevo peut répondre document_not_found lorsqu'aucun webhook de ce type
+    // n'existe encore. Ce cas signifie "liste vide" et doit conduire à la création.
+    if (!missingList) throw new Error(`BREVO_WEBHOOK_LIST_FAILED:${type}:${listDetail}`);
+  }
+
   const existing = (listData.webhooks || []).find(item => item.type === type && item.url === webhookUrl);
   const payload = {
     url: webhookUrl,
