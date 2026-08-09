@@ -21,6 +21,7 @@ import {
 import { ENDPOINTS } from '../lib/config';
 import { edgeGatewayHeaders } from '../lib/edgeAuth';
 import OmniaBrandLockup from './OmniaBrandLockup';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 type LegacySocialNetworks = Record<string, string | null | undefined>;
 type LegacyAppDownloads = { google_play?: string | null; app_store?: string | null };
@@ -349,9 +350,15 @@ export function PageFooter({
       </div>
 
       <div className="border-t border-white/[0.06] bg-[#001540]">
-        <p className="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-white/45">
-          © {new Date().getFullYear()} Omnia Global Academy. Tous droits réservés.
-        </p>
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-4 sm:flex-row">
+          <p className="text-center text-xs text-white/45 sm:text-left">
+            © {new Date().getFullYear()} Omnia Global Academy. Tous droits réservés.
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-white/55">Langue & région</span>
+            <LanguageSwitcher compact dropUp />
+          </div>
+        </div>
       </div>
     </footer>
   );

@@ -2,7 +2,7 @@ import { openExternalUrl } from '../lib/mobile';
 import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import CommunityLayout from '../components/community/CommunityLayout';
+import CareerPublicLayout from '../components/career/CareerPublicLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
@@ -162,27 +162,27 @@ export default function JobDetail() {
 
   if (loading) {
     return (
-      <CommunityLayout>
+      <CareerPublicLayout>
         <div className="flex min-h-[70vh] items-center justify-center bg-white">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: OMNIA_BLUE, borderTopColor: 'transparent' }} />
         </div>
-      </CommunityLayout>
+      </CareerPublicLayout>
     );
   }
 
   if (notFound || !job) {
     return (
-      <CommunityLayout>
+      <CareerPublicLayout>
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 bg-white p-8">
           <p className="text-lg text-slate-500">Offre introuvable ou expirée.</p>
           <Link to="/forum/emploi" className="text-sm font-bold underline" style={{ color: OMNIA_BLUE }}>Retour aux offres</Link>
         </div>
-      </CommunityLayout>
+      </CareerPublicLayout>
     );
   }
 
   return (
-    <CommunityLayout>
+    <CareerPublicLayout>
       <div className="min-h-screen bg-white">
       <div className="mx-auto w-full max-w-6xl px-4 pb-12 pt-8 md:px-8">
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-5">
@@ -342,6 +342,6 @@ export default function JobDetail() {
         </div>
       )}
       </div>
-    </CommunityLayout>
+    </CareerPublicLayout>
   );
 }

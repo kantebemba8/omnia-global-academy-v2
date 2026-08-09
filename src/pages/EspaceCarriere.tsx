@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import CommunityLayout from '../components/community/CommunityLayout';
+import CareerPublicLayout from '../components/career/CareerPublicLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import {
@@ -138,7 +138,7 @@ export default function EspaceCarriere() {
   const activeFilters = [contractType, category].filter(Boolean).length;
 
   return (
-    <CommunityLayout>
+    <CareerPublicLayout>
       <div className="min-h-screen bg-white">
         <section className="border-b border-slate-100 px-4 pb-9 pt-8 md:px-8 md:pb-11">
           <div className="mx-auto max-w-6xl">
@@ -222,6 +222,6 @@ export default function EspaceCarriere() {
 
         <PageFooter />
       </div>
-    </CommunityLayout>
+    </CareerPublicLayout>
   );
 }

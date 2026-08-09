@@ -2,6 +2,7 @@ import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
+import CareerPublicLayout from '../components/career/CareerPublicLayout';
 import { PageFooter } from '../components/PageFooter';
 import { ENDPOINTS } from '../lib/config';
 import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
@@ -57,6 +58,7 @@ export default function ForumGeneral() {
   const description = isCarriere
     ? 'Posez vos questions sur le CV, les entretiens, la recherche d’emploi et l’évolution professionnelle.'
     : 'Échangez autour de l’apprentissage, de l’orientation et de la vie dans l’écosystème Omnia.';
+  const PublicLayout = isCarriere ? CareerPublicLayout : CommunityLayout;
 
   const params = new URLSearchParams(location.search);
   const [country, setCountry] = useState(params.get('country_code') || localStorage.getItem('user_country') || '');
@@ -121,7 +123,7 @@ export default function ForumGeneral() {
   }
 
   return (
-    <CommunityLayout>
+    <PublicLayout>
       <div className="min-h-screen bg-white">
         <section className="border-b border-slate-100 px-4 pb-8 pt-8 md:px-8 md:pb-10">
           <div className="mx-auto max-w-6xl">
@@ -224,6 +226,6 @@ export default function ForumGeneral() {
           </div>
         )}
       </div>
-    </CommunityLayout>
+    </PublicLayout>
   );
 }

@@ -1,6 +1,7 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useState, type CSSProperties, type ComponentType } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { Navbar } from './Navbar';
 import { ArrowLeft, Bell, ChevronDown, Home, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
 import OmniaBrandLockup, { OMNIA_OFFICIAL_SLOGAN } from './OmniaBrandLockup';
 import { logoutOmniaSession } from '../lib/authApi';
@@ -11,7 +12,7 @@ const GOLD = '#BF8813';
 export type SubspaceNavItem = {
   label: string;
   path: string;
-  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+  icon: ComponentType<{ size?: number; className?: string; style?: CSSProperties }>;
   exact?: boolean;
 };
 
@@ -38,6 +39,7 @@ type Props = {
   onSearchSubmit?: (value: string) => void;
   searchResults?: SubspaceSearchResult[];
   rightContent?: ReactNode;
+  navigationMode?: 'drawer' | 'horizontal';
 };
 
 export function getDashboardPath(roles: string[] = []) {
@@ -85,6 +87,7 @@ export default function SubspaceHamburgerLayout({
   onSearchSubmit,
   searchResults = [],
   rightContent,
+  navigationMode = 'drawer',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -197,6 +200,57 @@ export default function SubspaceHamburgerLayout({
       )}
     </form>
   );
+
+  if (navigationMode === 'horizontal') {
+    return (
+      <div className="min-h-screen bg-white" style={{ color: BLUE }}>
+        <Navbar />
+        <div className="pt-20">
+          <header className="sticky top-20 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
+            <div className="mx-auto max-w-[1440px] px-5 sm:px-6 lg:px-8">
+              <div className="flex min-h-14 items-center gap-5">
+                <Link
+                  to={navItems[0]?.path || '/accueil'}
+                  className="shrink-0 whitespace-nowrap text-sm font-black text-[#002050] sm:text-base"
+                >
+                  {title}
+                </Link>
+                <nav aria-label={`Navigation ${title}`} className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex min-w-max items-center gap-1">
+                    {navItems.map(item => {
+                      const active = item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path);
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          aria-current={active ? 'page' : undefined}
+                          className={`relative whitespace-nowrap px-3 py-[18px] text-sm font-semibold transition-colors ${active ? 'text-[#002050]' : 'text-slate-600 hover:text-[#002050]'}`}
+                        >
+                          {item.label}
+                          {active && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[#BF8813]" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </nav>
+                {showSearch && (
+                  <div className="hidden w-[min(30vw,360px)] shrink-0 lg:block">
+                    {searchField()}
+                  </div>
+                )}
+              </div>
+              {showSearch && (
+                <div className="pb-3 lg:hidden">
+                  {searchField(true)}
+                </div>
+              )}
+            </div>
+          </header>
+          <main className="min-w-0">{children}</main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white" style={{ color: BLUE }}>

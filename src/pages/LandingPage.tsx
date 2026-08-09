@@ -165,6 +165,17 @@ export function LandingPage() {
           onSearch={handleSearch}
         />
       </div>
+      <section className="border-b border-slate-200 bg-white px-5 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 rounded-2xl bg-[#002050] px-6 py-6 text-white sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">Une question, un besoin ou une proposition ?</h2>
+            <p className="mt-1 text-sm text-white/70">Contactez directement Omnia Global Academy.</p>
+          </div>
+          <button type="button" onClick={() => navigate('/contact')} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
+            Contactez-nous
+          </button>
+        </div>
+      </section>
       <PageFooter
         socialNetworksV2={experienceData.socialNetworks}
         mobileAppsV2={experienceData.mobileApps}

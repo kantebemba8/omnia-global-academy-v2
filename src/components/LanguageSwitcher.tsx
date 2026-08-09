@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { PLATFORM_LANGUAGES, useLanguage } from '../i18n/LanguageContext';
 
-export function LanguageSwitcher({ compact = false, className = '' }: { compact?: boolean; className?: string }) {
+export function LanguageSwitcher({ compact = false, className = '', dropUp = false }: { compact?: boolean; className?: string; dropUp?: boolean }) {
   const { language, setLanguage, t, isTranslating } = useLanguage();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -42,7 +42,7 @@ export function LanguageSwitcher({ compact = false, className = '' }: { compact?
         <div
           role="listbox"
           aria-label={t('Choisir la langue de la plateforme')}
-          className="absolute right-0 top-[calc(100%+8px)] z-[80] w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl"
+          className={`absolute right-0 z-[80] w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ${dropUp ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]'}`}
         >
           <p className="px-3 pb-1 pt-1 text-[11px] font-bold uppercase tracking-[.12em] text-slate-400">
             {t('Langue de la plateforme')}

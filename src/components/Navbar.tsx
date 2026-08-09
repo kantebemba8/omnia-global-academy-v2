@@ -1,33 +1,40 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronDown, Home, LayoutDashboard, LogOut, Menu, Settings, UserRound, X } from 'lucide-react';
-import { LanguageSwitcher } from './LanguageSwitcher';
+import {
+  ChevronDown,
+  HelpCircle,
+  Home,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  UserRound,
+  X,
+} from 'lucide-react';
 import OmniaBrandLockup from './OmniaBrandLockup';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
-import {
-  createDefaultLandingPage,
-  type LandingLinkItem,
-  type LandingNavigationConfig,
-} from '../types/landingCms';
+import { createDefaultLandingPage, type LandingNavigationConfig } from '../types/landingCms';
 
 interface NavbarProps {
   transparent?: boolean;
   navigation?: LandingNavigationConfig;
 }
 
+type PrimaryNavItem = {
+  label: string;
+  href: string;
+  activePrefixes: string[];
+};
 
-type MenuKey = 'explore' | 'professionals';
-
-function safeInternalHref(value: string) {
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/accueil';
-}
-
-function visibleLinks(items: LandingLinkItem[]) {
-  return items
-    .filter(item => item.enabled !== false && item.label.trim() && item.href.trim().startsWith('/') && !item.href.trim().startsWith('//'))
-    .sort((a, b) => a.order - b.order);
-}
+const PRIMARY_NAV: PrimaryNavItem[] = [
+  { label: 'Formations', href: '/catalogue', activePrefixes: ['/catalogue', '/cours/', '/formation-externe/'] },
+  { label: 'Career', href: '/forum/emploi', activePrefixes: ['/forum/emploi', '/forum/carriere', '/dashboard/career-studio'] },
+  { label: 'Talent', href: '/talent', activePrefixes: ['/talent'] },
+  { label: 'Live', href: '/omnia-live', activePrefixes: ['/omnia-live'] },
+  { label: 'Communauté', href: '/forum', activePrefixes: ['/forum'] },
+];
 
 function userInitials(user: AuthUser) {
   const source = user.full_name || user.email || 'Omnia';
@@ -35,23 +42,16 @@ function userInitials(user: AuthUser) {
   return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : source.slice(0, 2)).toUpperCase();
 }
 
-function profilePathForUser(user: AuthUser) {
-  const roles = normalizePlatformRoles(user.roles);
-  if (roles.includes('super_admin')) return '/mon-profil';
-  if (roles.includes('structure')) return '/mon-profil';
-  if (roles.includes('recruteur_structure') || roles.includes('recruteur')) return '/mon-profil';
-  if (roles.includes('professeur')) return '/mon-profil';
-  return '/mon-profil';
-}
-
-function settingsPathForUser(_user: AuthUser) {
-  return '/mon-profil?tab=notifications';
-}
-
 function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' }) {
   const sizeClass = size === 'sm' ? 'h-9 w-9' : 'h-10 w-10';
   if (user.avatar_url) {
-    return <img src={user.avatar_url} alt={`Photo de profil de ${user.full_name || 'l’utilisateur'}`} className={`${sizeClass} rounded-full border border-slate-200 object-cover`} />;
+    return (
+      <img
+        src={user.avatar_url}
+        alt={`Photo de profil de ${user.full_name || 'l’utilisateur'}`}
+        className={`${sizeClass} rounded-full border border-slate-200 object-cover`}
+      />
+    );
   }
   return (
     <span className={`flex ${sizeClass} items-center justify-center rounded-full bg-[#002050] text-xs font-bold text-white`} aria-hidden="true">
@@ -63,28 +63,26 @@ function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' 
 export function Navbar({ transparent = false, navigation }: NavbarProps) {
   const fallback = useMemo(() => createDefaultLandingPage().navigation, []);
   const config = navigation || fallback;
-  const directLinks = useMemo(() => visibleLinks(config.direct_links || fallback.direct_links), [config.direct_links, fallback.direct_links]);
-  const exploreLinks = useMemo(() => visibleLinks(config.explore_links || fallback.explore_links), [config.explore_links, fallback.explore_links]);
-  const professionalLinks = useMemo(() => visibleLinks(config.professional_links || fallback.professional_links), [config.professional_links, fallback.professional_links]);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { user, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
-  const { pathname, hash } = useLocation();
+  const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
-  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
   const dashboardPath = user ? getDashboardPathForRoles(user.roles) : '/accueil';
-  const profilePath = user ? profilePathForUser(user) : '/connexion';
-  const settingsPath = user ? settingsPathForUser(user) : '/connexion';
+  const profilePath = '/mon-profil';
+  const settingsPath = '/mon-profil?tab=notifications';
   const isAdministration = user ? normalizePlatformRoles(user.roles).includes('super_admin') : false;
   const brandHomePath = user ? '/home' : '/accueil';
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
+    const onScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
@@ -92,21 +90,22 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
 
   useEffect(() => {
     setMobileOpen(false);
-    setOpenMenu(null);
     setProfileOpen(false);
-  }, [pathname, hash]);
+    setMoreOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
       if (!navRef.current?.contains(event.target as Node)) {
-        setOpenMenu(null);
         setProfileOpen(false);
+        setMoreOpen(false);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpenMenu(null);
         setProfileOpen(false);
+        setMoreOpen(false);
+        setMobileOpen(false);
       }
     };
     document.addEventListener('mousedown', onPointerDown);
@@ -122,14 +121,9 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
     const previousOverflow = document.body.style.overflow;
     const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const getFocusableElements = (): HTMLElement[] => Array.from<HTMLElement>(
-      mobilePanelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') || [],
-    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+      mobilePanelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])') || [],
+    );
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMobileOpen(false);
-        return;
-      }
       if (event.key !== 'Tab') return;
       const focusable = getFocusableElements();
       if (focusable.length === 0) return;
@@ -153,6 +147,17 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
     };
   }, [mobileOpen]);
 
+  const isActive = (item: PrimaryNavItem) => {
+    if (item.href === '/forum' && (pathname.startsWith('/forum/emploi') || pathname.startsWith('/forum/carriere'))) return false;
+    return item.activePrefixes.some(prefix => pathname === prefix || pathname.startsWith(prefix));
+  };
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = searchQuery.trim();
+    navigate(value ? `/catalogue?q=${encodeURIComponent(value)}` : '/catalogue');
+  };
+
   async function handleLogout() {
     setProfileOpen(false);
     setMobileOpen(false);
@@ -160,29 +165,15 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
     navigate('/accueil', { replace: true });
   }
 
-  const isScrolledOrSolid = !transparent || scrolled || openMenu !== null || profileOpen;
-
-  const dropdown = (key: MenuKey, label: string, items: LandingLinkItem[]) => {
-    if (items.length === 0) return null;
-    return (
-      <div className="relative">
-        <button type="button" onClick={() => setOpenMenu(current => current === key ? null : key)} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]" id={`omnia-menu-trigger-${key}`} aria-expanded={openMenu === key} aria-controls={`omnia-menu-${key}`}>
-          {label}<ChevronDown className={`h-4 w-4 transition-transform ${openMenu === key ? 'rotate-180' : ''}`} aria-hidden="true" />
-        </button>
-        {openMenu === key && (
-          <div id={`omnia-menu-${key}`} aria-labelledby={`omnia-menu-trigger-${key}`} className="absolute left-1/2 top-[calc(100%+18px)] w-[420px] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/10">
-            <div className="grid gap-1">
-              {items.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="rounded-xl px-4 py-3 transition-colors hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const authenticatedActions = user && (
     <div className="relative">
-      <button type="button" onClick={() => setProfileOpen(value => !value)} className="flex items-center gap-1 rounded-xl p-1 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Ouvrir le menu du profil" aria-expanded={profileOpen}>
+      <button
+        type="button"
+        onClick={() => { setProfileOpen(value => !value); setMoreOpen(false); }}
+        className="flex items-center gap-1 rounded-xl p-1 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+        aria-label="Ouvrir le menu du profil"
+        aria-expanded={profileOpen}
+      >
         <UserAvatar user={user} />
         <ChevronDown size={15} className={`text-slate-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -203,52 +194,129 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
     </div>
   );
 
+  const solid = !transparent || scrolled || profileOpen || moreOpen || mobileOpen;
+
   return (
     <>
-      <nav ref={navRef} aria-label="Navigation principale" className="fixed left-0 right-0 top-0 z-50 transition-all duration-200" style={{ backgroundColor: isScrolledOrSolid ? '#FFFFFF' : 'transparent', borderBottom: isScrolledOrSolid ? '1px solid #E4E7EC' : 'none', boxShadow: scrolled ? '0 2px 14px rgba(15,23,42,0.08)' : 'none' }}>
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-6">
+      <nav
+        ref={navRef}
+        aria-label="Navigation principale"
+        className="fixed left-0 right-0 top-0 z-50 transition-all duration-200"
+        style={{
+          backgroundColor: solid ? 'rgba(255,255,255,0.98)' : 'rgba(255,255,255,0.94)',
+          borderBottom: '1px solid #E4E7EC',
+          boxShadow: scrolled ? '0 2px 16px rgba(15,23,42,0.07)' : 'none',
+          backdropFilter: 'blur(16px)',
+        }}
+      >
+        <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-5 sm:px-6 lg:px-8">
           <OmniaBrandLockup href={brandHomePath} className="flex-shrink-0" />
-          <div className="hidden items-center gap-7 lg:flex">
-            {directLinks.slice(0, 1).map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]">{item.label}</Link>)}
-            {dropdown('explore', config.explore_label || fallback.explore_label, exploreLinks)}
-            {dropdown('professionals', config.professionals_label || fallback.professionals_label, professionalLinks)}
-            {directLinks.slice(1).map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="text-sm font-medium text-slate-700 transition-colors hover:text-[#002050]">{item.label}</Link>)}
+
+          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 lg:flex lg:max-w-[330px] xl:max-w-[390px]">
+            <label className="flex h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm transition focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15">
+              <Search size={17} className="shrink-0 text-slate-400" aria-hidden="true" />
+              <span className="sr-only">Rechercher une formation, compétence ou métier</span>
+              <input
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                type="search"
+                placeholder="Rechercher une formation, compétence, métier..."
+                className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              />
+            </label>
+          </form>
+
+          <div className="hidden flex-1 items-center justify-center gap-4 xl:flex 2xl:gap-5">
+            {PRIMARY_NAV.map(item => (
+              <Link
+                key={item.href}
+                to={item.href}
+                aria-current={isActive(item) ? 'page' : undefined}
+                className={`relative whitespace-nowrap py-7 text-sm font-semibold transition-colors ${isActive(item) ? 'text-[#002050]' : 'text-slate-600 hover:text-[#002050]'}`}
+              >
+                {item.label}
+                {isActive(item) && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#BF8813]" />}
+              </Link>
+            ))}
           </div>
-          <div className="hidden items-center gap-3 lg:flex">
-            <LanguageSwitcher compact />
-            {!authLoading && (user ? authenticatedActions : <>
-              <button type="button" onClick={() => navigate('/connexion')} className="rounded-xl border border-[#002050] px-4 py-2 text-sm font-semibold text-[#002050] transition-colors hover:bg-slate-50">{config.login_label || fallback.login_label}</button>
-              <button type="button" onClick={() => navigate('/inscription')} className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#00183E]">{config.register_label || fallback.register_label}</button>
-            </>)}
+
+          <div className="ml-auto hidden flex-shrink-0 items-center gap-2 xl:flex">
+            {!authLoading && (user ? authenticatedActions : (
+              <>
+                <button type="button" onClick={() => navigate('/connexion')} className="h-10 rounded-xl border border-[#CCD4E0] bg-white px-4 text-sm font-semibold text-[#002050] transition hover:border-[#002050] hover:bg-slate-50">{config.login_label || fallback.login_label}</button>
+                <button type="button" onClick={() => navigate('/inscription')} className="h-10 rounded-xl bg-[#002050] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#00183E]">{config.register_label || fallback.register_label}</button>
+              </>
+            ))}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setMoreOpen(value => !value); setProfileOpen(false); }}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#002050] transition hover:bg-slate-50"
+                aria-label="Plus d’options"
+                aria-expanded={moreOpen}
+              >
+                <Menu size={18} />
+              </button>
+              {moreOpen && (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-[70] w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl">
+                  <Link to="/a-propos" className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><HelpCircle size={16} /> À propos</Link>
+                  <Link to="/contact" className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><UserRound size={16} /> Contact</Link>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 lg:hidden">
-            <LanguageSwitcher compact />
+
+          <div className="ml-auto flex items-center gap-2 xl:hidden">
             {user && authenticatedActions}
-            <button ref={mobileTriggerRef} type="button" className="min-h-11 min-w-11 rounded-lg p-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" onClick={() => setMobileOpen(value => !value)} aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'} aria-expanded={mobileOpen} aria-controls="omnia-mobile-navigation">{mobileOpen ? <X size={22} color="#002050" /> : <Menu size={22} color="#002050" />}</button>
+            <button
+              ref={mobileTriggerRef}
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+              onClick={() => setMobileOpen(value => !value)}
+              aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+              aria-expanded={mobileOpen}
+              aria-controls="omnia-mobile-navigation"
+            >
+              {mobileOpen ? <X size={21} color="#002050" /> : <Menu size={21} color="#002050" />}
+            </button>
           </div>
         </div>
       </nav>
-      {mobileOpen && <><button type="button" className="fixed inset-0 z-40 bg-black/45 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu de navigation" /><aside ref={mobilePanelRef} id="omnia-mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigation mobile" className="fixed right-0 top-0 z-50 flex h-full w-[min(92vw,360px)] flex-col bg-white shadow-2xl lg:hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div onClick={() => setMobileOpen(false)}><OmniaBrandLockup href={brandHomePath} compact /></div><button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]" aria-label="Fermer le menu"><X size={20} color="#64748B" /></button></div>
-        <div className="flex-1 overflow-y-auto px-5 py-5">
-          <div className="space-y-1">{directLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50">{item.label}</Link>)}</div>
-          {exploreLinks.length > 0 && <div className="mt-6 border-t border-slate-100 pt-5"><p className="px-3 text-xs font-bold uppercase tracking-[0.16em] text-[#9A6A08]">{config.explore_label || fallback.explore_label}</p><div className="mt-2 space-y-1">{exploreLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}</div></div>}
-          {professionalLinks.length > 0 && <div className="mt-6 border-t border-slate-100 pt-5"><p className="px-3 text-xs font-bold uppercase tracking-[0.16em] text-[#9A6A08]">{config.professionals_label || fallback.professionals_label}</p><div className="mt-2 space-y-1">{professionalLinks.map(item => <Link key={item.id} to={safeInternalHref(item.href)} className="block rounded-lg px-3 py-2.5 hover:bg-slate-50"><span className="block text-sm font-semibold text-[#002050]">{item.label}</span>{item.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>}</Link>)}</div></div>}
-        </div>
-        <div className="space-y-2 border-t border-slate-100 px-5 pb-7 pt-5">
-          {user ? <>
-            <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3"><UserAvatar user={user} /><div className="min-w-0"><p className="truncate text-sm font-bold text-[#002050]">{user.full_name || 'Utilisateur Omnia'}</p><p className="truncate text-xs text-slate-500">{user.email}</p></div></div>
-            <button type="button" onClick={() => navigate('/home')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><Home size={17} /> Accueil Omnia</button>
-            <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><LayoutDashboard size={17} /> Mon espace</button>
-            <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><UserRound size={17} /> {isAdministration ? 'Mon compte' : 'Mon profil'}</button>
-            <button type="button" onClick={() => navigate(settingsPath)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50"><Settings size={17} /> Paramètres</button>
-            <button type="button" onClick={() => void handleLogout()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button>
-          </> : !authLoading ? <>
-            <button type="button" onClick={() => navigate('/connexion')} className="w-full rounded-xl border border-[#002050] py-3 text-sm font-semibold text-[#002050]">{config.login_label || fallback.login_label}</button>
-            <button type="button" onClick={() => navigate('/inscription')} className="w-full rounded-xl bg-[#002050] py-3 text-sm font-semibold text-white">{config.register_label || fallback.register_label}</button>
-          </> : null}
-        </div>
-      </aside></>}
+
+      {mobileOpen && (
+        <>
+          <button type="button" className="fixed inset-0 z-40 bg-black/40 xl:hidden" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu de navigation" />
+          <aside ref={mobilePanelRef} id="omnia-mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigation mobile" className="fixed right-0 top-0 z-50 flex h-full w-[min(92vw,390px)] flex-col bg-white shadow-2xl xl:hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <OmniaBrandLockup href={brandHomePath} compact />
+              <button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100" aria-label="Fermer le menu"><X size={20} color="#64748B" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <form onSubmit={submitSearch} className="mb-5">
+                <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3">
+                  <Search size={17} className="text-slate-400" />
+                  <input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Rechercher..." />
+                </label>
+              </form>
+              <nav className="space-y-1" aria-label="Navigation mobile principale">
+                {PRIMARY_NAV.map(item => (
+                  <Link key={item.href} to={item.href} aria-current={isActive(item) ? 'page' : undefined} className={`block rounded-xl px-3 py-3 text-sm font-semibold ${isActive(item) ? 'bg-[#FFF7E7] text-[#002050]' : 'text-slate-700 hover:bg-slate-50'}`}>{item.label}</Link>
+                ))}
+              </nav>
+              <div className="mt-5 border-t border-slate-100 pt-5">
+                <Link to="/a-propos" className="block rounded-xl px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">À propos</Link>
+                <Link to="/contact" className="block rounded-xl px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Contact</Link>
+              </div>
+            </div>
+            {!user && !authLoading && (
+              <div className="space-y-2 border-t border-slate-100 px-5 pb-7 pt-5">
+                <button type="button" onClick={() => navigate('/connexion')} className="w-full rounded-xl border border-[#002050] py-3 text-sm font-semibold text-[#002050]">{config.login_label || fallback.login_label}</button>
+                <button type="button" onClick={() => navigate('/inscription')} className="w-full rounded-xl bg-[#002050] py-3 text-sm font-semibold text-white">{config.register_label || fallback.register_label}</button>
+              </div>
+            )}
+          </aside>
+        </>
+      )}
     </>
   );
 }

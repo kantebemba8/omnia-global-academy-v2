@@ -28,6 +28,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
 const ConnectedHome = lazy(() => import('./pages/ConnectedHome'));
 const APropos = lazy(() => import('./pages/APropos').then((module) => ({ default: module.APropos })));
+const Contact = lazy(() => import('./pages/Contact'));
 const NewsletterPreferencesPage = lazy(() => import('./pages/NewsletterPreferencesPage'));
 const Confidentialite = lazy(() => import('./pages/Confidentialite').then((module) => ({ default: module.Confidentialite })));
 const SupprimerCompte = lazy(() => import('./pages/SupprimerCompte').then((module) => ({ default: module.SupprimerCompte })));
@@ -864,6 +865,7 @@ export default function App() {
         {/* Public routes guarded by coming-soon mode */}
         <Route element={<GuardedRoutes />}>
         <Route path="/a-propos" element={<APropos />} />
+        <Route path="/contact" element={<Contact />} />
         <Route path="/confidentialite" element={<Confidentialite />} />
               <Route path="/cgu" element={<LegalDocumentPage />} />
               <Route path="/mentions-legales" element={<LegalDocumentPage />} />

@@ -48,6 +48,7 @@ export function ProjectsPublicLayout({ children }: { children: ReactNode }) {
       searchPath="/projects/explorer"
       searchParam="q"
       searchPlaceholder="Rechercher un projet, une compétence, une organisation..."
+      navigationMode="horizontal"
     >
       {children}
     </SubspaceHamburgerLayout>
