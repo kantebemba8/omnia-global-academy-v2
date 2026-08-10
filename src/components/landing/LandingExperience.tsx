@@ -111,37 +111,44 @@ function actionFor(item: LandingContentItem) {
 function FuturisticHeroArt() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_48%,rgba(41,112,221,0.18),transparent_30%),radial-gradient(circle_at_72%_58%,rgba(191,136,19,0.10),transparent_22%),linear-gradient(112deg,#ffffff_0%,#f8fbff_44%,#eaf3ff_100%)]" />
-      <div className="absolute inset-0 opacity-[0.34]" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.045) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
-      <svg className="absolute inset-y-0 right-0 h-full w-[68%] min-w-[680px] opacity-60" viewBox="0 0 1000 520" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M118 410C296 292 389 416 538 322C674 236 720 153 862 161C925 165 972 190 1036 164" stroke="#002050" strokeOpacity="0.34" strokeWidth="1.5" />
-        <path d="M55 372C238 255 357 367 512 284C658 206 717 118 873 127C938 131 987 153 1048 136" stroke="#BF8813" strokeOpacity="0.46" strokeWidth="1.5" />
-        <path d="M182 444C355 326 438 448 593 353C718 276 768 230 885 232C943 233 985 250 1042 240" stroke="#BF8813" strokeOpacity="0.18" strokeWidth="1.25" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,#fbfdff_35%,rgba(244,249,255,0.94)_47%,rgba(207,226,252,0.92)_64%,rgba(62,124,216,0.92)_82%,#0B4DAD_100%)]" />
+      <div className="absolute inset-y-0 right-0 w-[67%] bg-[radial-gradient(circle_at_68%_52%,rgba(9,69,169,0.96)_0%,rgba(16,86,190,0.92)_25%,rgba(78,138,225,0.78)_48%,rgba(195,220,250,0.40)_71%,transparent_88%)]" />
+      <div className="absolute inset-y-0 right-0 w-[68%] opacity-[0.32]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.14) 1px, transparent 1px)', backgroundSize: '34px 34px', maskImage: 'radial-gradient(circle at 70% 55%, black 0%, rgba(0,0,0,.95) 44%, transparent 83%)' }} />
+      <div className="absolute right-[-7%] top-[19%] h-[410px] w-[410px] rounded-full border border-white/25 bg-[radial-gradient(circle_at_37%_30%,rgba(74,144,244,0.98),rgba(9,70,168,0.98)_38%,#04275D_68%,#001A42_100%)] shadow-[inset_-45px_-55px_72px_rgba(0,12,38,0.62),inset_26px_20px_46px_rgba(138,188,255,0.22),0_0_120px_rgba(39,105,215,0.34)] lg:h-[500px] lg:w-[500px]" />
+      <div className="absolute right-[-2%] top-[22%] h-[350px] w-[350px] rounded-full border border-[#E9BD55]/80 shadow-[0_0_24px_rgba(233,189,85,0.28)] lg:h-[430px] lg:w-[430px]" />
+      <div className="absolute right-[18%] top-[47%] h-5 w-5 rounded-full bg-[#FFD985] shadow-[0_0_28px_8px_rgba(255,218,139,0.9)]" />
+      <div className="absolute right-[23%] top-[42%] h-24 w-24 rounded-full bg-[#F9C65D]/32 blur-3xl" />
+      <svg className="absolute inset-y-0 right-0 h-full w-[79%] min-w-[760px]" viewBox="0 0 1120 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ogaHeroGold" x1="90" y1="110" x2="1055" y2="380" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#BF8813" stopOpacity="0" />
+            <stop offset="0.38" stopColor="#E3B247" stopOpacity="0.65" />
+            <stop offset="0.58" stopColor="#FFF3C5" stopOpacity="0.98" />
+            <stop offset="0.76" stopColor="#D9A12D" stopOpacity="0.72" />
+            <stop offset="1" stopColor="#BF8813" stopOpacity="0.1" />
+          </linearGradient>
+          <linearGradient id="ogaHeroWhite" x1="170" y1="380" x2="1020" y2="125" gradientUnits="userSpaceOnUse">
+            <stop stopColor="white" stopOpacity="0" />
+            <stop offset="0.5" stopColor="white" stopOpacity="0.9" />
+            <stop offset="1" stopColor="white" stopOpacity="0.08" />
+          </linearGradient>
+          <filter id="ogaHeroGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="7" result="blur" />
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <path d="M62 448C245 344 333 330 482 272C612 221 663 132 833 136C943 139 1006 187 1110 177" stroke="url(#ogaHeroGold)" strokeWidth="2.1" />
+        <path d="M20 402C218 304 345 320 505 240C638 174 694 92 850 106C950 115 1016 151 1128 135" stroke="url(#ogaHeroWhite)" strokeWidth="2" />
+        <path d="M113 490C294 388 400 405 565 315C688 248 748 215 870 223C957 229 1025 257 1126 244" stroke="#E3B247" strokeOpacity="0.42" strokeWidth="1.4" />
+        <path d="M146 132C328 188 407 199 535 238C669 279 736 334 868 348C960 358 1036 345 1116 319" stroke="white" strokeOpacity="0.42" strokeWidth="1.15" />
+        <ellipse cx="851" cy="300" rx="286" ry="105" transform="rotate(-16 851 300)" stroke="#E3B247" strokeOpacity="0.43" strokeWidth="1.5" />
+        <ellipse cx="853" cy="303" rx="243" ry="89" transform="rotate(18 853 303)" stroke="white" strokeOpacity="0.36" strokeWidth="1.2" />
+        <circle cx="670" cy="237" r="5" fill="#FFF4C7" filter="url(#ogaHeroGlow)" />
+        <circle cx="927" cy="177" r="3.5" fill="#E3B247" />
+        <circle cx="1014" cy="337" r="3" fill="white" fillOpacity="0.82" />
+        <circle cx="789" cy="383" r="2.5" fill="#E3B247" />
       </svg>
-    </div>
-  );
-}
-
-function HeroOrbitalVisual() {
-  return (
-    <div className="relative h-[360px] w-full max-w-[560px]" style={{ perspective: '1400px' }} aria-hidden="true">
-      <div className="absolute inset-[10%_4%_6%_8%] rounded-[44%] bg-[radial-gradient(circle_at_56%_54%,rgba(21,103,220,0.30),rgba(16,69,154,0.10)_46%,transparent_72%)] blur-2xl" />
-      <div className="absolute left-[52%] top-[52%] h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#7BAAF0]/30" style={{ transform: 'translate(-50%, -50%) rotateX(68deg) rotateZ(-12deg)', boxShadow: '0 0 80px rgba(33,106,222,0.16)' }} />
-      <div className="absolute left-[52%] top-[52%] h-[246px] w-[246px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#BF8813]/45" style={{ transform: 'translate(-50%, -50%) rotateX(68deg) rotateZ(26deg)' }} />
-      <div className="absolute left-[52%] top-[52%] h-[188px] w-[188px] -translate-x-1/2 -translate-y-1/2 rounded-full" style={{
-        background: 'radial-gradient(circle at 31% 24%, #5D91DC 0%, #1F5AAB 18%, #0A356F 45%, #032452 68%, #001631 100%)',
-        boxShadow: 'inset -28px -34px 52px rgba(0,12,35,.55), inset 18px 14px 34px rgba(97,157,241,.18), 0 34px 74px rgba(0,32,80,.25)',
-        transform: 'translate(-50%, -50%) translateZ(72px)',
-      }}>
-        <div className="absolute left-[18%] top-[12%] h-[26%] w-[28%] rounded-full bg-white/20 blur-xl" />
-        <div className="absolute bottom-[11%] right-[8%] h-[44%] w-[44%] rounded-full bg-[#BF8813]/30 blur-2xl" />
-      </div>
-      <div className="absolute left-[52%] top-[52%] h-[286px] w-[164px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/55" style={{ transform: 'translate(-50%, -50%) rotate(64deg) rotateX(62deg) translateZ(82px)', boxShadow: '0 0 22px rgba(255,255,255,.22)' }} />
-      <div className="absolute left-[52%] top-[52%] h-[316px] w-[190px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-[#E0B34F]/70" style={{ transform: 'translate(-50%, -50%) rotate(64deg) rotateX(62deg) translateZ(80px)', boxShadow: '0 0 18px rgba(191,136,19,.16)' }} />
-      <div className="absolute left-[71%] top-[31%] h-3.5 w-3.5 rounded-full bg-[#E4B84E] shadow-[0_0_18px_rgba(228,184,78,0.9)]" style={{ transform: 'translateZ(96px)' }} />
-      <div className="absolute left-[35%] top-[69%] h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.95)]" style={{ transform: 'translateZ(96px)' }} />
-      <div className="absolute left-[15%] top-[22%] h-px w-[70%] origin-left rotate-[18deg] bg-gradient-to-r from-transparent via-white/80 to-transparent blur-[0.4px]" />
-      <div className="absolute bottom-[7%] left-[22%] right-[15%] h-8 rounded-[50%] bg-[#002050]/20 blur-xl" />
+      <div className="absolute inset-y-0 left-0 w-[52%] bg-gradient-to-r from-white via-white/95 to-transparent" />
     </div>
   );
 }
@@ -159,7 +166,7 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
     <>
       <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-[116px]">
         <FuturisticHeroArt />
-        <div className="relative mx-auto grid min-h-[470px] max-w-7xl items-center px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:px-8 lg:py-20">
+        <div className="relative mx-auto grid min-h-[500px] max-w-7xl items-center px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.83fr)_minmax(460px,1.17fr)] lg:px-8 lg:py-20">
           <div className="max-w-2xl">
             <h1 className="text-[2.25rem] font-black leading-[1.08] tracking-[-0.045em] text-[#002050] sm:text-[2.8rem] lg:text-[3.15rem]">
               {section.title}
@@ -181,9 +188,7 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
               </div>
             )}
           </div>
-          <div className="relative hidden min-h-[360px] lg:flex lg:items-center lg:justify-center">
-            <HeroOrbitalVisual />
-          </div>
+          <div className="relative hidden min-h-[360px] lg:block" aria-hidden="true" />
         </div>
       </section>
 
@@ -410,31 +415,72 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
       </section>
 
       {projects && (
-        <section className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(115deg,#F7FAFF_0%,#FFFFFF_45%,#FFF8EB_100%)] px-5 py-11 sm:px-6 lg:px-8">
-          <div className="pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.035) 1px, transparent 1px)', backgroundSize: '32px 32px', maskImage: 'linear-gradient(90deg, transparent, black 42%, black 90%, transparent)' }} />
-          <div className="relative mx-auto grid max-w-7xl items-center gap-8 rounded-[26px] border border-[#C9D8EC] bg-white/85 px-6 py-7 shadow-[0_18px_55px_rgba(0,32,80,0.08)] backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
-            <div className="max-w-3xl">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#9A6A08]">Omnia Projects</p>
-              <h3 className="mt-2 text-2xl font-black tracking-[-0.025em] text-[#002050]">{projects.title}</h3>
-              {projects.description && <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{projects.description}</p>}
+        <section className="relative overflow-hidden border-b border-slate-200 bg-white px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div className="absolute right-[-8%] top-[-20%] h-[440px] w-[440px] rounded-full bg-[#EAF3FF] blur-3xl" />
+            <div className="absolute bottom-[-30%] left-[42%] h-[360px] w-[360px] rounded-full bg-[#FFF3D5] blur-3xl" />
+          </div>
+          <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,0.86fr)_minmax(470px,1.14fr)] lg:gap-16">
+            <div className="max-w-xl">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9A6A08]">Omnia Projects</p>
+              <h3 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{projects.title}</h3>
+              {projects.description && <p className="mt-5 text-base leading-8 text-slate-600">{projects.description}</p>}
+              <div className="mt-7 h-px w-24 bg-[#BF8813]" />
+              <p className="mt-5 text-sm leading-7 text-slate-500">Travaillez sur des briefs, produisez des livrables, recevez du feedback et construisez progressivement des preuves concrètes de vos compétences.</p>
               {projects.action_url && projects.action_label && (
-                <Link to={safeHref(projects.action_url)} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#00183E]">
+                <Link to={safeHref(projects.action_url)} className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
                   {projects.action_label}<ArrowRight size={15} />
                 </Link>
               )}
             </div>
 
-            <div className="relative hidden h-[180px] lg:block" aria-hidden="true" style={{ perspective: '1000px' }}>
-              <div className="absolute bottom-3 left-1/2 h-12 w-[250px] -translate-x-1/2 rounded-[50%] bg-[#002050]/15 blur-lg" />
-              <div className="absolute bottom-6 left-1/2 h-[92px] w-[260px] rounded-[50%] border border-[#BF8813]/55 bg-[radial-gradient(ellipse_at_center,rgba(191,136,19,0.19),rgba(0,32,80,0.05)_54%,transparent_70%)]" style={{ transform: 'translateX(-50%) rotateX(68deg)' }} />
-              <div className="absolute bottom-[46px] left-1/2 h-[74px] w-[150px] rounded-[18px] border border-[#144A86] bg-[linear-gradient(145deg,#0C4A8F,#002050)] shadow-[0_24px_34px_rgba(0,32,80,0.25)]" style={{ transform: 'translateX(-50%) rotateY(-12deg) rotateX(5deg) translateZ(40px)' }}>
-                <div className="absolute -top-5 left-4 h-7 w-16 rounded-t-xl border border-b-0 border-[#144A86] bg-[#0C4A8F]" />
-                <div className="absolute inset-x-4 top-5 h-px bg-white/20" />
-                <div className="absolute bottom-4 left-4 h-2 w-14 rounded-full bg-[#BF8813]/80" />
+            <div className="relative min-h-[360px] lg:min-h-[410px]" aria-hidden="true" style={{ perspective: '1400px' }}>
+              <div className="absolute left-[8%] top-[10%] h-[76%] w-[84%] rounded-[50%] bg-[radial-gradient(circle,rgba(71,134,222,0.18),rgba(71,134,222,0.04)_54%,transparent_72%)] blur-xl" />
+              <div className="absolute bottom-[8%] left-[14%] h-[56px] w-[72%] rounded-[50%] bg-[#002050]/15 blur-xl" />
+              <div className="absolute left-[18%] top-[17%] h-[245px] w-[335px] rounded-[26px] border border-[#BFD0E7] bg-white shadow-[0_32px_70px_rgba(0,32,80,0.16)]" style={{ transform: 'rotateY(-10deg) rotateX(5deg) translateZ(42px)' }}>
+                <div className="absolute inset-x-0 top-0 flex h-12 items-center justify-between rounded-t-[26px] border-b border-[#DCE6F2] bg-[#F7FAFE] px-5">
+                  <span className="h-2.5 w-24 rounded-full bg-[#002050]/80" />
+                  <span className="h-7 w-7 rounded-full border border-[#D6E1EF] bg-white" />
+                </div>
+                <div className="absolute left-6 top-[74px] right-6">
+                  <div className="h-3 w-[58%] rounded-full bg-[#002050]/85" />
+                  <div className="mt-3 h-2 w-[84%] rounded-full bg-slate-200" />
+                  <div className="mt-2 h-2 w-[69%] rounded-full bg-slate-200" />
+                  <div className="mt-7 grid grid-cols-[1fr_0.76fr] gap-4">
+                    <div className="space-y-3">
+                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
+                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
+                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
+                    </div>
+                    <div className="rounded-2xl bg-[#002050] p-4 shadow-[0_16px_32px_rgba(0,32,80,0.18)]">
+                      <div className="h-2 w-14 rounded-full bg-[#E8BC5B]" />
+                      <div className="mt-4 h-2 w-full rounded-full bg-white/20" />
+                      <div className="mt-2 h-2 w-[76%] rounded-full bg-white/20" />
+                      <div className="mt-7 h-8 rounded-lg bg-white/10" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="absolute left-[76%] top-[20%] h-3 w-3 rounded-full bg-[#D9A22B] shadow-[0_0_20px_rgba(217,162,43,0.9)]" />
-              <div className="absolute left-[20%] top-[52%] h-2 w-2 rounded-full bg-[#245EA5] shadow-[0_0_16px_rgba(36,94,165,0.7)]" />
-              <div className="absolute left-[25%] top-[28%] h-[90px] w-[220px] rounded-[50%] border border-[#BF8813]/30" style={{ transform: 'rotate(-12deg) rotateX(64deg)' }} />
+              <div className="absolute right-[7%] top-[9%] h-[150px] w-[122px] rounded-[18px] border border-[#E1C67F] bg-[#FFFDF7] shadow-[0_22px_50px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(8deg) translateZ(78px)' }}>
+                <div className="mx-auto mt-5 h-12 w-12 rounded-full border-[5px] border-[#BF8813]/65 bg-[#FFF7E5]" />
+                <div className="mx-auto mt-4 h-2 w-16 rounded-full bg-[#002050]/75" />
+                <div className="mx-auto mt-2 h-2 w-11 rounded-full bg-slate-200" />
+              </div>
+              <div className="absolute bottom-[12%] left-[7%] h-[112px] w-[156px] rounded-[18px] border border-[#C5D5E9] bg-[#EEF5FD] shadow-[0_20px_42px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(-8deg) translateZ(62px)' }}>
+                <div className="absolute left-5 top-5 h-3 w-20 rounded-full bg-[#1E5FAE]/75" />
+                <div className="absolute left-5 top-11 h-2 w-[74%] rounded-full bg-[#AFC5E0]" />
+                <div className="absolute bottom-5 left-5 right-5 flex items-end gap-2">
+                  <span className="h-5 flex-1 rounded-t bg-[#89ACD8]" />
+                  <span className="h-9 flex-1 rounded-t bg-[#3778C6]" />
+                  <span className="h-12 flex-1 rounded-t bg-[#BF8813]" />
+                </div>
+              </div>
+              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 560 410" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M46 313C130 221 222 261 305 196C375 141 420 72 523 87" stroke="#BF8813" strokeOpacity="0.52" strokeWidth="1.4" />
+                <path d="M76 338C170 255 259 294 350 231C420 181 459 139 542 150" stroke="#2F6EBB" strokeOpacity="0.32" strokeWidth="1.2" />
+                <circle cx="305" cy="196" r="4" fill="#BF8813" />
+                <circle cx="523" cy="87" r="4" fill="#2F6EBB" />
+              </svg>
             </div>
           </div>
         </section>
@@ -569,26 +615,33 @@ function FinalCta({ section }: { section: LandingSectionConfig }) {
   ];
 
   return (
-    <section id="rejoindre-omnia" className="relative overflow-hidden border-b border-slate-200 bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
+    <section id="rejoindre-omnia" className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_78%)] px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute -right-24 top-1/2 h-72 w-72 rounded-full border border-[#BF8813]/20" style={{ transform: 'translateY(-50%) rotateX(70deg)' }} />
-        <div className="absolute -left-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-blue-500/10 blur-3xl" />
+        <div className="absolute left-1/2 top-[58%] h-64 w-[78%] -translate-x-1/2 rounded-[50%] bg-[#EAF3FF]/70 blur-3xl" />
+        <svg className="absolute left-1/2 top-[44%] h-[240px] w-[min(1120px,96%)] -translate-x-1/2" viewBox="0 0 1120 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 142C165 56 276 91 390 135C510 181 613 183 730 122C844 63 948 67 1102 145" stroke="#BF8813" strokeOpacity="0.62" strokeWidth="1.5" />
+          <path d="M18 160C173 84 273 112 395 153C514 193 625 195 739 140C855 84 958 91 1102 162" stroke="#2F6EBB" strokeOpacity="0.24" strokeWidth="1.2" />
+          <circle cx="191" cy="88" r="5" fill="#2F6EBB" />
+          <circle cx="555" cy="177" r="4" fill="#BF8813" />
+          <circle cx="902" cy="83" r="5" fill="#DCA332" />
+        </svg>
       </div>
-      <div className="relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
-        <div className="max-w-3xl">
-          {section.eyebrow && !isLegacyDuplicate && <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE63]">{section.eyebrow}</p>}
-          <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{title}</h2>
-          {subtitle && <p className="mt-3 text-base leading-7 text-blue-100">{subtitle}</p>}
-          {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-white/65">{section.body}</p>}
+
+      <div className="relative mx-auto max-w-7xl">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9A6A08]">Votre parcours, à votre rythme</p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{title}</h2>
+          {subtitle && <p className="mt-4 text-base leading-7 text-slate-600">{subtitle}</p>}
+          {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-500">{section.body}</p>}
           {!isLegacyDuplicate && (section.primary_cta_label || section.secondary_cta_label) && (
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
               {section.primary_cta_label && (
-                <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
+                <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
                   {section.primary_cta_label}<ArrowRight size={16} />
                 </Link>
               )}
               {section.secondary_cta_label && (
-                <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/35 px-5 py-3 text-sm font-black text-white transition hover:border-white">
+                <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-black text-[#002050] transition hover:border-[#002050]">
                   {section.secondary_cta_label}<ArrowRight size={16} />
                 </Link>
               )}
@@ -596,12 +649,15 @@ function FinalCta({ section }: { section: LandingSectionConfig }) {
           )}
         </div>
 
-        <div className="grid gap-px overflow-hidden rounded-2xl border border-white/15 bg-white/10 sm:grid-cols-3" style={{ perspective: '1000px' }}>
+        <div className="relative mt-14 grid gap-10 md:grid-cols-3 md:gap-8 lg:mt-16 lg:gap-12">
           {steps.map(([number, label, copy], index) => (
-            <div key={number} className="relative bg-[#05265A]/90 px-5 py-5" style={{ transform: `translateZ(${index === 1 ? 24 : 10}px)` }}>
-              <span className="text-xs font-black tracking-[0.16em] text-[#E6BE63]">{number}</span>
-              <h3 className="mt-2 text-sm font-black text-white">{label}</h3>
-              <p className="mt-2 text-xs leading-5 text-blue-100/70">{copy}</p>
+            <div key={number} className="relative px-2 text-center md:text-left">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-[6px] border-[#E7EFFA] bg-[linear-gradient(145deg,#4B88D6,#0B4B9E)] text-sm font-black text-white shadow-[0_12px_30px_rgba(31,99,181,0.26)] md:mx-0">
+                {number}
+              </div>
+              <h3 className="mt-5 text-xl font-black text-[#002050]">{label}</h3>
+              <p className="mt-3 max-w-sm text-sm leading-7 text-slate-600">{copy}</p>
+              {index < steps.length - 1 && <div className="absolute right-[-26px] top-7 hidden h-px w-14 bg-gradient-to-r from-[#BF8813]/70 to-transparent md:block lg:right-[-34px] lg:w-20" aria-hidden="true" />}
             </div>
           ))}
         </div>
