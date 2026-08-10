@@ -462,27 +462,73 @@ export function DashboardLayout({
 
   if (adminMode) {
     return (
-      <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-white">
-        <div className="hidden h-[100dvh] w-[258px] flex-shrink-0 flex-col overflow-hidden lg:flex">{adminSidebar}</div>
+      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F6F8FC]">
+        <DashboardTopbar
+          title={contextualTitle}
+          subtitle={headerSubtitle || roleSubtitle}
+          onOpenNavigation={() => setMobileNavigationOpen(true)}
+          navigationOpen={mobileNavigationOpen}
+          actions={headerActions}
+          search={headerSearch}
+          dashboardPath={dashboardPath}
+          showBrand
+          brandHref="/home"
+        />
+
+        <div className="relative z-20 flex-shrink-0 border-b border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-[1600px] items-center overflow-x-auto px-4 md:px-6">
+            <nav className="flex min-w-max items-center" aria-label="Domaines de gestion Super-admin">
+              {ACTIVE_NAV_GROUPS?.map(group => {
+                const GroupIcon = group.icon;
+                const containsActive = activeGroup?.id === group.id;
+                const destination = buildPath(group.items[0].path);
+                return (
+                  <Link
+                    key={group.id}
+                    to={destination}
+                    className={`group relative inline-flex min-h-14 items-center gap-2.5 px-3.5 text-[13px] font-bold transition md:px-4 ${containsActive ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
+                  >
+                    <GroupIcon size={17} style={{ color: containsActive ? '#BF8813' : '#64748B' }} />
+                    <span>{group.label}</span>
+                    <span className={`absolute inset-x-3 bottom-0 h-[2px] transition ${containsActive ? 'bg-[#BF8813]' : 'bg-transparent group-hover:bg-slate-200'}`} />
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {activeGroup && activeGroup.id !== 'dashboard' && (
+          <div className="relative z-10 flex-shrink-0 border-b border-slate-200 bg-[#F8FAFD]">
+            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2 md:px-6">
+              {activeGroup.items.map(item => {
+                const ItemIcon = item.icon;
+                const active = isActive(item);
+                return (
+                  <Link
+                    key={item.path}
+                    to={buildPath(item.path)}
+                    className={`inline-flex min-h-9 min-w-max items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${active ? 'bg-white text-[#002050] shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/80 hover:text-[#002050]'}`}
+                  >
+                    <ItemIcon size={14} style={{ color: active ? '#BF8813' : '#94A3B8' }} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {mobileNavigationOpen && (
           <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administrative">
             <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
             <div className="relative z-10 h-[100dvh] w-[min(88vw,320px)]">{adminSidebar}</div>
           </div>
         )}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <DashboardTopbar
-            title={contextualTitle}
-            subtitle={headerSubtitle || roleSubtitle}
-            onOpenNavigation={() => setMobileNavigationOpen(true)}
-            navigationOpen={mobileNavigationOpen}
-            actions={headerActions}
-            search={headerSearch}
-            dashboardPath={dashboardPath}
-            showBrand={false}
-          />
-          <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white ${contentClassName}`}>{children}</main>
-        </div>
+
+        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#F6F8FC] ${contentClassName}`}>
+          {children}
+        </main>
       </div>
     );
   }
