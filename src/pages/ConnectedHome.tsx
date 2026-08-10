@@ -514,6 +514,21 @@ function filterModeratorGroups(groups: HomeGroup[], permissions: ModeratorPermis
     .filter(group => group.items.length > 0);
 }
 
+function searchPlaceholderFor(audience: HomeAudience) {
+  switch (audience) {
+    case 'super_admin': return 'Rechercher un outil, un domaine ou une fonction de gouvernance…';
+    case 'moderateur': return 'Rechercher dans vos outils de modération…';
+    case 'structure': return 'Rechercher membres, formations, recrutement, suivi…';
+    case 'gestionnaire_structure': return 'Rechercher dans votre périmètre Structure…';
+    case 'recruteur_structure': return 'Rechercher offres, talents, candidats, entretiens…';
+    case 'organisateur': return 'Rechercher événements, participants, médias, revenus…';
+    case 'recruteur': return 'Rechercher offres, talents, candidatures, entretiens…';
+    case 'professeur': return 'Rechercher formations, évaluations, apprenants, revenus…';
+    case 'coach': return 'Rechercher séances, disponibilités, demandes, revenus…';
+    case 'apprenant': return 'Rechercher formations, Career, Talent, certificats, opportunités…';
+  }
+}
+
 function HeroDecoration({ variant, accent }: { variant: HomeConfig['variant']; accent: string }) {
   const dense = variant === 'control' || variant === 'pipeline';
   return (
@@ -572,10 +587,43 @@ export default function ConnectedHome() {
   const config = HOME_CONFIGS[audience];
   const dashboardPath = user ? getDashboardPathForRoles(user.roles || []) : '/accueil';
   const moderatorPermissions = useMemo(() => audience === 'moderateur' ? readModeratorPermissions() : null, [audience]);
+  const continueCourses = learnerData?.courses_en_cours || [];
   const groups = useMemo(
     () => audience === 'moderateur' ? filterModeratorGroups(config.groups, moderatorPermissions, previewMode) : config.groups,
     [audience, config.groups, moderatorPermissions, previewMode],
   );
+
+  const searchEntries = useMemo(() => {
+    const entries: HomeLink[] = [];
+    const pushUnique = (item: HomeLink) => {
+      if (!entries.some(entry => entry.href === item.href)) entries.push(item);
+    };
+
+    pushUnique(config.primary);
+    pushUnique(config.secondaryAction);
+
+    if (audience === 'super_admin') {
+      ADMIN_NAV_GROUPS.forEach(group => group.items.forEach(item => pushUnique(LINK(item.label, `Accès ${group.label.toLowerCase()} de la plateforme.`, item.path, item.icon))));
+    } else {
+      groups.forEach(group => group.items.forEach(pushUnique));
+      config.ecosystem.forEach(pushUnique);
+    }
+
+    if (audience === 'apprenant') {
+      continueCourses.forEach(course => pushUnique(LINK(course.title, `${course.progress_percent}% de progression · ${course.lessons_completed}/${course.lessons_total} leçons terminées.`, `/cours/${course.slug}/apprendre`, BookOpen)));
+      featuredCourses.forEach(course => pushUnique(LINK(course.title, course.short_description || 'Formation mise en avant dans le catalogue Omnia.', coursePath(course), BookOpen)));
+    }
+
+    return entries;
+  }, [audience, config, groups, continueCourses, featuredCourses]);
+
+  const searchResults = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('fr');
+    if (!normalizedQuery) return [];
+    return searchEntries
+      .filter(item => `${item.label} ${item.description}`.toLocaleLowerCase('fr').includes(normalizedQuery))
+      .slice(0, 8);
+  }, [query, searchEntries]);
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -613,8 +661,13 @@ export default function ConnectedHome() {
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
-    const value = query.trim();
-    navigate(value ? `/catalogue?q=${encodeURIComponent(value)}` : '/catalogue');
+    if (searchResults[0]) {
+      navigate(addPreview(searchResults[0].href, previewMode));
+      return;
+    }
+    if (audience === 'apprenant' && query.trim()) {
+      navigate(`/catalogue?q=${encodeURIComponent(query.trim())}`);
+    }
   }
 
   if (loading) {
@@ -622,7 +675,6 @@ export default function ConnectedHome() {
   }
   if (!user) return <Navigate to="/connexion?redirect=%2Fhome" replace />;
 
-  const continueCourses = learnerData?.courses_en_cours || [];
   const otherRoleHomes = roles
     .filter(role => role !== audience && role in HOME_CONFIGS)
     .map(role => ({ role: role as HomeAudience, home: HOME_CONFIGS[role as HomeAudience] }));
@@ -630,20 +682,8 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-[76px] max-w-7xl items-center gap-5 px-5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-5 px-5 sm:px-6 lg:px-8">
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
-          <div className="hidden h-8 w-px bg-slate-200 md:block" />
-          <div className="hidden min-w-0 flex-1 md:block">
-            <p className="truncate text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Accueil connecté</p>
-            <p className="mt-1 truncate text-sm font-extrabold text-[#002050]">{config.label}</p>
-          </div>
-          {audience === 'apprenant' && !previewMode && (
-            <form onSubmit={submitSearch} className="hidden min-w-[280px] max-w-[420px] flex-1 items-center overflow-hidden rounded-full border border-[#D7E1EC] bg-[#F7FAFE] lg:flex">
-              <Search size={16} className="ml-4 text-slate-400" />
-              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher une formation" className="min-h-10 min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400" />
-              <button type="submit" className="min-h-10 px-4 text-xs font-bold text-white" style={{ backgroundColor: BLUE }}>Rechercher</button>
-            </form>
-          )}
           <UserAccountMenu dashboardPath={dashboardPath} />
         </div>
       </header>
@@ -661,6 +701,49 @@ export default function ConnectedHome() {
       )}
 
       <main>
+        <section className="border-b border-[#DCE5F0] bg-white">
+          <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
+            <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
+              <div className="flex min-h-[54px] items-center overflow-hidden rounded-2xl border border-[#CFDAE8] bg-[#F8FBFF] shadow-[0_10px_30px_rgba(0,32,80,0.06)] focus-within:border-[#9EB4D0] focus-within:bg-white">
+                <Search size={18} className="ml-5 shrink-0" style={{ color: config.accent }} />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder={searchPlaceholderFor(audience)}
+                  aria-label={`Rechercher dans l’accueil ${config.label}`}
+                  className="min-h-[52px] min-w-0 flex-1 bg-transparent px-4 text-sm font-medium text-[#002050] outline-none placeholder:font-normal placeholder:text-slate-400"
+                />
+                <button type="submit" className="mr-1.5 min-h-[42px] rounded-xl px-5 text-xs font-black text-white" style={{ backgroundColor: BLUE }}>Rechercher</button>
+              </div>
+
+              {query.trim() && (
+                <div className="absolute left-0 right-0 top-[62px] z-30 overflow-hidden rounded-2xl border border-[#D8E2EE] bg-white shadow-[0_24px_60px_rgba(0,32,80,0.16)]">
+                  {searchResults.length > 0 ? (
+                    <div className="divide-y divide-slate-100">
+                      {searchResults.map(item => {
+                        const ResultIcon = item.icon;
+                        return (
+                          <Link key={item.href} to={addPreview(item.href, previewMode)} onClick={() => setQuery('')} className="group flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 sm:px-5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: config.soft, color: config.accent }}><ResultIcon size={17} /></span>
+                            <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-extrabold text-[#002050]">{item.label}</strong><span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span></span>
+                            <ArrowRight size={15} className="shrink-0 text-slate-300 transition group-hover:translate-x-1" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : audience === 'apprenant' ? (
+                    <Link to={`/catalogue?q=${encodeURIComponent(query.trim())}`} className="flex items-center justify-between gap-4 px-5 py-4 text-sm font-bold text-[#002050] hover:bg-slate-50">
+                      <span>Rechercher « {query.trim()} » dans le catalogue de formations</span><ArrowRight size={16} />
+                    </Link>
+                  ) : (
+                    <p className="px-5 py-4 text-sm text-slate-500">Aucun accès de votre espace ne correspond à cette recherche.</p>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+        </section>
+
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
