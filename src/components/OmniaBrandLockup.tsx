@@ -14,7 +14,7 @@ export default function OmniaBrandLockup({
   href = '/home',
   inverse = false,
   compact = false,
-  showSlogan = true,
+  showSlogan = false,
   className = '',
 }: Props) {
   const content = (

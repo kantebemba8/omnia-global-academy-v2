@@ -44,10 +44,12 @@ export function PreviewReturnButton() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = isStoredSuperAdmin();
-  const queryPreview = new URLSearchParams(location.search).get('preview') === 'true';
-  const currentSpace = useMemo(() => previewSpace(location.pathname), [location.pathname]);
+  const searchParams = new URLSearchParams(location.search);
+  const queryPreview = searchParams.get('preview') === 'true';
+  const homePreviewRole = location.pathname === '/home' && queryPreview ? searchParams.get('role') : null;
+  const currentSpace = useMemo(() => homePreviewRole || previewSpace(location.pathname), [homePreviewRole, location.pathname]);
   const storedSpace = sessionStorage.getItem(PREVIEW_SESSION_KEY);
-  const activePreview = Boolean(isAdmin && currentSpace && (queryPreview || storedSpace === currentSpace));
+  const activePreview = Boolean(isAdmin && (queryPreview ? (storedSpace || currentSpace) : (currentSpace && storedSpace === currentSpace)));
 
   useEffect(() => {
     if (!isAdmin) {
@@ -55,7 +57,12 @@ export function PreviewReturnButton() {
       return;
     }
 
-    if (queryPreview && currentSpace) {
+    if (queryPreview && homePreviewRole) {
+      sessionStorage.setItem(PREVIEW_SESSION_KEY, homePreviewRole);
+      return;
+    }
+
+    if (queryPreview && currentSpace && !storedSpace) {
       sessionStorage.setItem(PREVIEW_SESSION_KEY, currentSpace);
       return;
     }
@@ -72,7 +79,7 @@ export function PreviewReturnButton() {
       params.set('preview', 'true');
       navigate(`${location.pathname}?${params.toString()}${location.hash}`, { replace: true });
     }
-  }, [isAdmin, queryPreview, currentSpace, storedSpace, location.pathname, location.search, location.hash, navigate]);
+  }, [isAdmin, queryPreview, homePreviewRole, currentSpace, storedSpace, location.pathname, location.search, location.hash, navigate]);
 
   if (!activePreview) return null;
 

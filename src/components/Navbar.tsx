@@ -5,6 +5,7 @@ import {
   HelpCircle,
   Home,
   LayoutDashboard,
+  Languages,
   LogOut,
   Menu,
   Search,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import OmniaBrandLockup from './OmniaBrandLockup';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
 import { createDefaultLandingPage, type LandingNavigationConfig } from '../types/landingCms';
@@ -187,7 +189,7 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
         <ChevronDown size={15} className={`text-slate-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
       </button>
       {profileOpen && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-[70] w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-[70] w-72 overflow-visible rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl">
           <div className="border-b border-slate-100 px-4 py-3">
             <p className="truncate text-sm font-bold text-[#002050]">{user.full_name || 'Utilisateur Omnia'}</p>
             <p className="mt-0.5 truncate text-xs text-slate-500">{user.email}</p>
@@ -196,6 +198,12 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
           <button type="button" onClick={() => navigate(dashboardPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><LayoutDashboard size={17} /> Mon espace</button>
           <button type="button" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><UserRound size={17} /> {isAdministration ? 'Mon compte' : 'Mon profil'}</button>
           <button type="button" onClick={() => navigate(settingsPath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={17} /> Paramètres</button>
+          <div className="my-1 border-t border-slate-100" />
+          <div className="flex items-center gap-3 px-4 py-2" role="none">
+            <Languages size={17} className="text-slate-500" />
+            <span className="flex-1 text-sm font-semibold text-slate-700">Langue de la plateforme</span>
+            <LanguageSwitcher compact />
+          </div>
           <div className="my-1 border-t border-slate-100" />
           <button type="button" onClick={() => void handleLogout()} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={17} /> Se déconnecter</button>
         </div>

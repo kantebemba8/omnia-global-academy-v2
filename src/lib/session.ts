@@ -231,14 +231,12 @@ export function getDashboardPathForRoles(roles: readonly string[]): string {
 
 /**
  * Landing path after authentication.
- * Operational internal roles keep their control dashboard as the first screen;
- * learner/professional roles enter through the shared connected home.
+ * Every authenticated platform role enters through the connected home. The
+ * home itself resolves the user's real role (or an explicitly owned role)
+ * without changing permissions or stored roles.
  */
 export function getPostLoginPathForRoles(roles: readonly string[]): string {
-  const canonicalRoles = normalizePlatformRoles(roles);
-  if (canonicalRoles.includes('super_admin')) return '/admin/dashboard';
-  if (canonicalRoles.includes('moderateur')) return '/moderateur/dashboard';
-  return canonicalRoles.length > 0 ? '/home' : '/accueil';
+  return normalizePlatformRoles(roles).length > 0 ? '/home' : '/accueil';
 }
 
 export function redirectByRoles(roles: string[], redirectUrl?: string): void {

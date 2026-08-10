@@ -141,13 +141,13 @@ export default function AdminDashboard() {
   useEffect(() => { load(period); }, [period]);
 
   const previewSpaces = [
-    { label: 'Apprenant', icon: GraduationCap, path: '/dashboard?preview=true', role: 'apprenant' },
-    { label: 'Professeur', icon: BookOpen, path: '/professeur/dashboard?preview=true', role: 'professeur' },
-    { label: 'Coach', icon: UserCheck, path: '/coach/dashboard?preview=true', role: 'coach' },
-    { label: 'Organisateur', icon: Radio, path: '/omnia-live/organisateur?preview=true', role: 'organisateur' },
-    { label: 'Structure', icon: Building2, path: '/structure/dashboard?preview=true', role: 'structure' },
-    { label: 'Modérateur', icon: UserCheck, path: '/moderator/dashboard?preview=true', role: 'moderateur' },
-    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/talent/recruteur/dashboard?preview=true', role: 'recruteur' },
+    { label: 'Apprenant', icon: GraduationCap, path: '/home?preview=true&role=apprenant', role: 'apprenant' },
+    { label: 'Professeur', icon: BookOpen, path: '/home?preview=true&role=professeur', role: 'professeur' },
+    { label: 'Coach', icon: UserCheck, path: '/home?preview=true&role=coach', role: 'coach' },
+    { label: 'Organisateur', icon: Radio, path: '/home?preview=true&role=organisateur', role: 'organisateur' },
+    { label: 'Structure', icon: Building2, path: '/home?preview=true&role=structure', role: 'structure' },
+    { label: 'Modérateur', icon: UserCheck, path: '/home?preview=true&role=moderateur', role: 'moderateur' },
+    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/home?preview=true&role=recruteur', role: 'recruteur' },
   ];
 
   const visibleRoleRows = data?.users_by_role || [];
@@ -184,7 +184,7 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <section>
+        <section id="previsualiser-les-espaces">
           <div className="flex items-center gap-2 mb-3">
             <Eye size={16} style={{ color: '#002050' }} />
             <h2 className="text-sm font-bold" style={{ color: '#002050' }}>Prévisualiser les espaces</h2>

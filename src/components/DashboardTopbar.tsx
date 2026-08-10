@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { Menu } from 'lucide-react';
-import { LanguageSwitcher } from './LanguageSwitcher';
 import UserAccountMenu from './UserAccountMenu';
 import OmniaBrandLockup from './OmniaBrandLockup';
 
@@ -60,7 +59,6 @@ export function DashboardTopbar({
 
       <div className="ml-auto flex flex-none items-center gap-2">
         {actions}
-        <LanguageSwitcher compact />
         <UserAccountMenu dashboardPath={dashboardPath} />
       </div>
 

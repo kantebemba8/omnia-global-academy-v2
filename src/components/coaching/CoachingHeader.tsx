@@ -224,7 +224,7 @@ export default function CoachingHeader({
               <LogIn size={16} /> <span className="hidden sm:inline">Connexion</span>
             </Link>
           )}
-          <LanguageSwitcher compact />
+          {!loggedIn && <LanguageSwitcher compact />}
           {loggedIn && <UserAccountMenu dashboardPath={dashboardPath} />}
         </div>
       </header>

@@ -2,8 +2,8 @@ import { FormEvent, ReactNode, useEffect, useState, type CSSProperties, type Com
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { Navbar } from './Navbar';
-import { ArrowLeft, Bell, ChevronDown, Home, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
-import OmniaBrandLockup, { OMNIA_OFFICIAL_SLOGAN } from './OmniaBrandLockup';
+import { ArrowLeft, Bell, ChevronDown, Home, Languages, LayoutDashboard, LogOut, Menu, Radio, Search, UserRound, X } from 'lucide-react';
+import OmniaBrandLockup from './OmniaBrandLockup';
 import { logoutOmniaSession } from '../lib/authApi';
 
 const BLUE = '#002050';
@@ -290,9 +290,6 @@ export default function SubspaceHamburgerLayout({
             ) : (
               <div className="truncate text-base font-bold md:text-lg">{title}</div>
             )}
-            <div className="mt-1 hidden max-w-[310px] truncate text-[7px] font-semibold tracking-[0.055em] text-slate-500 xl:block">
-              {OMNIA_OFFICIAL_SLOGAN}
-            </div>
           </div>
         </div>
 
@@ -300,7 +297,7 @@ export default function SubspaceHamburgerLayout({
 
         <div className="flex flex-shrink-0 items-center gap-3">
           {rightContent}
-          <LanguageSwitcher compact />
+          {!user && <LanguageSwitcher compact />}
           {!user && (
             <button type="button" onClick={() => navigate('/accueil')} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 sm:flex">
               <ArrowLeft size={16} /> Retour à Omnia Global Academy
@@ -326,7 +323,7 @@ export default function SubspaceHamburgerLayout({
               {profileOpen && (
                 <>
                   <button type="button" aria-label="Fermer le menu du profil" className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
-                  <div className="absolute right-0 top-12 z-50 w-[235px] overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
+                  <div className="absolute right-0 top-12 z-50 w-[270px] overflow-visible rounded-2xl border border-slate-200 bg-white py-2 shadow-xl" role="menu">
                     <button type="button" role="menuitem" onClick={() => navigate(profilePath)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50">
                       <UserRound size={17} /> {isSuperAdmin ? 'Mon compte' : 'Mon profil'}
                     </button>
@@ -345,6 +342,12 @@ export default function SubspaceHamburgerLayout({
                       <Radio size={17} />
                       {isSuperAdmin ? 'Administration Omnia Live' : isOrganizer ? 'Espace Organisateur' : 'Mes Lives'}
                     </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <div className="flex items-center gap-3 px-4 py-2" role="none">
+                      <Languages size={17} className="text-slate-500" />
+                      <span className="flex-1 text-sm font-semibold text-slate-700">Langue de la plateforme</span>
+                      <LanguageSwitcher compact />
+                    </div>
                     <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
