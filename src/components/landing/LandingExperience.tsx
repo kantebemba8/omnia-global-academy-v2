@@ -8,7 +8,6 @@ import {
   CalendarDays,
   CheckCircle2,
   FileBadge2,
-  FolderKanban,
   GraduationCap,
   Heart,
   MessageCircle,
@@ -76,7 +75,7 @@ const ICONS: Record<string, LucideIcon> = {
   calendar: CalendarDays,
   users: Users,
   building: Building2,
-  projects: FolderKanban,
+  projects: Target,
   badge: ShieldCheck,
   target: Target,
   network: Users,
@@ -112,8 +111,8 @@ function actionFor(item: LandingContentItem) {
 function FuturisticHeroArt() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_45%,rgba(191,136,19,0.13),transparent_22%),radial-gradient(circle_at_72%_52%,rgba(0,32,80,0.08),transparent_32%),linear-gradient(110deg,#fffdfa_0%,#ffffff_46%,#f7f9fd_100%)]" />
-      <div className="absolute inset-0 opacity-[0.38]" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.055) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_45%,rgba(27,104,211,0.24),transparent_28%),radial-gradient(circle_at_76%_48%,rgba(191,136,19,0.14),transparent_22%),radial-gradient(circle_at_64%_58%,rgba(0,32,80,0.12),transparent_34%),linear-gradient(110deg,#ffffff_0%,#f7faff_42%,#e9f2ff_100%)]" />
+      <div className="absolute inset-0 opacity-[0.46]" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.06) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
       <svg className="absolute -right-[5%] top-0 h-full w-[72%] min-w-[720px]" viewBox="0 0 1000 520" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <radialGradient id="omniaGlobeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(720 275) rotate(90) scale(210)">
@@ -155,7 +154,7 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
 
   return (
     <>
-      <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-20">
+      <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-[116px]">
         <FuturisticHeroArt />
         <div className="relative mx-auto grid min-h-[470px] max-w-7xl items-center px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:px-8 lg:py-20">
           <div className="max-w-2xl">
@@ -229,7 +228,7 @@ function SectionHeading({ section }: { section: LandingSectionConfig }) {
 }
 
 function GoalsSection({ section }: { section: LandingSectionConfig }) {
-  const items = visibleItems(section);
+  const items = visibleItems(section).slice(0, 4);
   if (items.length === 0) return null;
   return (
     <section id="objectifs" className="border-b border-slate-200 bg-[#F6F8FB] px-5 py-14 sm:px-6 lg:px-8 lg:py-16">
@@ -342,52 +341,65 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
 function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   const items = visibleItems(section);
   if (items.length === 0) return null;
-  const community = items.find(item => safeHref(item.action_url) === '/forum' || item.title.toLowerCase().includes('communauté'));
   const projects = items.find(item => safeHref(item.action_url) === '/projects' || item.title.toLowerCase().includes('project'));
 
   return (
     <>
-      <section id="ecosysteme" className="bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-7 lg:grid-cols-[240px_1fr] lg:items-start">
-            <div>
-              <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{section.title}</h2>
-              {section.subtitle && <p className="mt-3 text-sm leading-6 text-white/65">{section.subtitle}</p>}
-              {section.primary_cta_label && <Link to={safeHref(section.primary_cta_url)} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#BF8813] px-4 py-2.5 text-sm font-black text-white">{section.primary_cta_label}<ArrowRight size={15} /></Link>}
-            </div>
-            <div className="grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-3">
+      <section id="ecosysteme" className="relative overflow-hidden bg-[#001B46] px-5 py-14 text-white sm:px-6 lg:px-8">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute -left-24 top-1/2 h-72 w-72 -translate-y-1/2 rounded-full border border-blue-400/15" />
+          <div className="absolute -right-20 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full border border-[#BF8813]/20" />
+          <div className="absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(78,145,255,.16) 0 1px, transparent 1.5px)', backgroundSize: '22px 22px' }} />
+          <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#06418A]/30 to-transparent" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{section.title}</h2>
+            {section.subtitle && <p className="mt-3 text-sm leading-6 text-blue-100/75">{section.subtitle}</p>}
+          </div>
+
+          <div className="relative mt-10">
+            <div className="absolute left-[7%] right-[7%] top-7 hidden h-px bg-gradient-to-r from-transparent via-[#D9A22B]/80 to-transparent xl:block" aria-hidden="true" />
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {items.map(item => {
                 const Icon = ICONS[item.icon_key] || ArrowRight;
                 return (
-                  <Link key={item.id} to={safeHref(item.action_url)} className="group min-h-40 bg-[#002050] p-5 transition hover:bg-[#062B63]">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#BF8813]/50 bg-[#BF8813]/10 text-[#E2B550]"><Icon size={19} /></span>
+                  <Link key={item.id} to={safeHref(item.action_url)} className="group relative flex min-w-0 flex-col items-center text-center">
+                    <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full border border-[#D7A63A] bg-[#002050] text-[#E8B94E] shadow-[0_0_0_6px_rgba(0,32,80,0.92),0_0_28px_rgba(57,128,232,0.24)] transition group-hover:border-white group-hover:text-white">
+                      <Icon size={21} />
+                    </span>
                     <h3 className="mt-4 text-sm font-black text-white">{item.title}</h3>
-                    {item.description && <p className="mt-2 text-xs leading-5 text-white/60">{item.description}</p>}
-                    {item.action_label && <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#E2B550]">{item.action_label}<ArrowRight size={13} /></span>}
+                    {item.description && <p className="mt-2 max-w-[190px] text-xs leading-5 text-blue-100/65">{item.description}</p>}
+                    {item.action_label && <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#E8B94E]">{item.action_label}<ArrowRight size={13} /></span>}
                   </Link>
                 );
               })}
             </div>
           </div>
+
+          {section.primary_cta_label && (
+            <div className="mt-9 text-center">
+              <Link to={safeHref(section.primary_cta_url)} className="inline-flex items-center gap-2 rounded-lg border border-[#BF8813]/70 bg-[#BF8813]/10 px-4 py-2.5 text-sm font-black text-[#F1C568] transition hover:bg-[#BF8813]/20">
+                {section.primary_cta_label}<ArrowRight size={15} />
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
-      {(community || projects) && (
-        <section className="border-b border-slate-200 bg-white px-5 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-2">
-            {[community, projects].filter((item): item is LandingContentItem => Boolean(item)).map(item => {
-              const Icon = ICONS[item.icon_key] || ArrowRight;
-              return (
-                <article key={item.id} className="rounded-2xl border border-[#E8DDBF] bg-[#FFFCF6] p-6 sm:flex sm:gap-5">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#D8B65D] text-[#BF8813]"><Icon size={22} /></span>
-                  <div className="mt-4 sm:mt-0">
-                    <h3 className="text-lg font-black text-[#002050]">{item.title}</h3>
-                    {item.description && <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>}
-                    {actionFor(item)}
-                  </div>
-                </article>
-              );
-            })}
+      {projects && (
+        <section className="border-b border-slate-200 bg-[#F3F7FD] px-5 py-10 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl rounded-2xl border border-[#BDD0EA] bg-white px-6 py-7 sm:flex sm:items-center sm:justify-between sm:gap-8">
+            <div className="max-w-3xl">
+              <h3 className="text-xl font-black text-[#002050]">{projects.title}</h3>
+              {projects.description && <p className="mt-2 text-sm leading-6 text-slate-600">{projects.description}</p>}
+            </div>
+            {projects.action_url && projects.action_label && (
+              <Link to={safeHref(projects.action_url)} className="mt-5 inline-flex shrink-0 items-center gap-2 text-sm font-black text-[#002050] hover:underline sm:mt-0">
+                {projects.action_label}<ArrowRight size={15} />
+              </Link>
+            )}
           </div>
         </section>
       )}
@@ -546,9 +558,7 @@ export function LandingExperience({ data }: LandingExperienceProps) {
         if (section.type === 'featured_courses') return <CourseList key={section.id} section={section} courses={data.featuredCourses} />;
         if (section.type === 'omnia_journey') return <JourneySection key={section.id} section={section} />;
         if (section.type === 'ecosystem') return <EcosystemSection key={section.id} section={section} />;
-        if (section.type === 'credentials') return <EditorialSection key={section.id} section={section} id="preuves" />;
-        if (section.type === 'career_recruitment') return <EditorialSection key={section.id} section={section} id="carriere" muted />;
-        if (section.type === 'structures') return <EditorialSection key={section.id} section={section} id="structures" />;
+        if (section.type === 'credentials' || section.type === 'career_recruitment' || section.type === 'structures') return null;
         if (section.type === 'partners') return <PartnersSection key={section.id} section={section} partners={data.partners} />;
         if (section.type === 'mobile_apps' || section.type === 'social_networks') return <ConnectionsSection key={section.id} section={section} apps={data.mobileApps} networks={data.socialNetworks} />;
         if (section.type === 'final_cta') return <FinalCta key={section.id} section={section} />;

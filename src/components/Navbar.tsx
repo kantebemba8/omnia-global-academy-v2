@@ -20,6 +20,7 @@ import { createDefaultLandingPage, type LandingNavigationConfig } from '../types
 interface NavbarProps {
   transparent?: boolean;
   navigation?: LandingNavigationConfig;
+  showAudienceBar?: boolean;
 }
 
 type PrimaryNavItem = {
@@ -35,6 +36,13 @@ const PRIMARY_NAV: PrimaryNavItem[] = [
   { label: 'Live', href: '/omnia-live', activePrefixes: ['/omnia-live'] },
   { label: 'Communauté', href: '/forum', activePrefixes: ['/forum'] },
 ];
+
+const AUDIENCE_LINKS = [
+  { label: 'Pour les apprenants', href: '/a-propos#apprenants' },
+  { label: 'Pour les professeurs', href: '/a-propos#professeurs' },
+  { label: 'Pour les structures', href: '/a-propos#structures' },
+  { label: 'Pour les recruteurs', href: '/a-propos#recruteurs' },
+] as const;
 
 function userInitials(user: AuthUser) {
   const source = user.full_name || user.email || 'Omnia';
@@ -60,7 +68,7 @@ function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' 
   );
 }
 
-export function Navbar({ transparent = false, navigation }: NavbarProps) {
+export function Navbar({ transparent = false, navigation, showAudienceBar = false }: NavbarProps) {
   const fallback = useMemo(() => createDefaultLandingPage().navigation, []);
   const config = navigation || fallback;
   const [scrolled, setScrolled] = useState(false);
@@ -70,7 +78,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const { user, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -198,10 +206,24 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
 
   return (
     <>
+      {showAudienceBar && (
+        <div className="fixed left-0 right-0 top-0 z-40 h-9 border-b border-white/10 bg-[#002050] text-white">
+          <nav aria-label="Accès par profil" className="mx-auto flex h-full max-w-[1440px] items-center justify-center gap-1 overflow-x-auto px-3 sm:gap-3 lg:gap-7">
+            {AUDIENCE_LINKS.map(item => {
+              const active = pathname === '/a-propos' && hash === item.href.slice(item.href.indexOf('#'));
+              return (
+                <Link key={item.href} to={item.href} className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold transition sm:text-xs ${active ? 'text-[#F2C45D]' : 'text-white/80 hover:text-white'}`}>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
       <nav
         ref={navRef}
         aria-label="Navigation principale"
-        className="fixed left-0 right-0 top-0 z-50 transition-all duration-200"
+        className={`fixed left-0 right-0 z-50 transition-all duration-200 ${showAudienceBar ? 'top-9' : 'top-0'}`}
         style={{
           backgroundColor: solid ? 'rgba(255,255,255,0.98)' : 'rgba(255,255,255,0.94)',
           borderBottom: '1px solid #E4E7EC',
@@ -210,7 +232,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
         }}
       >
         <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-5 sm:px-6 lg:px-8">
-          <OmniaBrandLockup href={brandHomePath} className="flex-shrink-0" />
+          <OmniaBrandLockup href={brandHomePath} className="flex-shrink-0" showSlogan={false} />
 
           <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 lg:flex lg:max-w-[330px] xl:max-w-[390px]">
             <label className="flex h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm transition focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15">
@@ -288,7 +310,7 @@ export function Navbar({ transparent = false, navigation }: NavbarProps) {
           <button type="button" className="fixed inset-0 z-40 bg-black/40 xl:hidden" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu de navigation" />
           <aside ref={mobilePanelRef} id="omnia-mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigation mobile" className="fixed right-0 top-0 z-50 flex h-full w-[min(92vw,390px)] flex-col bg-white shadow-2xl xl:hidden">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <OmniaBrandLockup href={brandHomePath} compact />
+              <OmniaBrandLockup href={brandHomePath} compact showSlogan={false} />
               <button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100" aria-label="Fermer le menu"><X size={20} color="#64748B" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-5">

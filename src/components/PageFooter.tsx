@@ -230,7 +230,7 @@ export function PageFooter({
 
         <div className="grid gap-9 lg:grid-cols-[minmax(230px,0.75fr)_minmax(0,1.25fr)]">
           <div>
-            <OmniaBrandLockup href="/accueil" inverse />
+            <OmniaBrandLockup href="/accueil" inverse showSlogan={false} />
 
             {config.description && (
               <p className="mt-4 max-w-sm text-xs leading-6 text-white/55">{config.description}</p>
