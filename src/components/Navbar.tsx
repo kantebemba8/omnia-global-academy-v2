@@ -17,10 +17,13 @@ import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
 import { createDefaultLandingPage, type LandingNavigationConfig } from '../types/landingCms';
 
+type AudienceNavLink = { label: string; href: string };
+
 interface NavbarProps {
   transparent?: boolean;
   navigation?: LandingNavigationConfig;
   showAudienceBar?: boolean;
+  audienceLinks?: AudienceNavLink[];
 }
 
 type PrimaryNavItem = {
@@ -37,12 +40,6 @@ const PRIMARY_NAV: PrimaryNavItem[] = [
   { label: 'Communauté', href: '/forum', activePrefixes: ['/forum'] },
 ];
 
-const AUDIENCE_LINKS = [
-  { label: 'Pour les apprenants', href: '/a-propos#apprenants' },
-  { label: 'Pour les professeurs', href: '/a-propos#professeurs' },
-  { label: 'Pour les structures', href: '/a-propos#structures' },
-  { label: 'Pour les recruteurs', href: '/a-propos#recruteurs' },
-] as const;
 
 function userInitials(user: AuthUser) {
   const source = user.full_name || user.email || 'Omnia';
@@ -68,8 +65,9 @@ function UserAvatar({ user, size = 'md' }: { user: AuthUser; size?: 'sm' | 'md' 
   );
 }
 
-export function Navbar({ transparent = false, navigation, showAudienceBar = false }: NavbarProps) {
-  const fallback = useMemo(() => createDefaultLandingPage().navigation, []);
+export function Navbar({ transparent = false, navigation, showAudienceBar = false, audienceLinks }: NavbarProps) {
+  const fallbackPage = useMemo(() => createDefaultLandingPage(), []);
+  const fallback = fallbackPage.navigation;
   const config = navigation || fallback;
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -78,7 +76,7 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
   const [searchQuery, setSearchQuery] = useState('');
   const { user, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
-  const { pathname, hash } = useLocation();
+  const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -88,6 +86,9 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
   const settingsPath = '/mon-profil?tab=notifications';
   const isAdministration = user ? normalizePlatformRoles(user.roles).includes('super_admin') : false;
   const brandHomePath = user ? '/home' : '/accueil';
+  const audienceNavLinks = audienceLinks && audienceLinks.length > 0
+    ? audienceLinks
+    : Object.values(fallbackPage.audience_pages).filter(page => page.enabled).map(page => ({ label: page.nav_label, href: page.route }));
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -209,8 +210,8 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
       {showAudienceBar && (
         <div className="fixed left-0 right-0 top-0 z-40 h-9 border-b border-white/10 bg-[#002050] text-white">
           <nav aria-label="Accès par profil" className="mx-auto flex h-full max-w-[1440px] items-center justify-center gap-1 overflow-x-auto px-3 sm:gap-3 lg:gap-7">
-            {AUDIENCE_LINKS.map(item => {
-              const active = pathname === '/a-propos' && hash === item.href.slice(item.href.indexOf('#'));
+            {audienceNavLinks.map(item => {
+              const active = pathname === item.href;
               return (
                 <Link key={item.href} to={item.href} className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold transition sm:text-xs ${active ? 'text-[#F2C45D]' : 'text-white/80 hover:text-white'}`}>
                   {item.label}

@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { PageFooter } from '../components/PageFooter';
-import type { LandingFooterConfig, MobileAppItem, SocialNetworkItem } from '../types/landingCms';
+import { normalizeLandingPage, type LandingFooterConfig, type MobileAppItem, type SocialNetworkItem } from '../types/landingCms';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 
 interface Settings {
   a_propos_content_fr?: string;
   social_networks_v2?: SocialNetworkItem[];
   mobile_apps_v2?: MobileAppItem[];
-  landing_page?: { footer?: LandingFooterConfig };
+  landing_page?: unknown;
   public_partners?: Array<{ id: string; name: string; logo_url?: string | null; website_url?: string | null; alt_text?: string | null; show_footer?: boolean }>;
 }
 
@@ -28,8 +28,8 @@ const AUDIENCE_SECTIONS = [
       'Prolonger son parcours avec Omnia Live, Communauté, Coaching et Projects.',
     ],
     spaces: 'Formations · Career · Talent · Live · Communauté · Coaching · Projects',
-    actionLabel: 'Créer un compte apprenant',
-    actionUrl: '/inscription/apprenant',
+    actionLabel: 'Découvrir la page apprenant',
+    actionUrl: '/pour-les-apprenants',
   },
   {
     id: 'professeurs',
@@ -42,8 +42,8 @@ const AUDIENCE_SECTIONS = [
       'Compléter les formations avec les usages prévus dans Omnia Live.',
     ],
     spaces: 'Formations · Studio · Évaluations · Omnia Live',
-    actionLabel: 'Devenir professeur',
-    actionUrl: '/inscription/professeur',
+    actionLabel: 'Découvrir la page professeur',
+    actionUrl: '/pour-les-professeurs',
   },
   {
     id: 'structures',
@@ -56,8 +56,8 @@ const AUDIENCE_SECTIONS = [
       'Accéder aux rapports et aux fonctions de gestion prévues pour la Structure.',
     ],
     spaces: 'Espace Structure · Formations · Suivi RH · Recrutement · Rapports',
-    actionLabel: 'Inscrire une structure',
-    actionUrl: '/inscription/structure',
+    actionLabel: 'Découvrir la page structure',
+    actionUrl: '/pour-les-structures',
   },
   {
     id: 'recruteurs',
@@ -70,8 +70,8 @@ const AUDIENCE_SECTIONS = [
       'Suivre candidatures et entretiens depuis l’espace recruteur.',
     ],
     spaces: 'Omnia Talent · Offres · Profils · Compétences vérifiées · Candidatures',
-    actionLabel: 'Créer un compte recruteur',
-    actionUrl: '/inscription/recruteur',
+    actionLabel: 'Découvrir la page recruteur',
+    actionUrl: '/pour-les-recruteurs',
   },
 ] as const;
 
@@ -96,10 +96,12 @@ export function APropos() {
   }, [location.hash]);
 
   const content = settings.a_propos_content_fr ?? DEFAULT_CONTENT;
+  const landingPage = normalizeLandingPage(settings.landing_page);
+  const audienceLinks = Object.values(landingPage.audience_pages).filter(page => page.enabled).map(page => ({ label: page.nav_label, href: page.route }));
 
   return (
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
-      <Navbar showAudienceBar />
+      <Navbar showAudienceBar audienceLinks={audienceLinks} />
 
       <main className="pt-[116px]">
         {/* Hero band */}
@@ -181,7 +183,7 @@ export function APropos() {
         socialNetworksV2={settings.social_networks_v2 || []}
         mobileAppsV2={settings.mobile_apps_v2 || []}
         partners={settings.public_partners || []}
-        footerConfig={settings.landing_page?.footer}
+        footerConfig={landingPage.footer as LandingFooterConfig}
         managedOnly
       />
     </div>

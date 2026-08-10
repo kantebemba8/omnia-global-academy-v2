@@ -111,46 +111,44 @@ function actionFor(item: LandingContentItem) {
 function FuturisticHeroArt() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,#fcfdff_34%,#f5f9ff_48%,#e7f0fd_61%,#d2e3fb_72%,#a8c6f2_84%,#5F97E2_100%)]" />
-      <div className="absolute inset-y-0 right-0 w-[63%] bg-[radial-gradient(circle_at_76%_52%,rgba(23,91,195,0.88)_0%,rgba(39,108,211,0.72)_24%,rgba(108,160,233,0.50)_50%,rgba(205,225,250,0.24)_70%,transparent_86%)]" />
-      <div className="absolute inset-y-0 right-0 w-[67%] opacity-[0.26]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.13) 1px, transparent 1px)', backgroundSize: '34px 34px', maskImage: 'radial-gradient(circle at 78% 53%, black 0%, rgba(0,0,0,.92) 42%, transparent 81%)' }} />
-      <div className="absolute right-[-12%] top-[24%] h-[320px] w-[320px] rounded-full border border-white/22 bg-[radial-gradient(circle_at_34%_32%,rgba(100,162,246,0.92),rgba(31,95,194,0.90)_32%,rgba(11,63,149,0.96)_58%,#093985_74%,#0B3F95_100%)] shadow-[inset_-32px_-42px_66px_rgba(2,20,59,0.34),inset_24px_18px_40px_rgba(194,221,255,0.20),0_0_88px_rgba(66,125,220,0.22)] lg:h-[400px] lg:w-[400px]" />
-      <div className="absolute right-[-5%] top-[27%] h-[276px] w-[276px] rounded-full border border-[#E9C164]/70 shadow-[0_0_18px_rgba(233,193,100,0.18)] lg:h-[344px] lg:w-[344px]" />
-      <div className="absolute right-[19%] top-[45%] h-4 w-4 rounded-full bg-[#FAD26D] shadow-[0_0_24px_7px_rgba(250,210,109,0.82)]" />
-      <div className="absolute right-[23%] top-[40%] h-20 w-20 rounded-full bg-[#F8D279]/24 blur-3xl" />
-      <svg className="absolute inset-y-0 right-0 h-full w-[76%] min-w-[740px]" viewBox="0 0 1120 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <div className="absolute inset-0 bg-[linear-gradient(105deg,#ffffff_0%,#fbfdff_32%,#f0f6ff_48%,#dbeafe_61%,#90b8f7_76%,#2f75da_100%)]" />
+      <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.45) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px)', backgroundSize: '36px 36px' }} />
+      <div className="absolute inset-y-0 right-0 w-[72%] bg-[radial-gradient(circle_at_92%_50%,rgba(7,67,155,0.92),rgba(22,96,206,0.88)_34%,rgba(52,128,231,0.55)_55%,rgba(86,150,238,0.18)_70%,rgba(255,255,255,0)_86%)]" />
+      <div className="absolute bottom-[-28%] right-[-11%] h-[78%] w-[43%] rounded-full bg-[radial-gradient(circle_at_38%_38%,rgba(255,247,215,0.98)_0%,rgba(247,210,117,0.90)_16%,rgba(233,183,54,0.62)_28%,rgba(213,156,34,0.14)_42%,rgba(23,85,191,0)_61%)] blur-[1px]" />
+      <div className="absolute bottom-[-10%] right-[-3%] h-[60%] w-[30%] rounded-full border border-[#D9B35A]/55 opacity-90" />
+      <div className="absolute bottom-[4%] right-[8%] h-[46%] w-[24%] rounded-full border border-white/40 opacity-90" />
+      <div className="absolute left-[48%] top-[15%] h-px w-[45%] rotate-[14deg] bg-gradient-to-r from-transparent via-white to-transparent opacity-90" />
+      <div className="absolute left-[46%] top-[17%] h-[2px] w-[42%] rotate-[14deg] bg-gradient-to-r from-transparent via-[#F6D98B] to-transparent opacity-80 blur-[0.2px]" />
+      <svg className="absolute inset-y-0 right-0 h-full w-[70%] min-w-[700px] opacity-90" viewBox="0 0 1120 560" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="ogaHeroGold" x1="88" y1="132" x2="1060" y2="354" gradientUnits="userSpaceOnUse">
+          <linearGradient id="ogaHeroGoldWide" x1="120" y1="480" x2="1088" y2="146" gradientUnits="userSpaceOnUse">
             <stop stopColor="#BF8813" stopOpacity="0" />
-            <stop offset="0.34" stopColor="#D9A646" stopOpacity="0.52" />
-            <stop offset="0.53" stopColor="#FFF2C1" stopOpacity="0.96" />
-            <stop offset="0.72" stopColor="#DDAA3E" stopOpacity="0.58" />
+            <stop offset="0.34" stopColor="#D7AB45" stopOpacity="0.6" />
+            <stop offset="0.58" stopColor="#FFF7D1" stopOpacity="0.95" />
+            <stop offset="0.78" stopColor="#E2B04A" stopOpacity="0.72" />
             <stop offset="1" stopColor="#BF8813" stopOpacity="0.08" />
           </linearGradient>
-          <linearGradient id="ogaHeroWhite" x1="184" y1="376" x2="1022" y2="144" gradientUnits="userSpaceOnUse">
+          <linearGradient id="ogaHeroWhiteWide" x1="240" y1="460" x2="1062" y2="104" gradientUnits="userSpaceOnUse">
             <stop stopColor="white" stopOpacity="0" />
-            <stop offset="0.46" stopColor="white" stopOpacity="0.82" />
-            <stop offset="1" stopColor="white" stopOpacity="0.10" />
+            <stop offset="0.48" stopColor="white" stopOpacity="0.82" />
+            <stop offset="1" stopColor="white" stopOpacity="0.08" />
           </linearGradient>
-          <filter id="ogaHeroGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
         </defs>
-        <path d="M62 424C240 332 333 321 486 266C622 216 677 128 844 138C945 145 1011 184 1110 174" stroke="url(#ogaHeroGold)" strokeWidth="1.95" />
-        <path d="M14 388C220 297 347 309 511 230C643 167 706 90 859 106C955 116 1020 149 1126 134" stroke="url(#ogaHeroWhite)" strokeWidth="1.92" />
-        <path d="M120 472C300 382 406 394 571 308C693 245 751 214 871 221C955 226 1024 251 1123 238" stroke="#D7A33D" strokeOpacity="0.34" strokeWidth="1.3" />
-        <path d="M154 132C328 186 401 195 527 235C658 276 725 330 852 343C944 353 1020 342 1110 315" stroke="white" strokeOpacity="0.32" strokeWidth="1.05" />
-        <ellipse cx="863" cy="296" rx="262" ry="97" transform="rotate(-15 863 296)" stroke="#D8A84A" strokeOpacity="0.34" strokeWidth="1.35" />
-        <ellipse cx="862" cy="296" rx="222" ry="82" transform="rotate(18 862 296)" stroke="white" strokeOpacity="0.28" strokeWidth="1.1" />
-        <circle cx="674" cy="234" r="4.8" fill="#FFF4C7" filter="url(#ogaHeroGlow)" />
-        <circle cx="930" cy="182" r="3.2" fill="#E3B247" />
-        <circle cx="1005" cy="334" r="2.7" fill="white" fillOpacity="0.76" />
-        <circle cx="790" cy="376" r="2.4" fill="#E3B247" />
+        <path d="M76 456C252 398 392 398 544 324C664 266 734 168 904 168C1000 168 1042 184 1116 172" stroke="url(#ogaHeroGoldWide)" strokeWidth="2.2" />
+        <path d="M44 420C226 350 372 352 520 286C654 226 714 124 902 128C992 130 1040 146 1122 128" stroke="url(#ogaHeroWhiteWide)" strokeWidth="2.05" />
+        <path d="M146 500C312 434 428 452 592 370C710 312 776 280 910 280C990 280 1048 294 1122 280" stroke="#E1B34A" strokeOpacity="0.44" strokeWidth="1.5" />
+        <ellipse cx="882" cy="388" rx="264" ry="94" transform="rotate(-16 882 388)" stroke="#DDAA43" strokeOpacity="0.38" strokeWidth="1.35" />
+        <ellipse cx="886" cy="392" rx="226" ry="84" transform="rotate(18 886 392)" stroke="white" strokeOpacity="0.34" strokeWidth="1.15" />
+        <circle cx="720" cy="334" r="4.5" fill="#FFF8D6" />
+        <circle cx="965" cy="300" r="4" fill="#E8BB57" />
+        <circle cx="870" cy="442" r="3" fill="white" fillOpacity="0.86" />
       </svg>
-      <div className="absolute inset-y-0 left-0 w-[57%] bg-[linear-gradient(90deg,rgba(255,255,255,1)_0%,rgba(255,255,255,0.98)_58%,rgba(255,255,255,0.55)_82%,transparent_100%)]" />
     </div>
   );
+}
+
+function HeroOrbitalVisual() {
+  return null;
 }
 
 function HeroSection({ section, stats, statsVisibility }: { section: LandingSectionConfig; stats: LandingStats; statsVisibility: LandingStatsVisibility }) {
@@ -166,27 +164,13 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
     <>
       <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-[116px]">
         <FuturisticHeroArt />
-        <div className="relative mx-auto grid min-h-[470px] max-w-7xl items-center px-5 py-14 sm:px-6 lg:grid-cols-[minmax(0,0.88fr)_minmax(430px,1.12fr)] lg:px-8 lg:py-16">
+        <div className="relative mx-auto grid min-h-[500px] max-w-7xl items-center px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:px-8 lg:py-20">
           <div className="max-w-2xl">
             <h1 className="text-[2.25rem] font-black leading-[1.08] tracking-[-0.045em] text-[#002050] sm:text-[2.8rem] lg:text-[3.15rem]">
               {section.title}
             </h1>
             {section.subtitle && <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">{section.subtitle}</p>}
             {section.body && <p className="mt-3 max-w-xl whitespace-pre-line text-sm leading-7 text-slate-500">{section.body}</p>}
-            {(section.primary_cta_label || section.secondary_cta_label) && (
-              <div className="mt-7 flex flex-wrap gap-3">
-                {section.secondary_cta_label && (
-                  <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#002050] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#002050]/10 transition hover:-translate-y-0.5 hover:bg-[#00183E]">
-                    {section.secondary_cta_label}
-                  </Link>
-                )}
-                {section.primary_cta_label && (
-                  <Link to={safeHref(section.primary_cta_url)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-[#002050] shadow-sm transition hover:border-[#002050]">
-                    {section.primary_cta_label}
-                  </Link>
-                )}
-              </div>
-            )}
           </div>
           <div className="relative hidden min-h-[360px] lg:block" aria-hidden="true" />
         </div>
@@ -415,72 +399,31 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
       </section>
 
       {projects && (
-        <section className="relative overflow-hidden border-b border-slate-200 bg-white px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div className="absolute right-[-8%] top-[-20%] h-[440px] w-[440px] rounded-full bg-[#EAF3FF] blur-3xl" />
-            <div className="absolute bottom-[-30%] left-[42%] h-[360px] w-[360px] rounded-full bg-[#FFF3D5] blur-3xl" />
-          </div>
-          <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,0.86fr)_minmax(470px,1.14fr)] lg:gap-16">
-            <div className="max-w-xl">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9A6A08]">Omnia Projects</p>
-              <h3 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{projects.title}</h3>
-              {projects.description && <p className="mt-5 text-base leading-8 text-slate-600">{projects.description}</p>}
-              <div className="mt-7 h-px w-24 bg-[#BF8813]" />
-              <p className="mt-5 text-sm leading-7 text-slate-500">Travaillez sur des briefs, produisez des livrables, recevez du feedback et construisez progressivement des preuves concrètes de vos compétences.</p>
+        <section className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(115deg,#F7FAFF_0%,#FFFFFF_45%,#FFF8EB_100%)] px-5 py-11 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.035) 1px, transparent 1px)', backgroundSize: '32px 32px', maskImage: 'linear-gradient(90deg, transparent, black 42%, black 90%, transparent)' }} />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 rounded-[26px] border border-[#C9D8EC] bg-white/85 px-6 py-7 shadow-[0_18px_55px_rgba(0,32,80,0.08)] backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
+            <div className="max-w-3xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#9A6A08]">Omnia Projects</p>
+              <h3 className="mt-2 text-2xl font-black tracking-[-0.025em] text-[#002050]">{projects.title}</h3>
+              {projects.description && <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{projects.description}</p>}
               {projects.action_url && projects.action_label && (
-                <Link to={safeHref(projects.action_url)} className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
+                <Link to={safeHref(projects.action_url)} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#00183E]">
                   {projects.action_label}<ArrowRight size={15} />
                 </Link>
               )}
             </div>
 
-            <div className="relative min-h-[360px] lg:min-h-[410px]" aria-hidden="true" style={{ perspective: '1400px' }}>
-              <div className="absolute left-[8%] top-[10%] h-[76%] w-[84%] rounded-[50%] bg-[radial-gradient(circle,rgba(71,134,222,0.18),rgba(71,134,222,0.04)_54%,transparent_72%)] blur-xl" />
-              <div className="absolute bottom-[8%] left-[14%] h-[56px] w-[72%] rounded-[50%] bg-[#002050]/15 blur-xl" />
-              <div className="absolute left-[18%] top-[17%] h-[245px] w-[335px] rounded-[26px] border border-[#BFD0E7] bg-white shadow-[0_32px_70px_rgba(0,32,80,0.16)]" style={{ transform: 'rotateY(-10deg) rotateX(5deg) translateZ(42px)' }}>
-                <div className="absolute inset-x-0 top-0 flex h-12 items-center justify-between rounded-t-[26px] border-b border-[#DCE6F2] bg-[#F7FAFE] px-5">
-                  <span className="h-2.5 w-24 rounded-full bg-[#002050]/80" />
-                  <span className="h-7 w-7 rounded-full border border-[#D6E1EF] bg-white" />
-                </div>
-                <div className="absolute left-6 top-[74px] right-6">
-                  <div className="h-3 w-[58%] rounded-full bg-[#002050]/85" />
-                  <div className="mt-3 h-2 w-[84%] rounded-full bg-slate-200" />
-                  <div className="mt-2 h-2 w-[69%] rounded-full bg-slate-200" />
-                  <div className="mt-7 grid grid-cols-[1fr_0.76fr] gap-4">
-                    <div className="space-y-3">
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                    </div>
-                    <div className="rounded-2xl bg-[#002050] p-4 shadow-[0_16px_32px_rgba(0,32,80,0.18)]">
-                      <div className="h-2 w-14 rounded-full bg-[#E8BC5B]" />
-                      <div className="mt-4 h-2 w-full rounded-full bg-white/20" />
-                      <div className="mt-2 h-2 w-[76%] rounded-full bg-white/20" />
-                      <div className="mt-7 h-8 rounded-lg bg-white/10" />
-                    </div>
-                  </div>
-                </div>
+            <div className="relative hidden h-[180px] lg:block" aria-hidden="true" style={{ perspective: '1000px' }}>
+              <div className="absolute bottom-3 left-1/2 h-12 w-[250px] -translate-x-1/2 rounded-[50%] bg-[#002050]/15 blur-lg" />
+              <div className="absolute bottom-6 left-1/2 h-[92px] w-[260px] rounded-[50%] border border-[#BF8813]/55 bg-[radial-gradient(ellipse_at_center,rgba(191,136,19,0.19),rgba(0,32,80,0.05)_54%,transparent_70%)]" style={{ transform: 'translateX(-50%) rotateX(68deg)' }} />
+              <div className="absolute bottom-[46px] left-1/2 h-[74px] w-[150px] rounded-[18px] border border-[#144A86] bg-[linear-gradient(145deg,#0C4A8F,#002050)] shadow-[0_24px_34px_rgba(0,32,80,0.25)]" style={{ transform: 'translateX(-50%) rotateY(-12deg) rotateX(5deg) translateZ(40px)' }}>
+                <div className="absolute -top-5 left-4 h-7 w-16 rounded-t-xl border border-b-0 border-[#144A86] bg-[#0C4A8F]" />
+                <div className="absolute inset-x-4 top-5 h-px bg-white/20" />
+                <div className="absolute bottom-4 left-4 h-2 w-14 rounded-full bg-[#BF8813]/80" />
               </div>
-              <div className="absolute right-[7%] top-[9%] h-[150px] w-[122px] rounded-[18px] border border-[#E1C67F] bg-[#FFFDF7] shadow-[0_22px_50px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(8deg) translateZ(78px)' }}>
-                <div className="mx-auto mt-5 h-12 w-12 rounded-full border-[5px] border-[#BF8813]/65 bg-[#FFF7E5]" />
-                <div className="mx-auto mt-4 h-2 w-16 rounded-full bg-[#002050]/75" />
-                <div className="mx-auto mt-2 h-2 w-11 rounded-full bg-slate-200" />
-              </div>
-              <div className="absolute bottom-[12%] left-[7%] h-[112px] w-[156px] rounded-[18px] border border-[#C5D5E9] bg-[#EEF5FD] shadow-[0_20px_42px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(-8deg) translateZ(62px)' }}>
-                <div className="absolute left-5 top-5 h-3 w-20 rounded-full bg-[#1E5FAE]/75" />
-                <div className="absolute left-5 top-11 h-2 w-[74%] rounded-full bg-[#AFC5E0]" />
-                <div className="absolute bottom-5 left-5 right-5 flex items-end gap-2">
-                  <span className="h-5 flex-1 rounded-t bg-[#89ACD8]" />
-                  <span className="h-9 flex-1 rounded-t bg-[#3778C6]" />
-                  <span className="h-12 flex-1 rounded-t bg-[#BF8813]" />
-                </div>
-              </div>
-              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 560 410" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M46 313C130 221 222 261 305 196C375 141 420 72 523 87" stroke="#BF8813" strokeOpacity="0.52" strokeWidth="1.4" />
-                <path d="M76 338C170 255 259 294 350 231C420 181 459 139 542 150" stroke="#2F6EBB" strokeOpacity="0.32" strokeWidth="1.2" />
-                <circle cx="305" cy="196" r="4" fill="#BF8813" />
-                <circle cx="523" cy="87" r="4" fill="#2F6EBB" />
-              </svg>
+              <div className="absolute left-[76%] top-[20%] h-3 w-3 rounded-full bg-[#D9A22B] shadow-[0_0_20px_rgba(217,162,43,0.9)]" />
+              <div className="absolute left-[20%] top-[52%] h-2 w-2 rounded-full bg-[#245EA5] shadow-[0_0_16px_rgba(36,94,165,0.7)]" />
+              <div className="absolute left-[25%] top-[28%] h-[90px] w-[220px] rounded-[50%] border border-[#BF8813]/30" style={{ transform: 'rotate(-12deg) rotateX(64deg)' }} />
             </div>
           </div>
         </section>
@@ -615,33 +558,26 @@ function FinalCta({ section }: { section: LandingSectionConfig }) {
   ];
 
   return (
-    <section id="rejoindre-omnia" className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_78%)] px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
+    <section id="rejoindre-omnia" className="relative overflow-hidden border-b border-slate-200 bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute left-1/2 top-[58%] h-64 w-[78%] -translate-x-1/2 rounded-[50%] bg-[#EAF3FF]/70 blur-3xl" />
-        <svg className="absolute left-1/2 top-[44%] h-[240px] w-[min(1120px,96%)] -translate-x-1/2" viewBox="0 0 1120 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M18 142C165 56 276 91 390 135C510 181 613 183 730 122C844 63 948 67 1102 145" stroke="#BF8813" strokeOpacity="0.62" strokeWidth="1.5" />
-          <path d="M18 160C173 84 273 112 395 153C514 193 625 195 739 140C855 84 958 91 1102 162" stroke="#2F6EBB" strokeOpacity="0.24" strokeWidth="1.2" />
-          <circle cx="191" cy="88" r="5" fill="#2F6EBB" />
-          <circle cx="555" cy="177" r="4" fill="#BF8813" />
-          <circle cx="902" cy="83" r="5" fill="#DCA332" />
-        </svg>
+        <div className="absolute -right-24 top-1/2 h-72 w-72 rounded-full border border-[#BF8813]/20" style={{ transform: 'translateY(-50%) rotateX(70deg)' }} />
+        <div className="absolute -left-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-blue-500/10 blur-3xl" />
       </div>
-
-      <div className="relative mx-auto max-w-7xl">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9A6A08]">Votre parcours, à votre rythme</p>
-          <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{title}</h2>
-          {subtitle && <p className="mt-4 text-base leading-7 text-slate-600">{subtitle}</p>}
-          {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-500">{section.body}</p>}
+      <div className="relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
+        <div className="max-w-3xl">
+          {section.eyebrow && !isLegacyDuplicate && <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE63]">{section.eyebrow}</p>}
+          <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{title}</h2>
+          {subtitle && <p className="mt-3 text-base leading-7 text-blue-100">{subtitle}</p>}
+          {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-white/65">{section.body}</p>}
           {!isLegacyDuplicate && (section.primary_cta_label || section.secondary_cta_label) && (
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               {section.primary_cta_label && (
-                <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
+                <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
                   {section.primary_cta_label}<ArrowRight size={16} />
                 </Link>
               )}
               {section.secondary_cta_label && (
-                <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-black text-[#002050] transition hover:border-[#002050]">
+                <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/35 px-5 py-3 text-sm font-black text-white transition hover:border-white">
                   {section.secondary_cta_label}<ArrowRight size={16} />
                 </Link>
               )}
@@ -649,15 +585,12 @@ function FinalCta({ section }: { section: LandingSectionConfig }) {
           )}
         </div>
 
-        <div className="relative mt-14 grid gap-10 md:grid-cols-3 md:gap-8 lg:mt-16 lg:gap-12">
+        <div className="grid gap-px overflow-hidden rounded-2xl border border-white/15 bg-white/10 sm:grid-cols-3" style={{ perspective: '1000px' }}>
           {steps.map(([number, label, copy], index) => (
-            <div key={number} className="relative px-2 text-center md:text-left">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-[6px] border-[#E7EFFA] bg-[linear-gradient(145deg,#4B88D6,#0B4B9E)] text-sm font-black text-white shadow-[0_12px_30px_rgba(31,99,181,0.26)] md:mx-0">
-                {number}
-              </div>
-              <h3 className="mt-5 text-xl font-black text-[#002050]">{label}</h3>
-              <p className="mt-3 max-w-sm text-sm leading-7 text-slate-600">{copy}</p>
-              {index < steps.length - 1 && <div className="absolute right-[-26px] top-7 hidden h-px w-14 bg-gradient-to-r from-[#BF8813]/70 to-transparent md:block lg:right-[-34px] lg:w-20" aria-hidden="true" />}
+            <div key={number} className="relative bg-[#05265A]/90 px-5 py-5" style={{ transform: `translateZ(${index === 1 ? 24 : 10}px)` }}>
+              <span className="text-xs font-black tracking-[0.16em] text-[#E6BE63]">{number}</span>
+              <h3 className="mt-2 text-sm font-black text-white">{label}</h3>
+              <p className="mt-2 text-xs leading-5 text-blue-100/70">{copy}</p>
             </div>
           ))}
         </div>

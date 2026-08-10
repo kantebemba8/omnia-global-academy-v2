@@ -78,6 +78,35 @@ export type LandingSectionConfig = {
   items: LandingContentItem[];
 };
 
+export type AudiencePageKey = 'apprenants' | 'professeurs' | 'structures' | 'recruteurs';
+
+export type AudiencePageConfig = {
+  key: AudiencePageKey;
+  route: string;
+  nav_label: string;
+  enabled: boolean;
+  hero_eyebrow: string;
+  hero_title: string;
+  hero_subtitle: string;
+  hero_body: string;
+  primary_cta_label: string;
+  primary_cta_url: string;
+  secondary_cta_label: string;
+  secondary_cta_url: string;
+  highlight_label: string;
+  highlight_title: string;
+  highlight_body: string;
+  items_title: string;
+  items_subtitle: string;
+  items: LandingContentItem[];
+  segments_title: string;
+  segments_subtitle: string;
+  segments: LandingContentItem[];
+  steps_title: string;
+  steps_subtitle: string;
+  steps: LandingContentItem[];
+};
+
 export type LandingPageConfig = {
   version: number;
   updated_at: string | null;
@@ -85,6 +114,7 @@ export type LandingPageConfig = {
   navigation: LandingNavigationConfig;
   footer: LandingFooterConfig;
   sections: LandingSectionConfig[];
+  audience_pages: Record<AudiencePageKey, AudiencePageConfig>;
 };
 
 export type SocialNetworkItem = {
@@ -109,6 +139,167 @@ export type MobileAppItem = {
   display_order: number;
   show_homepage: boolean;
   show_footer: boolean;
+};
+
+const AUDIENCE_PAGE_ORDER: AudiencePageKey[] = ['apprenants', 'professeurs', 'structures', 'recruteurs'];
+
+function audiencePage(key: AudiencePageKey, values: Omit<AudiencePageConfig, 'key'>): AudiencePageConfig {
+  return { key, ...values };
+}
+
+const DEFAULT_AUDIENCE_PAGES: Record<AudiencePageKey, AudiencePageConfig> = {
+  apprenants: audiencePage('apprenants', {
+    route: '/pour-les-apprenants',
+    nav_label: 'Pour les apprenants',
+    enabled: true,
+    hero_eyebrow: 'Parcours apprenant',
+    hero_title: 'Apprenez, progressez et rendez vos compétences visibles.',
+    hero_subtitle: 'Un même écosystème réunit formations, évaluations, certificats, projets, portfolio, coaching et opportunités de carrière.',
+    hero_body: 'Omnia Global Academy accompagne les apprenants depuis la montée en compétences jusqu’à la valorisation professionnelle.',
+    primary_cta_label: 'Créer un compte apprenant',
+    primary_cta_url: '/inscription/apprenant',
+    secondary_cta_label: 'Explorer les formations',
+    secondary_cta_url: '/catalogue',
+    highlight_label: 'Pourquoi cette page ?',
+    highlight_title: 'Tout ce qu’un apprenant peut faire sur Omnia',
+    highlight_body: 'Progressez à votre rythme, retrouvez vos preuves d’apprentissage et préparez la suite de votre parcours avec des outils concrets.',
+    items_title: 'Ce que vous gagnez avec Omnia',
+    items_subtitle: 'Des usages concrets pour apprendre, pratiquer et préparer votre avenir.',
+    items: [
+      contentItem('aud-learner-1', 1, { title: 'Suivre des parcours structurés', description: 'Modules, objectifs, évaluations, suivis et progression dans un environnement clair.' }),
+      contentItem('aud-learner-2', 2, { title: 'Prouver vos acquis', description: 'Certificats, badges, Learning Record et preuves partageables pour valoriser vos compétences.' }),
+      contentItem('aud-learner-3', 3, { title: 'Développer votre profil professionnel', description: 'CV, portfolio, Career, Talent et coaching pour préparer la suite de votre parcours.' }),
+      contentItem('aud-learner-4', 4, { title: 'Participer à un écosystème vivant', description: 'Lives, communauté, projets et opportunités pour apprendre au-delà des cours.' }),
+    ],
+    segments_title: 'Vos espaces Omnia',
+    segments_subtitle: 'Chaque espace répond à une étape précise de votre évolution.',
+    segments: [
+      contentItem('aud-learner-seg-1', 1, { label: 'Formations & évaluations', title: 'Apprendre et valider', description: 'Catalogue, parcours, quiz, examens, ateliers et suivi pédagogique.' }),
+      contentItem('aud-learner-seg-2', 2, { label: 'Career & Talent', title: 'Préparer votre avenir professionnel', description: 'CV, lettres, portfolio, offres, candidatures et visibilité dans Omnia Talent.' }),
+      contentItem('aud-learner-seg-3', 3, { label: 'Projects, Live & Communauté', title: 'Pratiquer et rester engagé', description: 'Projets, lives, échanges et activités complémentaires pour transformer l’apprentissage en expérience.' }),
+    ],
+    steps_title: 'Comment votre parcours se construit',
+    steps_subtitle: 'Une progression cohérente de l’apprentissage vers les opportunités.',
+    steps: [
+      contentItem('aud-learner-step-1', 1, { label: '01', title: 'Apprendre', description: 'Suivez les formations et maîtrisez les compétences visées.' }),
+      contentItem('aud-learner-step-2', 2, { label: '02', title: 'Pratiquer', description: 'Travaillez sur des projets, des activités et des expériences complémentaires.' }),
+      contentItem('aud-learner-step-3', 3, { label: '03', title: 'Valoriser', description: 'Présentez vos preuves, développez votre profil et accédez aux opportunités.' }),
+    ],
+  }),
+  professeurs: audiencePage('professeurs', {
+    route: '/pour-les-professeurs',
+    nav_label: 'Pour les professeurs',
+    enabled: true,
+    hero_eyebrow: 'Parcours professeur',
+    hero_title: 'Concevez, publiez et pilotez des formations structurées.',
+    hero_subtitle: 'Omnia aide les professeurs à créer des parcours solides, suivre les apprenants et prolonger l’expérience pédagogique.',
+    hero_body: 'Le rôle professeur est pensé pour celles et ceux qui veulent transmettre avec rigueur, flexibilité et visibilité.',
+    primary_cta_label: 'Devenir professeur',
+    primary_cta_url: '/inscription/professeur',
+    secondary_cta_label: 'Découvrir le catalogue',
+    secondary_cta_url: '/catalogue',
+    highlight_label: 'Enseigner sur Omnia',
+    highlight_title: 'Un environnement dédié à la création pédagogique',
+    highlight_body: 'Structurez vos contenus, évaluez les apprenants, organisez les progressions et utilisez Omnia Live pour enrichir vos enseignements.',
+    items_title: 'Ce que le rôle professeur vous apporte',
+    items_subtitle: 'Des outils pour produire, animer et suivre des parcours de qualité.',
+    items: [
+      contentItem('aud-prof-1', 1, { title: 'Créer des formations', description: 'Studio de création, modules, leçons, évaluations et publication.' }),
+      contentItem('aud-prof-2', 2, { title: 'Suivre les apprenants', description: 'Progression, résultats, évaluations et accompagnement pédagogique.' }),
+      contentItem('aud-prof-3', 3, { title: 'Animer des temps forts', description: 'Lives, masterclass et interactions complémentaires grâce à Omnia Live.' }),
+      contentItem('aud-prof-4', 4, { title: 'Valoriser votre expertise', description: 'Présence professionnelle renforcée dans l’écosystème Omnia.' }),
+    ],
+    segments_title: 'Vos leviers d’action',
+    segments_subtitle: 'Le rôle professeur couvre bien plus que la simple mise en ligne de cours.',
+    segments: [
+      contentItem('aud-prof-seg-1', 1, { label: 'Conception', title: 'Construire des parcours cohérents', description: 'Objectifs, contenus, évaluations, progression et logique pédagogique.' }),
+      contentItem('aud-prof-seg-2', 2, { label: 'Animation', title: 'Enrichir l’apprentissage', description: 'Sessions live, échanges, retours et accompagnement sur la durée.' }),
+      contentItem('aud-prof-seg-3', 3, { label: 'Suivi', title: 'Piloter la réussite', description: 'Suivi des cohortes, performances, validation des acquis et amélioration continue.' }),
+    ],
+    steps_title: 'Votre fonctionnement sur Omnia',
+    steps_subtitle: 'Trois temps pour aller de l’idée à la diffusion.',
+    steps: [
+      contentItem('aud-prof-step-1', 1, { label: '01', title: 'Concevoir', description: 'Préparez le contenu, les modules et les évaluations.' }),
+      contentItem('aud-prof-step-2', 2, { label: '02', title: 'Publier et animer', description: 'Diffusez votre formation et complétez-la avec des interactions utiles.' }),
+      contentItem('aud-prof-step-3', 3, { label: '03', title: 'Suivre et améliorer', description: 'Analysez les résultats et optimisez vos parcours.' }),
+    ],
+  }),
+  structures: audiencePage('structures', {
+    route: '/pour-les-structures',
+    nav_label: 'Pour les structures',
+    enabled: true,
+    hero_eyebrow: 'Solutions pour les structures',
+    hero_title: 'Formez, pilotez et valorisez les compétences de votre structure.',
+    hero_subtitle: 'Omnia accompagne plusieurs types de structures avec un espace capable d’organiser les membres, les cohortes, les formations et le suivi.',
+    hero_body: 'Le rôle Structure n’est pas limité à un seul cas : entreprises, écoles, ONG, associations, institutions et autres organisations peuvent y trouver un cadre adapté.',
+    primary_cta_label: 'Inscrire une structure',
+    primary_cta_url: '/inscription/structure',
+    secondary_cta_label: 'Nous contacter',
+    secondary_cta_url: '/contact',
+    highlight_label: 'Pourquoi Structure ?',
+    highlight_title: 'Un rôle pensé pour plusieurs réalités organisationnelles',
+    highlight_body: 'Vous pouvez gérer un dispositif interne de formation, accompagner des membres, suivre des exigences de conformité et organiser vos campagnes de montée en compétences.',
+    items_title: 'Ce que votre structure peut piloter',
+    items_subtitle: 'Un même espace pour organiser l’apprentissage, le suivi et la conformité.',
+    items: [
+      contentItem('aud-struct-1', 1, { title: 'Membres, groupes et cohortes', description: 'Organisation des membres, équipes, départements et cohortes selon votre fonctionnement.' }),
+      contentItem('aud-struct-2', 2, { title: 'Formations et obligations', description: 'Plans de formation, parcours obligatoires, échéances et suivi de réalisation.' }),
+      contentItem('aud-struct-3', 3, { title: 'Compétences, certificats et conformité', description: 'Suivi des acquis, preuves, conformité et reporting.' }),
+      contentItem('aud-struct-4', 4, { title: 'Recrutement et opportunités', description: 'Possibilités de valorisation, recrutement et articulation avec Omnia Talent selon vos besoins.' }),
+    ],
+    segments_title: 'Quels types de structures peuvent utiliser Omnia ?',
+    segments_subtitle: 'Le rôle Structure couvre plusieurs profils d’organisation.',
+    segments: [
+      contentItem('aud-struct-seg-1', 1, { label: 'Entreprises & employeurs', title: 'Former les équipes et suivre les besoins métiers', description: 'Départements, montée en compétences, conformité, progression et recrutements.' }),
+      contentItem('aud-struct-seg-2', 2, { label: 'Écoles, centres & académies', title: 'Encadrer des cohortes et organiser des parcours', description: 'Apprenants, enseignants, programmes, évaluations et suivi global.' }),
+      contentItem('aud-struct-seg-3', 3, { label: 'ONG, associations & institutions', title: 'Piloter des bénéficiaires ou membres', description: 'Suivi des participants, obligations, projets, preuves et rapports.' }),
+    ],
+    steps_title: 'Comment une structure avance sur Omnia',
+    steps_subtitle: 'Une logique simple de cadrage, déploiement et pilotage.',
+    steps: [
+      contentItem('aud-struct-step-1', 1, { label: '01', title: 'Structurer', description: 'Configurer l’espace, les membres, les groupes et les objectifs.' }),
+      contentItem('aud-struct-step-2', 2, { label: '02', title: 'Déployer', description: 'Lancer les formations, cohortes et obligations de suivi.' }),
+      contentItem('aud-struct-step-3', 3, { label: '03', title: 'Piloter', description: 'Suivre les résultats, la conformité et les rapports utiles.' }),
+    ],
+  }),
+  recruteurs: audiencePage('recruteurs', {
+    route: '/pour-les-recruteurs',
+    nav_label: 'Pour les recruteurs',
+    enabled: true,
+    hero_eyebrow: 'Parcours recruteur',
+    hero_title: 'Identifiez des profils plus lisibles et mieux documentés.',
+    hero_subtitle: 'Omnia relie recrutement, compétences vérifiées, portefeuille de preuves et gestion des candidatures.',
+    hero_body: 'Le rôle recruteur facilite la publication d’offres, l’exploration de profils et le suivi des candidatures dans un espace dédié.',
+    primary_cta_label: 'Créer un compte recruteur',
+    primary_cta_url: '/inscription/recruteur',
+    secondary_cta_label: 'Découvrir Omnia Talent',
+    secondary_cta_url: '/talent',
+    highlight_label: 'Recruter sur Omnia',
+    highlight_title: 'Des profils enrichis par des preuves et des compétences',
+    highlight_body: 'Au-delà d’un CV, Omnia aide à consulter des compétences, projets, certificats et éléments utiles à la décision.',
+    items_title: 'Ce que vous pouvez faire',
+    items_subtitle: 'Des outils concrets pour recruter et collaborer.',
+    items: [
+      contentItem('aud-rec-1', 1, { title: 'Publier et gérer des offres', description: 'Diffusez vos opportunités et suivez leur cycle de vie.' }),
+      contentItem('aud-rec-2', 2, { title: 'Explorer les profils', description: 'Consultez des profils enrichis dans Omnia Talent.' }),
+      contentItem('aud-rec-3', 3, { title: 'Consulter les preuves', description: 'Compétences vérifiées, projets, portfolio et certificats lorsque disponibles.' }),
+      contentItem('aud-rec-4', 4, { title: 'Suivre les candidatures', description: 'Centralisez les candidatures et votre suivi.' }),
+    ],
+    segments_title: 'Vos points d’intérêt',
+    segments_subtitle: 'Le rôle recruteur peut servir à différents besoins.',
+    segments: [
+      contentItem('aud-rec-seg-1', 1, { label: 'Sourcing', title: 'Découvrir des talents', description: 'Repérez des profils, compétences et expériences pertinentes.' }),
+      contentItem('aud-rec-seg-2', 2, { label: 'Évaluation', title: 'Appuyer la décision', description: 'Consultez les éléments vérifiables et les traces d’apprentissage ou de projet.' }),
+      contentItem('aud-rec-seg-3', 3, { label: 'Suivi', title: 'Gérer les candidatures', description: 'Organisez les candidatures, les étapes et le travail d’équipe.' }),
+    ],
+    steps_title: 'Votre parcours recruteur',
+    steps_subtitle: 'Une expérience orientée besoins, profils et suivi.',
+    steps: [
+      contentItem('aud-rec-step-1', 1, { label: '01', title: 'Publier ou rechercher', description: 'Diffusez une offre ou démarrez par la recherche de profils.' }),
+      contentItem('aud-rec-step-2', 2, { label: '02', title: 'Analyser', description: 'Étudiez les profils, preuves, compétences et candidatures.' }),
+      contentItem('aud-rec-step-3', 3, { label: '03', title: 'Décider et suivre', description: 'Gérez la suite du processus avec votre équipe.' }),
+    ],
+  }),
 };
 
 export const LANDING_SECTION_LIBRARY: Array<{
@@ -412,6 +603,15 @@ export function createDefaultLandingPage(): LandingPageConfig {
       })),
     },
     sections: orderedTypes.map((type, index) => createLandingSection(type, index + 1)),
+    audience_pages: AUDIENCE_PAGE_ORDER.reduce((acc, key) => ({
+      ...acc,
+      [key]: {
+        ...DEFAULT_AUDIENCE_PAGES[key],
+        items: DEFAULT_AUDIENCE_PAGES[key].items.map(item => ({ ...item })),
+        segments: DEFAULT_AUDIENCE_PAGES[key].segments.map(item => ({ ...item })),
+        steps: DEFAULT_AUDIENCE_PAGES[key].steps.map(item => ({ ...item })),
+      },
+    }), {} as Record<AudiencePageKey, AudiencePageConfig>),
   };
 }
 
@@ -461,6 +661,47 @@ function normalizeContentItems(value: unknown, fallback: LandingContentItem[]): 
     })
     .sort((a, b) => a.order - b.order)
     .map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+
+function normalizeAudiencePage(value: unknown, fallback: AudiencePageConfig): AudiencePageConfig {
+  if (!value || typeof value !== 'object') {
+    return {
+      ...fallback,
+      items: fallback.items.map(item => ({ ...item })),
+      segments: fallback.segments.map(item => ({ ...item })),
+      steps: fallback.steps.map(item => ({ ...item })),
+    };
+  }
+  const source = value as Partial<AudiencePageConfig>;
+  return {
+    ...fallback,
+    ...source,
+    key: fallback.key,
+    route: String(source.route || fallback.route),
+    nav_label: String(source.nav_label || fallback.nav_label),
+    enabled: source.enabled !== false,
+    hero_eyebrow: String(source.hero_eyebrow || fallback.hero_eyebrow),
+    hero_title: String(source.hero_title || fallback.hero_title),
+    hero_subtitle: String(source.hero_subtitle || fallback.hero_subtitle),
+    hero_body: String(source.hero_body || fallback.hero_body),
+    primary_cta_label: String(source.primary_cta_label || fallback.primary_cta_label),
+    primary_cta_url: String(source.primary_cta_url || fallback.primary_cta_url),
+    secondary_cta_label: String(source.secondary_cta_label || fallback.secondary_cta_label),
+    secondary_cta_url: String(source.secondary_cta_url || fallback.secondary_cta_url),
+    highlight_label: String(source.highlight_label || fallback.highlight_label),
+    highlight_title: String(source.highlight_title || fallback.highlight_title),
+    highlight_body: String(source.highlight_body || fallback.highlight_body),
+    items_title: String(source.items_title || fallback.items_title),
+    items_subtitle: String(source.items_subtitle || fallback.items_subtitle),
+    items: normalizeContentItems(source.items, fallback.items),
+    segments_title: String(source.segments_title || fallback.segments_title),
+    segments_subtitle: String(source.segments_subtitle || fallback.segments_subtitle),
+    segments: normalizeContentItems(source.segments, fallback.segments),
+    steps_title: String(source.steps_title || fallback.steps_title),
+    steps_subtitle: String(source.steps_subtitle || fallback.steps_subtitle),
+    steps: normalizeContentItems(source.steps, fallback.steps),
+  };
 }
 
 export function normalizeLandingPage(value: unknown): LandingPageConfig {
@@ -537,5 +778,9 @@ export function normalizeLandingPage(value: unknown): LandingPageConfig {
       columns: footerColumns,
     },
     sections,
+    audience_pages: AUDIENCE_PAGE_ORDER.reduce((acc, key) => ({
+      ...acc,
+      [key]: normalizeAudiencePage((source as { audience_pages?: Partial<Record<AudiencePageKey, unknown>> }).audience_pages?.[key], fallback.audience_pages[key]),
+    }), {} as Record<AudiencePageKey, AudiencePageConfig>),
   };
 }
