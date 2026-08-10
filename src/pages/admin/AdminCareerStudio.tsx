@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
-import { DashboardTopbar } from '../../components/DashboardTopbar';
-import ContextualHeaderSearch from '../../components/ContextualHeaderSearch';
+import { AdminLayout } from '../../components/AdminLayout';
 import {
   AlertCircle,
   BarChart2,
@@ -538,66 +537,48 @@ export default function AdminCareerStudio() {
   }
 
   return (
-    <div className="h-[100dvh] min-h-0 overflow-hidden" style={{ background: '#F8FAFC' }}>
-      <div className="flex h-full min-h-0 overflow-hidden" style={{ background: '#F8FAFC' }}>
+    <AdminLayout>
+      <div className="mx-auto max-w-[1540px] px-4 py-6 md:px-6 md:py-8">
         {toast && (
-          <div className="fixed right-5 top-5 z-50 rounded-xl border bg-white px-5 py-3 text-sm font-semibold shadow-lg" style={{ borderColor: toast.type === 'success' ? '#BBF7D0' : '#FECACA', color: toast.type === 'success' ? '#166534' : '#DC2626' }}>
+          <div className="fixed right-5 top-5 z-50 border bg-white px-5 py-3 text-sm font-semibold shadow-lg" style={{ borderColor: toast.type === 'success' ? '#BBF7D0' : '#FECACA', color: toast.type === 'success' ? '#166534' : '#DC2626' }}>
             {toast.text}
           </div>
         )}
 
-        <aside className="flex h-full min-h-0 w-64 flex-shrink-0 flex-col overflow-hidden" style={{background:OMNIA_BLUE}}>
-          <div className="border-b border-white/10 p-5 flex items-center gap-3"><img src="/omnia-sidebar-logo.png" alt="Omnia" className="h-10 w-10 object-contain"/><div><p className="font-bold text-white">Omnia</p><p className="font-bold" style={{color:OMNIA_GOLD}}>Career Studio</p></div></div>
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
-            {SUB_MENUS.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setSubTab(key)}
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all"
-                style={subTab === key ? { background: 'rgba(191,136,19,.18)', color: OMNIA_GOLD } : { color: 'rgba(255,255,255,.78)' }}
-              >
-                <Icon size={16} />
-                {label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DashboardTopbar
-            title="Gestion Omnia Career Studio"
-            subtitle="Modèles, règles, jetons et exports"
-            dashboardPath="/admin/dashboard"
-            search={
-              <ContextualHeaderSearch
-                items={SUB_MENUS.map(item => ({
-                  id: item.key,
-                  label: item.label,
-                  description: 'Gestion Omnia Career Studio',
-                  keywords: [item.key, 'career', 'cv', 'lettre de motivation'],
-                  onSelect: () => setSubTab(item.key),
-                }))}
-                placeholder="Rechercher dans Career Studio…"
-                ariaLabel="Rechercher une rubrique de Career Studio"
-              />
-            }
-            actions={
-              <div className="hidden items-center gap-2 md:flex">
-                <button type="button" onClick={openLearnerCareerPreview} className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold transition hover:bg-slate-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
-                  <ExternalLink size={15} /> Ouvrir le Studio
-                </button>
-                <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{ borderColor: BORDER, color: OMNIA_BLUE }}>
-                  <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
-                </button>
-              </div>
-            }
-          />
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-5 md:p-6">
-            <div className="border-b pb-5" style={{ borderColor: BORDER }}>
-              <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: OMNIA_GOLD }}>Omnia Career Studio</p>
-              <h1 className="mt-1 text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>Paramètres et catalogue</h1>
+        <header className="border border-slate-200 bg-white">
+          <div className="flex flex-col gap-6 px-6 py-7 lg:flex-row lg:items-end lg:justify-between lg:px-8">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#BF8813]">Carrière & projets · Career Studio</p>
+              <h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Gestion Omnia Career Studio</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Règles, modèles CV/LM, jetons, exports, banque de questions et activité Career dans un espace de gestion unique.</p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={openLearnerCareerPreview} className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold text-[#002050] transition hover:bg-slate-50">
+                <ExternalLink size={15} /> Ouvrir le Studio
+              </button>
+              <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 bg-[#002050] px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
+              </button>
+            </div>
+          </div>
+          <div className="h-1 bg-[linear-gradient(90deg,#002050_0%,#3157A4_42%,#BF8813_100%)]" />
+        </header>
 
+        <nav className="mt-5 flex items-center gap-1 overflow-x-auto border-y border-slate-200 bg-white px-2 py-2" aria-label="Gestion Career Studio">
+          {SUB_MENUS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSubTab(key)}
+              className={`inline-flex min-h-10 min-w-max items-center gap-2 px-3 text-xs font-bold transition ${subTab === key ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-[#002050]'}`}
+            >
+              <Icon size={14} style={{ color: subTab === key ? '#E9C46A' : '#94A3B8' }} />
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mt-6 space-y-6">
           {loading && (
             <div className="rounded-2xl border bg-white p-8 text-center text-sm" style={{ borderColor: BORDER, color: MUTED }}>Chargement des paramètres Omnia Career...</div>
           )}
@@ -912,9 +893,8 @@ export default function AdminCareerStudio() {
               <div className="flex items-center gap-3 text-sm" style={{ color: '#92400E' }}><AlertCircle size={17} /> Aucune règle n’est configurée. Vérifiez les paramètres de Career Studio.</div>
             </div>
           )}
-          </div>
-        </main>
+        </div>
       </div>
-    </div>
+    </AdminLayout>
   );
 }

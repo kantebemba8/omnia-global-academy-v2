@@ -95,6 +95,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'Carrière & projets',
     icon: Briefcase,
     items: [
+      { path: '/admin/career-projects', label: 'Vue d’ensemble', icon: Briefcase, exact: true },
       { path: '/admin/career-studio', label: 'Omnia Career Studio', icon: Briefcase },
       { path: '/admin/projects', label: 'Omnia Projects', icon: FolderKanban },
       { path: '/admin/coaching', label: 'Omnia Coaching', icon: Users },

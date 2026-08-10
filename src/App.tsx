@@ -87,6 +87,7 @@ const ModerateurUtilisateurs = lazy(() => import('./pages/moderateur/ModerateurU
 const ModerateurForum = lazy(() => import('./pages/moderateur/ModerateurForum'));
 const AdminForum = lazy(() => import('./pages/admin/AdminForum'));
 const AdminCareerStudio = lazy(() => import('./pages/admin/AdminCareerStudio'));
+const AdminCareerProjectsHub = lazy(() => import('./pages/admin/AdminCareerProjectsHub'));
 const AdminCareerStudioDetail = lazy(() => import('./pages/admin/AdminCareerStudioDetail'));
 const AdminJobOffers = lazy(() => import('./pages/admin/AdminJobOffers'));
 const AdminCoursePricing = lazy(() => import('./pages/admin/AdminCoursePricing'));
@@ -663,6 +664,7 @@ export default function App() {
         <Route path="/admin/coaching/avis" element={<AdminCoachingRatings />} />
         <Route path="/admin/coaching/revenus" element={<AdminCoachingRevenue />} />
         <Route path="/admin/coaching/avance" element={<AdminCoachingAdvanced />} />
+        <Route path="/admin/career-projects" element={<AdminCareerProjectsHub />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />
