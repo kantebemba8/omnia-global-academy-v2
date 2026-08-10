@@ -111,44 +111,44 @@ function actionFor(item: LandingContentItem) {
 function FuturisticHeroArt() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,#fbfdff_35%,rgba(244,249,255,0.94)_47%,rgba(207,226,252,0.92)_64%,rgba(62,124,216,0.92)_82%,#0B4DAD_100%)]" />
-      <div className="absolute inset-y-0 right-0 w-[67%] bg-[radial-gradient(circle_at_68%_52%,rgba(9,69,169,0.96)_0%,rgba(16,86,190,0.92)_25%,rgba(78,138,225,0.78)_48%,rgba(195,220,250,0.40)_71%,transparent_88%)]" />
-      <div className="absolute inset-y-0 right-0 w-[68%] opacity-[0.32]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.14) 1px, transparent 1px)', backgroundSize: '34px 34px', maskImage: 'radial-gradient(circle at 70% 55%, black 0%, rgba(0,0,0,.95) 44%, transparent 83%)' }} />
-      <div className="absolute right-[-7%] top-[19%] h-[410px] w-[410px] rounded-full border border-white/25 bg-[radial-gradient(circle_at_37%_30%,rgba(74,144,244,0.98),rgba(9,70,168,0.98)_38%,#04275D_68%,#001A42_100%)] shadow-[inset_-45px_-55px_72px_rgba(0,12,38,0.62),inset_26px_20px_46px_rgba(138,188,255,0.22),0_0_120px_rgba(39,105,215,0.34)] lg:h-[500px] lg:w-[500px]" />
-      <div className="absolute right-[-2%] top-[22%] h-[350px] w-[350px] rounded-full border border-[#E9BD55]/80 shadow-[0_0_24px_rgba(233,189,85,0.28)] lg:h-[430px] lg:w-[430px]" />
-      <div className="absolute right-[18%] top-[47%] h-5 w-5 rounded-full bg-[#FFD985] shadow-[0_0_28px_8px_rgba(255,218,139,0.9)]" />
-      <div className="absolute right-[23%] top-[42%] h-24 w-24 rounded-full bg-[#F9C65D]/32 blur-3xl" />
-      <svg className="absolute inset-y-0 right-0 h-full w-[79%] min-w-[760px]" viewBox="0 0 1120 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,#fcfdff_34%,#f5f9ff_48%,#e7f0fd_61%,#d2e3fb_72%,#a8c6f2_84%,#5F97E2_100%)]" />
+      <div className="absolute inset-y-0 right-0 w-[63%] bg-[radial-gradient(circle_at_76%_52%,rgba(23,91,195,0.88)_0%,rgba(39,108,211,0.72)_24%,rgba(108,160,233,0.50)_50%,rgba(205,225,250,0.24)_70%,transparent_86%)]" />
+      <div className="absolute inset-y-0 right-0 w-[67%] opacity-[0.26]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.13) 1px, transparent 1px)', backgroundSize: '34px 34px', maskImage: 'radial-gradient(circle at 78% 53%, black 0%, rgba(0,0,0,.92) 42%, transparent 81%)' }} />
+      <div className="absolute right-[-12%] top-[24%] h-[320px] w-[320px] rounded-full border border-white/22 bg-[radial-gradient(circle_at_34%_32%,rgba(100,162,246,0.92),rgba(31,95,194,0.90)_32%,rgba(11,63,149,0.96)_58%,#093985_74%,#0B3F95_100%)] shadow-[inset_-32px_-42px_66px_rgba(2,20,59,0.34),inset_24px_18px_40px_rgba(194,221,255,0.20),0_0_88px_rgba(66,125,220,0.22)] lg:h-[400px] lg:w-[400px]" />
+      <div className="absolute right-[-5%] top-[27%] h-[276px] w-[276px] rounded-full border border-[#E9C164]/70 shadow-[0_0_18px_rgba(233,193,100,0.18)] lg:h-[344px] lg:w-[344px]" />
+      <div className="absolute right-[19%] top-[45%] h-4 w-4 rounded-full bg-[#FAD26D] shadow-[0_0_24px_7px_rgba(250,210,109,0.82)]" />
+      <div className="absolute right-[23%] top-[40%] h-20 w-20 rounded-full bg-[#F8D279]/24 blur-3xl" />
+      <svg className="absolute inset-y-0 right-0 h-full w-[76%] min-w-[740px]" viewBox="0 0 1120 560" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="ogaHeroGold" x1="90" y1="110" x2="1055" y2="380" gradientUnits="userSpaceOnUse">
+          <linearGradient id="ogaHeroGold" x1="88" y1="132" x2="1060" y2="354" gradientUnits="userSpaceOnUse">
             <stop stopColor="#BF8813" stopOpacity="0" />
-            <stop offset="0.38" stopColor="#E3B247" stopOpacity="0.65" />
-            <stop offset="0.58" stopColor="#FFF3C5" stopOpacity="0.98" />
-            <stop offset="0.76" stopColor="#D9A12D" stopOpacity="0.72" />
-            <stop offset="1" stopColor="#BF8813" stopOpacity="0.1" />
+            <stop offset="0.34" stopColor="#D9A646" stopOpacity="0.52" />
+            <stop offset="0.53" stopColor="#FFF2C1" stopOpacity="0.96" />
+            <stop offset="0.72" stopColor="#DDAA3E" stopOpacity="0.58" />
+            <stop offset="1" stopColor="#BF8813" stopOpacity="0.08" />
           </linearGradient>
-          <linearGradient id="ogaHeroWhite" x1="170" y1="380" x2="1020" y2="125" gradientUnits="userSpaceOnUse">
+          <linearGradient id="ogaHeroWhite" x1="184" y1="376" x2="1022" y2="144" gradientUnits="userSpaceOnUse">
             <stop stopColor="white" stopOpacity="0" />
-            <stop offset="0.5" stopColor="white" stopOpacity="0.9" />
-            <stop offset="1" stopColor="white" stopOpacity="0.08" />
+            <stop offset="0.46" stopColor="white" stopOpacity="0.82" />
+            <stop offset="1" stopColor="white" stopOpacity="0.10" />
           </linearGradient>
           <filter id="ogaHeroGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="7" result="blur" />
+            <feGaussianBlur stdDeviation="6" result="blur" />
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-        <path d="M62 448C245 344 333 330 482 272C612 221 663 132 833 136C943 139 1006 187 1110 177" stroke="url(#ogaHeroGold)" strokeWidth="2.1" />
-        <path d="M20 402C218 304 345 320 505 240C638 174 694 92 850 106C950 115 1016 151 1128 135" stroke="url(#ogaHeroWhite)" strokeWidth="2" />
-        <path d="M113 490C294 388 400 405 565 315C688 248 748 215 870 223C957 229 1025 257 1126 244" stroke="#E3B247" strokeOpacity="0.42" strokeWidth="1.4" />
-        <path d="M146 132C328 188 407 199 535 238C669 279 736 334 868 348C960 358 1036 345 1116 319" stroke="white" strokeOpacity="0.42" strokeWidth="1.15" />
-        <ellipse cx="851" cy="300" rx="286" ry="105" transform="rotate(-16 851 300)" stroke="#E3B247" strokeOpacity="0.43" strokeWidth="1.5" />
-        <ellipse cx="853" cy="303" rx="243" ry="89" transform="rotate(18 853 303)" stroke="white" strokeOpacity="0.36" strokeWidth="1.2" />
-        <circle cx="670" cy="237" r="5" fill="#FFF4C7" filter="url(#ogaHeroGlow)" />
-        <circle cx="927" cy="177" r="3.5" fill="#E3B247" />
-        <circle cx="1014" cy="337" r="3" fill="white" fillOpacity="0.82" />
-        <circle cx="789" cy="383" r="2.5" fill="#E3B247" />
+        <path d="M62 424C240 332 333 321 486 266C622 216 677 128 844 138C945 145 1011 184 1110 174" stroke="url(#ogaHeroGold)" strokeWidth="1.95" />
+        <path d="M14 388C220 297 347 309 511 230C643 167 706 90 859 106C955 116 1020 149 1126 134" stroke="url(#ogaHeroWhite)" strokeWidth="1.92" />
+        <path d="M120 472C300 382 406 394 571 308C693 245 751 214 871 221C955 226 1024 251 1123 238" stroke="#D7A33D" strokeOpacity="0.34" strokeWidth="1.3" />
+        <path d="M154 132C328 186 401 195 527 235C658 276 725 330 852 343C944 353 1020 342 1110 315" stroke="white" strokeOpacity="0.32" strokeWidth="1.05" />
+        <ellipse cx="863" cy="296" rx="262" ry="97" transform="rotate(-15 863 296)" stroke="#D8A84A" strokeOpacity="0.34" strokeWidth="1.35" />
+        <ellipse cx="862" cy="296" rx="222" ry="82" transform="rotate(18 862 296)" stroke="white" strokeOpacity="0.28" strokeWidth="1.1" />
+        <circle cx="674" cy="234" r="4.8" fill="#FFF4C7" filter="url(#ogaHeroGlow)" />
+        <circle cx="930" cy="182" r="3.2" fill="#E3B247" />
+        <circle cx="1005" cy="334" r="2.7" fill="white" fillOpacity="0.76" />
+        <circle cx="790" cy="376" r="2.4" fill="#E3B247" />
       </svg>
-      <div className="absolute inset-y-0 left-0 w-[52%] bg-gradient-to-r from-white via-white/95 to-transparent" />
+      <div className="absolute inset-y-0 left-0 w-[57%] bg-[linear-gradient(90deg,rgba(255,255,255,1)_0%,rgba(255,255,255,0.98)_58%,rgba(255,255,255,0.55)_82%,transparent_100%)]" />
     </div>
   );
 }
@@ -166,7 +166,7 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
     <>
       <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-[116px]">
         <FuturisticHeroArt />
-        <div className="relative mx-auto grid min-h-[500px] max-w-7xl items-center px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.83fr)_minmax(460px,1.17fr)] lg:px-8 lg:py-20">
+        <div className="relative mx-auto grid min-h-[470px] max-w-7xl items-center px-5 py-14 sm:px-6 lg:grid-cols-[minmax(0,0.88fr)_minmax(430px,1.12fr)] lg:px-8 lg:py-16">
           <div className="max-w-2xl">
             <h1 className="text-[2.25rem] font-black leading-[1.08] tracking-[-0.045em] text-[#002050] sm:text-[2.8rem] lg:text-[3.15rem]">
               {section.title}
