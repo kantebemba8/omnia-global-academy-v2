@@ -240,6 +240,49 @@ function normalizeLandingItems(value: unknown) {
   });
 }
 
+const AUDIENCE_PAGE_KEYS = ["apprenants", "professeurs", "structures", "recruteurs"] as const;
+
+function normalizeAudiencePage(raw: unknown, key: typeof AUDIENCE_PAGE_KEYS[number]) {
+  if (!raw || typeof raw !== "object") throw new Error("AUDIENCE_PAGE_INVALID");
+  const page = raw as Record<string, unknown>;
+  return {
+    key,
+    route: cleanPublicUrl(page.route),
+    nav_label: cleanText(page.nav_label, 160),
+    enabled: page.enabled !== false,
+    hero_eyebrow: cleanText(page.hero_eyebrow, 220),
+    hero_title: cleanText(page.hero_title, 700),
+    hero_subtitle: cleanText(page.hero_subtitle, 1800),
+    hero_body: cleanText(page.hero_body, 5000),
+    primary_cta_label: cleanText(page.primary_cta_label, 160),
+    primary_cta_url: cleanPublicUrl(page.primary_cta_url),
+    secondary_cta_label: cleanText(page.secondary_cta_label, 160),
+    secondary_cta_url: cleanPublicUrl(page.secondary_cta_url),
+    highlight_label: cleanText(page.highlight_label, 220),
+    highlight_title: cleanText(page.highlight_title, 700),
+    highlight_body: cleanText(page.highlight_body, 5000),
+    items_title: cleanText(page.items_title, 700),
+    items_subtitle: cleanText(page.items_subtitle, 1800),
+    items: normalizeLandingItems(page.items),
+    segments_title: cleanText(page.segments_title, 700),
+    segments_subtitle: cleanText(page.segments_subtitle, 1800),
+    segments: normalizeLandingItems(page.segments),
+    steps_title: cleanText(page.steps_title, 700),
+    steps_subtitle: cleanText(page.steps_subtitle, 1800),
+    steps: normalizeLandingItems(page.steps),
+  };
+}
+
+function normalizeAudiencePages(value: unknown) {
+  if (!value || typeof value !== "object") return {};
+  const source = value as Record<string, unknown>;
+  return Object.fromEntries(
+    AUDIENCE_PAGE_KEYS
+      .filter((key) => source[key] && typeof source[key] === "object")
+      .map((key) => [key, normalizeAudiencePage(source[key], key)]),
+  );
+}
+
 function normalizeLandingPage(value: unknown) {
   if (!value || typeof value !== "object") throw new Error("LANDING_PAGE_REQUIRED");
   const source = value as Record<string, unknown>;
@@ -313,6 +356,7 @@ function normalizeLandingPage(value: unknown) {
       columns,
     },
     sections,
+    audience_pages: normalizeAudiencePages(source.audience_pages),
   };
 }
 
