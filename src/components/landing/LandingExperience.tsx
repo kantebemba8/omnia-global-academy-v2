@@ -111,34 +111,37 @@ function actionFor(item: LandingContentItem) {
 function FuturisticHeroArt() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_45%,rgba(27,104,211,0.24),transparent_28%),radial-gradient(circle_at_76%_48%,rgba(191,136,19,0.14),transparent_22%),radial-gradient(circle_at_64%_58%,rgba(0,32,80,0.12),transparent_34%),linear-gradient(110deg,#ffffff_0%,#f7faff_42%,#e9f2ff_100%)]" />
-      <div className="absolute inset-0 opacity-[0.46]" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.06) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-      <svg className="absolute -right-[5%] top-0 h-full w-[72%] min-w-[720px]" viewBox="0 0 1000 520" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <radialGradient id="omniaGlobeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(720 275) rotate(90) scale(210)">
-            <stop stopColor="#BF8813" stopOpacity="0.13" />
-            <stop offset="1" stopColor="#BF8813" stopOpacity="0" />
-          </radialGradient>
-          <pattern id="omniaDots" width="12" height="12" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1.35" fill="#002050" fillOpacity="0.17" />
-          </pattern>
-          <clipPath id="omniaGlobeClip"><circle cx="735" cy="270" r="174" /></clipPath>
-        </defs>
-        <circle cx="735" cy="270" r="215" fill="url(#omniaGlobeGlow)" />
-        <circle cx="735" cy="270" r="174" fill="url(#omniaDots)" opacity="0.85" />
-        <g clipPath="url(#omniaGlobeClip)" opacity="0.55">
-          <ellipse cx="735" cy="270" rx="174" ry="62" stroke="#002050" strokeOpacity="0.17" />
-          <ellipse cx="735" cy="270" rx="174" ry="112" stroke="#BF8813" strokeOpacity="0.18" />
-          <ellipse cx="735" cy="270" rx="70" ry="174" stroke="#002050" strokeOpacity="0.13" />
-          <ellipse cx="735" cy="270" rx="124" ry="174" stroke="#002050" strokeOpacity="0.10" />
-        </g>
-        <path d="M120 392C298 274 377 424 527 324C647 244 689 154 831 163C901 168 956 203 1030 170" stroke="#002050" strokeOpacity="0.75" strokeWidth="2" />
-        <path d="M64 356C240 248 361 359 500 285C650 205 696 112 858 121C929 125 978 151 1040 135" stroke="#BF8813" strokeOpacity="0.78" strokeWidth="2" />
-        <path d="M178 430C347 319 429 449 579 355C704 276 754 226 873 229C937 231 980 250 1033 240" stroke="#BF8813" strokeOpacity="0.24" strokeWidth="1.5" />
-        {[260, 420, 592, 810, 930].map((x, index) => (
-          <circle key={x} cx={x} cy={[326, 274, 250, 168, 222][index]} r="5" fill="white" stroke={index % 2 === 0 ? '#BF8813' : '#002050'} strokeWidth="2" />
-        ))}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_48%,rgba(41,112,221,0.18),transparent_30%),radial-gradient(circle_at_72%_58%,rgba(191,136,19,0.10),transparent_22%),linear-gradient(112deg,#ffffff_0%,#f8fbff_44%,#eaf3ff_100%)]" />
+      <div className="absolute inset-0 opacity-[0.34]" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.045) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+      <svg className="absolute inset-y-0 right-0 h-full w-[68%] min-w-[680px] opacity-60" viewBox="0 0 1000 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M118 410C296 292 389 416 538 322C674 236 720 153 862 161C925 165 972 190 1036 164" stroke="#002050" strokeOpacity="0.34" strokeWidth="1.5" />
+        <path d="M55 372C238 255 357 367 512 284C658 206 717 118 873 127C938 131 987 153 1048 136" stroke="#BF8813" strokeOpacity="0.46" strokeWidth="1.5" />
+        <path d="M182 444C355 326 438 448 593 353C718 276 768 230 885 232C943 233 985 250 1042 240" stroke="#BF8813" strokeOpacity="0.18" strokeWidth="1.25" />
       </svg>
+    </div>
+  );
+}
+
+function HeroOrbitalVisual() {
+  return (
+    <div className="relative h-[360px] w-full max-w-[560px]" style={{ perspective: '1400px' }} aria-hidden="true">
+      <div className="absolute inset-[10%_4%_6%_8%] rounded-[44%] bg-[radial-gradient(circle_at_56%_54%,rgba(21,103,220,0.30),rgba(16,69,154,0.10)_46%,transparent_72%)] blur-2xl" />
+      <div className="absolute left-[52%] top-[52%] h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#7BAAF0]/30" style={{ transform: 'translate(-50%, -50%) rotateX(68deg) rotateZ(-12deg)', boxShadow: '0 0 80px rgba(33,106,222,0.16)' }} />
+      <div className="absolute left-[52%] top-[52%] h-[246px] w-[246px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#BF8813]/45" style={{ transform: 'translate(-50%, -50%) rotateX(68deg) rotateZ(26deg)' }} />
+      <div className="absolute left-[52%] top-[52%] h-[188px] w-[188px] -translate-x-1/2 -translate-y-1/2 rounded-full" style={{
+        background: 'radial-gradient(circle at 31% 24%, #5D91DC 0%, #1F5AAB 18%, #0A356F 45%, #032452 68%, #001631 100%)',
+        boxShadow: 'inset -28px -34px 52px rgba(0,12,35,.55), inset 18px 14px 34px rgba(97,157,241,.18), 0 34px 74px rgba(0,32,80,.25)',
+        transform: 'translate(-50%, -50%) translateZ(72px)',
+      }}>
+        <div className="absolute left-[18%] top-[12%] h-[26%] w-[28%] rounded-full bg-white/20 blur-xl" />
+        <div className="absolute bottom-[11%] right-[8%] h-[44%] w-[44%] rounded-full bg-[#BF8813]/30 blur-2xl" />
+      </div>
+      <div className="absolute left-[52%] top-[52%] h-[286px] w-[164px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/55" style={{ transform: 'translate(-50%, -50%) rotate(64deg) rotateX(62deg) translateZ(82px)', boxShadow: '0 0 22px rgba(255,255,255,.22)' }} />
+      <div className="absolute left-[52%] top-[52%] h-[316px] w-[190px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-[#E0B34F]/70" style={{ transform: 'translate(-50%, -50%) rotate(64deg) rotateX(62deg) translateZ(80px)', boxShadow: '0 0 18px rgba(191,136,19,.16)' }} />
+      <div className="absolute left-[71%] top-[31%] h-3.5 w-3.5 rounded-full bg-[#E4B84E] shadow-[0_0_18px_rgba(228,184,78,0.9)]" style={{ transform: 'translateZ(96px)' }} />
+      <div className="absolute left-[35%] top-[69%] h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.95)]" style={{ transform: 'translateZ(96px)' }} />
+      <div className="absolute left-[15%] top-[22%] h-px w-[70%] origin-left rotate-[18deg] bg-gradient-to-r from-transparent via-white/80 to-transparent blur-[0.4px]" />
+      <div className="absolute bottom-[7%] left-[22%] right-[15%] h-8 rounded-[50%] bg-[#002050]/20 blur-xl" />
     </div>
   );
 }
@@ -178,7 +181,9 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
               </div>
             )}
           </div>
-          <div className="hidden min-h-[330px] lg:block" />
+          <div className="relative hidden min-h-[360px] lg:flex lg:items-center lg:justify-center">
+            <HeroOrbitalVisual />
+          </div>
         </div>
       </section>
 
@@ -320,13 +325,17 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
     <section id="parcours-omnia" className="border-b border-slate-200 bg-[#FFFCF6] px-5 py-14 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl lg:grid lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:gap-12">
         <SectionHeading section={section} />
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:mt-0 lg:grid-cols-5 lg:gap-0">
+        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:mt-0 lg:grid-cols-5 lg:gap-0" style={{ perspective: '1100px' }}>
           {items.map((item, index) => {
             const Icon = ICONS[item.icon_key] || ArrowRight;
             return (
-              <div key={item.id} className="relative text-center">
+              <div key={item.id} className="relative text-center" style={{ transformStyle: 'preserve-3d' }}>
                 {index < items.length - 1 && <span className="absolute left-[60%] right-[-40%] top-6 hidden h-px bg-gradient-to-r from-[#BF8813]/70 to-[#BF8813]/20 lg:block" />}
-                <span className="relative mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-[#002050] shadow-sm"><Icon size={20} /></span>
+                <span className="relative mx-auto block h-14 w-14" style={{ transformStyle: 'preserve-3d' }}>
+                  <span className="absolute inset-[6px] rounded-full bg-[#002050]/10 blur-md" style={{ transform: 'translateY(13px) translateZ(-28px) scaleX(1.25)' }} />
+                  <span className="absolute inset-1 flex items-center justify-center rounded-full border border-[#E4D5AF] bg-white text-[#002050] shadow-[0_10px_25px_rgba(0,32,80,0.12),inset_0_1px_0_rgba(255,255,255,0.95)]" style={{ transform: 'translateZ(22px)' }}><Icon size={20} /></span>
+                  <span className="absolute inset-[10px] -z-10 rounded-full border border-[#BF8813]/25 bg-[#FFF4D9]" style={{ transform: 'translateZ(-10px)' }} />
+                </span>
                 <h3 className="mt-3 text-sm font-black text-[#002050]">{item.title}</h3>
                 {item.description && <p className="mx-auto mt-2 max-w-[170px] text-xs leading-5 text-slate-500">{item.description}</p>}
               </div>
@@ -345,12 +354,14 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
 
   return (
     <>
-      <section id="ecosysteme" className="relative overflow-hidden bg-[#001B46] px-5 py-14 text-white sm:px-6 lg:px-8">
+      <section id="ecosysteme" className="relative overflow-hidden bg-[#001B46] px-5 py-14 text-white sm:px-6 lg:px-8 lg:py-16">
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <div className="absolute -left-24 top-1/2 h-72 w-72 -translate-y-1/2 rounded-full border border-blue-400/15" />
-          <div className="absolute -right-20 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full border border-[#BF8813]/20" />
-          <div className="absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(78,145,255,.16) 0 1px, transparent 1.5px)', backgroundSize: '22px 22px' }} />
-          <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#06418A]/30 to-transparent" />
+          <div className="absolute left-1/2 top-[62%] h-[420px] w-[900px] rounded-[50%] border border-[#3B78CB]/20" style={{ transform: 'translate(-50%, -50%) rotateX(72deg)', boxShadow: '0 0 90px rgba(22,91,183,0.14)' }} />
+          <div className="absolute left-1/2 top-[63%] h-[300px] w-[720px] rounded-[50%] border border-[#BF8813]/25" style={{ transform: 'translate(-50%, -50%) rotateX(72deg)' }} />
+          <div className="absolute -left-28 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute -right-24 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[#BF8813]/10 blur-3xl" />
+          <div className="absolute inset-0 opacity-35" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(92,153,238,.18) 0 1px, transparent 1.5px)', backgroundSize: '23px 23px', maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)' }} />
+          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#073C7F]/35 to-transparent" />
         </div>
 
         <div className="relative mx-auto max-w-7xl">
@@ -359,15 +370,25 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
             {section.subtitle && <p className="mt-3 text-sm leading-6 text-blue-100/75">{section.subtitle}</p>}
           </div>
 
-          <div className="relative mt-10">
-            <div className="absolute left-[7%] right-[7%] top-7 hidden h-px bg-gradient-to-r from-transparent via-[#D9A22B]/80 to-transparent xl:block" aria-hidden="true" />
-            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              {items.map(item => {
+          <div className="relative mt-11" style={{ perspective: '1500px' }}>
+            <div className="absolute left-[6%] right-[6%] top-9 hidden h-px bg-gradient-to-r from-transparent via-[#D9A22B]/75 to-transparent xl:block" aria-hidden="true" />
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              {items.map((item, index) => {
                 const Icon = ICONS[item.icon_key] || ArrowRight;
+                const depth = index % 2 === 0 ? 18 : 30;
                 return (
-                  <Link key={item.id} to={safeHref(item.action_url)} className="group relative flex min-w-0 flex-col items-center text-center">
-                    <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full border border-[#D7A63A] bg-[#002050] text-[#E8B94E] shadow-[0_0_0_6px_rgba(0,32,80,0.92),0_0_28px_rgba(57,128,232,0.24)] transition group-hover:border-white group-hover:text-white">
-                      <Icon size={21} />
+                  <Link
+                    key={item.id}
+                    to={safeHref(item.action_url)}
+                    className="group relative flex min-w-0 flex-col items-center rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-5 text-center shadow-[0_18px_44px_rgba(0,10,32,0.18)] transition duration-300 hover:-translate-y-2 hover:border-[#BF8813]/45 hover:bg-white/[0.065]"
+                    style={{ transformStyle: 'preserve-3d' }}
+                  >
+                    <span className="relative z-10 block h-16 w-16" style={{ transformStyle: 'preserve-3d' }}>
+                      <span className="absolute inset-[7px] rounded-full bg-[#061D43] shadow-[0_18px_24px_rgba(0,0,0,0.32)]" style={{ transform: 'translateY(12px) translateZ(-24px) scaleX(1.25)' }} />
+                      <span className="absolute inset-1 rounded-full border border-[#BF8813]/35 bg-[#07326E]" style={{ transform: `translateZ(${depth - 14}px)` }} />
+                      <span className="absolute inset-0 flex items-center justify-center rounded-full border border-[#D7A63A] bg-[radial-gradient(circle_at_36%_28%,#0E4D9A,#002050_62%)] text-[#F0C15A] shadow-[0_0_0_6px_rgba(0,32,80,0.72),0_0_28px_rgba(57,128,232,0.30),inset_0_1px_0_rgba(255,255,255,0.12)] transition group-hover:border-white group-hover:text-white" style={{ transform: `translateZ(${depth}px)` }}>
+                        <Icon size={21} />
+                      </span>
                     </span>
                     <h3 className="mt-4 text-sm font-black text-white">{item.title}</h3>
                     {item.description && <p className="mt-2 max-w-[190px] text-xs leading-5 text-blue-100/65">{item.description}</p>}
@@ -389,17 +410,32 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
       </section>
 
       {projects && (
-        <section className="border-b border-slate-200 bg-[#F3F7FD] px-5 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl rounded-2xl border border-[#BDD0EA] bg-white px-6 py-7 sm:flex sm:items-center sm:justify-between sm:gap-8">
+        <section className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(115deg,#F7FAFF_0%,#FFFFFF_45%,#FFF8EB_100%)] px-5 py-11 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" style={{ backgroundImage: 'linear-gradient(rgba(0,32,80,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(0,32,80,.035) 1px, transparent 1px)', backgroundSize: '32px 32px', maskImage: 'linear-gradient(90deg, transparent, black 42%, black 90%, transparent)' }} />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-8 rounded-[26px] border border-[#C9D8EC] bg-white/85 px-6 py-7 shadow-[0_18px_55px_rgba(0,32,80,0.08)] backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
             <div className="max-w-3xl">
-              <h3 className="text-xl font-black text-[#002050]">{projects.title}</h3>
-              {projects.description && <p className="mt-2 text-sm leading-6 text-slate-600">{projects.description}</p>}
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#9A6A08]">Omnia Projects</p>
+              <h3 className="mt-2 text-2xl font-black tracking-[-0.025em] text-[#002050]">{projects.title}</h3>
+              {projects.description && <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{projects.description}</p>}
+              {projects.action_url && projects.action_label && (
+                <Link to={safeHref(projects.action_url)} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#00183E]">
+                  {projects.action_label}<ArrowRight size={15} />
+                </Link>
+              )}
             </div>
-            {projects.action_url && projects.action_label && (
-              <Link to={safeHref(projects.action_url)} className="mt-5 inline-flex shrink-0 items-center gap-2 text-sm font-black text-[#002050] hover:underline sm:mt-0">
-                {projects.action_label}<ArrowRight size={15} />
-              </Link>
-            )}
+
+            <div className="relative hidden h-[180px] lg:block" aria-hidden="true" style={{ perspective: '1000px' }}>
+              <div className="absolute bottom-3 left-1/2 h-12 w-[250px] -translate-x-1/2 rounded-[50%] bg-[#002050]/15 blur-lg" />
+              <div className="absolute bottom-6 left-1/2 h-[92px] w-[260px] rounded-[50%] border border-[#BF8813]/55 bg-[radial-gradient(ellipse_at_center,rgba(191,136,19,0.19),rgba(0,32,80,0.05)_54%,transparent_70%)]" style={{ transform: 'translateX(-50%) rotateX(68deg)' }} />
+              <div className="absolute bottom-[46px] left-1/2 h-[74px] w-[150px] rounded-[18px] border border-[#144A86] bg-[linear-gradient(145deg,#0C4A8F,#002050)] shadow-[0_24px_34px_rgba(0,32,80,0.25)]" style={{ transform: 'translateX(-50%) rotateY(-12deg) rotateX(5deg) translateZ(40px)' }}>
+                <div className="absolute -top-5 left-4 h-7 w-16 rounded-t-xl border border-b-0 border-[#144A86] bg-[#0C4A8F]" />
+                <div className="absolute inset-x-4 top-5 h-px bg-white/20" />
+                <div className="absolute bottom-4 left-4 h-2 w-14 rounded-full bg-[#BF8813]/80" />
+              </div>
+              <div className="absolute left-[76%] top-[20%] h-3 w-3 rounded-full bg-[#D9A22B] shadow-[0_0_20px_rgba(217,162,43,0.9)]" />
+              <div className="absolute left-[20%] top-[52%] h-2 w-2 rounded-full bg-[#245EA5] shadow-[0_0_16px_rgba(36,94,165,0.7)]" />
+              <div className="absolute left-[25%] top-[28%] h-[90px] w-[220px] rounded-[50%] border border-[#BF8813]/30" style={{ transform: 'rotate(-12deg) rotateX(64deg)' }} />
+            </div>
           </div>
         </section>
       )}
@@ -519,26 +555,55 @@ function ConnectionsSection({ section, apps, networks }: { section: LandingSecti
 }
 
 function FinalCta({ section }: { section: LandingSectionConfig }) {
+  const isLegacyDuplicate = section.title.trim() === 'Votre prochain objectif commence ici.'
+    || (section.primary_cta_label === 'Créer un compte' && section.secondary_cta_label === 'Découvrir les formations');
+  const title = isLegacyDuplicate ? 'Composez la suite de votre parcours.' : section.title;
+  const subtitle = isLegacyDuplicate
+    ? 'Approfondissez vos compétences, transformez-les en réalisations concrètes et rendez-les visibles dans l’écosystème Omnia.'
+    : section.subtitle;
+
+  const steps = [
+    ['01', 'Approfondir', 'Formations, Live et accompagnement pour continuer à progresser.'],
+    ['02', 'Mettre en pratique', 'Projets et livrables pour transformer les acquis en expérience.'],
+    ['03', 'Se rendre visible', 'Career, Talent et preuves vérifiables pour valoriser votre parcours.'],
+  ];
+
   return (
-    <section id="rejoindre-omnia" className="border-b border-slate-200 bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+    <section id="rejoindre-omnia" className="relative overflow-hidden border-b border-slate-200 bg-[#002050] px-5 py-12 text-white sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -right-24 top-1/2 h-72 w-72 rounded-full border border-[#BF8813]/20" style={{ transform: 'translateY(-50%) rotateX(70deg)' }} />
+        <div className="absolute -left-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-blue-500/10 blur-3xl" />
+      </div>
+      <div className="relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
         <div className="max-w-3xl">
-          {section.eyebrow && <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE63]">{section.eyebrow}</p>}
-          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] sm:text-3xl">{section.title}</h2>
-          {section.subtitle && <p className="mt-3 text-base leading-7 text-blue-100">{section.subtitle}</p>}
+          {section.eyebrow && !isLegacyDuplicate && <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E6BE63]">{section.eyebrow}</p>}
+          <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{title}</h2>
+          {subtitle && <p className="mt-3 text-base leading-7 text-blue-100">{subtitle}</p>}
           {section.body && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-white/65">{section.body}</p>}
+          {!isLegacyDuplicate && (section.primary_cta_label || section.secondary_cta_label) && (
+            <div className="mt-6 flex flex-wrap gap-3">
+              {section.primary_cta_label && (
+                <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
+                  {section.primary_cta_label}<ArrowRight size={16} />
+                </Link>
+              )}
+              {section.secondary_cta_label && (
+                <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/35 px-5 py-3 text-sm font-black text-white transition hover:border-white">
+                  {section.secondary_cta_label}<ArrowRight size={16} />
+                </Link>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-3">
-          {section.primary_cta_label && (
-            <Link to={safeHref(section.primary_cta_url, '/inscription')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#BF8813] px-5 py-3 text-sm font-black text-white transition hover:bg-[#A8730F]">
-              {section.primary_cta_label}<ArrowRight size={16} />
-            </Link>
-          )}
-          {section.secondary_cta_label && (
-            <Link to={safeHref(section.secondary_cta_url)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/35 px-5 py-3 text-sm font-black text-white transition hover:border-white">
-              {section.secondary_cta_label}<ArrowRight size={16} />
-            </Link>
-          )}
+
+        <div className="grid gap-px overflow-hidden rounded-2xl border border-white/15 bg-white/10 sm:grid-cols-3" style={{ perspective: '1000px' }}>
+          {steps.map(([number, label, copy], index) => (
+            <div key={number} className="relative bg-[#05265A]/90 px-5 py-5" style={{ transform: `translateZ(${index === 1 ? 24 : 10}px)` }}>
+              <span className="text-xs font-black tracking-[0.16em] text-[#E6BE63]">{number}</span>
+              <h3 className="mt-2 text-sm font-black text-white">{label}</h3>
+              <p className="mt-2 text-xs leading-5 text-blue-100/70">{copy}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>

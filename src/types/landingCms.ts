@@ -364,11 +364,11 @@ const SECTION_DEFAULTS: Record<LandingSectionType, Omit<LandingSectionConfig, 'i
     search_placeholder: '', search_button_label: '', items: [],
   },
   final_cta: {
-    type: 'final_cta', internal_name: 'Inscription finale', enabled: true,
-    eyebrow: '', title: 'Votre prochain objectif commence ici.',
-    subtitle: 'Rejoignez Omnia selon votre projet professionnel ou organisationnel.',
-    body: '', primary_cta_label: 'Créer un compte', primary_cta_url: '/inscription',
-    secondary_cta_label: 'Découvrir les formations', secondary_cta_url: '/catalogue',
+    type: 'final_cta', internal_name: 'Continuité du parcours', enabled: true,
+    eyebrow: '', title: 'Composez la suite de votre parcours.',
+    subtitle: 'Approfondissez vos compétences, transformez-les en réalisations concrètes et rendez-les visibles dans l’écosystème Omnia.',
+    body: '', primary_cta_label: '', primary_cta_url: '',
+    secondary_cta_label: '', secondary_cta_url: '',
     search_placeholder: '', search_button_label: '', items: [],
   },
   custom_text: {
