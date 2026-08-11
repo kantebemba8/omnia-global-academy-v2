@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import UserAccountMenu from '../components/UserAccountMenu';
+import LearnerConnectedHomeSections, { type LearnerConnectedHomeData } from '../components/home/LearnerConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -54,16 +55,7 @@ type HomeAudience =
   | 'coach'
   | 'apprenant';
 
-type LearnerDashboardData = {
-  courses_en_cours?: Array<{
-    course_id: string;
-    title: string;
-    slug: string;
-    progress_percent: number;
-    lessons_completed: number;
-    lessons_total: number;
-  }>;
-};
+type LearnerDashboardData = LearnerConnectedHomeData;
 
 type LandingData = { featured_courses?: CourseCardData[] };
 
@@ -405,11 +397,11 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
   apprenant: {
     label: 'Apprenant',
     eyebrow: 'Votre parcours Omnia',
-    title: 'Apprendre, prouver et avancer.',
-    intro: 'Votre accueil relie ce que vous apprenez à vos évaluations, preuves, Career, Projects, Talent, Communauté, Live et Coaching. Chaque espace reste accessible sans répéter les mêmes contenus.',
+    title: 'Votre parcours, au même endroit.',
+    intro: 'Retrouvez votre progression, les actions utiles et des accès directs vers chaque écosystème. Les fonctions détaillées restent dans leur espace pour garder un accueil clair.',
     accent: '#0F7699', soft: '#E9F7FB', secondary: '#15546A', variant: 'learning',
     primary: LINK('Continuer mes formations', 'Retrouver vos cours et votre progression.', '/dashboard/mes-cours', BookOpen),
-    secondaryAction: LINK('Mon espace Apprenant', 'Accéder à votre tableau de bord complet.', '/dashboard', LayoutDashboard),
+    secondaryAction: LINK('Voir mes preuves', 'Accéder à vos compétences, badges et preuves d’apprentissage.', '/dashboard/skills-passport', ShieldCheck),
     workflow: [
       { label: 'Apprendre', description: 'Suivre vos formations et modules.' },
       { label: 'Évaluer', description: 'Passer les évaluations et documenter vos acquis.' },
@@ -682,8 +674,48 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-5 px-5 sm:px-6 lg:px-8">
+        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
+
+          {audience === 'apprenant' && (
+            <form onSubmit={submitSearch} className="relative order-3 w-full min-w-0 flex-1 lg:order-none lg:mx-auto lg:max-w-[650px]">
+              <div className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-[#D4DFEA] bg-[#F8FAFD] focus-within:border-[#9EB4D0] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0F7699]/10">
+                <Search size={17} className="ml-4 shrink-0 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder={searchPlaceholderFor(audience)}
+                  aria-label={`Rechercher dans l’accueil ${config.label}`}
+                  className="min-h-[42px] min-w-0 flex-1 bg-transparent px-3 text-sm font-medium text-[#002050] outline-none placeholder:font-normal placeholder:text-slate-400"
+                />
+                <button type="submit" className="mr-1.5 hidden min-h-[34px] rounded-lg bg-[#002050] px-3 text-xs font-black text-white sm:block">Rechercher</button>
+              </div>
+
+              {query.trim() && (
+                <div className="absolute left-0 right-0 top-[52px] z-50 overflow-hidden rounded-2xl border border-[#D8E2EE] bg-white shadow-[0_24px_60px_rgba(0,32,80,0.16)]">
+                  {searchResults.length > 0 ? (
+                    <div className="divide-y divide-slate-100">
+                      {searchResults.map(item => {
+                        const ResultIcon = item.icon;
+                        return (
+                          <Link key={item.href} to={addPreview(item.href, previewMode)} onClick={() => setQuery('')} className="group flex items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E9F7FB] text-[#0F7699]"><ResultIcon size={17} /></span>
+                            <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-extrabold text-[#002050]">{item.label}</strong><span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span></span>
+                            <ArrowRight size={15} className="shrink-0 text-slate-300 transition group-hover:translate-x-1" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Link to={`/catalogue?q=${encodeURIComponent(query.trim())}`} onClick={() => setQuery('')} className="flex items-center justify-between gap-4 px-5 py-4 text-sm font-bold text-[#002050] hover:bg-slate-50">
+                      <span>Rechercher « {query.trim()} » dans le catalogue de formations</span><ArrowRight size={16} />
+                    </Link>
+                  )}
+                </div>
+              )}
+            </form>
+          )}
+
           <UserAccountMenu dashboardPath={dashboardPath} />
         </div>
       </header>
@@ -701,6 +733,7 @@ export default function ConnectedHome() {
       )}
 
       <main>
+        {audience !== 'apprenant' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
             <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
@@ -743,6 +776,7 @@ export default function ConnectedHome() {
             </form>
           </div>
         </section>
+        )}
 
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
@@ -778,26 +812,8 @@ export default function ConnectedHome() {
           </div>
         </section>
 
-        {audience === 'apprenant' && !previewMode && continueCourses.length > 0 && (
-          <section className="border-b border-slate-200 bg-white">
-            <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">
-              <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em]" style={{ color: config.accent }}>À reprendre</p>
-                  <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Votre progression réelle</h2>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">Un seul bloc prioritaire, sans répéter votre tableau de bord Apprenant.</p>
-                </div>
-                <div className="divide-y divide-slate-200 border-y border-slate-200">
-                  {continueCourses.slice(0, 3).map(course => (
-                    <Link key={course.course_id} to={`/cours/${course.slug}/apprendre`} className="group grid gap-3 py-4 sm:grid-cols-[1fr_170px] sm:items-center">
-                      <div><strong className="text-sm font-extrabold text-[#002050] group-hover:underline">{course.title}</strong><p className="mt-1 text-xs text-slate-500">{course.lessons_completed}/{course.lessons_total} leçons terminées</p></div>
-                      <div className="flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, course.progress_percent))}%`, backgroundColor: config.accent }} /></div><span className="w-10 text-right text-xs font-black text-[#002050]">{course.progress_percent}%</span></div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
+        {audience === 'apprenant' && (
+          <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
         )}
 
         {audience === 'super_admin' ? (
@@ -831,7 +847,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        ) : (
+        ) : audience !== 'apprenant' ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="mb-10 max-w-3xl">
@@ -860,7 +876,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        )}
+        ) : null}
 
         {audience === 'apprenant' && featuredCourses.length > 0 && (
           <section className="border-t border-slate-200" style={{ backgroundColor: config.soft }}>
@@ -886,7 +902,7 @@ export default function ConnectedHome() {
           </section>
         )}
 
-        {config.ecosystem.length > 0 && (
+        {audience !== 'apprenant' && config.ecosystem.length > 0 && (
           <section className="relative overflow-hidden bg-[#061C36] text-white">
             <div className="absolute inset-y-0 right-0 w-1/2 opacity-30" style={{ background: `radial-gradient(circle at 80% 50%, ${config.accent}, transparent 62%)` }} aria-hidden="true" />
           <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[0.55fr_1.45fr] lg:px-8">
