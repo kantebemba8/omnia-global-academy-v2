@@ -31,13 +31,14 @@ import {
 import UserAccountMenu from '../components/UserAccountMenu';
 import LearnerConnectedHomeSections, { type LearnerConnectedHomeData } from '../components/home/LearnerConnectedHomeSections';
 import ProfessorConnectedHomeSections, { type ProfessorConnectedHomeData } from '../components/home/ProfessorConnectedHomeSections';
+import StructureConnectedHomeSections, { type StructureConnectedHomeData } from '../components/home/StructureConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
-import { getDashboardPathForRoles, normalizePlatformRoles, type CanonicalPlatformRole } from '../lib/session';
+import { getDashboardPathForRoles, getSessionToken, normalizePlatformRoles, type CanonicalPlatformRole } from '../lib/session';
 import { normalizeModeratorPermissions, type ModeratorPermissions } from '../lib/moderatorPermissions';
 
 const BLUE = '#002050';
@@ -58,6 +59,7 @@ type HomeAudience =
 
 type LearnerDashboardData = LearnerConnectedHomeData;
 type ProfessorDashboardData = ProfessorConnectedHomeData;
+type StructureDashboardData = StructureConnectedHomeData;
 
 type LandingData = { featured_courses?: CourseCardData[] };
 
@@ -563,6 +565,7 @@ export default function ConnectedHome() {
   const [query, setQuery] = useState('');
   const [learnerData, setLearnerData] = useState<LearnerDashboardData | null>(null);
   const [professorData, setProfessorData] = useState<ProfessorDashboardData | null>(null);
+  const [structureData, setStructureData] = useState<StructureDashboardData | null>(null);
   const [featuredCourses, setFeaturedCourses] = useState<CourseCardData[]>([]);
 
   const roles = useMemo(() => normalizePlatformRoles(user?.roles || []), [user?.roles]);
@@ -613,8 +616,15 @@ export default function ConnectedHome() {
       (professorData?.formations || []).forEach(course => pushUnique(LINK(course.title, `Formation Professeur · ${course.total_students || 0} apprenant(s).`, '/professeur/courses', BookOpen)));
     }
 
+    if (audience === 'structure') {
+      (structureData?.pending_members || []).forEach(member => {
+        const name = member.users?.full_name?.trim();
+        if (name) pushUnique(LINK(name, 'Demande de rattachement Structure en attente.', '/structure/rattachements', Users));
+      });
+    }
+
     return entries;
-  }, [audience, config, groups, continueCourses, featuredCourses, professorData]);
+  }, [audience, config, groups, continueCourses, featuredCourses, professorData, structureData]);
 
   const searchResults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('fr');
@@ -671,6 +681,33 @@ export default function ConnectedHome() {
     return () => { active = false; };
   }, [audience, previewMode, roles]);
 
+  useEffect(() => {
+    if (audience !== 'structure' || previewMode || !roles.includes('structure')) {
+      setStructureData(null);
+      return;
+    }
+    const sessionToken = getSessionToken() || '';
+    if (!sessionToken) {
+      setStructureData(null);
+      return;
+    }
+    let active = true;
+    const api = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/studio-unified`;
+    fetch(api, {
+      method: 'POST',
+      headers: edgeAuthHeaders(),
+      body: JSON.stringify({ action: 'structure_dashboard', session_token: sessionToken }),
+    })
+      .then(async response => {
+        const payload = await response.json().catch(() => null) as StructureDashboardData & { success?: boolean } | null;
+        if (!response.ok || !payload || payload.success === false) return Promise.reject();
+        return payload;
+      })
+      .then(data => { if (active) setStructureData(data); })
+      .catch(() => { if (active) setStructureData(null); });
+    return () => { active = false; };
+  }, [audience, previewMode, roles]);
+
   function submitSearch(event: FormEvent) {
     event.preventDefault();
     if (searchResults[0]) {
@@ -694,10 +731,10 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
+        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
 
-          {(audience === 'apprenant' || audience === 'professeur') && (
+          {(audience === 'apprenant' || audience === 'professeur' || audience === 'structure') && (
             <form onSubmit={submitSearch} className="relative order-3 w-full min-w-0 flex-1 lg:order-none lg:mx-auto lg:max-w-[650px]">
               <div className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-[#D4DFEA] bg-[#F8FAFD] focus-within:border-[#9EB4D0] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0F7699]/10">
                 <Search size={17} className="ml-4 shrink-0 text-slate-400" />
@@ -755,7 +792,7 @@ export default function ConnectedHome() {
       )}
 
       <main>
-        {audience !== 'apprenant' && audience !== 'professeur' && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
             <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
@@ -800,7 +837,7 @@ export default function ConnectedHome() {
         </section>
         )}
 
-        {audience !== 'professeur' && (
+        {audience !== 'professeur' && audience !== 'structure' && (
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
@@ -840,6 +877,10 @@ export default function ConnectedHome() {
           <ProfessorConnectedHomeSections data={professorData} previewMode={previewMode} />
         )}
 
+        {audience === 'structure' && (
+          <StructureConnectedHomeSections data={structureData} previewMode={previewMode} />
+        )}
+
         {audience === 'apprenant' && (
           <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
         )}
@@ -875,7 +916,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        ) : audience !== 'apprenant' && audience !== 'professeur' ? (
+        ) : audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="mb-10 max-w-3xl">
@@ -930,7 +971,7 @@ export default function ConnectedHome() {
           </section>
         )}
 
-        {audience !== 'apprenant' && audience !== 'professeur' && config.ecosystem.length > 0 && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && config.ecosystem.length > 0 && (
           <section className="relative overflow-hidden bg-[#061C36] text-white">
             <div className="absolute inset-y-0 right-0 w-1/2 opacity-30" style={{ background: `radial-gradient(circle at 80% 50%, ${config.accent}, transparent 62%)` }} aria-hidden="true" />
           <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[0.55fr_1.45fr] lg:px-8">
