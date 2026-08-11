@@ -34,6 +34,7 @@ import ProfessorConnectedHomeSections, { type ProfessorConnectedHomeData } from 
 import StructureConnectedHomeSections, { type StructureConnectedHomeData } from '../components/home/StructureConnectedHomeSections';
 import RecruiterConnectedHomeSections from '../components/home/RecruiterConnectedHomeSections';
 import OrganizerConnectedHomeSections from '../components/home/OrganizerConnectedHomeSections';
+import CoachConnectedHomeSections from '../components/home/CoachConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -370,7 +371,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     eyebrow: 'Accompagnement professionnel',
     title: 'Piloter votre activité de coaching de bout en bout.',
     intro: 'Votre accueil Coach réunit offres, calendrier, sessions, avis, produits, commerce et revenus sans vous faire passer par une page pensée pour l’apprenant.',
-    accent: '#A55A44', soft: '#FAEEE9', secondary: '#64382D', variant: 'coaching',
+    accent: '#0F766E', soft: '#E9F8F5', secondary: '#0B4F54', variant: 'coaching',
     primary: LINK('Ouvrir l’espace Coach', 'Retrouver votre tableau de bord Coach.', '/coach/dashboard', Heart),
     secondaryAction: LINK('Gérer mes sessions', 'Accéder à vos sessions de coaching.', '/coach/sessions', CalendarDays),
     workflow: [
@@ -733,10 +734,10 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
+        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
 
-          {(audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur') && (
+          {(audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach') && (
             <form onSubmit={submitSearch} className="relative order-3 w-full min-w-0 flex-1 lg:order-none lg:mx-auto lg:max-w-[650px]">
               <div className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-[#D4DFEA] bg-[#F8FAFD] focus-within:border-[#9EB4D0] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0F7699]/10">
                 <Search size={17} className="ml-4 shrink-0 text-slate-400" />
@@ -794,7 +795,7 @@ export default function ConnectedHome() {
       )}
 
       <main>
-        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
             <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
@@ -839,7 +840,7 @@ export default function ConnectedHome() {
         </section>
         )}
 
-        {audience !== 'professeur' && audience !== 'structure' && audience !== 'organisateur' && (
+        {audience !== 'professeur' && audience !== 'structure' && audience !== 'organisateur' && audience !== 'coach' && (
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
@@ -891,6 +892,10 @@ export default function ConnectedHome() {
           <OrganizerConnectedHomeSections previewMode={previewMode} />
         )}
 
+        {audience === 'coach' && (
+          <CoachConnectedHomeSections previewMode={previewMode} />
+        )}
+
         {audience === 'apprenant' && (
           <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
         )}
@@ -926,7 +931,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        ) : audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' ? (
+        ) : audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="mb-10 max-w-3xl">
