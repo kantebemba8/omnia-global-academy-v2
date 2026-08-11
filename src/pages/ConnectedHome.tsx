@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import UserAccountMenu from '../components/UserAccountMenu';
 import LearnerConnectedHomeSections, { type LearnerConnectedHomeData } from '../components/home/LearnerConnectedHomeSections';
+import ProfessorConnectedHomeSections, { type ProfessorConnectedHomeData } from '../components/home/ProfessorConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -56,6 +57,7 @@ type HomeAudience =
   | 'apprenant';
 
 type LearnerDashboardData = LearnerConnectedHomeData;
+type ProfessorDashboardData = ProfessorConnectedHomeData;
 
 type LandingData = { featured_courses?: CourseCardData[] };
 
@@ -560,6 +562,7 @@ export default function ConnectedHome() {
   const location = useLocation();
   const [query, setQuery] = useState('');
   const [learnerData, setLearnerData] = useState<LearnerDashboardData | null>(null);
+  const [professorData, setProfessorData] = useState<ProfessorDashboardData | null>(null);
   const [featuredCourses, setFeaturedCourses] = useState<CourseCardData[]>([]);
 
   const roles = useMemo(() => normalizePlatformRoles(user?.roles || []), [user?.roles]);
@@ -606,8 +609,12 @@ export default function ConnectedHome() {
       featuredCourses.forEach(course => pushUnique(LINK(course.title, course.short_description || 'Formation mise en avant dans le catalogue Omnia.', coursePath(course), BookOpen)));
     }
 
+    if (audience === 'professeur') {
+      (professorData?.formations || []).forEach(course => pushUnique(LINK(course.title, `Formation Professeur · ${course.total_students || 0} apprenant(s).`, '/professeur/courses', BookOpen)));
+    }
+
     return entries;
-  }, [audience, config, groups, continueCourses, featuredCourses]);
+  }, [audience, config, groups, continueCourses, featuredCourses, professorData]);
 
   const searchResults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('fr');
@@ -651,6 +658,19 @@ export default function ConnectedHome() {
     return () => { active = false; };
   }, [audience, previewMode, roles]);
 
+  useEffect(() => {
+    if (audience !== 'professeur' || previewMode || !roles.includes('professeur')) {
+      setProfessorData(null);
+      return;
+    }
+    let active = true;
+    fetch(ENDPOINTS.dashboardProfesseur, { headers: edgeAuthHeaders() })
+      .then(response => response.ok ? response.json() as Promise<ProfessorDashboardData> : Promise.reject())
+      .then(data => { if (active) setProfessorData(data); })
+      .catch(() => { if (active) setProfessorData(null); });
+    return () => { active = false; };
+  }, [audience, previewMode, roles]);
+
   function submitSearch(event: FormEvent) {
     event.preventDefault();
     if (searchResults[0]) {
@@ -674,10 +694,10 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
+        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
 
-          {audience === 'apprenant' && (
+          {(audience === 'apprenant' || audience === 'professeur') && (
             <form onSubmit={submitSearch} className="relative order-3 w-full min-w-0 flex-1 lg:order-none lg:mx-auto lg:max-w-[650px]">
               <div className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-[#D4DFEA] bg-[#F8FAFD] focus-within:border-[#9EB4D0] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0F7699]/10">
                 <Search size={17} className="ml-4 shrink-0 text-slate-400" />
@@ -699,17 +719,19 @@ export default function ConnectedHome() {
                         const ResultIcon = item.icon;
                         return (
                           <Link key={item.href} to={addPreview(item.href, previewMode)} onClick={() => setQuery('')} className="group flex items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E9F7FB] text-[#0F7699]"><ResultIcon size={17} /></span>
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: config.soft, color: config.accent }}><ResultIcon size={17} /></span>
                             <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-extrabold text-[#002050]">{item.label}</strong><span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span></span>
                             <ArrowRight size={15} className="shrink-0 text-slate-300 transition group-hover:translate-x-1" />
                           </Link>
                         );
                       })}
                     </div>
-                  ) : (
+                  ) : audience === 'apprenant' ? (
                     <Link to={`/catalogue?q=${encodeURIComponent(query.trim())}`} onClick={() => setQuery('')} className="flex items-center justify-between gap-4 px-5 py-4 text-sm font-bold text-[#002050] hover:bg-slate-50">
                       <span>Rechercher « {query.trim()} » dans le catalogue de formations</span><ArrowRight size={16} />
                     </Link>
+                  ) : (
+                    <p className="px-5 py-4 text-sm text-slate-500">Aucun accès de votre espace ne correspond à cette recherche.</p>
                   )}
                 </div>
               )}
@@ -733,7 +755,7 @@ export default function ConnectedHome() {
       )}
 
       <main>
-        {audience !== 'apprenant' && (
+        {audience !== 'apprenant' && audience !== 'professeur' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
             <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
@@ -778,6 +800,7 @@ export default function ConnectedHome() {
         </section>
         )}
 
+        {audience !== 'professeur' && (
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
@@ -811,6 +834,11 @@ export default function ConnectedHome() {
             </div>
           </div>
         </section>
+        )}
+
+        {audience === 'professeur' && (
+          <ProfessorConnectedHomeSections data={professorData} previewMode={previewMode} />
+        )}
 
         {audience === 'apprenant' && (
           <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
@@ -847,7 +875,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        ) : audience !== 'apprenant' ? (
+        ) : audience !== 'apprenant' && audience !== 'professeur' ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="mb-10 max-w-3xl">
@@ -902,7 +930,7 @@ export default function ConnectedHome() {
           </section>
         )}
 
-        {audience !== 'apprenant' && config.ecosystem.length > 0 && (
+        {audience !== 'apprenant' && audience !== 'professeur' && config.ecosystem.length > 0 && (
           <section className="relative overflow-hidden bg-[#061C36] text-white">
             <div className="absolute inset-y-0 right-0 w-1/2 opacity-30" style={{ background: `radial-gradient(circle at 80% 50%, ${config.accent}, transparent 62%)` }} aria-hidden="true" />
           <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[0.55fr_1.45fr] lg:px-8">
