@@ -13,7 +13,7 @@ export default function AdminOmniaLiveAutomationRules(){
   catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
  return <AdminOmniaLiveShell title="Automatisations" subtitle="Règles globales et par événement pour confirmations, rappels et changements de statut.">
-  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
+  {msg&&<div className="mb-5 border-l-2 border-[#6556B5] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
   {rows.length?<div className="overflow-x-auto"><div className="min-w-[900px]">
    <div className="grid grid-cols-[1.3fr_1fr_.8fr_.7fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Règle</div><div>Déclencheur</div><div>Canal</div><div className="text-right">État</div></div>
    {rows.map(r=><div key={r.id} className="grid grid-cols-[1.3fr_1fr_.8fr_.7fr] items-center border-b border-slate-200 py-4 text-sm">

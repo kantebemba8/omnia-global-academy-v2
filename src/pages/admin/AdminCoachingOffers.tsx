@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachOffer, coachingRequest, formatXof } from '../../lib/coachingApi';
 
-const BLUE = '#002050'; const GOLD = '#BF8813'; const BORDER = '#E4E7EC';
+const BLUE = '#002050'; const GOLD = '#667A3D'; const BORDER = '#E4E7EC';
 type Filter = 'pending' | 'active' | 'rejected' | 'all';
 
 export default function AdminCoachingOffers() {

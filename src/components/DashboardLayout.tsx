@@ -4,7 +4,8 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import { DashboardTopbar } from './DashboardTopbar';
 import OmniaBrandLockup from './OmniaBrandLockup';
-import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
+import { ADMIN_NAV_GROUPS, adminNavItemMatchesPath, findAdminEcosystem, findAdminEcosystemItem } from '../lib/adminNavigation';
+import { PreviewReturnBar } from './PreviewReturnButton';
 import { getRoleTheme, type RoleThemeKey } from '../lib/roleTheme';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users,
@@ -147,6 +148,7 @@ export function DashboardLayout({
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [openDesktopGroup, setOpenDesktopGroup] = useState<string | null>(null);
+  const [openAdminEcosystemGroup, setOpenAdminEcosystemGroup] = useState<string | null>(null);
   const [expandedMobileGroups, setExpandedMobileGroups] = useState<Record<string, boolean>>({});
   const [referralEnabled, setReferralEnabled] = useState(false);
 
@@ -167,6 +169,7 @@ export function DashboardLayout({
   useEffect(() => {
     setMobileNavigationOpen(false);
     setOpenDesktopGroup(null);
+    setOpenAdminEcosystemGroup(null);
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -247,22 +250,26 @@ export function DashboardLayout({
     [ACTIVE_NAV_GROUPS, NAV_ITEMS],
   );
 
-  const activeNavigation = useMemo(() => {
-    return allNavigationItems
-      .filter(item => navigationItemMatchesPath(item, location.pathname))
-      .sort((a, b) => b.path.length - a.path.length)[0];
-  }, [allNavigationItems, location.pathname]);
+  const activeAdminEcosystem = role === 'super_admin' ? findAdminEcosystem(location.pathname) : null;
+  const activeAdminEcosystemItem = role === 'super_admin' ? findAdminEcosystemItem(location.pathname) : null;
 
-  const activeGroup = useMemo(
-    () => ACTIVE_NAV_GROUPS?.find(group => group.items.some(item => navigationItemMatchesPath(item, location.pathname))),
-    [ACTIVE_NAV_GROUPS, location.pathname],
-  );
+  const activeNavigation = useMemo(() => {
+    const main = allNavigationItems
+      .filter(item => role === 'super_admin' ? adminNavItemMatchesPath(item, location.pathname) : navigationItemMatchesPath(item, location.pathname))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    return activeAdminEcosystemItem || main;
+  }, [allNavigationItems, location.pathname, role, activeAdminEcosystemItem]);
+
+  const activeGroup = useMemo(() => {
+    if (role === 'super_admin' && activeAdminEcosystem) return ACTIVE_NAV_GROUPS?.find(group => group.id === 'ecosystems');
+    return ACTIVE_NAV_GROUPS?.find(group => group.items.some(item => role === 'super_admin' ? adminNavItemMatchesPath(item, location.pathname) : navigationItemMatchesPath(item, location.pathname)));
+  }, [ACTIVE_NAV_GROUPS, location.pathname, role, activeAdminEcosystem]);
 
   useEffect(() => {
     if (activeGroup) setExpandedMobileGroups({ [activeGroup.id]: true });
   }, [activeGroup?.id]);
 
-  const isActive = (item: NavItem) => activeNavigation?.path === item.path;
+  const isActive = (item: NavItem) => role === 'super_admin' ? adminNavItemMatchesPath(item, location.pathname) : activeNavigation?.path === item.path;
   const roleSubtitle = roleLabel(role);
   const contextualTitle = headerTitle
     || (location.pathname === '/mon-profil' ? (role === 'super_admin' ? 'Mon compte' : 'Mon profil') : activeNavigation?.label)
@@ -418,7 +425,7 @@ export function DashboardLayout({
     <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-[#002050]">
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
-          <OmniaBrandLockup href="/home" inverse compact className="min-w-0 flex-1" />
+          <OmniaBrandLockup href="/admin/dashboard" inverse compact className="min-w-0 flex-1" />
           <button
             type="button"
             onClick={() => setMobileNavigationOpen(false)}
@@ -435,6 +442,32 @@ export function DashboardLayout({
       </div>
       <nav className="oga-sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
         {navigationContents(true)}
+        {adminMode && activeAdminEcosystem && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: activeAdminEcosystem.accent }}>Omnia {activeAdminEcosystem.label}</p>
+            {activeAdminEcosystem.groups.map(group => (
+              <div key={group.id} className="border-b border-white/10">
+                <p className="px-4 py-2 text-xs font-bold text-white/60">{group.label}</p>
+                {group.items.map(item => {
+                  const ItemIcon = item.icon;
+                  const active = adminNavItemMatchesPath(item, location.pathname);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={buildPath(item.path)}
+                      onClick={() => setMobileNavigationOpen(false)}
+                      className={`flex items-center gap-3 border-l-2 px-6 py-2.5 text-[13px] ${active ? 'font-bold text-white' : 'border-transparent font-medium text-white/65'}`}
+                      style={active ? { borderColor: activeAdminEcosystem.accent, backgroundColor: 'rgba(255,255,255,.08)' } : undefined}
+                    >
+                      <ItemIcon size={15} style={{ color: active ? activeAdminEcosystem.accent : undefined }} />
+                      <span className="flex-1">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
       </nav>
       {spaceHomePath && (
         <div className="border-t border-white/10 p-3">
@@ -489,19 +522,20 @@ export function DashboardLayout({
       <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F6F8FC]">
         <DashboardTopbar
           title={contextualTitle}
-          subtitle={headerSubtitle || roleSubtitle}
+          subtitle={headerSubtitle || (activeAdminEcosystem ? `Administration Omnia ${activeAdminEcosystem.label}` : roleSubtitle)}
           onOpenNavigation={() => setMobileNavigationOpen(true)}
           navigationOpen={mobileNavigationOpen}
           actions={headerActions}
           search={headerSearch}
           dashboardPath={dashboardPath}
           showBrand
-          brandHref="/home"
+          brandHref="/admin/dashboard"
+          accentColor={activeAdminEcosystem?.accent || '#BF8813'}
         />
 
-        <div className="relative z-20 flex-shrink-0 border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-[1600px] items-center overflow-x-auto px-4 md:px-6">
-            <nav className="flex min-w-max items-center" aria-label="Domaines de gestion Super-admin">
+        <div className="relative z-30 flex-shrink-0 border-b border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-[1600px] items-center overflow-x-auto px-4 md:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <nav className="flex min-w-max items-center" aria-label="Navigation principale Super-admin">
               {ACTIVE_NAV_GROUPS?.map(group => {
                 const GroupIcon = group.icon;
                 const containsActive = activeGroup?.id === group.id;
@@ -512,9 +546,9 @@ export function DashboardLayout({
                     to={destination}
                     className={`group relative inline-flex min-h-14 items-center gap-2.5 px-3.5 text-[13px] font-bold transition md:px-4 ${containsActive ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
                   >
-                    <GroupIcon size={17} style={{ color: containsActive ? '#BF8813' : '#64748B' }} />
+                    <GroupIcon size={17} style={{ color: containsActive ? (activeAdminEcosystem?.accent || '#BF8813') : '#64748B' }} />
                     <span>{group.label}</span>
-                    <span className={`absolute inset-x-3 bottom-0 h-[2px] transition ${containsActive ? 'bg-[#BF8813]' : 'bg-transparent group-hover:bg-slate-200'}`} />
+                    <span className="absolute inset-x-3 bottom-0 h-[2px] transition" style={{ background: containsActive ? (activeAdminEcosystem?.accent || '#BF8813') : 'transparent' }} />
                   </Link>
                 );
               })}
@@ -523,18 +557,22 @@ export function DashboardLayout({
         </div>
 
         {activeGroup && activeGroup.id !== 'dashboard' && (
-          <div className="relative z-10 flex-shrink-0 border-b border-slate-200 bg-[#F8FAFD]">
-            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2 md:px-6">
+          <div className="relative z-20 flex-shrink-0 border-b border-slate-200 bg-[#F8FAFD]">
+            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2 md:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {activeGroup.items.map(item => {
                 const ItemIcon = item.icon;
                 const active = isActive(item);
+                const ecosystemForItem = 'ecosystemId' in item && item.ecosystemId ? findAdminEcosystem(item.path) : null;
+                const accent = ecosystemForItem?.accent || activeAdminEcosystem?.accent || '#BF8813';
+                const soft = ecosystemForItem?.soft || '#FFFFFF';
                 return (
                   <Link
                     key={item.path}
                     to={buildPath(item.path)}
-                    className={`inline-flex min-h-9 min-w-max items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${active ? 'bg-white text-[#002050] shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/80 hover:text-[#002050]'}`}
+                    className={`inline-flex min-h-9 min-w-max items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition ${active ? 'bg-white text-[#002050] shadow-sm' : 'border-transparent text-slate-500 hover:bg-white/80 hover:text-[#002050]'}`}
+                    style={active ? { borderColor: accent, backgroundColor: soft } : undefined}
                   >
-                    <ItemIcon size={14} style={{ color: active ? '#BF8813' : '#94A3B8' }} />
+                    <ItemIcon size={14} style={{ color: active ? accent : ('ecosystemId' in item && item.ecosystemId ? accent : '#94A3B8') }} />
                     {item.label}
                   </Link>
                 );
@@ -543,14 +581,81 @@ export function DashboardLayout({
           </div>
         )}
 
-        {mobileNavigationOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administrative">
-            <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
-            <div className="relative z-10 h-[100dvh] w-[min(88vw,320px)]">{adminSidebar}</div>
+        {activeAdminEcosystem && (
+          <div
+            className="relative z-10 hidden flex-shrink-0 border-b lg:block"
+            style={{ borderColor: activeAdminEcosystem.border, background: activeAdminEcosystem.soft }}
+            onMouseLeave={() => setOpenAdminEcosystemGroup(null)}
+          >
+            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-visible px-4 md:px-6">
+              <div className="mr-2 flex min-h-12 items-center border-r pr-4 text-xs font-black uppercase tracking-[0.12em]" style={{ color: activeAdminEcosystem.accent, borderColor: activeAdminEcosystem.border }}>
+                Omnia {activeAdminEcosystem.label}
+              </div>
+              <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-visible" aria-label={`Gestion Omnia ${activeAdminEcosystem.label}`}>
+                {activeAdminEcosystem.groups.map(group => {
+                  const GroupIcon = group.icon;
+                  const containsActive = group.items.some(item => adminNavItemMatchesPath(item, location.pathname));
+                  const hasChildren = group.items.length > 1;
+                  const open = openAdminEcosystemGroup === group.id;
+                  const destination = buildPath(group.items[0].path);
+                  return (
+                    <div key={group.id} className="relative" onMouseEnter={() => hasChildren && setOpenAdminEcosystemGroup(group.id)} onFocus={() => hasChildren && setOpenAdminEcosystemGroup(group.id)}>
+                      <Link
+                        to={destination}
+                        className="relative inline-flex min-h-12 min-w-max items-center gap-2 px-3 text-xs font-bold text-[#002050] transition hover:bg-white/55"
+                        style={{ color: containsActive ? '#002050' : '#475569' }}
+                      >
+                        <GroupIcon size={14} style={{ color: containsActive ? activeAdminEcosystem.accent : '#64748B' }} />
+                        {group.label}
+                        {hasChildren && <ChevronDown size={13} style={{ color: activeAdminEcosystem.accent }} />}
+                        <span className="absolute inset-x-3 bottom-0 h-[2px]" style={{ background: containsActive ? activeAdminEcosystem.accent : 'transparent' }} />
+                      </Link>
+                      {hasChildren && open && (
+                        <div className="absolute left-0 top-full z-50 min-w-[300px] border bg-white py-2 shadow-[0_18px_45px_rgba(0,32,80,.16)]" style={{ borderColor: activeAdminEcosystem.border }}>
+                          <div className="border-b px-4 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: activeAdminEcosystem.accent, borderColor: activeAdminEcosystem.border }}>
+                            {group.label}
+                          </div>
+                          {group.items.map(item => {
+                            const ItemIcon = item.icon;
+                            const active = adminNavItemMatchesPath(item, location.pathname);
+                            return (
+                              <Link
+                                key={item.path}
+                                to={buildPath(item.path)}
+                                onClick={() => setOpenAdminEcosystemGroup(null)}
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50"
+                                style={active ? { color: '#002050', background: activeAdminEcosystem.soft } : { color: '#475569' }}
+                              >
+                                <ItemIcon size={15} style={{ color: active ? activeAdminEcosystem.accent : '#94A3B8' }} />
+                                <span className="flex-1">{item.label}</span>
+                                {active && <ChevronRight size={13} style={{ color: activeAdminEcosystem.accent }} />}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </nav>
+              <Link to={activeAdminEcosystem.publicPath} className="ml-auto inline-flex min-h-12 min-w-max items-center gap-2 border-l px-4 text-xs font-bold text-[#002050]" style={{ borderColor: activeAdminEcosystem.border }}>
+                <ExternalLink size={14} style={{ color: activeAdminEcosystem.accent }} /> Voir l’écosystème
+              </Link>
+            </div>
           </div>
         )}
 
-        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#F6F8FC] ${contentClassName}`}>
+        {mobileNavigationOpen && (
+          <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administrative">
+            <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
+            <div className="relative z-10 h-[100dvh] w-[min(88vw,340px)]">{adminSidebar}</div>
+          </div>
+        )}
+
+        <main
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName || ''}`}
+          style={{ background: activeAdminEcosystem?.soft ? `linear-gradient(180deg, ${activeAdminEcosystem.soft} 0px, #F6F8FC 180px)` : '#F6F8FC' }}
+        >
           {children}
         </main>
       </div>
@@ -571,6 +676,8 @@ export function DashboardLayout({
         brandHref="/home"
         accentColor={roleAccent}
       />
+
+      <PreviewReturnBar label={roleSubtitle} />
 
       {hasNavigation && <div className="relative z-20 hidden flex-shrink-0 border-b border-slate-200 bg-white lg:block">
         <div className="mx-auto flex max-w-[1440px] items-center gap-2 overflow-visible px-5">

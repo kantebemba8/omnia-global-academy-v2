@@ -15,7 +15,7 @@ export default function AdminOmniaLiveMedia(){
   try{await liveApi('admin_media_review',{method:'POST',body:JSON.stringify({media_id:id,decision,reason:r.value})});await load()}catch(e){setMsg(e instanceof Error?e.message:'Erreur')}
  }
  return <AdminOmniaLiveShell title="Médias & Replays" subtitle="Traitement, validation, suspension et publication des médias.">
-  {msg&&<div className="mb-4 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
+  {msg&&<div className="mb-4 border-l-2 border-[#6556B5] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
   {rows.length?(
    <div className="overflow-x-auto">
     <div className="min-w-[900px]">

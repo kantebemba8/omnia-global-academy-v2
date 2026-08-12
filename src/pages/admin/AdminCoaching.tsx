@@ -4,7 +4,7 @@ import { Activity, ExternalLink, FolderCog, Layers3, RefreshCw, Search, ShieldAl
 import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachApplication, CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 
-const BLUE = '#002050'; const GOLD = '#BF8813'; const BORDER = '#E4E7EC';
+const BLUE = '#002050'; const GOLD = '#667A3D'; const BORDER = '#E4E7EC';
 type Section = 'overview' | 'applications' | 'coaches' | 'levels' | 'domains';
 type Metrics = { pending_applications: number; total_applications: number; active_coaches: number; suspended_coaches: number; levels: number; domains: number };
 

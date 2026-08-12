@@ -37,6 +37,7 @@ import OrganizerConnectedHomeSections from '../components/home/OrganizerConnecte
 import CoachConnectedHomeSections from '../components/home/CoachConnectedHomeSections';
 import ModeratorConnectedHomeSections from '../components/home/ModeratorConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
+import { PREVIEW_SESSION_KEY, PreviewReturnBar } from '../components/PreviewReturnButton';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
@@ -46,7 +47,6 @@ import { getDashboardPathForRoles, getSessionToken, normalizePlatformRoles, type
 import { normalizeModeratorPermissions, type ModeratorPermissions } from '../lib/moderatorPermissions';
 
 const BLUE = '#002050';
-const PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 type HomeAudience =
@@ -729,6 +729,7 @@ export default function ConnectedHome() {
     return <div className="grid min-h-screen place-items-center bg-white"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#002050]" /></div>;
   }
   if (!user) return <Navigate to="/connexion?redirect=%2Fhome" replace />;
+  if (audience === 'super_admin') return <Navigate to="/admin/dashboard" replace />;
 
   const otherRoleHomes = roles
     .filter(role => role !== audience && role in HOME_CONFIGS)
@@ -785,17 +786,7 @@ export default function ConnectedHome() {
         </div>
       </header>
 
-      {previewMode && (
-        <div className="border-b border-[#D8C08A] bg-[#FFF7E6]">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm sm:px-6 lg:px-8">
-            <div>
-              <strong className="text-[#002050]">Prévisualisation Super-admin : {config.label}</strong>
-              <span className="ml-2 text-slate-600">Votre rôle et vos permissions Super-admin restent inchangés.</span>
-            </div>
-            <Link to="/admin/dashboard" className="font-bold text-[#002050] hover:underline">Retour à l’administration</Link>
-          </div>
-        </div>
-      )}
+      {previewMode && <PreviewReturnBar label={config.label} />}
 
       <main>
         {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (

@@ -8,7 +8,6 @@ import { captureError } from './lib/sentry';
 import { isRecoverableChunkError, recoverFromChunkError } from './lib/pwaRecovery';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
-import { PreviewReturnButton } from './components/PreviewReturnButton';
 import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
 import { MobileNotificationBridge } from './components/mobile/MobileNotificationBridge';
 import { MobileStoreRecoveryBridge } from './components/mobile/MobileStoreRecoveryBridge';
@@ -485,7 +484,6 @@ export default function App() {
         <MaintenanceNoticeBanner />
         <MobileNotificationBridge />
         <MobileStoreRecoveryBridge />
-        <PreviewReturnButton />
         <PlatformRoleGate>
         <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
@@ -696,7 +694,8 @@ export default function App() {
         <Route path="/admin/coaching/avis" element={<AdminCoachingRatings />} />
         <Route path="/admin/coaching/revenus" element={<AdminCoachingRevenue />} />
         <Route path="/admin/coaching/avance" element={<AdminCoachingAdvanced />} />
-        <Route path="/admin/career-projects" element={<AdminCareerProjectsHub />} />
+        <Route path="/admin/ecosystemes" element={<AdminCareerProjectsHub />} />
+        <Route path="/admin/career-projects" element={<Navigate to="/admin/ecosystemes" replace />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
         <Route path="/admin/omnia-live/creer" element={<AdminOmniaLiveCreate />} />

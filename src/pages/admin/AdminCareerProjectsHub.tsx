@@ -1,146 +1,70 @@
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  Briefcase,
-  FolderKanban,
-  Shield,
-  ShieldCheck,
-  UserRoundCheck,
-  Users,
-} from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
-
-const AREAS = [
-  {
-    title: 'Omnia Career Studio',
-    description: 'Piloter les règles, modèles CV/LM, jetons, exports, banque de questions et statistiques Career.',
-    path: '/admin/career-studio',
-    icon: Briefcase,
-    accent: '#3157A4',
-    surface: '#EEF3FF',
-  },
-  {
-    title: 'Omnia Projects',
-    description: 'Superviser les projets, validations, porteurs autorisés, partenaires, récompenses et signalements.',
-    path: '/admin/projects',
-    icon: FolderKanban,
-    accent: '#0E7490',
-    surface: '#ECFEFF',
-  },
-  {
-    title: 'Omnia Coaching',
-    description: 'Administrer les coachs, candidatures, offres, sessions, finance, litiges et avis.',
-    path: '/admin/coaching',
-    icon: Users,
-    accent: '#0F766E',
-    surface: '#ECFDF5',
-  },
-  {
-    title: 'Omnia Talent',
-    description: 'Gérer l’espace Talent, les règles de visibilité et les fonctions administratives existantes.',
-    path: '/admin/talent',
-    icon: Shield,
-    accent: '#6D4BB8',
-    surface: '#F5F3FF',
-  },
-  {
-    title: 'Employabilité',
-    description: 'Suivre les mécanismes d’employabilité et les intégrations déjà actives dans la plateforme.',
-    path: '/admin/employabilite',
-    icon: ShieldCheck,
-    accent: '#9A6700',
-    surface: '#FFF8E7',
-  },
-  {
-    title: 'Offres d’emploi',
-    description: 'Administrer les offres publiées dans les espaces emploi et les parcours de recrutement existants.',
-    path: '/admin/offres-emploi',
-    icon: UserRoundCheck,
-    accent: '#9F3F68',
-    surface: '#FFF1F5',
-  },
-] as const;
+import { ADMIN_ECOSYSTEMS } from '../../lib/adminNavigation';
 
 export default function AdminCareerProjectsHub() {
   return (
-    <AdminLayout>
+    <AdminLayout headerTitle="Écosystèmes" headerSubtitle="Administration des espaces Omnia">
       <div className="mx-auto max-w-[1540px] px-4 py-6 md:px-6 md:py-8">
-        <header className="overflow-hidden border border-slate-200 bg-white">
+        <header className="overflow-hidden rounded-[26px] border border-slate-200 bg-[#002050] text-white shadow-[0_18px_50px_rgba(0,32,80,.12)]">
           <div className="grid gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,.7fr)] lg:px-9 lg:py-10">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#BF8813]">Administration · Carrière & projets</p>
-              <h1 className="mt-3 max-w-3xl text-3xl font-black tracking-[-0.035em] text-[#002050] md:text-4xl">
-                Piloter les parcours professionnels, les projets et les opportunités.
-              </h1>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600 md:text-base">
-                Cette vue rassemble les espaces de gestion déjà présents dans Omnia. Chaque domaine conserve sa propre page et ses outils métier : aucun module n’est remplacé par Career Studio.
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#E9C46A]">Omnia Administration</p>
+              <h1 className="mt-3 max-w-3xl text-3xl font-black tracking-[-0.035em] md:text-4xl">Piloter chaque écosystème sans mélanger ses outils.</h1>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/68 md:text-base">
+                Chaque espace conserve ses fonctions Super-admin existantes. La navigation reprend désormais l’identité et la couleur de l’écosystème concerné.
               </p>
             </div>
-            <div className="border-l-0 border-slate-200 lg:border-l lg:pl-8">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Organisation</p>
-              <dl className="mt-4 divide-y divide-slate-200 border-y border-slate-200">
-                <div className="flex items-center justify-between py-3.5">
-                  <dt className="text-sm text-slate-500">Espaces de gestion</dt>
-                  <dd className="text-xl font-black text-[#002050]">{AREAS.length}</dd>
-                </div>
-                <div className="flex items-center justify-between py-3.5">
-                  <dt className="text-sm text-slate-500">Navigation</dt>
-                  <dd className="text-sm font-bold text-[#002050]">Pages dédiées</dd>
-                </div>
-                <div className="flex items-center justify-between py-3.5">
-                  <dt className="text-sm text-slate-500">Supervision</dt>
-                  <dd className="text-sm font-bold text-[#002050]">Super-admin</dd>
-                </div>
+            <div className="border-l-0 border-white/15 lg:border-l lg:pl-8">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/45">Architecture</p>
+              <dl className="mt-4 divide-y divide-white/10 border-y border-white/10">
+                <div className="flex items-center justify-between py-3.5"><dt className="text-sm text-white/55">Écosystèmes</dt><dd className="text-xl font-black">{ADMIN_ECOSYSTEMS.length}</dd></div>
+                <div className="flex items-center justify-between py-3.5"><dt className="text-sm text-white/55">Navigation</dt><dd className="text-sm font-bold">Horizontale</dd></div>
+                <div className="flex items-center justify-between py-3.5"><dt className="text-sm text-white/55">Fonctions</dt><dd className="text-sm font-bold">Conservées</dd></div>
               </dl>
             </div>
           </div>
-          <div className="h-1 bg-[linear-gradient(90deg,#002050_0%,#3157A4_35%,#0E7490_70%,#BF8813_100%)]" />
         </header>
 
-        <section className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div>
-            <div className="flex items-end justify-between gap-4 border-b border-slate-200 pb-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Domaines opérationnels</p>
-                <h2 className="mt-1 text-xl font-black text-[#002050]">Choisir un espace de gestion</h2>
-              </div>
+        <section className="mt-8">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Espaces de gestion</p>
+              <h2 className="mt-1 text-xl font-black text-[#002050]">Choisir un écosystème</h2>
             </div>
-
-            <div className="divide-y divide-slate-200 border-b border-slate-200">
-              {AREAS.map(area => {
-                const Icon = area.icon;
-                return (
-                  <Link
-                    key={area.path}
-                    to={area.path}
-                    className="group grid gap-4 py-5 transition hover:bg-white sm:grid-cols-[54px_minmax(0,1fr)_auto] sm:items-center sm:px-3"
-                  >
-                    <span className="flex h-12 w-12 items-center justify-center" style={{ background: area.surface, color: area.accent }}>
-                      <Icon size={21} />
-                    </span>
-                    <span className="min-w-0">
-                      <strong className="block text-base font-black text-[#002050]">{area.title}</strong>
-                      <span className="mt-1 block max-w-3xl text-sm leading-6 text-slate-500">{area.description}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-2 text-sm font-bold text-[#002050]">
-                      Ouvrir <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
+            <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400"><Sparkles size={14} className="text-[#BF8813]" /> Les couleurs proviennent du registre officiel Omnia.</div>
           </div>
 
-          <aside className="self-start border border-slate-200 bg-[#002050] p-6 text-white">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#E9C46A]">Principe de gestion</p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em]">Un domaine, une vraie page métier.</h2>
-            <p className="mt-4 text-sm leading-7 text-white/72">
-              Career Studio, Projects, Coaching et Talent restent indépendants. La navigation horizontale sert de point d’entrée ; les opérations détaillées restent dans leur espace spécialisé.
-            </p>
-            <div className="mt-6 border-t border-white/15 pt-5 text-sm leading-6 text-white/70">
-              Les actions de création, validation, gouvernance, modération et statistiques restent celles déjà présentes dans le code.
-            </div>
-          </aside>
+          <div className="grid gap-4 py-6 md:grid-cols-2 xl:grid-cols-3">
+            {ADMIN_ECOSYSTEMS.map(ecosystem => {
+              const Icon = ecosystem.icon;
+              const toolCount = ecosystem.groups.reduce((total, group) => total + group.items.length, 0);
+              return (
+                <Link
+                  key={ecosystem.id}
+                  to={ecosystem.entryPath}
+                  className="group overflow-hidden rounded-2xl border bg-white transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(0,32,80,.10)]"
+                  style={{ borderColor: ecosystem.border }}
+                >
+                  <div className="h-1" style={{ background: ecosystem.accent }} />
+                  <div className="p-5">
+                    <div className="flex items-start gap-4">
+                      <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl" style={{ background: ecosystem.soft, color: ecosystem.accent }}><Icon size={19} /></span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-base font-black text-[#002050]">Omnia {ecosystem.label}</strong>
+                        <span className="mt-1 block text-xs text-slate-400">{ecosystem.groups.length} domaine{ecosystem.groups.length > 1 ? 's' : ''} · {toolCount} accès de gestion</span>
+                      </span>
+                    </div>
+                    <div className="mt-5 flex items-center justify-between border-t pt-4" style={{ borderColor: ecosystem.border }}>
+                      <span className="text-xs font-bold" style={{ color: ecosystem.accent }}>Ouvrir l’administration</span>
+                      <ArrowRight size={15} className="text-slate-300 transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </section>
       </div>
     </AdminLayout>

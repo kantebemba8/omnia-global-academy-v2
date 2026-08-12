@@ -17,7 +17,7 @@ import { omniaDialog } from '../../lib/omniaDialog';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BLUE = '#002050';
-const GOLD = '#BF8813';
+const GOLD = '#0F766E';
 const BORDER = '#E4E7EC';
 
 interface ForumPost {
@@ -197,7 +197,7 @@ export default function AdminForum() {
 
         <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Communauté & Live</p>
+            <p className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>Omnia Communauté · Administration</p>
             <h1 className="mt-1 text-2xl font-bold" style={{ color: BLUE }}>Communauté & Modération</h1>
             <p className="mt-1 text-sm text-gray-500">Modérez les publications, traitez les signalements et contrôlez les contenus épinglés.</p>
           </div>

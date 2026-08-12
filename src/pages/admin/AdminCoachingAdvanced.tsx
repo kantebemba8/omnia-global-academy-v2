@@ -3,7 +3,7 @@ import { Check, Settings2, Users, X } from 'lucide-react';
 import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachingGroupProgram, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
-const BLUE='#002050',GOLD='#BF8813',BORDER='#E4E7EC';
+const BLUE='#002050',GOLD='#667A3D',BORDER='#E4E7EC';
 type Data={groups:CoachingGroupProgram[];settings:Record<string,any>;recordings:any[]};
 
 export default function AdminCoachingAdvanced(){

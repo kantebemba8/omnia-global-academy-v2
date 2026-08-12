@@ -5,7 +5,7 @@ import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 import {liveStatusLabel} from '../../../lib/omniaLiveLabels';
 
 const BLUE='#002050';
-const GOLD='#BF8813';
+const GOLD='#6556B5';
 function money(v:any,c=''){return `${Number(v||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})}${c?` ${c}`:''}`}
 
 export default function AdminOmniaLiveFinance(){
@@ -57,7 +57,7 @@ export default function AdminOmniaLiveFinance(){
  }
 
  return <AdminOmniaLiveShell title="Finance & Payouts" subtitle="Contrôlez les ventes, commissions, soldes disponibles et versements aux organisateurs.">
-  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
+  {msg&&<div className="mb-5 border-l-2 border-[#6556B5] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
 
   <section className="border-b border-slate-200 pb-7">
    <h2 className="mb-4 text-lg font-bold" style={{color:BLUE}}>Vue financière</h2>

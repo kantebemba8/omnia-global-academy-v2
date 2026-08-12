@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export const PREVIEW_SESSION_KEY = 'omnia_admin_role_preview';
@@ -17,6 +18,18 @@ const ROLE_SPACE_PREFIXES = [
   ['/coach', 'coach'],
   ['/omnia-live/organisateur', 'organisateur'],
 ] as const;
+
+const ROLE_LABELS: Record<string, string> = {
+  apprenant: 'Apprenant',
+  professeur: 'Professeur',
+  structure: 'Structure',
+  moderateur: 'Modérateur',
+  recruteur: 'Recruteur',
+  organisateur: 'Organisateur',
+  coach: 'Coach',
+  enseignant: 'Enseignant',
+  talent: 'Talent',
+};
 
 function isStoredSuperAdmin(): boolean {
   try {
@@ -40,7 +53,7 @@ function previewSpace(pathname: string): string | null {
   return match?.[1] || null;
 }
 
-export function PreviewReturnButton() {
+export function PreviewReturnBar({ label }: { label?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = isStoredSuperAdmin();
@@ -50,6 +63,7 @@ export function PreviewReturnButton() {
   const currentSpace = useMemo(() => homePreviewRole || previewSpace(location.pathname), [homePreviewRole, location.pathname]);
   const storedSpace = sessionStorage.getItem(PREVIEW_SESSION_KEY);
   const activePreview = Boolean(isAdmin && (queryPreview ? (storedSpace || currentSpace) : (currentSpace && storedSpace === currentSpace)));
+  const previewLabel = label || ROLE_LABELS[storedSpace || currentSpace || ''] || 'Rôle';
 
   useEffect(() => {
     if (!isAdmin) {
@@ -72,8 +86,6 @@ export function PreviewReturnButton() {
       return;
     }
 
-    // Un aperçu est limité à l’espace sélectionné. Il ne peut donc pas
-    // transformer la session Super Admin en un autre rôle.
     if (storedSpace && currentSpace === storedSpace && !queryPreview) {
       const params = new URLSearchParams(location.search);
       params.set('preview', 'true');
@@ -84,31 +96,28 @@ export function PreviewReturnButton() {
   if (!activePreview) return null;
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        sessionStorage.removeItem(PREVIEW_SESSION_KEY);
-        navigate('/admin/dashboard');
-      }}
-      className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-2xl transition-transform hover:-translate-y-0.5"
-      style={{ background: '#002050', border: '1px solid rgba(191,136,19,.65)' }}
-      aria-label="Retour au tableau de bord Super Admin"
-    >
-      <svg
-        width="17"
-        height="17"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m12 19-7-7 7-7" />
-        <path d="M19 12H5" />
-      </svg>
-      <span>Retour au dashboard admin</span>
-    </button>
+    <div className="flex-shrink-0 border-b border-[#D8C08A] bg-[#FFF7E6]">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm md:px-6">
+        <div className="min-w-0">
+          <strong className="text-[#002050]">Prévisualisation Super-admin : {previewLabel}</strong>
+          <span className="ml-2 hidden text-slate-600 sm:inline">Votre rôle et vos permissions Super-admin restent inchangés.</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            sessionStorage.removeItem(PREVIEW_SESSION_KEY);
+            navigate('/admin/dashboard');
+          }}
+          className="inline-flex items-center gap-2 font-bold text-[#002050] hover:underline"
+          aria-label="Retour à l’administration"
+        >
+          <ArrowLeft size={15} className="text-[#BF8813]" />
+          Retour à l’administration
+        </button>
+      </div>
+    </div>
   );
 }
+
+// Alias conservé pour compatibilité de code : le rendu n’est plus un bouton flottant.
+export const PreviewReturnButton = PreviewReturnBar;

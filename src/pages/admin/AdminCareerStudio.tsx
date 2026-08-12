@@ -110,7 +110,7 @@ type AdminStats = {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
 const OMNIA_BLUE = '#002050';
-const OMNIA_GOLD = '#bf8813';
+const OMNIA_GOLD = '#3E63B8';
 const BORDER = '#E4E7EC';
 const MUTED = '#667085';
 
@@ -548,7 +548,7 @@ export default function AdminCareerStudio() {
         <header className="border border-slate-200 bg-white">
           <div className="flex flex-col gap-6 px-6 py-7 lg:flex-row lg:items-end lg:justify-between lg:px-8">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#BF8813]">Carrière & projets · Career Studio</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#3E63B8]">Omnia Career · Administration</p>
               <h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Gestion Omnia Career Studio</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Règles, modèles CV/LM, jetons, exports, banque de questions et activité Career dans un espace de gestion unique.</p>
             </div>
@@ -561,7 +561,7 @@ export default function AdminCareerStudio() {
               </button>
             </div>
           </div>
-          <div className="h-1 bg-[linear-gradient(90deg,#002050_0%,#3157A4_42%,#BF8813_100%)]" />
+          <div className="h-1 bg-[linear-gradient(90deg,#002050_0%,#3157A4_42%,#3E63B8_100%)]" />
         </header>
 
         <nav className="mt-5 flex items-center gap-1 overflow-x-auto border-y border-slate-200 bg-white px-2 py-2" aria-label="Gestion Career Studio">

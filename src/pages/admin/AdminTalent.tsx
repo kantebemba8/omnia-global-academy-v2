@@ -7,7 +7,7 @@ import { CheckCircle2, Clock3, Contact, ExternalLink, RefreshCw, ShieldCheck, Us
 import type { ContextualHeaderSearchItem } from '../../components/ContextualHeaderSearch';
 
 const BLUE = '#002050';
-const GOLD = '#BF8813';
+const GOLD = '#8B4166';
 const BORDER = '#E4E7EC';
 
 type Status = 'all'|'pending'|'approved'|'rejected'|'suspended';

@@ -5,7 +5,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
-import { ADMIN_NAV_GROUPS } from '../../lib/adminNavigation';
+import { ADMIN_ECOSYSTEMS } from '../../lib/adminNavigation';
 import {
   Activity,
   AlertCircle,
@@ -274,6 +274,35 @@ export default function AdminDashboard() {
               </div>
             </section>
 
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Écosystèmes</p>
+                  <h2 className="mt-1 text-lg font-black text-[#002050]">Accéder aux espaces de gestion</h2>
+                </div>
+                <button type="button" onClick={() => navigate('/admin/ecosystemes')} className="inline-flex items-center gap-1 text-xs font-black text-[#002050]">Vue d’ensemble <ArrowRight size={13} /></button>
+              </div>
+              <div className="flex items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {ADMIN_ECOSYSTEMS.map(ecosystem => {
+                  const EcosystemIcon = ecosystem.icon;
+                  return (
+                    <button
+                      key={ecosystem.id}
+                      type="button"
+                      onClick={() => navigate(ecosystem.entryPath)}
+                      className="group flex min-w-[180px] flex-1 items-center gap-3 border-r border-slate-100 px-4 py-4 text-left last:border-r-0 hover:bg-slate-50"
+                    >
+                      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl" style={{ background: ecosystem.soft, color: ecosystem.accent }}><EcosystemIcon size={17} /></span>
+                      <span className="min-w-0">
+                        <strong className="block text-sm font-black text-[#002050]">{ecosystem.label}</strong>
+                        <span className="mt-0.5 block text-xs text-slate-400">Administrer</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             <section className="grid gap-6 xl:grid-cols-[1.22fr_0.78fr]">
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -436,74 +465,45 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Gouvernance</p>
-                  <h2 className="mt-1 text-lg font-black text-[#002050]">Domaines de gestion</h2>
+            <section className="grid gap-6 xl:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Utilisateurs</p>
+                    <h2 className="mt-1 text-lg font-black text-[#002050]">Répartition par rôle</h2>
+                  </div>
+                  <Users size={18} className="text-[#2368C4]" />
                 </div>
-                <div>
-                  {ADMIN_NAV_GROUPS.filter(group => group.id !== 'dashboard').map(group => {
-                    const GroupIcon = group.icon;
-                    return (
-                      <button
-                        key={group.id}
-                        type="button"
-                        onClick={() => navigate(group.items[0].path)}
-                        className="group flex w-full items-center gap-4 border-b border-slate-100 px-5 py-3.5 text-left last:border-b-0 hover:bg-slate-50"
-                      >
-                        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#EFF5FC] text-[#2368C4]"><GroupIcon size={16} /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-bold text-[#002050]">{group.label}</span>
-                          <span className="mt-0.5 block text-xs text-slate-400">{group.items.length} outil{group.items.length > 1 ? 's' : ''} de gestion</span>
-                        </span>
-                        <ArrowRight size={14} className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#BF8813]" />
-                      </button>
-                    );
-                  })}
+                <div className="mt-4 border-t border-slate-200">
+                  {visibleRoleRows.length === 0 ? (
+                    <p className="py-4 text-sm text-slate-400">Aucune donnée disponible.</p>
+                  ) : visibleRoleRows.slice(0, 8).map(row => (
+                    <button
+                      key={row.role}
+                      type="button"
+                      onClick={() => navigate(`/admin/dashboard/roles/${encodeURIComponent(row.role_key || row.role)}`)}
+                      className="group flex w-full items-center justify-between border-b border-slate-100 py-2.5 text-left last:border-b-0"
+                    >
+                      <span className="text-sm text-slate-600">{row.role}</span>
+                      <span className="flex items-center gap-2 text-sm font-black text-[#002050]">{fmt(row.count)}<ArrowRight size={12} className="text-slate-300 group-hover:text-[#BF8813]" /></span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Utilisateurs</p>
-                      <h2 className="mt-1 text-lg font-black text-[#002050]">Répartition par rôle</h2>
-                    </div>
-                    <Users size={18} className="text-[#2368C4]" />
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Système</p>
+                    <h2 className="mt-1 text-lg font-black text-[#002050]">État de la plateforme</h2>
                   </div>
-                  <div className="mt-4 border-t border-slate-200">
-                    {visibleRoleRows.length === 0 ? (
-                      <p className="py-4 text-sm text-slate-400">Aucune donnée disponible.</p>
-                    ) : visibleRoleRows.slice(0, 8).map(row => (
-                      <button
-                        key={row.role}
-                        type="button"
-                        onClick={() => navigate(`/admin/dashboard/roles/${encodeURIComponent(row.role_key || row.role)}`)}
-                        className="group flex w-full items-center justify-between border-b border-slate-100 py-2.5 text-left last:border-b-0"
-                      >
-                        <span className="text-sm text-slate-600">{row.role}</span>
-                        <span className="flex items-center gap-2 text-sm font-black text-[#002050]">{fmt(row.count)}<ArrowRight size={12} className="text-slate-300 group-hover:text-[#BF8813]" /></span>
-                      </button>
-                    ))}
-                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${platformOperational ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{platformOperational ? 'Opérationnelle' : 'À surveiller'}</span>
                 </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Système</p>
-                      <h2 className="mt-1 text-lg font-black text-[#002050]">État de la plateforme</h2>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-black ${platformOperational ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{platformOperational ? 'Opérationnelle' : 'À surveiller'}</span>
-                  </div>
-                  <div className="mt-4 border-t border-slate-200 pt-3">
-                    <div className="flex items-center justify-between py-2 text-sm"><span className="text-slate-600">Maintenance globale</span><strong className={data.platform.maintenance_global ? 'text-red-600' : 'text-emerald-700'}>{data.platform.maintenance_global ? 'Active' : 'Inactive'}</strong></div>
-                    <div className="border-t border-slate-100 py-2 text-sm"><span className="text-slate-600">Maintenance ciblée</span><p className="mt-1 text-xs text-slate-400">{data.platform.maintenance_modules.length ? data.platform.maintenance_modules.join(', ') : 'Aucun module en maintenance'}</p></div>
-                  </div>
-                  <button onClick={() => navigate('/admin/cms-branding')} className="mt-3 inline-flex items-center gap-1 text-xs font-black text-[#9B6B0B]">Gérer la plateforme <ArrowRight size={13} /></button>
+                <div className="mt-4 border-t border-slate-200 pt-3">
+                  <div className="flex items-center justify-between py-2 text-sm"><span className="text-slate-600">Maintenance globale</span><strong className={data.platform.maintenance_global ? 'text-red-600' : 'text-emerald-700'}>{data.platform.maintenance_global ? 'Active' : 'Inactive'}</strong></div>
+                  <div className="border-t border-slate-100 py-2 text-sm"><span className="text-slate-600">Maintenance ciblée</span><p className="mt-1 text-xs text-slate-400">{data.platform.maintenance_modules.length ? data.platform.maintenance_modules.join(', ') : 'Aucun module en maintenance'}</p></div>
                 </div>
+                <button onClick={() => navigate('/admin/cms-branding')} className="mt-3 inline-flex items-center gap-1 text-xs font-black text-[#9B6B0B]">Gérer la plateforme <ArrowRight size={13} /></button>
               </div>
             </section>
 

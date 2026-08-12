@@ -39,7 +39,7 @@ export default function AdminLiveDocuments(){
  }
 
  return <AdminOmniaLiveShell title="Certificats, attestations et reconnaissances" subtitle="Contrôlez l’éligibilité, validez les demandes et émettez les documents Omnia Live.">
-  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
+  {msg&&<div className="mb-5 border-l-2 border-[#6556B5] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
   {rows.length?<div className="overflow-x-auto"><div className="min-w-[980px]">
    <div className="grid grid-cols-[1.2fr_1.3fr_.9fr_.8fr_1.1fr] border-b border-slate-300 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><div>Participant</div><div>Événement</div><div>Document</div><div>Statut</div><div className="text-right">Actions</div></div>
    {rows.map(r=><div key={r.id} className="grid grid-cols-[1.2fr_1.3fr_.9fr_.8fr_1.1fr] items-center border-b border-slate-200 py-4 text-sm">

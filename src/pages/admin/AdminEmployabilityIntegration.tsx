@@ -4,7 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { employabilityRequest } from '../../lib/employabilityApi';
 
 const BLUE = '#002050';
-const GOLD = '#BF8813';
+const GOLD = '#8B4166';
 
 type Tab = 'profiles' | 'matches' | 'contacts' | 'access';
 

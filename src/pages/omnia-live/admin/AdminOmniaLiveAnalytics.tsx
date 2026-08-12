@@ -3,7 +3,7 @@ import {liveApi} from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 
 const BLUE='#002050';
-const GOLD='#BF8813';
+const GOLD='#6556B5';
 const DELIVERY:any={single_live:'Live unique',synchronous_training:'Formation synchrone',recorded_video:'Vidéo préenregistrée'};
 
 export default function AdminOmniaLiveAnalytics(){
@@ -20,7 +20,7 @@ export default function AdminOmniaLiveAnalytics(){
 
  return <AdminOmniaLiveShell title="Analytics Omnia Live" subtitle="Pilotage global fondé sur les données réelles des événements, ventes, présences et replays.">
   <div className="mb-5 flex justify-end gap-2"><button onClick={()=>exportReport('xlsx')} className="rounded-lg border px-3 py-2 text-sm font-semibold">Excel</button><button onClick={()=>exportReport('pdf')} className="rounded-lg bg-[#002050] px-3 py-2 text-sm font-bold text-white">PDF</button></div>
-  {msg&&<div className="mb-5 border-l-2 border-[#BF8813] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
+  {msg&&<div className="mb-5 border-l-2 border-[#6556B5] bg-amber-50 px-4 py-3 text-sm">{msg}</div>}
 
   <section className="border-b border-slate-200 pb-7">
    <div className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-5">

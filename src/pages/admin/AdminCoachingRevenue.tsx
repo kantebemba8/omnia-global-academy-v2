@@ -4,7 +4,7 @@ import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingM
 import { CoachingAdvancedEarning, CoachingEarning, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
-const GOLD = '#BF8813';
+const GOLD = '#667A3D';
 const BORDER = '#E4E7EC';
 
 type RevenueData = {

@@ -4,6 +4,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import UserAccountMenu from '../UserAccountMenu';
 import { PageFooter } from '../PageFooter';
 import { ECOSYSTEMS, ecosystemEntryPath, getEcosystem, type EcosystemId } from '../../lib/ecosystemRegistry';
+import { PreviewReturnBar } from '../PreviewReturnButton';
 
 export type EcosystemNavChild = {
   label: string;
@@ -431,6 +432,8 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
         ) : null}
         {previewGroup ? <SubmenuPreviewBar ecosystem={ecosystem} group={previewGroup} params={params} onNavigate={() => setPreviewGroup(null)} /> : null}
       </header>
+
+      <PreviewReturnBar label={audienceLabel} />
 
       {sectionGroup ? <SectionContext ecosystem={ecosystem} group={sectionGroup} pathname={location.pathname} search={location.search} hash={location.hash} params={params} /> : null}
 

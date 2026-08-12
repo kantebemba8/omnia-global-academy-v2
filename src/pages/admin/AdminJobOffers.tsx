@@ -6,7 +6,7 @@ import { APPLICATION_MODE_SHORT_LABELS, normalizeApplicationMode } from '../../l
 import { AlertCircle, Briefcase, CheckCircle2, ExternalLink, Loader2, Mail, Plus, RefreshCw, Save, ShieldCheck, X, XCircle } from 'lucide-react';
 
 const OMNIA_BLUE = '#002050';
-const OMNIA_GOLD = '#BF8813';
+const OMNIA_GOLD = '#8B4166';
 const BORDER = '#E4E7EC';
 const MUTED = '#6B7280';
 
