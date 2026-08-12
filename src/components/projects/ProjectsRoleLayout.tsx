@@ -5,13 +5,14 @@ import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
+import { PageFooter } from '../PageFooter';
 import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
 import ProjectsHeaderSearch from './ProjectsHeaderSearch';
 import { getProjectsNavigation, resolveProjectsAudience, type ProjectsAudience } from '../../lib/projectsNavigation';
 
 export function PublicProjectsLayout({ children }: { children: ReactNode }) {
   const navItems = getProjectsNavigation('public').map(item => ({ label: item.label, path: item.path, icon: item.icon, exact: item.id === 'accueil' }));
-  return <SubspaceHamburgerLayout title="Omnia Projects" navItems={navItems} searchPath="/projects/explorer" searchParam="q" searchPlaceholder="Rechercher un projet, une compétence, une organisation..." navigationMode="horizontal">{children}</SubspaceHamburgerLayout>;
+  return <><SubspaceHamburgerLayout title="Omnia Projects" navItems={navItems} searchPath="/projects/explorer" searchParam="q" searchPlaceholder="Rechercher un projet, une compétence, une organisation..." navigationMode="horizontal">{children}</SubspaceHamburgerLayout><PageFooter ecosystem="projects" /></>;
 }
 
 function audienceLabel(audience: ProjectsAudience) {
@@ -33,7 +34,7 @@ export function ProjectsAudienceLayout({ audience, children }: { audience: Proje
 export function AdaptiveProjectsLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const [params] = useSearchParams();
-  if (loading) return <div className="grid min-h-screen place-items-center bg-[#FCFBF7]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#A96812]" /></div>;
+  if (loading) return <div className="grid min-h-screen place-items-center bg-[#FCFBF7]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#B5623C]" /></div>;
   const preview = params.get('preview') === 'true' && Boolean(user?.roles?.includes('super_admin'));
   const audience = resolveProjectsAudience(user?.roles, preview ? params.get('role') : null);
   return <ProjectsAudienceLayout audience={audience}>{children}</ProjectsAudienceLayout>;

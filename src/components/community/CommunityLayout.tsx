@@ -24,7 +24,7 @@ function PublicCommunityLayout({ children }: { children: ReactNode }) {
         </header>
         <CommunityEcosystemNav audience="public" />
         <main className="min-w-0">{children}</main>
-        <PageFooter />
+        <PageFooter ecosystem="community" />
       </div>
     </div>
   );

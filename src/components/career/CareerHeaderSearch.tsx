@@ -44,7 +44,7 @@ export default function CareerHeaderSearch() {
 
   return (
     <form onSubmit={submit} className="relative w-full">
-      <div className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15">
+      <div className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm focus-within:border-[#3E63B8] focus-within:ring-2 focus-within:ring-[#3E63B8]/15">
         <Search size={16} className="shrink-0 text-slate-400" />
         <input
           value={value}
@@ -62,7 +62,7 @@ export default function CareerHeaderSearch() {
         <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
           {results.map(result => (
             <button key={`${result.path}-${result.label}`} type="button" onMouseDown={event => event.preventDefault()} onClick={() => { navigate(withPreview(result.path, location.search)); setFocused(false); }} className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50">
-              <Search size={15} className="mt-0.5 shrink-0 text-[#BF8813]" />
+              <Search size={15} className="mt-0.5 shrink-0 text-[#3E63B8]" />
               <span className="min-w-0"><strong className="block truncate text-sm text-[#002050]">{result.label}</strong><span className="mt-0.5 block truncate text-xs text-slate-500">{result.description}</span></span>
             </button>
           ))}

@@ -28,7 +28,7 @@ export default function CoachingHeaderSearch() {
   }
 
   return (
-    <form onSubmit={submit} className="flex h-10 w-full items-center gap-2 rounded-xl border border-[#DCE7E1] bg-white px-3 shadow-sm focus-within:border-[#0B6B61] focus-within:ring-2 focus-within:ring-[#0B6B61]/15">
+    <form onSubmit={submit} className="flex h-10 w-full items-center gap-2 rounded-xl border border-[#DFE4C9] bg-white px-3 shadow-sm focus-within:border-[#0B6B61] focus-within:ring-2 focus-within:ring-[#0B6B61]/15">
       <Search size={16} className="shrink-0 text-slate-400" />
       <input
         value={value}

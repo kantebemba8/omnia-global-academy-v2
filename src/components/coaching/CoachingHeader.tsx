@@ -99,7 +99,7 @@ export default function CoachingHeader({ showSearch = true }: Props) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 flex h-[72px] items-center border-b border-[#DCE7E1] bg-white/95 px-4 backdrop-blur md:px-7">
+      <header className="sticky top-0 z-50 flex h-[72px] items-center border-b border-[#DFE4C9] bg-white/95 px-4 backdrop-blur md:px-7">
         <Link to="/coaching" className="flex min-w-0 items-center gap-3">
           <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-9 w-9 flex-none rounded-lg object-cover" />
           <span className="truncate text-lg font-black tracking-[-.025em] md:text-xl" style={{ color: BLUE }}>Omnia <span className="text-[#BF8813]">Coaching</span></span>
@@ -110,7 +110,7 @@ export default function CoachingHeader({ showSearch = true }: Props) {
         <div className="ml-auto flex flex-none items-center gap-2">
           {!loggedIn ? (
             <>
-              <Link to={`/connexion?redirect=${encodeURIComponent(location.pathname + location.search)}`} className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7E1] bg-white px-3 py-2 text-sm font-black text-[#002050]">
+              <Link to={`/connexion?redirect=${encodeURIComponent(location.pathname + location.search)}`} className="inline-flex items-center gap-2 rounded-xl border border-[#DFE4C9] bg-white px-3 py-2 text-sm font-black text-[#002050]">
                 <LogIn size={16} /><span className="hidden sm:inline">Connexion</span>
               </Link>
               <LanguageSwitcher compact />
@@ -118,7 +118,7 @@ export default function CoachingHeader({ showSearch = true }: Props) {
           ) : <UserAccountMenu dashboardPath={dashboardPath} />}
         </div>
       </header>
-      {showSearch && <div className="border-b border-[#DCE7E1] bg-[#FBFCFA] px-4 py-3 lg:hidden"><CoachingHeaderSearch /></div>}
+      {showSearch && <div className="border-b border-[#DFE4C9] bg-[#FBFCFA] px-4 py-3 lg:hidden"><CoachingHeaderSearch /></div>}
       <CoachingEcosystemNav audience="public" publicMode />
     </>
   );

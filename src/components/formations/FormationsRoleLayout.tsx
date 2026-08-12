@@ -23,7 +23,7 @@ export function PublicFormationsLayout({ children, audience = 'public' }: { chil
       <div className="pt-20">
         <FormationsEcosystemNav audience={audience} publicMode />
         {children}
-        <PageFooter />
+        <PageFooter ecosystem="formations" />
       </div>
     </div>
   );

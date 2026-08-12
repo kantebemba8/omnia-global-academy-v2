@@ -104,14 +104,14 @@ export default function CoachingCatalogue() {
     <main className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div className="max-w-3xl">
-          <p className="text-[11px] font-black uppercase tracking-[.18em] text-[#356C63]">Explorer Omnia Coaching</p>
+          <p className="text-[11px] font-black uppercase tracking-[.18em] text-[#667A3D]">Explorer Omnia Coaching</p>
           <h1 className="mt-3 text-3xl font-black tracking-[-.04em] text-[#002050] md:text-4xl">Choisir un coach à partir de l’objectif, pas du bruit.</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">La recherche reste dans l’en-tête. Ici, affinez uniquement les critères réellement utiles à la sélection.</p>
         </div>
-        <span className="rounded-full bg-[#EAF3F0] px-3 py-1.5 text-xs font-black text-[#356C63]">{coaches.length} coach{coaches.length > 1 ? 's' : ''}</span>
+        <span className="rounded-full bg-[#EEF1DE] px-3 py-1.5 text-xs font-black text-[#667A3D]">{coaches.length} coach{coaches.length > 1 ? 's' : ''}</span>
       </div>
 
-      <section className="mt-7 border-y border-[#DCE7E1] bg-[#FBFCFA] py-4">
+      <section className="mt-7 border-y border-[#DFE4C9] bg-[#FBFCFA] py-4">
         <div className="flex items-center gap-2 text-sm font-black text-[#002050]"><SlidersHorizontal size={17} color={GOLD}/>Filtres du catalogue</div>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <select value={domain} onChange={e => setDomain(e.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les domaines</option>{data.domains.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>

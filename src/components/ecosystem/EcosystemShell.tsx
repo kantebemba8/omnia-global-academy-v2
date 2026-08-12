@@ -2,6 +2,7 @@ import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from
 import { ArrowLeft, ChevronRight, Menu, X, type LucideIcon } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import UserAccountMenu from '../UserAccountMenu';
+import { PageFooter } from '../PageFooter';
 import { ECOSYSTEMS, ecosystemEntryPath, getEcosystem, type EcosystemId } from '../../lib/ecosystemRegistry';
 
 export type EcosystemNavChild = {
@@ -78,13 +79,13 @@ function EcosystemBrand({ ecosystem, href, inverse = false }: { ecosystem: Ecosy
       <img src="/omnia-sidebar-logo.png" alt="" className="h-9 w-9 shrink-0 object-contain" />
       <span className="min-w-0 whitespace-nowrap text-[14px] font-black tracking-[0.055em]">
         <span style={{ color: inverse ? '#FFFFFF' : '#002050' }}>Omnia</span>{' '}
-        <span style={{ color: '#BF8813' }}>{theme.name}</span>
+        <span style={{ color: theme.accent }}>{theme.name}</span>
       </span>
     </Link>
   );
 }
 
-function PrimaryLinks({ navigation, pathname, params, onNavigate, compact = false }: { navigation: EcosystemNavGroup[]; pathname: string; params: URLSearchParams; onNavigate?: () => void; compact?: boolean }) {
+function PrimaryLinks({ navigation, pathname, params, onNavigate, compact = false, accent = '#BF8813' }: { navigation: EcosystemNavGroup[]; pathname: string; params: URLSearchParams; onNavigate?: () => void; compact?: boolean; accent?: string }) {
   return (
     <nav className={compact ? 'space-y-1' : 'flex min-w-max items-center'} aria-label="Navigation de l’écosystème">
       {navigation.map(group => {
@@ -100,10 +101,10 @@ function PrimaryLinks({ navigation, pathname, params, onNavigate, compact = fals
               ? `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${active ? 'bg-white text-[#002050] shadow-sm' : 'text-slate-600 hover:bg-white/70 hover:text-[#002050]'}`
               : `group relative inline-flex min-h-14 items-center gap-2 px-3 text-[13px] font-bold transition ${active ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
           >
-            {Icon ? <Icon size={15} style={{ color: active ? '#BF8813' : '#64748B' }} /> : null}
+            {Icon ? <Icon size={15} style={{ color: active ? accent : '#64748B' }} /> : null}
             <span>{group.label}</span>
             {group.children?.length ? <ChevronRight size={13} className="text-slate-300" /> : null}
-            {!compact && <span className={`absolute inset-x-3 bottom-0 h-[2px] ${active ? 'bg-[#BF8813]' : 'bg-transparent group-hover:bg-slate-200'}`} />}
+            {!compact && <span className="absolute inset-x-3 bottom-0 h-[2px] transition-colors" style={{ background: active ? accent : 'transparent' }} />}
           </Link>
         );
       })}
@@ -172,11 +173,12 @@ function EcosystemSwitcher({ ecosystem, params, mobile = false, onNavigate }: { 
             to={withPreview(path, params)}
             onClick={onNavigate}
             className={mobile
-              ? `rounded-xl border px-3 py-2.5 text-xs font-black ${active ? 'border-[#BF8813] bg-[#FFF7E7] text-[#002050]' : 'border-slate-200 bg-white text-slate-600'}`
+              ? `rounded-xl border px-3 py-2.5 text-xs font-black ${active ? 'text-[#002050]' : 'border-slate-200 bg-white text-slate-600'}`
               : `relative inline-flex min-h-9 items-center px-3 text-[11px] font-bold transition ${active ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
+            style={mobile && active ? { borderColor: item.accent, background: item.soft } : undefined}
           >
             {item.navLabel}
-            {!mobile && active && <span className="absolute inset-x-3 bottom-0 h-[2px] bg-[#BF8813]" />}
+            {!mobile && active && <span className="absolute inset-x-3 bottom-0 h-[2px]" style={{ background: item.accent }} />}
           </Link>
         );
       })}
@@ -218,7 +220,7 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
           <div className="mx-auto flex min-h-[68px] max-w-[1480px] items-center gap-4 px-4 sm:px-5 lg:px-6">
             <EcosystemBrand ecosystem={ecosystem} href={withPreview(ecosystemHomePath, params)} />
             <div className="hidden min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block">
-              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} />
+              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} />
             </div>
             {search ? <div className="ml-auto hidden w-[min(34vw,430px)] min-w-[230px] md:block">{search}</div> : null}
             <UserAccountMenu dashboardPath={dashboardPath} />
@@ -245,7 +247,7 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
               <EcosystemSwitcher ecosystem={ecosystem} params={params} mobile onNavigate={() => setMobileOpen(false)} />
               <div className="my-5 border-t border-slate-200" />
               <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: theme.accent }}>Omnia {theme.name}</p>
-              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact onNavigate={() => setMobileOpen(false)} />
+              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMobileOpen(false)} />
               <p className="mt-5 px-1 text-[11px] leading-5 text-slate-400">Les sous-menus s’ouvrent dans leur propre page. Ils ne sont pas dupliqués dans ce panneau.</p>
             </div>
           </aside>
@@ -269,7 +271,7 @@ export function EcosystemConnectedShell({ ecosystem, audienceLabel, navigation, 
   return (
     <div className="oga-ecosystem-shell flex h-[100dvh] min-h-0 flex-col overflow-hidden" data-ecosystem={ecosystem} style={style}>
       <EcosystemConnectedHeader ecosystem={ecosystem} audienceLabel={audienceLabel} navigation={navigation} search={search} dashboardPath={dashboardPath} />
-      <div className="oga-ecosystem-content min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+      <div className="oga-ecosystem-content min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}<PageFooter ecosystem={ecosystem} /></div>
     </div>
   );
 }
@@ -284,13 +286,13 @@ export function EcosystemStandaloneNav({ ecosystem, audienceLabel, navigation }:
     <>
       <div className="relative z-30 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }}>
         <div className="mx-auto flex min-h-14 max-w-[1440px] items-center gap-4 px-4 sm:px-5 lg:px-6">
-          <Link to={theme.publicPath} className="shrink-0 text-sm font-black text-[#002050]">Omnia <span className="text-[#BF8813]">{theme.name}</span></Link>
+          <Link to={theme.publicPath} className="shrink-0 text-sm font-black text-[#002050]">Omnia <span style={{ color: theme.accent }}>{theme.name}</span></Link>
           <span className="hidden rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] md:inline-flex" style={{ background: theme.soft, color: theme.secondary }}>{audienceLabel}</span>
-          <div className="hidden min-w-0 flex-1 overflow-x-auto lg:block"><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} /></div>
+          <div className="hidden min-w-0 flex-1 overflow-x-auto lg:block"><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} /></div>
           <button type="button" onClick={() => setMobileOpen(true)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#002050] lg:hidden" aria-label={`Ouvrir le menu ${theme.name}`}><Menu size={19} /></button>
         </div>
       </div>
-      {mobileOpen && <div className="fixed inset-0 z-[85] lg:hidden"><button type="button" className="absolute inset-0 bg-slate-950/45" onClick={() => setMobileOpen(false)} aria-label="Fermer"/><aside className="absolute right-0 top-0 h-full w-[min(92vw,380px)] bg-[#F8FAFC] p-4 shadow-2xl"><div className="mb-4 flex items-center justify-between"><strong className="text-[#002050]">Omnia <span className="text-[#BF8813]">{theme.name}</span></strong><button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white"><X size={19}/></button></div><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact onNavigate={() => setMobileOpen(false)} /></aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-[85] lg:hidden"><button type="button" className="absolute inset-0 bg-slate-950/45" onClick={() => setMobileOpen(false)} aria-label="Fermer"/><aside className="absolute right-0 top-0 h-full w-[min(92vw,380px)] bg-[#F8FAFC] p-4 shadow-2xl"><div className="mb-4 flex items-center justify-between"><strong className="text-[#002050]">Omnia <span style={{ color: theme.accent }}>{theme.name}</span></strong><button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white"><X size={19}/></button></div><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMobileOpen(false)} /></aside></div>}
     </>
   );
 }

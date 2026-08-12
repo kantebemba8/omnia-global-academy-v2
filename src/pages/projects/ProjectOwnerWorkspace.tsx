@@ -405,9 +405,9 @@ export default function ProjectOwnerWorkspace() {
 
   return (
     <ProjectsWorkspaceFrame>
-      <div className="mx-auto max-w-7xl bg-[#F7F4EE] p-5 sm:p-8">
-        <div className="overflow-hidden rounded-[26px] border border-[#E6DED1] bg-white p-6 shadow-[0_16px_45px_rgba(0,32,80,.06)] sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#A96812]">Atelier de pilotage</p><h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Projets, équipes et livrables</h1><p className="mt-2 max-w-2xl text-slate-600">Créez une mission, faites-la valider, sélectionnez les participants puis suivez le cycle jusqu’aux preuves d’expérience.</p></div>
+      <div className="mx-auto max-w-7xl bg-[#FAF4F0] p-5 sm:p-8">
+        <div className="overflow-hidden rounded-[26px] border border-[#E9D7CE] bg-white p-6 shadow-[0_16px_45px_rgba(0,32,80,.06)] sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#B5623C]">Atelier de pilotage</p><h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Projets, équipes et livrables</h1><p className="mt-2 max-w-2xl text-slate-600">Créez une mission, faites-la valider, sélectionnez les participants puis suivez le cycle jusqu’aux preuves d’expérience.</p></div>
           <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}><Plus size={17} /> Nouveau projet</button>
         </div><div className="mt-6 grid gap-2 sm:grid-cols-4"><div className="rounded-xl bg-[#F3EBDD] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#87530F]">01 · Proposer</p></div><div className="rounded-xl bg-[#EEF1F5] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#43566E]">02 · Sélectionner</p></div><div className="rounded-xl bg-[#EDF4F5] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#0D5D6A]">03 · Piloter</p></div><div className="rounded-xl bg-[#EEF6F0] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#2E6B48]">04 · Valider</p></div></div></div>
 

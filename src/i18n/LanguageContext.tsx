@@ -76,8 +76,10 @@ function readStoredLanguage(): PlatformLanguage {
   } catch {
     // Le français reste le repli sûr si le stockage est indisponible.
   }
-  const browser = typeof navigator !== 'undefined' ? navigator.language?.slice(0, 2).toLowerCase() : '';
-  return isPlatformLanguage(browser) ? browser : 'fr';
+  // La plateforme est française par défaut. La langue du navigateur ne doit jamais
+  // sélectionner automatiquement une traduction (ex. navigateur configuré en espagnol).
+  // Une autre langue n'est utilisée que si l'utilisateur l'a réellement enregistrée.
+  return 'fr';
 }
 
 function readRuntimeCatalog(language: PlatformLanguage): Record<string, string> {
