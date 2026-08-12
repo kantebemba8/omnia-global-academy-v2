@@ -115,7 +115,7 @@ const NAV: Record<TalentAudience, TalentNavGroup[]> = {
   recruteur: [
     HOME,
     {
-      id: 'talents', label: 'Talents', path: '/talent/recruteur/talents', description: 'Sourcing, profils vérifiés et favoris.', icon: UsersRound,
+      id: 'talents', label: 'Talents', path: '/talent/recruteur/sourcing', description: 'Sourcing, profils vérifiés et favoris.', icon: UsersRound,
       children: [
         { label: 'Rechercher', path: '/talent/recruteur/talents', description: 'Rechercher dans les profils publics.', icon: Compass },
         { label: 'Compétences vérifiées', path: '/talent/recruteur/competences-verifiees', description: 'Examiner les preuves autorisées.', icon: ShieldCheck },

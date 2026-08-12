@@ -12,5 +12,5 @@ export default function CommunitySectionHub() {
   const audience = resolveCommunityAudience(user?.roles, preview ? params.get('role') : null);
   const section = findCommunitySection(audience === 'super_admin' ? 'public' : audience, location.pathname);
   if (!section?.children?.length || section.path !== location.pathname) return <Navigate to="/forum" replace />;
-  return <CommunityLayout><EcosystemSectionLanding ecosystem="community" description={section.description} /></CommunityLayout>;
+  return <CommunityLayout><EcosystemSectionLanding ecosystem="community" group={section} /></CommunityLayout>;
 }

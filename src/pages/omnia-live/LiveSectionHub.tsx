@@ -12,5 +12,5 @@ export default function LiveSectionHub({ sectionId }: { sectionId: string }) {
   const effectiveAudience = audience === 'super_admin' ? 'public' : audience;
   const group = getLiveNavigation(effectiveAudience).find(g => g.id === sectionId);
   if (!group?.children?.length) return <Navigate to="/omnia-live" replace />;
-  return <OmniaLiveLayout><EcosystemSectionLanding ecosystem="live" description={group.description} /></OmniaLiveLayout>;
+  return <OmniaLiveLayout><EcosystemSectionLanding ecosystem="live" group={group} /></OmniaLiveLayout>;
 }

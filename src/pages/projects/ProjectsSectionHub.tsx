@@ -19,5 +19,5 @@ export default function ProjectsSectionHub() {
   const audience = resolveProjectsAudience(user?.roles, preview ? params.get('role') : null);
   const group = findProjectsSection(audience, location.pathname);
   if (!group?.children?.length || group.path !== location.pathname) return <Navigate to={withPreview('/projects', params)} replace />;
-  return <AdaptiveProjectsLayout><EcosystemSectionLanding ecosystem="projects" description={group.description} /></AdaptiveProjectsLayout>;
+  return <AdaptiveProjectsLayout><EcosystemSectionLanding ecosystem="projects" group={group} /></AdaptiveProjectsLayout>;
 }

@@ -37,5 +37,5 @@ export default function FormationsSectionHub() {
   if (audience === 'super_admin' && !preview) return <Navigate to="/admin/courses" replace />;
   if (!section?.children?.length) return <Navigate to={withPreview('/formations', params, audience)} replace />;
 
-  return <Frame audience={audience}><EcosystemSectionLanding ecosystem="formations" description={section.description} /></Frame>;
+  return <Frame audience={audience}><EcosystemSectionLanding ecosystem="formations" group={section} /></Frame>;
 }

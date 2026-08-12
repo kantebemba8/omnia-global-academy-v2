@@ -19,5 +19,5 @@ export default function TalentSectionHub() {
   const audience = resolveTalentAudience(user?.roles, preview ? params.get('role') : null);
   const section = findTalentSection(audience, location.pathname);
   if (!section?.children?.length || section.path.split('?')[0] !== location.pathname) return <Navigate to={withPreview('/talent', params)} replace />;
-  return <AdaptiveTalentLayout><EcosystemSectionLanding ecosystem="talent" description={section.description} /></AdaptiveTalentLayout>;
+  return <AdaptiveTalentLayout><EcosystemSectionLanding ecosystem="talent" group={section} /></AdaptiveTalentLayout>;
 }

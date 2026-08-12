@@ -549,6 +549,7 @@ export default function App() {
           <Route path="/talent/structure/pilotage" element={<TalentSectionHub />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
           <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/sourcing" element={<TalentSectionHub />} />
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/competences-verifiees" element={<VerifiedTalentCandidates />} />

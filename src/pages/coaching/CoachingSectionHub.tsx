@@ -13,5 +13,5 @@ export default function CoachingSectionHub() {
   const effectiveAudience = audience === 'super_admin' ? 'public' : audience;
   const section = findCoachingSection(effectiveAudience, location.pathname);
   if (!section?.children?.length || section.path !== location.pathname) return <Navigate to="/coaching" replace />;
-  return <CoachingLayout><EcosystemSectionLanding ecosystem="coaching" description={section.description} /></CoachingLayout>;
+  return <CoachingLayout><EcosystemSectionLanding ecosystem="coaching" group={section} /></CoachingLayout>;
 }
