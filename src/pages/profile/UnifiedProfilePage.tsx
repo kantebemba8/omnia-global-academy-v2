@@ -668,7 +668,11 @@ export default function UnifiedProfilePage() {
 
   return <ProfileRoleLayout>
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+      <header
+        className={`relative overflow-hidden rounded-3xl border p-5 shadow-sm sm:p-7 ${isAdministration ? 'border-[#183D6D] text-white shadow-[0_24px_70px_rgba(0,32,80,.18)]' : 'border-slate-200 bg-white'}`}
+        style={isAdministration ? { background: 'radial-gradient(circle at 92% 12%, rgba(191,136,19,.22), transparent 28%), linear-gradient(125deg,#001A3F 0%,#002B61 64%,#083B73 100%)' } : undefined}
+      >
+        {isAdministration && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-[linear-gradient(90deg,#BF8813_0%,#E6C56F_45%,#3E63B8_100%)]" aria-hidden="true" />}
         <div className="flex flex-col gap-6 md:flex-row md:items-center">
           <div className="relative h-28 w-28 flex-none">
             {avatar ? <img src={avatar} alt="Photo de profil" className="h-28 w-28 rounded-3xl border-4 border-white object-cover shadow-lg" /> :
@@ -677,24 +681,24 @@ export default function UnifiedProfilePage() {
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => void selectAvatar(event.target.files?.[0])} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full px-3 py-1 text-xs font-bold" style={{ background: ROLE_SOFT, color: ROLE_CONTROL_ACCENT }}>{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}{hasStructureManagementDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès interne à une Structure</span>}</div>
-            <h1 className="mt-3 truncate text-2xl font-black text-[#002050] sm:text-3xl">{profileForm.display_name || userForm.full_name}</h1>
-            <p className="mt-1 text-sm text-slate-600">{isAdministration ? 'Compte interne de gestion de la plateforme.' : (profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.')}</p>
+            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full px-3 py-1 text-xs font-bold" style={isAdministration ? { background: 'rgba(191,136,19,.16)', color: '#F0D58B', border: '1px solid rgba(240,213,139,.28)' } : { background: ROLE_SOFT, color: ROLE_CONTROL_ACCENT }}>{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}{hasStructureManagementDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès interne à une Structure</span>}</div>
+            <h1 className={`mt-3 truncate text-2xl font-black sm:text-3xl ${isAdministration ? 'text-white' : 'text-[#002050]'}`}>{profileForm.display_name || userForm.full_name}</h1>
+            <p className={`mt-1 text-sm ${isAdministration ? 'text-white/68' : 'text-slate-600'}`}>{isAdministration ? 'Compte interne de gestion de la plateforme.' : (profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.')}</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050]"><Upload size={16} /> {avatarSaving ? 'Traitement...' : 'Ajouter une photo'}</button>
+              <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${isAdministration ? 'border-white/20 bg-white/[.08] text-white hover:bg-white/[.12]' : 'border-slate-200 text-[#002050]'}`}><Upload size={16} /> {avatarSaving ? 'Traitement...' : 'Ajouter une photo'}</button>
               {avatar && <button type="button" onClick={() => void deleteAvatar()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-600"><Trash2 size={16} /> Retirer</button>}
               {!isAdministration && <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-white" style={{ background: ROLE_ACCENT }}><ExternalLink size={16} /> Voir mon profil public</Link>}
             </div>
           </div>
-          <div className="w-full rounded-2xl bg-slate-50 p-4 md:w-56">
-            <div className="flex items-center justify-between text-sm font-bold text-[#002050]"><span>{isAdministration ? 'Compte configuré' : 'Profil complété'}</span><span>{completion}%</span></div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full transition-all" style={{ width: `${completion}%`, background: isAdministration ? '#BF8813' : ROLE_ACCENT }} /></div>
-            <p className="mt-3 text-xs text-slate-500">{isAdministration ? 'Ces informations restent internes et ne créent aucun profil public.' : 'Un profil complet améliore la cohérence de vos espaces Omnia.'}</p>
+          <div className={`w-full rounded-2xl p-4 md:w-56 ${isAdministration ? 'border border-white/12 bg-white/[.08]' : 'bg-slate-50'}`}>
+            <div className={`flex items-center justify-between text-sm font-bold ${isAdministration ? 'text-white' : 'text-[#002050]'}`}><span>{isAdministration ? 'Compte configuré' : 'Profil complété'}</span><span>{completion}%</span></div>
+            <div className={`mt-3 h-2 overflow-hidden rounded-full ${isAdministration ? 'bg-white/[.15]' : 'bg-slate-200'}`}><div className="h-full rounded-full transition-all" style={{ width: `${completion}%`, background: isAdministration ? '#BF8813' : ROLE_ACCENT }} /></div>
+            <p className={`mt-3 text-xs ${isAdministration ? 'text-white/58' : 'text-slate-500'}`}>{isAdministration ? 'Ces informations restent internes et ne créent aucun profil public.' : 'Un profil complet améliore la cohérence de vos espaces Omnia.'}</p>
           </div>
         </div>
       </header>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"><div className="flex min-w-max gap-1">{tabs.map(item => <button key={item.key} type="button" onClick={() => switchTab(item.key)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === item.key ? 'text-white' : 'text-slate-600 hover:bg-slate-50'}`} style={tab === item.key ? { background: ROLE_SECONDARY } : undefined}><item.icon size={16} />{item.label}</button>)}</div></div>
+      <div className={`overflow-x-auto rounded-2xl border p-1.5 shadow-sm ${isAdministration ? 'border-[#DDE5F0] bg-[#F2F6FB]' : 'border-slate-200 bg-white'}`}><div className="flex min-w-max gap-1">{tabs.map(item => <button key={item.key} type="button" onClick={() => switchTab(item.key)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === item.key ? 'text-white' : 'text-slate-600 hover:bg-white'}`} style={tab === item.key ? { background: isAdministration ? '#002050' : ROLE_SECONDARY, boxShadow: isAdministration ? 'inset 0 -2px 0 #BF8813' : undefined } : undefined}><item.icon size={16} />{item.label}</button>)}</div></div>
 
       <Notice value={message} />
 

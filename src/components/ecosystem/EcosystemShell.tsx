@@ -198,22 +198,22 @@ function EcosystemSwitcher({ ecosystem, params, mobile = false, onNavigate }: { 
 
 function PublicEcosystemRail({ ecosystem }: { ecosystem: EcosystemId }) {
   return (
-    <div className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex min-h-[64px] max-w-[1280px] items-center justify-center px-4 sm:px-6">
-        <nav className="flex min-w-0 max-w-full items-center justify-start gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Les écosystèmes Omnia">
+    <div className="border-b border-slate-100 bg-[#FBFCFE]">
+      <div className="mx-auto flex min-h-[44px] max-w-[1180px] items-center justify-center px-3 sm:px-5">
+        <nav className="flex min-w-0 max-w-full items-center justify-start gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Les écosystèmes Omnia">
           {ECOSYSTEMS.map(item => {
             const active = item.id === ecosystem;
             return (
               <Link
                 key={item.id}
                 to={item.publicPath}
-                className="relative inline-flex min-h-[64px] min-w-max items-center px-4 text-[14px] font-black tracking-[-0.01em] transition hover:bg-slate-50 sm:px-5 sm:text-[15px]"
+                className="relative inline-flex min-h-[44px] min-w-max items-center px-3 text-[11px] font-extrabold tracking-[0.005em] transition hover:bg-white sm:px-4 sm:text-[12px]"
                 style={{ color: active ? item.accent : '#334155' }}
                 aria-current={active ? 'page' : undefined}
               >
                 {item.navLabel}
                 <span
-                  className="absolute inset-x-4 bottom-0 h-[3px] rounded-t-full transition-opacity sm:inset-x-5"
+                  className="absolute inset-x-3 bottom-0 h-[2px] rounded-t-full transition-opacity sm:inset-x-4"
                   style={{ background: item.accent, opacity: active ? 1 : 0 }}
                 />
               </Link>
@@ -279,6 +279,7 @@ export function EcosystemPublicHeader({
 
   return (
     <>
+      {!hasUser && cleanPath(location.pathname) === cleanPath(theme.publicPath) ? <PublicEcosystemRail ecosystem={ecosystem} /> : null}
       <header className="sticky top-0 z-50 flex-shrink-0 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }} onMouseLeave={() => setPreviewGroup(null)}>
         <div className="mx-auto flex min-h-[72px] max-w-[1480px] items-center gap-3 px-4 sm:px-5 lg:gap-4 lg:px-6">
           <EcosystemBrand ecosystem={ecosystem} href={theme.publicPath} />
@@ -326,8 +327,6 @@ export function EcosystemPublicHeader({
         ) : null}
         {previewGroup ? <SubmenuPreviewBar ecosystem={ecosystem} group={previewGroup} params={params} onNavigate={() => setPreviewGroup(null)} /> : null}
       </header>
-
-      {!hasUser && cleanPath(location.pathname) === cleanPath(theme.publicPath) ? <PublicEcosystemRail ecosystem={ecosystem} /> : null}
 
       {menuOpen && (
         <div className="fixed inset-0 z-[95]" role="dialog" aria-modal="true" aria-label={`Navigation Omnia ${theme.name}`}>

@@ -27,7 +27,6 @@ export default function OmniaCareerStudio() {
     const preview = params.get('preview') === 'true' && isOmniaCareerSuperAdmin(user);
     const audience = resolveCareerAudience(user.roles, preview ? params.get('role') : null);
     if (!preview && isOmniaCareerLearner(user)) return <Navigate to="/omnia-career" replace />;
-    if (!preview && isOmniaCareerSuperAdmin(user)) return <Navigate to="/admin/omnia-career" replace />;
     if (audience === 'apprenant') return <Navigate to={`/omnia-career${preview ? `?preview=true&role=apprenant` : ''}`} replace />;
     if (audience !== 'public' && audience !== 'super_admin') {
       return <CareerAudienceLayout audience={audience}><CareerConnectedLanding audience={audience} /></CareerAudienceLayout>;

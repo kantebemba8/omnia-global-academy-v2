@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
 import { PageFooter } from '../PageFooter';
+import SuperAdminEcosystemLayout from '../ecosystem/SuperAdminEcosystemLayout';
 import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import ProjectsHeaderSearch from './ProjectsHeaderSearch';
 import { getProjectsNavigation, resolveProjectsAudience, type ProjectsAudience } from '../../lib/projectsNavigation';
@@ -18,11 +18,6 @@ export function PublicProjectsLayout({ children }: { children: ReactNode }) {
       <PageFooter ecosystem="projects" />
     </div>
   );
-}
-
-function LegacySuperAdminProjectsLayout({ children }: { children: ReactNode }) {
-  const navItems = getProjectsNavigation('public').map(item => ({ label: item.label, path: item.path, icon: item.icon, exact: item.id === 'accueil' }));
-  return <><SubspaceHamburgerLayout title="Omnia Projects" navItems={navItems} searchPath="/projects/explorer" searchParam="q" searchPlaceholder="Rechercher un projet, une compétence, une organisation..." navigationMode="horizontal">{children}</SubspaceHamburgerLayout><PageFooter ecosystem="projects" /></>;
 }
 
 function audienceLabel(audience: ProjectsAudience) {
@@ -38,7 +33,7 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<ProjectsAudi
 
 export function ProjectsAudienceLayout({ audience, children }: { audience: ProjectsAudience; children: ReactNode }) {
   if (audience === 'public') return <PublicProjectsLayout>{children}</PublicProjectsLayout>;
-  if (audience === 'super_admin') return <LegacySuperAdminProjectsLayout>{children}</LegacySuperAdminProjectsLayout>;
+  if (audience === 'super_admin') return <SuperAdminEcosystemLayout ecosystem="projects" navigation={getProjectsNavigation('public')} search={<ProjectsHeaderSearch />}>{children}</SuperAdminEcosystemLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 

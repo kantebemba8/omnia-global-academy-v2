@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import UserAccountMenu from './UserAccountMenu';
 import OmniaBrandLockup from './OmniaBrandLockup';
@@ -17,6 +18,7 @@ type Props = {
   showBrand?: boolean;
   brandHref?: string;
   accentColor?: string;
+  administrationBrand?: boolean;
 };
 
 export function DashboardTopbar({
@@ -31,6 +33,7 @@ export function DashboardTopbar({
   showBrand = true,
   brandHref = '/home',
   accentColor = '#BF8813',
+  administrationBrand = false,
 }: Props) {
   return (
     <header className="relative z-[200] flex min-h-[78px] flex-shrink-0 flex-wrap items-center gap-3 overflow-visible border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
@@ -49,13 +52,23 @@ export function DashboardTopbar({
       )}
 
       {showBrand && (
-        <OmniaBrandLockup href={brandHref} compact className="mr-1 hidden sm:flex" />
+        administrationBrand ? (
+          <Link to={brandHref} className="mr-1 hidden min-w-0 items-center gap-2.5 sm:flex" aria-label="Accueil Omnia Administration">
+            <img src="/omnia-sidebar-logo.png" alt="" className="h-9 w-9 shrink-0 object-contain" />
+            <span className="whitespace-nowrap text-[15px] font-black tracking-[0.025em]">
+              <span style={{ color: BLUE }}>Omnia</span>{' '}
+              <span style={{ color: '#BF8813' }}>Administration</span>
+            </span>
+          </Link>
+        ) : <OmniaBrandLockup href={brandHref} compact className="mr-1 hidden sm:flex" />
       )}
 
-      <div className="min-w-0 flex-1 border-l border-slate-200 pl-4 xl:max-w-[360px]">
-        <h1 className="truncate text-[15px] font-extrabold sm:text-base" style={{ color: BLUE }}>{title}</h1>
-        {subtitle && <p className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">{subtitle}</p>}
-      </div>
+      {(title || subtitle) && (
+        <div className={`min-w-0 flex-1 pl-4 xl:max-w-[360px] ${showBrand ? 'border-l border-slate-200' : ''}`}>
+          {title && <h1 className="truncate text-[15px] font-extrabold sm:text-base" style={{ color: administrationBrand ? '#002050' : BLUE }}>{title}</h1>}
+          {subtitle && <p className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">{subtitle}</p>}
+        </div>
+      )}
 
       {search && <div className="order-3 flex w-full min-w-0 justify-center xl:order-none xl:flex-1">{search}</div>}
 

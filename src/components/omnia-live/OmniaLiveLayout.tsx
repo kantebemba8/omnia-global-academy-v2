@@ -6,7 +6,8 @@ import { ModerateurLayout } from '../ModerateurLayout';
 import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
 import { useAuth } from '../../hooks/useAuth';
 import LiveHeaderSearch from './LiveHeaderSearch';
-import LivePublicLayout, { LegacySuperAdminLiveLayout } from './LivePublicLayout';
+import LivePublicLayout from './LivePublicLayout';
+import SuperAdminEcosystemLayout from '../ecosystem/SuperAdminEcosystemLayout';
 import { getLiveNavigation, liveAudienceLabel, resolveLiveAudience, type LiveAudience } from '../../lib/liveNavigation';
 
 function ConnectedFrame({ audience, children }: { audience: Exclude<LiveAudience, 'public' | 'super_admin'>; children: ReactNode }) {
@@ -18,7 +19,7 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<LiveAudience
 
 export function LiveAudienceLayout({ audience, children }: { audience: LiveAudience; children: ReactNode }) {
   if (audience === 'public') return <LivePublicLayout>{children}</LivePublicLayout>;
-  if (audience === 'super_admin') return <LegacySuperAdminLiveLayout>{children}</LegacySuperAdminLiveLayout>;
+  if (audience === 'super_admin') return <SuperAdminEcosystemLayout ecosystem="live" navigation={getLiveNavigation('public')} search={<LiveHeaderSearch />}>{children}</SuperAdminEcosystemLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 

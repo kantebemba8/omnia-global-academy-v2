@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { Navbar } from '../Navbar';
 import { PageFooter } from '../PageFooter';
+import SuperAdminEcosystemLayout from '../ecosystem/SuperAdminEcosystemLayout';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
 import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import FormationsHeaderSearch from './FormationsHeaderSearch';
-import FormationsEcosystemNav from './FormationsEcosystemNav';
 import {
   formationsAudienceLabel,
   getFormationsNavigation,
@@ -16,21 +15,8 @@ import {
   type FormationsAudience,
 } from '../../lib/formationsNavigation';
 
-function LegacyFormationsLayout({ children, audience }: { children: ReactNode; audience: FormationsAudience }) {
-  return (
-    <div className="min-h-screen bg-white text-slate-900">
-      <Navbar />
-      <div className="pt-20">
-        <FormationsEcosystemNav audience={audience} publicMode />
-        {children}
-        <PageFooter ecosystem="formations" />
-      </div>
-    </div>
-  );
-}
-
 export function PublicFormationsLayout({ children, audience = 'public' }: { children: ReactNode; audience?: FormationsAudience }) {
-  if (audience !== 'public') return <LegacyFormationsLayout audience={audience}>{children}</LegacyFormationsLayout>;
+  if (audience === 'super_admin') return <SuperAdminEcosystemLayout ecosystem="formations" navigation={getFormationsNavigation('public')} search={<FormationsHeaderSearch />}>{children}</SuperAdminEcosystemLayout>;
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <EcosystemPublicHeader ecosystem="formations" navigation={getFormationsNavigation('public')} search={<FormationsHeaderSearch />} />

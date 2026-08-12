@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { getCareerNavigation, resolveCareerAudience } from '../../lib/careerNavigation';
 import { CareerAudienceLayout } from './CareerRoleLayout';
 import { PageFooter } from '../PageFooter';
+import SuperAdminEcosystemLayout from '../ecosystem/SuperAdminEcosystemLayout';
 import { EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import CareerHeaderSearch from './CareerHeaderSearch';
 
@@ -18,30 +18,6 @@ function PublicCareerLayout({ children }: { children: ReactNode }) {
   );
 }
 
-function LegacySuperAdminCareerLayout({ children }: { children: ReactNode }) {
-  const navItems = getCareerNavigation('public').map(item => ({
-    label: item.label,
-    path: item.path,
-    icon: item.icon,
-    exact: item.id === 'accueil',
-  }));
-  return (
-    <>
-      <SubspaceHamburgerLayout
-        title="Omnia Career"
-        navItems={navItems}
-        searchPath="/forum/emploi"
-        searchParam="search"
-        searchPlaceholder="Rechercher une opportunité, un métier ou une entreprise..."
-        navigationMode="horizontal"
-      >
-        {children}
-      </SubspaceHamburgerLayout>
-      <PageFooter ecosystem="career" />
-    </>
-  );
-}
-
 export default function CareerPublicLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const [params] = useSearchParams();
@@ -49,6 +25,6 @@ export default function CareerPublicLayout({ children }: { children: ReactNode }
   const preview = params.get('preview') === 'true' && Boolean(user?.roles?.includes('super_admin'));
   const audience = resolveCareerAudience(user?.roles, preview ? params.get('role') : null);
   if (audience === 'public') return <PublicCareerLayout>{children}</PublicCareerLayout>;
-  if (audience === 'super_admin') return <LegacySuperAdminCareerLayout>{children}</LegacySuperAdminCareerLayout>;
+  if (audience === 'super_admin') return <SuperAdminEcosystemLayout ecosystem="career" navigation={getCareerNavigation('public')} search={<CareerHeaderSearch />}>{children}</SuperAdminEcosystemLayout>;
   return <CareerAudienceLayout audience={audience}>{children}</CareerAudienceLayout>;
 }

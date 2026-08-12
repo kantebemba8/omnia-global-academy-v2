@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ADMIN_ECOSYSTEMS } from '../../lib/adminNavigation';
 
@@ -37,7 +37,16 @@ export default function AdminEcosystemHub() {
                 <div><p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Domaines</p><p className="mt-1 text-2xl font-black text-[#002050]">{ecosystem.groups.length}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Fonctions</p><p className="mt-1 text-2xl font-black text-[#002050]">{toolCount}</p></div>
               </div>
-              <p className="text-sm leading-6 text-slate-500">Survolez un domaine pour voir son contenu. Cliquez dessus pour ouvrir sa page dédiée et accéder ensuite à ses fonctions.</p>
+              <div className="space-y-3">
+                <p className="text-sm leading-6 text-slate-500">Survolez un domaine pour voir son contenu. Cliquez dessus pour ouvrir sa page dédiée et accéder ensuite à ses fonctions.</p>
+                <Link
+                  to={ecosystem.publicPath}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border bg-white px-3.5 text-sm font-black transition hover:-translate-y-0.5"
+                  style={{ borderColor: ecosystem.accent, color: ecosystem.accent }}
+                >
+                  <ExternalLink size={15} /> Ouvrir Omnia {ecosystem.label}
+                </Link>
+              </div>
             </div>
           </div>
           <div className="h-1.5" style={{ background: ecosystem.accent }} />

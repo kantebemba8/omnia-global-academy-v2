@@ -2,25 +2,16 @@ import type { ReactNode } from 'react';
 import { ModerateurLayout } from '../ModerateurLayout';
 import { StructureLayout } from '../StructureLayout';
 import { DashboardLayout } from '../DashboardLayout';
-import { DashboardTopbar } from '../DashboardTopbar';
+import { AdminLayout } from '../AdminLayout';
 import { getStoredUser, normalizePlatformRoles } from '../../lib/session';
 
 type StoredUser = { roles?: string[] };
 
 function SuperAdminProfileLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F6F8FC]">
-      <DashboardTopbar
-        title="Mon profil"
-        subtitle="Compte Super-admin"
-        dashboardPath="/admin/dashboard"
-        showBrand
-        brandHref="/home"
-      />
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#F6F8FC]">
-        {children}
-      </main>
-    </div>
+    <AdminLayout headerTitle="Mon compte" headerSubtitle="Profil interne Super-admin" contentClassName="bg-transparent">
+      {children}
+    </AdminLayout>
   );
 }
 

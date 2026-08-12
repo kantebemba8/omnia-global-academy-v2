@@ -526,8 +526,8 @@ export function DashboardLayout({
     return (
       <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#EEF3F8]">
         <DashboardTopbar
-          title="Omnia Administration"
-          subtitle={activeAdminEcosystem ? `Omnia ${activeAdminEcosystem.label} · ${contextualTitle}` : contextualTitle}
+          title={location.pathname === '/admin/dashboard' ? '' : contextualTitle}
+          subtitle={activeAdminEcosystem ? `Administration Omnia ${activeAdminEcosystem.label}` : undefined}
           onOpenNavigation={() => setMobileNavigationOpen(true)}
           navigationOpen={mobileNavigationOpen}
           actions={headerActions}
@@ -536,6 +536,7 @@ export function DashboardLayout({
           showBrand
           brandHref="/admin/dashboard"
           accentColor={adminAccent}
+          administrationBrand
         />
 
         <div className="relative z-40 flex-shrink-0 border-b border-slate-200 bg-white" onMouseLeave={() => setOpenDesktopGroup(null)}>
@@ -585,19 +586,25 @@ export function DashboardLayout({
               })}
             </nav>
           </div>
+          <div
+            className="h-[3px] opacity-80"
+            style={{ background: activeAdminEcosystem ? `linear-gradient(90deg,transparent 0%,${activeAdminEcosystem.accent} 38%,${activeAdminEcosystem.accent} 62%,transparent 100%)` : 'linear-gradient(90deg,#0F7699 0%,#3E63B8 16%,#087F79 32%,#9C436D 48%,#7A55B8 64%,#0F766E 79%,#C66A22 91%,#BF8813 100%)' }}
+            aria-hidden="true"
+          />
         </div>
-
-
 
         {mobileNavigationOpen && (
           <div className="fixed inset-0 z-[120] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administration">
             <button type="button" className="fixed inset-0 bg-black/50" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
             <aside className="relative z-10 flex h-[100dvh] w-[min(90vw,350px)] flex-col bg-[#002050] shadow-2xl">
-              <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
-                <OmniaBrandLockup href="/admin/dashboard" inverse compact className="min-w-0 flex-1" />
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+                <Link to="/admin/dashboard" onClick={() => setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5">
+                  <img src="/omnia-sidebar-logo.png" alt="" className="h-9 w-9 shrink-0 object-contain" />
+                  <span className="text-sm font-black"><span className="text-white">Omnia</span> <span className="text-[#E9C876]">Administration</span></span>
+                </Link>
                 <button type="button" onClick={() => setMobileNavigationOpen(false)} className="p-2 text-white/75" aria-label="Fermer"><X size={19} /></button>
               </div>
-              <div className="border-b border-white/10 px-5 py-3"><p className="text-sm font-bold text-white">Omnia Administration</p><p className="mt-1 text-xs text-white/50">{contextualTitle}</p></div>
+              {location.pathname !== '/admin/dashboard' && <div className="border-b border-white/10 px-5 py-3"><p className="text-xs font-semibold text-white/55">{contextualTitle}</p></div>}
               <nav className="min-h-0 flex-1 overflow-y-auto py-2">
                 {ACTIVE_NAV_GROUPS?.map(group => {
                   const GroupIcon = group.icon;
@@ -618,7 +625,7 @@ export function DashboardLayout({
           </div>
         )}
 
-        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`} style={{ background: `radial-gradient(circle at 8% 0%, ${adminSoft} 0, transparent 30%), linear-gradient(180deg,#F4F7FB 0%,#EEF3F8 100%)` }}>
+        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`} style={{ background: activeAdminEcosystem ? `radial-gradient(circle at 7% 0%, ${adminSoft} 0, transparent 34%), radial-gradient(circle at 96% 4%, rgba(0,32,80,.06) 0, transparent 28%), linear-gradient(180deg,#F7F9FC 0%,#EEF3F8 100%)` : 'radial-gradient(circle at 7% 0%, rgba(191,136,19,.12) 0, transparent 28%), radial-gradient(circle at 96% 4%, rgba(0,32,80,.08) 0, transparent 30%), linear-gradient(180deg,#F7F9FC 0%,#EEF3F8 100%)' }}>
           {children}
         </main>
       </div>
