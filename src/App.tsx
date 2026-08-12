@@ -152,6 +152,7 @@ const ForumGeneral = lazy(() => import('./pages/ForumGeneral'));
 const ForumPost = lazy(() => import('./pages/ForumPost'));
 const ForumCours = lazy(() => import('./pages/ForumCours'));
 const CommunityCourseForums = lazy(() => import('./pages/CommunityCourseForums'));
+const CommunitySectionHub = lazy(() => import('./pages/community/CommunitySectionHub'));
 const EspaceCarriere = lazy(() => import('./pages/EspaceCarriere'));
 const JobDetail = lazy(() => import('./pages/JobDetail'));
 const FormulaireRecruteur = lazy(() => import('./pages/FormulaireRecruteur'));
@@ -860,6 +861,7 @@ export default function App() {
 
         {/* Module 14 — Omnia Communauté & Carrière — always accessible */}
         <Route path="/forum" element={<Forum />} />
+        <Route path="/forum/echanges" element={<CommunitySectionHub />} />
         <Route path="/forum/general" element={<ForumGeneral />} />
         <Route path="/forum/carriere" element={<ForumGeneral />} />
         <Route path="/forum/post/:postId" element={<ForumPost />} />
