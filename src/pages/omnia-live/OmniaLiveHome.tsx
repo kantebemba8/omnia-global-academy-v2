@@ -1,127 +1,53 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, CalendarDays, PlayCircle, GraduationCap, Radio, Sparkles, Video } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import {
+  ArrowRight, BarChart3, CalendarDays, CheckCircle2, Clapperboard, Clock3, Film, GraduationCap,
+  Mic2, PlayCircle, Radio, Sparkles, Ticket, UsersRound, Video,
+} from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
 import { usePublicPageContent } from '../../hooks/usePublicPageContent';
+import { useAuth } from '../../hooks/useAuth';
+import { resolveLiveAudience, type LiveAudience } from '../../lib/liveNavigation';
 import LiveRail from './LiveRail';
 import { liveApi, type LiveItem } from './liveApi';
 
-const BLUE = '#002050';
-const GOLD = '#BF8813';
+const BLUE='#002050', VIOLET='#5C55C8', GOLD='#BF8813';
+function withPreview(path:string,params:URLSearchParams){if(params.get('preview')!=='true')return path;const u=new URLSearchParams();u.set('preview','true');const role=params.get('role');if(role)u.set('role',role);return `${path}?${u.toString()}`}
+function dateLabel(value?:string|null){if(!value)return 'Date à confirmer';try{return new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}catch{return 'Date à confirmer'}}
 
-export default function OmniaLiveHome() {
-  const content = usePublicPageContent().omnia_live || {};
-  const [items, setItems] = useState<LiveItem[]>([]);
+type RoleCopy={eyebrow:string;title:string;accent:string;description:string;primary:{label:string;path:string};secondary:{label:string;path:string};mode:'stage'|'ticket'|'studio'|'portfolio'|'network'|'control'|'agenda'};
+const COPY:Record<Exclude<LiveAudience,'super_admin'>,RoleCopy>={
+ public:{eyebrow:'LA SCÈNE OMNIA',title:'Des idées qui prennent',accent:'vie en direct.',description:'Classes, masterclass, conférences et événements où l’apprentissage devient une rencontre.',primary:{label:'Voir la programmation',path:'/omnia-live/a-venir'},secondary:{label:'Explorer Omnia Live',path:'/omnia-live/explorer'},mode:'stage'},
+ apprenant:{eyebrow:'VOTRE PROGRAMMATION',title:'Votre prochain rendez-vous peut',accent:'faire avancer votre parcours.',description:'Retrouvez ce qui arrive, ce que vous pouvez rejoindre maintenant et les contenus à revoir ensuite.',primary:{label:'Voir mes Lives',path:'/omnia-live/participant/mes-lives'},secondary:{label:'Explorer la scène',path:'/omnia-live/explorer'},mode:'ticket'},
+ professeur:{eyebrow:'EXPERTISE EN DIRECT',title:'Passez du contenu à une',accent:'expérience vivante.',description:'Participez aux rendez-vous Omnia Live et transformez une expertise en session interactive lorsque vous souhaitez proposer un événement.',primary:{label:'Proposer un Live',path:'/omnia-live/proposer'},secondary:{label:'Voir la programmation',path:'/omnia-live/a-venir'},mode:'studio'},
+ structure:{eyebrow:'PROGRAMMATION ORGANISATIONNELLE',title:'Faites circuler le savoir',accent:'au bon moment.',description:'Suivez l’activité Live de vos membres, programmez des rendez-vous et reliez événements, formation et développement des compétences.',primary:{label:'Pilotage Structure',path:'/omnia-live/structure'},secondary:{label:'Explorer les Lives',path:'/omnia-live/explorer'},mode:'portfolio'},
+ moderateur:{eyebrow:'CONFIANCE & PROGRAMMATION',title:'Une scène visible doit rester',accent:'claire et maîtrisée.',description:'Consultez l’écosystème Live et accédez aux contrôles correspondant réellement à vos permissions de modération.',primary:{label:'Centre de missions',path:'/moderator/missions'},secondary:{label:'Explorer Omnia Live',path:'/omnia-live/explorer'},mode:'control'},
+ recruteur:{eyebrow:'RENCONTRES PROFESSIONNELLES',title:'Repérez les expertises',accent:'dans leur contexte.',description:'Événements, masterclass et rencontres permettent d’observer les sujets, experts et communautés qui animent l’écosystème Omnia.',primary:{label:'Explorer les événements',path:'/omnia-live/explorer'},secondary:{label:'Mes Lives',path:'/omnia-live/participant/mes-lives'},mode:'network'},
+ organisateur:{eyebrow:'RÉGIE OMNIA LIVE',title:'Programmez, produisez et',accent:'faites vivre votre audience.',description:'Votre programmation, vos participants et vos médias se rejoignent dans un même conducteur événementiel.',primary:{label:'Gérer ma programmation',path:'/omnia-live/organisateur/programme'},secondary:{label:'Créer un événement',path:'/omnia-live/proposer'},mode:'studio'},
+ coach:{eyebrow:'RENDEZ-VOUS & EXPERTISE',title:'Ajoutez des rencontres utiles',accent:'au bon moment du parcours.',description:'Repérez les Lives qui peuvent compléter un accompagnement, nourrir une réflexion ou ouvrir une nouvelle perspective.',primary:{label:'Explorer les Lives',path:'/omnia-live/explorer'},secondary:{label:'Mes Lives',path:'/omnia-live/participant/mes-lives'},mode:'agenda'},
+};
 
-  useEffect(() => {
-    liveApi('list', {}, { limit: 12 })
-      .then(data => setItems((data.items || []) as LiveItem[]))
-      .catch(() => setItems([]));
-  }, []);
-
-  const spotlight = useMemo(() => {
-    const now = Date.now();
-    return items
-      .filter(item => (
-        item.status === 'live'
-        || item.featured
-        || (item.status === 'published' && item.starts_at && new Date(item.starts_at).getTime() >= now)
-      ))
-      .slice(0, 10);
-  }, [items]);
-
-  return (
-    <OmniaLiveLayout>
-      <main>
-        <section className="border-b border-slate-100">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 md:px-8 lg:grid-cols-[1.2fr_.8fr] lg:py-24">
-            <div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold" style={{ color: GOLD }}>
-                <Sparkles size={14}/> {content.badge || 'APPRENDRE EN TEMPS RÉEL'}
-              </span>
-              <h1 className="mt-5 max-w-3xl text-4xl font-black leading-tight md:text-6xl" style={{ color: BLUE }}>
-                {content.title || 'Apprenez. Échangez. Participez.'} <span style={{ color: GOLD }}>{content.title_accent || 'En direct.'}</span>
-              </h1>
-              <p className="mt-5 max-w-2xl text-lg text-slate-600">
-                {content.subtitle || 'Classes en ligne, masterclass, ateliers, conférences, formations synchrones et vidéos à la demande, accessibles depuis tous les pays.'}
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link to="/omnia-live/explorer" className="inline-flex items-center gap-2 rounded-xl px-5 py-3 font-bold text-white" style={{ background: BLUE }}>
-                  {content.primary_cta || 'Explorer Omnia Live'} <ArrowRight size={18}/>
-                </Link>
-                <Link to="/omnia-live/a-venir" className="rounded-xl border px-5 py-3 font-bold" style={{ borderColor: GOLD, color: BLUE }}>
-                  {content.secondary_cta || 'Voir les prochains Lives'}
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 self-center">
-              <Link to="/omnia-live/en-direct" className="group rounded-3xl p-6 text-white transition hover:-translate-y-1 hover:shadow-lg" style={{ background: BLUE }}>
-                <Radio/>
-                <div className="mt-8 flex items-center justify-between text-2xl font-bold">
-                  <span>{content.live_card_title || 'Lives'}</span>
-                  <ArrowRight className="opacity-60 transition group-hover:translate-x-1"/>
-                </div>
-                <p className="mt-2 text-sm text-white/70">{content.live_card_text || 'Classes et événements interactifs.'}</p>
-              </Link>
-              <Link to="/omnia-live/formations" className="group rounded-3xl border border-amber-100 bg-amber-50 p-6 transition hover:-translate-y-1 hover:shadow-lg" style={{ color: BLUE }}>
-                <GraduationCap/>
-                <div className="mt-8 flex items-center justify-between text-2xl font-bold">
-                  <span>{content.training_card_title || 'Formations Live'}</span>
-                  <ArrowRight className="opacity-50 transition group-hover:translate-x-1"/>
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{content.training_card_text || 'Parcours synchrones à plusieurs sessions.'}</p>
-              </Link>
-              <Link to="/omnia-live/videos" className="group rounded-3xl border border-slate-200 p-6 transition hover:-translate-y-1 hover:shadow-lg" style={{ color: BLUE }}>
-                <Video/>
-                <div className="mt-8 flex items-center justify-between text-2xl font-bold">
-                  <span>{content.videos_card_title || 'Vidéos'}</span>
-                  <ArrowRight className="opacity-50 transition group-hover:translate-x-1"/>
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{content.videos_card_text || 'Masterclass et contenus à la demande.'}</p>
-              </Link>
-              <Link to="/omnia-live/replays" className="group rounded-3xl border border-slate-200 p-6 transition hover:-translate-y-1 hover:shadow-lg" style={{ color: BLUE }}>
-                <PlayCircle/>
-                <div className="mt-8 flex items-center justify-between text-2xl font-bold">
-                  <span>{content.replays_card_title || 'Replays'}</span>
-                  <ArrowRight className="opacity-50 transition group-hover:translate-x-1"/>
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{content.replays_card_text || 'Revivez les sessions disponibles.'}</p>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {spotlight.length > 0 && (
-          <section className="mx-auto max-w-7xl px-4 py-14 md:px-8">
-            <LiveRail
-              title="En direct et à la une"
-              subtitle="Les Lives actifs, contenus mis en avant et prochains rendez-vous apparaissent automatiquement ici."
-              items={spotlight}
-            />
-          </section>
-        )}
-
-        <section className="mx-auto max-w-7xl px-4 py-14 md:px-8">
-          <div className="grid gap-5 md:grid-cols-3">
-            <Link to="/omnia-live/en-direct" className="rounded-2xl border border-slate-200 p-6 hover:shadow-md">
-              <Radio style={{ color: '#dc2626' }}/>
-              <h2 className="mt-4 text-xl font-bold" style={{ color: BLUE }}>En direct maintenant</h2>
-              <p className="mt-2 text-sm text-slate-600">Rejoignez les sessions actuellement ouvertes selon vos droits d’accès.</p>
-            </Link>
-            <Link to="/omnia-live/a-venir" className="rounded-2xl border border-slate-200 p-6 hover:shadow-md">
-              <CalendarDays style={{ color: GOLD }}/>
-              <h2 className="mt-4 text-xl font-bold" style={{ color: BLUE }}>À venir</h2>
-              <p className="mt-2 text-sm text-slate-600">Planifiez vos prochains événements dans votre fuseau horaire.</p>
-            </Link>
-            <Link to="/omnia-live/videos" className="rounded-2xl border border-slate-200 p-6 hover:shadow-md">
-              <PlayCircle style={{ color: GOLD }}/>
-              <h2 className="mt-4 text-xl font-bold" style={{ color: BLUE }}>Vidéos & Replays</h2>
-              <p className="mt-2 text-sm text-slate-600">Accédez aux contenus validés, protégés et hébergés par Omnia.</p>
-            </Link>
-          </div>
-        </section>
-      </main>
-    </OmniaLiveLayout>
-  );
+export default function OmniaLiveHome(){
+ const content=usePublicPageContent().omnia_live||{};const{user}=useAuth();const[searchParams]=useSearchParams();
+ const preview=searchParams.get('preview')==='true'&&Boolean(user?.roles?.includes('super_admin'));const resolved=resolveLiveAudience(user?.roles,preview?searchParams.get('role'):null);const audience:Exclude<LiveAudience,'super_admin'>=resolved==='super_admin'?'public':resolved;const copy=COPY[audience];
+ const[items,setItems]=useState<LiveItem[]>([]);const[summary,setSummary]=useState<any>({});
+ useEffect(()=>{let active=true;liveApi('list',{}, {limit:18}).then(d=>active&&setItems((d.items||[]) as LiveItem[])).catch(()=>active&&setItems([]));if(!user||resolved==='super_admin'||preview){setSummary({});return()=>{active=false}}
+  const load=audience==='organisateur'?liveApi('organizer_dashboard'):audience==='structure'?liveApi('analytics_structure_overview'):liveApi('participant_dashboard');
+  load.then(d=>active&&setSummary(d||{})).catch(()=>active&&setSummary({}));return()=>{active=false}
+ },[audience,preview,resolved,user]);
+ const now=Date.now();const liveNow=useMemo(()=>items.filter(x=>x.status==='live'),[items]);const upcoming=useMemo(()=>items.filter(x=>x.status==='published'&&x.starts_at&&new Date(x.starts_at).getTime()>now).sort((a,b)=>new Date(a.starts_at||0).getTime()-new Date(b.starts_at||0).getTime()),[items,now]);const featured=useMemo(()=>items.filter(x=>x.featured||x.status==='live').slice(0,10),[items]);const next=upcoming[0]||liveNow[0]||items[0];
+ const metrics=useMemo(()=>{if(audience==='organisateur'){const k=summary.kpis||{};return [['Événements',k.total_events||0],['Participants',k.registrations||0],['Publiés',k.published||0],['En direct',k.live_now||0]]}if(audience==='structure')return [['Membres',summary.members||0],['Événements',summary.events||0],['Inscriptions',summary.registrations||0],['Présence',`${Number(summary.attendance_rate||0).toFixed(0)} %`]];const k=summary.kpis||{};return [['Mes inscriptions',k.registrations||0],['À venir',k.upcoming||0],['Disponibles',k.active||0],['Documents',k.documents||0]]},[audience,summary]);
+ const showMetrics=Boolean(user)&&resolved!=='super_admin'&&!preview;
+ return <OmniaLiveLayout><main className="bg-[#FAFAFE]">
+  <section className="overflow-hidden border-b border-[#E7E6F2] bg-white"><div className="mx-auto grid max-w-[1440px] gap-10 px-4 py-12 sm:px-5 md:py-16 lg:grid-cols-[1.05fr_.95fr] lg:px-6 lg:py-20"><div className="self-center"><p className="text-[11px] font-black uppercase tracking-[.2em] text-[#5C55C8]">{audience==='public'?(content.badge||copy.eyebrow):copy.eyebrow}</p><h1 className="mt-5 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-.045em] text-[#002050] md:text-6xl">{audience==='public'?(content.title||copy.title):copy.title} <span className="text-[#5C55C8]">{audience==='public'?(content.title_accent||copy.accent):copy.accent}</span></h1><p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">{audience==='public'?(content.subtitle||copy.description):copy.description}</p><div className="mt-8 flex flex-wrap gap-3"><Link to={withPreview(copy.primary.path,searchParams)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(0,32,80,.14)]">{copy.primary.label}<ArrowRight size={16}/></Link><Link to={withPreview(copy.secondary.path,searchParams)} className="inline-flex items-center gap-2 rounded-xl border border-[#DAD8EE] bg-white px-5 py-3 text-sm font-black text-[#002050]">{copy.secondary.label}</Link></div></div>
+   <div className="relative min-h-[360px] overflow-hidden rounded-[34px] bg-[#081D40] shadow-[0_34px_70px_rgba(0,32,80,.22)]"><div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_22%,rgba(92,85,200,.58),transparent_32%),radial-gradient(circle_at_20%_85%,rgba(191,136,19,.22),transparent_30%)]"/><div className="absolute left-[11%] top-[12%] h-[72%] w-[78%] rounded-[50%] border border-white/10"/><div className="absolute left-[19%] top-[20%] h-[56%] w-[62%] rounded-[50%] border border-[#8E87E5]/30"/><div className="absolute left-[28%] top-[29%] h-[38%] w-[44%] rounded-[50%] border border-white/10"/>
+    <div className="absolute left-6 top-6 flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.16em] text-white/80"><span className={`h-2 w-2 rounded-full ${liveNow.length?'bg-red-500':'bg-[#BF8813]'}`}/>{liveNow.length?`${liveNow.length} en direct`:'programmation ouverte'}</div>
+    <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-white/10 bg-[#081D40]/75 p-5 backdrop-blur-md"><p className="text-[10px] font-black uppercase tracking-[.16em] text-[#B7B2FA]">{next?'Prochain signal':'Scène Omnia Live'}</p><h2 className="mt-2 line-clamp-2 text-xl font-black text-white">{next?.title||'Les prochains événements apparaîtront ici automatiquement.'}</h2>{next&&<div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold text-white/65"><span className="flex items-center gap-1.5"><CalendarDays size={14}/>{dateLabel(next.starts_at)}</span>{next.duration_minutes?<span className="flex items-center gap-1.5"><Clock3 size={14}/>{next.duration_minutes} min</span>:null}</div>}</div>
+    {copy.mode==='studio'&&<div className="absolute right-7 top-20 flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-white/10 text-white backdrop-blur"><Clapperboard size={30}/></div>}{copy.mode==='ticket'&&<div className="absolute right-7 top-20 rotate-3 rounded-2xl border border-white/15 bg-white/10 px-5 py-4 text-white backdrop-blur"><Ticket size={25}/><p className="mt-5 text-[10px] font-black uppercase tracking-[.14em]">Votre accès</p></div>}{copy.mode==='network'&&<div className="absolute right-7 top-20 flex gap-2">{[0,1,2].map(i=><span key={i} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white backdrop-blur"><UsersRound size={18}/></span>)}</div>}{copy.mode==='control'&&<div className="absolute right-7 top-20 rounded-2xl border border-white/15 bg-white/10 p-4 text-white backdrop-blur"><BarChart3 size={25}/><p className="mt-4 text-xs font-black">Signal & contrôle</p></div>}
+   </div>
+  </div></section>
+  {showMetrics&&<section className="border-b border-[#E7E6F2] bg-white"><div className="mx-auto grid max-w-[1440px] grid-cols-2 px-4 sm:px-5 md:grid-cols-4 lg:px-6">{metrics.map(([label,value],i)=><div key={label} className={`py-5 ${i%2===0?'pr-5':'pl-5'} md:border-l md:px-6 md:first:border-l-0`}><p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">{label}</p><p className="mt-1 text-2xl font-black tracking-[-.03em] text-[#002050]">{String(value)}</p></div>)}</div></section>}
+  <section className="mx-auto max-w-[1440px] px-4 py-12 sm:px-5 lg:px-6">{featured.length>0&&<LiveRail title={liveNow.length?'En direct et à la une':'À la une'} subtitle="Les rendez-vous les plus actifs ou mis en avant apparaissent ici automatiquement." items={featured}/>}<div className="mt-12 grid gap-6 lg:grid-cols-[.72fr_1.28fr]"><div className="rounded-[28px] border border-[#E7E6F2] bg-white p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-[#5C55C8]">Le rythme Live</p><h2 className="mt-2 text-2xl font-black tracking-[-.03em] text-[#002050]">Maintenant → bientôt → à revoir</h2><div className="mt-6 space-y-5">{[[Radio,'En direct','Rejoindre les sessions ouvertes.','/omnia-live/en-direct'],[CalendarDays,'À venir','Planifier les prochains rendez-vous.','/omnia-live/a-venir'],[PlayCircle,'Vidéos & replays','Revoir les contenus disponibles.','/omnia-live/videos']].map(([I,label,text,path]:any)=><Link key={label} to={withPreview(path,searchParams)} className="flex items-start gap-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F0EFFB] text-[#5C55C8]"><I size={17}/></span><span className="min-w-0"><strong className="block text-sm text-[#002050]">{label}</strong><span className="mt-1 block text-sm leading-5 text-slate-500">{text}</span></span><ArrowRight size={15} className="ml-auto mt-1 text-slate-300"/></Link>)}</div></div><div className="rounded-[28px] bg-[#F0EFFB] p-6 md:p-8"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.16em] text-[#5C55C8]">Programmation</p><h2 className="mt-2 text-2xl font-black text-[#002050]">Les prochains rendez-vous</h2></div><Link to={withPreview('/omnia-live/a-venir',searchParams)} className="hidden text-sm font-black text-[#5C55C8] sm:block">Tout voir</Link></div><div className="mt-6 divide-y divide-[#DCD9F4]">{upcoming.slice(0,4).map(item=><Link key={item.id} to={withPreview(`/omnia-live/${item.id}`,searchParams)} className="grid gap-3 py-4 sm:grid-cols-[120px_1fr_auto] sm:items-center"><span className="text-xs font-black uppercase tracking-[.08em] text-[#5C55C8]">{dateLabel(item.starts_at)}</span><span><strong className="block text-sm text-[#002050]">{item.title}</strong><span className="mt-1 block text-xs text-slate-500">{item.organizer_display_name||item.event_type||'Omnia Live'}</span></span><ArrowRight size={15} className="text-[#5C55C8]"/></Link>)}{!upcoming.length&&<div className="py-10 text-sm text-slate-500">Les prochains événements apparaîtront ici dès leur publication.</div>}</div></div></div>
+  </section>
+ </main></OmniaLiveLayout>
 }

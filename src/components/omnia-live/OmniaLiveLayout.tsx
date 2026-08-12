@@ -1,39 +1,26 @@
-import { ReactNode, useMemo } from 'react';
-import { CalendarDays, PlayCircle, Compass, GraduationCap, Home, Info, Radio, Ticket, UsersRound, Video } from 'lucide-react';
-import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
+import type { ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { DashboardLayout } from '../DashboardLayout';
+import { StructureLayout } from '../StructureLayout';
+import { ModerateurLayout } from '../ModerateurLayout';
+import { useAuth } from '../../hooks/useAuth';
+import LiveEcosystemNav from './LiveEcosystemNav';
+import LiveHeaderSearch from './LiveHeaderSearch';
+import LivePublicLayout from './LivePublicLayout';
+import { resolveLiveAudience, type LiveAudience } from '../../lib/liveNavigation';
 
-function canProposeLive() {
-  try {
-    const raw = localStorage.getItem('omnia_user');
-    const user = raw ? JSON.parse(raw) : null;
-    const roles: string[] = user?.roles || [];
-    // Administration Omnia does NOT use the external "Proposer un Live" workflow.
-    // Learners never see it. Only actual organizers/professors/structures do.
-    return roles.some((r) => ['organisateur', 'professeur', 'formateur', 'responsable_structure', 'gestionnaire_structure', 'structure_admin', 'directeur'].includes(r))
-      || Boolean(user?.omnia_live_organizer);
-  } catch {
-    return false;
-  }
+export function LiveAudienceLayout({audience,children}:{audience:LiveAudience;children:ReactNode}){
+ if(audience==='public'||audience==='super_admin')return <LivePublicLayout>{children}</LivePublicLayout>;
+ if(audience==='structure')return <StructureLayout headerTitle="Omnia Live" headerSubtitle="Événements, apprentissage synchrone et activité de votre Structure" headerSearch={<LiveHeaderSearch/>}><LiveEcosystemNav audience="structure"/>{children}</StructureLayout>;
+ if(audience==='moderateur')return <ModerateurLayout headerTitle="Omnia Live" headerSubtitle="Programmation publique et confiance" headerSearch={<LiveHeaderSearch/>}><LiveEcosystemNav audience="moderateur"/>{children}</ModerateurLayout>;
+ const role=audience as 'apprenant'|'professeur'|'recruteur'|'organisateur'|'coach';
+ const subtitle=audience==='organisateur'?'Programmation, audience et production':audience==='professeur'?'Partager une expertise en direct':audience==='recruteur'?'Événements, experts et rencontres professionnelles':audience==='coach'?'Rencontres, expertise et apprentissage en direct':'Vos sessions, replays et rendez-vous Live';
+ return <DashboardLayout role={role} headerTitle="Omnia Live" headerSubtitle={subtitle} headerSearch={<LiveHeaderSearch/>} brandTitle="Omnia" brandAccent="Live" spaceHomePath="/omnia-live" spaceHomeLabel="Retour à Omnia Live" contentClassName="bg-[#FAFAFE]"><LiveEcosystemNav audience={audience}/>{children}</DashboardLayout>
 }
 
-export default function OmniaLiveLayout({ children }: { children: ReactNode }) {
-  const proposer = useMemo(() => canProposeLive(), []);
-  const nav = [
-    { label: 'Accueil Live', path: '/omnia-live', icon: Home, exact: true },
-    { label: 'En direct maintenant', path: '/omnia-live/en-direct', icon: Radio },
-    { label: 'À venir', path: '/omnia-live/a-venir', icon: CalendarDays },
-    { label: 'Explorer', path: '/omnia-live/explorer', icon: Compass },
-    { label: 'Formations Live', path: '/omnia-live/formations', icon: GraduationCap },
-    { label: 'Vidéos & Replays', path: '/omnia-live/videos', icon: PlayCircle },
-    { label: 'Organisateurs', path: '/omnia-live/organisateurs', icon: UsersRound },
-    { label: 'Mes Lives', path: '/omnia-live/mes-lives', icon: Ticket },
-    ...(proposer ? [{ label: 'Proposer un Live', path: '/omnia-live/proposer', icon: Video }] : []),
-    { label: 'À propos', path: '/omnia-live/a-propos', icon: Info },
-  ];
-
-  return (
-    <SubspaceHamburgerLayout title="Omnia Live" navItems={nav} searchPath="/omnia-live/explorer" searchParam="q" searchPlaceholder="Rechercher un live, une formation ou un expert..." navigationMode="horizontal">
-      {children}
-    </SubspaceHamburgerLayout>
-  );
+export default function OmniaLiveLayout({children}:{children:ReactNode}){
+ const{user,loading}=useAuth();const[params]=useSearchParams();
+ if(loading)return <div className="grid min-h-screen place-items-center bg-[#FAFAFE]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E7E6F2] border-t-[#5C55C8]"/></div>;
+ const preview=params.get('preview')==='true'&&Boolean(user?.roles?.includes('super_admin'));const audience=resolveLiveAudience(user?.roles,preview?params.get('role'):null);
+ return <LiveAudienceLayout audience={audience}>{children}</LiveAudienceLayout>
 }

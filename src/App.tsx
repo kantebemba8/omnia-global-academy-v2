@@ -207,6 +207,7 @@ const CoachAdvancedProducts = lazy(() => import('./pages/coaching/CoachAdvancedP
 const AdminCoachingAdvanced = lazy(() => import('./pages/admin/AdminCoachingAdvanced'));
 const AdminAssistedCourses = lazy(() => import('./pages/admin/AdminAssistedCourses'));
 const OmniaLiveHome = lazy(() => import('./pages/omnia-live/OmniaLiveHome'));
+const LiveSectionHub = lazy(() => import('./pages/omnia-live/LiveSectionHub'));
 const CatalogView = lazy(() => import('./pages/omnia-live/CatalogView'));
 const OmniaLiveAbout = lazy(() => import('./pages/omnia-live/OmniaLiveAbout'));
 const OmniaLiveOrganizers = lazy(() => import('./pages/omnia-live/OmniaLiveOrganizers'));
@@ -557,6 +558,14 @@ export default function App() {
           <Route path="/talent/a-propos" element={<TalentAbout />} />
           <Route path="/talent/profil/:profileId" element={<TalentProfilePublic />} />
           <Route path="/omnia-live" element={<OmniaLiveHome />} />
+          <Route path="/omnia-live/decouvrir" element={<LiveSectionHub sectionId="decouvrir" />} />
+          <Route path="/omnia-live/participation" element={<LiveSectionHub sectionId="participation" />} />
+          <Route path="/omnia-live/production" element={<LiveSectionHub sectionId="production" />} />
+          <Route path="/omnia-live/structure" element={<LiveSectionHub sectionId="structure" />} />
+          <Route path="/omnia-live/confiance" element={<LiveSectionHub sectionId="confiance" />} />
+          <Route path="/omnia-live/organisateur/programme" element={<LiveSectionHub sectionId="programme" />} />
+          <Route path="/omnia-live/organisateur/performance" element={<LiveSectionHub sectionId="performance" />} />
+          <Route path="/omnia-live/organisateur/monetisation" element={<LiveSectionHub sectionId="monetisation" />} />
           <Route path="/omnia-live/en-direct" element={<CatalogView title="En direct maintenant" subtitle="Les sessions actuellement ouvertes apparaissent ici en temps réel." filter="live" />} />
           <Route path="/omnia-live/a-venir" element={<CatalogView title="Lives à venir" subtitle="Découvrez les prochains événements et consultez les horaires dans votre fuseau local." filter="upcoming" />} />
           <Route path="/omnia-live/explorer" element={<CatalogView title="Explorer Omnia Live" subtitle="Explorez les Lives, masterclass, ateliers, conférences et contenus disponibles." />} />
