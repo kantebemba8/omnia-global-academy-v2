@@ -9,7 +9,7 @@ import {
   Sparkles,
   UploadCloud,
 } from 'lucide-react';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { AdminLayout } from '../../components/AdminLayout';
 import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
@@ -43,7 +43,7 @@ function fileExtension(name: string) {
 
 function CreationLayout({ context, children }: { context: CreatorContext; children: ReactNode }) {
   if (context === 'structure') return <StructureFormationsLayout>{children}</StructureFormationsLayout>;
-  if (context === 'admin') return <DashboardLayout role="super_admin">{children}</DashboardLayout>;
+  if (context === 'admin') return <AdminLayout headerTitle="Import de formation" headerSubtitle="Omnia Formations · Super-admin" contentClassName="bg-transparent">{children}</AdminLayout>;
   return <ProfessorFormationsLayout>{children}</ProfessorFormationsLayout>;
 }
 

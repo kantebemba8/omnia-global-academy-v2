@@ -1,7 +1,9 @@
 import { ReactNode, useMemo } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import ContextualHeaderSearch from './ContextualHeaderSearch';
-import { ADMIN_ECOSYSTEMS, ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
+import { ADMIN_ECOSYSTEMS, ADMIN_NAV_GROUPS, findAdminEcosystem } from '../lib/adminNavigation';
 
 interface Props {
   children: ReactNode;
@@ -13,6 +15,11 @@ interface Props {
 }
 
 export function AdminLayout({ children, headerTitle, headerSubtitle, headerActions, headerSearch, contentClassName }: Props) {
+  const location = useLocation();
+  const activeEcosystem = findAdminEcosystem(location.pathname);
+  const ecosystemHubPath = activeEcosystem ? `/admin/ecosystemes/${activeEcosystem.id}` : '';
+  const onEcosystemHub = Boolean(activeEcosystem && location.pathname === ecosystemHubPath);
+
   const searchItems = useMemo(() => {
     const seen = new Set<string>();
     const items: Array<{ id: string; label: string; description: string; keywords: string[]; path: string }> = [];
@@ -33,6 +40,23 @@ export function AdminLayout({ children, headerTitle, headerSubtitle, headerActio
     return items;
   }, []);
 
+  const contextualReturn = activeEcosystem && !onEcosystemHub ? (
+    <Link
+      to={ecosystemHubPath}
+      className="hidden min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-black transition hover:bg-white sm:inline-flex"
+      style={{ borderColor: activeEcosystem.border, color: activeEcosystem.accent, background: activeEcosystem.soft }}
+    >
+      <ArrowLeft size={14} /> Omnia {activeEcosystem.label}
+    </Link>
+  ) : null;
+
+  const combinedActions = contextualReturn || headerActions ? (
+    <div className="flex items-center gap-2">
+      {contextualReturn}
+      {headerActions}
+    </div>
+  ) : undefined;
+
   return (
     <DashboardLayout
       role="super_admin"
@@ -40,7 +64,7 @@ export function AdminLayout({ children, headerTitle, headerSubtitle, headerActio
       dashboardPath="/admin/dashboard"
       headerTitle={headerTitle}
       headerSubtitle={headerSubtitle}
-      headerActions={headerActions}
+      headerActions={combinedActions}
       headerSearch={headerSearch || (
         <ContextualHeaderSearch
           items={searchItems}

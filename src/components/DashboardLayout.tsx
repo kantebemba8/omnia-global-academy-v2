@@ -4,7 +4,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import { DashboardTopbar } from './DashboardTopbar';
 import OmniaBrandLockup from './OmniaBrandLockup';
-import { ADMIN_NAV_GROUPS, adminNavItemMatchesPath, findAdminEcosystem, findAdminEcosystemItem } from '../lib/adminNavigation';
+import { ADMIN_NAV_GROUPS, adminGroupHubPath, adminEcosystemGroupHubPath, adminNavItemMatchesPath, findAdminEcosystem, findAdminEcosystemItem } from '../lib/adminNavigation';
 import { PreviewReturnBar } from './PreviewReturnButton';
 import { getRoleTheme, type RoleThemeKey } from '../lib/roleTheme';
 import {
@@ -148,7 +148,6 @@ export function DashboardLayout({
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [openDesktopGroup, setOpenDesktopGroup] = useState<string | null>(null);
-  const [openAdminEcosystemGroup, setOpenAdminEcosystemGroup] = useState<string | null>(null);
   const [expandedMobileGroups, setExpandedMobileGroups] = useState<Record<string, boolean>>({});
   const [referralEnabled, setReferralEnabled] = useState(false);
 
@@ -169,7 +168,6 @@ export function DashboardLayout({
   useEffect(() => {
     setMobileNavigationOpen(false);
     setOpenDesktopGroup(null);
-    setOpenAdminEcosystemGroup(null);
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -261,7 +259,12 @@ export function DashboardLayout({
   }, [allNavigationItems, location.pathname, role, activeAdminEcosystemItem]);
 
   const activeGroup = useMemo(() => {
-    if (role === 'super_admin' && activeAdminEcosystem) return ACTIVE_NAV_GROUPS?.find(group => group.id === 'ecosystems');
+    if (role === 'super_admin') {
+      if (activeAdminEcosystem || location.pathname === '/admin/ecosystemes') return ACTIVE_NAV_GROUPS?.find(group => group.id === 'ecosystems');
+      if (location.pathname.startsWith('/admin/section/utilisateurs-acces')) return ACTIVE_NAV_GROUPS?.find(group => group.id === 'users-access');
+      if (location.pathname.startsWith('/admin/section/commerce-finance')) return ACTIVE_NAV_GROUPS?.find(group => group.id === 'commerce-finance');
+      if (location.pathname.startsWith('/admin/section/plateforme-gouvernance')) return ACTIVE_NAV_GROUPS?.find(group => group.id === 'platform-governance');
+    }
     return ACTIVE_NAV_GROUPS?.find(group => group.items.some(item => role === 'super_admin' ? adminNavItemMatchesPath(item, location.pathname) : navigationItemMatchesPath(item, location.pathname)));
   }, [ACTIVE_NAV_GROUPS, location.pathname, role, activeAdminEcosystem]);
 
@@ -518,11 +521,13 @@ export function DashboardLayout({
   }
 
   if (adminMode) {
+    const adminAccent = activeAdminEcosystem?.accent || '#BF8813';
+    const adminSoft = activeAdminEcosystem?.soft || '#F6F8FC';
     return (
-      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F6F8FC]">
+      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#EEF3F8]">
         <DashboardTopbar
-          title={contextualTitle}
-          subtitle={headerSubtitle || (activeAdminEcosystem ? `Administration Omnia ${activeAdminEcosystem.label}` : roleSubtitle)}
+          title="Omnia Administration"
+          subtitle={activeAdminEcosystem ? `Omnia ${activeAdminEcosystem.label} · ${contextualTitle}` : contextualTitle}
           onOpenNavigation={() => setMobileNavigationOpen(true)}
           navigationOpen={mobileNavigationOpen}
           actions={headerActions}
@@ -530,132 +535,90 @@ export function DashboardLayout({
           dashboardPath={dashboardPath}
           showBrand
           brandHref="/admin/dashboard"
-          accentColor={activeAdminEcosystem?.accent || '#BF8813'}
+          accentColor={adminAccent}
         />
 
-        <div className="relative z-30 flex-shrink-0 border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-[1600px] items-center overflow-x-auto px-4 md:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="relative z-40 flex-shrink-0 border-b border-slate-200 bg-white" onMouseLeave={() => setOpenDesktopGroup(null)}>
+          <div className="mx-auto max-w-[1600px] px-4 md:px-6">
             <nav className="flex min-w-max items-center" aria-label="Navigation principale Super-admin">
-              {ACTIVE_NAV_GROUPS?.map(group => {
+              {ACTIVE_NAV_GROUPS?.map((group, groupIndex) => {
                 const GroupIcon = group.icon;
                 const containsActive = activeGroup?.id === group.id;
-                const destination = buildPath(group.items[0].path);
+                const destination = buildPath(adminGroupHubPath(group.id));
+                const hasPreview = group.id !== 'dashboard' && group.items.length > 0;
+                const open = openDesktopGroup === group.id;
                 return (
-                  <Link
-                    key={group.id}
-                    to={destination}
-                    className={`group relative inline-flex min-h-14 items-center gap-2.5 px-3.5 text-[13px] font-bold transition md:px-4 ${containsActive ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
-                  >
-                    <GroupIcon size={17} style={{ color: containsActive ? (activeAdminEcosystem?.accent || '#BF8813') : '#64748B' }} />
-                    <span>{group.label}</span>
-                    <span className="absolute inset-x-3 bottom-0 h-[2px] transition" style={{ background: containsActive ? (activeAdminEcosystem?.accent || '#BF8813') : 'transparent' }} />
-                  </Link>
+                  <div key={group.id} className="relative" onMouseEnter={() => hasPreview && setOpenDesktopGroup(group.id)} onFocus={() => hasPreview && setOpenDesktopGroup(group.id)}>
+                    <Link
+                      to={destination}
+                      className={`group relative inline-flex min-h-14 items-center gap-2.5 px-3.5 text-[13px] font-bold transition md:px-4 ${containsActive || open ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
+                    >
+                      <GroupIcon size={17} style={{ color: containsActive || open ? adminAccent : '#64748B' }} />
+                      <span>{group.label}</span>
+                      {hasPreview && <ChevronDown size={13} style={{ color: containsActive || open ? adminAccent : '#94A3B8' }} />}
+                      <span className="absolute inset-x-3 bottom-0 h-[2px] transition" style={{ background: containsActive || open ? adminAccent : 'transparent' }} />
+                    </Link>
+                    {hasPreview && open && (
+                      <div className={`absolute top-full z-[100] w-[min(680px,calc(100vw-32px))] border border-slate-200 bg-white p-5 shadow-[0_26px_70px_rgba(0,32,80,.18)] ${groupIndex >= (ACTIVE_NAV_GROUPS?.length || 0) - 2 ? 'right-0' : 'left-0'}`}>
+                        <div className="flex items-end justify-between gap-6 border-b border-slate-200 pb-4">
+                          <div><p className="text-[10px] font-black uppercase tracking-[.16em]" style={{ color: adminAccent }}>Omnia Administration</p><h3 className="mt-1 text-lg font-black text-[#002050]">{group.label}</h3></div>
+                          <Link to={destination} onClick={() => setOpenDesktopGroup(null)} className="text-xs font-black" style={{ color: adminAccent }}>Ouvrir la page →</Link>
+                        </div>
+                        <div className="grid gap-x-8 gap-y-1 pt-3 sm:grid-cols-2">
+                          {group.items.map(item => {
+                            const ItemIcon = item.icon;
+                            const ecosystemForItem = 'ecosystemId' in item && item.ecosystemId ? findAdminEcosystem(item.path) : null;
+                            const itemAccent = ecosystemForItem?.accent || adminAccent;
+                            return (
+                              <Link key={item.path} to={buildPath(item.path)} onClick={() => setOpenDesktopGroup(null)} className="flex items-center gap-3 border-b border-slate-100 px-1 py-3 text-sm font-semibold text-slate-600 transition hover:text-[#002050]">
+                                <ItemIcon size={16} style={{ color: itemAccent }} />
+                                <span className="flex-1">{item.label}</span>
+                                <ChevronRight size={13} style={{ color: itemAccent }} />
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </nav>
           </div>
         </div>
 
-        {activeGroup && activeGroup.id !== 'dashboard' && (
-          <div className="relative z-20 flex-shrink-0 border-b border-slate-200 bg-[#F8FAFD]">
-            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2 md:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {activeGroup.items.map(item => {
-                const ItemIcon = item.icon;
-                const active = isActive(item);
-                const ecosystemForItem = 'ecosystemId' in item && item.ecosystemId ? findAdminEcosystem(item.path) : null;
-                const accent = ecosystemForItem?.accent || activeAdminEcosystem?.accent || '#BF8813';
-                const soft = ecosystemForItem?.soft || '#FFFFFF';
-                return (
-                  <Link
-                    key={item.path}
-                    to={buildPath(item.path)}
-                    className={`inline-flex min-h-9 min-w-max items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition ${active ? 'bg-white text-[#002050] shadow-sm' : 'border-transparent text-slate-500 hover:bg-white/80 hover:text-[#002050]'}`}
-                    style={active ? { borderColor: accent, backgroundColor: soft } : undefined}
-                  >
-                    <ItemIcon size={14} style={{ color: active ? accent : ('ecosystemId' in item && item.ecosystemId ? accent : '#94A3B8') }} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {activeAdminEcosystem && (
-          <div
-            className="relative z-10 hidden flex-shrink-0 border-b lg:block"
-            style={{ borderColor: activeAdminEcosystem.border, background: activeAdminEcosystem.soft }}
-            onMouseLeave={() => setOpenAdminEcosystemGroup(null)}
-          >
-            <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-visible px-4 md:px-6">
-              <div className="mr-2 flex min-h-12 items-center border-r pr-4 text-xs font-black uppercase tracking-[0.12em]" style={{ color: activeAdminEcosystem.accent, borderColor: activeAdminEcosystem.border }}>
-                Omnia {activeAdminEcosystem.label}
-              </div>
-              <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-visible" aria-label={`Gestion Omnia ${activeAdminEcosystem.label}`}>
-                {activeAdminEcosystem.groups.map(group => {
-                  const GroupIcon = group.icon;
-                  const containsActive = group.items.some(item => adminNavItemMatchesPath(item, location.pathname));
-                  const hasChildren = group.items.length > 1;
-                  const open = openAdminEcosystemGroup === group.id;
-                  const destination = buildPath(group.items[0].path);
-                  return (
-                    <div key={group.id} className="relative" onMouseEnter={() => hasChildren && setOpenAdminEcosystemGroup(group.id)} onFocus={() => hasChildren && setOpenAdminEcosystemGroup(group.id)}>
-                      <Link
-                        to={destination}
-                        className="relative inline-flex min-h-12 min-w-max items-center gap-2 px-3 text-xs font-bold text-[#002050] transition hover:bg-white/55"
-                        style={{ color: containsActive ? '#002050' : '#475569' }}
-                      >
-                        <GroupIcon size={14} style={{ color: containsActive ? activeAdminEcosystem.accent : '#64748B' }} />
-                        {group.label}
-                        {hasChildren && <ChevronDown size={13} style={{ color: activeAdminEcosystem.accent }} />}
-                        <span className="absolute inset-x-3 bottom-0 h-[2px]" style={{ background: containsActive ? activeAdminEcosystem.accent : 'transparent' }} />
-                      </Link>
-                      {hasChildren && open && (
-                        <div className="absolute left-0 top-full z-50 min-w-[300px] border bg-white py-2 shadow-[0_18px_45px_rgba(0,32,80,.16)]" style={{ borderColor: activeAdminEcosystem.border }}>
-                          <div className="border-b px-4 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: activeAdminEcosystem.accent, borderColor: activeAdminEcosystem.border }}>
-                            {group.label}
-                          </div>
-                          {group.items.map(item => {
-                            const ItemIcon = item.icon;
-                            const active = adminNavItemMatchesPath(item, location.pathname);
-                            return (
-                              <Link
-                                key={item.path}
-                                to={buildPath(item.path)}
-                                onClick={() => setOpenAdminEcosystemGroup(null)}
-                                className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50"
-                                style={active ? { color: '#002050', background: activeAdminEcosystem.soft } : { color: '#475569' }}
-                              >
-                                <ItemIcon size={15} style={{ color: active ? activeAdminEcosystem.accent : '#94A3B8' }} />
-                                <span className="flex-1">{item.label}</span>
-                                {active && <ChevronRight size={13} style={{ color: activeAdminEcosystem.accent }} />}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </nav>
-              <Link to={activeAdminEcosystem.publicPath} className="ml-auto inline-flex min-h-12 min-w-max items-center gap-2 border-l px-4 text-xs font-bold text-[#002050]" style={{ borderColor: activeAdminEcosystem.border }}>
-                <ExternalLink size={14} style={{ color: activeAdminEcosystem.accent }} /> Voir l’écosystème
-              </Link>
-            </div>
-          </div>
-        )}
 
         {mobileNavigationOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administrative">
-            <button type="button" className="fixed inset-0 bg-black/60" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
-            <div className="relative z-10 h-[100dvh] w-[min(88vw,340px)]">{adminSidebar}</div>
+          <div className="fixed inset-0 z-[120] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administration">
+            <button type="button" className="fixed inset-0 bg-black/50" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
+            <aside className="relative z-10 flex h-[100dvh] w-[min(90vw,350px)] flex-col bg-[#002050] shadow-2xl">
+              <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+                <OmniaBrandLockup href="/admin/dashboard" inverse compact className="min-w-0 flex-1" />
+                <button type="button" onClick={() => setMobileNavigationOpen(false)} className="p-2 text-white/75" aria-label="Fermer"><X size={19} /></button>
+              </div>
+              <div className="border-b border-white/10 px-5 py-3"><p className="text-sm font-bold text-white">Omnia Administration</p><p className="mt-1 text-xs text-white/50">{contextualTitle}</p></div>
+              <nav className="min-h-0 flex-1 overflow-y-auto py-2">
+                {ACTIVE_NAV_GROUPS?.map(group => {
+                  const GroupIcon = group.icon;
+                  const containsActive = activeGroup?.id === group.id;
+                  return (
+                    <Link key={group.id} to={buildPath(adminGroupHubPath(group.id))} onClick={() => setMobileNavigationOpen(false)} className="flex items-center gap-3 border-l-2 px-5 py-3 text-sm font-semibold" style={{ borderColor: containsActive ? adminAccent : 'transparent', color: containsActive ? '#fff' : 'rgba(255,255,255,.72)', background: containsActive ? 'rgba(255,255,255,.08)' : 'transparent' }}>
+                      <GroupIcon size={17} style={{ color: containsActive ? adminAccent : undefined }} /><span className="flex-1">{group.label}</span><ChevronRight size={13}/>
+                    </Link>
+                  );
+                })}
+                {activeAdminEcosystem && <div className="mx-4 my-3 border-t border-white/10" />}
+                {activeAdminEcosystem?.groups.map(group => {
+                  const MobileGroupIcon = group.icon;
+                  return <Link key={group.id} to={buildPath(adminEcosystemGroupHubPath(activeAdminEcosystem.id, group.id))} onClick={() => setMobileNavigationOpen(false)} className="flex items-center gap-3 px-6 py-2.5 text-[13px] font-semibold text-white/70"><MobileGroupIcon size={15} style={{ color: activeAdminEcosystem.accent }} />{group.label}</Link>;
+                })}
+              </nav>
+            </aside>
           </div>
         )}
 
-        <main
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName || ''}`}
-          style={{ background: activeAdminEcosystem?.soft ? `linear-gradient(180deg, ${activeAdminEcosystem.soft} 0px, #F6F8FC 180px)` : '#F6F8FC' }}
-        >
+        <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`} style={{ background: `radial-gradient(circle at 8% 0%, ${adminSoft} 0, transparent 30%), linear-gradient(180deg,#F4F7FB 0%,#EEF3F8 100%)` }}>
           {children}
         </main>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
@@ -226,7 +226,6 @@ async function postTemplateManager<T>(body: unknown): Promise<T> {
 }
 
 export default function AdminCareerStudio() {
-  const navigate = useNavigate();
   const [subTab, setSubTab] = useState<SubTab>('dashboard');
   const [rules, setRules] = useState<CareerRule[]>([]);
   const [tokenConfig, setTokenConfig] = useState<TokenConfig[]>([]);
@@ -289,12 +288,6 @@ export default function AdminCareerStudio() {
   }
 
   useEffect(() => { loadAll(); }, []);
-
-  function openLearnerCareerPreview() {
-    sessionStorage.setItem('omnia_admin_role_preview', 'apprenant');
-    navigate('/dashboard/career-studio?preview=true');
-  }
-
 
 
   const groupedRules = useMemo(() => {
@@ -553,9 +546,9 @@ export default function AdminCareerStudio() {
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Règles, modèles CV/LM, jetons, exports, banque de questions et activité Career dans un espace de gestion unique.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={openLearnerCareerPreview} className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold text-[#002050] transition hover:bg-slate-50">
-                <ExternalLink size={15} /> Ouvrir le Studio
-              </button>
+              <Link to="/career-studio" className="inline-flex items-center gap-2 border border-[#D8E0F4] bg-[#F5F7FD] px-3.5 py-2.5 text-sm font-bold text-[#3E63B8] transition hover:bg-[#E9EEFB]">
+                <ExternalLink size={15} /> Voir Omnia Career public
+              </Link>
               <button onClick={loadAll} disabled={loading} className="inline-flex items-center gap-2 bg-[#002050] px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
                 <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
               </button>

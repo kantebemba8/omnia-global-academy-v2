@@ -33,7 +33,7 @@ export function DashboardTopbar({
   accentColor = '#BF8813',
 }: Props) {
   return (
-    <header className="relative z-30 flex min-h-[78px] flex-shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
+    <header className="relative z-[200] flex min-h-[78px] flex-shrink-0 flex-wrap items-center gap-3 overflow-visible border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
       {onOpenNavigation && (
         <button
           type="button"

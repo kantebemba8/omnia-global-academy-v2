@@ -1,5 +1,5 @@
 import { openExternalUrl } from '../../lib/mobile';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   CalendarDays, Check, ClipboardList, Edit3, Eye, FileCheck2, FolderKanban, Mail, Plus, RefreshCw,
@@ -30,6 +30,7 @@ import {
   upsertProjectMilestone,
 } from '../../lib/projectsApi';
 import { ProjectStatusBadge, ProjectsWorkspaceFrame } from '../../components/projects/ProjectUi';
+import { AdminLayout } from '../../components/AdminLayout';
 import { OwnerProjectRecommendationsPanel } from '../../components/projects/ProjectRecommendationsPanel';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
@@ -47,6 +48,18 @@ const EMPTY_FORM = {
 };
 
 type ProjectForm = typeof EMPTY_FORM;
+
+
+function OwnerWorkspaceFrame({ admin, children }: { admin: boolean; children: ReactNode }) {
+  if (admin) {
+    return (
+      <AdminLayout headerTitle="Gestion Omnia Projects" headerSubtitle="Projets, équipes et livrables · Super-admin" contentClassName="bg-transparent">
+        {children}
+      </AdminLayout>
+    );
+  }
+  return <ProjectsWorkspaceFrame>{children}</ProjectsWorkspaceFrame>;
+}
 
 function toInputDate(value?: string | null) {
   return value ? new Date(value).toISOString().slice(0, 16) : '';
@@ -98,6 +111,7 @@ function fromProject(project: OmniaProject): ProjectForm {
 
 export default function ProjectOwnerWorkspace() {
   const location = useLocation();
+  const isAdminWorkspace = location.pathname.startsWith('/admin/');
   const ownerScope = location.pathname.startsWith('/structure/') ? 'structure' as const
     : location.pathname.startsWith('/professeur/') ? 'personal' as const
     : '' as const;
@@ -404,7 +418,7 @@ export default function ProjectOwnerWorkspace() {
   const setField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => setForm(previous => ({ ...previous, [key]: value }));
 
   return (
-    <ProjectsWorkspaceFrame>
+    <OwnerWorkspaceFrame admin={isAdminWorkspace}>
       <div className="mx-auto max-w-7xl bg-[#FAF4F0] p-5 sm:p-8">
         <div className="overflow-hidden rounded-[26px] border border-[#E9D7CE] bg-white p-6 shadow-[0_16px_45px_rgba(0,32,80,.06)] sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#B5623C]">Atelier de pilotage</p><h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Projets, équipes et livrables</h1><p className="mt-2 max-w-2xl text-slate-600">Créez une mission, faites-la valider, sélectionnez les participants puis suivez le cycle jusqu’aux preuves d’expérience.</p></div>
@@ -558,6 +572,6 @@ export default function ProjectOwnerWorkspace() {
           </div>
         </div>
       )}
-    </ProjectsWorkspaceFrame>
+    </OwnerWorkspaceFrame>
   );
 }

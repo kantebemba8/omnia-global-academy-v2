@@ -6,6 +6,7 @@ import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import { ADMIN_ECOSYSTEMS } from '../../lib/adminNavigation';
+import { getRoleTheme } from '../../lib/roleTheme';
 import {
   Activity,
   AlertCircle,
@@ -162,13 +163,13 @@ export default function AdminDashboard() {
   useEffect(() => { void load(period); }, [period]);
 
   const previewSpaces = [
-    { label: 'Apprenant', icon: GraduationCap, path: '/home?preview=true&role=apprenant', role: 'apprenant' },
-    { label: 'Professeur', icon: BookOpen, path: '/home?preview=true&role=professeur', role: 'professeur' },
-    { label: 'Coach', icon: UserCheck, path: '/home?preview=true&role=coach', role: 'coach' },
-    { label: 'Organisateur', icon: Radio, path: '/home?preview=true&role=organisateur', role: 'organisateur' },
-    { label: 'Structure', icon: Building2, path: '/home?preview=true&role=structure', role: 'structure' },
-    { label: 'Modérateur', icon: UserCheck, path: '/home?preview=true&role=moderateur', role: 'moderateur' },
-    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/home?preview=true&role=recruteur', role: 'recruteur' },
+    { label: 'Apprenant', icon: GraduationCap, path: '/home?preview=true&role=apprenant', role: 'apprenant', theme: getRoleTheme('apprenant') },
+    { label: 'Professeur', icon: BookOpen, path: '/home?preview=true&role=professeur', role: 'professeur', theme: getRoleTheme('professeur') },
+    { label: 'Coach', icon: UserCheck, path: '/home?preview=true&role=coach', role: 'coach', theme: getRoleTheme('coach') },
+    { label: 'Organisateur', icon: Radio, path: '/home?preview=true&role=organisateur', role: 'organisateur', theme: getRoleTheme('organisateur') },
+    { label: 'Structure', icon: Building2, path: '/home?preview=true&role=structure', role: 'structure', theme: getRoleTheme('structure') },
+    { label: 'Modérateur', icon: UserCheck, path: '/home?preview=true&role=moderateur', role: 'moderateur', theme: getRoleTheme('moderateur') },
+    { label: 'Recruteur indépendant', icon: UserRoundSearch, path: '/home?preview=true&role=recruteur', role: 'recruteur', theme: getRoleTheme('recruteur') },
   ];
 
   const visibleRoleRows = data?.users_by_role || [];
@@ -194,15 +195,15 @@ export default function AdminDashboard() {
           <div className="relative grid gap-6 px-5 py-6 md:px-7 md:py-7 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
             <div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/55">
-                <span>Omnia Control Center</span>
+                <span>Omnia Administration</span>
                 <span className="h-1 w-1 rounded-full bg-[#BF8813]" />
                 <span>Super-admin</span>
               </div>
               <h1 className="mt-3 max-w-3xl text-2xl font-black tracking-[-0.035em] text-white sm:text-3xl xl:text-[2.25rem]">
-                {dashboardGreeting()}
+                Omnia Administration
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
-                Pilotez les opérations, les validations, l’activité et la gouvernance de la plateforme depuis une vue unique.
+                <strong className="text-white/85">{dashboardGreeting()}.</strong> Pilotez les opérations, les validations, l’activité et la gouvernance depuis une console unique.
               </p>
 
               <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-white/10 pt-4 text-sm">
@@ -212,6 +213,14 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-white/65"><strong className="text-white">{actionCount}</strong> action{actionCount > 1 ? 's' : ''} à traiter</div>
                 <div className="text-white/65"><strong className="text-white">{fmt(data?.kpis.utilisateurs_actifs_24h ?? null)}</strong> actifs sur 24 h</div>
+              </div>
+              <div className="mt-5 grid max-w-4xl grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-7" aria-label="Identités des rôles Omnia">
+                {previewSpaces.map(item => (
+                  <div key={item.role} className="flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[.07] px-3 py-2 backdrop-blur-sm">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: item.theme.accent }} />
+                    <span className="truncate text-[11px] font-bold text-white/80">{item.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -244,13 +253,13 @@ export default function AdminDashboard() {
             <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#002050] border-t-transparent" />
           </div>
         ) : error ? (
-          <section className="border-l-4 border-red-500 bg-white px-5 py-4 shadow-sm">
+          <section className="border-l-4 border-red-500 bg-white/95 px-5 py-4 shadow-sm">
             <p className="font-bold text-red-700">Impossible de charger le tableau de bord</p>
             <p className="mt-1 text-sm text-slate-500">{error}</p>
           </section>
         ) : data && (
           <>
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm">
               <div className="grid sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   ['CA encaissé', fmt(data.kpis.ca_encaisse_xof, ' XOF'), CircleDollarSign, '#2563EB'],
@@ -274,7 +283,7 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Écosystèmes</p>
@@ -304,7 +313,7 @@ export default function AdminDashboard() {
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[1.22fr_0.78fr]">
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm">
                 <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#BF8813]">Opérations</p>
@@ -361,7 +370,7 @@ export default function AdminDashboard() {
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[1.55fr_0.75fr]">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Pilotage financier</p>
@@ -392,7 +401,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Aujourd’hui</p>
                 <h2 className="mt-1 text-lg font-black text-[#002050]">Activité de la plateforme</h2>
                 <div className="mt-4 border-t border-slate-200">
@@ -421,7 +430,7 @@ export default function AdminDashboard() {
             </section>
 
             <section className="grid gap-6 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="font-black text-[#002050]">Formations</h2>
                   <BookOpen size={17} className="text-[#BF8813]" />
@@ -436,7 +445,7 @@ export default function AdminDashboard() {
                 <button onClick={() => navigate('/admin/quality-center')} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#9B6B0B]">Centre Qualité <ArrowRight size={13} /></button>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="font-black text-[#002050]">Omnia Live</h2>
                   <Radio size={17} className="text-[#5B5BD6]" />
@@ -451,7 +460,7 @@ export default function AdminDashboard() {
                 <button onClick={() => navigate('/admin/omnia-live')} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#5B5BD6]">Gérer Omnia Live <ArrowRight size={13} /></button>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="font-black text-[#002050]">Structures</h2>
                   <Building2 size={17} className="text-[#0F8A63]" />
@@ -466,7 +475,7 @@ export default function AdminDashboard() {
             </section>
 
             <section className="grid gap-6 xl:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Utilisateurs</p>
@@ -491,7 +500,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Système</p>
@@ -520,9 +529,9 @@ export default function AdminDashboard() {
                       key={item.path}
                       type="button"
                       onClick={() => openPreviewSpace(item.path, item.role)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-[#002050] shadow-sm transition hover:-translate-y-0.5 hover:border-[#BF8813]/50 hover:shadow-md"
+                      className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5 text-xs font-bold text-[#002050] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: item.theme.accent, background: item.theme.soft }}
                     >
-                      <item.icon size={15} className="text-[#BF8813]" />
+                      <item.icon size={15} style={{ color: item.theme.accent }} />
                       {item.label}
                     </button>
                   ))}
@@ -531,7 +540,7 @@ export default function AdminDashboard() {
             </section>
 
             <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <h2 className="text-base font-black text-[#002050]">Moyens de paiement</h2>
                 <div className="mt-3 border-t border-slate-200">
                   {!data.paiements.available ? (
@@ -547,10 +556,10 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5">
                 <div className="flex items-center gap-2"><AlertCircle size={16} className="text-[#BF8813]" /><h2 className="text-base font-black text-[#002050]">Lecture rapide</h2></div>
                 <p className="mt-3 text-sm leading-6 text-slate-500">Cette vue regroupe uniquement les données déjà disponibles dans l’administration Omnia. Utilisez la navigation horizontale pour ouvrir chaque domaine et ses outils dédiés.</p>
-                <button type="button" onClick={() => navigate('/admin/utilisateurs')} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#002050]">Ouvrir Utilisateurs & accès <ArrowRight size={13} /></button>
+                <button type="button" onClick={() => navigate('/admin/section/utilisateurs-acces')} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#002050]">Ouvrir Utilisateurs & accès <ArrowRight size={13} /></button>
               </div>
             </section>
           </>

@@ -40,6 +40,7 @@ export interface AdminEcosystemNavigation {
   publicPath: string;
   accent: string;
   soft: string;
+  background: string;
   border: string;
   groups: AdminEcosystemNavGroup[];
   matchPrefixes: string[];
@@ -58,13 +59,14 @@ export const ADMIN_ECOSYSTEMS: AdminEcosystemNavigation[] = [
     id: 'formations',
     label: 'Formations',
     icon: BookOpen,
-    entryPath: '/admin/courses',
+    entryPath: '/admin/ecosystemes/formations',
     publicPath: formations.publicPath,
     accent: formations.accent,
     soft: formations.soft,
+    background: formations.background,
     border: formations.border,
     matchPrefixes: [
-      '/admin/courses', '/admin/studio', '/admin/studio-mes-formations', '/admin/assisted-courses',
+      '/admin/ecosystemes/formations', '/admin/courses', '/admin/studio', '/admin/studio-mes-formations', '/admin/assisted-courses',
       '/admin/course-pricing', '/admin/quality-center', '/admin/recognition-hub', '/admin/professional-pathways',
       '/admin/assessment-center', '/admin/assessment-governance', '/admin/cpd-credits', '/admin/certificates',
       '/admin/certificate-templates', '/admin/certificate-settings', '/admin/certificate-preview', '/admin/credentials',
@@ -113,26 +115,26 @@ export const ADMIN_ECOSYSTEMS: AdminEcosystemNavigation[] = [
     ],
   },
   {
-    id: 'career', label: 'Career', icon: Briefcase, entryPath: '/admin/career-studio', publicPath: career.publicPath,
-    accent: career.accent, soft: career.soft, border: career.border,
-    matchPrefixes: ['/admin/career-studio'],
+    id: 'career', label: 'Career', icon: Briefcase, entryPath: '/admin/ecosystemes/career', publicPath: career.publicPath,
+    accent: career.accent, soft: career.soft, background: career.background, border: career.border,
+    matchPrefixes: ['/admin/ecosystemes/career', '/admin/career-studio'],
     groups: [
       { id: 'career-studio', label: 'Career Studio', icon: Briefcase, items: [{ path: '/admin/career-studio', label: 'Gestion Career Studio', icon: Briefcase, exact: true }] },
     ],
   },
   {
-    id: 'projects', label: 'Projects', icon: FolderKanban, entryPath: '/admin/projects', publicPath: projects.publicPath,
-    accent: projects.accent, soft: projects.soft, border: projects.border,
-    matchPrefixes: ['/admin/projects'],
+    id: 'projects', label: 'Projects', icon: FolderKanban, entryPath: '/admin/ecosystemes/projects', publicPath: projects.publicPath,
+    accent: projects.accent, soft: projects.soft, background: projects.background, border: projects.border,
+    matchPrefixes: ['/admin/ecosystemes/projects', '/admin/projects'],
     groups: [
       { id: 'projects-supervision', label: 'Supervision', icon: FolderKanban, items: [{ path: '/admin/projects', label: 'Supervision des projets', icon: FolderKanban, exact: true }] },
       { id: 'projects-management', label: 'Gestion', icon: ClipboardCheck, items: [{ path: '/admin/projects/gestion', label: 'Gestion des projets', icon: ClipboardCheck }] },
     ],
   },
   {
-    id: 'talent', label: 'Talent', icon: Users, entryPath: '/admin/talent', publicPath: talent.publicPath,
-    accent: talent.accent, soft: talent.soft, border: talent.border,
-    matchPrefixes: ['/admin/talent', '/admin/employabilite', '/admin/offres-emploi'],
+    id: 'talent', label: 'Talent', icon: Users, entryPath: '/admin/ecosystemes/talent', publicPath: talent.publicPath,
+    accent: talent.accent, soft: talent.soft, background: talent.background, border: talent.border,
+    matchPrefixes: ['/admin/ecosystemes/talent', '/admin/talent', '/admin/employabilite', '/admin/offres-emploi'],
     groups: [
       { id: 'talent-pilotage', label: 'Pilotage Talent', icon: Users, items: [{ path: '/admin/talent', label: 'Supervision Talent', icon: Users, exact: true }] },
       { id: 'talent-employability', label: 'Employabilité', icon: ShieldCheck, items: [{ path: '/admin/employabilite', label: 'Employabilité', icon: ShieldCheck }] },
@@ -140,9 +142,9 @@ export const ADMIN_ECOSYSTEMS: AdminEcosystemNavigation[] = [
     ],
   },
   {
-    id: 'live', label: 'Live', icon: Radio, entryPath: '/admin/omnia-live', publicPath: live.publicPath,
-    accent: live.accent, soft: live.soft, border: live.border,
-    matchPrefixes: ['/admin/omnia-live'],
+    id: 'live', label: 'Live', icon: Radio, entryPath: '/admin/ecosystemes/live', publicPath: live.publicPath,
+    accent: live.accent, soft: live.soft, background: live.background, border: live.border,
+    matchPrefixes: ['/admin/ecosystemes/live', '/admin/omnia-live'],
     groups: [
       { id: 'live-pilotage', label: 'Pilotage', icon: Gauge, items: [
         { path: '/admin/omnia-live', label: 'Vue d’ensemble', icon: Gauge, exact: true },
@@ -174,17 +176,17 @@ export const ADMIN_ECOSYSTEMS: AdminEcosystemNavigation[] = [
     ],
   },
   {
-    id: 'community', label: 'Communauté', icon: MessageSquare, entryPath: '/admin/forum', publicPath: community.publicPath,
-    accent: community.accent, soft: community.soft, border: community.border,
-    matchPrefixes: ['/admin/forum'],
+    id: 'community', label: 'Communauté', icon: MessageSquare, entryPath: '/admin/ecosystemes/community', publicPath: community.publicPath,
+    accent: community.accent, soft: community.soft, background: community.background, border: community.border,
+    matchPrefixes: ['/admin/ecosystemes/community', '/admin/forum'],
     groups: [
       { id: 'community-moderation', label: 'Modération', icon: MessageSquare, items: [{ path: '/admin/forum', label: 'Gestion de la Communauté', icon: MessageSquare, exact: true }] },
     ],
   },
   {
-    id: 'coaching', label: 'Coaching', icon: Users, entryPath: '/admin/coaching', publicPath: coaching.publicPath,
-    accent: coaching.accent, soft: coaching.soft, border: coaching.border,
-    matchPrefixes: ['/admin/coaching'],
+    id: 'coaching', label: 'Coaching', icon: Users, entryPath: '/admin/ecosystemes/coaching', publicPath: coaching.publicPath,
+    accent: coaching.accent, soft: coaching.soft, background: coaching.background, border: coaching.border,
+    matchPrefixes: ['/admin/ecosystemes/coaching', '/admin/coaching'],
     groups: [
       { id: 'coaching-pilotage', label: 'Pilotage', icon: LayoutDashboard, items: [
         { path: '/admin/coaching', label: 'Vue d’ensemble', icon: LayoutDashboard, exact: true },
@@ -284,3 +286,17 @@ export function adminNavItemMatchesPath(item: AdminNavItem, pathname: string) {
 }
 
 export const ADMIN_NAV_ITEMS = ADMIN_NAV_GROUPS.flatMap(group => group.items);
+
+
+export function adminGroupHubPath(groupId: string): string {
+  if (groupId === 'dashboard') return '/admin/dashboard';
+  if (groupId === 'users-access') return '/admin/section/utilisateurs-acces';
+  if (groupId === 'ecosystems') return '/admin/ecosystemes';
+  if (groupId === 'commerce-finance') return '/admin/section/commerce-finance';
+  if (groupId === 'platform-governance') return '/admin/section/plateforme-gouvernance';
+  return '/admin/dashboard';
+}
+
+export function adminEcosystemGroupHubPath(ecosystemId: EcosystemId, groupId: string): string {
+  return `/admin/ecosystemes/${ecosystemId}/${groupId}`;
+}

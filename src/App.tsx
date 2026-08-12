@@ -90,6 +90,9 @@ const ModerateurForum = lazy(() => import('./pages/moderateur/ModerateurForum'))
 const AdminForum = lazy(() => import('./pages/admin/AdminForum'));
 const AdminCareerStudio = lazy(() => import('./pages/admin/AdminCareerStudio'));
 const AdminCareerProjectsHub = lazy(() => import('./pages/admin/AdminCareerProjectsHub'));
+const AdminSectionHub = lazy(() => import('./pages/admin/AdminSectionHub'));
+const AdminEcosystemHub = lazy(() => import('./pages/admin/AdminEcosystemHub'));
+const AdminEcosystemGroupHub = lazy(() => import('./pages/admin/AdminEcosystemGroupHub'));
 const AdminCareerStudioDetail = lazy(() => import('./pages/admin/AdminCareerStudioDetail'));
 const AdminJobOffers = lazy(() => import('./pages/admin/AdminJobOffers'));
 const AdminCoursePricing = lazy(() => import('./pages/admin/AdminCoursePricing'));
@@ -696,6 +699,9 @@ export default function App() {
         <Route path="/admin/coaching/revenus" element={<AdminCoachingRevenue />} />
         <Route path="/admin/coaching/avance" element={<AdminCoachingAdvanced />} />
         <Route path="/admin/ecosystemes" element={<AdminCareerProjectsHub />} />
+        <Route path="/admin/section/:sectionId" element={<AdminSectionHub />} />
+        <Route path="/admin/ecosystemes/:ecosystemId" element={<AdminEcosystemHub />} />
+        <Route path="/admin/ecosystemes/:ecosystemId/:groupId" element={<AdminEcosystemGroupHub />} />
         <Route path="/admin/career-projects" element={<Navigate to="/admin/ecosystemes" replace />} />
         <Route path="/admin/career-studio/details/:metric" element={<AdminCareerStudioDetail />} />
         <Route path="/admin/omnia-live" element={<AdminOmniaLiveOverview />} />
