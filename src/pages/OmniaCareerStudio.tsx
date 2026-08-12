@@ -1,75 +1,96 @@
-import { getSessionToken } from '../lib/session';
-import { useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, BarChart3, Briefcase, FileText, Lock, Mail, MessageSquare, Settings, UserRound } from 'lucide-react';
-import SubspaceHamburgerLayout, { type SubspaceNavItem } from '../components/SubspaceHamburgerLayout';
+import { ArrowRight, Briefcase, FileText, Mail, MessageSquare, Sparkles, Target } from 'lucide-react';
+import { Link, Navigate } from 'react-router-dom';
+import CareerPublicLayout from '../components/career/CareerPublicLayout';
+import { useAuth } from '../hooks/useAuth';
+import { getCareerRedirectForRole, isOmniaCareerLearner } from '../utils/omniaCareerAccess';
 
-const TOOLS = [
-  { title: 'CV Builder', description: 'Créez un CV moderne, professionnel et optimisé pour les recruteurs.', icon: FileText },
-  { title: 'Lettres de motivation', description: 'Personnalisez vos lettres en fonction de chaque offre.', icon: Mail },
-  { title: 'Préparation entretien', description: 'Préparez vos réponses et entraînez-vous avec des simulations.', icon: MessageSquare },
-  { title: 'Suivi candidatures', description: 'Suivez vos candidatures, relances, entretiens et offres.', icon: Briefcase },
-];
 
-const NAV_ITEMS: SubspaceNavItem[] = [
-  { label: 'Accueil Career', path: '/career-studio', icon: BarChart3, exact: true },
-  { label: 'CV Builder', path: '/career-studio', icon: FileText },
-  { label: 'Lettres de motivation', path: '/career-studio', icon: Mail },
-  { label: 'Préparation entretien', path: '/career-studio', icon: MessageSquare },
-  { label: 'Suivi candidatures', path: '/career-studio', icon: Briefcase },
-  { label: 'Profil carrière', path: '/career-studio', icon: UserRound },
-  { label: 'Paramètres', path: '/career-studio', icon: Settings },
+const FLOW = [
+  { label: 'Positionner', text: 'Clarifier votre cible, votre profil et le message professionnel.', icon: Target },
+  { label: 'Présenter', text: 'Construire des CV et lettres cohérents avec votre objectif.', icon: FileText },
+  { label: 'Candidater', text: 'Suivre vos candidatures, relances et prochaines étapes.', icon: Briefcase },
+  { label: 'Préparer', text: 'Travailler vos réponses et votre posture avant l’entretien.', icon: MessageSquare },
 ];
 
 export default function OmniaCareerStudio() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isLoggedIn = Boolean(getSessionToken());
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const params = new URLSearchParams(location.search);
-    const suffix = params.get('preview') === 'true' ? '?preview=true' : '';
-    navigate(`/dashboard/career-studio${suffix}`, { replace: true });
-  }, [isLoggedIn, location.search, navigate]);
-
-  if (isLoggedIn) {
-    return <div className="flex min-h-screen items-center justify-center bg-white text-sm text-slate-500">Ouverture d’Omnia Career Studio…</div>;
+  if (loading) {
+    return <div className="grid min-h-screen place-items-center bg-[#F7F5F0]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#002050]" /></div>;
   }
 
-  const start = () => navigate('/inscription/apprenant?redirect=/dashboard/career-studio');
-  const login = () => navigate('/connexion?redirect=/dashboard/career-studio');
+  if (user) {
+    if (isOmniaCareerLearner(user)) return <Navigate to="/omnia-career" replace />;
+    return <Navigate to={getCareerRedirectForRole(user)} replace />;
+  }
 
   return (
-    <SubspaceHamburgerLayout title="Omnia Career Studio" navItems={NAV_ITEMS} searchPath="/dashboard/career-studio" searchParam="search" searchPlaceholder="Rechercher un CV, une LM ou un modèle...">
-      <main className="min-h-[calc(100vh-72px)] bg-white px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl space-y-8">
-          <section className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1fr_440px] lg:items-center lg:p-10">
+    <CareerPublicLayout>
+      <main className="bg-[#F7F5F0] text-slate-900">
+        <section className="relative overflow-hidden border-b border-[#D8D0C2] bg-[#061A32] px-5 py-12 text-white md:px-8 lg:py-20">
+          <div className="pointer-events-none absolute inset-0 opacity-60" aria-hidden="true">
+            <div className="absolute -right-24 -top-20 h-80 w-80 rounded-full border border-white/10" />
+            <div className="absolute right-10 top-10 h-52 w-52 rounded-full border border-[#BF8813]/25" />
+            <div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-[#BF8813]/40 to-transparent" />
+          </div>
+          <div className="relative mx-auto grid max-w-[1220px] gap-12 lg:grid-cols-[1.06fr_.94fr] lg:items-center">
             <div>
-              <span className="inline-flex rounded-full bg-[#BF8813]/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-[#9A6A08]">Omnia Career</span>
-              <h1 className="mt-5 max-w-3xl text-3xl font-black leading-tight text-[#002050] sm:text-4xl">Votre espace carrière pour créer votre CV, préparer vos candidatures et réussir vos entretiens.</h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">Cet aperçu utilise la même interface blanche et le même menu hamburger que l’espace Career connecté. Créez un compte ou connectez-vous pour utiliser les outils.</p>
-              <div className="mt-7 flex flex-wrap gap-3">
-                <button type="button" onClick={start} className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-5 py-3 text-sm font-bold text-white">Commencer maintenant <ArrowRight size={16} /></button>
-                <button type="button" onClick={login} className="rounded-xl border border-[#002050] px-5 py-3 text-sm font-bold text-[#002050]">Se connecter</button>
+              <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#D9B45C]"><Sparkles size={15} /> Omnia Career</div>
+              <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[1.02] tracking-[-0.045em] md:text-6xl">Transformez votre parcours en candidature claire, crédible et prête à avancer.</h1>
+              <p className="mt-6 max-w-2xl text-base leading-8 text-white/68 md:text-lg">CV, lettres de motivation, préparation aux entretiens et suivi des candidatures réunis dans un même studio professionnel.</p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/inscription/apprenant?redirect=/omnia-career" className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-5 py-3 text-sm font-black text-[#061A32]">Créer mon espace Career <ArrowRight size={17} /></Link>
+                <Link to="/forum/emploi" className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-black text-white">Explorer les opportunités <Briefcase size={17} /></Link>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {TOOLS.map(tool => {
-                const Icon = tool.icon;
-                return (
-                  <article key={tool.title} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                    <Lock className="absolute right-4 top-4 h-4 w-4 text-slate-300" />
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#002050]/8 text-[#002050]"><Icon size={19} /></div>
-                    <h2 className="mt-4 text-sm font-black text-[#002050]">{tool.title}</h2>
-                    <p className="mt-2 text-xs leading-5 text-slate-600">{tool.description}</p>
-                  </article>
-                );
+
+            <div className="relative mx-auto h-[390px] w-full max-w-[520px]" aria-label="Aperçu du studio documentaire Omnia Career">
+              <div className="absolute inset-x-8 bottom-7 top-9 rotate-[-7deg] rounded-[28px] border border-white/10 bg-white/5 shadow-2xl" />
+              <div className="absolute inset-x-4 bottom-12 top-5 rotate-[4deg] rounded-[28px] border border-[#D4B66C]/25 bg-[#0D294A] shadow-2xl" />
+              <div className="absolute inset-0 rounded-[30px] border border-white/15 bg-[#FCFBF8] p-7 text-[#002050] shadow-[0_35px_90px_rgba(0,0,0,.35)]">
+                <div className="flex items-center justify-between border-b border-[#E2DDD4] pb-5">
+                  <div><p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#9B731C]">Dossier professionnel</p><p className="mt-1 text-xl font-black">Votre candidature</p></div>
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#002050] text-white"><FileText size={20} /></span>
+                </div>
+                <div className="mt-6 grid grid-cols-[1fr_128px] gap-5">
+                  <div className="space-y-4">
+                    <div className="h-3 w-3/4 rounded-full bg-[#002050]/16" />
+                    <div className="h-2.5 w-full rounded-full bg-slate-200" />
+                    <div className="h-2.5 w-5/6 rounded-full bg-slate-200" />
+                    <div className="mt-5 border-l-2 border-[#BF8813] pl-4"><p className="text-xs font-black">Expérience & compétences</p><div className="mt-3 h-2.5 w-full rounded-full bg-slate-200" /><div className="mt-2 h-2.5 w-4/5 rounded-full bg-slate-200" /></div>
+                  </div>
+                  <div className="rounded-2xl bg-[#F0ECE3] p-4"><Target size={19} className="text-[#8B6518]" /><p className="mt-3 text-xs font-black">Cible</p><p className="mt-1 text-[11px] leading-5 text-slate-500">Un message cohérent du CV jusqu’à l’entretien.</p></div>
+                </div>
+                <div className="absolute bottom-6 right-6 flex items-center gap-2 rounded-full bg-[#002050] px-4 py-2 text-xs font-black text-white"><Mail size={14} /> CV + LM + suivi</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-[#D8D0C2] bg-[#FCFBF8] px-5 py-10 md:px-8">
+          <div className="mx-auto max-w-[1220px]">
+            <div className="grid gap-0 border-y border-[#D8D0C2] md:grid-cols-4">
+              {FLOW.map((item, index) => {
+                const Icon = item.icon;
+                return <div key={item.label} className={`px-5 py-6 ${index ? 'border-t border-[#D8D0C2] md:border-l md:border-t-0' : ''}`}><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEE9DF] text-[#002050]"><Icon size={17} /></span><span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#BF8813]">0{index + 1}</span></div><h2 className="mt-5 text-lg font-black text-[#002050]">{item.label}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{item.text}</p></div>;
               })}
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
+
+        <section className="px-5 py-12 md:px-8 lg:py-16">
+          <div className="mx-auto grid max-w-[1220px] gap-10 lg:grid-cols-[.78fr_1.22fr]">
+            <div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#BF8813]">Un studio, pas une boîte à outils</p><h2 className="mt-3 text-3xl font-black leading-tight tracking-[-0.03em] text-[#002050]">Chaque étape de votre recherche d’opportunités reste reliée à la suivante.</h2><p className="mt-4 text-sm leading-7 text-slate-600">Vous pouvez travailler un document, préparer un entretien ou suivre une candidature sans perdre le contexte global de votre projet professionnel.</p></div>
+            <div className="divide-y divide-[#E2DDD4] border-y border-[#D8D0C2] bg-white">
+              {[
+                { title: 'CV & lettres', text: 'Créer, modifier, comparer et réutiliser vos documents avec les modèles disponibles.', icon: FileText },
+                { title: 'Préparation entretien', text: 'Structurer vos réponses et vous entraîner avant une rencontre importante.', icon: MessageSquare },
+                { title: 'Suivi candidatures', text: 'Conserver un fil clair entre candidature, relance, entretien et décision.', icon: Briefcase },
+              ].map(item => { const Icon = item.icon; return <div key={item.title} className="grid gap-4 px-5 py-6 md:grid-cols-[44px_1fr_auto] md:items-center"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F1EEE7] text-[#002050]"><Icon size={19} /></span><span><strong className="block text-base text-[#002050]">{item.title}</strong><span className="mt-1 block text-sm leading-6 text-slate-500">{item.text}</span></span><ArrowRight size={18} className="hidden text-[#BF8813] md:block" /></div>; })}
+            </div>
+          </div>
+        </section>
       </main>
-    </SubspaceHamburgerLayout>
+    </CareerPublicLayout>
   );
 }

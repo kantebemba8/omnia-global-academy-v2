@@ -430,7 +430,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
         LINK('Parcours professionnels', 'Suivre les parcours professionnels disponibles.', '/dashboard/professional-pathways', GraduationCap),
       ]},
       { eyebrow: 'Carrière', title: 'Passer de la compétence à l’opportunité', description: 'Les outils qui prolongent votre formation.', items: [
-        LINK('Omnia Career Studio', 'Créer et gérer vos documents de carrière.', '/dashboard/career-studio', Briefcase),
+        LINK('Omnia Career', 'Créer et gérer vos documents de carrière.', '/omnia-career', Briefcase),
         LINK('Employabilité', 'Retrouver vos outils d’employabilité.', '/dashboard/employabilite', UserCheck),
         LINK('Omnia Projects', 'Participer et valoriser vos projets.', '/projects/mes-projets', FolderKanban),
         LINK('Omnia Talent', 'Développer votre visibilité professionnelle.', '/talent', Users),

@@ -926,7 +926,7 @@ export default function CareerStudioEditor() {
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate(withLearnerPreview('/dashboard/career-studio'))}
+              onClick={() => navigate(withLearnerPreview('/omnia-career/documents'))}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               title="Mes documents"
               aria-label="Retour à mes documents"

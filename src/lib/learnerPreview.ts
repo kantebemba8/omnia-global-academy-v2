@@ -8,7 +8,7 @@ export function isLearnerPreviewMode(): boolean {
   try {
     isSuperAdmin = JSON.parse(localStorage.getItem('omnia_user') || '{}')?.roles?.includes('super_admin') ?? false;
   } catch { /* ignore invalid local storage */ }
-  return (queryPreview || storedPreview) && isSuperAdmin && window.location.pathname.startsWith('/dashboard');
+  return (queryPreview || storedPreview) && isSuperAdmin && (window.location.pathname.startsWith('/dashboard') || window.location.pathname.startsWith('/omnia-career'));
 }
 
 export function withLearnerPreview(path: string): string {

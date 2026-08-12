@@ -58,7 +58,7 @@ const APPRENANT_GROUPS: NavGroup[] = [
   {
     id: 'learner-career', label: 'Carrière & réseau', icon: Briefcase,
     items: [
-      { path: '/dashboard/career-studio', label: 'Omnia Career Studio', icon: FileText },
+      { path: '/omnia-career', label: 'Omnia Career', icon: FileText },
       { path: '/projects/mes-projets', label: 'Omnia Projects', icon: FolderKanban },
       { path: '/talent', label: 'Omnia Talent', icon: Search },
       { path: '/coaching', label: 'Omnia Coaching', icon: UserRoundCheck },

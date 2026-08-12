@@ -15,7 +15,6 @@ import {
   Mail,
   MapPin,
   MessageCircle as MessageCircleQuestion,
-  Search,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -135,6 +134,13 @@ export default function EspaceCarriere() {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    const next = new URLSearchParams(location.search).get('search') || '';
+    setSearch(next);
+    setPage(1);
+  }, [location.search]);
+
+
   const activeFilters = [contractType, category].filter(Boolean).length;
 
   return (
@@ -152,7 +158,7 @@ export default function EspaceCarriere() {
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Consultez les offres publiées sur Omnia, filtrez-les selon votre projet et utilisez Omnia Career pour adapter votre CV et votre lettre de motivation.</p>
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Link to="/forum/carriere" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold" style={{ borderColor: BORDER, color: BLUE }}><MessageCircleQuestion size={16} /> Poser une question carrière</Link>
-                    <Link to="/dashboard/career-studio" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}><Sparkles size={16} /> Ouvrir Omnia Career</Link>
+                    <Link to="/omnia-career" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}><Sparkles size={16} /> Ouvrir Omnia Career</Link>
                   </div>
                 </div>
                 <div className="grid min-w-[220px] grid-cols-2 gap-3">
@@ -161,11 +167,7 @@ export default function EspaceCarriere() {
                 </div>
               </div>
 
-              <div className="mt-7 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Rechercher un poste, une entreprise ou un mot-clé..." className="w-full rounded-xl border bg-white py-3 pl-10 pr-4 text-sm outline-none focus:border-slate-400" style={{ borderColor: BORDER }} />
-                </div>
+              <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:max-w-[560px]">
                 <div className="flex items-center gap-2 rounded-xl border bg-white px-3" style={{ borderColor: BORDER }}>
                   <Globe2 size={16} className="text-slate-400" />
                   <select value={country} onChange={event => { setCountry(event.target.value); setPage(1); }} className="h-11 min-w-[175px] bg-transparent text-sm text-slate-600 outline-none"><option value="">Tous les pays</option>{JOB_COUNTRIES.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select>

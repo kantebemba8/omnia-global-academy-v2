@@ -92,7 +92,7 @@ export function DashboardApprenant() {
               <RoleDashboardStatCard label="Formations en cours" value={data.kpis.formations_en_cours} icon={BookOpen} accent="#002050" to={withLearnerPreview('/dashboard/mes-cours')} />
               <RoleDashboardStatCard label="Formations terminées" value={data.kpis.formations_terminees} icon={TrendingUp} accent="#1E7A52" to={withLearnerPreview('/dashboard/mes-cours')} />
               <RoleDashboardStatCard label="Certificats obtenus" value={data.kpis.certificats_obtenus} icon={Award} accent="#BF8813" to={withLearnerPreview('/dashboard/certificats')} />
-              <RoleDashboardStatCard label="Jetons IA restants" value={data.kpis.jetons_ia_restants} icon={Sparkles} accent="#7C3AED" to={withLearnerPreview('/dashboard/career-studio')} />
+              <RoleDashboardStatCard label="Jetons IA restants" value={data.kpis.jetons_ia_restants} icon={Sparkles} accent="#7C3AED" to={withLearnerPreview('/omnia-career')} />
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">

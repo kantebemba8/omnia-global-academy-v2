@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { getCareerRedirectForRole, isOmniaCareerLearner } from '../../utils/omniaCareerAccess';
+import { getCareerRedirectForRole, isOmniaCareerLearner, isOmniaCareerSuperAdmin } from '../../utils/omniaCareerAccess';
 
 export default function RequireOmniaCareerLearner() {
   const { user, loading } = useAuth();
@@ -17,10 +17,11 @@ export default function RequireOmniaCareerLearner() {
   }
 
   if (!user) {
-    return <Navigate to={`/connexion?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+    return <Navigate to={`/connexion?redirect=${encodeURIComponent(location.pathname + location.search)}`} replace />;
   }
 
-  if (!isOmniaCareerLearner(user)) {
+  const previewLearner = isOmniaCareerSuperAdmin(user) && new URLSearchParams(location.search).get('preview') === 'true';
+  if (!isOmniaCareerLearner(user) && !previewLearner) {
     return <Navigate to={getCareerRedirectForRole(user)} replace />;
   }
 

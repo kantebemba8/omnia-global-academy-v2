@@ -43,146 +43,79 @@ async function callAi(text:string){
   const data=await response.json(); if(!response.ok) throw new Error(data?.error||'IA indisponible'); return data.result||data.text||'';
 }
 
-export function EnhancedDashboard({displayName,loading,cvDocs,lmDocs,cvTemplates,lmTemplates,onView,onCreate,onOpen}:{
+export function EnhancedDashboard({displayName,loading,cvDocs,lmDocs,cvTemplates,lmTemplates,onView,onCreate,onOpen,previewMode=false}:{
   displayName:string;loading:boolean;cvDocs:Doc[];lmDocs:Doc[];cvTemplates:Template[];lmTemplates:Template[];
-  onView:(view:string)=>void;onCreate:(type:'cv'|'lm',key?:string)=>void;onOpen:(id?:string,type?:'cv'|'lm')=>void;
+  onView:(view:string)=>void;onCreate:(type:'cv'|'lm',key?:string)=>void;onOpen:(id?:string,type?:'cv'|'lm')=>void;previewMode?:boolean;
 }){
+  const [trackedApplications,setTrackedApplications]=useState<CareerTrackedApplication[]>([]);
+  useEffect(()=>{
+    let active=true;
+    if(previewMode){ setTrackedApplications([]); return () => { active=false; }; }
+    void listCareerApplications().then(result=>{ if(active) setTrackedApplications(result.applications||[]); }).catch(()=>{});
+    return () => { active=false; };
+  },[previewMode]);
   const completedCv=cvDocs.filter(d=>d.status==='completed');
   const completedLm=lmDocs.filter(d=>d.status==='completed');
-  const applications=readJson<any[]>('omnia_manual_applications',[]);
+  const localApplications=readJson<any[]>('omnia_manual_applications',[]);
+  const applications=trackedApplications.length?trackedApplications:localApplications;
   const allDocs=[...cvDocs,...lmDocs];
-  const progress=allDocs.length?Math.round((completedCv.length+completedLm.length)/allDocs.length*100):0;
-  const recent=[...allDocs]
-    .sort((a,b)=>new Date(b.updated_at||b.created_at||0).getTime()-new Date(a.updated_at||a.created_at||0).getTime())
-    .slice(0,4);
-  const actions=[
-    {label:'Créer un CV',description:`${cvTemplates.length || 12} modèles officiels`,icon:FileText,onClick:()=>onCreate('cv')},
-    {label:'Créer une lettre',description:`${lmTemplates.length || 6} modèles officiels`,icon:Mail,onClick:()=>onCreate('lm')},
-    {label:'Préparer un entretien',description:'Questions, simulation et conseils',icon:MessageSquare,onClick:()=>onView('interview')},
-    {label:'Suivre mes candidatures',description:`${applications.length} candidature${applications.length>1?'s':''}`,icon:Briefcase,onClick:()=>onView('applications')},
+  const recent=[...allDocs].sort((a,b)=>new Date(b.updated_at||b.created_at||0).getTime()-new Date(a.updated_at||a.created_at||0).getTime()).slice(0,5);
+  const documentProgress=allDocs.length?Math.round((completedCv.length+completedLm.length)/allDocs.length*100):0;
+  const firstName=(displayName||'').split(' ')[0]||displayName;
+  const nextAction = cvDocs.length===0
+    ? {label:'Créer votre premier CV',text:'Commencez par poser une base professionnelle claire avant de décliner vos candidatures.',action:()=>onCreate('cv'),icon:FileText}
+    : lmDocs.length===0
+      ? {label:'Préparer une lettre de motivation',text:'Votre CV existe déjà. Ajoutez maintenant un message ciblé pour vos prochaines opportunités.',action:()=>onCreate('lm'),icon:Mail}
+      : applications.length===0
+        ? {label:'Structurer votre première candidature',text:'Vos documents sont prêts : passez au suivi d’une opportunité réelle.',action:()=>onView('applications'),icon:Briefcase}
+        : {label:'Préparer le prochain entretien',text:'Gardez votre discours aligné avec vos documents et les postes suivis.',action:()=>onView('interview'),icon:MessageSquare};
+  const NextIcon=nextAction.icon;
+  const journey=[
+    {label:'Positionnement',done:cvDocs.length>0,detail:cvDocs.length?`${cvDocs.length} CV`:'À construire'},
+    {label:'Documents',done:cvDocs.length>0&&lmDocs.length>0,detail:`${allDocs.length} document${allDocs.length>1?'s':''}`},
+    {label:'Candidatures',done:applications.length>0,detail:`${applications.length} suivie${applications.length>1?'s':''}`},
+    {label:'Entretien',done:false,detail:'Préparation continue'},
   ];
 
-  return <div className="space-y-7">
-    <div>
-      <h1 className="text-2xl font-semibold" style={{color:BLUE}}>{dashboardGreeting(displayName)}</h1>
-      <p className="mt-1 text-sm" style={{color:MUTED}}>Créez vos documents, préparez vos entretiens et suivez vos candidatures depuis un seul espace.</p>
-    </div>
-
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      <Stat label="CV terminés" value={loading?'…':completedCv.length} icon={FileText} onClick={()=>onView('cv')}/>
-      <Stat label="LM terminées" value={loading?'…':completedLm.length} icon={Mail} onClick={()=>onView('lm')}/>
-      <Stat label="Candidatures" value={applications.length} icon={Briefcase} onClick={()=>onView('applications')}/>
-      <Stat label="Progression" value={`${progress}%`} icon={Target}/>
-    </div>
-
-    <section className="border-y bg-white" style={{borderColor:BORDER}}>
-      <div className="grid md:grid-cols-2 xl:grid-cols-4">
-        {actions.map(({label,description,icon:Icon,onClick},index)=><button key={label} onClick={onClick} className={`flex items-center gap-3 px-4 py-5 text-left transition hover:bg-slate-50 ${index>0?'border-t md:border-t-0 md:border-l':''}`} style={{borderColor:BORDER}}><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}><Icon size={18} color={BLUE}/></span><span className="min-w-0"><span className="block text-sm font-semibold" style={{color:BLUE}}>{label}</span><span className="mt-1 block truncate text-xs" style={{color:MUTED}}>{description}</span></span></button>)}
-      </div>
-    </section>
-
-    <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold" style={{color:BLUE}}>Documents récents</h2>
-        <button onClick={()=>onView('cv')} className="text-sm font-semibold" style={{color:GOLD}}>Voir mes documents</button>
-      </div>
-      {recent.length?<div className="divide-y border-y bg-white" style={{borderColor:BORDER}}>{recent.map(doc=><button key={doc.id} onClick={()=>onOpen(doc.id,doc.doc_type)} className="flex w-full items-center gap-3 px-3 py-4 text-left transition hover:bg-slate-50"><span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}>{doc.doc_type==='cv'?<FileText size={16} color={BLUE}/>:<Mail size={16} color={BLUE}/>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold" style={{color:BLUE}}>{doc.title}</span><span className="mt-0.5 block text-xs" style={{color:MUTED}}>{doc.status==='completed'?'Terminé':'Brouillon'}</span></span><ChevronRight size={16} color={MUTED}/></button>)}</div>:<Empty text="Aucun document récent. Commencez par créer votre premier CV ou votre première lettre."/>}
-    </section>
-  </div>;
-}
-
-const baseCategories=['Général','RH','Comportemental','Technique','Sectoriel','Lié à une offre'] as const;
-const questionBank:Record<string,string[]>={
-  Général:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?','Quel accomplissement vous rend le plus fier ?'],
-  RH:['Quelles sont vos principales motivations ?','Quel environnement de travail vous convient le mieux ?','Comment gérez-vous un désaccord avec un collègue ?','Où vous voyez-vous dans trois ans ?'],
-  Comportemental:['Parlez d’une situation difficile que vous avez résolue.','Décrivez une erreur et ce que vous en avez appris.','Donnez un exemple de prise d’initiative.','Racontez une situation où vous avez dû convaincre.'],
-  Technique:['Expliquez une compétence technique importante pour votre métier.','Comment contrôlez-vous la qualité de votre travail ?','Décrivez un problème technique complexe que vous avez résolu.','Comment restez-vous à jour dans votre domaine ?'],
-  Sectoriel:['Quels sont les principaux enjeux actuels de votre secteur ?','Comment votre expérience répond-elle aux besoins du secteur ?','Quelle évolution du secteur vous semble la plus importante ?','Quels indicateurs utiliseriez-vous pour mesurer votre performance ?'],
-  'Lié à une offre':['Pourquoi cette offre vous intéresse-t-elle ?','Quelles compétences correspondent le mieux à cette offre ?','Quel élément de votre parcours répond au besoin principal ?','Que feriez-vous pendant vos 90 premiers jours ?']
-};
-
-function StarChecklist(){
-  const steps=[
-    {letter:'S',name:'Situation',role:'Décrire précisément le contexte, le lieu et le moment.'},
-    {letter:'T',name:'Tâche',role:'Présenter votre objectif ou votre responsabilité personnelle.'},
-    {letter:'A',name:'Action',role:'Expliquer les actions que vous avez personnellement réalisées.'},
-    {letter:'R',name:'Résultat',role:'Donner un résultat observable, concret ou chiffré.'}
-  ];
-  const [completed,setCompleted]=useState<number[]>(()=>readJson('omnia_star_completed',[]));
-  const [pendingStep,setPendingStep]=useState<number|null>(null);
-
-  function requestConfirmation(i:number){
-    if(i>completed.length||completed.includes(i))return;
-    setPendingStep(i);
-  }
-
-  function confirmInsideOmnia(){
-    if(pendingStep===null)return;
-    const next=Array.from(new Set([...completed,pendingStep])).sort((a,b)=>a-b);
-    setCompleted(next);
-    saveJson('omnia_star_completed',next);
-    setPendingStep(null);
-  }
-
-  return <>
-    <Card className="p-5">
-      <h3 className="font-semibold" style={{color:BLUE}}>Checklist STAR</h3>
-      <p className="mt-2 text-sm" style={{color:MUTED}}>STAR vous aide à structurer une réponse comportementale complète. Validez chaque étape après l’avoir réellement intégrée à votre réponse.</p>
-      <div className="mt-4 space-y-3">
-        {steps.map((step,i)=>{
-          const done=completed.includes(i);
-          const enabled=i<=completed.length;
-          return <div key={step.letter} className="rounded-xl border p-3" style={{borderColor:done?'#22c55e':BORDER,background:done?'#f0fdf4':'#fff'}}>
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold" style={{background:done?'#16a34a':'rgba(0,32,80,.08)',color:done?'#fff':BLUE}}>{done?'✓':step.letter}</div>
-              <div className="flex-1">
-                <div className="font-semibold" style={{color:BLUE}}>{step.name}</div>
-                <div className="mt-1 text-xs leading-5" style={{color:MUTED}}>{step.role}</div>
-                {enabled&&!done&&<button onClick={()=>requestConfirmation(i)} className="mt-3 rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{borderColor:GOLD,color:BLUE}}>Confirmer et passer à l’étape suivante</button>}
-              </div>
-            </div>
+  return <div className="mx-auto max-w-[1220px] space-y-8 pb-10">
+    <section className="relative overflow-hidden rounded-[30px] bg-[#061A32] text-white shadow-[0_24px_60px_rgba(0,32,80,.18)]">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true"><div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10"/><div className="absolute right-12 top-10 h-44 w-44 rounded-full border border-[#BF8813]/25"/><div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-[#BF8813]/45 to-transparent"/></div>
+      <div className="relative grid gap-8 p-6 md:p-8 lg:grid-cols-[1.08fr_.92fr] lg:p-10">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#D9B45C]">Studio personnel · Omnia Career</p>
+          <h1 className="mt-4 max-w-3xl text-3xl font-black leading-[1.05] tracking-[-0.035em] md:text-5xl">{firstName ? `${firstName}, ` : ''}faites avancer votre candidature comme un projet professionnel.</h1>
+          <p className="mt-5 max-w-2xl text-sm leading-7 text-white/65 md:text-base">Vos documents, vos candidatures et votre préparation restent reliés. L’accueil met en avant la prochaine action utile plutôt qu’une série de statistiques.</p>
+          <div className="mt-7 flex flex-wrap gap-3"><button onClick={nextAction.action} className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-4 py-2.5 text-sm font-black text-[#061A32]"><NextIcon size={17}/>{nextAction.label}</button><button onClick={()=>onView('applications')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-black text-white">Voir mes candidatures <ChevronRight size={16}/></button></div>
+        </div>
+        <div className="relative min-h-[270px]">
+          <div className="absolute inset-x-10 bottom-3 top-8 rotate-[-5deg] rounded-[24px] border border-white/10 bg-white/5"/>
+          <div className="absolute inset-x-4 bottom-6 top-4 rotate-[3deg] rounded-[24px] border border-[#D9B45C]/20 bg-[#0E2A4B]"/>
+          <div className="absolute inset-0 rounded-[26px] border border-white/10 bg-[#FCFBF8] p-5 text-[#002050] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#E3DED5] pb-4"><div><p className="text-[9px] font-black uppercase tracking-[0.15em] text-[#9A7118]">Dossier Career</p><p className="mt-1 text-lg font-black">État de préparation</p></div><Target size={22}/></div>
+            <div className="mt-5 grid grid-cols-3 divide-x divide-[#E3DED5] border-y border-[#E3DED5] py-4 text-center"><div><strong className="block text-2xl">{loading?'…':allDocs.length}</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Documents</span></div><div><strong className="block text-2xl">{applications.length}</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Candidatures</span></div><div><strong className="block text-2xl">{documentProgress}%</strong><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Finalisés</span></div></div>
+            <div className="mt-5"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Prochaine meilleure action</p><p className="mt-2 text-sm font-black">{nextAction.label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{nextAction.text}</p></div>
           </div>
-        })}
-      </div>
-      <div className="mt-4 text-sm font-semibold" style={{color:BLUE}}>Progression : {completed.length}/4</div>
-    </Card>
-
-    {pendingStep!==null&&<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="star-confirm-title">
-      <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-2xl" style={{borderColor:BORDER}}>
-        <h3 id="star-confirm-title" className="text-lg font-semibold" style={{color:BLUE}}>Confirmer dans Omnia Career</h3>
-        <p className="mt-3 text-sm leading-6" style={{color:MUTED}}>Êtes-vous sûr que votre réponse contient bien l’étape {steps[pendingStep].letter} — {steps[pendingStep].name} ?</p>
-        <p className="mt-2 rounded-xl bg-slate-50 p-3 text-sm" style={{color:BLUE}}>{steps[pendingStep].role}</p>
-        <div className="mt-5 flex justify-end gap-3">
-          <button onClick={()=>setPendingStep(null)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Annuler</button>
-          <button onClick={confirmInsideOmnia} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>Confirmer et continuer</button>
         </div>
       </div>
-    </div>}
-  </>;
-}
+    </section>
 
-function FrequentQuestions(){
-  const adminQuestions=readJson<string[]>('omnia_admin_interview_questions',[]);
-  const categories=[...baseCategories,'Omnia'];
-  const [category,setCategory]=useState<string>('Général'); const [open,setOpen]=useState('');
-  const [answers,setAnswers]=useState<Record<string,string>>(()=>readJson('omnia_interview_answers',{}));
-  const [feedback,setFeedback]=useState<Record<string,string>>(()=>readJson('omnia_interview_feedback',{}));
-  const [loading,setLoading]=useState('');
-  const questions=category==='Omnia'?adminQuestions:(questionBank[category]||[]);
-  async function saveAnswer(q:string){const answer=(answers[q]||'').trim();if(!answer)return;saveJson('omnia_interview_answers',answers);if(category==='Omnia'){const submissions=readJson<any[]>('omnia_admin_question_submissions',[]);saveJson('omnia_admin_question_submissions',[...submissions,{question:q,answer,submitted_at:new Date().toISOString(),status:'pending_admin_score'}]);setFeedback({...feedback,[q]:'Réponse enregistrée et transmise à l’Administration Omnia pour notation.'});return}setLoading(q);try{const result=await callAi(`Corrige cette réponse d'entretien. Donne une note sur 100, les points forts et 3 améliorations concrètes. Question: ${q}\nRéponse: ${answer}. N'invente aucune information.`);const next={...feedback,[q]:result};setFeedback(next);saveJson('omnia_interview_feedback',next)}catch{setFeedback({...feedback,[q]:'Réponse enregistrée. La correction IA est indisponible pour le moment.'})}finally{setLoading('')}}
-  return <div className="space-y-5"><div className="flex flex-wrap gap-2">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className="rounded-full px-4 py-2 text-sm font-semibold" style={{background:category===c?BLUE:'#fff',color:category===c?'#fff':BLUE,border:`1px solid ${BORDER}`}}>{c}</button>)}</div><div className="grid gap-5 xl:grid-cols-[1fr_380px]"><Card className="p-5"><h3 className="mb-4 font-semibold" style={{color:BLUE}}>Questions fréquentes</h3>{questions.length?<div className="space-y-3">{questions.map(q=><div key={q} className="rounded-xl border" style={{borderColor:BORDER}}><button onClick={()=>setOpen(open===q?'':q)} className="flex w-full items-center justify-between p-4 text-left text-sm font-semibold" style={{color:BLUE}}>{q}<ChevronDown size={16}/></button>{open===q&&<div className="border-t p-4" style={{borderColor:BORDER}}><textarea value={answers[q]||''} onChange={e=>setAnswers({...answers,[q]:e.target.value})} className="min-h-32 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle…"/><button onClick={()=>saveAnswer(q)} disabled={!answers[q]?.trim()||loading===q} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:BLUE}}>{loading===q?'Analyse IA…':'Enregistrer ma réponse'}</button>{feedback[q]&&<div className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-6">{feedback[q]}</div>}</div>}</div>)}</div>:<Empty text={category==='Omnia'?'Aucune question Omnia publiée par l’Administration Omnia.':'Aucune question disponible.'}/>}</Card><StarChecklist/></div></div>;
-}
+    <section className="bg-white">
+      <div className="flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#BF8813]">Fil de progression</p><h2 className="mt-2 text-2xl font-black tracking-[-0.025em] text-[#002050]">Votre parcours carrière</h2></div><span className="hidden text-xs font-semibold text-slate-400 md:block">Les étapes évoluent avec votre activité.</span></div>
+      <div className="mt-5 grid border-y border-[#DDD7CB] md:grid-cols-4">{journey.map((item,index)=><div key={item.label} className={`relative px-5 py-5 ${index?'border-t border-[#DDD7CB] md:border-l md:border-t-0':''}`}><div className="flex items-center justify-between"><span className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-black ${item.done?'bg-[#002050] text-white':'bg-[#EEEAE2] text-slate-500'}`}>0{index+1}</span>{item.done&&<span className="text-[10px] font-black uppercase tracking-wide text-[#7A9A86]">En place</span>}</div><strong className="mt-4 block text-sm text-[#002050]">{item.label}</strong><span className="mt-1 block text-xs text-slate-500">{item.detail}</span></div>)}</div>
+    </section>
 
-function InterviewSimulation(){
-  const videoRef=useRef<HTMLVideoElement|null>(null);const recorderRef=useRef<MediaRecorder|null>(null);const chunks=useRef<Blob[]>([]);
-  const recognitionRef=useRef<any>(null);const [mode,setMode]=useState<'video'|'audio'>('video');const [active,setActive]=useState(false);const [recording,setRecording]=useState(false);const [index,setIndex]=useState(0);const [questions,setQuestions]=useState<string[]>([]);const [recordings,setRecordings]=useState<Array<{url:string;transcript:string;question:string}>>([]);const [transcript,setTranscript]=useState('');const [analysis,setAnalysis]=useState('');const [loading,setLoading]=useState(false);const [error,setError]=useState('');
-  async function start(){setError('');try{const stream=await navigator.mediaDevices.getUserMedia({video:mode==='video',audio:true});if(videoRef.current){videoRef.current.srcObject=stream;if(mode==='video')await videoRef.current.play()}const base=[...questionBank.Général,...questionBank.Comportemental,...questionBank.RH].sort(()=>Math.random()-.5).slice(0,5);setQuestions(base);setActive(true);setIndex(0);setRecordings([]);setAnalysis('')}catch{setError('Accès au microphone ou à la caméra refusé.')}}
-  function startSpeech(){const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!SR)return;const r=new SR();r.lang='fr-FR';r.continuous=true;r.interimResults=true;r.onresult=(e:any)=>{let t='';for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript+' ';setTranscript(prev=>(prev+' '+t).trim())};r.start();recognitionRef.current=r}
-  function record(){const stream=videoRef.current?.srcObject as MediaStream|null;if(!stream)return;chunks.current=[];setTranscript('');const candidates=mode==='video'?['video/mp4','video/webm;codecs=vp8,opus','video/webm']:['audio/mp4','audio/webm;codecs=opus','audio/webm'];const mimeType=candidates.find(value=>MediaRecorder.isTypeSupported?.(value))||'';let rec:MediaRecorder;try{rec=new MediaRecorder(stream,mimeType?{mimeType}:undefined)}catch{setError('L’enregistrement audio ou vidéo n’est pas compatible avec cet appareil.');return}rec.ondataavailable=e=>e.data.size&&chunks.current.push(e.data);rec.onstop=()=>{recognitionRef.current?.stop?.();const blob=new Blob(chunks.current,{type:rec.mimeType||mimeType||'application/octet-stream'});const item={url:URL.createObjectURL(blob),transcript,question:questions[index]};setRecordings(r=>[...r,item]);setRecording(false);if(index<questions.length-1)setIndex(i=>i+1)};recorderRef.current=rec;rec.start();startSpeech();setRecording(true)}
-  function stop(){recorderRef.current?.stop()}
-  async function analyze(){setLoading(true);try{const text=recordings.map((r,i)=>`Question ${i+1}: ${r.question}\nRéponse transcrite: ${r.transcript||'[transcription indisponible]'}`).join('\n\n');const result=await callAi(`Évalue cette simulation d'entretien. Donne un score global sur 100, un score par réponse, les points forts et les axes d'amélioration. Si une transcription est indisponible, indique clairement que cette réponse ne peut pas être notée. ${text}`);setAnalysis(result)}catch{setAnalysis('Analyse IA indisponible pour le moment. Les enregistrements restent disponibles.')}finally{setLoading(false)}}
-  function reset(){const stream=videoRef.current?.srcObject as MediaStream|null;stream?.getTracks().forEach(t=>t.stop());setActive(false);setRecording(false);setQuestions([]);setRecordings([]);setAnalysis('');setIndex(0)}
-  return <div className="space-y-5"><div className="flex gap-2"><button onClick={()=>setMode('video')} disabled={active} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold" style={{borderColor:mode==='video'?BLUE:BORDER,background:mode==='video'?'rgba(0,32,80,.06)':'#fff',color:BLUE}}><Video size={16}/>Vidéo</button><button onClick={()=>setMode('audio')} disabled={active} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold" style={{borderColor:mode==='audio'?BLUE:BORDER,background:mode==='audio'?'rgba(0,32,80,.06)':'#fff',color:BLUE}}><Mic size={16}/>Audio</button></div><div className="grid gap-5 xl:grid-cols-[1fr_380px]"><Card className="p-5"><div className="aspect-video overflow-hidden rounded-2xl bg-slate-950">{mode==='video'?<video ref={videoRef} className="h-full w-full object-cover" muted playsInline/>:<div className="flex h-full items-center justify-center"><Mic size={54} color="#fff"/><video ref={videoRef} className="hidden" muted playsInline/></div>}</div>{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-4 flex flex-wrap gap-3">{!active?<button onClick={start} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}>{mode==='video'?<Camera size={17}/>:<Mic size={17}/>}Commencer la simulation</button>:<>{!recording&&index<questions.length?<button onClick={record} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{background:BLUE}}><Play size={17}/>Enregistrer ma réponse</button>:recording?<button onClick={stop} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">Terminer la réponse</button>:null}<button onClick={reset} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{borderColor:BORDER,color:BLUE}}>Supprimer la simulation</button></>}</div>{recordings.length===5&&<button onClick={analyze} disabled={loading} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:BLUE}}>{loading?'Analyse IA…':'Analyser et obtenir mon score'}</button>}{analysis&&<div className="mt-4 whitespace-pre-wrap rounded-xl border p-4 text-sm leading-6" style={{borderColor:BORDER}}>{analysis}</div>}</Card><Card className="p-5"><div className="flex items-center justify-between"><h3 className="font-semibold" style={{color:BLUE}}>Simulation entretien</h3>{active&&<span className="text-sm font-semibold" style={{color:GOLD}}>{Math.min(index+1,5)}/5</span>}</div>{active?<><div className="mt-5 rounded-2xl p-5" style={{background:'rgba(0,32,80,.06)'}}><div className="text-xs font-semibold uppercase" style={{color:MUTED}}>Question actuelle</div><p className="mt-2 text-lg font-semibold leading-7" style={{color:BLUE}}>{questions[index]}</p></div><div className="mt-4 flex items-center gap-2 text-sm" style={{color:MUTED}}><Clock size={16}/>Temps conseillé : 60 à 120 secondes</div><div className="mt-4 text-xs" style={{color:MUTED}}>Réponses enregistrées : {recordings.length}/5</div></>:<Empty text="Choisissez audio ou vidéo, puis démarrez la simulation de 5 questions."/>}</Card></div></div>;
+    <div className="grid gap-7 lg:grid-cols-[1.28fr_.72fr]">
+      <section>
+        <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#BF8813]">Votre matière de travail</p><h2 className="mt-2 text-xl font-black text-[#002050]">Documents récents</h2></div><button onClick={()=>onView('cv')} className="text-xs font-black text-[#002050]">Tous les documents</button></div>
+        <div className="mt-4 divide-y divide-[#E3DED5] border-y border-[#D8D2C7] bg-white">{recent.length?recent.map(doc=><button key={doc.id} onClick={()=>onOpen(doc.id,doc.doc_type)} className="group grid w-full gap-3 px-4 py-4 text-left transition hover:bg-[#FBF8F1] md:grid-cols-[42px_1fr_auto] md:items-center"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F1EEE7] text-[#002050]">{doc.doc_type==='cv'?<FileText size={17}/>:<Mail size={17}/>}</span><span><strong className="block text-sm text-[#002050]">{doc.title}</strong><span className="mt-1 block text-xs text-slate-400">Mis à jour {new Date(doc.updated_at||doc.created_at||Date.now()).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</span></span><ChevronRight size={16} className="text-[#BF8813] transition group-hover:translate-x-1"/></button>):<div className="px-5 py-8 text-sm leading-6 text-slate-500">Vos CV et lettres apparaîtront ici dès leur création. Commencez avec un document réel plutôt qu’un exemple fictif.</div>}</div>
+      </section>
+
+      <aside className="space-y-5">
+        <div className="border-l-4 border-[#BF8813] bg-[#FCFBF8] p-5"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#9A7118]"><Sparkles size={14}/> Action recommandée</div><h3 className="mt-3 text-lg font-black text-[#002050]">{nextAction.label}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{nextAction.text}</p><button onClick={nextAction.action} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#002050]">Continuer <ChevronRight size={14}/></button></div>
+        <div className="border-y border-[#D8D2C7] bg-white px-5 py-5"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Ressources disponibles</p><div className="mt-4 space-y-3"><button onClick={()=>onCreate('cv')} className="flex w-full items-center justify-between text-left text-sm font-bold text-[#002050]"><span>Modèles CV</span><span className="text-xs text-slate-400">{cvTemplates.length||12}</span></button><button onClick={()=>onCreate('lm')} className="flex w-full items-center justify-between text-left text-sm font-bold text-[#002050]"><span>Modèles LM</span><span className="text-xs text-slate-400">{lmTemplates.length||6}</span></button><button onClick={()=>onView('interview')} className="flex w-full items-center justify-between text-left text-sm font-bold text-[#002050]"><span>Préparation entretien</span><ChevronRight size={14} className="text-slate-400"/></button></div></div>
+      </aside>
+    </div>
+  </div>;
 }
 
 export function EnhancedInterview(){const [tab,setTab]=useState<'questions'|'simulation'|'answers'|'advice'>('questions');const answers=readJson<Record<string,string>>('omnia_interview_answers',{});const tabs=[['questions','Questions fréquentes'],['simulation','Simulation entretien'],['answers','Mes réponses'],['advice','Conseils']] as const;return <div className="space-y-5"><div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Préparation entretien</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Entraînez-vous, maîtrisez les questions clés et gagnez en confiance.</p></div><div className="flex gap-6 border-b" style={{borderColor:BORDER}}>{tabs.map(([id,label])=><button key={id} onClick={()=>setTab(id)} className="border-b-2 px-1 pb-3 text-sm font-semibold" style={{borderColor:tab===id?GOLD:'transparent',color:tab===id?BLUE:MUTED}}>{label}</button>)}</div>{tab==='questions'&&<FrequentQuestions/>}{tab==='simulation'&&<InterviewSimulation/>}{tab==='answers'&&<Card className="p-5"><h3 className="mb-4 font-semibold" style={{color:BLUE}}>Mes réponses sauvegardées</h3>{Object.entries(answers).filter(([,v])=>v.trim()).length?Object.entries(answers).filter(([,v])=>v.trim()).map(([q,a])=><div key={q} className="mb-3 rounded-xl border p-4" style={{borderColor:BORDER}}><div className="text-sm font-semibold" style={{color:BLUE}}>{q}</div><p className="mt-2 text-sm leading-6" style={{color:'#374151'}}>{a}</p></div>):<Empty text="Aucune réponse sauvegardée."/>}</Card>}{tab==='advice'&&<AiAdvice/>}</div>}

@@ -71,6 +71,7 @@ const DashboardProjectPortfolio = lazy(() => import('./pages/dashboard/Dashboard
 const DashboardCareerStudio = lazy(() => import('./pages/dashboard/DashboardCareerStudio'));
 const CareerStudioEditor = lazy(() => import('./pages/dashboard/CareerStudioEditor'));
 const OmniaCareerStudio = lazy(() => import('./pages/OmniaCareerStudio'));
+const CareerSectionHub = lazy(() => import('./pages/career/CareerSectionHub'));
 const DashboardParrainage = lazy(() => import('./pages/dashboard/DashboardParrainage').then((module) => ({ default: module.DashboardParrainage })));
 const UnifiedProfilePage = lazy(() => import('./pages/profile/UnifiedProfilePage'));
 const PublicProfilePage = lazy(() => import('./pages/profile/PublicProfilePage'));
@@ -850,11 +851,13 @@ export default function App() {
 
 <Route element={<RequireOmniaCareerLearner />}>
   <Route path="/omnia-career" element={<DashboardCareerStudio />} />
+  <Route path="/omnia-career/documents" element={<CareerSectionHub />} />
+  <Route path="/omnia-career/preparation" element={<CareerSectionHub />} />
   <Route path="/omnia-career/cv-builder" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/lettres" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/entretien" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/candidatures" element={<DashboardCareerStudio />} />
-  <Route path="/omnia-career/profil" element={<Navigate to="/mon-profil?tab=professionnel" replace />} />
+  <Route path="/omnia-career/profil" element={<DashboardCareerStudio />} />
   <Route path="/omnia-career/coaching" element={<Navigate to="/coaching" replace />} />
   <Route path="/omnia-career/parametres" element={<DashboardCareerStudio />} />
 </Route>

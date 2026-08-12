@@ -114,14 +114,14 @@ export default function JobDetail() {
   function prepareWithCareer() {
     if (!jobId) return;
     if (!isLoggedIn) {
-      navigate(`/connexion?redirect=${encodeURIComponent(`/dashboard/career-studio?section=applications&job_id=${jobId}&mode=prepare`)}`);
+      navigate(`/connexion?redirect=${encodeURIComponent(`/omnia-career/candidatures?job_id=${jobId}&mode=prepare`)}`);
       return;
     }
     if (!isLearner()) {
       alert('Omnia Career est réservé aux apprenants.');
       return;
     }
-    navigate(`/dashboard/career-studio?section=applications&job_id=${jobId}&mode=prepare`);
+    navigate(`/omnia-career/candidatures?job_id=${jobId}&mode=prepare`);
   }
 
   async function submitApplication() {

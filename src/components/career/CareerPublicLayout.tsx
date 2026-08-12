@@ -1,17 +1,18 @@
 import type { ReactNode } from 'react';
-import { Briefcase, MessageCircle } from 'lucide-react';
 import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
-
-const NAV = [
-  { label: 'Opportunités', path: '/forum/emploi', icon: Briefcase, exact: true },
-  { label: 'Conseils carrière', path: '/forum/carriere', icon: MessageCircle },
-];
+import { getCareerNavigation } from '../../lib/careerNavigation';
 
 export default function CareerPublicLayout({ children }: { children: ReactNode }) {
+  const navItems = getCareerNavigation('public').map(item => ({
+    label: item.label,
+    path: item.path,
+    icon: item.icon,
+    exact: item.id === 'accueil',
+  }));
   return (
     <SubspaceHamburgerLayout
       title="Omnia Career"
-      navItems={NAV}
+      navItems={navItems}
       searchPath="/forum/emploi"
       searchParam="search"
       searchPlaceholder="Rechercher une opportunité, un métier ou une entreprise..."
