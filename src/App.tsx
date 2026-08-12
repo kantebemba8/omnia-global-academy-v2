@@ -187,7 +187,9 @@ const AdminCoachingSessions = lazy(() => import('./pages/admin/AdminCoachingSess
 const AdminCoachingDisputes = lazy(() => import('./pages/admin/AdminCoachingDisputes'));
 const AdminCoachingRatings = lazy(() => import('./pages/admin/AdminCoachingRatings'));
 const AdminCoachingRevenue = lazy(() => import('./pages/admin/AdminCoachingRevenue'));
+const CoachingHome = lazy(() => import('./pages/coaching/CoachingHome'));
 const CoachingCatalogue = lazy(() => import('./pages/coaching/CoachingCatalogue'));
+const CoachingSectionHub = lazy(() => import('./pages/coaching/CoachingSectionHub'));
 const CoachingCoachProfile = lazy(() => import('./pages/coaching/CoachingCoachProfile'));
 const CoachingBooking = lazy(() => import('./pages/coaching/CoachingBooking'));
 const CoachingPayment = lazy(() => import('./pages/coaching/CoachingPayment'));
@@ -504,7 +506,12 @@ export default function App() {
           <Route path="/admin/projects/gestion" element={<ProjectOwnerWorkspace />} />
           <Route path="/portfolio/projects/:userId" element={<PublicProjectPortfolio />} />
           <Route path="/projects/:slug" element={<ProjectDetail />} />
-          <Route path="/coaching" element={<CoachingCatalogue />} />
+          <Route path="/coaching" element={<CoachingHome />} />
+          <Route path="/coaching/explorer" element={<CoachingCatalogue />} />
+          <Route path="/coaching/accompagnement" element={<CoachingSectionHub />} />
+          <Route path="/coaching/pratique" element={<CoachingSectionHub />} />
+          <Route path="/coaching/developpement" element={<CoachingSectionHub />} />
+          <Route path="/coaching/revenus-plan" element={<CoachingSectionHub />} />
           <Route path="/credentials/badges/:credentialId" element={<PublicBadgeVerification />} />
           <Route path="/credentials/pathways/:verificationCode" element={<ProfessionalPathwayCredentialVerify />} />
           <Route path="/assessment/jury/:inviteToken" element={<AssessmentJuryAccess />} />

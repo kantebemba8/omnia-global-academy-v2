@@ -49,14 +49,14 @@ export default function CoachingCoachProfile() {
   }
 
   if (loading) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="py-24 text-center text-sm text-slate-500">Chargement du profil…</div></div>;
-  if (!coach || error) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="mx-auto max-w-3xl px-5 py-20 text-center"><h1 className="text-2xl font-semibold" style={{ color: BLUE }}>Profil introuvable</h1><p className="mt-3 text-slate-600">{error || 'Ce coach n’est pas disponible.'}</p><Link to="/coaching" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}><ArrowLeft size={16}/>Retour au catalogue</Link></div></div>;
+  if (!coach || error) return <div className="min-h-screen bg-[#F8FAFC]"><CoachingHeader/><div className="mx-auto max-w-3xl px-5 py-20 text-center"><h1 className="text-2xl font-semibold" style={{ color: BLUE }}>Profil introuvable</h1><p className="mt-3 text-slate-600">{error || 'Ce coach n’est pas disponible.'}</p><Link to="/coaching/explorer" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}><ArrowLeft size={16}/>Retour au catalogue</Link></div></div>;
 
   const offers = coach.offers || [];
 
   return <div className="min-h-screen bg-[#F8FAFC]">
     <CoachingHeader/>
     <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <button onClick={() => navigate('/coaching')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft size={16}/>Retour au catalogue</button>
+      <button onClick={() => navigate('/coaching/explorer')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft size={16}/>Retour au catalogue</button>
       {notice && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>}
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="space-y-6">

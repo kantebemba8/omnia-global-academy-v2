@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, BadgeCheck, CalendarClock, Languages, SlidersHorizontal, Star, UserRoundCheck } from 'lucide-react';
-import CoachingHeader from '../../components/coaching/CoachingHeader';
+import CoachingLayout from '../../components/coaching/CoachingLayout';
 import { CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
@@ -9,6 +9,23 @@ const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
 type Bootstrap = { success: true; coaches: CoachProfile[]; domains: CoachingDomain[]; levels: CoachingLevel[] };
+
+
+function withPreview(path: string, params: URLSearchParams) {
+  if (params.get('preview') !== 'true') return path;
+  const [base, hash = ''] = path.split('#', 2);
+  const [pathname, query = ''] = base.split('?', 2);
+  const next = new URLSearchParams(query);
+  next.set('preview', 'true');
+  const role = params.get('role');
+  if (role) next.set('role', role);
+  return `${pathname}?${next.toString()}${hash ? `#${hash}` : ''}`;
+}
+
+function PreviewLink({ to, ...props }: ComponentProps<typeof Link>) {
+  const [params] = useSearchParams();
+  return <Link to={typeof to === 'string' ? withPreview(to, params) : to} {...props} />;
+}
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'OC';
@@ -38,7 +55,7 @@ function CoachCard({ coach }: { coach: CoachProfile }) {
       <div className="mt-auto pt-5">
         <div className="flex items-end justify-between gap-3 border-t pt-4" style={{ borderColor: BORDER }}>
           <div><p className="text-xs text-slate-500">À partir de</p><p className="mt-1 font-semibold" style={{ color: BLUE }}>{starting === null ? 'Tarif sur demande' : `${formatXof(starting)} / séance`}</p></div>
-          <Link to={`/coaching/coachs/${coach.public_slug}`} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Voir le profil <ArrowRight size={15}/></Link>
+          <PreviewLink to={`/coaching/coachs/${coach.public_slug}`} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Voir le profil <ArrowRight size={15}/></PreviewLink>
         </div>
       </div>
     </article>
@@ -83,31 +100,29 @@ export default function CoachingCatalogue() {
     });
   }, [data, query, domain, level, language, sort]);
 
-  return <div className="min-h-screen bg-[#F8FAFC]">
-    <CoachingHeader showSearch searchValue={query} onSearchChange={setQuery} searchPlaceholder="Rechercher un coach, une spécialité…" />
-    <section className="border-b bg-white" style={{ borderColor: BORDER }}>
-      <div className="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16">
+  return <CoachingLayout>
+    <main className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      <div className="flex flex-wrap items-end justify-between gap-5">
         <div className="max-w-3xl">
-          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold" style={{ background: 'rgba(191,136,19,.12)', color: GOLD }}><UserRoundCheck size={16}/>Coachs validés par OGA</span>
-          <h1 className="mt-5 text-3xl font-semibold leading-tight md:text-5xl" style={{ color: BLUE }}>Trouvez le coach adapté à votre objectif.</h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">Orientation, emploi, entrepreneuriat, management, finance, QHSE et autres expertises professionnelles.</p>
+          <p className="text-[11px] font-black uppercase tracking-[.18em] text-[#356C63]">Explorer Omnia Coaching</p>
+          <h1 className="mt-3 text-3xl font-black tracking-[-.04em] text-[#002050] md:text-4xl">Choisir un coach à partir de l’objectif, pas du bruit.</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">La recherche reste dans l’en-tête. Ici, affinez uniquement les critères réellement utiles à la sélection.</p>
         </div>
+        <span className="rounded-full bg-[#EAF3F0] px-3 py-1.5 text-xs font-black text-[#356C63]">{coaches.length} coach{coaches.length > 1 ? 's' : ''}</span>
       </div>
-    </section>
 
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-      <section className="rounded-2xl border bg-white p-4" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: BLUE }}><SlidersHorizontal size={17} color={GOLD}/>Rechercher et filtrer</div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <select value={domain} onChange={e => setDomain(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les domaines</option>{data.domains.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-          <select value={language} onChange={e => setLanguage(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Toutes les langues</option>{languages.map(item => <option key={item}>{item}</option>)}</select>
-          <select value={level} onChange={e => setLevel(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les niveaux</option>{data.levels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+      <section className="mt-7 border-y border-[#DCE7E1] bg-[#FBFCFA] py-4">
+        <div className="flex items-center gap-2 text-sm font-black text-[#002050]"><SlidersHorizontal size={17} color={GOLD}/>Filtres du catalogue</div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <select value={domain} onChange={e => setDomain(e.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les domaines</option>{data.domains.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          <select value={language} onChange={e => setLanguage(e.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Toutes les langues</option>{languages.map(item => <option key={item}>{item}</option>)}</select>
+          <select value={level} onChange={e => setLevel(e.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm" style={{ borderColor: BORDER }}><option value="">Tous les niveaux</option>{data.levels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          <select value={sort} onChange={e => setSort(e.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm" style={{ borderColor: BORDER }}><option value="featured">Mise en avant</option><option value="rating">Meilleure note</option><option value="price">Prix croissant</option><option value="new">Nouveaux coachs</option></select>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-500">{coaches.length} coach{coaches.length > 1 ? 's' : ''} trouvé{coaches.length > 1 ? 's' : ''}</p><select value={sort} onChange={e => setSort(e.target.value)} className="h-9 rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }}><option value="featured">Mise en avant</option><option value="rating">Meilleure note</option><option value="price">Prix croissant</option><option value="new">Nouveaux coachs</option></select></div>
       </section>
 
       {error && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {loading ? <div className="py-20 text-center text-sm text-slate-500">Chargement des coachs…</div> : coaches.length ? <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{coaches.map(coach => <CoachCard key={coach.id} coach={coach}/>)}</div> : <div className="mt-6 rounded-2xl border bg-white px-6 py-16 text-center" style={{ borderColor: BORDER }}><CalendarClock className="mx-auto h-10 w-10" color={GOLD}/><h2 className="mt-4 text-lg font-semibold" style={{ color: BLUE }}>Aucun coach ne correspond à ces critères</h2><p className="mt-2 text-sm text-slate-500">Modifiez les filtres ou revenez prochainement.</p></div>}
     </main>
-  </div>;
+  </CoachingLayout>;
 }

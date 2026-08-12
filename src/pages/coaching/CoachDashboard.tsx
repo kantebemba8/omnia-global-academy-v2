@@ -56,7 +56,7 @@ export default function CoachDashboard() {
                 <div key={session.id} className="flex items-center justify-between gap-4 py-3 text-sm">
                   <div>
                     <p className="font-medium" style={{ color: BLUE }}>{session.learner_name || 'Apprenant'}</p>
-                    <p className="mt-1 text-xs text-slate-500">{new Date(session.scheduled_at).toLocaleString('fr-FR')}</p>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(session.scheduled_start || session.requested_start || session.created_at).toLocaleString('fr-FR')}</p>
                   </div>
                   <p className="text-xs font-semibold" style={{ color: GOLD }}>{session.status.replace(/_/g, ' ')}</p>
                 </div>
