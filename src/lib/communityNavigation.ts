@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Briefcase,
   Home,
   MessageCircle,
   MessagesSquare,
@@ -46,6 +47,12 @@ const EXCHANGES: CommunityNavGroup = {
       path: '/forum/general',
       description: 'Entraide, orientation, apprentissage et vie dans l’écosystème Omnia.',
       icon: MessageCircle,
+    },
+    {
+      label: 'Carrière & emploi',
+      path: '/forum/emploi',
+      description: 'Opportunités, offres et sujets liés à la carrière et à l’emploi.',
+      icon: Briefcase,
     },
     {
       label: 'Forums des formations',

@@ -85,7 +85,7 @@ function EcosystemBrand({ ecosystem, href, inverse = false }: { ecosystem: Ecosy
   );
 }
 
-function PrimaryLinks({ navigation, pathname, params, onNavigate, compact = false, accent = '#BF8813' }: { navigation: EcosystemNavGroup[]; pathname: string; params: URLSearchParams; onNavigate?: () => void; compact?: boolean; accent?: string }) {
+function PrimaryLinks({ navigation, pathname, params, onNavigate, onPreviewGroup, compact = false, accent = '#BF8813' }: { navigation: EcosystemNavGroup[]; pathname: string; params: URLSearchParams; onNavigate?: () => void; onPreviewGroup?: (group: EcosystemNavGroup | null) => void; compact?: boolean; accent?: string }) {
   return (
     <nav className={compact ? 'space-y-1' : 'flex min-w-max items-center'} aria-label="Navigation de l’écosystème">
       {navigation.map(group => {
@@ -96,6 +96,8 @@ function PrimaryLinks({ navigation, pathname, params, onNavigate, compact = fals
             key={group.id}
             to={withPreview(group.path, params)}
             onClick={onNavigate}
+            onMouseEnter={() => !compact && onPreviewGroup?.(group.children?.length ? group : null)}
+            onFocus={() => !compact && onPreviewGroup?.(group.children?.length ? group : null)}
             aria-current={active ? 'page' : undefined}
             className={compact
               ? `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${active ? 'bg-white text-[#002050] shadow-sm' : 'text-slate-600 hover:bg-white/70 hover:text-[#002050]'}`
@@ -140,20 +142,63 @@ function SectionContext({ ecosystem, group, pathname, search, hash, params }: { 
           </Link>
           <div className="h-5 w-px bg-slate-200" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: theme.accent }}>Domaine</p>
-            <strong className="block truncate text-sm font-black text-[#002050]">{group.label}</strong>
+            <strong className="block truncate text-sm font-black" style={{ color: theme.accent }}>{group.label}</strong>
           </div>
-          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={`Sous-menus ${group.label}`}>
+          <nav
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-xl border p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            style={{ borderColor: theme.border, background: theme.soft }}
+            aria-label={`Sous-menus ${group.label}`}
+          >
             {group.children?.map(child => {
               const active = childIsActive(child.path, pathname, search, hash);
+              const Icon = child.icon;
               return (
-                <Link key={child.path} to={withPreview(child.path, params)} className={`min-w-max rounded-lg px-3 py-2 text-xs font-bold transition ${active ? 'text-white' : 'text-slate-600 hover:bg-black/[0.035] hover:text-[#002050]'}`} style={active ? { background: theme.secondary } : undefined}>
+                <Link
+                  key={child.path}
+                  to={withPreview(child.path, params)}
+                  className={`inline-flex min-w-max items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${active ? 'text-white' : 'text-[#002050] hover:brightness-[0.98]'}`}
+                  style={active ? { background: theme.secondary } : { background: theme.panel }}
+                >
+                  {Icon ? <Icon size={13} style={{ color: active ? '#FFFFFF' : theme.accent }} /> : null}
                   {child.label}
                 </Link>
               );
             })}
           </nav>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SubmenuPreviewBar({ ecosystem, group, params, onNavigate }: { ecosystem: EcosystemId; group: EcosystemNavGroup; params: URLSearchParams; onNavigate?: () => void }) {
+  const theme = getEcosystem(ecosystem);
+  if (!group.children?.length) return null;
+  return (
+    <div className="hidden border-t lg:block" style={{ borderColor: theme.border, background: theme.panel }}>
+      <div className="mx-auto flex max-w-[1480px] items-stretch gap-3 px-4 py-2 sm:px-5 lg:px-6">
+        <div className="flex min-w-max items-center px-2 text-xs font-black" style={{ color: theme.accent }}>{group.label}</div>
+        <div className="w-px shrink-0" style={{ background: theme.border }} aria-hidden="true" />
+        <nav className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={`Aperçu des sous-menus ${group.label}`}>
+          {group.children.map(child => {
+            const Icon = child.icon;
+            return (
+              <Link
+                key={child.path}
+                to={withPreview(child.path, params)}
+                onClick={onNavigate}
+                className="group/submenu flex min-w-[190px] max-w-[280px] items-start gap-2.5 rounded-xl border px-3 py-2.5 transition hover:-translate-y-px"
+                style={{ borderColor: theme.border, background: theme.soft }}
+              >
+                {Icon ? <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ color: theme.accent, background: theme.panel }}><Icon size={14} /></span> : null}
+                <span className="min-w-0">
+                  <strong className="block truncate text-xs font-black text-[#002050]">{child.label}</strong>
+                  {child.description ? <span className="mt-0.5 block line-clamp-1 text-[10px] leading-4 text-slate-500">{child.description}</span> : null}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );
@@ -199,13 +244,17 @@ export function EcosystemPublicHeader({
   const location = useLocation();
   const [params] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [previewGroup, setPreviewGroup] = useState<EcosystemNavGroup | null>(null);
   const [hasUser, setHasUser] = useState(() => {
     try { return Boolean(localStorage.getItem('omnia_user')); }
     catch { return false; }
   });
   const theme = getEcosystem(ecosystem);
 
-  useEffect(() => setMenuOpen(false), [location.pathname, location.search, location.hash]);
+  useEffect(() => {
+    setMenuOpen(false);
+    setPreviewGroup(null);
+  }, [location.pathname, location.search, location.hash]);
 
   useEffect(() => {
     const refresh = () => {
@@ -236,12 +285,12 @@ export function EcosystemPublicHeader({
 
   return (
     <>
-      <header className="sticky top-0 z-50 flex-shrink-0 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }}>
+      <header className="sticky top-0 z-50 flex-shrink-0 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }} onMouseLeave={() => setPreviewGroup(null)}>
         <div className="mx-auto flex min-h-[72px] max-w-[1480px] items-center gap-3 px-4 sm:px-5 lg:gap-4 lg:px-6">
           <EcosystemBrand ecosystem={ecosystem} href={theme.publicPath} />
 
           <div className="hidden min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:block">
-            <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} />
+            <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} onPreviewGroup={setPreviewGroup} />
           </div>
 
           {search ? (
@@ -281,6 +330,7 @@ export function EcosystemPublicHeader({
             <div className="mx-auto max-w-[1480px]">{search}</div>
           </div>
         ) : null}
+        {previewGroup ? <SubmenuPreviewBar ecosystem={ecosystem} group={previewGroup} params={params} onNavigate={() => setPreviewGroup(null)} /> : null}
       </header>
 
       {menuOpen && (
@@ -334,6 +384,7 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
   const location = useLocation();
   const [params] = useSearchParams();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [previewGroup, setPreviewGroup] = useState<EcosystemNavGroup | null>(null);
   const theme = getEcosystem(ecosystem);
   const roles = storedRoles();
   const previewRole = params.get('preview') === 'true' ? params.get('role') : null;
@@ -341,7 +392,10 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
   const activeGroup = useMemo(() => navigation.find(group => groupIsActive(group, location.pathname)), [navigation, location.pathname]);
   const sectionGroup = activeGroup?.children?.length ? activeGroup : null;
 
-  useEffect(() => setMobileOpen(false), [location.pathname, location.search, location.hash]);
+  useEffect(() => {
+    setMobileOpen(false);
+    setPreviewGroup(null);
+  }, [location.pathname, location.search, location.hash]);
   useEffect(() => {
     if (!mobileOpen) return;
     const before = document.body.style.overflow;
@@ -353,18 +407,17 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
 
   return (
     <>
-      <header className="relative z-40 flex-shrink-0 bg-white/95 backdrop-blur-xl">
+      <header className="relative z-40 flex-shrink-0 bg-white/95 backdrop-blur-xl" aria-label={`Navigation Omnia ${theme.name} — ${audienceLabel}`} onMouseLeave={() => setPreviewGroup(null)}>
         <div className="hidden border-b border-slate-100 lg:block">
-          <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 lg:px-6">
+          <div className="mx-auto flex max-w-[1480px] items-center gap-4 px-5 lg:px-6">
             <EcosystemSwitcher ecosystem={ecosystem} params={params} />
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{audienceLabel}</span>
           </div>
         </div>
         <div className="border-b" style={{ borderColor: theme.border }}>
           <div className="mx-auto flex min-h-[68px] max-w-[1480px] items-center gap-4 px-4 sm:px-5 lg:px-6">
             <EcosystemBrand ecosystem={ecosystem} href={withPreview(ecosystemHomePath, params)} />
             <div className="hidden min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block">
-              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} />
+              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} onPreviewGroup={setPreviewGroup} />
             </div>
             {search ? <div className="ml-auto hidden w-[min(34vw,430px)] min-w-[230px] md:block">{search}</div> : null}
             <UserAccountMenu dashboardPath={dashboardPath} />
@@ -376,6 +429,7 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
             <div className="mx-auto max-w-[1480px]">{search}</div>
           </div>
         ) : null}
+        {previewGroup ? <SubmenuPreviewBar ecosystem={ecosystem} group={previewGroup} params={params} onNavigate={() => setPreviewGroup(null)} /> : null}
       </header>
 
       {sectionGroup ? <SectionContext ecosystem={ecosystem} group={sectionGroup} pathname={location.pathname} search={location.search} hash={location.hash} params={params} /> : null}
@@ -392,7 +446,6 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
               <div className="my-5 border-t border-slate-200" />
               <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: theme.accent }}>Omnia {theme.name}</p>
               <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMobileOpen(false)} />
-              <p className="mt-5 px-1 text-[11px] leading-5 text-slate-400">Les sous-menus s’ouvrent dans leur propre page. Ils ne sont pas dupliqués dans ce panneau.</p>
             </div>
           </aside>
         </div>
@@ -431,7 +484,6 @@ export function EcosystemStandaloneNav({ ecosystem, audienceLabel, navigation }:
       <div className="relative z-30 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }}>
         <div className="mx-auto flex min-h-14 max-w-[1440px] items-center gap-4 px-4 sm:px-5 lg:px-6">
           <Link to={theme.publicPath} className="shrink-0 text-sm font-black text-[#002050]">Omnia <span style={{ color: theme.accent }}>{theme.name}</span></Link>
-          <span className="hidden rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] md:inline-flex" style={{ background: theme.soft, color: theme.secondary }}>{audienceLabel}</span>
           <div className="hidden min-w-0 flex-1 overflow-x-auto lg:block"><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} /></div>
           <button type="button" onClick={() => setMobileOpen(true)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#002050] lg:hidden" aria-label={`Ouvrir le menu ${theme.name}`}><Menu size={19} /></button>
         </div>
@@ -444,15 +496,10 @@ export function EcosystemStandaloneNav({ ecosystem, audienceLabel, navigation }:
 export function EcosystemSectionLanding({ ecosystem, description }: { ecosystem: EcosystemId; description?: string }) {
   const theme = getEcosystem(ecosystem);
   return (
-    <section className="mx-auto max-w-[1320px] px-5 py-10 sm:px-6 lg:px-8 lg:py-14">
-      <div className="relative overflow-hidden rounded-[28px] border px-6 py-8 sm:px-8 lg:px-10" style={{ borderColor: theme.border, background: `linear-gradient(135deg, ${theme.panel} 0%, ${theme.soft} 100%)` }}>
-        <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full border opacity-60" style={{ borderColor: theme.accent }} aria-hidden="true" />
-        <div className="relative max-w-3xl">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: theme.accent }}>Page de domaine</p>
-          <h1 className="mt-3 text-2xl font-black tracking-[-0.035em] text-[#002050] sm:text-3xl">Choisissez la fonction à ouvrir dans la barre ci-dessus.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">{description || `Les fonctions Omnia ${theme.name} restent séparées dans leurs pages dédiées afin de garder une navigation claire.`}</p>
-        </div>
-      </div>
+    <section className="mx-auto max-w-[1320px] px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+      <p className="max-w-3xl border-l-2 pl-4 text-sm leading-7 text-slate-600" style={{ borderColor: theme.accent }}>
+        {description || `Choisissez une fonction Omnia ${theme.name} dans le menu ci-dessus.`}
+      </p>
     </section>
   );
 }
