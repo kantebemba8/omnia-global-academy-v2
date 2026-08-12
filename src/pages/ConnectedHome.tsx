@@ -35,6 +35,7 @@ import StructureConnectedHomeSections, { type StructureConnectedHomeData } from 
 import RecruiterConnectedHomeSections from '../components/home/RecruiterConnectedHomeSections';
 import OrganizerConnectedHomeSections from '../components/home/OrganizerConnectedHomeSections';
 import CoachConnectedHomeSections from '../components/home/CoachConnectedHomeSections';
+import ModeratorConnectedHomeSections from '../components/home/ModeratorConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -488,7 +489,8 @@ function readModeratorPermissions(): ModeratorPermissions | null {
 }
 
 function filterModeratorGroups(groups: HomeGroup[], permissions: ModeratorPermissions | null, previewMode: boolean) {
-  if (previewMode || !permissions) return groups;
+  if (previewMode) return groups;
+  if (!permissions) return [];
   const allowed = new Set<string>(['/moderator/dashboard']);
   const p = permissions;
   if (
@@ -569,6 +571,7 @@ export default function ConnectedHome() {
   const [learnerData, setLearnerData] = useState<LearnerDashboardData | null>(null);
   const [professorData, setProfessorData] = useState<ProfessorDashboardData | null>(null);
   const [structureData, setStructureData] = useState<StructureDashboardData | null>(null);
+  const [moderatorPermissionsLive, setModeratorPermissionsLive] = useState<ModeratorPermissions | null>(null);
   const [featuredCourses, setFeaturedCourses] = useState<CourseCardData[]>([]);
 
   const roles = useMemo(() => normalizePlatformRoles(user?.roles || []), [user?.roles]);
@@ -587,7 +590,7 @@ export default function ConnectedHome() {
 
   const config = HOME_CONFIGS[audience];
   const dashboardPath = user ? getDashboardPathForRoles(user.roles || []) : '/accueil';
-  const moderatorPermissions = useMemo(() => audience === 'moderateur' ? readModeratorPermissions() : null, [audience]);
+  const moderatorPermissions = useMemo(() => audience === 'moderateur' ? (moderatorPermissionsLive || readModeratorPermissions()) : null, [audience, moderatorPermissionsLive]);
   const continueCourses = learnerData?.courses_en_cours || [];
   const groups = useMemo(
     () => audience === 'moderateur' ? filterModeratorGroups(config.groups, moderatorPermissions, previewMode) : config.groups,
@@ -734,10 +737,10 @@ export default function ConnectedHome() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
-        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
+        <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach' || audience === 'moderateur' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
 
-          {(audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach') && (
+          {(audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach' || audience === 'moderateur') && (
             <form onSubmit={submitSearch} className="relative order-3 w-full min-w-0 flex-1 lg:order-none lg:mx-auto lg:max-w-[650px]">
               <div className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-[#D4DFEA] bg-[#F8FAFD] focus-within:border-[#9EB4D0] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0F7699]/10">
                 <Search size={17} className="ml-4 shrink-0 text-slate-400" />
@@ -795,7 +798,7 @@ export default function ConnectedHome() {
       )}
 
       <main>
-        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
             <form onSubmit={submitSearch} className="relative mx-auto max-w-4xl">
@@ -840,7 +843,7 @@ export default function ConnectedHome() {
         </section>
         )}
 
-        {audience !== 'professeur' && audience !== 'structure' && audience !== 'organisateur' && audience !== 'coach' && (
+        {audience !== 'professeur' && audience !== 'structure' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
@@ -896,6 +899,10 @@ export default function ConnectedHome() {
           <CoachConnectedHomeSections previewMode={previewMode} />
         )}
 
+        {audience === 'moderateur' && (
+          <ModeratorConnectedHomeSections previewMode={previewMode} onPermissionsLoaded={setModeratorPermissionsLive} />
+        )}
+
         {audience === 'apprenant' && (
           <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
         )}
@@ -931,7 +938,7 @@ export default function ConnectedHome() {
               </div>
             </div>
           </section>
-        ) : audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' ? (
+        ) : audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="mb-10 max-w-3xl">
@@ -986,7 +993,7 @@ export default function ConnectedHome() {
           </section>
         )}
 
-        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && config.ecosystem.length > 0 && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && config.ecosystem.length > 0 && (
           <section className="relative overflow-hidden bg-[#061C36] text-white">
             <div className="absolute inset-y-0 right-0 w-1/2 opacity-30" style={{ background: `radial-gradient(circle at 80% 50%, ${config.accent}, transparent 62%)` }} aria-hidden="true" />
           <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[0.55fr_1.45fr] lg:px-8">
