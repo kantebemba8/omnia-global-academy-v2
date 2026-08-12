@@ -25,6 +25,7 @@ import type {
   MobileAppItem,
   SocialNetworkItem,
 } from '../../types/landingCms';
+import { resolvePublicHomeHero } from '../../types/landingCms';
 
 export type LandingPublicPartner = {
   id: string;
@@ -108,52 +109,56 @@ function actionFor(item: LandingContentItem) {
   );
 }
 
-function FuturisticHeroArt() {
+function HeroPreviewCard() {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[linear-gradient(108deg,#dbeafe_0%,#cfe4ff_18%,#a7cbff_34%,#6ea6f3_52%,#2f78df_72%,#0c54bf_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.58),rgba(255,255,255,0.18)_22%,rgba(255,255,255,0)_46%),radial-gradient(circle_at_32%_64%,rgba(255,255,255,0.34),rgba(255,255,255,0)_38%)]" />
-      <div className="absolute inset-0 opacity-[0.16]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.55) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.42) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
-      <div className="absolute inset-y-0 right-0 w-[68%] bg-[radial-gradient(circle_at_82%_68%,rgba(6,43,120,0.88),rgba(8,67,162,0.70)_26%,rgba(15,92,203,0.34)_48%,rgba(15,92,203,0.10)_65%,rgba(15,92,203,0)_82%)]" />
-      <div className="absolute bottom-[-14%] right-[-6%] h-[82%] w-[46%] rounded-full bg-[radial-gradient(circle_at_38%_42%,rgba(255,246,209,0.98)_0%,rgba(255,225,145,0.94)_8%,rgba(244,194,74,0.80)_15%,rgba(234,175,49,0.42)_25%,rgba(209,149,26,0.10)_38%,rgba(12,84,191,0)_58%)]" />
-      <div className="absolute bottom-[-10%] right-[2%] h-[68%] w-[36%] rounded-full border border-[#E5BA62]/70" />
-      <div className="absolute bottom-[0%] right-[7%] h-[56%] w-[30%] rounded-full border border-white/35" />
-      <div className="absolute bottom-[5%] right-[13%] h-[44%] w-[24%] rounded-full border border-[#EBC36F]/18" />
-      <div className="absolute left-[40%] top-[18%] h-px w-[52%] rotate-[12deg] bg-gradient-to-r from-transparent via-white to-transparent opacity-95 blur-[0.2px]" />
-      <div className="absolute left-[42%] top-[20%] h-[2px] w-[48%] rotate-[12deg] bg-gradient-to-r from-transparent via-[#F7D991] to-transparent opacity-85" />
-      <svg className="absolute inset-y-0 right-0 h-full w-[74%] min-w-[720px] opacity-95" viewBox="0 0 1180 560" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="ogaHeroWhite" x1="330" y1="420" x2="1088" y2="122" gradientUnits="userSpaceOnUse">
-            <stop stopColor="white" stopOpacity="0" />
-            <stop offset="0.38" stopColor="white" stopOpacity="0.84" />
-            <stop offset="0.72" stopColor="white" stopOpacity="0.38" />
-            <stop offset="1" stopColor="white" stopOpacity="0.06" />
-          </linearGradient>
-          <linearGradient id="ogaHeroGold" x1="290" y1="440" x2="1100" y2="146" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#BF8813" stopOpacity="0" />
-            <stop offset="0.28" stopColor="#D9AB49" stopOpacity="0.55" />
-            <stop offset="0.55" stopColor="#FFF0B9" stopOpacity="0.96" />
-            <stop offset="0.78" stopColor="#DBAE49" stopOpacity="0.62" />
-            <stop offset="1" stopColor="#BF8813" stopOpacity="0.08" />
-          </linearGradient>
-        </defs>
-        <path d="M92 452C258 398 394 396 538 330C666 272 748 160 930 160C1014 160 1060 176 1174 150" stroke="url(#ogaHeroWhite)" strokeWidth="2.25" />
-        <path d="M134 482C304 424 440 428 596 356C716 300 804 208 964 208C1046 208 1092 216 1174 196" stroke="url(#ogaHeroGold)" strokeWidth="2.05" />
-        <path d="M350 520C506 474 622 456 742 398C854 344 920 300 1018 300C1084 300 1122 306 1174 294" stroke="#E3B85A" strokeOpacity="0.44" strokeWidth="1.4" />
-        <ellipse cx="920" cy="408" rx="250" ry="90" transform="rotate(-16 920 408)" stroke="#DCAA47" strokeOpacity="0.42" strokeWidth="1.3" />
-        <ellipse cx="934" cy="412" rx="214" ry="82" transform="rotate(18 934 412)" stroke="white" strokeOpacity="0.30" strokeWidth="1.1" />
-        <ellipse cx="936" cy="404" rx="170" ry="64" transform="rotate(-8 936 404)" stroke="#E3B85A" strokeOpacity="0.20" strokeWidth="1" />
-        <circle cx="738" cy="334" r="4.8" fill="#FFF9DD" />
-        <circle cx="994" cy="302" r="4.2" fill="#E8BA56" />
-        <circle cx="888" cy="444" r="3" fill="white" fillOpacity="0.92" />
-        <circle cx="1056" cy="356" r="2.4" fill="#FFF9E2" fillOpacity="0.85" />
-      </svg>
-      <div className="absolute inset-y-0 left-0 w-[44%] bg-[linear-gradient(90deg,rgba(231,242,255,0.86)_0%,rgba(230,242,255,0.72)_52%,rgba(230,242,255,0.24)_82%,rgba(230,242,255,0)_100%)]" />
+    <div className="relative mx-auto w-full max-w-[560px]">
+      <div className="absolute inset-0 -translate-x-2 translate-y-2 rounded-[2rem] border border-[#D8E4F8] bg-white/30 blur-sm" aria-hidden="true" />
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/20 bg-[linear-gradient(145deg,#08245C_0%,#0A357F_42%,#0F4FB4_100%)] p-5 text-white shadow-[0_26px_70px_rgba(0,32,80,0.28)] sm:p-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(255,220,122,0.42),rgba(255,220,122,0)_24%),radial-gradient(circle_at_18%_82%,rgba(255,255,255,0.10),rgba(255,255,255,0)_30%)]" />
+        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-70" viewBox="0 0 520 360" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M32 298C104 272 162 270 228 244C286 222 334 180 404 180C446 180 474 188 520 176" stroke="rgba(255,255,255,0.70)" strokeWidth="2" />
+          <path d="M56 324C130 292 196 294 268 264C332 238 376 206 440 206C474 206 496 212 520 206" stroke="rgba(229,186,98,0.78)" strokeWidth="1.8" />
+          <ellipse cx="388" cy="256" rx="112" ry="46" transform="rotate(-18 388 256)" stroke="rgba(255,255,255,0.24)" />
+          <ellipse cx="396" cy="260" rx="96" ry="38" transform="rotate(18 396 260)" stroke="rgba(229,186,98,0.22)" />
+          <circle cx="352" cy="140" r="4" fill="rgba(255,255,255,0.9)" />
+          <circle cx="430" cy="214" r="3.5" fill="rgba(229,186,98,0.95)" />
+          <circle cx="318" cy="286" r="2.6" fill="rgba(255,255,255,0.75)" />
+        </svg>
+
+        <div className="relative flex flex-wrap gap-2 text-[11px] font-semibold text-white/80 sm:text-xs">
+          {['Apprendre', 'Pratiquer', 'Certifier', 'Évoluer'].map(label => (
+            <span key={label} className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 backdrop-blur-sm">{label}</span>
+          ))}
+        </div>
+
+        <div className="relative mt-6 grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-[#E5BA62] sm:text-xs">Parcours Omnia</p>
+            <h3 className="mt-3 text-2xl font-black leading-tight sm:text-[2rem]">Développez des compétences utiles et rendez-les visibles.</h3>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-white/72">Une même expérience relie formation, pratique, preuves, accompagnement et accès aux opportunités.</p>
+          </div>
+
+          <div className="grid gap-3">
+            {[
+              ['01. Formation', 'Parcours guidés et évaluations'],
+              ['02. Projets', 'Missions, portfolio et livrables'],
+              ['03. Preuves', 'Certificats et validations vérifiables'],
+              ['04. Opportunités', 'Career, Talent, coaching et réseau'],
+            ].map(([label, description], index) => (
+              <div key={label} className={`rounded-2xl border px-4 py-3 backdrop-blur-sm ${index === 3 ? 'border-[#E5BA62]/45 bg-[#0E275E]/70' : 'border-white/14 bg-white/10'}`}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/56">{label}</p>
+                <p className="mt-1.5 text-sm font-semibold leading-5 text-white">{description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 function HeroSection({ section, stats, statsVisibility }: { section: LandingSectionConfig; stats: LandingStats; statsVisibility: LandingStatsVisibility }) {
+  const hero = resolvePublicHomeHero(section);
   const visibleStats = ([
     ['formations', 'Formations'],
     ['apprenants', 'Apprenants'],
@@ -164,33 +169,55 @@ function HeroSection({ section, stats, statsVisibility }: { section: LandingSect
 
   return (
     <>
-      <section id="contenu-principal" className="relative isolate overflow-hidden border-b border-slate-200 pt-[116px] bg-[#d8ebff]">
-        <FuturisticHeroArt />
-        <div className="relative mx-auto grid min-h-[420px] max-w-7xl items-center px-5 py-12 sm:px-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(420px,1.18fr)] lg:px-8 lg:py-12">
-          <div className="max-w-2xl">
-            <h1 className="text-[2.2rem] font-black leading-[1.08] tracking-[-0.045em] text-[#002050] sm:text-[2.7rem] lg:text-[3.05rem]">
-              {section.title}
-            </h1>
-            {section.subtitle && <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">{section.subtitle}</p>}
-            {section.body && <p className="mt-3 max-w-xl whitespace-pre-line text-sm leading-7 text-slate-500">{section.body}</p>}
+      <section id="contenu-principal" className="border-b border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#F5F9FF_100%)] pt-[112px] sm:pt-[118px]">
+        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+          <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-10">
+            <div className="max-w-2xl">
+              {hero.eyebrow && <p className="text-[11px] font-black uppercase tracking-[0.32em] text-[#BF8813] sm:text-xs">{hero.eyebrow}</p>}
+              <h1 className="mt-3 text-[2.2rem] font-black leading-[1.04] tracking-[-0.045em] text-[#002050] sm:text-[2.7rem] lg:text-[3.2rem]">
+                {hero.title}
+              </h1>
+              {hero.subtitle && <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">{hero.subtitle}</p>}
+              {hero.body && <p className="mt-4 max-w-xl text-sm leading-7 text-slate-500 sm:text-[0.96rem]">{hero.body}</p>}
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Formations guidées', 'Progressez avec des parcours, modules et évaluations structurés.'],
+                  ['Pratique concrète', 'Travaillez sur des projets, missions et livrables utiles.'],
+                  ['Preuves vérifiables', 'Valorisez certificats, badges et éléments de portfolio.'],
+                  ['Carrière connectée', 'Préparez votre profil et ouvrez l’accès aux opportunités.'],
+                ].map(([title, description], index) => (
+                  <div key={title} className={`rounded-2xl border px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] ${index === 0 || index === 3 ? 'border-[#D9E7FB] bg-white' : 'border-[#E7EEF8] bg-[#FBFDFF]'}`}>
+                    <p className="text-sm font-black text-[#002050]">{title}</p>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="lg:pl-4">
+              <HeroPreviewCard />
+            </div>
           </div>
-          <div className="relative hidden min-h-[300px] lg:block" aria-hidden="true" />
         </div>
       </section>
 
       <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-px px-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8 lg:gap-4 lg:py-6">
           {[
-            ['Parcours structurés', 'Objectifs, modules et évaluations clairs', Target],
-            ['Formats flexibles', 'Web, mobile, live et autonomie', BookOpen],
-            ['Carrière intégrée', 'Career, Talent, coaching et opportunités', Briefcase],
-            ['Certificats vérifiables', 'Preuves de compétences partageables', ShieldCheck],
+            ['Parcours structurés', 'Objectifs clairs, évaluations et suivi dans un même cadre.', Target],
+            ['Projets & pratique', 'Appliquez les acquis dans des contextes concrets.', BookOpen],
+            ['Preuves & visibilité', 'Certificats, portfolio et compétences vérifiables.', ShieldCheck],
+            ['Carrière & opportunités', 'Career, Talent, coaching et réseau professionnel.', Briefcase],
           ].map(([title, description, Icon]) => {
             const CapabilityIcon = Icon as LucideIcon;
             return (
-              <div key={String(title)} className="flex items-center gap-3 py-5 sm:px-4 first:pl-0">
+              <div key={String(title)} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-[#FBFCFE] px-4 py-4">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF7E7] text-[#BF8813]"><CapabilityIcon size={20} /></span>
-                <div><strong className="block text-sm font-bold text-[#002050]">{String(title)}</strong><span className="mt-0.5 block text-xs leading-5 text-slate-500">{String(description)}</span></div>
+                <div>
+                  <strong className="block text-sm font-bold text-[#002050]">{String(title)}</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">{String(description)}</span>
+                </div>
               </div>
             );
           })}

@@ -433,10 +433,10 @@ const DEFAULT_FOOTER: LandingFooterConfig = {
 const SECTION_DEFAULTS: Record<LandingSectionType, Omit<LandingSectionConfig, 'id' | 'order'>> = {
   hero: {
     type: 'hero', internal_name: 'Introduction principale', enabled: true,
-    eyebrow: 'Formation, compétences et opportunités',
-    title: 'Apprenez. Prouvez vos compétences. Avancez.',
-    subtitle: 'Omnia réunit formations, projets, certifications vérifiables, coaching, événements en direct et opportunités professionnelles dans un même parcours.',
-    body: '', primary_cta_label: 'Créer mon compte', primary_cta_url: '/inscription',
+    eyebrow: 'Formation · pratique · certification · opportunités',
+    title: 'Apprenez, pratiquez, certifiez et avancez vers de vraies opportunités.',
+    subtitle: 'Omnia Global Academy réunit formations, projets, coaching, lives, communauté et outils carrière dans un même parcours pour transformer vos compétences en résultats concrets.',
+    body: 'Progressez avec des parcours structurés, produisez des preuves vérifiables, développez votre profil professionnel et rendez-vous plus visible pour les opportunités qui comptent.', primary_cta_label: 'Créer mon compte', primary_cta_url: '/inscription',
     secondary_cta_label: 'Explorer les formations', secondary_cta_url: '/catalogue',
     search_placeholder: 'Quelle compétence souhaitez-vous développer ?',
     search_button_label: 'Rechercher',
@@ -582,6 +582,45 @@ export function createLandingSection(type: LandingSectionType, order: number): L
     order,
     ...SECTION_DEFAULTS[type],
     items: SECTION_DEFAULTS[type].items.map(item => ({ ...item })),
+  };
+}
+
+
+const HOME_HERO_REFRESH = {
+  eyebrow: 'Formation · pratique · certification · opportunités',
+  title: 'Apprenez, pratiquez, certifiez et avancez vers de vraies opportunités.',
+  subtitle: 'Omnia Global Academy réunit formations, projets, coaching, lives, communauté et outils carrière dans un même parcours pour transformer vos compétences en résultats concrets.',
+  body: 'Progressez avec des parcours structurés, produisez des preuves vérifiables, développez votre profil professionnel et rendez-vous plus visible pour les opportunités qui comptent.',
+} as const;
+
+function shouldRefreshHomeHero(section: LandingSectionConfig) {
+  const signal = `${section.eyebrow} ${section.title} ${section.subtitle} ${section.body}`.toLowerCase();
+  return [
+    'apprenez. prouvez vos compétences. avancez.',
+    'omnia réunit formations, projets, certifications vérifiables',
+    'formez-vous',
+    'certifiez-vous',
+    'transformez votre avenir',
+    "afrique de l'ouest",
+    'afrique de l’ouest',
+    'mobile money',
+  ].some(token => signal.includes(token));
+}
+
+export function resolvePublicHomeHero(section: LandingSectionConfig): LandingSectionConfig {
+  if (shouldRefreshHomeHero(section)) {
+    return {
+      ...section,
+      ...HOME_HERO_REFRESH,
+    };
+  }
+
+  return {
+    ...section,
+    eyebrow: String(section.eyebrow || HOME_HERO_REFRESH.eyebrow),
+    title: String(section.title || HOME_HERO_REFRESH.title),
+    subtitle: String(section.subtitle || HOME_HERO_REFRESH.subtitle),
+    body: String(section.body || HOME_HERO_REFRESH.body),
   };
 }
 

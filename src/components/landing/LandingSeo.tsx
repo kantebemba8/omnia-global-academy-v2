@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import type { CourseCardData } from '../CourseCard';
 import type { LandingPageConfig, SocialNetworkItem } from '../../types/landingCms';
+import { resolvePublicHomeHero } from '../../types/landingCms';
 import type { LandingPublicPartner } from './LandingExperience';
 
 type LandingSeoProps = {
@@ -12,8 +13,8 @@ type LandingSeoProps = {
 
 const SITE_ORIGIN = 'https://omniaglobalacademy.com';
 const CANONICAL_URL = `${SITE_ORIGIN}/accueil`;
-const DEFAULT_TITLE = 'Formation, compétences et opportunités — Omnia Global Academy';
-const DEFAULT_DESCRIPTION = 'Omnia Global Academy réunit formations, projets, certifications vérifiables, coaching, événements en direct et opportunités professionnelles.';
+const DEFAULT_TITLE = 'Omnia Global Academy';
+const DEFAULT_DESCRIPTION = 'Omnia Global Academy réunit formations, projets, coaching, lives, communauté et outils carrière pour transformer vos compétences en résultats concrets.';
 
 function compactText(value: string | undefined | null, maximumLength: number) {
   const normalized = String(value || '').replace(/\s+/g, ' ').trim();
@@ -67,9 +68,9 @@ function upsertCanonical(href: string) {
 export function LandingSeo({ landingPage, featuredCourses, socialNetworks, partners }: LandingSeoProps) {
   const metadata = useMemo(() => {
     const hero = landingPage.sections.find(section => section.type === 'hero' && section.enabled);
-    const heroTitle = compactText(hero?.title, 76);
-    const title = heroTitle ? `${heroTitle} — Omnia Global Academy` : DEFAULT_TITLE;
-    const description = compactText(hero?.subtitle || hero?.body, 158) || DEFAULT_DESCRIPTION;
+    const resolvedHero = hero ? resolvePublicHomeHero(hero) : null;
+    const title = DEFAULT_TITLE;
+    const description = compactText(resolvedHero?.subtitle || resolvedHero?.body, 158) || DEFAULT_DESCRIPTION;
     const sameAs = socialNetworks
       .filter(item => item.enabled && /^https?:\/\//i.test(item.url) && (item.show_homepage || item.show_footer))
       .map(item => item.url)
