@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -15,10 +16,11 @@ import {
   QrCode,
   Radio,
   ShieldCheck,
-  Sparkles,
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import { getOwnerProjects, type OmniaProject } from '../../lib/projectsApi';
+import { loadTalentDashboard, loadTalentInterviews, type TalentInterview } from '../../pages/talent/talentApi';
 
 export type StructureConnectedHomeData = {
   structure?: {
@@ -32,53 +34,18 @@ export type StructureConnectedHomeData = {
     admin_comment?: string | null;
     modification_note?: string | null;
   } | null;
-  stats?: {
-    members?: number;
-    active_codes?: number;
-    courses?: number;
-  };
-  pending_members?: Array<{
-    id: string;
-    status?: string;
-    requested_at?: string;
-    users?: { full_name?: string; email?: string } | null;
-  }>;
+  stats?: { members?: number; active_codes?: number; courses?: number };
+  pending_members?: Array<{ id: string; status?: string; requested_at?: string; users?: { full_name?: string; email?: string } | null }>;
 };
 
-type Props = {
-  data: StructureConnectedHomeData | null;
-  previewMode: boolean;
-};
+type Props = { data: StructureConnectedHomeData | null; previewMode: boolean };
+type Extra = { projects: OmniaProject[]; talentMetrics: { favorites: number; contacts: number; upcoming_interviews: number }; interviews: TalentInterview[] };
+type SpaceItem = { label: string; caption: string; path: string; accent: string; soft: string; icon: LucideIcon; signal?: string };
 
-type SpaceItem = {
-  label: string;
-  caption: string;
-  path: string;
-  accent: string;
-  soft: string;
-  icon: LucideIcon;
-};
-
-type Improvement = {
-  title: string;
-  description: string;
-  path: string;
-  label: string;
-  icon: LucideIcon;
-};
-
+const BLUE = '#002050';
 const TEAL = '#0B817A';
 const GOLD = '#BF8813';
-const BLUE = '#002050';
-
-const SPACES: SpaceItem[] = [
-  { label: 'Formations', caption: 'Concevoir et suivre les formations de votre organisation', path: '/structure/formations', accent: '#245D9B', soft: '#EDF4FC', icon: BookOpen },
-  { label: 'Omnia Projects', caption: 'Porter et suivre les projets de la Structure', path: '/structure/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban },
-  { label: 'Talent & recrutement', caption: 'Talents, offres, candidatures et compétences vérifiées', path: '/structure/recrutement/dashboard', accent: '#7650C5', soft: '#F4F0FF', icon: Briefcase },
-  { label: 'Omnia Live', caption: 'Événements, expériences live et rapports Structure', path: '/omnia-live', accent: '#5A55C9', soft: '#F0F0FF', icon: Radio },
-  { label: 'Communauté', caption: 'Échanger et accéder aux ressources de la communauté', path: '/forum', accent: '#0F766E', soft: '#EAF8F6', icon: MessageCircle },
-  { label: 'B2B & contrats', caption: 'Abonnements, capacités et contrats de votre organisation', path: '/structure/commerce-b2b', accent: '#8A651A', soft: '#FBF5E9', icon: FileSignature },
-];
+const EMPTY_EXTRA: Extra = { projects: [], talentMetrics: { favorites: 0, contacts: 0, upcoming_interviews: 0 }, interviews: [] };
 
 function withPreview(path: string, previewMode: boolean) {
   if (!previewMode) return path;
@@ -86,7 +53,6 @@ function withPreview(path: string, previewMode: boolean) {
   const separator = base.includes('?') ? '&' : '?';
   return `${base}${separator}preview=true${hash ? `#${hash}` : ''}`;
 }
-
 function structureStatus(status?: string) {
   if (status === 'validated') return { label: 'Structure validée', accent: '#13795B', soft: '#EAF8F2' };
   if (status === 'changes_requested') return { label: 'Modifications demandées', accent: '#C45B24', soft: '#FFF2E8' };
@@ -94,275 +60,85 @@ function structureStatus(status?: string) {
   return { label: status ? 'Statut Structure' : 'Espace Structure', accent: '#64748B', soft: '#F1F5F9' };
 }
 
-function StructureHero({ data, previewMode }: Props) {
+function useStructureExtra(previewMode: boolean) {
+  const [extra, setExtra] = useState<Extra>(EMPTY_EXTRA);
+  useEffect(() => {
+    if (previewMode) { setExtra(EMPTY_EXTRA); return; }
+    let active = true;
+    Promise.allSettled([getOwnerProjects('structure'), loadTalentDashboard('structure'), loadTalentInterviews('structure')]).then(results => {
+      if (!active) return;
+      const next: Extra = { ...EMPTY_EXTRA };
+      if (results[0].status === 'fulfilled') next.projects = results[0].value.projects || [];
+      if (results[1].status === 'fulfilled') next.talentMetrics = results[1].value.metrics || EMPTY_EXTRA.talentMetrics;
+      if (results[2].status === 'fulfilled') next.interviews = results[2].value || [];
+      setExtra(next);
+    });
+    return () => { active = false; };
+  }, [previewMode]);
+  return extra;
+}
+
+function OrganizationHero({ data, previewMode, extra }: Props & { extra: Extra }) {
   const structure = data?.structure || null;
+  const stats = data?.stats || {};
   const pendingCount = data?.pending_members?.length || 0;
   const status = structureStatus(structure?.status);
-  const visibleName = structure?.name && !/^Espace\s+Structure/i.test(structure.name.trim()) ? structure.name.trim() : '';
+  const name = structure?.display_name || structure?.name || 'Votre organisation';
+  const activeProjects = extra.projects.filter(project => ['published', 'selection', 'in_progress'].includes(project.status)).length;
 
-  let priorityTitle = 'Votre organisation est prête à être structurée';
-  let priorityText = 'Retrouvez membres, formations et opérations depuis les espaces spécialisés de la Structure.';
-  let priorityPath = '/structure/membres';
-  let priorityLabel = 'Voir les membres';
+  let actionTitle = 'Structurer votre organisation';
+  let actionText = 'Membres, formations, projets et recrutement apparaîtront ici à mesure que votre activité grandit.';
+  let actionPath = '/structure/membres';
+  let actionLabel = 'Gérer les membres';
+  if (!structure && !previewMode) { actionTitle = 'Finaliser votre espace Structure'; actionText = 'Votre compte ne possède pas encore d’organisation associée.'; actionPath = '/inscription/structure'; actionLabel = 'Inscrire la Structure'; }
+  else if (structure?.status === 'changes_requested') { actionTitle = 'Une modification est demandée'; actionText = structure.admin_comment || structure.modification_note || 'Mettez à jour le profil avant une nouvelle validation.'; actionPath = '/structure/profil'; actionLabel = 'Mettre à jour le profil'; }
+  else if (pendingCount) { actionTitle = `${pendingCount} rattachement${pendingCount > 1 ? 's' : ''} à décider`; actionText = 'Des personnes attendent une décision de votre organisation.'; actionPath = '/structure/rattachements'; actionLabel = 'Traiter les rattachements'; }
 
-  if (!structure && !previewMode) {
-    priorityTitle = 'Finaliser votre espace Structure';
-    priorityText = 'Votre compte Structure ne possède pas encore d’organisation associée.';
-    priorityPath = '/inscription/structure';
-    priorityLabel = 'Inscrire une structure';
-  } else if (structure?.status === 'changes_requested') {
-    priorityTitle = 'Une modification est demandée';
-    priorityText = structure.admin_comment || structure.modification_note || 'Mettez à jour le profil de la Structure avant une nouvelle validation.';
-    priorityPath = '/structure/profil';
-    priorityLabel = 'Mettre à jour le profil';
-  } else if (structure?.status === 'pending_validation') {
-    priorityTitle = 'Validation de la Structure en cours';
-    priorityText = 'Vous pouvez préparer votre organisation pendant l’examen de votre demande.';
-    priorityPath = '/structure/profil';
-    priorityLabel = 'Vérifier le profil';
-  } else if (pendingCount > 0) {
-    priorityTitle = `${pendingCount} demande${pendingCount > 1 ? 's' : ''} de rattachement à traiter`;
-    priorityText = 'Des personnes attendent une décision pour rejoindre votre organisation.';
-    priorityPath = '/structure/rattachements';
-    priorityLabel = 'Traiter les demandes';
-  }
-
-  return (
-    <section className="relative overflow-hidden bg-[#032F45] text-white">
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute inset-0 opacity-[0.10]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.24) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
-        <div className="absolute -left-24 bottom-[-230px] h-[500px] w-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(11,129,122,.55), rgba(11,129,122,.10) 47%, transparent 70%)' }} />
-        <div className="absolute -right-36 -top-48 h-[610px] w-[610px] rounded-full border border-white/10" />
-        <div className="absolute -right-12 -top-20 h-[420px] w-[420px] rounded-full border border-[#66C7BC]/25" />
-      </div>
-
-      <div className="relative mx-auto grid min-h-[500px] max-w-7xl gap-12 px-5 py-14 sm:px-6 lg:grid-cols-[1.03fr_0.97fr] lg:items-center lg:px-8 lg:py-16">
-        <div className="max-w-3xl">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#9DE0D8]"><span className="h-2 w-2 rounded-full bg-[#BF8813]" /> Organisation & compétences</span>
-            <span className="rounded-full px-3 py-1 text-[11px] font-black" style={{ color: status.accent, backgroundColor: status.soft }}>{previewMode ? 'Aperçu du rôle Structure' : status.label}</span>
-          </div>
-          <h1 className="mt-5 max-w-[780px] text-4xl font-black leading-[1.02] tracking-[-0.045em] sm:text-5xl lg:text-[3.55rem]">
-            Faire grandir les compétences de votre organisation.
-          </h1>
-          <p className="mt-6 max-w-2xl text-base leading-7 text-white/68 sm:text-lg">
-            {visibleName ? `${visibleName} dispose ici d’une vue claire de son activité, de ses priorités et des espaces Omnia utiles à son développement.` : 'Votre accueil Structure rassemble l’essentiel de votre activité sans transformer cette page en centre d’administration.'}
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to={withPreview(priorityPath, previewMode)} className="inline-flex items-center gap-2 rounded-full bg-[#BF8813] px-5 py-3 text-sm font-black text-[#002050] transition hover:-translate-y-0.5">
-              {priorityLabel} <ArrowRight size={16} />
-            </Link>
-            <Link to={withPreview('/structure/formations', previewMode)} className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15">
-              Mes formations <ArrowRight size={16} />
-            </Link>
-          </div>
-        </div>
-
-        <div className="relative mx-auto h-[340px] w-full max-w-[510px]" aria-label="Illustration abstraite de l’organisation">
-          <div className="absolute left-1/2 top-1/2 h-[245px] w-[380px] -translate-x-1/2 -translate-y-1/2 -rotate-6 rounded-[38px] border border-white/10 bg-white/[0.04] shadow-[0_35px_80px_rgba(0,0,0,.20)]" />
-          <div className="absolute left-1/2 top-1/2 h-[230px] w-[360px] -translate-x-1/2 -translate-y-1/2 rotate-[4deg] rounded-[36px] border border-[#66C7BC]/20 bg-[#0B4960]/45" />
-          <div className="absolute left-1/2 top-1/2 w-[330px] -translate-x-1/2 -translate-y-1/2 rounded-[30px] border border-white/15 bg-[#073C55]/95 p-6 shadow-[0_28px_70px_rgba(0,0,0,.28)] backdrop-blur">
-            <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.17em] text-white/40">Priorité organisationnelle</p>
-                <h2 className="mt-2 text-lg font-black tracking-[-0.02em]">{previewMode ? 'Vue Structure' : priorityTitle}</h2>
-              </div>
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#0B817A]/35 text-[#B7EEE8]"><Network size={21} /></span>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/58">{previewMode ? 'Les données privées de la Structure ne sont pas chargées pendant la prévisualisation Super-admin.' : priorityText}</p>
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              {[{ icon: Users, label: 'Équipe' }, { icon: BookOpen, label: 'Formation' }, { icon: ShieldCheck, label: 'Suivi' }].map(item => {
-                const Icon = item.icon;
-                return <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-center"><Icon size={17} className="mx-auto text-[#9DE0D8]" /><span className="mt-2 block text-[10px] font-bold text-white/55">{item.label}</span></div>;
-              })}
-            </div>
-          </div>
-          <span className="absolute left-3 top-8 h-12 w-12 rounded-2xl border border-white/15 bg-[#0B817A]/45 shadow-[0_16px_35px_rgba(0,0,0,.18)]" />
-          <span className="absolute right-2 top-16 h-8 w-8 rounded-full bg-[#BF8813] shadow-[0_14px_30px_rgba(191,136,19,.28)]" />
-          <span className="absolute bottom-5 right-16 h-16 w-16 rounded-[22px] border border-white/15 bg-white/[0.06]" />
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="relative overflow-hidden border-b border-[#CFE1E0] bg-[linear-gradient(135deg,#F4FBFA_0%,#EAF5F5_54%,#FDF9F0_100%)]"><div className="pointer-events-none absolute inset-0" aria-hidden="true"><div className="absolute left-[52%] top-[-180px] h-[520px] w-[520px] rounded-full border border-[#0B817A]/10" /><div className="absolute right-[-130px] top-[-100px] h-[420px] w-[420px] rounded-full border border-[#BF8813]/15" /></div><div className="relative mx-auto grid min-h-[500px] max-w-7xl gap-12 px-5 py-14 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-center lg:px-8 lg:py-16"><div><div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#0B817A] shadow-sm"><Building2 size={14} /> Espace organisation</div><h1 className="mt-5 max-w-[690px] text-4xl font-black leading-[1.02] tracking-[-0.048em] text-[#002050] sm:text-5xl lg:text-[3.55rem]">Voir votre organisation comme un système vivant.</h1><p className="mt-6 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">Votre accueil rassemble les personnes, les formations et les opérations qui font avancer {previewMode ? 'la Structure' : name}.</p><div className="mt-7 flex flex-wrap items-center gap-3"><Link to={withPreview(actionPath, previewMode)} className="inline-flex items-center gap-2 rounded-xl bg-[#0B817A] px-5 py-3 text-sm font-black text-white">{previewMode ? 'Explorer l’espace Structure' : actionLabel}<ArrowRight size={16} /></Link>{structure && !previewMode && <span className="rounded-full px-3 py-2 text-xs font-black" style={{ background: status.soft, color: status.accent }}>{status.label}</span>}</div></div>
+    <div className="relative mx-auto h-[360px] w-full max-w-[580px]" aria-label="Carte abstraite de l’organisation"><svg className="absolute inset-0 h-full w-full" viewBox="0 0 580 360" fill="none" aria-hidden="true"><path d="M290 174 C210 120 140 95 72 88" stroke="#8DBDB8" strokeWidth="2" strokeDasharray="6 8"/><path d="M290 174 C392 115 470 82 535 93" stroke="#C4A24D" strokeWidth="2" strokeDasharray="6 8"/><path d="M290 174 C200 238 132 276 70 285" stroke="#7196B6" strokeWidth="2" strokeDasharray="6 8"/><path d="M290 174 C390 238 468 270 526 278" stroke="#8B76B7" strokeWidth="2" strokeDasharray="6 8"/></svg>
+      <div className="absolute left-1/2 top-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[34px] border border-white bg-white shadow-[0_30px_70px_rgba(0,32,80,.12)]"><span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-[#E8F7F5] text-[#0B817A]">{structure?.logo_url && !previewMode ? <img src={structure.logo_url} alt="" className="h-full w-full object-cover" /> : <Building2 size={25} />}</span><strong className="mt-3 max-w-[115px] truncate text-center text-sm font-black text-[#002050]">{previewMode ? 'Structure' : name}</strong></div>
+      {[{left:'3%',top:'12%',icon:Users,label:'Membres',value:Number(stats.members||0),color:'#0B817A',soft:'#E8F7F5'},{left:'79%',top:'13%',icon:BookOpen,label:'Formations',value:Number(stats.courses||0),color:'#245D9B',soft:'#EDF4FC'},{left:'2%',top:'69%',icon:FolderKanban,label:'Projects',value:activeProjects,color:'#A56B12',soft:'#FFF7E6'},{left:'78%',top:'67%',icon:Briefcase,label:'Recrutement',value:Number(extra.talentMetrics.upcoming_interviews||0),color:'#7650C5',soft:'#F4F0FF'}].map(node=>{const Icon=node.icon;return <div key={node.label} className="absolute min-w-[130px] rounded-[20px] border border-white bg-white/95 p-4 shadow-[0_18px_40px_rgba(0,32,80,.08)]" style={{left:node.left,top:node.top}}><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{color:node.color,background:node.soft}}><Icon size={17}/></span><div><span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{node.label}</span><strong className="block text-xl font-black text-[#002050]">{previewMode?'—':node.value}</strong></div></div></div>})}
+    </div></div></section>;
 }
 
-function SpacesStrip({ previewMode }: { previewMode: boolean }) {
-  return (
-    <section className="border-b border-[#DCE6E8] bg-white">
-      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">
-        <div className="flex items-end justify-between gap-5">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Accès direct</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Vos espaces Omnia</h2>
-          </div>
-          <p className="hidden max-w-md text-right text-xs leading-5 text-slate-500 md:block">L’accueil vous oriente. Les fonctions détaillées restent dans chaque espace pour éviter les doublons.</p>
-        </div>
-        <div className="mt-7 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
-          {SPACES.map(space => {
-            const Icon = space.icon;
-            return (
-              <Link key={space.path} to={withPreview(space.path, previewMode)} className="group min-w-[220px] flex-1 snap-start rounded-[22px] border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_38px_rgba(0,32,80,.08)]">
-                <div className="flex items-start justify-between gap-4">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ color: space.accent, backgroundColor: space.soft }}><Icon size={20} /></span>
-                  <ArrowRight size={16} className="mt-2 text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#002050]" />
-                </div>
-                <strong className="mt-4 block text-sm font-black text-[#002050]">{space.label}</strong>
-                <span className="mt-1.5 block text-xs leading-5 text-slate-500">{space.caption}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ActivitySnapshot({ data, previewMode }: Props) {
+function StructureSpaces({ data, previewMode, extra }: Props & { extra: Extra }) {
   const stats = data?.stats || {};
-  const pendingCount = data?.pending_members?.length || 0;
-  const metrics = [
-    { label: 'Membres liés', value: previewMode ? '—' : String(stats.members ?? 0), icon: Users, accent: '#0B817A' },
-    { label: 'Formations', value: previewMode ? '—' : String(stats.courses ?? 0), icon: BookOpen, accent: '#245D9B' },
-    { label: 'Codes actifs', value: previewMode ? '—' : String(stats.active_codes ?? 0), icon: QrCode, accent: '#A56B12' },
-    { label: 'Rattachements en attente', value: previewMode ? '—' : String(pendingCount), icon: Clock3, accent: pendingCount > 0 ? '#C45B24' : '#64748B' },
+  const spaces: SpaceItem[] = [
+    { label: 'Formations', caption: 'Concevoir et suivre vos formations', path: '/structure/formations', accent: '#245D9B', soft: '#EDF4FC', icon: BookOpen, signal: Number(stats.courses||0) ? `${Number(stats.courses||0)} formation${Number(stats.courses||0)>1?'s':''}` : undefined },
+    { label: 'Omnia Projects', caption: 'Porter les projets de votre organisation', path: '/structure/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: extra.projects.length ? `${extra.projects.length} projet${extra.projects.length>1?'s':''}` : undefined },
+    { label: 'Talent & recrutement', caption: 'Talents, candidatures et entretiens', path: '/structure/recrutement/dashboard', accent: '#7650C5', soft: '#F4F0FF', icon: Briefcase, signal: extra.talentMetrics.upcoming_interviews ? `${extra.talentMetrics.upcoming_interviews} entretien${extra.talentMetrics.upcoming_interviews>1?'s':''}` : undefined },
+    { label: 'Omnia Live', caption: 'Événements et expériences en direct', path: '/omnia-live', accent: '#5A55C9', soft: '#F0F0FF', icon: Radio },
+    { label: 'Communauté', caption: 'Échanges et ressources transversales', path: '/forum', accent: '#0F766E', soft: '#EAF8F6', icon: MessageCircle },
+    { label: 'B2B & contrats', caption: 'Abonnements, capacités et contrats', path: '/structure/commerce-b2b', accent: '#8A651A', soft: '#FBF5E9', icon: FileSignature },
   ];
-
-  return (
-    <section className="bg-[#F5F9FA]">
-      <div className="mx-auto max-w-7xl px-5 py-12 sm:px-6 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-[0.68fr_1.32fr] lg:items-start">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Organisation aujourd’hui</p>
-            <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050]">Une lecture rapide de votre activité.</h2>
-            <p className="mt-4 max-w-md text-sm leading-7 text-slate-600">Uniquement les données déjà disponibles dans votre espace Structure : membres, formations, codes et demandes de rattachement.</p>
-          </div>
-          <div className="overflow-hidden rounded-[26px] border border-[#D9E5E7] bg-white shadow-[0_18px_44px_rgba(0,32,80,.05)]">
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4">
-              {metrics.map((metric, index) => {
-                const Icon = metric.icon;
-                return (
-                  <div key={metric.label} className={`relative p-5 ${index > 0 ? 'border-t border-slate-100 sm:border-l sm:border-t-0' : ''} ${index === 2 ? 'sm:border-l-0 xl:border-l' : ''}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50" style={{ color: metric.accent }}><Icon size={17} /></span>
-                      <span className="text-3xl font-black tracking-[-0.04em] text-[#002050]">{metric.value}</span>
-                    </div>
-                    <p className="mt-5 text-xs font-bold leading-5 text-slate-500">{metric.label}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="border-b border-slate-200 bg-white"><div className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8"><div className="flex items-end justify-between gap-5"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Vos espaces Omnia</p><h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Accéder aux outils qui font avancer votre organisation.</h2></div><p className="hidden max-w-md text-right text-xs leading-5 text-slate-500 md:block">Les compteurs se mettent à jour avec les contenus réels de votre organisation.</p></div><div className="mt-6 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{spaces.map(item=>{const Icon=item.icon;return <Link key={item.path} to={withPreview(item.path,previewMode)} className="group min-w-[215px] flex-1 rounded-[18px] border border-slate-200 bg-white p-4 transition hover:bg-[#FAFCFC]"><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{color:item.accent,background:item.soft}}><Icon size={18}/></span>{item.signal&&!previewMode&&<span className="text-[10px] font-black text-slate-400">{item.signal}</span>}</div><strong className="mt-4 block text-sm font-black text-[#002050]">{item.label}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{item.caption}</span><ArrowRight size={14} className="mt-3 text-slate-300 transition group-hover:translate-x-1"/></Link>})}</div></div></section>;
 }
 
-function PendingWork({ data, previewMode }: Props) {
-  const pending = previewMode ? [] : (data?.pending_members || []);
+function OrganizationDigest({ data, previewMode, extra }: Props & { extra: Extra }) {
   const structure = data?.structure || null;
-
-  return (
-    <section className="bg-white">
-      <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#BF8813]">À traiter</p>
-          <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050]">Ce qui mérite votre attention.</h2>
-          <p className="mt-4 max-w-md text-sm leading-7 text-slate-600">Les priorités sont placées ici sans recopier les pages de gestion. Un clic vous amène directement à l’espace concerné.</p>
-        </div>
-
-        <div className="border-y border-slate-200">
-          {previewMode ? (
-            <div className="flex items-start gap-4 py-7">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EAF8F6] text-[#0B817A]"><Building2 size={18} /></span>
-              <div><strong className="text-sm font-black text-[#002050]">Prévisualisation Structure</strong><p className="mt-1 text-xs leading-5 text-slate-500">Les demandes et données privées ne sont pas chargées pendant la prévisualisation.</p></div>
-            </div>
-          ) : pending.length > 0 ? (
-            pending.slice(0, 4).map(member => (
-              <Link key={member.id} to="/structure/rattachements" className="group flex items-center gap-4 border-b border-slate-100 py-5 last:border-b-0">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EAF8F6] text-sm font-black text-[#0B817A]">{(member.users?.full_name || '?').slice(0, 2).toUpperCase()}</span>
-                <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-extrabold text-[#002050]">{member.users?.full_name || 'Demande de rattachement'}</strong><span className="mt-1 block text-xs text-slate-500">En attente{member.requested_at ? ` · ${new Date(member.requested_at).toLocaleDateString('fr-FR')}` : ''}</span></span>
-                <ArrowRight size={16} className="text-slate-300 transition group-hover:translate-x-1" />
-              </Link>
-            ))
-          ) : structure?.status === 'changes_requested' ? (
-            <Link to="/structure/profil" className="group flex items-start gap-4 py-7">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF2E8] text-[#C45B24]"><ShieldCheck size={18} /></span>
-              <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-[#002050]">Profil à mettre à jour</strong><span className="mt-1 block text-xs leading-5 text-slate-500">L’Administration Omnia a demandé une modification de la Structure.</span></span>
-              <ArrowRight size={16} className="mt-1 text-slate-300 transition group-hover:translate-x-1" />
-            </Link>
-          ) : structure?.status === 'pending_validation' ? (
-            <div className="flex items-start gap-4 py-7">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF7E6] text-[#A56B12]"><Clock3 size={18} /></span>
-              <div><strong className="text-sm font-black text-[#002050]">Validation en cours</strong><p className="mt-1 text-xs leading-5 text-slate-500">Aucune action supplémentaire n’est indiquée pour le moment.</p></div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-4 py-7">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EAF8F2] text-[#13795B]"><CheckCircle2 size={18} /></span>
-              <div><strong className="text-sm font-black text-[#002050]">Aucune demande de rattachement en attente</strong><p className="mt-1 text-xs leading-5 text-slate-500">Votre file de rattachement est actuellement à jour.</p></div>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Improvements({ data, previewMode }: Props) {
   const stats = data?.stats || {};
-  const structure = data?.structure || null;
-  const pendingCount = data?.pending_members?.length || 0;
-  const improvements: Improvement[] = [];
+  const pending = previewMode ? [] : (data?.pending_members || []);
+  const activeProjects = extra.projects.filter(project=>['published','selection','in_progress'].includes(project.status));
+  const nextInterview = extra.interviews.filter(item=>new Date(item.scheduled_at).getTime()>Date.now()&&!['completed','cancelled','declined'].includes(item.status)).sort((a,b)=>new Date(a.scheduled_at).getTime()-new Date(b.scheduled_at).getTime())[0];
+  const levers = useMemo(()=>{
+    const rows:Array<{title:string;text:string;path:string;icon:LucideIcon;accent:string}>=[];
+    if (structure?.status==='changes_requested') rows.push({title:'Répondre à la demande administrative',text:structure.admin_comment||structure.modification_note||'Une modification du profil Structure est attendue.',path:'/structure/profil',icon:ShieldCheck,accent:'#C45B24'});
+    if (pending.length) rows.push({title:'Fluidifier les rattachements',text:`${pending.length} demande${pending.length>1?'s attendent':' attend'} une décision.`,path:'/structure/rattachements',icon:Users,accent:'#0B817A'});
+    if (structure?.status==='validated'&&Number(stats.members||0)===0) rows.push({title:'Connecter vos premiers membres',text:'Aucun membre n’est encore rattaché à l’organisation.',path:'/structure/codes',icon:QrCode,accent:'#A56B12'});
+    if (structure?.status==='validated'&&Number(stats.courses||0)===0) rows.push({title:'Lancer votre premier parcours interne',text:'Aucune formation Structure n’apparaît encore dans l’activité.',path:'/structure/courses/new',icon:Plus,accent:'#245D9B'});
+    if (nextInterview) rows.push({title:'Préparer le prochain entretien',text:`${nextInterview.title||'Entretien'} avec ${nextInterview.talent?.full_name||'un talent'}.`,path:'/structure/recrutement/entretiens',icon:Briefcase,accent:'#7650C5'});
+    if (activeProjects.length) rows.push({title:'Suivre les projets en mouvement',text:`${activeProjects.length} projet${activeProjects.length>1?'s sont':' est'} actuellement actif${activeProjects.length>1?'s':''}.`,path:'/structure/projects',icon:FolderKanban,accent:'#A56B12'});
+    if (!rows.length) rows.push({title:'Approfondir le pilotage RH',text:'Votre socle principal est en place. Le suivi RH peut maintenant consolider la lecture de l’organisation.',path:'/structure/suivi-rh',icon:BarChart3,accent:'#0B817A'});
+    return rows.slice(0,4);
+  },[structure,pending.length,stats.members,stats.courses,nextInterview,activeProjects.length]);
 
-  if (previewMode) {
-    improvements.push({ title: 'Aperçu des recommandations', description: 'En utilisation réelle, les recommandations dépendent de l’état de la Structure et de son activité.', path: '/structure/dashboard', label: 'Voir l’espace Structure', icon: Sparkles });
-  } else {
-    if (!structure) improvements.push({ title: 'Associer une organisation', description: 'Finalisez l’inscription de la Structure pour activer son espace organisationnel.', path: '/inscription/structure', label: 'Inscrire la Structure', icon: Building2 });
-    if (structure?.status === 'changes_requested') improvements.push({ title: 'Corriger le profil Structure', description: structure.admin_comment || structure.modification_note || 'Une modification a été demandée avant validation.', path: '/structure/profil', label: 'Modifier le profil', icon: ShieldCheck });
-    if (pendingCount > 0) improvements.push({ title: 'Réduire la file de rattachement', description: `${pendingCount} demande${pendingCount > 1 ? 's' : ''} attend${pendingCount > 1 ? 'ent' : ''} une décision.`, path: '/structure/rattachements', label: 'Traiter les demandes', icon: Users });
-    if (structure?.status === 'validated' && Number(stats.members || 0) === 0) improvements.push({ title: 'Connecter vos premiers membres', description: 'Aucun membre lié n’apparaît encore dans les données actuelles de la Structure.', path: '/structure/codes', label: 'Gérer les codes', icon: QrCode });
-    if (structure?.status === 'validated' && Number(stats.courses || 0) === 0) improvements.push({ title: 'Démarrer votre offre de formation', description: 'Aucune formation Structure n’apparaît encore dans votre activité.', path: '/structure/courses/new', label: 'Créer une formation', icon: Plus });
-    if (structure?.status === 'validated' && Number(stats.active_codes || 0) === 0) improvements.push({ title: 'Préparer les rattachements', description: 'Aucun code Structure actif n’est actuellement disponible.', path: '/structure/codes', label: 'Créer ou activer un code', icon: QrCode });
-    if (improvements.length === 0) improvements.push({ title: 'Approfondir le suivi organisationnel', description: 'Votre socle principal est en place. Retrouvez les indicateurs RH et les obligations dans l’espace de suivi dédié.', path: '/structure/suivi-rh', label: 'Ouvrir le suivi RH', icon: BarChart3 });
-  }
-
-  return (
-    <section className="border-t border-[#DCE6E8] bg-[#F5F9FA]">
-      <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-9 lg:grid-cols-[0.62fr_1.38fr]">
-          <div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#E6F5F2] text-[#0B817A]"><Sparkles size={21} /></div>
-            <p className="mt-5 text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Améliorer votre organisation</p>
-            <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050]">Des prochaines étapes utiles, pas des conseils génériques.</h2>
-            <p className="mt-4 max-w-sm text-sm leading-7 text-slate-600">Ces propositions utilisent uniquement l’état et les compteurs déjà disponibles dans votre espace Structure.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {improvements.slice(0, 4).map(item => {
-              const Icon = item.icon;
-              return (
-                <Link key={`${item.path}-${item.title}`} to={withPreview(item.path, previewMode)} className="group rounded-[24px] border border-[#D9E5E7] bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(0,32,80,.07)]">
-                  <div className="flex items-start justify-between gap-4"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#EAF8F6] text-[#0B817A]"><Icon size={18} /></span><ArrowRight size={16} className="mt-2 text-slate-300 transition group-hover:translate-x-1" /></div>
-                  <h3 className="mt-5 text-base font-black tracking-[-0.02em] text-[#002050]">{item.title}</h3>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">{item.description}</p>
-                  <span className="mt-5 inline-flex text-xs font-black text-[#0B817A]">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  const summaries=[Number(stats.members||0)?`${Number(stats.members||0)} membre${Number(stats.members||0)>1?'s':''} lié${Number(stats.members||0)>1?'s':''}`:null,Number(stats.courses||0)?`${Number(stats.courses||0)} formation${Number(stats.courses||0)>1?'s':''}`:null,activeProjects.length?`${activeProjects.length} projet${activeProjects.length>1?'s':''} actif${activeProjects.length>1?'s':''}`:null,extra.talentMetrics.upcoming_interviews?`${extra.talentMetrics.upcoming_interviews} entretien${extra.talentMetrics.upcoming_interviews>1?'s':''} à venir`:null].filter(Boolean) as string[];
+  return <section className="bg-[#F6FAFA]"><div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8"><div className="grid gap-9 xl:grid-cols-[1.15fr_0.85fr]"><div><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Organisation en mouvement</p><h2 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Les informations qui deviennent utiles au fil de l’activité.</h2><p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">Les résumés ci-dessous restent vides tant qu’aucun contenu réel n’existe. Dès qu’une activité apparaît, elle remonte ici.</p></div>
+    <div className="mt-6 grid gap-4 md:grid-cols-2">{previewMode?<div className="rounded-[22px] border border-[#D6E7E5] bg-white p-6 text-sm text-slate-500 md:col-span-2">Les données privées de l’organisation sont masquées pendant la prévisualisation.</div>:summaries.length?summaries.map((text,index)=><div key={text} className="rounded-[22px] border border-[#D6E7E5] bg-white p-5"><span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0B817A]">Signal {String(index+1).padStart(2,'0')}</span><strong className="mt-3 block text-xl font-black text-[#002050]">{text}</strong></div>):<div className="rounded-[22px] border border-dashed border-[#BFD7D4] bg-white p-6 text-sm leading-6 text-slate-500 md:col-span-2">Membres, formations, projets et recrutement apparaîtront ici automatiquement dès que l’activité commencera.</div>}</div>
+    {pending.length>0&&!previewMode&&<div className="mt-7 border-y border-[#D6E7E5] bg-white px-5">{pending.slice(0,3).map((member,index)=><Link key={member.id} to="/structure/rattachements" className={`group flex items-center gap-4 py-4 ${index?'border-t border-slate-100':''}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E8F7F5] text-xs font-black text-[#0B817A]">{(member.users?.full_name||'?').slice(0,2).toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm font-black text-[#002050]">{member.users?.full_name||'Demande de rattachement'}</strong><span className="text-xs text-slate-500">En attente</span></span><ArrowRight size={14} className="text-slate-300 transition group-hover:translate-x-1"/></Link>)}</div>}
+    </div>
+    <aside className="rounded-[26px] bg-[#073E45] p-6 text-white"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#93DDD6]">Leviers d’organisation</p><h3 className="mt-2 text-2xl font-black tracking-[-0.03em]">Ce qu’il est utile d’améliorer maintenant.</h3><div className="mt-5 divide-y divide-white/10">{levers.map(item=>{const Icon=item.icon;return <Link key={`${item.path}-${item.title}`} to={withPreview(item.path,previewMode)} className="group flex gap-3 py-4"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10" style={{color:item.accent}}><Icon size={17}/></span><span className="min-w-0 flex-1"><strong className="block text-sm font-black">{previewMode?'Levier personnalisé':item.title}</strong><span className="mt-1 block text-xs leading-5 text-white/50">{previewMode?'Cette recommandation dépendra des données réelles de la Structure.':item.text}</span></span><ArrowRight size={14} className="mt-2 text-white/25 transition group-hover:translate-x-1"/></Link>})}</div></aside>
+  </div></div></section>;
 }
 
-export default function StructureConnectedHomeSections(props: Props) {
-  return (
-    <>
-      <StructureHero {...props} />
-      <SpacesStrip previewMode={props.previewMode} />
-      <ActivitySnapshot {...props} />
-      <PendingWork {...props} />
-      <Improvements {...props} />
-    </>
-  );
-}
+export default function StructureConnectedHomeSections(props: Props) { const extra=useStructureExtra(props.previewMode); return <><OrganizationHero {...props} extra={extra}/><StructureSpaces {...props} extra={extra}/><OrganizationDigest {...props} extra={extra}/></>; }

@@ -829,10 +829,6 @@ export default function ConnectedHome() {
                         );
                       })}
                     </div>
-                  ) : audience === 'apprenant' ? (
-                    <Link to={`/catalogue?q=${encodeURIComponent(query.trim())}`} className="flex items-center justify-between gap-4 px-5 py-4 text-sm font-bold text-[#002050] hover:bg-slate-50">
-                      <span>Rechercher « {query.trim()} » dans le catalogue de formations</span><ArrowRight size={16} />
-                    </Link>
                   ) : (
                     <p className="px-5 py-4 text-sm text-slate-500">Aucun accès de votre espace ne correspond à cette recherche.</p>
                   )}
@@ -843,7 +839,7 @@ export default function ConnectedHome() {
         </section>
         )}
 
-        {audience !== 'professeur' && audience !== 'structure' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
+        {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
         <section className="relative overflow-hidden bg-[#002050] text-white">
           <HeroDecoration variant={config.variant} accent={config.accent} />
           <div className="relative mx-auto grid min-h-[430px] max-w-7xl gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-8 lg:py-16">
