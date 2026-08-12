@@ -1,7 +1,7 @@
 import { getSessionToken } from '../../lib/session';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { ProfessorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
@@ -82,7 +82,7 @@ export function ProfesseurAnalytique() {
   const totalRatings = analytics.rating_distribution.reduce((sum, rating) => sum + rating.count, 0);
 
   return (
-    <DashboardLayout role="professeur">
+    <ProfessorFormationsLayout>
       <div className="mx-auto max-w-6xl p-6 lg:p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Analytique élèves</h1>
@@ -169,6 +169,6 @@ export function ProfesseurAnalytique() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </ProfessorFormationsLayout>
   );
 }

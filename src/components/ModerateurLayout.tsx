@@ -80,7 +80,7 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
 
   const controlItems: ModeratorNavItem[] = [];
   if (moderatorHasAnyPermission(permissions, COURSE_WORKSPACE_KEYS)) {
-    controlItems.push({ path: '/moderator/courses', label: 'Formations', icon: BookOpen });
+    controlItems.push({ path: '/formations', label: 'Formations', icon: BookOpen });
   }
   if (permissions.can_validate_professor_kyc) {
     controlItems.push({ path: '/moderator/kyc', label: 'Vérification d’identité', icon: Shield });
@@ -125,7 +125,7 @@ function allPermissionsEnabled(): ModeratorPermissions {
   return Object.fromEntries(MODERATOR_PERMISSION_KEYS.map(key => [key, true])) as ModeratorPermissions;
 }
 
-export function ModerateurLayout({ children }: { children: ReactNode }) {
+export function ModerateurLayout({ children, headerTitle, headerSubtitle, headerSearch }: { children: ReactNode; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode }) {
   const navigate = useNavigate();
   const [navGroups, setNavGroups] = useState<ModeratorNavGroup[] | null>(null);
 
@@ -193,7 +193,7 @@ export function ModerateurLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <DashboardLayout role="moderateur" navGroups={navGroups}>
+    <DashboardLayout role="moderateur" navGroups={navGroups} headerTitle={headerTitle} headerSubtitle={headerSubtitle} headerSearch={headerSearch}>
       {children}
     </DashboardLayout>
   );

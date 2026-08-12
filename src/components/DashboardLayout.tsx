@@ -44,19 +44,12 @@ const APPRENANT_GROUPS: NavGroup[] = [
     items: [{ path: '/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
-    id: 'learner-learning', label: 'Apprentissage', icon: BookOpen,
-    items: [
-      { path: '/dashboard/mes-cours', label: 'Mes formations', icon: BookOpen },
-      { path: '/dashboard/evaluations', label: 'Mes évaluations', icon: ClipboardCheck },
-      { path: '/dashboard/certificats', label: 'Mes certificats', icon: Award },
-    ],
+    id: 'learner-formations', label: 'Formations', icon: BookOpen,
+    items: [{ path: '/formations', label: 'Formations', icon: BookOpen }],
   },
   {
-    id: 'learner-credentials', label: 'Compétences & preuves', icon: BadgeCheck,
+    id: 'learner-credentials', label: 'Parcours & employabilité', icon: BadgeCheck,
     items: [
-      { path: '/dashboard/badges', label: 'Badges', icon: BadgeCheck },
-      { path: '/dashboard/learning-record', label: 'Learning Record', icon: FileCheck2 },
-      { path: '/dashboard/skills-passport', label: 'Skills Passport', icon: Sparkles },
       { path: '/dashboard/project-portfolio', label: 'Portfolio de projets', icon: Briefcase },
       { path: '/dashboard/professional-pathways', label: 'Parcours professionnels', icon: Route },
       { path: '/dashboard/employabilite', label: 'Employabilité', icon: UserRoundCheck },
@@ -88,21 +81,12 @@ const PROFESSEUR_GROUPS: NavGroup[] = [
     items: [{ path: '/professeur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
-    id: 'professor-teaching', label: 'Enseignement', icon: BookOpen,
-    items: [
-      { path: '/professeur/courses', label: 'Mes formations', icon: BookOpen },
-      { path: '/professeur/courses/new', label: 'Créer une formation', icon: PlusCircle },
-      { path: '/professeur/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
-      { path: '/professeur/jurys', label: 'Jurys & révisions', icon: Users },
-      { path: '/professeur/certificats', label: 'Mes certificats', icon: Award },
-    ],
+    id: 'professor-formations', label: 'Formations', icon: BookOpen,
+    items: [{ path: '/formations', label: 'Formations', icon: BookOpen }],
   },
   {
-    id: 'professor-performance', label: 'Projets & performance', icon: BarChart2,
-    items: [
-      { path: '/professeur/projects', label: 'Omnia Projects', icon: FolderKanban },
-      { path: '/professeur/analytics', label: 'Analytique apprenants', icon: BarChart2 },
-    ],
+    id: 'professor-performance', label: 'Projets', icon: FolderKanban,
+    items: [{ path: '/professeur/projects', label: 'Omnia Projects', icon: FolderKanban }],
   },
   {
     id: 'professor-revenue', label: 'Revenus', icon: Wallet,

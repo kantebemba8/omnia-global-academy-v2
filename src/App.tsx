@@ -36,6 +36,8 @@ const SupprimerCompte = lazy(() => import('./pages/SupprimerCompte').then((modul
 const CompteSupprime = lazy(() => import('./pages/CompteSupprime').then((module) => ({ default: module.CompteSupprime })));
 const LegalDocumentPage = lazy(() => import('./pages/LegalDocumentPage'));
 const Catalogue = lazy(() => import('./pages/Catalogue').then((module) => ({ default: module.Catalogue })));
+const FormationsHome = lazy(() => import('./pages/formations/FormationsHome'));
+const FormationsSectionHub = lazy(() => import('./pages/formations/FormationsSectionHub'));
 const ExternalCourseAccess = lazy(() => import('./pages/ExternalCourseAccess'));
 const CoursDetail = lazy(() => import('./pages/CoursDetail').then((module) => ({ default: module.CoursDetail })));
 const ApercuGratuit = lazy(() => import('./pages/ApercuGratuit').then((module) => ({ default: module.ApercuGratuit })));
@@ -879,6 +881,8 @@ export default function App() {
               <Route path="/cookies" element={<LegalDocumentPage />} />
               <Route path="/cgv" element={<LegalDocumentPage />} />
               <Route path="/remboursements" element={<LegalDocumentPage />} />
+        <Route path="/formations" element={<FormationsHome />} />
+        <Route path="/formations/:sectionId" element={<FormationsSectionHub />} />
         <Route path="/catalogue" element={<Catalogue />} />
         <Route path="/formation-externe/:id" element={<ExternalCourseAccess />} />
         <Route path="/cours/:id/apercu" element={<ApercuGratuit />} />

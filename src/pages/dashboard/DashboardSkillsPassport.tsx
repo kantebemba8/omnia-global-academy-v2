@@ -5,7 +5,7 @@ import {
   Globe2, Languages, Link2, MapPin, RefreshCw, Save, ShieldCheck, Sparkles, Star, Target,
   Trash2, UploadCloud, X,
 } from 'lucide-react';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { isLearnerPreviewMode, previewSkillsPassport, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   ClrAchievement, CredentialVerification, LearnerSkillsPassportResponse, SkillsPassport,
@@ -184,7 +184,7 @@ export default function DashboardSkillsPassport() {
     finally { setWorking(''); }
   }
 
-  return <DashboardLayout><div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
+  return <LearnerFormationsLayout><div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
       <div>
         <Link to={withLearnerPreview('/dashboard/learning-record')} className="mb-3 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: BLUE }}><ArrowLeft size={16} /> Learning Record</Link>
@@ -256,7 +256,7 @@ export default function DashboardSkillsPassport() {
       </section>
     </>}
 
-  </div></DashboardLayout>;
+  </div></LearnerFormationsLayout>;
 }
 
 function PassportStatus({ passport, verification }: { passport: SkillsPassport | null; verification: CredentialVerification | null }) {

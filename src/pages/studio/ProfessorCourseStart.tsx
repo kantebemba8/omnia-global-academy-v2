@@ -10,7 +10,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { StructureLayout } from '../../components/StructureLayout';
+import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
@@ -42,9 +42,9 @@ function fileExtension(name: string) {
 }
 
 function CreationLayout({ context, children }: { context: CreatorContext; children: ReactNode }) {
-  if (context === 'structure') return <StructureLayout>{children}</StructureLayout>;
+  if (context === 'structure') return <StructureFormationsLayout>{children}</StructureFormationsLayout>;
   if (context === 'admin') return <DashboardLayout role="super_admin">{children}</DashboardLayout>;
-  return <DashboardLayout role="professeur">{children}</DashboardLayout>;
+  return <ProfessorFormationsLayout>{children}</ProfessorFormationsLayout>;
 }
 
 export default function ProfessorCourseStart() {

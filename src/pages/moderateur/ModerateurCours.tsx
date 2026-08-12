@@ -1,8 +1,8 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
-import { ModerateurLayout } from '../../components/ModerateurLayout';
+import { ModeratorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, XCircle, Send, DollarSign, BookOpen, Clock, Mic } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, XCircle, Send, DollarSign, BookOpen, Clock, Mic, ShieldCheck, ListChecks } from 'lucide-react';
 
 interface CourseItem {
   id: string; title: string; description: string; status: string;
@@ -81,12 +81,12 @@ export default function ModerateurCours() {
 
   if (loading) {
     return (
-      <ModerateurLayout>
+      <ModeratorFormationsLayout>
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
             style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
         </div>
-      </ModerateurLayout>
+      </ModeratorFormationsLayout>
     );
   }
 
@@ -94,20 +94,20 @@ export default function ModerateurCours() {
   const perms = data?.permissions;
 
   return (
-    <ModerateurLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <ModeratorFormationsLayout>
+      <div className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-6 lg:px-8">
         {/* Toast */}
         {toast && (
           <div className="fixed top-4 right-4 z-50 bg-white shadow-lg rounded-xl px-5 py-3 text-sm font-medium border border-gray-200"
             style={{ color: '#002050' }}>{toast}</div>
         )}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Modération des formations</h1>
-            <p className="text-gray-500 text-sm mt-1">{courses.length} formation(s) à traiter</p>
+        <section className="overflow-hidden rounded-[28px] bg-[#162C48] text-white shadow-[0_25px_65px_rgba(0,32,80,.18)]">
+          <div className="grid lg:grid-cols-[1.2fr_.8fr]">
+            <div className="p-6 sm:p-8"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#9FC1DB]">Contrôle pédagogique</p><h1 className="mt-2 max-w-2xl text-3xl font-black tracking-[-0.04em] sm:text-4xl">Une file de revue conçue pour décider, pas pour parcourir un catalogue.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">Chaque dossier conserve son instructeur, son statut, son contenu et les actions autorisées par vos permissions. La publication finale reste du ressort de l’Administration Omnia.</p></div>
+            <div className="flex items-center justify-center border-t border-white/10 p-6 lg:border-l lg:border-t-0"><div className="w-full max-w-sm rounded-[22px] bg-white/[.07] p-5"><div className="flex items-center justify-between"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10"><ListChecks size={20} className="text-[#F1B65A]"/></span><strong className="text-4xl font-black text-[#F1B65A]">{courses.length}</strong></div><p className="mt-4 text-sm font-black">Dossiers dans votre file</p><p className="mt-1 text-xs leading-5 text-white/50">Le détail s’ouvre seulement quand vous choisissez un dossier.</p></div></div>
           </div>
-        </div>
+        </section>
 
         {/* Never publishes notice */}
         <div className="rounded-xl p-4 bg-amber-50 border border-amber-200 flex items-start gap-3">
@@ -310,6 +310,6 @@ export default function ModerateurCours() {
           </div>
         )}
       </div>
-    </ModerateurLayout>
+    </ModeratorFormationsLayout>
   );
 }

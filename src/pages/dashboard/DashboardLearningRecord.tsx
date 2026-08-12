@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, FileCheck2, FolderOpen, GraduationCap, Link2, MessageSquare, Pencil, Plus, Radio,
   RefreshCw, Save, Settings2, ShieldCheck, Sparkles, Star, Trash2, Upload, Users, X,
 } from 'lucide-react';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { isLearnerPreviewMode, previewClrRecord, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   ClrAchievement, ClrExportResponse, ClrImport, ClrRecord, ClrShare, ClrVisibility, LearnerClrResponse,
@@ -178,7 +178,7 @@ export default function DashboardLearningRecord() {
     });
   }
 
-  return <DashboardLayout><div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
+  return <LearnerFormationsLayout><div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: BORDER }}>
       <div>
         <span className="text-xs font-semibold uppercase tracking-[.16em]" style={{ color: GOLD }}>CLR 2.0</span>
@@ -259,7 +259,7 @@ export default function DashboardLearningRecord() {
 
     {entryDraft && <EntryModal draft={entryDraft} onClose={() => setEntryDraft(null)} onSaved={async () => { setEntryDraft(null); await load(); setNotice('Élément enregistré dans votre Learning Record.'); }} />}
     {importOpen && <ImportModal onClose={() => setImportOpen(false)} onImported={async () => { setImportOpen(false); await load(); setNotice('Credential importé. Les sources externes non vérifiables restent en attente de contrôle.'); }} />}
-  </div></DashboardLayout>;
+  </div></LearnerFormationsLayout>;
 }
 
 function ClrSection({ section, items, working, onEdit, onAction }: { section: string; items: ClrAchievement[]; working: string; onEdit: (item: ClrAchievement) => void; onAction: (label: string, action: string, payload: Record<string, unknown>, success: string) => void }) {

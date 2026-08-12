@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Award, Eye, Download, CheckCircle, XCircle } from 'lucide-react';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { ProfessorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -72,7 +72,7 @@ export default function ProfesseurCertificats() {
   };
 
   return (
-    <DashboardLayout role="professeur">
+    <ProfessorFormationsLayout>
       <div className="mx-auto max-w-6xl space-y-6 p-6 lg:p-8">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Certificats de mes formations</h1>
@@ -142,6 +142,6 @@ export default function ProfesseurCertificats() {
           )}
         </div>
       </div>
-    </DashboardLayout>
+    </ProfessorFormationsLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Award, CheckCircle, Download, ExternalLink, Eye, KeyRound, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import {
   BadgeAward,
@@ -101,7 +101,7 @@ export default function DashboardBadges() {
   }
 
   return (
-    <DashboardLayout>
+    <LearnerFormationsLayout>
       <div className="mx-auto max-w-7xl px-4 py-7 md:px-6">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
           <div>
@@ -223,6 +223,6 @@ export default function DashboardBadges() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </LearnerFormationsLayout>
   );
 }

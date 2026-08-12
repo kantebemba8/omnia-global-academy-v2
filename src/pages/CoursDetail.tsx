@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink } from 'lucide-react';
-import { Navbar } from '../components/Navbar';
-import { PageFooter } from '../components/PageFooter';
+import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye } from 'lucide-react';
+import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
@@ -108,16 +107,15 @@ export function CoursDetail() {
     }
   };
 
-  if (loading) return <div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}><Navbar /><SkeletonHero /></div>;
+  if (loading) return <AdaptiveFormationsLayout><div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}><SkeletonHero /></div></AdaptiveFormationsLayout>;
   if (!detail || !detail.course) {
     return (
-      <div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}><Navbar />
+      <AdaptiveFormationsLayout><div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
         <div className="max-w-2xl mx-auto px-6 py-20 text-center">
           <p className="font-bold text-lg mb-4" style={{ color: '#002050' }}>Formation introuvable.</p>
           <button onClick={() => navigate('/catalogue')} className="px-6 py-3 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#002050' }}>← Retour au catalogue</button>
         </div>
-        <PageFooter />
-      </div>
+      </div></AdaptiveFormationsLayout>
     );
   }
 
@@ -187,8 +185,8 @@ export function CoursDetail() {
   };
 
   return (
+    <AdaptiveFormationsLayout>
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
-      <Navbar />
 
       {/* ── HERO ──────────────────────────────────────────────────────── */}
       <section className="pt-16" style={{ backgroundColor: '#002050' }}>
@@ -600,13 +598,13 @@ export function CoursDetail() {
 
       {freePreviewId && !isEnrolled && (
         <div className="px-6 py-6 text-center" style={{ backgroundColor: '#FFFFFF', borderTop: '1px solid #E4E7EC' }}>
-          <button onClick={() => navigate(`/cours/${id}/apercu`)} className="px-6 py-3 rounded-lg font-semibold text-white transition-opacity hover:opacity-85" style={{ backgroundColor: '#1E7A52' }}>
-            👁 Voir l'aperçu gratuit de la 1ère leçon
+          <button onClick={() => navigate(`/cours/${id}/apercu`)} className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-white transition-opacity hover:opacity-85" style={{ backgroundColor: '#1E7A52' }}>
+            <Eye size={17} /> Voir l'aperçu gratuit de la 1ère leçon
           </button>
         </div>
       )}
 
-      <PageFooter />
     </div>
+    </AdaptiveFormationsLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { Award, Star, CheckCircle, X, Clock, ExternalLink, Share2, Linkedin, BadgeCheck, FileText } from 'lucide-react';
@@ -99,7 +99,7 @@ export function DashboardCertificats() {
   }
 
   return (
-    <DashboardLayout>
+    <LearnerFormationsLayout>
       <div className="p-6 lg:p-8 max-w-4xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Mes certificats</h1>
@@ -272,6 +272,6 @@ export function DashboardCertificats() {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    </LearnerFormationsLayout>
   );
 }

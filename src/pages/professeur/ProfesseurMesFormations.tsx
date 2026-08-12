@@ -2,8 +2,8 @@ import { getSessionToken } from '../../lib/session';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
-import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2 } from 'lucide-react';
+import { ProfessorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
+import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2, Layers3, Users, ClipboardCheck } from 'lucide-react';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 interface Formation {
@@ -99,6 +99,12 @@ export function ProfesseurMesFormations() {
     ? formations.filter((formation) => (statusAliases[filter] || [filter]).includes(formation.status))
     : formations;
 
+  const publishedCount = formations.filter(f => ['published', 'publiee'].includes(f.status)).length;
+  const draftCount = formations.filter(f => ['draft', 'brouillon'].includes(f.status)).length;
+  const reviewCount = formations.filter(f => ['pending_validation', 'soumise', 'en_attente_validation_manuelle', 'changes_requested', 'modification_demandee'].includes(f.status)).length;
+  const learnerCount = formations.reduce((sum, f) => sum + Number(f.total_students || 0), 0);
+  const correctionsCount = formations.reduce((sum, f) => sum + Number(f.projets_a_corriger || 0), 0);
+
   const FILTERS = [
     { key: '', label: `Toutes (${formations.length})` },
     { key: 'published', label: 'Publiées' },
@@ -109,19 +115,27 @@ export function ProfesseurMesFormations() {
   ];
 
   return (
-    <DashboardLayout role="professeur">
-      <div className="p-6 lg:p-8 max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Mes formations</h1>
-            <p className="text-gray-500 text-sm mt-1">{formations.length} formation{formations.length !== 1 ? 's' : ''}</p>
+    <ProfessorFormationsLayout>
+      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+        <section className="overflow-hidden rounded-[28px] border border-[#DDE1F3] bg-[linear-gradient(135deg,#F7F7FE_0%,#FFFFFF_55%,#F5F8FF_100%)]">
+          <div className="grid lg:grid-cols-[1.25fr_.75fr]">
+            <div className="p-6 sm:p-8">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5966C5]">Portfolio pédagogique</p>
+              <h1 className="mt-2 max-w-2xl text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Pilotez chaque formation comme un produit pédagogique vivant.</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">Brouillon, validation, publication et suivi restent visibles au même endroit. Le Studio sert à concevoir ; ce portfolio sert à décider quoi faire ensuite.</p>
+              <Link to="/professeur/courses/new" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white shadow-sm"><PlusCircle className="h-4 w-4" /> Nouvelle formation</Link>
+            </div>
+            <div className="bg-[#101B4B] p-6 text-white sm:p-8">
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#AEB7F7]">Cycle de production</p>
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                {[{label:'Brouillons',value:draftCount},{label:'À revoir',value:reviewCount},{label:'Publiées',value:publishedCount}].map(item => <div key={item.label} className="rounded-2xl bg-white/[.07] p-4"><strong className="text-2xl font-black text-[#F0C568]">{item.value}</strong><span className="mt-1 block text-[10px] font-bold uppercase tracking-[.08em] text-white/55">{item.label}</span></div>)}
+              </div>
+              <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-4 text-xs"><span className="inline-flex items-center gap-2 text-white/60"><Users size={14}/> {learnerCount} apprenant{learnerCount !== 1 ? 's' : ''}</span><span className="inline-flex items-center gap-2 text-white/60"><ClipboardCheck size={14}/> {correctionsCount} à corriger</span></div>
+            </div>
           </div>
-        <Link to="/professeur/courses/new"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
-            style={{ backgroundColor: '#002050' }}>
-            <PlusCircle className="w-4 h-4" /> Nouvelle formation
-          </Link>
-        </div>
+        </section>
+
+        <div className="mt-7 flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Bibliothèque de conception</p><h2 className="mt-1 text-xl font-black text-[#002050]">{formations.length} formation{formations.length !== 1 ? 's' : ''}</h2></div><Layers3 size={22} className="text-[#5966C5]" /></div>
 
         {/* Filters */}
         <div className="flex gap-2 flex-wrap mb-5">
@@ -208,6 +222,6 @@ export function ProfesseurMesFormations() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </ProfessorFormationsLayout>
   );
 }

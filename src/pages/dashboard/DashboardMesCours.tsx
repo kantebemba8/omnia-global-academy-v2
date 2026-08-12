@@ -1,9 +1,9 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { BookOpen, CheckCircle, Clock, ChevronRight, TrendingUp, Database, WifiOff } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, ChevronRight, TrendingUp, Database, WifiOff, ArrowRight, Route } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useOmniaNetworkStatus } from '../../hooks/useOmniaNetwork';
 import { loadResilientLearnerDashboard, saveResilientLearnerDashboard } from '../../lib/resilientCourseStore';
@@ -141,15 +141,33 @@ export function DashboardMesCours() {
   ];
 
   const courses = tab === 'en_cours' ? (data?.courses_en_cours ?? []) : (data?.cours_termines ?? []);
+  const currentCourse = data?.courses_en_cours?.[0];
+  const totalLessonsCompleted = (data?.courses_en_cours ?? []).reduce((sum, course) => sum + Number(course.lessons_completed || 0), 0);
 
   return (
-    <DashboardLayout>
-      <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Mes formations</h1>
-          <p className="text-gray-500 text-sm mt-1">Suivez votre progression</p>
-        </div>
+    <LearnerFormationsLayout>
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden rounded-[28px] border border-[#D7E4EC] bg-[linear-gradient(135deg,#F3F8FB_0%,#FFFFFF_58%,#FFF8E8_100%)] p-6 sm:p-8">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-[#0F7699]/15" aria-hidden="true" />
+          <div className="relative grid gap-7 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#0F7699]">Bibliothèque personnelle</p>
+              <h1 className="mt-2 max-w-xl text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Vos parcours, ordonnés par ce que vous devez reprendre.</h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">La progression, les leçons terminées et les preuves restent liées à chaque formation. Le catalogue sert à découvrir ; cette page sert à continuer.</p>
+              <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3">
+                <div><span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">En cours</span><strong className="block text-2xl font-black text-[#002050]">{data?.courses_en_cours?.length ?? 0}</strong></div>
+                <div><span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Terminées</span><strong className="block text-2xl font-black text-[#002050]">{data?.cours_termines?.length ?? 0}</strong></div>
+                <div><span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Leçons complétées</span><strong className="block text-2xl font-black text-[#002050]">{totalLessonsCompleted}</strong></div>
+              </div>
+            </div>
+            <div className="relative rounded-[24px] bg-[#002050] p-5 text-white shadow-[0_24px_55px_rgba(0,32,80,.18)]">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8CC9DB]">À reprendre</p><h2 className="mt-2 line-clamp-2 text-xl font-black">{currentCourse?.title || 'Choisissez votre prochain parcours'}</h2></div><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10"><Route size={20} className="text-[#F0C568]" /></span></div>
+              {currentCourse ? <><div className="mt-6 flex items-end justify-between"><span className="text-sm text-white/55">{currentCourse.lessons_completed || 0}/{currentCourse.lessons_total || 0} leçons</span><strong className="text-3xl font-black text-[#F0C568]">{currentCourse.progress_percent || 0}%</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#F0C568]" style={{ width: `${Math.max(0, Math.min(100, Number(currentCourse.progress_percent || 0)))}%` }} /></div><Link to={`/cours/${currentCourse.slug}/apprendre`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-[#002050]">Continuer<ArrowRight size={14} /></Link></> : <Link to="/catalogue" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-[#002050]">Explorer le catalogue<ArrowRight size={14} /></Link>}
+            </div>
+          </div>
+        </section>
 
+        <div className="mt-7">
         {usingLocalCopy && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
             <Database className="mt-0.5 h-4 w-4 shrink-0" style={{ color: '#BF8813' }} />
@@ -164,7 +182,7 @@ export function DashboardMesCours() {
           </div>
         )}
 
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+        <div className="mt-6 flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
           {tabs.map(tabItem => (
             <button
               key={tabItem.key}
@@ -207,7 +225,8 @@ export function DashboardMesCours() {
             {courses.map(course => <CourseCard key={course.course_id} c={course} done={tab === 'termines'} />)}
           </div>
         )}
+        </div>
       </div>
-    </DashboardLayout>
+    </LearnerFormationsLayout>
   );
 }

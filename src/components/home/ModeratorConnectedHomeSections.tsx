@@ -112,7 +112,7 @@ function blankData(previewMode: boolean): DashboardData {
 
 function buildWorkspaces(p: ModeratorPermissions): Workspace[] {
   const rows: Array<Workspace & { enabled: boolean }> = [
-    { label: 'Formations', description: 'Contrôle pédagogique et validation', path: '/moderator/courses', icon: BookOpen, accent: '#315B8A', soft: '#EDF4FC', enabled: p.can_see_pending_courses || p.can_review_course_content || p.can_request_course_modification || p.can_reject_course || p.can_recommend_course_price || p.can_approve_transmit_course },
+    { label: 'Formations', description: 'Contrôle pédagogique et validation', path: '/formations', icon: BookOpen, accent: '#315B8A', soft: '#EDF4FC', enabled: p.can_see_pending_courses || p.can_review_course_content || p.can_request_course_modification || p.can_reject_course || p.can_recommend_course_price || p.can_approve_transmit_course },
     { label: 'Identité & comptes', description: 'Vérifications et périmètre utilisateurs', path: p.can_validate_professor_kyc ? '/moderator/kyc' : '/moderator/users', icon: ShieldCheck, accent: GREEN, soft: '#EAF7F0', enabled: p.can_validate_professor_kyc || p.can_validate_structure_kyc || p.can_see_learners_list || p.can_see_professors_list || p.can_request_account_suspension },
     { label: 'Communauté', description: 'Signalements et contenus', path: '/moderator/forum', icon: MessageSquare, accent: '#C45B24', soft: '#FFF2E8', enabled: p.can_moderate_forum },
     { label: 'Emploi', description: 'Offres soumises au contrôle', path: '/moderator/jobs', icon: Briefcase, accent: '#A66E16', soft: '#FFF7E6', enabled: p.can_moderate_jobs },

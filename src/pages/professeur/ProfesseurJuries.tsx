@@ -4,8 +4,7 @@ import {
   Upload, Users, XCircle,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
-import { StructureLayout } from '../../components/StructureLayout';
+import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { assessmentGovernanceCall, uploadAssessmentGovernanceFile } from '../../lib/assessmentGovernanceApi';
 
 const BLUE = '#002050'; const GOLD = '#BF8813'; const BORDER = '#E4E7EC';
@@ -206,7 +205,7 @@ export default function ProfesseurJuries() {
     </div>}
   </div>;
 
-  return isStructure ? <StructureLayout>{content}</StructureLayout> : <DashboardLayout role="professeur">{content}</DashboardLayout>;
+  return isStructure ? <StructureFormationsLayout>{content}</StructureFormationsLayout> : <ProfessorFormationsLayout>{content}</ProfessorFormationsLayout>;
 }
 
 function Card({ title, icon: Icon, children }: { title: string; icon: ElementType; children: ReactNode }) { return <section className="space-y-3 rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}><h2 className="flex items-center gap-2 font-semibold" style={{ color: BLUE }}><Icon size={18} color={GOLD} />{title}</h2>{children}</section>; }

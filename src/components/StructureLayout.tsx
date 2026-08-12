@@ -32,10 +32,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
   {
     id: 'learning', label: 'Formation & projets', icon: BookOpen,
     items: [
-      { path: '/structure/formations', label: 'Mes formations', icon: BookOpen },
-      { path: '/structure/courses/new', label: 'Créer une formation', icon: PlusCircle },
-      { path: '/structure/assessment-center', label: 'Assessment Center', icon: ClipboardCheck },
-      { path: '/structure/jurys', label: 'Jurys & révisions', icon: Users },
+      { path: '/formations', label: 'Formations', icon: BookOpen },
       { path: '/structure/projects', label: 'Omnia Projects', icon: FolderKanban },
     ],
   },
@@ -140,8 +137,8 @@ function filterStructureNavigation(
         ...group,
         items: group.items.filter(item => {
           if (item.path === '/structure/projects') return permissions.can_manage_projects === true;
-          if (item.path === '/structure/courses/new') return permissions.can_create_courses === true;
-          return courseAccess;
+          if (item.path === '/formations') return courseAccess;
+          return false;
         }),
       };
     }
@@ -167,7 +164,7 @@ function filterStructureNavigation(
   }).filter(group => group.items.length > 0);
 }
 
-export function StructureLayout({ children }: { children: ReactNode; displayName?: string }) {
+export function StructureLayout({ children, headerTitle, headerSubtitle, headerSearch }: { children: ReactNode; displayName?: string; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode }) {
   const location = useLocation();
   const [structureContext, setStructureContext] = useState<StructureContext | null>(null);
   const user = getStoredUser<StoredUser>();
@@ -215,7 +212,9 @@ export function StructureLayout({ children }: { children: ReactNode; displayName
       navGroups={visibleGroups}
       brandTitle="Omnia"
       brandAccent="Structure"
-      headerSearch={showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined}
+      headerTitle={headerTitle}
+      headerSubtitle={headerSubtitle}
+      headerSearch={headerSearch ?? (showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined)}
     >
       {children}
     </DashboardLayout>

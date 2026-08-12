@@ -4,7 +4,7 @@ import {
   RotateCcw, ShieldAlert, SlidersHorizontal, Upload, XCircle, type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
+import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { assessmentGovernanceCall, uploadAssessmentGovernanceFile } from '../../lib/assessmentGovernanceApi';
 
@@ -104,7 +104,7 @@ export default function DashboardAssessments() {
   }
 
   return (
-    <DashboardLayout>
+    <LearnerFormationsLayout>
       <div className="mx-auto max-w-5xl p-6 lg:p-8">
         <h1 className="text-2xl font-bold" style={{ color: BLUE }}>Mes évaluations</h1>
         <p className="mt-1 text-sm text-gray-500">Sessions programmées, résultats, compétences, révisions de notes, aménagements et incidents.</p>
@@ -143,7 +143,7 @@ export default function DashboardAssessments() {
           {tab === 'incidents' && (data.incidents?.length ? data.incidents.map((item: any) => <div key={item.id} className="rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}><div className="flex justify-between gap-3"><div><p className="font-semibold" style={{ color: BLUE }}>{item.title}</p><p className="mt-1 text-xs text-gray-500">{item.incident_type} · {date(item.created_at)}</p></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{item.status}</span></div><p className="mt-3 text-sm text-gray-600">{item.description}</p>{item.resolution && <p className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">{item.resolution}</p>}</div>) : <Empty icon={ShieldAlert} text="Aucun incident déclaré." />)}
         </div>}
       </div>
-    </DashboardLayout>
+    </LearnerFormationsLayout>
   );
 }
 

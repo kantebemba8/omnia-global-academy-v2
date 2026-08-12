@@ -2,8 +2,8 @@ import { getSessionToken } from '../../lib/session';
 import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2 } from 'lucide-react';
-import { StructureLayout } from '../../components/StructureLayout';
+import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2, Building2, GitBranch, ShieldCheck } from 'lucide-react';
+import { StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 type Formation = {
@@ -105,19 +105,24 @@ export default function StructureMesFormations() {
     }
   }
 
+  const publishedCount = formations.filter(item => ['published', 'validated'].includes(item.studio_status || '')).length;
+  const attentionCount = formations.filter(item => ['changes_requested', 'rejected', 'pending_validation'].includes(item.studio_status || '')).length;
+  const draftCount = formations.filter(item => (item.studio_status || 'draft') === 'draft').length;
 
   return (
-    <StructureLayout>
-      <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Mes formations</h1>
-            <p className="text-sm text-gray-500 mt-1">{formations.length} formation{formations.length !== 1 ? 's' : ''}</p>
+    <StructureFormationsLayout>
+      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden rounded-[28px] border border-[#D6E8E5] bg-[linear-gradient(135deg,#F3FAF9_0%,#FFFFFF_56%,#F5F8FC_100%)] p-6 sm:p-8">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-60 w-60 rounded-full border border-[#0B817A]/15" aria-hidden="true" />
+          <div className="relative grid gap-7 lg:grid-cols-[1.15fr_.85fr] lg:items-center">
+            <div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B817A]">Portefeuille de formation</p><h1 className="mt-2 max-w-2xl text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Les parcours de votre Structure, avec leur état de gouvernance.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">Créez, faites évoluer et suivez les formations portées par votre organisation sans mélanger ce portefeuille avec les autres fonctions Structure.</p><Link to="/structure/courses/new" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white"><PlusCircle size={16}/> Créer une formation</Link></div>
+            <div className="grid grid-cols-3 gap-3 rounded-[24px] bg-white p-4 shadow-[0_20px_50px_rgba(0,70,80,.10)] ring-1 ring-[#D6E8E5]">
+              {[{label:'Brouillons',value:draftCount,icon:GitBranch},{label:'À traiter',value:attentionCount,icon:ShieldCheck},{label:'Validées',value:publishedCount,icon:CheckCircle}].map(item => { const Icon=item.icon; return <div key={item.label} className="rounded-2xl bg-[#F6FAFA] p-4"><Icon size={17} className="text-[#0B817A]"/><strong className="mt-4 block text-2xl font-black text-[#002050]">{item.value}</strong><span className="mt-1 block text-[10px] font-black uppercase tracking-[.09em] text-slate-400">{item.label}</span></div>})}
+              <div className="col-span-3 flex items-center gap-3 border-t border-slate-100 px-1 pt-4 text-xs text-slate-500"><Building2 size={15} className="text-[#BF8813]"/><span>{formations.length} formation{formations.length !== 1 ? 's' : ''} dans le portefeuille de la Structure</span></div>
+            </div>
           </div>
-          <Link to="/structure/courses/new" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: '#002050' }}>
-            <PlusCircle size={16} /> Créer une formation
-          </Link>
-        </div>
+        </section>
+        <div className="mt-7">
 
         {error && (
           <div className="mb-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -172,7 +177,8 @@ export default function StructureMesFormations() {
             })}
           </div>
         )}
+        </div>
       </div>
-    </StructureLayout>
+    </StructureFormationsLayout>
   );
 }

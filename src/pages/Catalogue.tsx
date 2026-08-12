@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, RotateCcw } from 'lucide-react';
-import { Navbar } from '../components/Navbar';
-import { PageFooter } from '../components/PageFooter';
+import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { CATEGORY_LABELS } from '../lib/categories';
 import { ENDPOINTS } from '../lib/config';
@@ -316,13 +315,11 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export function Catalogue() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const [courses, setCourses] = useState<CourseCardData[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [inputQ, setInputQ] = useState(searchParams.get('q') || '');
 
   const updateFilter = useCallback((k: string, v: string | null) => {
     setSearchParams(prev => {
@@ -356,49 +353,33 @@ export function Catalogue() {
       .finally(() => setLoading(false));
   }, [searchParams]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateFilter('q', inputQ.trim() || null);
-  };
-
   const currentPage = parseInt(searchParams.get('page') || '1');
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
-      <Navbar />
-
-      {/* Sticky search bar */}
-      <div className="sticky z-30" style={{ top: '64px', backgroundColor: '#FFFFFF', borderBottom: '1px solid #E4E7EC' }}>
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <form onSubmit={handleSearch} className="flex-1 flex gap-0 max-w-xl">
-            <div className="flex-1 flex items-center border border-r-0 rounded-l-lg px-3 gap-2" style={{ borderColor: '#E4E7EC' }}>
-              <Search size={15} style={{ color: '#9CA3AF', flexShrink: 0 }} />
-              <input
-                className="flex-1 py-2.5 text-sm outline-none bg-transparent"
-                placeholder="Rechercher une formation..."
-                value={inputQ}
-                onChange={e => setInputQ(e.target.value)}
-                style={{ color: '#111827' }}
-              />
+    <AdaptiveFormationsLayout>
+      <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
+        <section className="border-b border-slate-200 bg-[linear-gradient(135deg,#F5F8FB_0%,#FFFFFF_55%,#FFF9EC_100%)]">
+          <div className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8">
+            <div className="flex flex-wrap items-end justify-between gap-5">
+              <div className="max-w-3xl">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#BF8813]">Catalogue Formations</p>
+                <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Explorer les parcours sans perdre le fil.</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">La recherche reste dans l’en-tête. Ici, les filtres servent uniquement à affiner le catalogue par objectif, niveau, durée, origine et prix.</p>
+              </div>
+              <button
+                onClick={() => setFilterOpen(true)}
+                className="lg:hidden inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-[#002050] shadow-sm"
+              >
+                <SlidersHorizontal size={15} /> Filtres
+              </button>
             </div>
-            <button type="submit" className="px-4 py-2.5 rounded-r-lg text-sm font-semibold text-white" style={{ backgroundColor: '#002050' }}>
-              Rechercher
-            </button>
-          </form>
-          <button
-            onClick={() => setFilterOpen(true)}
-            className="lg:hidden flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-75"
-            style={{ border: '1px solid #E4E7EC', color: '#374151' }}
-          >
-            <SlidersHorizontal size={15} /> Filtres
-          </button>
-        </div>
-      </div>
+          </div>
+        </section>
 
-      <div className="max-w-6xl mx-auto px-4 flex gap-6 pt-6 pb-16">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 flex gap-7 pt-7 pb-16">
         {/* Desktop filter sidebar */}
         <aside className="hidden lg:block w-64 flex-shrink-0">
-          <div className="sticky" style={{ top: '128px', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto', border: '1px solid #E4E7EC', borderRadius: '12px', backgroundColor: '#F8F9FA' }}>
+          <div className="sticky" style={{ top: '76px', maxHeight: 'calc(100vh - 96px)', overflowY: 'auto', border: '1px solid #E4E7EC', borderRadius: '16px', backgroundColor: '#F8FAFC' }}>
             <FilterSidebar params={searchParams} update={updateFilter} reset={resetFilters} />
           </div>
         </aside>
@@ -463,7 +444,7 @@ export function Catalogue() {
         </div>
       </div>
 
-      <PageFooter />
-    </div>
+      </div>
+    </AdaptiveFormationsLayout>
   );
 }

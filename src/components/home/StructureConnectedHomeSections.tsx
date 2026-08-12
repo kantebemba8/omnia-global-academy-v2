@@ -104,7 +104,7 @@ function OrganizationHero({ data, previewMode, extra }: Props & { extra: Extra }
 function StructureSpaces({ data, previewMode, extra }: Props & { extra: Extra }) {
   const stats = data?.stats || {};
   const spaces: SpaceItem[] = [
-    { label: 'Formations', caption: 'Concevoir et suivre vos formations', path: '/structure/formations', accent: '#245D9B', soft: '#EDF4FC', icon: BookOpen, signal: Number(stats.courses||0) ? `${Number(stats.courses||0)} formation${Number(stats.courses||0)>1?'s':''}` : undefined },
+    { label: 'Formations', caption: 'Concevoir et suivre vos formations', path: '/formations', accent: '#245D9B', soft: '#EDF4FC', icon: BookOpen, signal: Number(stats.courses||0) ? `${Number(stats.courses||0)} formation${Number(stats.courses||0)>1?'s':''}` : undefined },
     { label: 'Omnia Projects', caption: 'Porter les projets de votre organisation', path: '/structure/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: extra.projects.length ? `${extra.projects.length} projet${extra.projects.length>1?'s':''}` : undefined },
     { label: 'Talent & recrutement', caption: 'Talents, candidatures et entretiens', path: '/structure/recrutement/dashboard', accent: '#7650C5', soft: '#F4F0FF', icon: Briefcase, signal: extra.talentMetrics.upcoming_interviews ? `${extra.talentMetrics.upcoming_interviews} entretien${extra.talentMetrics.upcoming_interviews>1?'s':''}` : undefined },
     { label: 'Omnia Live', caption: 'Événements et expériences en direct', path: '/omnia-live', accent: '#5A55C9', soft: '#F0F0FF', icon: Radio },

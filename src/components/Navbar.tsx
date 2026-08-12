@@ -35,7 +35,7 @@ type PrimaryNavItem = {
 };
 
 const PRIMARY_NAV: PrimaryNavItem[] = [
-  { label: 'Formations', href: '/catalogue', activePrefixes: ['/catalogue', '/cours/', '/formation-externe/'] },
+  { label: 'Formations', href: '/formations', activePrefixes: ['/formations', '/catalogue', '/cours/', '/formation-externe/'] },
   { label: 'Career', href: '/forum/emploi', activePrefixes: ['/forum/emploi', '/forum/carriere', '/dashboard/career-studio'] },
   { label: 'Talent', href: '/talent', activePrefixes: ['/talent'] },
   { label: 'Live', href: '/omnia-live', activePrefixes: ['/omnia-live'] },

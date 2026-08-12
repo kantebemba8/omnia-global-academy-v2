@@ -127,7 +127,7 @@ function ProfessorSpaces({ data, previewMode, projects }: Props & { projects: Om
   const formations = data?.formations || [];
   const unanswered = Number(data?.forum_questions_unanswered || 0);
   const spaces: SpaceItem[] = [
-    { label: 'Formations', caption: 'Créer, publier et faire évoluer vos cours', path: '/professeur/courses', accent: '#4657C8', soft: '#EEF0FF', icon: BookOpen, signal: formations.length ? `${formations.length} contenu${formations.length > 1 ? 's' : ''}` : undefined },
+    { label: 'Formations', caption: 'Créer, publier et faire évoluer vos cours', path: '/formations', accent: '#4657C8', soft: '#EEF0FF', icon: BookOpen, signal: formations.length ? `${formations.length} contenu${formations.length > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Projects', caption: 'Projets et expériences liés à votre expertise', path: '/professeur/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: projects.length ? `${projects.length} projet${projects.length > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Talent', caption: 'Votre présence dans l’écosystème professionnel', path: '/talent', accent: '#7650C5', soft: '#F4F0FF', icon: UsersRound },
     { label: 'Omnia Live', caption: 'Événements et expériences en direct', path: '/omnia-live', accent: '#5A55C9', soft: '#F0F0FF', icon: Radio },

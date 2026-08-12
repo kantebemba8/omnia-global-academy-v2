@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, CalendarPlus, ClipboardCheck, ExternalLink, Loader2, Save } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { DashboardLayout } from '../../components/DashboardLayout';
-import { StructureLayout } from '../../components/StructureLayout';
+import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/assessment-center`;
@@ -67,7 +66,7 @@ export default function ProfesseurAssessmentCenter() {
         </div>
       </>}
     </div>;
-  return isStructure ? <StructureLayout>{content}</StructureLayout> : <DashboardLayout role="professeur">{content}</DashboardLayout>;
+  return isStructure ? <StructureFormationsLayout>{content}</StructureFormationsLayout> : <ProfessorFormationsLayout>{content}</ProfessorFormationsLayout>;
 }
 function Stat({ label, value }: { label: string; value: number }) { return <div className="rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-2xl font-bold" style={{ color: BLUE }}>{value}</p></div>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block text-xs font-semibold text-gray-600">{label}<div className="mt-1">{children}</div></label>; }

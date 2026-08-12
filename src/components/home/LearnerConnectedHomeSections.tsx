@@ -237,7 +237,7 @@ function LearnerHero({ data, previewMode, signals }: Props & { signals: Signals 
 function EcosystemRail({ previewMode, data, signals }: Props & { signals: Signals }) {
   const courseCount = Number(data?.kpis?.formations_en_cours ?? data?.courses_en_cours?.length ?? 0);
   const ecosystems: EcosystemItem[] = [
-    { label: 'Formations', caption: 'Cours, évaluations et progression', path: '/dashboard/mes-cours', accent: '#0F7699', soft: '#E9F7FB', icon: BookOpen, signal: courseCount ? `${courseCount} en cours` : undefined },
+    { label: 'Formations', caption: 'Cours, évaluations et progression', path: '/formations', accent: '#0F7699', soft: '#E9F7FB', icon: BookOpen, signal: courseCount ? `${courseCount} en cours` : undefined },
     { label: 'Omnia Career', caption: 'CV, LM et préparation carrière', path: '/dashboard/career-studio', accent: '#4F46E5', soft: '#EEF2FF', icon: Briefcase, signal: signals.careerDocuments ? `${signals.careerDocuments} document${signals.careerDocuments > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Projects', caption: 'Projets, équipes et réalisations', path: '/projects/mes-projets', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: signals.projectInvites ? `${signals.projectInvites} invitation${signals.projectInvites > 1 ? 's' : ''}` : signals.projectsActive ? `${signals.projectsActive} actif${signals.projectsActive > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Talent', caption: 'Profil et visibilité professionnelle', path: '/talent', accent: '#7C3AED', soft: '#F5F0FF', icon: UsersRound },
