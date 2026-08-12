@@ -9,6 +9,8 @@ import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { contactTalent, createStructureRecruiter, loadPublicTalents, loadRecruitmentTeam, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, setStructureRecruiterStatus, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, updateRecruitmentPermissions, revokeStructureRecruiterInvitation } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
+import TalentEcosystemNav from '../../components/talent/TalentEcosystemNav';
+import TalentHeaderSearch from '../../components/talent/TalentHeaderSearch';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
@@ -116,7 +118,8 @@ export default function StructureRecruitment(){
     dashboard:'Tableau de bord recrutement', offres:'Offres', talents:'Recherche de talents', favoris:'Talents favoris', candidats:'Candidats', entretiens:'Entretiens', messages:'Messages', statistiques:'Statistiques', equipe:'Équipe recrutement',
   };
 
-  return <StructureLayout>
+  return <StructureLayout headerTitle="Omnia Talent" headerSubtitle="Talents, recrutement et compétences" headerSearch={<TalentHeaderSearch/>}>
+    <TalentEcosystemNav audience="structure"/>
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>{titles[section]}</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Module Recrutement de votre Structure · Omnia Talent</p></div>

@@ -1,161 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, Briefcase, Building2, MapPin, Search, ShieldCheck, Sparkles, UserRound, UsersRound } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  ArrowRight, BadgeCheck, Briefcase, Building2, CalendarDays, Compass, FileCheck2,
+  Heart, MapPin, MessageSquare, Network, ShieldCheck, Sparkles, UserRound, UsersRound,
+} from 'lucide-react';
 import { TalentLayout } from '../../components/talent/TalentLayout';
-import { loadPublicJobs, loadPublicTalents, PublicJob, PublicTalent } from './talentApi';
+import { useAuth } from '../../hooks/useAuth';
+import { resolveTalentAudience, talentAudienceLabel, type TalentAudience } from '../../lib/talentNavigation';
+import { loadPublicJobs, loadPublicTalents, loadTalentConversations, loadTalentDashboard, loadTalentFavorites, loadTalentInterviews, type PublicJob, type PublicTalent } from './talentApi';
 import { usePublicPageContent } from '../../hooks/usePublicPageContent';
 
-const BLUE = '#002050';
-const GOLD = '#BF8813';
-const BORDER = '#E4E7EC';
+const BLUE='#002050'; const PLUM='#76506F'; const GOLD='#BF8813'; const BORDER='#E8E1E8';
+function withPreview(path:string,params:URLSearchParams){if(params.get('preview')!=='true')return path;const [base,hash='']=path.split('#',2);const [pathname,query='']=base.split('?',2);const next=new URLSearchParams(query);next.set('preview','true');const role=params.get('role');if(role)next.set('role',role);return `${pathname}?${next.toString()}${hash?`#${hash}`:''}`;}
+function number(value:unknown){return Number(value||0)||0;}
 
-export default function TalentHome() {
-  const [talents, setTalents] = useState<PublicTalent[]>([]);
-  const [jobs, setJobs] = useState<PublicJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const pageContent = usePublicPageContent().talent || {};
+type PrivateSignals={favorites:number;contacts:number;upcoming:number;conversations:number};
 
-  useEffect(() => {
-    Promise.allSettled([loadPublicTalents(), loadPublicJobs()]).then(([talentResult, jobResult]) => {
-      if (talentResult.status === 'fulfilled') setTalents(talentResult.value);
-      if (jobResult.status === 'fulfilled') setJobs(jobResult.value);
-      setLoading(false);
-    });
-  }, []);
+export default function TalentHome(){
+  const {user}=useAuth(); const [params]=useSearchParams(); const preview=params.get('preview')==='true'&&Boolean(user?.roles?.includes('super_admin')); const audience=resolveTalentAudience(user?.roles,preview?params.get('role'):null); const pageContent=usePublicPageContent().talent||{};
+  const [talents,setTalents]=useState<PublicTalent[]>([]); const [jobs,setJobs]=useState<PublicJob[]>([]); const [loading,setLoading]=useState(true); const [signals,setSignals]=useState<PrivateSignals>({favorites:0,contacts:0,upcoming:0,conversations:0});
+  useEffect(()=>{let active=true;const scope=audience==='recruteur'?'recruiter':audience==='structure'?'structure':null;const requests:Promise<unknown>[]=[loadPublicTalents(),loadPublicJobs()];if(scope&&!preview)requests.push(loadTalentDashboard(scope),loadTalentFavorites(scope),loadTalentInterviews(scope),loadTalentConversations(scope));Promise.allSettled(requests).then(results=>{if(!active)return;if(results[0].status==='fulfilled')setTalents(results[0].value as PublicTalent[]);if(results[1].status==='fulfilled')setJobs(results[1].value as PublicJob[]);if(scope&&!preview){const dash=results[2]?.status==='fulfilled'?(results[2].value as any):null;const fav=results[3]?.status==='fulfilled'?(results[3].value as any[]):[];const interviews=results[4]?.status==='fulfilled'?(results[4].value as any[]):[];const conv=results[5]?.status==='fulfilled'?(results[5].value as any[]):[];setSignals({favorites:fav.length||number(dash?.metrics?.favorites),contacts:number(dash?.metrics?.contacts),upcoming:interviews.filter(i=>new Date(i.scheduled_at).getTime()>=Date.now()&&!['cancelled','declined','completed'].includes(i.status)).length||number(dash?.metrics?.upcoming_interviews),conversations:conv.length});}setLoading(false)});return()=>{active=false}},[audience,preview]);
+  const companies=useMemo(()=>new Set(jobs.map(j=>j.company_name).filter(Boolean)).size,[jobs]); const ownTalent=audience==='apprenant'&&user?talents.find(t=>t.id===user.id):undefined;
+  const config=homeConfig(audience,{talents:talents.length,jobs:jobs.length,companies,ownTalent,signals,pageContent});
+  return <TalentLayout><main className="bg-[#FCFAFC]">
+    <section className="relative overflow-hidden border-b border-[#E8E1E8] bg-white"><div className="absolute inset-y-0 right-0 hidden w-[46%] lg:block" aria-hidden="true"><div className="absolute right-[-80px] top-[-90px] h-[360px] w-[360px] rounded-full border border-[#DCCBDD]"/><div className="absolute right-[40px] top-[40px] h-[230px] w-[230px] rounded-full border border-[#E7D8B7]"/><div className="absolute bottom-[-90px] right-[160px] h-[230px] w-[230px] rounded-full bg-[#F5EDF4]"/></div><div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-11 md:px-8 md:py-16 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
+      <div><div className="inline-flex items-center gap-2 rounded-full border border-[#DCCBDD] bg-[#F7F1F7] px-3 py-1.5 text-[11px] font-black uppercase tracking-[.16em] text-[#76506F]"><Sparkles size={13}/>{config.eyebrow}</div><h1 className="mt-5 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-.055em] text-[#002050] md:text-5xl">{config.title}</h1><p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">{config.subtitle}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={withPreview(config.primary.path,params)} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-black text-white">{config.primary.label}<ArrowRight size={16}/></Link><Link to={withPreview(config.secondary.path,params)} className="inline-flex items-center gap-2 rounded-xl border border-[#DCCBDD] bg-white px-5 py-3 text-sm font-black text-[#002050]">{config.secondary.label}</Link></div></div>
+      <TalentVisual audience={audience} ownTalent={ownTalent} talents={talents} jobs={jobs} signals={signals}/>
+    </div></section>
 
-  const companies = useMemo(() => new Set(jobs.map(job => job.company_name).filter(Boolean)).size, [jobs]);
+    <section className="border-b border-[#E8E1E8] bg-[#FCFAFC]"><div className="mx-auto max-w-7xl px-5 py-7 md:px-8"><div className="grid gap-0 overflow-hidden rounded-2xl border border-[#E8E1E8] bg-white sm:grid-cols-2 lg:grid-cols-4">{config.metrics.map((m,i)=>{const Icon=m.icon;return <div key={m.label} className={`p-5 ${i?'border-t sm:border-l sm:border-t-0':''} border-[#EFE9EF]`}><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[.12em] text-slate-400">{m.label}</p><Icon size={17} className="text-[#76506F]"/></div><p className="mt-2 text-2xl font-black text-[#002050]">{loading?'—':m.value}</p><p className="mt-1 text-xs leading-5 text-slate-500">{m.note}</p></div>})}</div></div></section>
 
-  return (
-    <TalentLayout>
-      <section className="border-b bg-white px-5 py-10 md:px-8 md:py-14" style={{ borderColor: BORDER }}>
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: 'rgba(191,136,19,.12)', color: GOLD }}>
-              <Sparkles size={14} /> {pageContent.badge || 'La vitrine professionnelle d’Omnia Global Academy'}
-            </span>
-            <h1 className="mt-5 text-3xl font-semibold leading-tight md:text-4xl" style={{ color: BLUE }}>
-              {pageContent.title || 'Découvrez les talents qui ont choisi de rendre leur profil visible'}
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
-              {pageContent.subtitle || 'Omnia Talent permet aux recruteurs de repérer des profils publics, consulter leurs compétences et prendre contact dans un environnement vérifié.'}
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link to="/talent/explorer" className="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white" style={{ background: BLUE }}>
-                <Search size={17} /> {pageContent.primary_cta || 'Explorer les talents'}
-              </Link>
-              <Link to="/talent/recruteurs" className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}>
-                {pageContent.secondary_cta || 'Espace recruteurs'} <ArrowRight size={17} />
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-10 grid gap-3 sm:grid-cols-3">
-            {[
-              { label: 'Profils publics', value: talents.length, icon: UsersRound },
-              { label: 'Offres disponibles', value: jobs.length, icon: Briefcase },
-              { label: 'Organisations visibles', value: companies, icon: Building2 },
-            ].map(item => (
-              <div key={item.label} className="rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-500">{item.label}</p>
-                  <item.icon size={18} color={GOLD} />
-                </div>
-                <p className="mt-2 text-2xl font-semibold" style={{ color: BLUE }}>{loading ? '—' : item.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-5 py-10 md:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_talents_title || 'Talents récemment visibles'}</h2>
-              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_talents_subtitle || 'Profils issus directement du Profil carrière Omnia.'}</p>
-            </div>
-            <Link to="/talent/explorer?tab=talents" className="text-sm font-semibold" style={{ color: GOLD }}>Voir tous</Link>
-          </div>
-
-          {loading ? (
-            <div className="mt-5 rounded-xl border bg-white p-10 text-center text-sm text-gray-500" style={{ borderColor: BORDER }}>Chargement des profils…</div>
-          ) : talents.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed bg-white p-10 text-center" style={{ borderColor: BORDER }}>
-              <UserRound className="mx-auto" color="#9CA3AF" />
-              <p className="mt-3 text-sm font-medium" style={{ color: BLUE }}>Aucun profil public pour le moment</p>
-              <p className="mt-1 text-sm text-gray-500">Les apprenants apparaîtront ici après avoir activé la visibilité dans Omnia Career.</p>
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {talents.slice(0, 3).map(talent => <TalentCard key={talent.id} talent={talent} />)}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="border-y bg-white px-5 py-10 md:px-8" style={{ borderColor: BORDER }}>
-        <div className="mx-auto max-w-6xl">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold" style={{ color: BLUE }}>{pageContent.recent_jobs_title || 'Offres récentes'}</h2>
-              <p className="mt-1 text-sm text-gray-500">{pageContent.recent_jobs_subtitle || 'Les mêmes offres que dans l’espace Carrière & emploi d’Omnia Communauté.'}</p>
-            </div>
-            <Link to="/talent/explorer?tab=offres" className="text-sm font-semibold" style={{ color: GOLD }}>Explorer</Link>
-          </div>
-          {jobs.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed p-8 text-center text-sm text-gray-500" style={{ borderColor: BORDER }}>Aucune offre publique disponible.</div>
-          ) : (
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {jobs.slice(0, 3).map(job => (
-                <Link key={job.id} to={`/forum/emploi/${job.id}`} className="rounded-xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-sm" style={{ borderColor: BORDER }}>
-                  <p className="text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p>
-                  <p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p>
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
-                    {job.location && <span className="flex items-center gap-1"><MapPin size={13} />{job.location}</span>}
-                    {job.contract_type && <span className="rounded-full bg-gray-100 px-2 py-1">{job.contract_type}</span>}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="px-5 py-10 md:px-8">
-        <div className="mx-auto grid max-w-6xl gap-4 md:grid-cols-3">
-          {[
-            { icon: ShieldCheck, title: 'Profils sous contrôle', text: 'Seuls les profils rendus visibles par les apprenants apparaissent dans Talent.' },
-            { icon: UsersRound, title: 'Une donnée unique', text: 'Le profil principal et Omnia Career alimentent la même fiche publique, sans double saisie.' },
-            { icon: Briefcase, title: 'Contact encadré', text: 'Les demandes de contact sont enregistrées et peuvent être suivies par l’Administration Omnia.' },
-          ].map(item => (
-            <div key={item.title} className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
-              <item.icon size={20} color={GOLD} />
-              <h3 className="mt-3 text-base font-semibold" style={{ color: BLUE }}>{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-gray-500">{item.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </TalentLayout>
-  );
+    <section className="mx-auto max-w-7xl px-5 py-10 md:px-8 md:py-14"><div className="grid gap-10 lg:grid-cols-[.84fr_1.16fr]"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#76506F]">Votre lecture Talent</p><h2 className="mt-3 text-3xl font-black tracking-[-.04em] text-[#002050]">{config.focusTitle}</h2><p className="mt-3 text-sm leading-7 text-slate-600">{config.focusText}</p><div className="mt-7 border-y border-[#E8E1E8]">{config.actions.map((a,index)=>{const Icon=a.icon;return <Link key={a.path} to={withPreview(a.path,params)} className="group grid grid-cols-[40px_1fr_auto] items-center gap-3 border-b border-[#EFE9EF] py-4 last:border-b-0"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F1ECF2] text-[#76506F]"><Icon size={16}/></span><span><strong className="block text-sm font-black text-[#002050]">{a.label}</strong><span className="mt-0.5 block text-xs leading-5 text-slate-500">{a.note}</span></span><ArrowRight size={15} className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#76506F]"/></Link>})}</div></div>
+      <div><div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#BF8813]">Signal professionnel</p><h2 className="mt-2 text-2xl font-black tracking-[-.035em] text-[#002050]">{config.streamTitle}</h2></div><Link to={withPreview('/talent/explorer',params)} className="text-xs font-black text-[#76506F]">Explorer tout</Link></div><div className="mt-5 divide-y divide-[#EFE9EF] border-y border-[#E8E1E8] bg-white">{config.stream==='jobs'?jobs.slice(0,5).map(j=><JobRow key={j.id} job={j}/>):talents.slice(0,5).map(t=><TalentRow key={t.id} talent={t}/>)}{!loading&&((config.stream==='jobs'&&!jobs.length)||(config.stream==='talents'&&!talents.length))&&<div className="p-8 text-center text-sm text-slate-500">Les contenus réels apparaîtront ici dès qu’ils seront disponibles.</div>}{loading&&<div className="p-8 text-center text-sm text-slate-400">Chargement des signaux Talent…</div>}</div></div></div></section>
+  </main></TalentLayout>;
 }
 
-function TalentCard({ talent }: { talent: PublicTalent }) {
-  return (
-    <Link to={`/profil/${talent.id}`} className="rounded-xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-sm" style={{ borderColor: BORDER }}>
-      <div className="flex items-start gap-3">
-        <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-white" style={{ background: BLUE }}>
-          {talent.photo_url ? <img src={talent.photo_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <UserRound size={20} />}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{talent.full_name}</p>
-          <p className="truncate text-sm text-gray-500">{talent.professional_title || 'Titre professionnel non renseigné'}</p>
-          {talent.location && <p className="mt-1 flex items-center gap-1 text-xs text-gray-400"><MapPin size={12} />{talent.location}</p>}
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(talent.skills || []).slice(0, 4).map(skill => <span key={skill} className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">{skill}</span>)}
-      </div>
-    </Link>
-  );
+function TalentVisual({audience,ownTalent,talents,jobs,signals}:{audience:TalentAudience;ownTalent?:PublicTalent;talents:PublicTalent[];jobs:PublicJob[];signals:PrivateSignals}){
+  if(audience==='apprenant')return <div className="relative mx-auto w-full max-w-[470px]"><div className="absolute -left-5 top-10 h-[78%] w-[92%] rotate-[-3deg] rounded-[28px] border border-[#E8E1E8] bg-[#F7F1F7]"/><div className="relative rounded-[28px] border border-[#DCCBDD] bg-white p-6 shadow-[0_28px_70px_rgba(0,32,80,.10)]"><div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-[#002050] text-white">{ownTalent?.photo_url?<img src={ownTalent.photo_url} className="h-full w-full object-cover" alt=""/>:<UserRound size={23}/>}</div><div><p className="text-xs font-black uppercase tracking-[.12em] text-[#76506F]">Présence professionnelle</p><h3 className="mt-1 text-lg font-black text-[#002050]">{ownTalent?.full_name||'Votre profil Talent'}</h3><p className="text-sm text-slate-500">{ownTalent?.professional_title||'Votre titre apparaîtra ici'}</p></div></div><div className="mt-6 grid grid-cols-2 gap-3"><Signal label="Visibilité" value={ownTalent?'Active':'À configurer'}/><Signal label="Compétences" value={String(ownTalent?.skills?.length||0)}/><Signal label="Certifications" value={String(ownTalent?.certifications?.length||0)}/><Signal label="Disponibilité" value={ownTalent?.availability||'À préciser'}/></div><div className="mt-5 flex flex-wrap gap-2">{(ownTalent?.skills||[]).slice(0,5).map(s=><span key={s} className="rounded-full bg-[#F1ECF2] px-2.5 py-1 text-xs font-bold text-[#68445F]">{s}</span>)}{!ownTalent&&<span className="text-xs leading-5 text-slate-400">Votre fiche se construit à partir des informations que vous choisissez de publier.</span>}</div></div></div>;
+  if(audience==='recruteur'||audience==='structure')return <div className="relative mx-auto w-full max-w-[500px]"><div className="rounded-[28px] border border-[#DCCBDD] bg-[#002050] p-6 text-white shadow-[0_28px_70px_rgba(0,32,80,.18)]"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#DCCBDD]">Radar Talent</p><h3 className="mt-1 text-xl font-black">Du signal à la conversation</h3></div><Network className="text-[#D6B56B]"/></div><div className="mt-6 grid grid-cols-3 gap-2"><DarkSignal label="Profils" value={talents.length}/><DarkSignal label="Favoris" value={signals.favorites}/><DarkSignal label="Entretiens" value={signals.upcoming}/></div><div className="mt-6 space-y-2">{talents.slice(0,3).map((t,i)=><div key={t.id} className="flex items-center gap-3 rounded-xl bg-white/8 px-3 py-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-xs font-black">{String(i+1).padStart(2,'0')}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-black">{t.full_name}</p><p className="truncate text-xs text-white/60">{t.professional_title||'Profil professionnel'}</p></div><ArrowRight size={14} className="text-[#D6B56B]"/></div>)}</div></div></div>;
+  return <div className="relative mx-auto grid w-full max-w-[500px] grid-cols-[1fr_.75fr] gap-3"><div className="rounded-[28px] border border-[#DCCBDD] bg-white p-5 shadow-[0_24px_60px_rgba(0,32,80,.09)]"><p className="text-xs font-black uppercase tracking-[.14em] text-[#76506F]">Profils visibles</p><p className="mt-2 text-4xl font-black text-[#002050]">{talents.length}</p><div className="mt-6 space-y-3">{talents.slice(0,3).map(t=><div key={t.id} className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F1ECF2] text-[#76506F]"><UserRound size={16}/></div><div className="min-w-0"><p className="truncate text-xs font-black text-[#002050]">{t.full_name}</p><p className="truncate text-[11px] text-slate-400">{t.professional_title||'Profil professionnel'}</p></div></div>)}</div></div><div className="space-y-3"><div className="rounded-[24px] bg-[#76506F] p-5 text-white"><Briefcase size={18}/><p className="mt-6 text-3xl font-black">{jobs.length}</p><p className="mt-1 text-xs text-white/70">opportunités</p></div><div className="rounded-[24px] border border-[#E7D8B7] bg-[#FFF8E9] p-5 text-[#002050]"><ShieldCheck size={18} className="text-[#BF8813]"/><p className="mt-6 text-sm font-black">Preuves & visibilité</p></div></div></div>;
+}
+function Signal({label,value}:{label:string;value:string}){return <div className="rounded-xl border border-[#EFE9EF] bg-[#FCFAFC] p-3"><p className="text-[10px] font-black uppercase tracking-[.1em] text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-black text-[#002050]">{value}</p></div>}
+function DarkSignal({label,value}:{label:string;value:number}){return <div className="rounded-xl bg-white/8 p-3"><p className="text-[10px] font-black uppercase tracking-[.1em] text-white/50">{label}</p><p className="mt-1 text-xl font-black">{value}</p></div>}
+function TalentRow({talent}:{talent:PublicTalent}){return <Link to={`/profil/${talent.id}`} className="grid gap-3 px-4 py-4 transition hover:bg-[#FCFAFC] sm:grid-cols-[48px_1fr_auto] sm:items-center"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-[#F1ECF2] text-[#76506F]">{talent.photo_url?<img src={talent.photo_url} className="h-full w-full object-cover" alt=""/>:<UserRound size={18}/>}</div><div className="min-w-0"><p className="truncate text-sm font-black text-[#002050]">{talent.full_name}</p><p className="truncate text-xs text-slate-500">{talent.professional_title||'Titre professionnel non renseigné'}{talent.location?` · ${talent.location}`:''}</p></div><span className="text-xs font-black text-[#76506F]">Voir le profil</span></Link>}
+function JobRow({job}:{job:PublicJob}){return <Link to={`/forum/emploi/${job.id}`} className="grid gap-3 px-4 py-4 transition hover:bg-[#FCFAFC] sm:grid-cols-[48px_1fr_auto] sm:items-center"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF8E9] text-[#BF8813]"><Briefcase size={18}/></div><div className="min-w-0"><p className="truncate text-sm font-black text-[#002050]">{job.title||'Offre sans titre'}</p><p className="truncate text-xs text-slate-500">{job.company_name||'Organisation non renseignée'}{job.location?` · ${job.location}`:''}</p></div><span className="text-xs font-black text-[#76506F]">Voir l’offre</span></Link>}
+
+function homeConfig(audience:TalentAudience,data:{talents:number;jobs:number;companies:number;ownTalent?:PublicTalent;signals:PrivateSignals;pageContent:any}){
+  const common={metrics:[{label:'Profils visibles',value:data.talents,icon:UsersRound,note:'Profils rendus publics par leurs propriétaires.'},{label:'Opportunités',value:data.jobs,icon:Briefcase,note:'Offres actuellement visibles.'},{label:'Organisations',value:data.companies,icon:Building2,note:'Organisations représentées dans les offres.'},{label:'Preuves',value:'Vérifiées',icon:ShieldCheck,note:'Selon les autorisations du talent.'}]};
+  if(audience==='apprenant')return {...common,eyebrow:'Votre vitrine professionnelle',title:'Rendez vos compétences lisibles avant même le premier échange.',subtitle:'Omnia Talent transforme les éléments que vous choisissez de publier en une présence professionnelle claire : profil, compétences, certifications et preuves de projets.',primary:{label:data.ownTalent?'Voir ma présence':'Configurer mon profil',path:data.ownTalent?`/profil/${data.ownTalent.id}`:'/mon-profil'},secondary:{label:'Explorer les opportunités',path:'/talent/opportunites'},focusTitle:'Construire un signal professionnel crédible.',focusText:'Votre accueil Talent ne remplace ni Career ni Projects : il rassemble uniquement ce qui peut renforcer votre visibilité auprès des organisations.',actions:[{label:'Contrôler ma visibilité',note:'Choisissez les informations publiques de votre profil.',path:'/mon-profil',icon:ShieldCheck},{label:'Renforcer mes preuves',note:'Ajoutez compétences, certificats et expériences vérifiables.',path:'/dashboard/skills-passport',icon:BadgeCheck},{label:'Préparer mes candidatures',note:'Passez de la visibilité à une candidature structurée.',path:'/omnia-career',icon:Briefcase}],stream:'jobs' as const,streamTitle:'Opportunités récemment visibles'};
+  if(audience==='recruteur')return {metrics:[{label:'Profils visibles',value:data.talents,icon:UsersRound,note:'Pool public disponible.'},{label:'Favoris',value:data.signals.favorites,icon:Heart,note:'Talents suivis par votre compte.'},{label:'Entretiens',value:data.signals.upcoming,icon:CalendarDays,note:'Entretiens à venir.'},{label:'Conversations',value:data.signals.conversations,icon:MessageSquare,note:'Relations Talent actives.'}],eyebrow:'Sourcing & recrutement',title:'Repérez moins de profils. Comprenez mieux les bons.',subtitle:'Omnia Talent rapproche profil professionnel, compétences vérifiées, projets et échanges pour transformer le sourcing en décisions plus lisibles.',primary:{label:'Rechercher des talents',path:'/talent/recruteur/talents'},secondary:{label:'Piloter le recrutement',path:'/talent/recruteur/recrutement'},focusTitle:'Passer du volume au signal.',focusText:'Utilisez les preuves autorisées pour prioriser vos recherches, conserver les profils pertinents et préparer les échanges.',actions:[{label:'Explorer les compétences vérifiées',note:'Examiner les preuves partagées avec consentement.',path:'/talent/recruteur/competences-verifiees',icon:ShieldCheck},{label:'Reprendre mes favoris',note:'Retrouver les profils déjà présélectionnés.',path:'/talent/recruteur/favoris',icon:Heart},{label:'Voir mon pipeline',note:'Offres, candidatures, entretiens et messages.',path:'/talent/recruteur/recrutement',icon:Briefcase}],stream:'talents' as const,streamTitle:'Profils récemment visibles'};
+  if(audience==='structure')return {metrics:[{label:'Profils visibles',value:data.talents,icon:UsersRound,note:'Pool public Talent.'},{label:'Favoris',value:data.signals.favorites,icon:Heart,note:'Profils suivis par la Structure.'},{label:'Entretiens',value:data.signals.upcoming,icon:CalendarDays,note:'Entretiens à venir.'},{label:'Organisations',value:data.companies,icon:Building2,note:'Écosystème professionnel visible.'}],eyebrow:'Capital humain & recrutement',title:'Une lecture plus claire des compétences disponibles autour de votre Structure.',subtitle:'Talent relie sourcing, compétences vérifiées, offres et équipe recrutement sans dissocier les preuves du parcours professionnel.',primary:{label:'Explorer les talents',path:'/structure/recrutement/talents'},secondary:{label:'Ouvrir le recrutement',path:'/talent/structure/recrutement'},focusTitle:'Piloter un recrutement fondé sur les preuves.',focusText:'Votre Structure peut suivre les profils utiles, les candidatures, les entretiens et l’activité de son équipe depuis un même univers.',actions:[{label:'Compétences vérifiées',note:'Consulter uniquement les preuves autorisées.',path:'/structure/recrutement/competences-verifiees',icon:ShieldCheck},{label:'Équipe recrutement',note:'Gérer les délégations et permissions.',path:'/structure/recrutement/equipe',icon:UsersRound},{label:'Statistiques',note:'Lire l’activité de recrutement de la Structure.',path:'/structure/recrutement/statistiques',icon:BadgeCheck}],stream:'talents' as const,streamTitle:'Talents visibles dans l’écosystème'};
+  if(audience==='professeur')return {...common,eyebrow:'Compétences & réseau',title:'Voir comment les acquis deviennent une présence professionnelle.',subtitle:'Omnia Talent permet de comprendre comment formations, projets, certifications et profils publics se rejoignent dans la trajectoire professionnelle.',primary:{label:'Explorer les profils',path:'/talent/explorer'},secondary:{label:'Voir Omnia Projects',path:'/projects'},focusTitle:'Relier pédagogie et réalité professionnelle.',focusText:'Les profils publics offrent une lecture concrète des compétences et expériences que les utilisateurs choisissent de valoriser.',actions:[{label:'Explorer les profils',note:'Observer métiers, compétences et secteurs visibles.',path:'/talent/explorer',icon:Compass},{label:'Relier aux projets',note:'Voir les expériences pratiques dans Omnia Projects.',path:'/projects',icon:FileCheck2},{label:'Échanger dans la communauté',note:'Prolonger les apprentissages par les échanges.',path:'/forum',icon:Network}],stream:'talents' as const,streamTitle:'Profils récemment visibles'};
+  if(audience==='organisateur')return {...common,eyebrow:'Expertises & intervenants',title:'Repérez les expertises qui peuvent enrichir vos événements.',subtitle:'Talent vous donne une lecture professionnelle des profils publics avant de poursuivre les échanges dans Live ou la Communauté.',primary:{label:'Explorer les profils',path:'/talent/explorer'},secondary:{label:'Retour à Omnia Live',path:'/omnia-live'},focusTitle:'Chercher une expertise, pas seulement un nom.',focusText:'Les compétences, projets et certifications visibles peuvent vous aider à repérer des profils pertinents pour vos formats Live.',actions:[{label:'Explorer les talents',note:'Filtrer par métier, compétence ou localisation.',path:'/talent/explorer',icon:Compass},{label:'Ouvrir Omnia Live',note:'Revenir à la programmation et aux événements.',path:'/omnia-live',icon:CalendarDays},{label:'Prolonger dans la communauté',note:'Échanger avec le réseau Omnia.',path:'/forum',icon:Network}],stream:'talents' as const,streamTitle:'Expertises récemment visibles'};
+  if(audience==='coach')return {...common,eyebrow:'Objectifs & preuves',title:'Lire les compétences comme des points d’appui pour progresser.',subtitle:'Talent met en perspective profils, projets et preuves publiques afin de relier accompagnement, positionnement professionnel et expériences concrètes.',primary:{label:'Explorer les profils',path:'/talent/explorer'},secondary:{label:'Voir Omnia Projects',path:'/projects'},focusTitle:'Faire apparaître les preuves derrière les objectifs.',focusText:'Utilisez l’écosystème comme une lecture du marché et des compétences visibles, sans remplacer votre espace Coaching.',actions:[{label:'Explorer les talents',note:'Comprendre les profils et compétences visibles.',path:'/talent/explorer',icon:Compass},{label:'Voir les projets',note:'Relier compétences et réalisations concrètes.',path:'/projects',icon:FileCheck2},{label:'Ouvrir la communauté',note:'Prolonger les échanges professionnels.',path:'/forum',icon:Network}],stream:'talents' as const,streamTitle:'Profils et compétences visibles'};
+  if(audience==='moderateur')return {...common,eyebrow:'Visibilité & confiance',title:'Une vitrine professionnelle où la visibilité reste choisie et traçable.',subtitle:'Talent expose uniquement les informations rendues publiques et encadre les accès aux preuves et aux contacts professionnels.',primary:{label:'Explorer la vitrine',path:'/talent/explorer'},secondary:{label:'Comprendre Talent',path:'/talent/a-propos'},focusTitle:'Protéger la visibilité sans casser la découverte.',focusText:'Les pages publiques, profils et organisations restent séparés des données privées et des fonctions de recrutement authentifiées.',actions:[{label:'Explorer les profils publics',note:'Voir l’expérience réellement exposée.',path:'/talent/explorer',icon:Compass},{label:'Comprendre les règles',note:'Visibilité, source unique et contact encadré.',path:'/talent/a-propos',icon:ShieldCheck}],stream:'talents' as const,streamTitle:'Contenus visibles dans Talent'};
+  return {...common,eyebrow:data.pageContent.badge||'La vitrine professionnelle Omnia',title:data.pageContent.title||'Des profils qui montrent ce qu’ils savent faire, pas seulement ce qu’ils déclarent.',subtitle:data.pageContent.subtitle||'Omnia Talent relie identité professionnelle, compétences, preuves, organisations et opportunités dans un espace où chaque personne garde le contrôle de sa visibilité.',primary:{label:data.pageContent.primary_cta||'Explorer les talents',path:'/talent/explorer'},secondary:{label:data.pageContent.secondary_cta||'Découvrir l’espace recruteur',path:'/talent/recruteurs'},focusTitle:'Une présence professionnelle reliée aux preuves.',focusText:'Le profil Talent n’est pas un deuxième profil : il expose uniquement les informations autorisées depuis les sources Omnia compatibles.',actions:[{label:'Explorer les talents',note:'Profils publics, compétences et secteurs.',path:'/talent/explorer',icon:Compass},{label:'Découvrir les organisations',note:'Organisations visibles et opportunités actives.',path:'/talent/organisations',icon:Building2},{label:'Comprendre la confiance',note:'Visibilité, preuves et contacts encadrés.',path:'/talent/a-propos',icon:ShieldCheck}],stream:'talents' as const,streamTitle:'Profils récemment visibles'};
 }

@@ -3,6 +3,8 @@ import { ArrowLeft, Award, Briefcase, FileCheck2, MapPin, MessageSquare, ShieldC
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
 import { StructureLayout } from '../../components/StructureLayout';
+import TalentEcosystemNav from '../../components/talent/TalentEcosystemNav';
+import TalentHeaderSearch from '../../components/talent/TalentHeaderSearch';
 import { employabilityRequest } from '../../lib/employabilityApi';
 
 const BLUE = '#002050';
@@ -69,7 +71,7 @@ export default function VerifiedTalentCandidateDetail() {
     </main>;
 
   return structureContext
-    ? <StructureLayout>{content}</StructureLayout>
+    ? <StructureLayout headerTitle="Omnia Talent" headerSubtitle="Talents, recrutement et compétences" headerSearch={<TalentHeaderSearch/>}><TalentEcosystemNav audience="structure"/>{content}</StructureLayout>
     : <RecruiterLayout title="Profil vérifié" subtitle="Données partagées avec consentement">{content}</RecruiterLayout>;
 }
 

@@ -1,19 +1,6 @@
-import { ReactNode } from 'react';
-import { Briefcase, Building2, Compass, Home, Info } from 'lucide-react';
-import SubspaceHamburgerLayout from '../SubspaceHamburgerLayout';
-
-const NAV = [
-  { label: 'Accueil Talent', path: '/talent', icon: Home, exact: true },
-  { label: 'Explorer', path: '/talent/explorer', icon: Compass },
-  { label: 'Pour les recruteurs', path: '/talent/recruteurs', icon: Briefcase },
-  { label: 'Organisations', path: '/talent/organisations', icon: Building2 },
-  { label: 'À propos', path: '/talent/a-propos', icon: Info },
-];
+import type { ReactNode } from 'react';
+import { AdaptiveTalentLayout } from './TalentRoleLayout';
 
 export function TalentLayout({ children }: { children: ReactNode }) {
-  return (
-    <SubspaceHamburgerLayout title="Omnia Talent" navItems={NAV} searchPath="/talent/explorer" searchParam="q" searchPlaceholder="Rechercher un talent, une compétence ou une organisation..." navigationMode="horizontal">
-      {children}
-    </SubspaceHamburgerLayout>
-  );
+  return <AdaptiveTalentLayout>{children}</AdaptiveTalentLayout>;
 }

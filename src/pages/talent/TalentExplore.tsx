@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Briefcase, Building2, Filter, MapPin, Search, UserRound } from 'lucide-react';
+import { Briefcase, Building2, Filter, MapPin, UserRound } from 'lucide-react';
 import { TalentLayout } from '../../components/talent/TalentLayout';
 import { loadPublicJobs, loadPublicTalents, PublicJob, PublicTalent } from './talentApi';
 
@@ -16,14 +16,11 @@ export default function TalentExplore() {
   const headerQuery = params.get('q') || '';
   const [talents, setTalents] = useState<PublicTalent[]>([]);
   const [jobs, setJobs] = useState<PublicJob[]>([]);
-  const [query, setQuery] = useState(() => headerQuery);
+  const query = headerQuery;
   const [location, setLocation] = useState('');
   const [sector, setSector] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setQuery(headerQuery);
-  }, [headerQuery]);
 
   useEffect(() => {
     Promise.allSettled([loadPublicTalents(), loadPublicJobs()]).then(([talentResult, jobResult]) => {
@@ -83,15 +80,12 @@ export default function TalentExplore() {
           ))}
         </div>
 
-        <div className="mt-5 rounded-xl border bg-white p-4" style={{ borderColor: BORDER }}>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex h-11 items-center gap-2 rounded-lg border px-3" style={{ borderColor: BORDER }}>
-              <Search size={16} className="text-gray-400" />
-              <input value={query} onChange={e => setQuery(e.target.value)} className="w-full border-0 bg-transparent text-sm outline-none" placeholder="Nom, métier, compétence ou organisation" />
-            </label>
+        <div className="mt-5 border-y border-[#E8E1E8] bg-white py-4">
+          {query && <p className="mb-3 text-xs font-bold text-[#76506F]">Recherche active : « {query} »</p>}
+          <div className="grid gap-3 md:grid-cols-2">
             <label className="flex h-11 items-center gap-2 rounded-lg border px-3" style={{ borderColor: BORDER }}>
               <MapPin size={16} className="text-gray-400" />
-              <input value={location} onChange={e => setLocation(e.target.value)} className="w-full border-0 bg-transparent text-sm outline-none" placeholder="Pays ou ville" />
+              <input value={location} onChange={e => setLocation(e.target.value)} className="w-full border-0 bg-transparent text-sm outline-none" placeholder="Filtrer par pays ou ville" />
             </label>
             <label className="flex h-11 items-center gap-2 rounded-lg border px-3" style={{ borderColor: BORDER }}>
               <Filter size={16} className="text-gray-400" />
@@ -101,6 +95,7 @@ export default function TalentExplore() {
               </select>
             </label>
           </div>
+          <p className="mt-3 text-xs text-slate-400">La recherche par nom, métier, compétence ou organisation se fait depuis l’en-tête Omnia Talent.</p>
         </div>
 
         {loading ? <Empty text="Chargement des données publiques…" /> : tab === 'talents' ? (
@@ -116,14 +111,14 @@ export default function TalentExplore() {
 }
 
 function TalentResult({ talent }: { talent: PublicTalent }) {
-  return <Link to={`/profil/${talent.id}`} className="rounded-xl border bg-white p-5 hover:shadow-sm" style={{ borderColor: BORDER }}>
+  return <Link to={`/profil/${talent.id}`} className="rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(0,32,80,.08)]" style={{ borderColor: BORDER }}>
     <div className="flex gap-3"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-white" style={{ background: BLUE }}>{talent.photo_url ? <img src={talent.photo_url} loading="lazy" decoding="async" className="h-full w-full object-cover" alt="" /> : <UserRound size={19} />}</div><div className="min-w-0"><p className="truncate text-sm font-semibold" style={{ color: BLUE }}>{talent.full_name}</p><p className="truncate text-sm text-gray-500">{talent.professional_title || 'Titre non renseigné'}</p><p className="mt-1 text-xs text-gray-400">{talent.location || talent.country || ''}</p></div></div>
     <div className="mt-4 flex flex-wrap gap-2">{(talent.skills || []).slice(0, 5).map(skill => <span key={skill} className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">{skill}</span>)}</div>
   </Link>;
 }
 
 function JobResult({ job }: { job: PublicJob }) {
-  return <Link to={`/forum/emploi/${job.id}`} className="rounded-xl border bg-white p-5 hover:shadow-sm" style={{ borderColor: BORDER }}><Briefcase size={18} color={GOLD} /><p className="mt-3 text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p><p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">{job.location && <span>{job.location}</span>}{job.contract_type && <span className="rounded-full bg-gray-100 px-2 py-1">{job.contract_type}</span>}</div></Link>;
+  return <Link to={`/forum/emploi/${job.id}`} className="rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(0,32,80,.08)]" style={{ borderColor: BORDER }}><Briefcase size={18} color={GOLD} /><p className="mt-3 text-sm font-semibold" style={{ color: BLUE }}>{job.title || 'Offre sans titre'}</p><p className="mt-1 text-sm text-gray-500">{job.company_name || 'Organisation non renseignée'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">{job.location && <span>{job.location}</span>}{job.contract_type && <span className="rounded-full bg-gray-100 px-2 py-1">{job.contract_type}</span>}</div></Link>;
 }
 
 function CompanyResult({ company }: { company: { name: string; jobs: PublicJob[]; sector?: string; location?: string } }) {

@@ -177,6 +177,7 @@ const RecruiterDashboard = lazy(() => import('./pages/talent/RecruiterDashboard'
 const TalentAbout = lazy(() => import('./pages/talent/TalentAbout'));
 const TalentOrganisations = lazy(() => import('./pages/talent/TalentOrganisations'));
 const TalentProfilePublic = lazy(() => import('./pages/talent/TalentProfilePublic'));
+const TalentSectionHub = lazy(() => import('./pages/talent/TalentSectionHub'));
 const AdminTalent = lazy(() => import('./pages/admin/AdminTalent'));
 const AdminCoaching = lazy(() => import('./pages/admin/AdminCoaching'));
 const AdminCoachingOffers = lazy(() => import('./pages/admin/AdminCoachingOffers'));
@@ -531,6 +532,14 @@ export default function App() {
           <Route path="/talents" element={<TalentDirectory />} />
           <Route path="/talent" element={<TalentHome />} />
           <Route path="/talent/explorer" element={<TalentExplore />} />
+          <Route path="/talent/presence" element={<TalentSectionHub />} />
+          <Route path="/talent/opportunites" element={<TalentSectionHub />} />
+          <Route path="/talent/reseau" element={<TalentSectionHub />} />
+          <Route path="/talent/recruteur/recrutement" element={<TalentSectionHub />} />
+          <Route path="/talent/recruteur/compte" element={<TalentSectionHub />} />
+          <Route path="/talent/structure/talents" element={<TalentSectionHub />} />
+          <Route path="/talent/structure/recrutement" element={<TalentSectionHub />} />
+          <Route path="/talent/structure/pilotage" element={<TalentSectionHub />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
           <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
           <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />

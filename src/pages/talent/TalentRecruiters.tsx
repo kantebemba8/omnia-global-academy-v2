@@ -1,94 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, Check, Clock3, Search, ShieldCheck, UserPlus, UsersRound } from 'lucide-react';
+import { ArrowRight, Briefcase, Check, Clock3, Search, ShieldCheck, UserPlus, UsersRound } from 'lucide-react';
 import { getStoredUser } from '../../lib/session';
 import { TalentLayout } from '../../components/talent/TalentLayout';
 import { loadRecruiterStatus, RecruiterStatus } from './talentApi';
 
-const BLUE = '#002050';
-const GOLD = '#BF8813';
-
-type StoredUser = { roles?: string[] };
-
-export default function TalentRecruiters() {
-  const user = getStoredUser<StoredUser>();
-  const [profile, setProfile] = useState<RecruiterStatus | null>(null);
-  const [loading, setLoading] = useState(!!user);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    loadRecruiterStatus()
-      .then(result => { if (active) setProfile(result.profile); })
-      .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Statut recruteur indisponible.'); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const roles = user?.roles || [];
-  const learnerOnly = roles.includes('apprenant') && !roles.some(role => ['recruteur_independant', 'recruteur', 'recruteur_structure', 'super_admin'].includes(role));
-  const approved = profile?.status === 'approved' || roles.some(role => ['recruteur_independant', 'recruteur', 'recruteur_structure', 'super_admin'].includes(role));
-  const dashboardPath = profile?.recruiter_type === 'structure' ? '/structure/recrutement/dashboard' : '/talent/recruteur/dashboard';
-
-  return (
-    <TalentLayout>
-      <div className="mx-auto max-w-5xl px-5 py-10 md:px-8">
-        <header className="border-b border-gray-200 pb-7">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: GOLD }}>Omnia Talent · Recrutement</p>
-          <h1 className="mt-3 text-3xl font-semibold leading-tight" style={{ color: BLUE }}>Un espace professionnel distinct pour recruter les talents Omnia</h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-gray-600">Le recruteur indépendant crée un compte professionnel soumis à validation. Les recruteurs d’une Structure sont invités et gérés directement par le responsable de cette Structure.</p>
-        </header>
-
-        {error && <div className="mt-6 border-l-4 border-red-500 py-2 pl-4 text-sm text-red-700">{error}</div>}
-        {loading && <p className="mt-7 text-sm text-gray-500">Chargement du statut recruteur…</p>}
-
-        {!loading && approved && (
-          <div className="flex items-center justify-between gap-4 border-b border-gray-200 py-6">
-            <div><p className="font-semibold" style={{ color: BLUE }}>Votre accès recrutement est actif.</p><p className="mt-1 text-sm text-gray-500">Ouvrez votre espace pour rechercher des talents et suivre vos opérations.</p></div>
-            <Link to={dashboardPath} className="inline-flex shrink-0 items-center gap-2 px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: BLUE }}><Briefcase size={17}/>Ouvrir mon espace</Link>
-          </div>
-        )}
-
-        {!loading && user && profile && !approved && (
-          <div className="flex items-start gap-3 border-b border-gray-200 py-6">
-            <Clock3 size={21} style={{ color: GOLD, flexShrink: 0 }}/>
-            <div><p className="font-semibold" style={{ color: BLUE }}>Dossier recruteur : {profile.status}</p><p className="mt-1 text-sm leading-6 text-gray-500">{profile.status === 'pending' ? 'Votre dossier attend la validation de l’Administration Omnia.' : profile.rejection_reason || (profile.status === 'suspended' ? 'Votre accès recruteur est suspendu.' : 'Votre dossier n’a pas été validé.')}</p></div>
-          </div>
-        )}
-
-        {!loading && learnerOnly && (
-          <div className="border-b border-gray-200 py-6">
-            <p className="font-semibold" style={{ color: BLUE }}>Un compte apprenant ne peut pas être transformé en compte recruteur.</p>
-            <p className="mt-2 text-sm leading-6 text-gray-500">Créez un compte professionnel distinct avec une autre adresse email. Cette séparation protège les données des candidats et les permissions de recrutement.</p>
-            <Link to="/inscription/recruteur" className="mt-4 inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: BLUE }}><UserPlus size={17}/>Créer un compte recruteur distinct</Link>
-          </div>
-        )}
-
-        {!user && (
-          <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 py-6">
-            <Link to="/inscription/recruteur" className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: BLUE }}><UserPlus size={17}/>Devenir recruteur indépendant</Link>
-            <Link to="/connexion" className="border px-5 py-3 text-sm font-semibold" style={{ borderColor: '#D0D5DD', color: BLUE }}>Se connecter</Link>
-          </div>
-        )}
-
-        <section className="py-8">
-          {[
-            { icon: Search, title: 'Rechercher', text: 'Filtrer les profils publics selon les compétences, secteurs, langues et disponibilité.' },
-            { icon: UsersRound, title: 'Sélectionner', text: 'Consulter uniquement les informations que les talents ont choisi de rendre visibles.' },
-            { icon: Briefcase, title: 'Recruter', text: 'Publier des offres, suivre les candidatures et organiser les entretiens.' },
-          ].map(item => (
-            <div key={item.title} className="grid gap-2 border-b border-gray-200 py-5 md:grid-cols-[40px_180px_1fr] md:items-start">
-              <item.icon size={20} style={{ color: GOLD }}/><h2 className="font-semibold" style={{ color: BLUE }}>{item.title}</h2><p className="text-sm leading-6 text-gray-500">{item.text}</p>
-            </div>
-          ))}
-        </section>
-
-        <section className="border-t border-gray-200 pt-7">
-          <div className="flex items-center gap-3"><ShieldCheck size={21} style={{ color: GOLD }}/><h2 className="text-lg font-semibold" style={{ color: BLUE }}>Validation et confiance</h2></div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">{['Email professionnel vérifié', 'Validation du compte par l’Administration Omnia', 'Traçabilité des prises de contact', 'Respect de la visibilité choisie par le talent'].map(text => <div key={text} className="flex items-center gap-2 text-sm text-gray-600"><Check size={16} style={{ color: GOLD }}/>{text}</div>)}</div>
-        </section>
-      </div>
-    </TalentLayout>
-  );
-}
+const BLUE='#002050'; const PLUM='#76506F'; const GOLD='#BF8813'; const BORDER='#E8E1E8';
+type StoredUser={roles?:string[]};
+export default function TalentRecruiters(){const user=getStoredUser<StoredUser>();const[profile,setProfile]=useState<RecruiterStatus|null>(null);const[loading,setLoading]=useState(!!user);const[error,setError]=useState('');useEffect(()=>{if(!user)return;let active=true;loadRecruiterStatus().then(r=>{if(active)setProfile(r.profile)}).catch(e=>{if(active)setError(e instanceof Error?e.message:'Statut recruteur indisponible.')}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[]);const roles=user?.roles||[];const learnerOnly=roles.includes('apprenant')&&!roles.some(role=>['recruteur_independant','recruteur','recruteur_structure','super_admin'].includes(role));const approved=profile?.status==='approved'||roles.some(role=>['recruteur_independant','recruteur','recruteur_structure','super_admin'].includes(role));const dashboardPath=profile?.recruiter_type==='structure'?'/structure/recrutement/dashboard':'/talent/recruteur/dashboard';return <TalentLayout><main className="bg-[#FCFAFC]"><section className="border-b border-[#E8E1E8] bg-white"><div className="mx-auto grid max-w-6xl gap-8 px-5 py-12 md:px-8 lg:grid-cols-[1fr_.75fr] lg:items-end"><div><p className="text-xs font-black uppercase tracking-[.18em] text-[#76506F]">Pour les recruteurs</p><h1 className="mt-4 text-4xl font-black tracking-[-.05em] text-[#002050]">Recruter à partir de profils lisibles et de preuves autorisées.</h1><p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">Le compte recruteur reste distinct des comptes apprenants. Il donne accès au sourcing, aux favoris, aux offres, candidatures, entretiens et messages selon le statut du compte.</p></div><div className="rounded-[24px] bg-[#002050] p-5 text-white"><p className="text-xs font-black uppercase tracking-[.14em] text-[#D7B96E]">Parcours recruteur</p><div className="mt-5 space-y-3">{[['01','Rechercher'],['02','Évaluer les preuves'],['03','Contacter'],['04','Suivre le recrutement']].map(([n,l])=><div key={n} className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-xs font-black">{n}</span><span className="text-sm font-bold">{l}</span></div>)}</div></div></div></section><section className="mx-auto max-w-6xl px-5 py-10 md:px-8">{error&&<div className="mb-5 border-l-4 border-red-500 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{loading&&<p className="text-sm text-slate-400">Chargement du statut recruteur…</p>}{!loading&&approved&&<div className="mb-8 flex flex-col gap-4 rounded-2xl border border-[#DCCBDD] bg-white p-6 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-black text-[#002050]">Votre accès recrutement est actif.</p><p className="mt-1 text-sm text-slate-500">Ouvrez votre espace connecté pour retrouver vos opérations réelles.</p></div><Link to={dashboardPath} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-black text-white"><Briefcase size={17}/>Ouvrir mon espace</Link></div>}{!loading&&user&&profile&&!approved&&<div className="mb-8 flex items-start gap-3 rounded-2xl border border-[#E7D8B7] bg-[#FFF8E9] p-5"><Clock3 size={20} className="shrink-0 text-[#BF8813]"/><div><p className="font-black text-[#002050]">Dossier recruteur : {profile.status}</p><p className="mt-1 text-sm leading-6 text-slate-600">{profile.status==='pending'?'Votre dossier attend la validation de l’Administration Omnia.':profile.rejection_reason||(profile.status==='suspended'?'Votre accès recruteur est suspendu.':'Votre dossier n’a pas été validé.')}</p></div></div>}{!loading&&learnerOnly&&<div className="mb-8 rounded-2xl border border-[#DCCBDD] bg-white p-6"><p className="font-black text-[#002050]">Le recrutement utilise un compte professionnel distinct.</p><p className="mt-2 text-sm leading-6 text-slate-500">Cette séparation protège les données des candidats et les permissions de recrutement.</p><Link to="/inscription/recruteur" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-black text-white"><UserPlus size={17}/>Créer un compte recruteur</Link></div>}{!user&&<div className="mb-8 flex flex-wrap gap-3"><Link to="/inscription/recruteur" className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-black text-white"><UserPlus size={17}/>Devenir recruteur indépendant</Link><Link to="/connexion" className="rounded-xl border border-[#DCCBDD] bg-white px-5 py-3 text-sm font-black text-[#002050]">Se connecter</Link></div>}<div className="border-y border-[#E8E1E8] bg-white">{[{icon:Search,title:'Rechercher',text:'Filtrer les profils publics selon les informations réellement visibles.'},{icon:ShieldCheck,title:'Vérifier',text:'Consulter les compétences et preuves que les talents ont autorisé à partager.'},{icon:UsersRound,title:'Sélectionner',text:'Conserver les profils pertinents et structurer votre sourcing.'},{icon:Briefcase,title:'Recruter',text:'Publier des offres, suivre les candidatures et organiser les entretiens.'}].map((item,index)=>{const Icon=item.icon;return <div key={item.title} className="grid gap-3 border-b border-[#EFE9EF] px-1 py-5 last:border-b-0 md:grid-cols-[48px_160px_1fr_auto] md:items-center"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F1ECF2] text-[#76506F]"><Icon size={18}/></span><strong className="text-sm font-black text-[#002050]">{item.title}</strong><p className="text-sm leading-6 text-slate-500">{item.text}</p><span className="text-xs font-black text-[#76506F]">0{index+1}</span></div>})}</div><div className="mt-8 flex items-start gap-3 border-l-4 border-[#BF8813] py-2 pl-4"><Check size={17} className="mt-0.5 shrink-0 text-[#BF8813]"/><p className="text-sm leading-6 text-slate-600">Email professionnel, validation administrative, traçabilité des prises de contact et respect de la visibilité choisie par le talent font partie du cadre de confiance.</p></div></section></main></TalentLayout>}
