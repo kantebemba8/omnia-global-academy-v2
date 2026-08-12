@@ -5,13 +5,23 @@ import { PageFooter } from '../PageFooter';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
-import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
+import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import { useAuth } from '../../hooks/useAuth';
 import CommunityEcosystemNav from './CommunityEcosystemNav';
 import CommunityHeaderSearch from './CommunityHeaderSearch';
 import { communityAudienceLabel, getCommunityNavigation, resolveCommunityAudience, type CommunityAudience } from '../../lib/communityNavigation';
 
 function PublicCommunityLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#F6FAF9] text-[#002050]">
+      <EcosystemPublicHeader ecosystem="community" navigation={getCommunityNavigation('public')} search={<CommunityHeaderSearch />} />
+      <main className="min-w-0">{children}</main>
+      <PageFooter ecosystem="community" />
+    </div>
+  );
+}
+
+function LegacySuperAdminCommunityLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#F8FCFB] text-[#002050]">
       <Navbar />
@@ -38,7 +48,8 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<CommunityAud
 }
 
 function CommunityAudienceLayout({ audience, children }: { audience: CommunityAudience; children: ReactNode }) {
-  if (audience === 'public' || audience === 'super_admin') return <PublicCommunityLayout>{children}</PublicCommunityLayout>;
+  if (audience === 'public') return <PublicCommunityLayout>{children}</PublicCommunityLayout>;
+  if (audience === 'super_admin') return <LegacySuperAdminCommunityLayout>{children}</LegacySuperAdminCommunityLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 

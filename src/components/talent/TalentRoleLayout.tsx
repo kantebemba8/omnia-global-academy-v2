@@ -6,11 +6,21 @@ import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
 import { PageFooter } from '../PageFooter';
-import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
+import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import TalentHeaderSearch from './TalentHeaderSearch';
 import { getTalentNavigation, resolveTalentAudience, type TalentAudience } from '../../lib/talentNavigation';
 
 export function PublicTalentLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#FBF8FB] text-[#002050]">
+      <EcosystemPublicHeader ecosystem="talent" navigation={getTalentNavigation('public')} search={<TalentHeaderSearch />} />
+      <main className="min-w-0">{children}</main>
+      <PageFooter ecosystem="talent" />
+    </div>
+  );
+}
+
+function LegacySuperAdminTalentLayout({ children }: { children: ReactNode }) {
   const navItems = getTalentNavigation('public').map(item => ({ label: item.label, path: item.path, icon: item.icon, exact: item.id === 'accueil' }));
   return <><SubspaceHamburgerLayout title="Omnia Talent" navItems={navItems} searchPath="/talent/explorer" searchParam="q" searchPlaceholder="Rechercher un talent, une compétence ou une organisation..." navigationMode="horizontal">{children}</SubspaceHamburgerLayout><PageFooter ecosystem="talent" /></>;
 }
@@ -27,7 +37,8 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<TalentAudien
 }
 
 export function TalentAudienceLayout({ audience, children }: { audience: TalentAudience; children: ReactNode }) {
-  if (audience === 'public' || audience === 'super_admin') return <PublicTalentLayout>{children}</PublicTalentLayout>;
+  if (audience === 'public') return <PublicTalentLayout>{children}</PublicTalentLayout>;
+  if (audience === 'super_admin') return <LegacySuperAdminTalentLayout>{children}</LegacySuperAdminTalentLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 

@@ -6,7 +6,7 @@ import { PageFooter } from '../PageFooter';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
-import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
+import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import FormationsHeaderSearch from './FormationsHeaderSearch';
 import FormationsEcosystemNav from './FormationsEcosystemNav';
 import {
@@ -16,7 +16,7 @@ import {
   type FormationsAudience,
 } from '../../lib/formationsNavigation';
 
-export function PublicFormationsLayout({ children, audience = 'public' }: { children: ReactNode; audience?: FormationsAudience }) {
+function LegacyFormationsLayout({ children, audience }: { children: ReactNode; audience: FormationsAudience }) {
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <Navbar />
@@ -25,6 +25,17 @@ export function PublicFormationsLayout({ children, audience = 'public' }: { chil
         {children}
         <PageFooter ecosystem="formations" />
       </div>
+    </div>
+  );
+}
+
+export function PublicFormationsLayout({ children, audience = 'public' }: { children: ReactNode; audience?: FormationsAudience }) {
+  if (audience !== 'public') return <LegacyFormationsLayout audience={audience}>{children}</LegacyFormationsLayout>;
+  return (
+    <div className="min-h-screen bg-white text-slate-900">
+      <EcosystemPublicHeader ecosystem="formations" navigation={getFormationsNavigation('public')} search={<FormationsHeaderSearch />} />
+      <main className="min-w-0">{children}</main>
+      <PageFooter ecosystem="formations" />
     </div>
   );
 }
@@ -66,7 +77,7 @@ export function AdaptiveFormationsLayout({ children }: { children: ReactNode }) 
   }
   const preview = params.get('preview') === 'true' && Boolean(user?.roles?.includes('super_admin'));
   const audience = resolveFormationsAudience(user?.roles, preview ? params.get('role') : null);
-  if (audience === 'super_admin' && !preview) return <PublicFormationsLayout audience="public">{children}</PublicFormationsLayout>;
+  if (audience === 'super_admin' && !preview) return <PublicFormationsLayout audience="super_admin">{children}</PublicFormationsLayout>;
   if (audience === 'public') return <PublicFormationsLayout audience="public">{children}</PublicFormationsLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }

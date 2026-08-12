@@ -6,11 +6,21 @@ import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
 import { PageFooter } from '../PageFooter';
-import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
+import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import ProjectsHeaderSearch from './ProjectsHeaderSearch';
 import { getProjectsNavigation, resolveProjectsAudience, type ProjectsAudience } from '../../lib/projectsNavigation';
 
 export function PublicProjectsLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#FCF7F3] text-[#002050]">
+      <EcosystemPublicHeader ecosystem="projects" navigation={getProjectsNavigation('public')} search={<ProjectsHeaderSearch />} />
+      <main className="min-w-0">{children}</main>
+      <PageFooter ecosystem="projects" />
+    </div>
+  );
+}
+
+function LegacySuperAdminProjectsLayout({ children }: { children: ReactNode }) {
   const navItems = getProjectsNavigation('public').map(item => ({ label: item.label, path: item.path, icon: item.icon, exact: item.id === 'accueil' }));
   return <><SubspaceHamburgerLayout title="Omnia Projects" navItems={navItems} searchPath="/projects/explorer" searchParam="q" searchPlaceholder="Rechercher un projet, une compétence, une organisation..." navigationMode="horizontal">{children}</SubspaceHamburgerLayout><PageFooter ecosystem="projects" /></>;
 }
@@ -27,7 +37,8 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<ProjectsAudi
 }
 
 export function ProjectsAudienceLayout({ audience, children }: { audience: ProjectsAudience; children: ReactNode }) {
-  if (audience === 'public' || audience === 'super_admin') return <PublicProjectsLayout>{children}</PublicProjectsLayout>;
+  if (audience === 'public') return <PublicProjectsLayout>{children}</PublicProjectsLayout>;
+  if (audience === 'super_admin') return <LegacySuperAdminProjectsLayout>{children}</LegacySuperAdminProjectsLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 

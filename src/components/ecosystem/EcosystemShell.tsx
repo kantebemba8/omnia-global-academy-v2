@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronRight, Menu, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Home, LogIn, Menu, UserPlus, X, type LucideIcon } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import UserAccountMenu from '../UserAccountMenu';
 import { PageFooter } from '../PageFooter';
@@ -183,6 +183,150 @@ function EcosystemSwitcher({ ecosystem, params, mobile = false, onNavigate }: { 
         );
       })}
     </nav>
+  );
+}
+
+
+export function EcosystemPublicHeader({
+  ecosystem,
+  navigation,
+  search,
+}: {
+  ecosystem: EcosystemId;
+  navigation: EcosystemNavGroup[];
+  search?: ReactNode;
+}) {
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hasUser, setHasUser] = useState(() => {
+    try { return Boolean(localStorage.getItem('omnia_user')); }
+    catch { return false; }
+  });
+  const theme = getEcosystem(ecosystem);
+
+  useEffect(() => setMenuOpen(false), [location.pathname, location.search, location.hash]);
+
+  useEffect(() => {
+    const refresh = () => {
+      try { setHasUser(Boolean(localStorage.getItem('omnia_user'))); }
+      catch { setHasUser(false); }
+    };
+    window.addEventListener('omnia:session-changed', refresh);
+    window.addEventListener('omnia:profile-updated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('omnia:session-changed', refresh);
+      window.removeEventListener('omnia:profile-updated', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const before = document.body.style.overflow;
+    const close = (event: KeyboardEvent) => event.key === 'Escape' && setMenuOpen(false);
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', close);
+    return () => {
+      document.body.style.overflow = before;
+      window.removeEventListener('keydown', close);
+    };
+  }, [menuOpen]);
+
+  return (
+    <>
+      <header className="sticky top-0 z-50 flex-shrink-0 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }}>
+        <div className="mx-auto flex min-h-[72px] max-w-[1480px] items-center gap-3 px-4 sm:px-5 lg:gap-4 lg:px-6">
+          <EcosystemBrand ecosystem={ecosystem} href={theme.publicPath} />
+
+          <div className="hidden min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:block">
+            <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} accent={theme.accent} />
+          </div>
+
+          {search ? (
+            <div className="ml-auto hidden w-[min(30vw,390px)] min-w-[220px] lg:block">
+              {search}
+            </div>
+          ) : null}
+
+          <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
+            {hasUser ? (
+              <UserAccountMenu />
+            ) : (
+              <div className="hidden items-center gap-2 2xl:flex">
+                <Link to="/connexion" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-[#002050] transition hover:bg-slate-50">
+                  Se connecter
+                </Link>
+                <Link to="/inscription" className="inline-flex h-10 items-center rounded-xl bg-[#002050] px-3.5 text-sm font-bold text-white transition hover:bg-[#00183E]">
+                  Créer un compte
+                </Link>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#002050] transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813]"
+              aria-label={`Ouvrir le menu Omnia ${theme.name}`}
+              aria-expanded={menuOpen}
+            >
+              <Menu size={19} />
+            </button>
+          </div>
+        </div>
+
+        {search ? (
+          <div className="border-t px-4 py-2.5 lg:hidden" style={{ borderColor: theme.border, background: theme.panel }}>
+            <div className="mx-auto max-w-[1480px]">{search}</div>
+          </div>
+        ) : null}
+      </header>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-[95]" role="dialog" aria-modal="true" aria-label={`Navigation Omnia ${theme.name}`}>
+          <button type="button" className="absolute inset-0 bg-slate-950/50" onClick={() => setMenuOpen(false)} aria-label="Fermer le menu" />
+          <aside className="absolute right-0 top-0 flex h-[100dvh] w-[min(92vw,390px)] flex-col bg-[#F8FAFC] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+              <EcosystemBrand ecosystem={ecosystem} href={theme.publicPath} />
+              <button type="button" onClick={() => setMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100" aria-label="Fermer">
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {search ? <div className="mb-5">{search}</div> : null}
+
+              <Link
+                to="/accueil"
+                onClick={() => setMenuOpen(false)}
+                className="mb-2 flex items-center gap-3 rounded-xl bg-white px-3 py-3 text-sm font-black text-[#002050] shadow-sm"
+              >
+                <Home size={16} style={{ color: theme.accent }} />
+                Accueil
+              </Link>
+
+              <div className="my-4 border-t border-slate-200" />
+              <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: theme.accent }}>
+                Omnia {theme.name}
+              </p>
+              <PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMenuOpen(false)} />
+            </div>
+
+            {!hasUser && (
+              <div className="space-y-2 border-t border-slate-200 bg-white px-5 pb-6 pt-5">
+                <Link to="/connexion" onClick={() => setMenuOpen(false)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#002050] py-3 text-sm font-bold text-[#002050]">
+                  <LogIn size={16} /> Se connecter
+                </Link>
+                <Link to="/inscription" onClick={() => setMenuOpen(false)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#002050] py-3 text-sm font-bold text-white">
+                  <UserPlus size={16} /> Créer un compte
+                </Link>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 

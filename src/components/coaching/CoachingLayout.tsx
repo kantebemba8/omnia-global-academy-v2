@@ -5,13 +5,23 @@ import { PageFooter } from '../PageFooter';
 import { DashboardLayout } from '../DashboardLayout';
 import { StructureLayout } from '../StructureLayout';
 import { ModerateurLayout } from '../ModerateurLayout';
-import { EcosystemConnectedShell } from '../ecosystem/EcosystemShell';
+import { EcosystemConnectedShell, EcosystemPublicHeader } from '../ecosystem/EcosystemShell';
 import { useAuth } from '../../hooks/useAuth';
 import CoachingEcosystemNav from './CoachingEcosystemNav';
 import CoachingHeaderSearch from './CoachingHeaderSearch';
 import { coachingAudienceLabel, getCoachingNavigation, resolveCoachingAudience, type CoachingAudience } from '../../lib/coachingNavigation';
 
 function PublicCoachingLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#FAFBF4] text-[#002050]">
+      <EcosystemPublicHeader ecosystem="coaching" navigation={getCoachingNavigation('public')} search={<CoachingHeaderSearch />} />
+      <main className="min-w-0">{children}</main>
+      <PageFooter ecosystem="coaching" />
+    </div>
+  );
+}
+
+function LegacySuperAdminCoachingLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#FBFCFA] text-[#002050]">
       <Navbar />
@@ -38,7 +48,8 @@ function ConnectedFrame({ audience, children }: { audience: Exclude<CoachingAudi
 }
 
 export function CoachingAudienceLayout({ audience, children }: { audience: CoachingAudience; children: ReactNode }) {
-  if (audience === 'public' || audience === 'super_admin') return <PublicCoachingLayout>{children}</PublicCoachingLayout>;
+  if (audience === 'public') return <PublicCoachingLayout>{children}</PublicCoachingLayout>;
+  if (audience === 'super_admin') return <LegacySuperAdminCoachingLayout>{children}</LegacySuperAdminCoachingLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }
 
