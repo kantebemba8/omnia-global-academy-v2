@@ -132,6 +132,7 @@ export default function ProjectOwnerWorkspace() {
   const load = async () => {
     setLoading(true);
     setError('');
+    if (new URLSearchParams(location.search).get('preview') === 'true') { setProjects([]); setLoading(false); return; }
     try {
       const result = await getOwnerProjects(ownerScope);
       setProjects(result.projects);
@@ -142,7 +143,7 @@ export default function ProjectOwnerWorkspace() {
     }
   };
 
-  useEffect(() => { load(); }, [ownerScope]);
+  useEffect(() => { load(); }, [ownerScope, location.search]);
 
   const metrics = useMemo(() => ({
     total: projects.length,
@@ -404,11 +405,11 @@ export default function ProjectOwnerWorkspace() {
 
   return (
     <ProjectsWorkspaceFrame>
-      <div className="mx-auto max-w-7xl p-5 sm:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Gestion de projets</p><h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Gestion Omnia Projects</h1><p className="mt-2 text-slate-600">Créez des missions structurées et suivez les candidatures.</p></div>
+      <div className="mx-auto max-w-7xl bg-[#F7F4EE] p-5 sm:p-8">
+        <div className="overflow-hidden rounded-[26px] border border-[#E6DED1] bg-white p-6 shadow-[0_16px_45px_rgba(0,32,80,.06)] sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#A96812]">Atelier de pilotage</p><h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#002050]">Projets, équipes et livrables</h1><p className="mt-2 max-w-2xl text-slate-600">Créez une mission, faites-la valider, sélectionnez les participants puis suivez le cycle jusqu’aux preuves d’expérience.</p></div>
           <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}><Plus size={17} /> Nouveau projet</button>
-        </div>
+        </div><div className="mt-6 grid gap-2 sm:grid-cols-4"><div className="rounded-xl bg-[#F3EBDD] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#87530F]">01 · Proposer</p></div><div className="rounded-xl bg-[#EEF1F5] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#43566E]">02 · Sélectionner</p></div><div className="rounded-xl bg-[#EDF4F5] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#0D5D6A]">03 · Piloter</p></div><div className="rounded-xl bg-[#EEF6F0] px-4 py-3"><p className="text-[10px] font-black uppercase tracking-wider text-[#2E6B48]">04 · Valider</p></div></div></div>
 
         {message && <div className="mt-6 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#E7D4A1', background: '#FFFBF0', color: '#6E4C08' }}>{message}</div>}
         {error && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -496,7 +497,7 @@ export default function ProjectOwnerWorkspace() {
               <form onSubmit={addPartner} className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"><input required value={partnerName} onChange={event=>setPartnerName(event.target.value)} placeholder="Nom de l’entreprise ou institution" className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}/><select value={partnerRole} onChange={event=>setPartnerRole(event.target.value as ProjectPartner['partner_role'])} className="rounded-lg border bg-white px-3 py-2.5 text-sm" style={{borderColor:'#D0D5DD'}}>{['co_owner','client','sponsor','technical','academic','institutional','mentor','evaluator','participant'].map(role=><option key={role} value={role}>{role}</option>)}</select><textarea value={partnerNotes} onChange={event=>setPartnerNotes(event.target.value)} rows={2} placeholder="Rôle concret, convention ou contribution" className="rounded-lg border bg-white px-3 py-2.5 text-sm sm:col-span-2" style={{borderColor:'#D0D5DD'}}/><button disabled={drawerBusy} className="rounded-lg px-4 py-2.5 text-sm font-bold text-white sm:col-span-2" style={{background:'#002050'}}>Proposer ce partenaire</button></form>
             </section>
 
-            <section className="mt-7">
+            <section id="jalons" className="scroll-mt-40 mt-7">
               <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><CalendarDays size={19} style={{ color: '#BF8813' }} /> Jalons et livrables</h3>
               {milestones.length ? <div className="mt-4 space-y-3">{milestones.map(milestone => <div key={milestone.id} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-slate-900">{milestone.sequence_no}. {milestone.title}</p>{milestone.description && <p className="mt-1 text-sm text-slate-600">{milestone.description}</p>}</div><span className="text-xs font-semibold text-slate-500">{milestone.due_at ? new Date(milestone.due_at).toLocaleDateString('fr-FR') : 'Sans date'}</span></div></div>)}</div> : <p className="mt-3 text-sm text-slate-600">Aucun jalon défini.</p>}
               <form onSubmit={addMilestone} className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
@@ -508,7 +509,7 @@ export default function ProjectOwnerWorkspace() {
             </section>
 
             {selectedProject.participation_mode !== 'individual' && selectedProject.team_creation_mode !== 'candidate' && (
-              <section className="mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
+              <section id="equipes" className="scroll-mt-40 mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
                 <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><Users size={19} style={{ color: '#BF8813' }} /> Équipes constituées par le porteur</h3>
                 <p className="mt-1 text-sm text-slate-600">Le chef d’équipe reçoit une invitation et doit donner son consentement avant d’être ajouté.</p>
                 {teams.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2">{teams.map(team => <div key={team.id} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-slate-900">{team.name}</p><p className="mt-1 text-sm text-slate-600">{team.members?.filter(member => member.invitation_status === 'accepted').length || 0} membre(s) confirmé(s)</p></div><span className="text-xs font-semibold text-slate-500">{team.status}</span></div><div className="mt-3 space-y-1">{team.members?.map(member => <p key={member.id} className="text-xs text-slate-600">{member.user?.full_name || member.user?.email || 'Utilisateur'} · {member.member_role} · {member.invitation_status}</p>)}</div></div>)}</div> : <p className="mt-4 text-sm text-slate-600">Aucune équipe créée par le porteur.</p>}
@@ -521,7 +522,7 @@ export default function ProjectOwnerWorkspace() {
               </section>
             )}
 
-            <section className="mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
+            <section id="livrables" className="scroll-mt-40 mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
               <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><FileCheck2 size={19} style={{ color: '#BF8813' }} /> Livrables reçus</h3>
               <p className="mt-1 text-sm text-slate-600">Une validation crée une preuve interne privée, sans publication automatique dans le portfolio.</p>
               {applicationsLoading ? <div className="mt-4 h-32 animate-pulse rounded-xl bg-slate-100" /> : deliverables.length ? <div className="mt-4 space-y-3">{deliverables.map(deliverable => (
@@ -550,7 +551,7 @@ export default function ProjectOwnerWorkspace() {
               </form>
             </section>
 
-            <section className="mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
+            <section id="candidatures" className="scroll-mt-40 mt-8 border-t pt-7" style={{ borderColor: '#EEF0F3' }}>
               <h3 className="flex items-center gap-2 text-lg font-bold" style={{ color: '#002050' }}><ClipboardList size={19} style={{ color: '#BF8813' }} /> Candidatures</h3>
               {applicationsLoading ? <div className="mt-5 h-48 animate-pulse rounded-xl bg-slate-100" /> : applications.length ? <div className="mt-5 space-y-4">{applications.map(application => <div key={application.id} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><div className="flex items-start justify-between gap-3"><div><h4 className="font-bold text-slate-900">{application.applicant?.full_name || 'Candidat'}</h4><p className="mt-1 text-sm text-slate-600">{application.applicant?.email} · {application.application_mode === 'team' ? application.team?.name || 'Équipe' : 'Individuel'}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{application.status}</span></div>{application.motivation && <p className="mt-4 text-sm leading-6 text-slate-700">{application.motivation}</p>}<div className="mt-4 flex flex-wrap gap-2"><button onClick={() => review(application, 'under_review')} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#D0D5DD' }}>En analyse</button><button onClick={() => review(application, 'waitlisted')} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#D0D5DD' }}>Liste d’attente</button><button onClick={() => review(application, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700"><X size={13} /> Refuser</button><button onClick={() => review(application, 'selected')} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: '#002050' }}><Check size={13} /> Sélectionner</button></div></div>)}</div> : <div className="mt-5 rounded-xl bg-slate-50 px-5 py-10 text-center"><ClipboardList className="mx-auto" size={32} style={{ color: '#BF8813' }} /><p className="mt-3 font-semibold text-slate-800">Aucune candidature reçue</p></div>}
             </section>

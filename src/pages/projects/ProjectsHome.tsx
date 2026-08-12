@@ -1,151 +1,98 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Briefcase, Building2, Filter, Search, ShieldCheck, Target, Users } from 'lucide-react';
-import {
-  getProjectsContext,
-  listProjects,
-  OmniaProject,
-  PROJECT_TYPE_LABELS,
-  ProjectContext,
-  ProjectType,
-} from '../../lib/projectsApi';
-import { ProjectCard, ProjectsHero, ProjectsPublicLayout } from '../../components/projects/ProjectUi';
+import { ArrowRight, Briefcase, CheckCircle2, ClipboardList, Compass, FileCheck2, Filter, FolderKanban, Layers3, Network, ShieldCheck, Target, Users } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import { getMyProjectsWorkspace, getOwnerProjects, getProjectsContext, listProjects, OmniaProject, PROJECT_TYPE_LABELS, ProjectContext, ProjectType } from '../../lib/projectsApi';
+import { resolveProjectsAudience, type ProjectsAudience } from '../../lib/projectsNavigation';
+import { AdaptiveProjectsLayout } from '../../components/projects/ProjectsRoleLayout';
+import { ProjectCard, ProjectTrustStrip } from '../../components/projects/ProjectUi';
 
 const TYPES = Object.entries(PROJECT_TYPE_LABELS) as Array<[ProjectType, string]>;
+type LearnerSummary = { applications: any[]; memberships: any[]; invitations: any[]; project_invitations: any[]; deliverables: any[] };
+
+function previewPath(path: string, params: URLSearchParams) {
+  if (params.get('preview') !== 'true') return path;
+  const [base, hash = ''] = path.split('#', 2); const [pathname, query = ''] = base.split('?', 2); const next = new URLSearchParams(query); next.set('preview', 'true'); const role = params.get('role'); if (role) next.set('role', role); return `${pathname}?${next.toString()}${hash ? `#${hash}` : ''}`;
+}
+
+function WorkspaceVisual({ audience, projects, learner }: { audience: ProjectsAudience; projects: OmniaProject[]; learner: LearnerSummary | null }) {
+  if (audience === 'apprenant') {
+    const pending = learner?.project_invitations?.filter(item => item.status === 'pending').length || 0;
+    const selected = learner?.applications?.filter(item => item.status === 'selected').length || 0;
+    return <div className="relative min-h-[330px] overflow-hidden rounded-[26px] border border-white/12 bg-[#071C3E] p-5 shadow-[0_28px_90px_rgba(0,0,0,.22)]"><div className="absolute -right-20 -top-16 h-56 w-56 rounded-full border border-[#C58C33]/25"/><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Atelier d’expérience</p><div className="mt-5 grid gap-3"><div className="translate-x-7 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur"><div className="flex items-center justify-between"><span className="text-sm font-black text-white">À rejoindre</span><span className="rounded-full bg-[#E4B45D]/15 px-2 py-1 text-xs font-black text-[#F4CD82]">{pending}</span></div><p className="mt-2 text-xs text-blue-100">Invitations qui demandent votre décision.</p></div><div className="-translate-x-2 rounded-2xl border border-white/10 bg-[#0D4D5E]/45 p-4"><div className="flex items-center justify-between"><span className="text-sm font-black text-white">En mission</span><span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-white">{selected}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full w-2/3 bg-[#E4B45D]"/></div></div><div className="translate-x-10 rounded-2xl border border-white/10 bg-white/5 p-4"><span className="text-sm font-black text-white">Preuves produites</span><p className="mt-2 text-2xl font-black text-[#F1C875]">{learner?.deliverables?.length || 0}</p></div></div></div>;
+  }
+  if (audience === 'professeur') return <div className="relative min-h-[330px] overflow-hidden rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Laboratoire de projets</p><div className="mt-8 space-y-6">{['Brouillon','Validation','Publié','En cours'].map((label,index)=><div key={label} className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E4B45D]/35 bg-[#E4B45D]/10 text-xs font-black text-[#F1C875]">0{index+1}</span><div className="h-px flex-1 bg-gradient-to-r from-[#E4B45D]/50 to-transparent"/><span className="w-20 text-xs font-bold text-blue-100">{label}</span></div>)}</div></div>;
+  if (audience === 'structure') return <div className="relative min-h-[330px] overflow-hidden rounded-[26px] border border-white/12 bg-[#071C3E] p-5"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Portefeuille organisationnel</p><div className="mt-6 grid grid-cols-2 gap-3"><div className="row-span-2 rounded-3xl border border-white/10 bg-white/10 p-4"><Network className="text-[#E4B45D]"/><p className="mt-12 text-3xl font-black text-white">{projects.length}</p><p className="text-xs text-blue-100">projets portés</p></div><div className="rounded-2xl border border-white/10 bg-[#0D4D5E]/45 p-4"><p className="text-xs text-blue-100">En mouvement</p><p className="mt-2 text-2xl font-black text-white">{projects.filter(p=>['published','selection','in_progress'].includes(p.status)).length}</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs text-blue-100">Candidatures</p><p className="mt-2 text-2xl font-black text-[#F1C875]">{projects.reduce((n,p)=>n+(p.application_count||0),0)}</p></div></div></div>;
+  if (audience === 'recruteur') return <div className="min-h-[330px] rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Compétences en situation</p><div className="mt-8 grid gap-3"><div className="rounded-2xl bg-white/10 p-4"><Target className="text-[#E4B45D]"/><p className="mt-5 text-sm font-black text-white">Mission réelle</p></div><div className="ml-10 rounded-2xl bg-[#0D4D5E]/45 p-4"><Users className="text-[#E4B45D]"/><p className="mt-5 text-sm font-black text-white">Collaboration</p></div><div className="ml-20 rounded-2xl bg-white/5 p-4"><ShieldCheck className="text-[#E4B45D]"/><p className="mt-5 text-sm font-black text-white">Preuve vérifiée</p></div></div></div>;
+  if (audience === 'coach') return <div className="min-h-[330px] rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Objectif → expérience</p><div className="mt-12 flex items-center justify-between gap-2">{['Objectif','Mission','Retour','Preuve'].map((label,index)=><div key={label} className="flex min-w-0 flex-1 items-center"><div className="flex h-20 min-w-20 flex-col items-center justify-center rounded-full border border-white/15 bg-white/5"><span className="text-xs font-black text-[#E4B45D]">0{index+1}</span><span className="mt-1 text-[10px] font-bold text-white">{label}</span></div>{index<3&&<div className="h-px flex-1 bg-[#E4B45D]/40"/>}</div>)}</div></div>;
+  if (audience === 'organisateur') return <div className="min-h-[330px] rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Du Live à l’action</p><div className="mt-8 grid grid-cols-[1fr_auto_1fr] items-center gap-4"><div className="rounded-3xl border border-white/10 bg-white/10 p-5"><Layers3 className="text-[#E4B45D]"/><p className="mt-10 text-sm font-black text-white">Événement</p></div><ArrowRight className="text-[#E4B45D]"/><div className="rounded-3xl border border-white/10 bg-[#0D4D5E]/45 p-5"><FolderKanban className="text-[#E4B45D]"/><p className="mt-10 text-sm font-black text-white">Projet</p></div></div></div>;
+  if (audience === 'moderateur') return <div className="min-h-[330px] rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Lecture de l’écosystème</p><div className="mt-10 rounded-full border border-white/10 p-8"><div className="rounded-full border border-[#E4B45D]/30 p-8"><div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-[#E4B45D]/10"><ShieldCheck size={36} className="text-[#E4B45D]"/></div></div></div></div>;
+  return <div className="relative min-h-[330px] overflow-hidden rounded-[26px] border border-white/12 bg-[#071C3E] p-6"><div className="absolute right-5 top-5 h-44 w-44 rotate-12 rounded-[42px] border border-[#E4B45D]/20"/><div className="absolute bottom-5 left-6 h-28 w-44 -rotate-6 rounded-[32px] border border-white/10 bg-white/5"/><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#E4B45D]">Project blueprint</p><div className="relative mt-16 grid gap-3"><div className="w-4/5 rounded-2xl border border-white/10 bg-white/10 p-4 text-sm font-black text-white">Problème réel</div><div className="ml-auto w-4/5 rounded-2xl border border-white/10 bg-[#0D4D5E]/45 p-4 text-sm font-black text-white">Collaboration</div><div className="w-4/5 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm font-black text-white">Preuve d’expérience</div></div></div>;
+}
+
+function heroCopy(audience: ProjectsAudience) {
+  const map: Record<ProjectsAudience, [string,string,string]> = {
+    public:['Expériences concrètes','Passez de la compétence à la réalisation.','Omnia Projects transforme une mission, un défi ou un besoin réel en expérience structurée, collaborative et vérifiable.'],
+    apprenant:['Votre atelier d’expérience','Construisez des preuves, pas seulement des intentions.','Retrouvez les projets qui vous correspondent, vos équipes, vos livrables et les expériences que vous pourrez ensuite valoriser.'],
+    professeur:['Laboratoire pédagogique','Faites travailler les compétences sur des problèmes réels.','Concevez des missions, sélectionnez les participants, structurez les jalons et évaluez les livrables dans un même environnement.'],
+    structure:['Portefeuille de missions','Transformez les besoins de votre organisation en expériences utiles.','Portez des projets, mobilisez des talents et suivez les candidatures, équipes, jalons et livrables.'],
+    recruteur:['Compétences en situation','Observez ce que les talents savent réellement produire.','Les projets offrent un contexte concret pour lire les compétences, la collaboration et les preuves d’expérience.'],
+    organisateur:['Du Live à l’action','Prolongez une rencontre par une expérience concrète.','Un événement peut devenir un point de départ vers des défis, missions et collaborations visibles dans Omnia Projects.'],
+    coach:['Objectif → expérience','Transformez un objectif de progression en terrain de pratique.','Utilisez les projets comme support concret pour passer du conseil à l’expérimentation et à la preuve.'],
+    moderateur:['Écosystème de projets','Une lecture claire des missions et expériences publiées.','Consultez les projets visibles depuis votre périmètre sans mélanger cet espace avec les outils de modération.'],
+    super_admin:['Omnia Projects','Prévisualisation de l’écosystème public.','La gouvernance Super-admin reste volontairement dans votre espace d’administration et sera revue en dernier.'],
+  };
+  return map[audience];
+}
 
 export default function ProjectsHome() {
+  const { user } = useAuth();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const explorer = location.pathname.endsWith('/explorer');
   const headerQuery = searchParams.get('q') || '';
-  const [projects, setProjects] = useState<OmniaProject[]>([]);
-  const [context, setContext] = useState<ProjectContext | null>(null);
-  const [query, setQuery] = useState(() => headerQuery);
-  const [type, setType] = useState('');
-  const [level, setLevel] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [total, setTotal] = useState(0);
-
-  const load = async (filters: Record<string, unknown> = {}) => {
-    setLoading(true);
-    setError('');
-    try {
-      const result = await listProjects({ page_size: explorer ? 30 : 6, ...filters });
-      setProjects(result.projects);
-      setTotal(result.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Impossible de charger les projets.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const preview = searchParams.get('preview') === 'true' && Boolean(user?.roles?.includes('super_admin'));
+  const audience = resolveProjectsAudience(user?.roles, preview ? searchParams.get('role') : null);
+  const [projects, setProjects] = useState<OmniaProject[]>([]); const [context, setContext] = useState<ProjectContext | null>(null); const [type,setType]=useState(searchParams.get('type')||''); const [level,setLevel]=useState(searchParams.get('level')||''); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [total,setTotal]=useState(0); const [learner,setLearner]=useState<LearnerSummary|null>(null); const [owned,setOwned]=useState<OmniaProject[]>([]);
+  const [eyebrow,title,description]=heroCopy(audience);
 
   useEffect(() => {
-    setQuery(headerQuery);
-    load(headerQuery ? { q: headerQuery } : {});
-    getProjectsContext().then(setContext).catch(() => setContext(null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [explorer, headerQuery]);
+    let active=true; setLoading(true); setError('');
+    const filters: Record<string, unknown> = { page_size: explorer ? 30 : 8 };
+    if (headerQuery) filters.q=headerQuery; if (type) filters.project_type=type; if (level) filters.level=level;
+    Promise.allSettled([
+      listProjects(filters),
+      getProjectsContext(),
+      !preview && audience==='apprenant' ? getMyProjectsWorkspace() : Promise.resolve(null),
+      !preview && audience==='professeur' ? getOwnerProjects('personal') : !preview && audience==='structure' ? getOwnerProjects('structure') : Promise.resolve(null),
+    ]).then(results=>{ if(!active)return; const list=results[0]; if(list.status==='fulfilled'){setProjects(list.value.projects);setTotal(list.value.total)}else setError('Impossible de charger les projets.'); const ctx=results[1]; if(ctx.status==='fulfilled')setContext(ctx.value); const learn=results[2]; if(learn.status==='fulfilled'&&learn.value)setLearner(learn.value as LearnerSummary); else setLearner(null); const own=results[3]; if(own.status==='fulfilled'&&own.value)setOwned((own.value as {projects:OmniaProject[]}).projects||[]); else setOwned([]); setLoading(false); });
+    return()=>{active=false};
+  },[audience,explorer,headerQuery,level,preview,type]);
 
-  const title = useMemo(() => explorer ? 'Explorer les projets et défis' : 'Opportunités récemment publiées', [explorer]);
+  const metrics = useMemo(() => {
+    if (audience==='apprenant') return [
+      ['Candidatures', learner?.applications?.length || 0], ['Invitations', learner?.project_invitations?.filter(i=>i.status==='pending').length || 0], ['Équipes', learner?.memberships?.length || 0], ['Livrables', learner?.deliverables?.length || 0],
+    ];
+    if (audience==='professeur'||audience==='structure') return [
+      ['Projets',owned.length],['En mouvement',owned.filter(p=>['published','selection','in_progress'].includes(p.status)).length],['Candidatures',owned.reduce((n,p)=>n+(p.application_count||0),0)],['Équipes',owned.reduce((n,p)=>n+(p.team_count||0),0)],
+    ];
+    return [['Projets visibles',total],['Missions réelles',projects.filter(p=>['real_project','short_mission','structure_internal'].includes(p.project_type)).length],['Défis',projects.filter(p=>['challenge','hackathon','call_for_solutions'].includes(p.project_type)).length],['Avec récompense',projects.filter(p=>p.reward_type&&p.reward_type!=='none').length]];
+  },[audience,learner,owned,projects,total]);
 
-  const handleSearch = (event: FormEvent) => {
-    event.preventDefault();
-    load({ q: query, project_type: type || undefined, level: level || undefined });
-  };
+  function applyFilters() { const next=new URLSearchParams(searchParams); if(type)next.set('type',type);else next.delete('type'); if(level)next.set('level',level);else next.delete('level'); setSearchParams(next); }
 
-  return (
-    <ProjectsPublicLayout>
-      {!explorer && <ProjectsHero />}
+  const workspacePath = audience==='apprenant'?'/projects/participation':audience==='professeur'||audience==='structure'?'/projects/pilotage':'/projects/explorer';
+  return <AdaptiveProjectsLayout><main className="bg-[#F7F4EE]">
+    {!explorer && <section className="overflow-hidden bg-[#002050] px-4 py-10 sm:px-6 lg:py-14"><div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.05fr_.95fr] lg:items-center"><div><p className="text-xs font-black uppercase tracking-[.2em] text-[#E4B45D]">{eyebrow}</p><h1 className="mt-4 max-w-4xl text-4xl font-black tracking-[-.045em] text-white sm:text-5xl lg:text-[58px] lg:leading-[1.02]">{title}</h1><p className="mt-5 max-w-2xl text-base leading-8 text-blue-100">{description}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={previewPath(workspacePath,searchParams)} className="inline-flex items-center gap-2 rounded-xl bg-[#E4B45D] px-5 py-3 text-sm font-black text-[#002050]">{audience==='public'||['recruteur','organisateur','coach','moderateur','super_admin'].includes(audience)?'Explorer les projets':'Ouvrir mon espace'}<ArrowRight size={17}/></Link><Link to={previewPath('/projects/explorer',searchParams)} className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-bold text-white">Voir les opportunités <Compass size={17}/></Link></div><div className="mt-9"><ProjectTrustStrip/></div></div><WorkspaceVisual audience={audience} projects={audience==='professeur'||audience==='structure'?owned:projects} learner={learner}/></div></section>}
 
-      {!explorer && (
-        <section className="border-b bg-white px-5 py-12 sm:px-8" style={{ borderColor: '#E4E7EC' }}>
-          <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-center">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>Plus qu’une offre</p>
-              <h2 className="mt-3 text-3xl font-bold leading-tight" style={{ color: '#002050' }}>Produire, collaborer et démontrer ce que vous savez faire.</h2>
-              <p className="mt-4 max-w-2xl leading-7 text-slate-600">
-                Omnia Projects est réservé aux expériences réelles. Les offres d’emploi restent dans Omnia Communauté et la préparation des candidatures dans Omnia Career.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-              <div className="flex gap-3 border-l-2 pl-4" style={{ borderColor: '#BF8813' }}><Target className="mt-0.5 shrink-0" size={20} style={{ color: '#002050' }} /><div><strong className="text-sm text-slate-900">Mission concrète</strong><p className="mt-1 text-sm text-slate-600">Objectifs, jalons et livrables clairement définis.</p></div></div>
-              <div className="flex gap-3 border-l-2 pl-4" style={{ borderColor: '#BF8813' }}><Users className="mt-0.5 shrink-0" size={20} style={{ color: '#002050' }} /><div><strong className="text-sm text-slate-900">Consentement des équipes</strong><p className="mt-1 text-sm text-slate-600">Personne n’est ajouté à une équipe sans accord.</p></div></div>
-              <div className="flex gap-3 border-l-2 pl-4" style={{ borderColor: '#BF8813' }}><ShieldCheck className="mt-0.5 shrink-0" size={20} style={{ color: '#002050' }} /><div><strong className="text-sm text-slate-900">Preuves contrôlées</strong><p className="mt-1 text-sm text-slate-600">Aucun livrable confidentiel n’est publié automatiquement.</p></div></div>
-            </div>
-          </div>
-        </section>
-      )}
+    {!explorer && <section className="border-b border-[#E6DED1] bg-[#FFFEFB] px-4 py-6 sm:px-6"><div className="mx-auto grid max-w-7xl gap-0 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([label,value],i)=><div key={String(label)} className={`px-5 py-4 ${i?'border-t border-[#EEE8DE] sm:border-l sm:border-t-0':''}`}><p className="text-xs font-black uppercase tracking-[.14em] text-slate-400">{label}</p><p className="mt-2 text-3xl font-black tracking-[-.04em] text-[#002050]">{value}</p></div>)}</div></section>}
 
-      <section className="bg-slate-50 px-5 py-12 sm:px-8 lg:py-16">
-        <div className="mx-auto max-w-6xl">
-          {explorer && (
-            <div className="mb-8 max-w-3xl">
-              <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>Catalogue des projets</p>
-              <h1 className="mt-2 text-3xl font-bold sm:text-4xl" style={{ color: '#002050' }}>Explorez les projets disponibles</h1>
-              <p className="mt-3 leading-7 text-slate-600">Recherchez une mission selon vos compétences, le format du projet et le niveau demandé.</p>
-            </div>
-          )}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.16em]" style={{ color: '#BF8813' }}>{total} opportunité{total > 1 ? 's' : ''}</p>
-              <h2 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>{title}</h2>
-            </div>
-            {context?.can_create && (
-              <Link to={context.is_admin ? '/admin/projects/gestion' : context.roles.includes('professeur') ? '/professeur/projects' : context.organization_id ? '/structure/projects' : '/projects/gestion'} className="inline-flex items-center gap-2 self-start rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}>
-                <Building2 size={17} /> Proposer un projet
-              </Link>
-            )}
-          </div>
-
-          <form onSubmit={handleSearch} className="mt-8 grid gap-3 border bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1fr_220px_180px_auto]" style={{ borderColor: '#E4E7EC', borderRadius: 16 }}>
-            <label className="relative">
-              <Search size={18} className="absolute left-3 top-3 text-slate-400" />
-              <input value={query} onChange={event => setQuery(event.target.value)} className="w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2" style={{ borderColor: '#D0D5DD' }} placeholder="Compétence, mission, partenaire..." />
-            </label>
-            <select value={type} onChange={event => setType(event.target.value)} className="rounded-xl border px-3 py-2.5 text-sm outline-none" style={{ borderColor: '#D0D5DD' }}>
-              <option value="">Tous les formats</option>
-              {TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <select value={level} onChange={event => setLevel(event.target.value)} className="rounded-xl border px-3 py-2.5 text-sm outline-none" style={{ borderColor: '#D0D5DD' }}>
-              <option value="">Tous niveaux</option>
-              <option value="beginner">Débutant</option>
-              <option value="intermediate">Intermédiaire</option>
-              <option value="advanced">Avancé</option>
-              <option value="expert">Expert</option>
-              <option value="all">Ouvert à tous</option>
-            </select>
-            <button className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white" style={{ background: '#BF8813' }}><Filter size={17} /> Filtrer</button>
-          </form>
-
-          {error && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
-          {loading ? (
-            <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-80 animate-pulse rounded-[18px] bg-white" />)}
-            </div>
-          ) : projects.length ? (
-            <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {projects.map(project => <ProjectCard key={project.id} project={project} />)}
-            </div>
-          ) : (
-            <div className="mt-8 border bg-white px-6 py-14 text-center" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
-              <Briefcase className="mx-auto" size={34} style={{ color: '#BF8813' }} />
-              <h3 className="mt-4 text-xl font-bold" style={{ color: '#002050' }}>Aucun projet ne correspond à ces critères</h3>
-              <p className="mt-2 text-sm text-slate-600">Modifiez les filtres ou revenez prochainement.</p>
-            </div>
-          )}
-
-          {!explorer && total > 6 && (
-            <div className="mt-9 text-center">
-              <Link to="/projects/explorer" className="inline-flex items-center gap-2 rounded-xl border bg-white px-5 py-3 text-sm font-bold" style={{ borderColor: '#002050', color: '#002050' }}>
-                Voir toutes les opportunités <ArrowRight size={17} />
-              </Link>
-            </div>
-          )}
-        </div>
-      </section>
-    </ProjectsPublicLayout>
-  );
+    <section className="px-4 py-10 sm:px-6 lg:py-14"><div className="mx-auto max-w-7xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div>{explorer&&<p className="text-xs font-black uppercase tracking-[.18em] text-[#A96812]">Catalogue Projects</p>}<h2 className={`${explorer?'mt-2 text-4xl':'text-3xl'} font-black tracking-[-.035em] text-[#002050]`}>{explorer?'Explorer les projets disponibles':'Projets à découvrir'}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{headerQuery?`Résultats pour « ${headerQuery} » · ${total} projet${total>1?'s':''}`:`${total} projet${total>1?'s':''} visible${total>1?'s':''} dans l’écosystème.`}</p></div>{context?.can_create&&!['super_admin'].includes(audience)&&<Link to={audience==='professeur'?'/professeur/projects':audience==='structure'?'/structure/projects':'/projects/gestion'} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white"><FolderKanban size={17}/> Proposer un projet</Link>}</div>
+      {explorer&&<div className="mt-7 flex flex-col gap-3 rounded-2xl border border-[#E6DED1] bg-white p-4 sm:flex-row sm:items-center"><Filter size={18} className="text-[#A96812]"/><select value={type} onChange={e=>setType(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-[#DDD5C9] bg-[#FFFEFB] px-3 py-2.5 text-sm"><option value="">Tous les formats</option>{TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><select value={level} onChange={e=>setLevel(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-[#DDD5C9] bg-[#FFFEFB] px-3 py-2.5 text-sm"><option value="">Tous niveaux</option><option value="beginner">Débutant</option><option value="intermediate">Intermédiaire</option><option value="advanced">Avancé</option><option value="expert">Expert</option><option value="all">Ouvert à tous</option></select><button onClick={applyFilters} className="rounded-xl bg-[#A96812] px-5 py-2.5 text-sm font-black text-white">Appliquer</button></div>}
+      {error&&<div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {loading?<div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{Array.from({length:6}).map((_,i)=><div key={i} className="h-80 animate-pulse rounded-[22px] bg-white"/>)}</div>:projects.length?<div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{projects.map(project=><ProjectCard key={project.id} project={project}/>)}</div>:<div className="mt-8 rounded-[24px] border border-[#E6DED1] bg-white px-6 py-16 text-center"><Briefcase className="mx-auto text-[#A96812]" size={34}/><h3 className="mt-4 text-xl font-black text-[#002050]">Aucun projet pour ces critères</h3><p className="mt-2 text-sm text-slate-500">Modifiez les filtres ou revenez lorsque de nouvelles missions seront publiées.</p></div>}
+      {!explorer&&total>projects.length&&<div className="mt-8 text-center"><Link to={previewPath('/projects/explorer',searchParams)} className="inline-flex items-center gap-2 rounded-xl border border-[#002050] bg-white px-5 py-3 text-sm font-black text-[#002050]">Voir tous les projets <ArrowRight size={16}/></Link></div>}
+    </div></section>
+  </main></AdaptiveProjectsLayout>;
 }

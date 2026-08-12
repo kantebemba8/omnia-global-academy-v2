@@ -179,9 +179,9 @@ export default function ProjectDetail() {
 
   return (
     <ProjectsPublicLayout>
-      <section className="px-5 py-12 sm:px-8" style={{ background: 'linear-gradient(135deg, #00183E, #06336F)' }}>
+      <section className="px-5 py-12 sm:px-8" style={{ background: 'linear-gradient(135deg, #00183E 0%, #073B50 68%, #5A3A10 140%)' }}>
         <div className="mx-auto max-w-6xl">
-          <Link to="/projects/explorer" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-100"><ArrowLeft size={16} /> Retour aux projets</Link>
+          <Link to="/projects/explorer" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-100"><ArrowLeft size={16} /> Retour aux projets</Link><div className="mt-5 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[.16em] text-[#F1C875]"><span className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5">Mission</span><span className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5">Collaboration</span><span className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5">Preuve</span></div>
           <div className="mt-7 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
             <div>
               <div className="flex flex-wrap gap-2"><ProjectTypeBadge type={project.project_type} /><ProjectStatusBadge status={project.status} /></div>
@@ -211,7 +211,7 @@ export default function ProjectDetail() {
 
       {message && <div className="mx-auto mt-6 max-w-6xl px-5 sm:px-8"><div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#E7D4A1', background: '#FFFBF0', color: '#6E4C08' }}>{message}</div></div>}
 
-      <section className="px-5 py-12 sm:px-8 lg:py-16">
+      <section className="bg-[#F7F4EE] px-5 py-12 sm:px-8 lg:py-16">
         <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1fr_320px]">
           <div className="space-y-10">
             <section><h2 className="text-2xl font-bold" style={{ color: '#002050' }}>La mission</h2><div className="mt-4 whitespace-pre-line leading-7 text-slate-700">{project.description}</div></section>

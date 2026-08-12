@@ -276,6 +276,7 @@ const AdminOmniaLiveAudit = lazy(() => import('./pages/omnia-live/admin/AdminOmn
 const OmniaLiveSystemStatus = lazy(() => import('./pages/omnia-live/system/OmniaLiveSystemStatus'));
 const OmniaLiveWatch = lazy(() => import('./pages/omnia-live/OmniaLiveWatch'));
 const ProjectsHome = lazy(() => import('./pages/projects/ProjectsHome'));
+const ProjectsSectionHub = lazy(() => import('./pages/projects/ProjectsSectionHub'));
 const ProjectDetail = lazy(() => import('./pages/projects/ProjectDetail'));
 const PublicProjectPortfolio = lazy(() => import('./pages/projects/PublicProjectPortfolio'));
 const ProjectsWorkspace = lazy(() => import('./pages/projects/ProjectsWorkspace'));
@@ -490,6 +491,8 @@ export default function App() {
           <Route path="/career-studio" element={<OmniaCareerStudio />} />
           <Route path="/projects" element={<ProjectsHome />} />
           <Route path="/projects/explorer" element={<ProjectsHome />} />
+          <Route path="/projects/participation" element={<ProjectsSectionHub />} />
+          <Route path="/projects/pilotage" element={<ProjectsSectionHub />} />
           <Route path="/projects/mes-projets" element={<ProjectsWorkspace />} />
           <Route path="/projects/gestion" element={<ProjectOwnerWorkspace />} />
           <Route path="/professeur/projects" element={<ProjectOwnerWorkspace />} />

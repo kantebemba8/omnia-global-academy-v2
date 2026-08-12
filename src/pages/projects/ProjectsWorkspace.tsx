@@ -70,10 +70,12 @@ export default function ProjectsWorkspace() {
 
   useEffect(() => {
     let active = true;
+    const previewMode = new URLSearchParams(window.location.search).get('preview') === 'true';
     getProjectsContext()
       .then(context => {
         if (!active) return;
         if (context.is_admin || context.roles.includes('super_admin')) {
+          if (previewMode) { setAccessChecked(true); setLoading(false); return; }
           navigate('/admin/projects', { replace: true });
           return;
         }
@@ -233,8 +235,8 @@ export default function ProjectsWorkspace() {
 
   return (
     <ProjectsWorkspaceFrame>
-      <div className="mx-auto max-w-6xl p-5 sm:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto max-w-7xl bg-[#F7F4EE] p-5 sm:p-8">
+        <div className="overflow-hidden rounded-[26px] border border-[#E6DED1] bg-white p-6 shadow-[0_16px_45px_rgba(0,32,80,.06)] sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: '#BF8813' }}>Omnia Projects</p>
             <h1 className="mt-2 text-3xl font-bold" style={{ color: '#002050' }}>Mes projets et équipes</h1>
@@ -243,7 +245,7 @@ export default function ProjectsWorkspace() {
           <Link to="/projects/explorer" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#002050' }}>
             <FolderKanban size={17} /> Explorer les projets
           </Link>
-        </div>
+        </div><div className="mt-6 flex flex-wrap gap-2 text-xs font-bold text-slate-500"><span className="rounded-full bg-[#F3EBDD] px-3 py-1.5 text-[#87530F]">Candidatures</span><span className="rounded-full bg-[#EDF4F5] px-3 py-1.5 text-[#0D5D6A]">Équipes</span><span className="rounded-full bg-[#EEF1F5] px-3 py-1.5 text-[#43566E]">Livrables</span></div></div>
 
         {message && <div className="mt-6 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#E7D4A1', background: '#FFFBF0', color: '#6E4C08' }}>{message}</div>}
         {error && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -251,7 +253,7 @@ export default function ProjectsWorkspace() {
         {loading ? <div className="mt-8 h-72 animate-pulse rounded-2xl bg-white" /> : (
           <div className="mt-8 space-y-8">
             {!!pendingProjectInvitations.length && (
-              <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#DCE4EF', borderRadius: 18 }}>
+              <section id="invitations" className="scroll-mt-40 border bg-white p-5 sm:p-6" style={{ borderColor: '#DCE4EF', borderRadius: 18 }}>
                 <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><Mail size={20} style={{ color: '#BF8813' }} /> Invitations à des projets</h2>
                 <p className="mt-1 text-sm text-slate-600">L’accès n’est accordé qu’après votre consentement explicite.</p>
                 <div className="mt-5 space-y-3">
@@ -298,7 +300,7 @@ export default function ProjectsWorkspace() {
               </section>
             )}
 
-            <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
+            <section id="candidatures" className="scroll-mt-40 border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
               <div className="flex items-center justify-between"><div><h2 className="text-xl font-bold" style={{ color: '#002050' }}>Mes candidatures</h2><p className="mt-1 text-sm text-slate-600">Le statut est mis à jour par le porteur du projet.</p></div><button onClick={load} className="rounded-lg p-2 text-slate-500 hover:bg-slate-50" aria-label="Actualiser"><RefreshCw size={18} /></button></div>
               {applications.length ? <div className="mt-5 divide-y" style={{ borderColor: '#EEF0F3' }}>{applications.map(application => (
                 <div key={application.id} className="grid gap-3 py-4 first:pt-0 sm:grid-cols-[1fr_auto] sm:items-center">
@@ -308,7 +310,7 @@ export default function ProjectsWorkspace() {
               ))}</div> : <div className="mt-6 rounded-xl bg-slate-50 px-5 py-10 text-center"><p className="font-semibold text-slate-800">Aucune candidature</p><p className="mt-1 text-sm text-slate-600">Explorez les projets disponibles pour commencer.</p></div>}
             </section>
 
-            <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
+            <section id="equipes" className="scroll-mt-40 border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
               <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><Users size={20} style={{ color: '#BF8813' }} /> Mes équipes</h2>
               {memberships.length ? <div className="mt-5 grid gap-4 md:grid-cols-2">{memberships.map(membership => (
                 <div key={membership.id} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><p className="font-bold text-slate-900">{membership.team?.name}</p><p className="mt-1 text-sm text-slate-600">{membership.team?.project?.title || 'Projet Omnia'}</p><div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>{membership.team?.status}</span>{membership.team?.invitation_code && <span className="font-mono">{membership.team.invitation_code}</span>}</div></div>
@@ -339,7 +341,7 @@ export default function ProjectsWorkspace() {
               ) : <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Le dépôt sera disponible après votre sélection sur un projet ou l’acceptation dans une équipe.</p>}
             </section>
 
-            <section className="border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
+            <section id="livrables" className="scroll-mt-40 border bg-white p-5 sm:p-6" style={{ borderColor: '#E4E7EC', borderRadius: 18 }}>
               <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: '#002050' }}><FileCheck2 size={20} style={{ color: '#BF8813' }} /> Mes livrables</h2>
               {deliverables.length ? <div className="mt-5 space-y-3">{deliverables.map(deliverable => (
                 <div key={deliverable.id} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
