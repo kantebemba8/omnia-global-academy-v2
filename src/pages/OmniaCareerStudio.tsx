@@ -1,8 +1,11 @@
 import { ArrowRight, Briefcase, FileText, Mail, MessageSquare, Sparkles, Target } from 'lucide-react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import CareerPublicLayout from '../components/career/CareerPublicLayout';
+import { CareerAudienceLayout } from '../components/career/CareerRoleLayout';
+import CareerConnectedLanding from '../components/career/CareerConnectedLanding';
 import { useAuth } from '../hooks/useAuth';
-import { getCareerRedirectForRole, isOmniaCareerLearner } from '../utils/omniaCareerAccess';
+import { isOmniaCareerLearner, isOmniaCareerSuperAdmin } from '../utils/omniaCareerAccess';
+import { resolveCareerAudience } from '../lib/careerNavigation';
 
 
 const FLOW = [
@@ -14,14 +17,21 @@ const FLOW = [
 
 export default function OmniaCareerStudio() {
   const { user, loading } = useAuth();
+  const [params] = useSearchParams();
 
   if (loading) {
     return <div className="grid min-h-screen place-items-center bg-[#F7F5F0]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#002050]" /></div>;
   }
 
   if (user) {
-    if (isOmniaCareerLearner(user)) return <Navigate to="/omnia-career" replace />;
-    return <Navigate to={getCareerRedirectForRole(user)} replace />;
+    const preview = params.get('preview') === 'true' && isOmniaCareerSuperAdmin(user);
+    const audience = resolveCareerAudience(user.roles, preview ? params.get('role') : null);
+    if (!preview && isOmniaCareerLearner(user)) return <Navigate to="/omnia-career" replace />;
+    if (!preview && isOmniaCareerSuperAdmin(user)) return <Navigate to="/admin/omnia-career" replace />;
+    if (audience === 'apprenant') return <Navigate to={`/omnia-career${preview ? `?preview=true&role=apprenant` : ''}`} replace />;
+    if (audience !== 'public' && audience !== 'super_admin') {
+      return <CareerAudienceLayout audience={audience}><CareerConnectedLanding audience={audience} /></CareerAudienceLayout>;
+    }
   }
 
   return (

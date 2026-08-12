@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
+  BookOpen,
+  FolderKanban,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -139,8 +141,8 @@ function buildActions(data: DashboardData, previewMode: boolean): HomeAction[] {
     return [{
       title: 'Continuité d’accompagnement',
       description: 'En utilisation réelle, cette zone se construit à partir des demandes, séances, avis et disponibilités du Coach.',
-      path: '/coach/dashboard',
-      label: 'Voir l’espace Coach',
+      path: '/coaching/pratique',
+      label: 'Voir ma pratique',
       icon: HeartHandshake,
       accent: PETROL,
     }];
@@ -286,12 +288,13 @@ function SpacesRail({ data, previewMode }: { data: DashboardData; previewMode: b
   const offers = data.offers || [];
   const activeOffers = offers.filter(item => item.status === 'active').length;
   const spaces = [
-    { label: 'Coaching', caption: 'Séances, offres et accompagnement', path: '/coaching', accent: PETROL, soft: '#EAF6F3', icon: HeartHandshake, signal: n(metrics.upcoming_sessions) ? `${formatNumber(metrics.upcoming_sessions)} à venir` : undefined },
-    { label: 'Mes séances', caption: 'Agenda et continuité', path: '/coach/sessions', accent: '#406D8F', soft: '#EDF4F8', icon: CalendarDays, signal: n(metrics.completed_sessions) ? `${formatNumber(metrics.completed_sessions)} terminées` : undefined },
-    { label: 'Mes offres', caption: 'Formats disponibles et demandes', path: '/coach/offres', accent: '#675B9E', soft: '#F2EFFA', icon: Package, signal: activeOffers ? `${activeOffers} active${activeOffers > 1 ? 's' : ''}` : undefined },
+    { label: 'Formations', caption: 'Parcours et ressources pédagogiques', path: '/formations', accent: '#0F7699', soft: '#E9F7FB', icon: BookOpen },
+    { label: 'Omnia Career', caption: 'Trajectoires et préparation professionnelle', path: '/career-studio', accent: '#BF8813', soft: '#FBF5E9', icon: NotebookPen },
+    { label: 'Omnia Projects', caption: 'Missions et preuves d’expérience', path: '/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban },
+    { label: 'Omnia Talent', caption: 'Présence professionnelle', path: '/talent', accent: '#955272', soft: '#FAEEF4', icon: UserRound },
+    { label: 'Omnia Live', caption: 'Événements et experts', path: '/omnia-live', accent: '#6556B5', soft: '#F0EEFF', icon: Radio },
     { label: 'Communauté', caption: 'Échanges et ressources', path: '/forum', accent: '#0D8277', soft: '#EAF8F6', icon: Users },
-    { label: 'Talent', caption: 'Présence professionnelle', path: '/talent', accent: '#955272', soft: '#FAEEF4', icon: UserRound },
-    { label: 'Live', caption: 'Événements et experts', path: '/omnia-live', accent: '#6556B5', soft: '#F0EEFF', icon: Radio },
+    { label: 'Coaching', caption: 'Séances, offres et accompagnement', path: '/coaching', accent: PETROL, soft: '#EAF6F3', icon: HeartHandshake, signal: n(metrics.upcoming_sessions) ? `${formatNumber(metrics.upcoming_sessions)} à venir` : undefined },
   ];
   return <section className="border-b border-slate-200 bg-white"><div className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B746C]">Vos espaces Omnia</p><h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Passer du suivi au bon espace.</h2></div><p className="max-w-lg text-xs leading-5 text-slate-500">Les compteurs n’apparaissent que lorsqu’une activité réelle existe.</p></div><div className="mt-6 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{spaces.map(space => { const Icon = space.icon; return <Link key={space.path} to={withPreview(space.path, previewMode)} className="group min-w-[210px] flex-1 border-b-2 bg-white p-4 transition hover:bg-[#FAFCFB]" style={{ borderColor: space.accent }}><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: space.accent, background: space.soft }}><Icon size={18} /></span>{space.signal && !previewMode && <span className="text-[10px] font-black text-slate-400">{space.signal}</span>}</div><strong className="mt-4 block text-sm font-black text-[#002050]">{space.label}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{space.caption}</span><ArrowRight size={14} className="mt-3 text-slate-300 transition group-hover:translate-x-1" /></Link>; })}</div></div></section>;
 }

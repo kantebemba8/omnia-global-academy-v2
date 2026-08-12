@@ -2,9 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Briefcase, MapPin, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { RecruiterLayout } from '../../components/talent/RecruiterLayout';
-import { StructureLayout } from '../../components/StructureLayout';
-import TalentEcosystemNav from '../../components/talent/TalentEcosystemNav';
-import TalentHeaderSearch from '../../components/talent/TalentHeaderSearch';
+import { TalentAudienceLayout } from '../../components/talent/TalentRoleLayout';
 import { employabilityRequest, VerifiedTalentCandidate } from '../../lib/employabilityApi';
 
 const BLUE = '#002050';
@@ -57,7 +55,7 @@ export default function VerifiedTalentCandidates() {
     </main>;
 
   return structureContext
-    ? <StructureLayout headerTitle="Omnia Talent" headerSubtitle="Talents, recrutement et compétences" headerSearch={<TalentHeaderSearch/>}><TalentEcosystemNav audience="structure"/>{content}</StructureLayout>
+    ? <TalentAudienceLayout audience="structure">{content}</TalentAudienceLayout>
     : <RecruiterLayout title="Compétences vérifiées" subtitle="Profils autorisés par les talents">{content}</RecruiterLayout>;
 }
 

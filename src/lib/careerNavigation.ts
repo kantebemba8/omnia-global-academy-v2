@@ -10,8 +10,9 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react';
+import { normalizePlatformRoles, type CanonicalPlatformRole } from './session';
 
-export type CareerAudience = 'public' | 'apprenant';
+export type CareerAudience = 'public' | 'apprenant' | 'professeur' | 'structure' | 'moderateur' | 'recruteur' | 'organisateur' | 'coach' | 'super_admin';
 
 export type CareerNavChild = {
   label: string;
@@ -64,8 +65,30 @@ const LEARNER_NAV: CareerNavGroup[] = [
   { id: 'parametres', label: 'Paramètres', path: '/omnia-career/parametres', description: 'Préférences et confidentialité Career.', icon: Settings },
 ];
 
+const CONNECTED_CONTEXT_NAV: CareerNavGroup[] = [
+  { id: 'accueil', label: 'Accueil', path: '/career-studio', description: 'Vue Career contextualisée pour votre rôle.', icon: Sparkles },
+  { id: 'opportunites', label: 'Opportunités', path: '/forum/emploi', description: 'Explorer les opportunités professionnelles publiées sur Omnia.', icon: Briefcase },
+  { id: 'conseils', label: 'Conseils carrière', path: '/forum/carriere', description: 'Échanger autour de l’employabilité et des trajectoires.', icon: MessageSquare },
+];
+
 export function getCareerNavigation(audience: CareerAudience): CareerNavGroup[] {
-  return audience === 'apprenant' ? LEARNER_NAV : PUBLIC_NAV;
+  if (audience === 'apprenant') return LEARNER_NAV;
+  if (audience === 'public' || audience === 'super_admin') return PUBLIC_NAV;
+  return CONNECTED_CONTEXT_NAV;
+}
+
+export function resolveCareerAudience(roles: readonly string[] | null | undefined, requestedRole?: string | null): CareerAudience {
+  const normalized = normalizePlatformRoles(roles || []);
+  const requested = requestedRole as CanonicalPlatformRole | undefined;
+  if (requested && normalized.includes('super_admin') && ['apprenant','professeur','structure','moderateur','recruteur','organisateur','coach'].includes(requested)) return requested as CareerAudience;
+  if (normalized.includes('super_admin')) return 'super_admin';
+  if (normalized.includes('structure') || normalized.includes('recruteur_structure') || normalized.includes('gestionnaire_structure')) return 'structure';
+  const priority: CareerAudience[] = ['moderateur','organisateur','recruteur','professeur','coach','apprenant'];
+  return priority.find(role => normalized.includes(role as CanonicalPlatformRole)) || (normalized.length ? 'apprenant' : 'public');
+}
+
+export function careerAudienceLabel(audience: CareerAudience) {
+  return ({ public:'Découvrir', apprenant:'Apprenant', professeur:'Professeur', structure:'Structure', moderateur:'Modérateur', recruteur:'Recruteur', organisateur:'Organisateur', coach:'Coach', super_admin:'Administration' } satisfies Record<CareerAudience,string>)[audience];
 }
 
 export function findCareerSection(audience: CareerAudience, pathname: string) {

@@ -36,6 +36,7 @@ interface Props {
   brandTitle?: string;
   brandAccent?: string;
   contentClassName?: string;
+  ecosystemMode?: boolean;
 }
 
 const APPRENANT_GROUPS: NavGroup[] = [
@@ -127,6 +128,7 @@ export function DashboardLayout({
   brandTitle = 'Omnia',
   brandAccent = 'Global Academy',
   contentClassName = '',
+  ecosystemMode = false,
 }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -443,6 +445,14 @@ export function DashboardLayout({
       </div>
     )
   );
+
+  if (ecosystemMode && !adminMode) {
+    return (
+      <div className="h-[100dvh] min-h-0 overflow-hidden bg-white">
+        {children}
+      </div>
+    );
+  }
 
   if (adminMode) {
     return (

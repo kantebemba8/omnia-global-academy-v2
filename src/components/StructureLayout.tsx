@@ -164,7 +164,7 @@ function filterStructureNavigation(
   }).filter(group => group.items.length > 0);
 }
 
-export function StructureLayout({ children, headerTitle, headerSubtitle, headerSearch }: { children: ReactNode; displayName?: string; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode }) {
+export function StructureLayout({ children, headerTitle, headerSubtitle, headerSearch, ecosystemMode = false }: { children: ReactNode; displayName?: string; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode; ecosystemMode?: boolean }) {
   const location = useLocation();
   const [structureContext, setStructureContext] = useState<StructureContext | null>(null);
   const user = getStoredUser<StoredUser>();
@@ -214,6 +214,7 @@ export function StructureLayout({ children, headerTitle, headerSubtitle, headerS
       brandAccent="Structure"
       headerTitle={headerTitle}
       headerSubtitle={headerSubtitle}
+      ecosystemMode={ecosystemMode}
       headerSearch={headerSearch ?? (showRecruitmentSearch ? <ContextualHeaderSearch items={recruitmentItems.map(item => ({ id: item.path, label: item.label, description: 'Navigation recrutement Structure', path: item.path }))} placeholder="Rechercher dans le recrutement..." /> : undefined)}
     >
       {children}

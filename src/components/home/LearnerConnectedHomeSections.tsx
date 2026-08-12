@@ -239,11 +239,11 @@ function EcosystemRail({ previewMode, data, signals }: Props & { signals: Signal
   const ecosystems: EcosystemItem[] = [
     { label: 'Formations', caption: 'Cours, évaluations et progression', path: '/formations', accent: '#0F7699', soft: '#E9F7FB', icon: BookOpen, signal: courseCount ? `${courseCount} en cours` : undefined },
     { label: 'Omnia Career', caption: 'CV, LM et préparation carrière', path: '/omnia-career', accent: '#4F46E5', soft: '#EEF2FF', icon: Briefcase, signal: signals.careerDocuments ? `${signals.careerDocuments} document${signals.careerDocuments > 1 ? 's' : ''}` : undefined },
-    { label: 'Omnia Projects', caption: 'Projets, équipes et réalisations', path: '/projects/mes-projets', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: signals.projectInvites ? `${signals.projectInvites} invitation${signals.projectInvites > 1 ? 's' : ''}` : signals.projectsActive ? `${signals.projectsActive} actif${signals.projectsActive > 1 ? 's' : ''}` : undefined },
+    { label: 'Omnia Projects', caption: 'Projets, équipes et réalisations', path: '/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: signals.projectInvites ? `${signals.projectInvites} invitation${signals.projectInvites > 1 ? 's' : ''}` : signals.projectsActive ? `${signals.projectsActive} actif${signals.projectsActive > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Talent', caption: 'Profil et visibilité professionnelle', path: '/talent', accent: '#7C3AED', soft: '#F5F0FF', icon: UsersRound },
-    { label: 'Omnia Live', caption: 'Lives, replays et événements', path: '/omnia-live/participant', accent: '#5B4BC4', soft: '#F2F0FF', icon: Radio, signal: signals.liveActive ? `${signals.liveActive} disponible${signals.liveActive > 1 ? 's' : ''}` : signals.liveUpcoming ? `${signals.liveUpcoming} à venir` : undefined },
+    { label: 'Omnia Live', caption: 'Lives, replays et événements', path: '/omnia-live', accent: '#5B4BC4', soft: '#F2F0FF', icon: Radio, signal: signals.liveActive ? `${signals.liveActive} disponible${signals.liveActive > 1 ? 's' : ''}` : signals.liveUpcoming ? `${signals.liveUpcoming} à venir` : undefined },
     { label: 'Communauté', caption: 'Échanges, forums et entraide', path: '/forum', accent: '#0F766E', soft: '#EAF8F6', icon: MessageSquare },
-    { label: 'Coaching', caption: 'Sessions et accompagnement', path: '/dashboard/coaching', accent: '#176B5B', soft: '#EAF6F2', icon: Heart, signal: signals.coachingUpcoming ? `${signals.coachingUpcoming} séance${signals.coachingUpcoming > 1 ? 's' : ''}` : undefined },
+    { label: 'Coaching', caption: 'Sessions et accompagnement', path: '/coaching', accent: '#176B5B', soft: '#EAF6F2', icon: Heart, signal: signals.coachingUpcoming ? `${signals.coachingUpcoming} séance${signals.coachingUpcoming > 1 ? 's' : ''}` : undefined },
   ];
 
   return (

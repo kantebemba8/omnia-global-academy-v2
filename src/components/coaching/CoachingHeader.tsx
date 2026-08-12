@@ -4,9 +4,14 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import UserAccountMenu from '../UserAccountMenu';
+import { EcosystemConnectedHeader } from '../ecosystem/EcosystemShell';
 import CoachingHeaderSearch from './CoachingHeaderSearch';
 import CoachingEcosystemNav from './CoachingEcosystemNav';
-import { resolveCoachingAudience } from '../../lib/coachingNavigation';
+import {
+  coachingAudienceLabel,
+  getCoachingNavigation,
+  resolveCoachingAudience,
+} from '../../lib/coachingNavigation';
 
 const BLUE = '#002050';
 
@@ -37,6 +42,12 @@ function dashboardPathForRoles(roles: string[]): string {
   return '/dashboard';
 }
 
+/**
+ * Header de compatibilité pour les pages profondes Coaching qui ne sont pas
+ * encore enveloppées par CoachingLayout (paiement, réservation, session, etc.).
+ * En session connectée, il réutilise exactement le chrome d'écosystème commun.
+ * En public, il conserve l'entête de découverte historique.
+ */
 export default function CoachingHeader({ showSearch = true }: Props) {
   const location = useLocation();
   const [params] = useSearchParams();
@@ -68,17 +79,30 @@ export default function CoachingHeader({ showSearch = true }: Props) {
 
   const roles = user?.roles || [];
   const loggedIn = Boolean(getSessionToken()) && Boolean(user);
-  const preview = params.get('preview') === 'true' && Boolean(roles.includes('super_admin'));
+  const preview = params.get('preview') === 'true' && roles.includes('super_admin');
   const audience = resolveCoachingAudience(roles, preview ? params.get('role') : null);
-  const effectiveAudience = audience === 'super_admin' ? 'public' : audience;
   const dashboardPath = dashboardPathForRoles(roles);
+
+  // Le Super-admin normal reste hors de la refonte jusqu'à son lot final.
+  const connectedAudience = loggedIn && (audience !== 'super_admin' || preview) ? audience : null;
+  if (connectedAudience && connectedAudience !== 'public' && connectedAudience !== 'super_admin') {
+    return (
+      <EcosystemConnectedHeader
+        ecosystem="coaching"
+        audienceLabel={coachingAudienceLabel(connectedAudience)}
+        navigation={getCoachingNavigation(connectedAudience)}
+        search={showSearch ? <CoachingHeaderSearch /> : undefined}
+        dashboardPath={dashboardPath}
+      />
+    );
+  }
 
   return (
     <>
       <header className="sticky top-0 z-50 flex h-[72px] items-center border-b border-[#DCE7E1] bg-white/95 px-4 backdrop-blur md:px-7">
         <Link to="/coaching" className="flex min-w-0 items-center gap-3">
           <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-9 w-9 flex-none rounded-lg object-cover" />
-          <span className="truncate text-lg font-black tracking-[-.025em] md:text-xl" style={{ color: BLUE }}>Omnia <span className="text-[#356C63]">Coaching</span></span>
+          <span className="truncate text-lg font-black tracking-[-.025em] md:text-xl" style={{ color: BLUE }}>Omnia <span className="text-[#BF8813]">Coaching</span></span>
         </Link>
 
         {showSearch && <div className="mx-5 hidden min-w-0 flex-1 justify-center lg:flex"><div className="w-full max-w-[480px]"><CoachingHeaderSearch /></div></div>}
@@ -95,7 +119,7 @@ export default function CoachingHeader({ showSearch = true }: Props) {
         </div>
       </header>
       {showSearch && <div className="border-b border-[#DCE7E1] bg-[#FBFCFA] px-4 py-3 lg:hidden"><CoachingHeaderSearch /></div>}
-      <CoachingEcosystemNav audience={effectiveAudience} publicMode />
+      <CoachingEcosystemNav audience="public" publicMode />
     </>
   );
 }

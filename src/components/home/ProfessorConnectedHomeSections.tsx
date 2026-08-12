@@ -5,10 +5,12 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
+  Briefcase,
   CheckCircle2,
   ClipboardCheck,
   FolderKanban,
   GraduationCap,
+  Heart,
   MessageSquare,
   Plus,
   Radio,
@@ -128,11 +130,12 @@ function ProfessorSpaces({ data, previewMode, projects }: Props & { projects: Om
   const unanswered = Number(data?.forum_questions_unanswered || 0);
   const spaces: SpaceItem[] = [
     { label: 'Formations', caption: 'Créer, publier et faire évoluer vos cours', path: '/formations', accent: '#4657C8', soft: '#EEF0FF', icon: BookOpen, signal: formations.length ? `${formations.length} contenu${formations.length > 1 ? 's' : ''}` : undefined },
-    { label: 'Omnia Projects', caption: 'Projets et expériences liés à votre expertise', path: '/professeur/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: projects.length ? `${projects.length} projet${projects.length > 1 ? 's' : ''}` : undefined },
+    { label: 'Omnia Career', caption: 'Documents, trajectoires et outils carrière', path: '/career-studio', accent: '#BF8813', soft: '#FBF5E9', icon: Briefcase },
+    { label: 'Omnia Projects', caption: 'Projets et expériences liés à votre expertise', path: '/projects', accent: '#A56B12', soft: '#FFF7E6', icon: FolderKanban, signal: projects.length ? `${projects.length} projet${projects.length > 1 ? 's' : ''}` : undefined },
     { label: 'Omnia Talent', caption: 'Votre présence dans l’écosystème professionnel', path: '/talent', accent: '#7650C5', soft: '#F4F0FF', icon: UsersRound },
     { label: 'Omnia Live', caption: 'Événements et expériences en direct', path: '/omnia-live', accent: '#5A55C9', soft: '#F0F0FF', icon: Radio },
     { label: 'Communauté', caption: 'Répondre, partager et échanger', path: '/forum', accent: '#0F766E', soft: '#EAF8F6', icon: MessageSquare, signal: unanswered ? `${unanswered} question${unanswered > 1 ? 's' : ''}` : undefined },
-    { label: 'Catalogue', caption: 'Voir les formations telles que les apprenants les découvrent', path: '/catalogue', accent: '#0F7699', soft: '#E9F7FB', icon: GraduationCap },
+    { label: 'Coaching', caption: 'Accompagnement et progression professionnelle', path: '/coaching', accent: '#356C63', soft: '#EAF3F0', icon: Heart },
   ];
   return <section className="border-b border-slate-200 bg-white"><div className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#4657C8]">Vos espaces Omnia</p><h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Passer du studio à l’écosystème utile.</h2></div><div className="mt-6 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{spaces.map(item => { const Icon = item.icon; return <Link key={item.path} to={withPreview(item.path, previewMode)} className="group min-w-[215px] flex-1 rounded-[18px] border border-slate-200 bg-white p-4 transition hover:border-[#BFC6E6] hover:bg-[#FBFBFE]"><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: item.accent, background: item.soft }}><Icon size={18} /></span>{item.signal && !previewMode && <span className="text-[10px] font-black text-slate-400">{item.signal}</span>}</div><strong className="mt-4 block text-sm font-black text-[#002050]">{item.label}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{item.caption}</span><ArrowRight size={14} className="mt-3 text-slate-300 transition group-hover:translate-x-1" /></Link>; })}</div></div></section>;
 }

@@ -125,7 +125,7 @@ function allPermissionsEnabled(): ModeratorPermissions {
   return Object.fromEntries(MODERATOR_PERMISSION_KEYS.map(key => [key, true])) as ModeratorPermissions;
 }
 
-export function ModerateurLayout({ children, headerTitle, headerSubtitle, headerSearch }: { children: ReactNode; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode }) {
+export function ModerateurLayout({ children, headerTitle, headerSubtitle, headerSearch, ecosystemMode = false }: { children: ReactNode; headerTitle?: string; headerSubtitle?: string; headerSearch?: ReactNode; ecosystemMode?: boolean }) {
   const navigate = useNavigate();
   const [navGroups, setNavGroups] = useState<ModeratorNavGroup[] | null>(null);
 
@@ -193,7 +193,7 @@ export function ModerateurLayout({ children, headerTitle, headerSubtitle, header
   }
 
   return (
-    <DashboardLayout role="moderateur" navGroups={navGroups} headerTitle={headerTitle} headerSubtitle={headerSubtitle} headerSearch={headerSearch}>
+    <DashboardLayout role="moderateur" navGroups={navGroups} ecosystemMode={ecosystemMode} headerTitle={headerTitle} headerSubtitle={headerSubtitle} headerSearch={headerSearch}>
       {children}
     </DashboardLayout>
   );

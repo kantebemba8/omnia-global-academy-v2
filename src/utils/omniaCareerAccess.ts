@@ -32,10 +32,9 @@ export function getCareerRedirectForRole(user: CareerAuthUser) {
   if (!user) return '/connexion';
   if (isOmniaCareerLearner(user)) return '/omnia-career';
   if (isOmniaCareerSuperAdmin(user)) return '/admin/omnia-career';
-  if (hasAnyRole(user, ['professeur', 'formateur'])) return '/professeur/dashboard';
-  if (hasAnyRole(user, ['responsable_structure', 'gestionnaire_structure', 'structure_admin', 'directeur', 'gestionnaire_partenaire'])) return '/structure/dashboard';
-  if (hasAnyRole(user, ['enseignant'])) return '/professeur/dashboard';
-  return '/dashboard';
+  // Les autres rôles restent dans l’écosystème Career connecté au lieu de
+  // rebondir vers les anciens tableaux de bord de rôle.
+  return '/career-studio';
 }
 
 export function getInitials(fullName?: string, email?: string) {

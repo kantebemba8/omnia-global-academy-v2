@@ -4296,3 +4296,31 @@ html.oga-native .oga-scorm-fullscreen {
     width: min(430px, calc(100vw - 24px));
   }
 }
+
+/* Architecture transversale des écosystèmes connectés — un seul shell, une profondeur visible. */
+.oga-ecosystem-shell {
+  background: var(--oga-ecosystem-bg, #F8FAFC);
+  color: #0F172A;
+}
+.oga-ecosystem-content {
+  background-color: var(--oga-ecosystem-bg, #F8FAFC);
+  background-image:
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--oga-ecosystem-accent) 9%, transparent), transparent 26rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--oga-ecosystem-soft) 38%, transparent) 0, transparent 18rem);
+}
+.oga-ecosystem-content :where(.bg-white) {
+  background-color: var(--oga-ecosystem-panel, #FFFFFF) !important;
+}
+.oga-ecosystem-content :where(.border-slate-200, .border-gray-200) {
+  border-color: var(--oga-ecosystem-border, #E2E8F0) !important;
+}
+.oga-ecosystem-content :where(.bg-slate-50, .bg-gray-50) {
+  background-color: color-mix(in srgb, var(--oga-ecosystem-soft) 58%, #FFFFFF) !important;
+}
+.oga-ecosystem-content :where(h1, h2, h3) {
+  text-wrap: balance;
+}
+.oga-ecosystem-content :where(input, select, textarea):focus {
+  border-color: var(--oga-ecosystem-accent, #BF8813) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--oga-ecosystem-accent) 12%, transparent);
+}

@@ -117,14 +117,16 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
             {isAdministration ? <Settings size={17} /> : <UserRound size={17} />}
             {isAdministration ? t('Mon compte') : t('Mon profil')}
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => go(target)}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <LayoutDashboard size={17} /> {t(isAdministration ? 'Administration' : 'Mon espace')}
-          </button>
+          {isAdministration && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => go(target)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <LayoutDashboard size={17} /> {t('Administration')}
+            </button>
+          )}
           <div className="my-1 border-t border-slate-100" />
           <div className="flex items-center gap-3 px-4 py-2" role="none">
             <Languages size={17} className="text-slate-500" />

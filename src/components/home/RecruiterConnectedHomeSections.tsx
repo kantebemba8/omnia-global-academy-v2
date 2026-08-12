@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Briefcase,
+  BookOpen,
+  FolderKanban,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -74,12 +76,13 @@ function RecruiterHero({ profile, snapshot, previewMode, loading }:{ profile:Rec
 
 function RecruiterSpaces({ snapshot, previewMode }:{snapshot:Snapshot;previewMode:boolean}) {
   const spaces:Space[]=[
+    {label:'Formations',caption:'Comprendre les parcours et compétences',path:'/formations',accent:'#0F7699',soft:'#E9F7FB',icon:BookOpen},
+    {label:'Omnia Career',caption:'Trajectoires, documents et employabilité',path:'/career-studio',accent:'#BF8813',soft:'#FBF5E9',icon:Target},
+    {label:'Omnia Projects',caption:'Expériences et compétences en situation',path:'/projects',accent:'#A56B12',soft:'#FFF7E6',icon:FolderKanban},
     {label:'Omnia Talent',caption:'Profils, favoris et sourcing',path:'/talent',accent:'#8B4166',soft:'#FAEEF4',icon:Users,signal:snapshot.favorites.length?`${snapshot.favorites.length} favori${snapshot.favorites.length>1?'s':''}`:undefined},
-    {label:'Opportunités emploi',caption:'Offres et candidatures',path:'/forum/emploi',accent:'#A56B12',soft:'#FFF7E6',icon:Briefcase,signal:snapshot.jobs.length?`${snapshot.jobs.length} offre${snapshot.jobs.length>1?'s':''}`:undefined},
-    {label:'Entretiens',caption:'Agenda et décisions à venir',path:'/talent/recruteur/entretiens',accent:'#315FA8',soft:'#EDF4FC',icon:CalendarDays,signal:snapshot.metrics.upcoming_interviews?`${snapshot.metrics.upcoming_interviews} à venir`:undefined},
-    {label:'Messages',caption:'Conversations avec les talents',path:'/talent/recruteur/messages',accent:'#0F766E',soft:'#EAF8F6',icon:Mail,signal:snapshot.conversations.length?`${snapshot.conversations.length} fil${snapshot.conversations.length>1?'s':''}`:undefined},
     {label:'Omnia Live',caption:'Rencontres et événements professionnels',path:'/omnia-live',accent:'#5B56C8',soft:'#F1F0FF',icon:Radio},
     {label:'Communauté',caption:'Échanges et ressources Omnia',path:'/forum',accent:'#0F766E',soft:'#EAF8F6',icon:MessageCircle},
+    {label:'Coaching',caption:'Accompagnement des transitions et potentiels',path:'/coaching',accent:'#356C63',soft:'#EAF3F0',icon:Heart},
   ];
   return <section className="border-b border-slate-200 bg-white"><div className="mx-auto max-w-7xl px-5 py-9 sm:px-6 lg:px-8"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#96466D]">Vos espaces Omnia</p><h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#002050]">Passer directement à l’étape qui fait avancer votre recrutement.</h2></div><div className="mt-6 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{spaces.map(space=>{const Icon=space.icon;return <Link key={space.path} to={withPreview(space.path,previewMode)} className="group min-w-[210px] flex-1 border-b-2 bg-white p-4 transition hover:bg-[#FCFAFB]" style={{borderColor:space.accent}}><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{color:space.accent,background:space.soft}}><Icon size={18}/></span>{space.signal&&!previewMode&&<span className="text-[10px] font-black text-slate-400">{space.signal}</span>}</div><strong className="mt-4 block text-sm font-black text-[#002050]">{space.label}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{space.caption}</span><ArrowRight size={14} className="mt-3 text-slate-300 transition group-hover:translate-x-1"/></Link>})}</div></div></section>;
 }
