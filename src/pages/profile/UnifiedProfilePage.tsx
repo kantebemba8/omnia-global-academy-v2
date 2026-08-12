@@ -176,6 +176,10 @@ const EMPTY_ROLE: RoleForm = {
 
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#BF8813] focus:ring-2 focus:ring-[#BF8813]/15';
 const labelClass = 'block text-sm font-semibold text-[#002050]';
+const ROLE_ACCENT = 'var(--oga-role-accent, #BF8813)';
+const ROLE_SOFT = 'var(--oga-role-soft, rgba(0, 32, 80, 0.05))';
+const ROLE_SECONDARY = 'var(--oga-role-secondary, #002050)';
+const ROLE_CONTROL_ACCENT = 'var(--oga-role-accent, #002050)';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Administration', moderateur: 'Modérateur', structure: 'Structure',
@@ -668,29 +672,29 @@ export default function UnifiedProfilePage() {
         <div className="flex flex-col gap-6 md:flex-row md:items-center">
           <div className="relative h-28 w-28 flex-none">
             {avatar ? <img src={avatar} alt="Photo de profil" className="h-28 w-28 rounded-3xl border-4 border-white object-cover shadow-lg" /> :
-              <div className="flex h-28 w-28 items-center justify-center rounded-3xl text-3xl font-black shadow-lg" style={{ background: '#BF8813', color: '#002050' }}>{monogram(userForm.full_name)}</div>}
-            <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className="absolute -bottom-2 -right-2 rounded-xl bg-[#002050] p-2.5 text-white shadow-lg disabled:opacity-50" aria-label="Changer la photo"><Camera size={18} /></button>
+              <div className="flex h-28 w-28 items-center justify-center rounded-3xl text-3xl font-black shadow-lg" style={{ background: isAdministration ? '#BF8813' : ROLE_ACCENT, color: isAdministration ? '#002050' : '#FFFFFF' }}>{monogram(userForm.full_name)}</div>}
+            <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className="absolute -bottom-2 -right-2 rounded-xl p-2.5 text-white shadow-lg disabled:opacity-50" style={{ background: ROLE_SECONDARY }} aria-label="Changer la photo"><Camera size={18} /></button>
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => void selectAvatar(event.target.files?.[0])} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full bg-[#002050]/5 px-3 py-1 text-xs font-bold text-[#002050]">{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}{hasStructureManagementDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès interne à une Structure</span>}</div>
+            <div className="flex flex-wrap items-center gap-2">{roleLabels.map(label => <span key={label} className="rounded-full px-3 py-1 text-xs font-bold" style={{ background: ROLE_SOFT, color: ROLE_CONTROL_ACCENT }}>{label}</span>)}{hasStructureRecruitmentDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès recrutement rattaché à une Structure</span>}{hasStructureManagementDelegation && <span className="rounded-full border border-[#BF8813]/35 bg-[#BF8813]/10 px-3 py-1 text-xs font-bold text-[#805A0C]">Accès interne à une Structure</span>}</div>
             <h1 className="mt-3 truncate text-2xl font-black text-[#002050] sm:text-3xl">{profileForm.display_name || userForm.full_name}</h1>
             <p className="mt-1 text-sm text-slate-600">{isAdministration ? 'Compte interne de gestion de la plateforme.' : (profileForm.headline || 'Complétez votre profil pour mieux représenter votre parcours dans l’écosystème Omnia.')}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => fileInput.current?.click()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#002050]"><Upload size={16} /> {avatarSaving ? 'Traitement...' : 'Ajouter une photo'}</button>
               {avatar && <button type="button" onClick={() => void deleteAvatar()} disabled={avatarSaving} className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-600"><Trash2 size={16} /> Retirer</button>}
-              {!isAdministration && <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl bg-[#BF8813] px-3 py-2 text-sm font-bold text-[#002050]"><ExternalLink size={16} /> Voir mon profil public</Link>}
+              {!isAdministration && <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-white" style={{ background: ROLE_ACCENT }}><ExternalLink size={16} /> Voir mon profil public</Link>}
             </div>
           </div>
           <div className="w-full rounded-2xl bg-slate-50 p-4 md:w-56">
             <div className="flex items-center justify-between text-sm font-bold text-[#002050]"><span>{isAdministration ? 'Compte configuré' : 'Profil complété'}</span><span>{completion}%</span></div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#BF8813] transition-all" style={{ width: `${completion}%` }} /></div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full transition-all" style={{ width: `${completion}%`, background: isAdministration ? '#BF8813' : ROLE_ACCENT }} /></div>
             <p className="mt-3 text-xs text-slate-500">{isAdministration ? 'Ces informations restent internes et ne créent aucun profil public.' : 'Un profil complet améliore la cohérence de vos espaces Omnia.'}</p>
           </div>
         </div>
       </header>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"><div className="flex min-w-max gap-1">{tabs.map(item => <button key={item.key} type="button" onClick={() => switchTab(item.key)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === item.key ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-50'}`}><item.icon size={16} />{item.label}</button>)}</div></div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"><div className="flex min-w-max gap-1">{tabs.map(item => <button key={item.key} type="button" onClick={() => switchTab(item.key)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === item.key ? 'text-white' : 'text-slate-600 hover:bg-slate-50'}`} style={tab === item.key ? { background: ROLE_SECONDARY } : undefined}><item.icon size={16} />{item.label}</button>)}</div></div>
 
       <Notice value={message} />
 
@@ -920,7 +924,7 @@ function AccountFeedbackFields({ value, onChange }: { value: ExitFeedbackForm; o
 }
 
 function Section({ title, icon: Icon, description, children }: { title: string; icon: ElementType; description?: string; children: ReactNode }) {
-  return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="mb-5 flex items-start gap-3"><div className="rounded-xl bg-[#002050]/5 p-2.5 text-[#002050]"><Icon size={20} /></div><div><h2 className="text-lg font-black text-[#002050]">{title}</h2>{description && <p className="mt-1 text-sm text-slate-500">{description}</p>}</div></div>{children}</section>;
+  return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="mb-5 flex items-start gap-3"><div className="rounded-xl p-2.5" style={{ background: ROLE_SOFT, color: ROLE_CONTROL_ACCENT }}><Icon size={20} /></div><div><h2 className="text-lg font-black text-[#002050]">{title}</h2>{description && <p className="mt-1 text-sm text-slate-500">{description}</p>}</div></div>{children}</section>;
 }
 function Field({ label, icon: Icon, wide, children }: { label: string; icon: ElementType; wide?: boolean; children: ReactNode }) { return <label className={`${labelClass} ${wide ? 'md:col-span-2' : ''}`}><span className="inline-flex items-center gap-2"><Icon size={15} />{label}</span>{children}</label>; }
 function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className={labelClass}>{label}<input className={inputClass} value={value} onChange={e => onChange(e.target.value)} /></label>; }
@@ -929,7 +933,7 @@ function TagField({ label, values, onChange }: { label: string; values: string[]
 function TagEditor({ values, onChange, placeholder = 'Saisissez puis appuyez sur Entrée' }: { values: string[]; onChange: (values: string[]) => void; placeholder?: string }) {
   const [value, setValue] = useState('');
   function add() { const items = value.split(',').map(item => item.trim()).filter(Boolean); if (!items.length) return; onChange([...new Set([...values, ...items])]); setValue(''); }
-  return <div className="mt-1 rounded-xl border border-slate-200 bg-white p-2 focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15"><div className="flex flex-wrap gap-1.5">{values.map(item => <button key={item} type="button" onClick={() => onChange(values.filter(valueItem => valueItem !== item))} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[#002050]" title="Cliquer pour retirer">{item} ×</button>)}</div><div className="flex items-center gap-2"><input value={value} onChange={e => setValue(e.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }} onBlur={add} className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm outline-none" placeholder={placeholder} /><button type="button" onClick={add} className="rounded-lg bg-[#002050] px-2.5 py-1.5 text-xs font-bold text-white">Ajouter</button></div></div>;
+  return <div className="mt-1 rounded-xl border border-slate-200 bg-white p-2 focus-within:border-[#BF8813] focus-within:ring-2 focus-within:ring-[#BF8813]/15"><div className="flex flex-wrap gap-1.5">{values.map(item => <button key={item} type="button" onClick={() => onChange(values.filter(valueItem => valueItem !== item))} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[#002050]" title="Cliquer pour retirer">{item} ×</button>)}</div><div className="flex items-center gap-2"><input value={value} onChange={e => setValue(e.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }} onBlur={add} className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm outline-none" placeholder={placeholder} /><button type="button" onClick={add} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-white" style={{ background: ROLE_SECONDARY }}>Ajouter</button></div></div>;
 }
 function VisibilityGroup({ title, description, items, values, onChange }: {
   title: string;
@@ -950,8 +954,8 @@ function VisibilityGroup({ title, description, items, values, onChange }: {
     </div>
   </Section>;
 }
-function ToggleRow({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) { return <label className="flex cursor-pointer items-center justify-between gap-5 p-4"><span><span className="block text-sm font-bold text-[#002050]">{title}</span><span className="mt-0.5 block text-xs text-slate-500">{description}</span></span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-5 w-5 accent-[#002050]" /></label>; }
-function SaveButton({ saving, onClick, label = 'Enregistrer les modifications' }: { saving: boolean; onClick: () => void; label?: string }) { return <div className="mt-6 flex justify-end"><button type="button" disabled={saving} onClick={onClick} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"><Save size={16} />{saving ? 'Enregistrement...' : label}</button></div>; }
+function ToggleRow({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) { return <label className="flex cursor-pointer items-center justify-between gap-5 p-4"><span><span className="block text-sm font-bold text-[#002050]">{title}</span><span className="mt-0.5 block text-xs text-slate-500">{description}</span></span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-5 w-5" style={{ accentColor: ROLE_CONTROL_ACCENT }} /></label>; }
+function SaveButton({ saving, onClick, label = 'Enregistrer les modifications' }: { saving: boolean; onClick: () => void; label?: string }) { return <div className="mt-6 flex justify-end"><button type="button" disabled={saving} onClick={onClick} className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white disabled:opacity-50" style={{ background: ROLE_SECONDARY }}><Save size={16} />{saving ? 'Enregistrement...' : label}</button></div>; }
 function Notice({ value }: { value: Message }) { if (!value) return null; return <div className={`flex items-start gap-2 rounded-2xl border p-4 text-sm ${value.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{value.ok ? <CheckCircle className="mt-0.5 h-4 w-4 flex-none" /> : <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />}<span>{value.text}</span></div>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">{text}</div>; }
 function InfoGrid({ values }: { values: Array<[string, string]> }) { return <div className="grid gap-3 sm:grid-cols-2">{values.map(([label, value]) => <div key={label} className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-semibold text-[#002050]">{value || 'Non renseigné'}</p></div>)}</div>; }

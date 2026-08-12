@@ -4324,3 +4324,121 @@ html.oga-native .oga-scorm-fullscreen {
   border-color: var(--oga-ecosystem-accent, #BF8813) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--oga-ecosystem-accent) 12%, transparent);
 }
+
+/* Harmonisation des pages transversales avec l'accueil connecté du rôle. */
+.oga-role-shell {
+  background: #F8FAFC;
+  color: #0F172A;
+}
+.oga-role-content {
+  background-color: #F8FAFC;
+  background-image:
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--oga-role-accent) 8%, transparent), transparent 26rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--oga-role-soft) 42%, transparent) 0, transparent 19rem);
+}
+.oga-role-content :where(.border-slate-200, .border-gray-200, .border-gray-100) {
+  border-color: color-mix(in srgb, var(--oga-role-accent) 16%, #E2E8F0) !important;
+}
+.oga-role-content :where(.bg-slate-50, .bg-gray-50) {
+  background-color: color-mix(in srgb, var(--oga-role-soft) 56%, #FFFFFF) !important;
+}
+.oga-role-content :where(input, select, textarea):focus {
+  border-color: var(--oga-role-accent, #BF8813) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--oga-role-accent) 12%, transparent);
+}
+
+/* Les anciens accents or des pages de rôle deviennent l'accent exact de leur accueil connecté. */
+.oga-role-content [class*="text-[#BF8813]"],
+.oga-role-content [class*="text-[#bf8813]"],
+.oga-role-content [style*="color: #BF8813"],
+.oga-role-content [style*="color: #bf8813"],
+.oga-role-content [style*="color: rgb(191, 136, 19)"] {
+  color: var(--oga-role-accent) !important;
+}
+.oga-role-content [class*="bg-[#BF8813]"],
+.oga-role-content [class*="bg-[#bf8813]"],
+.oga-role-content [style*="background: #BF8813"],
+.oga-role-content [style*="background: #bf8813"],
+.oga-role-content [style*="background-color: #BF8813"],
+.oga-role-content [style*="background-color: #bf8813"],
+.oga-role-content [style*="background: rgb(191, 136, 19)"],
+.oga-role-content [style*="background-color: rgb(191, 136, 19)"] {
+  background-color: var(--oga-role-accent) !important;
+  background: var(--oga-role-accent) !important;
+}
+.oga-role-content [class*="border-[#BF8813]"],
+.oga-role-content [class*="border-[#bf8813]"],
+.oga-role-content [style*="border-color: #BF8813"],
+.oga-role-content [style*="border-color: #bf8813"],
+.oga-role-content [style*="border-color: rgb(191, 136, 19)"] {
+  border-color: var(--oga-role-accent) !important;
+}
+
+/* Compatibilité des pages d'écosystème encore porteuses de l'ancien accent global. Formations conserve volontairement l'or. */
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="text-[#BF8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="text-[#bf8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="color: #BF8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="color: #bf8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="color: rgb(191, 136, 19)"] {
+  color: var(--oga-ecosystem-accent) !important;
+}
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="bg-[#BF8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="bg-[#bf8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background: #BF8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background: #bf8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background-color: #BF8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background-color: #bf8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background: rgb(191, 136, 19)"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="background-color: rgb(191, 136, 19)"] {
+  background-color: var(--oga-ecosystem-accent) !important;
+  background: var(--oga-ecosystem-accent) !important;
+}
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="border-[#BF8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [class*="border-[#bf8813]"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="border-color: #BF8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="border-color: #bf8813"],
+.oga-ecosystem-shell:not([data-ecosystem="formations"]) .oga-ecosystem-content [style*="border-color: rgb(191, 136, 19)"] {
+  border-color: var(--oga-ecosystem-accent) !important;
+}
+
+/* Anciennes couleurs de rôle parfois restées dans les pages Live, Talent et Coaching. */
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="color: #7A55B8"],
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="color: #7a55b8"],
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="color: rgb(122, 85, 184)"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="color: #9C436D"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="color: #9c436d"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="color: rgb(156, 67, 109)"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="color: #0F766E"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="color: #0f766e"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="color: rgb(15, 118, 110)"] {
+  color: var(--oga-ecosystem-accent) !important;
+}
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="background: #7A55B8"],
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="background-color: #7A55B8"],
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="background: rgb(122, 85, 184)"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="background: #9C436D"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="background-color: #9C436D"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="background: rgb(156, 67, 109)"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="background: #0F766E"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="background-color: #0F766E"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="background: rgb(15, 118, 110)"] {
+  background: var(--oga-ecosystem-accent) !important;
+  background-color: var(--oga-ecosystem-accent) !important;
+}
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="border-color: #7A55B8"],
+.oga-ecosystem-shell[data-ecosystem="live"] .oga-ecosystem-content [style*="border-color: rgb(122, 85, 184)"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="border-color: #9C436D"],
+.oga-ecosystem-shell[data-ecosystem="talent"] .oga-ecosystem-content [style*="border-color: rgb(156, 67, 109)"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="border-color: #0F766E"],
+.oga-ecosystem-shell[data-ecosystem="coaching"] .oga-ecosystem-content [style*="border-color: rgb(15, 118, 110)"] {
+  border-color: var(--oga-ecosystem-accent) !important;
+}
+
+/* Les fonds hérités d'anciennes maquettes ne doivent plus recouvrir le fond de l'écosystème. */
+.oga-ecosystem-content [class*="bg-[#F7F4EE]"],
+.oga-ecosystem-content [class*="bg-[#F7F5F0]"],
+.oga-ecosystem-content [class*="bg-[#FAF4F0]"],
+.oga-ecosystem-content [class*="bg-[#FCFBF7]"],
+.oga-ecosystem-content [class*="bg-[#F8F9FA]"] {
+  background-color: var(--oga-ecosystem-bg) !important;
+}

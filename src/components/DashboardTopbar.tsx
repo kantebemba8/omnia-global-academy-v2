@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Menu } from 'lucide-react';
 import UserAccountMenu from './UserAccountMenu';
 import OmniaBrandLockup from './OmniaBrandLockup';
 
 const BLUE = '#002050';
-const GOLD = '#BF8813';
 
 type Props = {
   title: string;
@@ -17,6 +16,7 @@ type Props = {
   dashboardPath?: string;
   showBrand?: boolean;
   brandHref?: string;
+  accentColor?: string;
 };
 
 export function DashboardTopbar({
@@ -30,6 +30,7 @@ export function DashboardTopbar({
   dashboardPath,
   showBrand = true,
   brandHref = '/home',
+  accentColor = '#BF8813',
 }: Props) {
   return (
     <header className="relative z-30 flex min-h-[78px] flex-shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
@@ -37,7 +38,8 @@ export function DashboardTopbar({
         <button
           type="button"
           onClick={onOpenNavigation}
-          className="flex h-10 w-10 flex-none items-center justify-center border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] lg:hidden"
+          className="flex h-10 w-10 flex-none items-center justify-center border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 lg:hidden"
+          style={{ '--tw-ring-color': accentColor } as CSSProperties}
           aria-label="Ouvrir la navigation"
           aria-expanded={navigationOpen}
           aria-controls={navigationId}
@@ -62,7 +64,7 @@ export function DashboardTopbar({
         <UserAccountMenu dashboardPath={dashboardPath} />
       </div>
 
-      <span className="absolute bottom-0 left-0 h-[2px] w-16" style={{ backgroundColor: GOLD }} aria-hidden="true" />
+      <span className="absolute bottom-0 left-0 h-[2px] w-16" style={{ backgroundColor: accentColor }} aria-hidden="true" />
     </header>
   );
 }

@@ -169,6 +169,13 @@ export function StructureLayout({ children, headerTitle, headerSubtitle, headerS
   const [structureContext, setStructureContext] = useState<StructureContext | null>(null);
   const user = getStoredUser<StoredUser>();
   const roles = user?.roles || [];
+  const roleThemeKey = roles.includes('structure')
+    ? 'structure'
+    : roles.includes('recruteur_structure')
+      ? 'recruteur_structure'
+      : roles.includes('gestionnaire_structure')
+        ? 'gestionnaire_structure'
+        : 'structure';
 
   useEffect(() => {
     let active = true;
@@ -209,6 +216,7 @@ export function StructureLayout({ children, headerTitle, headerSubtitle, headerS
   return (
     <DashboardLayout
       role="directeur"
+      roleThemeKey={roleThemeKey}
       navGroups={visibleGroups}
       brandTitle="Omnia"
       brandAccent="Structure"

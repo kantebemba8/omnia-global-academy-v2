@@ -5,6 +5,7 @@ import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import { DashboardTopbar } from './DashboardTopbar';
 import OmniaBrandLockup from './OmniaBrandLockup';
 import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
+import { getRoleTheme, type RoleThemeKey } from '../lib/roleTheme';
 import {
   LayoutDashboard, BookOpen, Award, FileText, Users,
   ChevronRight, ChevronDown, Sparkles, Wallet, BarChart2, MessageSquare, PlusCircle,
@@ -37,6 +38,7 @@ interface Props {
   brandAccent?: string;
   contentClassName?: string;
   ecosystemMode?: boolean;
+  roleThemeKey?: RoleThemeKey;
 }
 
 const APPRENANT_GROUPS: NavGroup[] = [
@@ -113,6 +115,16 @@ function roleLabel(role: Props['role']) {
   return 'Espace Apprenant';
 }
 
+function themeKeyForRole(role: Props['role']): RoleThemeKey {
+  if (role === 'directeur') return 'structure';
+  if (role === 'professeur') return 'professeur';
+  if (role === 'moderateur') return 'moderateur';
+  if (role === 'recruteur') return 'recruteur';
+  if (role === 'coach') return 'coach';
+  if (role === 'organisateur') return 'organisateur';
+  return 'apprenant';
+}
+
 export function DashboardLayout({
   children,
   role = 'apprenant',
@@ -129,6 +141,7 @@ export function DashboardLayout({
   brandAccent = 'Global Academy',
   contentClassName = '',
   ecosystemMode = false,
+  roleThemeKey,
 }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -256,6 +269,16 @@ export function DashboardLayout({
     || roleSubtitle;
 
   const adminMode = role === 'super_admin';
+  const roleTheme = getRoleTheme(roleThemeKey || themeKeyForRole(role));
+  const roleAccent = roleTheme.accent;
+  const roleSoft = roleTheme.soft;
+  const roleSecondary = roleTheme.secondary;
+  const hasNavigation = Boolean((ACTIVE_NAV_GROUPS && ACTIVE_NAV_GROUPS.length > 0) || NAV_ITEMS.length > 0 || spaceHomePath);
+  const roleStyle = {
+    '--oga-role-accent': roleAccent,
+    '--oga-role-soft': roleSoft,
+    '--oga-role-secondary': roleSecondary,
+  } as React.CSSProperties;
 
   const navigationContents = (mobile = false) => (
     <>
@@ -272,7 +295,8 @@ export function DashboardLayout({
                 <Link
                   key={group.id}
                   to={buildPath(directItem.path)}
-                  className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                  className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive ? 'text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                  style={{ borderColor: containsActive ? roleAccent : 'transparent' }}
                 >
                   <GroupIcon size={16} />
                   {group.label}
@@ -287,7 +311,8 @@ export function DashboardLayout({
                   <button
                     type="button"
                     onClick={() => setOpenDesktopGroup(current => current === group.id ? null : group.id)}
-                    className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive || open ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                    className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive || open ? 'text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
+                    style={{ borderColor: containsActive || open ? roleAccent : 'transparent' }}
                     aria-expanded={open}
                   >
                     <GroupIcon size={16} />
@@ -306,11 +331,12 @@ export function DashboardLayout({
                               key={item.path}
                               to={buildPath(item.path)}
                               onClick={() => setOpenDesktopGroup(null)}
-                              className={`flex items-center gap-3 px-4 py-2.5 text-sm transition ${active ? 'bg-slate-50 font-bold text-[#002050]' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-[#002050]'}`}
+                              className={`flex items-center gap-3 px-4 py-2.5 text-sm transition ${active ? 'font-bold text-[#002050]' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-[#002050]'}`}
+                              style={active ? { backgroundColor: roleSoft } : undefined}
                             >
-                              <ItemIcon size={16} style={{ color: active ? '#BF8813' : '#64748B' }} />
+                              <ItemIcon size={16} style={{ color: active ? roleAccent : '#64748B' }} />
                               <span className="flex-1">{item.label}</span>
-                              {item.badge && <span className="text-xs font-bold text-[#BF8813]">{item.badge}</span>}
+                              {item.badge && <span className="text-xs font-bold" style={{ color: roleAccent }}>{item.badge}</span>}
                             </Link>
                           );
                         })}
@@ -330,7 +356,7 @@ export function DashboardLayout({
                   className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-white/80"
                   aria-expanded={open}
                 >
-                  <GroupIcon size={17} style={{ color: containsActive ? '#BF8813' : 'rgba(255,255,255,.65)' }} />
+                  <GroupIcon size={17} style={{ color: containsActive ? roleSoft : 'rgba(255,255,255,.65)' }} />
                   <span className="flex-1">{group.label}</span>
                   <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
                 </button>
@@ -344,7 +370,8 @@ export function DashboardLayout({
                           key={item.path}
                           to={buildPath(item.path)}
                           onClick={() => setMobileNavigationOpen(false)}
-                          className={`flex items-center gap-3 px-6 py-2.5 text-[13px] ${active ? 'font-bold text-[#F4C45E]' : 'font-medium text-white/65'}`}
+                          className={`flex items-center gap-3 border-l-2 px-6 py-2.5 text-[13px] ${active ? 'font-bold text-white' : 'border-transparent font-medium text-white/65'}`}
+                          style={active ? { borderColor: roleAccent, backgroundColor: 'rgba(255,255,255,.08)' } : undefined}
                         >
                           <ItemIcon size={15} />
                           <span className="flex-1">{item.label}</span>
@@ -369,8 +396,12 @@ export function DashboardLayout({
                 to={buildPath(item.path)}
                 onClick={() => mobile && setMobileNavigationOpen(false)}
                 className={mobile
-                  ? `flex items-center gap-3 px-5 py-3 text-sm ${active ? 'font-bold text-[#F4C45E]' : 'font-medium text-white/70'}`
-                  : `inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${active ? 'border-[#BF8813] text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`
+                  ? `flex items-center gap-3 border-l-2 px-5 py-3 text-sm ${active ? 'font-bold text-white' : 'border-transparent font-medium text-white/70'}`
+                  : `inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${active ? 'text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`
+                }
+                style={mobile
+                  ? (active ? { borderColor: roleAccent, backgroundColor: 'rgba(255,255,255,.08)' } : undefined)
+                  : { borderColor: active ? roleAccent : 'transparent' }
                 }
               >
                 <ItemIcon size={16} />
@@ -409,7 +440,7 @@ export function DashboardLayout({
         <div className="border-t border-white/10 p-3">
           <Link
             to={buildPath(spaceHomePath)}
-            className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#D8B35D]"
+            className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold" style={{ color: roleSoft }}
           >
             <ExternalLink size={16} />
             {spaceHomeLabel}
@@ -423,19 +454,18 @@ export function DashboardLayout({
     mobileNavigationOpen && (
       <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation de l’espace">
         <button type="button" className="fixed inset-0 bg-black/50" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
-        <aside className="relative z-10 flex h-[100dvh] w-[min(88vw,320px)] flex-col bg-[#002050] shadow-2xl">
+        <aside className="relative z-10 flex h-[100dvh] w-[min(88vw,320px)] flex-col shadow-2xl" style={{ backgroundColor: roleSecondary }}>
           <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
             <OmniaBrandLockup href="/home" inverse compact className="min-w-0 flex-1" />
             <button type="button" onClick={() => setMobileNavigationOpen(false)} className="p-2 text-white/75" aria-label="Fermer la navigation"><X size={19} /></button>
           </div>
           <div className="border-b border-white/10 px-5 py-3">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#BF8813]">{roleSubtitle}</p>
-            <p className="mt-1 text-sm font-semibold text-white">{contextualTitle}</p>
+            <p className="text-sm font-semibold text-white">{contextualTitle}</p>
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto py-2">{navigationContents(true)}</nav>
           {spaceHomePath && (
             <div className="border-t border-white/10 p-3">
-              <Link to={buildPath(spaceHomePath)} onClick={() => setMobileNavigationOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-[#D8B35D]">
+              <Link to={buildPath(spaceHomePath)} onClick={() => setMobileNavigationOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold" style={{ color: roleSoft }}>
                 <ExternalLink size={16} />
                 {spaceHomeLabel}
               </Link>
@@ -528,36 +558,37 @@ export function DashboardLayout({
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-white">
+    <div className="oga-role-shell flex h-[100dvh] min-h-0 flex-col overflow-hidden" data-role-theme={roleTheme.key} style={roleStyle}>
       <DashboardTopbar
         title={contextualTitle}
-        subtitle={headerSubtitle || roleSubtitle}
-        onOpenNavigation={() => setMobileNavigationOpen(true)}
+        subtitle={headerSubtitle}
+        onOpenNavigation={hasNavigation ? () => setMobileNavigationOpen(true) : undefined}
         navigationOpen={mobileNavigationOpen}
         actions={headerActions}
         search={headerSearch}
         dashboardPath={dashboardPath}
         showBrand
         brandHref="/home"
+        accentColor={roleAccent}
       />
 
-      <div className="relative z-20 hidden flex-shrink-0 border-b border-slate-200 bg-white lg:block">
+      {hasNavigation && <div className="relative z-20 hidden flex-shrink-0 border-b border-slate-200 bg-white lg:block">
         <div className="mx-auto flex max-w-[1440px] items-center gap-2 overflow-visible px-5">
           <nav className="min-w-0 flex-1" aria-label={`Navigation ${roleSubtitle}`}>
             {navigationContents(false)}
           </nav>
           {spaceHomePath && (
             <Link to={buildPath(spaceHomePath)} className="ml-auto inline-flex min-h-11 items-center gap-2 border-l border-slate-200 px-4 text-sm font-semibold text-[#002050] hover:bg-slate-50">
-              <ExternalLink size={15} style={{ color: '#BF8813' }} />
+              <ExternalLink size={15} style={{ color: roleAccent }} />
               {spaceHomeLabel}
             </Link>
           )}
         </div>
-      </div>
+      </div>}
 
       {mobileDrawer}
 
-      <main className={`min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white ${contentClassName}`}>
+      <main className={`oga-role-content min-h-0 flex-1 overflow-y-auto overscroll-contain ${contentClassName}`}>
         {children}
       </main>
     </div>

@@ -180,11 +180,11 @@ export function ModerateurLayout({ children, headerTitle, headerSubtitle, header
 
   if (!navGroups) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ backgroundColor: '#002050' }}>
+      <div className="flex h-screen items-center justify-center" style={{ backgroundColor: '#6F3D1F' }}>
         <div className="text-center">
           <div
             className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"
-            style={{ borderColor: '#BF8813', borderTopColor: 'transparent' }}
+            style={{ borderColor: '#C66A22', borderTopColor: 'transparent' }}
           />
           <p className="text-sm text-white/60">Chargement des permissions…</p>
         </div>
