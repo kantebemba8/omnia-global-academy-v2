@@ -1,8 +1,9 @@
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Building2, ExternalLink, FileUp, HandHelping, Save, ShieldCheck, Wallet } from 'lucide-react';
+import { BadgeCheck, Building2, CheckCircle2, ExternalLink, FileUp, HandHelping, Link2, Radio, RefreshCcw, Save, ShieldCheck, Trash2, Video, Wallet } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
+const PRICING_API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/course-pricing-workflow`;
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
@@ -39,9 +40,16 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
   const [assistedType,setAssistedType]=useState<'with_certification'|'without_certification'>('without_certification');
   const [certifications,setCertifications]=useState<any[]>([]);
   const [organizations,setOrganizations]=useState<OrganizationOption[]>([]);
+  const [assistedRequest,setAssistedRequest]=useState<any>(null);
+  const [ownerReviewComment,setOwnerReviewComment]=useState('');
+  const [pricingComment,setPricingComment]=useState('');
+  const [liveLinks,setLiveLinks]=useState<any[]>([]);
+  const [liveOptions,setLiveOptions]=useState<{events:any[];media:any[]}>({events:[],media:[]});
+  const [linkTarget,setLinkTarget]=useState('');
+  const [linkPosition,setLinkPosition]=useState('0');
   const [newCert,setNewCert]=useState<CertDraft>({...emptyCert,registry_key:'omnia',type:'omnia',organization_name:'Omnia Global Academy',certification_name:'Certification Omnia'});
 
-  useEffect(()=>{ if(!course?.id) return; call('get_commercialization',{course_id:course.id}).then(d=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]);setOrganizations(d.organization_options||[]); if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
+  useEffect(()=>{ if(!course?.id) return; Promise.all([call('get_commercialization',{course_id:course.id}),call('list_live_content_options',{course_id:course.id}).catch(()=>({events:[],media:[]}))]).then(([d,live])=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]);setOrganizations(d.organization_options||[]);setAssistedRequest(d.assisted_request||null);setOwnerReviewComment(d.assisted_request?.owner_comment||'');setLiveLinks(d.live_links||[]);setLiveOptions({events:live.events||[],media:live.media||[]});if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
 
   const selectedOrganization=useMemo(()=>organizations.find(item=>item.key===newCert.registry_key)||null,[organizations,newCert.registry_key]);
   const professorShare=useMemo(()=>{
@@ -66,6 +74,29 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
     setSaving(true);try{const uploaded:any[]=[];for(const file of files){const ext=file.name.split('.').pop()||'bin';const path=`${course.id}/assisted/${crypto.randomUUID()}.${ext}`;const signed=await call('prepare_upload',{course_id:course.id,bucket_name:'course-resources',storage_path:path});await fetch(signed.signedUrl,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});uploaded.push({name:file.name,size:file.size,mime:file.type,url:`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/course-resources/${path}`});}const d=await call('request_assisted_entry',{course_id:course.id,service_type:assistedType,instructions,documents:uploaded});onPatch({is_assisted:true,assisted_status:d.request.status,assisted_request_id:d.request.id});setFiles([]);onSaved?.('Demande de saisie assistée envoyée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
+  async function reviewAssisted(decision:'validated'|'changes_requested'){
+    if(!course.id) return;
+    if(decision==='changes_requested'&&!ownerReviewComment.trim()) return onSaved?.('Expliquez les corrections demandées.');
+    setSaving(true);try{const d=await call('owner_review_assisted_request',{course_id:course.id,decision,comment:ownerReviewComment.trim()});setAssistedRequest(d.request);onPatch({assisted_status:d.request.status});onSaved?.(decision==='validated'?'Brouillon assisté validé. Vous pouvez confirmer le prix puis soumettre la formation.':'Corrections renvoyées à Omnia.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+  }
+
+  async function structurePricingAction(action:'structure_accept'|'structure_revision'){
+    if(!course.id) return;
+    if(action==='structure_revision'&&!pricingComment.trim()) return onSaved?.('Indiquez la raison de la révision tarifaire.');
+    setSaving(true);try{const res=await fetch(PRICING_API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({course_id:course.id,action,comment:pricingComment.trim()||undefined,desired_price_amount:Number(course.desired_price_amount||0)})});const d=await res.json().catch(()=>({}));if(!res.ok||d.error)throw new Error(d.message||d.error||'Action tarifaire impossible');onPatch({pricing_status:d.pricing_status,price_xof:d.price_xof??course.price_xof});setPricingComment('');onSaved?.(action==='structure_accept'?'Nouveau prix accepté par la Structure.':'Révision tarifaire demandée à Omnia.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+  }
+
+  async function addLiveLink(){
+    if(!course.id||!linkTarget) return onSaved?.('Choisissez un Live ou un Replay à relier.');
+    const [kind,id]=linkTarget.split(':');
+    setSaving(true);try{await call('add_course_live_link',{course_id:course.id,event_id:kind==='event'?id:undefined,media_id:kind==='media'?id:undefined,position:Math.max(0,Number(linkPosition||0))});const d=await call('get_commercialization',{course_id:course.id});setLiveLinks(d.live_links||[]);setLinkTarget('');setLinkPosition('0');onSaved?.('Contenu Omnia Live relié à la formation. Les apprenants inscrits recevront automatiquement le droit d’accès.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+  }
+
+  async function removeLiveLink(linkId:string){
+    if(!course.id) return;
+    setSaving(true);try{await call('remove_course_live_link',{course_id:course.id,link_id:linkId});setLiveLinks(v=>v.filter(x=>x.id!==linkId));onSaved?.('Liaison retirée de la formation.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+  }
+
   async function addCertification(){
     if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon.');
     setSaving(true);try{const d=await call('save_course_certification_request',{course_id:course.id,certification:{...newCert,credit_value:newCert.credit_value?Number(newCert.credit_value):null}});setCertifications(v=>[...v,d.certification]);onPatch({certification_requested:true});setNewCert({...emptyCert});onSaved?.('Certification ajoutée et envoyée à validation.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
@@ -83,6 +114,26 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       </div>
       {professorShare&&<div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Règle actuelle : créateur {professorShare.professeur??professorShare.structure??0}% · plateforme {professorShare.plateforme??0}%. Cette information vient des réglages de l’Administration Omnia.</div>}
       <button disabled={saving||locked} onClick={saveCommercial} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={14}/>Enregistrer la commercialisation</button>
+    </div>
+
+    {assistedRequest&&['draft_ready','changes_requested','owner_validated'].includes(assistedRequest.status)&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+      <div className="flex items-center gap-2"><HandHelping size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Brouillon de saisie assistée</h3></div>
+      {assistedRequest.status==='draft_ready'?<><p className="mt-1 text-xs text-gray-500">Omnia a préparé le brouillon. Vérifiez le contenu dans le Studio avant de le valider. Si quelque chose doit changer, renvoyez vos remarques.</p><textarea value={ownerReviewComment} onChange={e=>setOwnerReviewComment(e.target.value)} rows={3} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Remarques facultatives pour validation, obligatoires si vous demandez des corrections."/><div className="mt-3 flex flex-wrap gap-2"><button disabled={saving||locked} onClick={()=>reviewAssisted('validated')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:'#1E7A52'}}><CheckCircle2 size={14}/>Valider mon brouillon</button><button disabled={saving||locked} onClick={()=>reviewAssisted('changes_requested')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{borderColor:GOLD,color:GOLD}}><RefreshCcw size={14}/>Demander des corrections</button></div></>:assistedRequest.status==='changes_requested'?<p className="mt-2 text-xs text-amber-700">Vos corrections ont été transmises à Omnia. Le prochain brouillon reviendra ici pour validation.</p>:<p className="mt-2 text-xs text-emerald-700">Brouillon validé. Confirmez maintenant votre commercialisation puis soumettez la formation au contrôle qualité habituel.</p>}
+    </div>}
+
+    {course.creator_context==='structure'&&course.pricing_status==='en_attente_acceptation_prix_structure'&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+      <div className="flex items-center gap-2"><Wallet size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Prix ajusté par Omnia</h3></div>
+      <p className="mt-2 text-sm text-gray-700">Prix retenu : <strong>{Number(course.admin_selected_price_xof||0).toLocaleString('fr-FR')} XOF</strong>. La Structure doit l’accepter uniquement parce que ce montant diffère de sa proposition initiale.</p>
+      {course.pricing_revision_comment&&<p className="mt-1 text-xs text-gray-500">{course.pricing_revision_comment}</p>}
+      <textarea value={pricingComment} onChange={e=>setPricingComment(e.target.value)} rows={2} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Commentaire si vous demandez une nouvelle révision."/>
+      <div className="mt-3 flex flex-wrap gap-2"><button disabled={saving||locked} onClick={()=>structurePricingAction('structure_accept')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:'#1E7A52'}}><CheckCircle2 size={14}/>Accepter le prix</button><button disabled={saving||locked} onClick={()=>structurePricingAction('structure_revision')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{borderColor:GOLD,color:GOLD}}><RefreshCcw size={14}/>Demander une révision</button></div>
+    </div>}
+
+    <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+      <div className="flex items-center gap-2"><Link2 size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Lives & Replays inclus</h3></div>
+      <p className="mt-1 text-xs text-gray-500">Reliez sans duplication un Live, une formation synchrone ou un Replay Omnia Live. Toute inscription à cette formation accordera automatiquement l’accès correspondant.</p>
+      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_110px_auto]"><select disabled={locked||saving} value={linkTarget} onChange={e=>setLinkTarget(e.target.value)} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="">Choisir un contenu Omnia Live</option>{liveOptions.events.map(ev=><option key={`event:${ev.id}`} value={`event:${ev.id}`}>Live · {ev.title} · {String(ev.delivery_type||'').replaceAll('_',' ')}</option>)}{liveOptions.media.map(m=><option key={`media:${m.id}`} value={`media:${m.id}`}>{m.media_type==='replay'?'Replay':'Vidéo'} · {m.title||'Sans titre'}</option>)}</select><input disabled={locked||saving} type="number" min="0" value={linkPosition} onChange={e=>setLinkPosition(e.target.value)} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Ordre"/><button disabled={locked||saving||!linkTarget} onClick={addLiveLink} className="rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>Relier</button></div>
+      {liveLinks.length>0&&<div className="mt-3 divide-y rounded-lg border" style={{borderColor:BORDER}}>{liveLinks.map(link=>{const ev=link.live_events;const media=link.live_media;return <div key={link.id} className="flex items-center gap-3 px-3 py-2 text-sm"><span className="shrink-0" style={{color:GOLD}}>{media?<Video size={15}/>:<Radio size={15}/>}</span><div className="min-w-0 flex-1"><p className="truncate font-medium" style={{color:BLUE}}>{link.title_override||media?.title||ev?.title||'Contenu Omnia Live'}</p><p className="text-[11px] text-gray-500">{media?(media.media_type==='replay'?'Replay':'Vidéo'):String(ev?.delivery_type||'Live').replaceAll('_',' ')} · ordre {link.position||0}</p></div><button disabled={locked||saving} onClick={()=>removeLiveLink(link.id)} className="p-1 text-red-600 disabled:opacity-40" title="Retirer la liaison"><Trash2 size={14}/></button></div>})}</div>}
     </div>
 
     {!isProfessor&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>

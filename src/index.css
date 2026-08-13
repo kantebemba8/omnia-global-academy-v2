@@ -19,9 +19,15 @@
 
 html {
   scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
   font-family: 'Inter', sans-serif;
   background-color: #FFFFFF;
   color: var(--text-main);
@@ -29,6 +35,22 @@ body {
 
 .font-mono {
   font-family: 'IBM Plex Mono', monospace;
+}
+
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+/* Les zones qui doivent réellement défiler horizontalement gardent leur propre scroll local. */
+.oga-table-scroll,
+.overflow-x-auto,
+.overflow-x-scroll {
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 

@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await sb
           .from("courses")
           .select(
-            "id,title,creator_id,instructor_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+            "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
           )
           .in("pricing_status", [
             "en_attente_validation_prix_admin",
@@ -103,12 +103,13 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await sb
         .from("courses")
         .select(
-          "id,title,creator_id,instructor_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+          "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
         )
         .or(`instructor_id.eq.${me.user_id},creator_id.eq.${me.user_id}`)
         .in("pricing_status", [
           "en_attente_validation_prix_admin",
           "en_attente_acceptation_prix_professeur",
+          "en_attente_acceptation_prix_structure",
           "prix_revision_demandee",
         ])
         .order("updated_at", { ascending: false });
@@ -126,7 +127,7 @@ Deno.serve(async (req: Request) => {
     const { data: course, error: courseError } = await sb
       .from("courses")
       .select(
-        "id,title,creator_id,instructor_id,prix_provisoire_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
+        "id,title,creator_id,instructor_id,creator_context,structure_id,prix_provisoire_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
       )
       .eq("id", body.course_id)
       .maybeSingle();
@@ -139,13 +140,16 @@ Deno.serve(async (req: Request) => {
         return json({ error: "FORBIDDEN" }, 403);
       }
 
-      if (!["automatic", "professor", "custom"].includes(body.source)) {
+      const creatorContext = String(course.creator_context || "professeur");
+      const isStructure = creatorContext === "structure";
+      const allowedSources = isStructure ? ["owner", "custom"] : ["automatic", "professor", "custom"];
+      if (!allowedSources.includes(String(body.source || ""))) {
         return json({ error: "INVALID_SOURCE" }, 400);
       }
 
       const selectedPrice = body.source === "automatic"
         ? Number(course.prix_provisoire_xof ?? 0)
-        : body.source === "professor"
+        : (body.source === "professor" || body.source === "owner")
           ? Number(course.desired_price_amount ?? 0)
           : Number(body.custom_price_xof ?? 0);
 
@@ -153,35 +157,49 @@ Deno.serve(async (req: Request) => {
         return json({ error: "INVALID_PRICE" }, 400);
       }
 
-      const { error: updateError } = await sb
-        .from("courses")
-        .update({
-          pricing_status: "en_attente_acceptation_prix_professeur",
-          admin_selected_price_source: body.source,
-          admin_selected_price_xof: selectedPrice,
-          pricing_admin_decided_at: new Date().toISOString(),
-          pricing_admin_decided_by: me.user_id,
-          pricing_revision_comment: body.comment || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", body.course_id);
+      const desiredPrice = Number(course.desired_price_amount ?? 0);
+      const structureNeedsAcceptance = isStructure && selectedPrice !== desiredPrice;
+      const nextStatus = isStructure
+        ? (structureNeedsAcceptance ? "en_attente_acceptation_prix_structure" : "accepted")
+        : "en_attente_acceptation_prix_professeur";
 
+      const patch: Record<string, unknown> = {
+        pricing_status: nextStatus,
+        admin_selected_price_source: body.source,
+        admin_selected_price_xof: selectedPrice,
+        pricing_admin_decided_at: new Date().toISOString(),
+        pricing_admin_decided_by: me.user_id,
+        pricing_revision_comment: body.comment || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (isStructure && !structureNeedsAcceptance) {
+        patch.price_xof = selectedPrice;
+        patch.professor_price_accepted = true;
+        patch.professor_price_accepted_at = new Date().toISOString();
+      }
+
+      const { error: updateError } = await sb.from("courses").update(patch).eq("id", body.course_id);
       if (updateError) throw updateError;
 
-      await createNotification(
-        sb,
-        course.instructor_id || course.creator_id,
-        "Tarification de votre formation",
-        `Omnia a retenu un prix de ${selectedPrice.toLocaleString(
-          "fr-FR",
-        )} XOF (${body.source === "automatic" ? "calcul automatique" : body.source === "professor" ? "proposition du professeur" : "ajustement Omnia"}). Votre validation est requise avant la soumission pédagogique.`,
-      );
+      if (isStructure) {
+        await createNotification(
+          sb,
+          course.creator_id,
+          "Tarification de votre formation Structure",
+          structureNeedsAcceptance
+            ? `Omnia a ajusté le prix à ${selectedPrice.toLocaleString("fr-FR")} XOF. La Structure doit accepter ce nouveau montant avant la soumission pédagogique.`
+            : `Omnia a validé votre prix proposé de ${selectedPrice.toLocaleString("fr-FR")} XOF. Aucune nouvelle acceptation n’est requise.`,
+        );
+      } else {
+        await createNotification(
+          sb,
+          course.instructor_id || course.creator_id,
+          "Tarification de votre formation",
+          `Omnia a retenu un prix de ${selectedPrice.toLocaleString("fr-FR")} XOF (${body.source === "automatic" ? "calcul automatique" : body.source === "professor" ? "proposition du professeur" : "ajustement Omnia"}). Votre validation est requise avant la soumission pédagogique.`,
+        );
+      }
 
-      return json({
-        success: true,
-        selected_price_xof: selectedPrice,
-        pricing_status: "en_attente_acceptation_prix_professeur",
-      });
+      return json({ success: true, selected_price_xof: selectedPrice, pricing_status: nextStatus });
     }
 
     if (
@@ -191,10 +209,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: "FORBIDDEN" }, 403);
     }
 
-    if (body.action === "professor_accept") {
-      if (
-        course.pricing_status !== "en_attente_acceptation_prix_professeur"
-      ) {
+    if (["professor_accept", "structure_accept", "owner_accept"].includes(body.action)) {
+      const expectedStatus = String(course.creator_context || "") === "structure" ? "en_attente_acceptation_prix_structure" : "en_attente_acceptation_prix_professeur";
+      if (course.pricing_status !== expectedStatus) {
         return json({ error: "INVALID_STATUS" }, 409);
       }
 
@@ -224,7 +241,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (body.action === "professor_revision") {
+    if (["professor_revision", "structure_revision", "owner_revision"].includes(body.action)) {
       const desiredPrice =
         body.desired_price_amount == null
           ? course.desired_price_amount
@@ -235,7 +252,7 @@ Deno.serve(async (req: Request) => {
         .update({
           pricing_status: "prix_revision_demandee",
           pricing_revision_comment:
-            body.comment || "Révision demandée par le professeur",
+            body.comment || (String(course.creator_context || "") === "structure" ? "Révision demandée par la Structure" : "Révision demandée par le professeur"),
           desired_price_amount: desiredPrice,
           updated_at: new Date().toISOString(),
         })

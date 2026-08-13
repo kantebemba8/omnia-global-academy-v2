@@ -881,11 +881,16 @@ Deno.serve(async(req)=>{
 
   if(action==="get_commercialization"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:course}=await sb.from("courses").select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount,is_assisted,assisted_status,assisted_request_id,certification_requested").eq("id",courseId).single();
+   const {data:course}=await sb.from("courses").select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount,is_assisted,assisted_status,assisted_request_id,certification_requested,creator_context,structure_id,pricing_status,admin_selected_price_xof,pricing_revision_comment,price_xof,is_published").eq("id",courseId).single();
    const {data:settings}=await sb.from("site_settings").select("key,value").in("key",["commission_normal_sans_cpd","commission_normal_avec_cpd","commission_assistee_sans_cpd","commission_assistee_avec_cpd"]);
    const revenueRules:any={};for(const row of settings||[]){try{revenueRules[row.key]=typeof row.value==="string"?JSON.parse(row.value):row.value}catch{revenueRules[row.key]=row.value}}
-   const [{data:certifications},organizationOptions]=await Promise.all([sb.from("course_certifications").select("*").eq("course_id",courseId).order("created_at"),certificationOrganizationOptions(sb,courseId)]);
-   return json({success:true,course,revenue_rules:revenueRules,certifications:certifications||[],organization_options:organizationOptions});
+   const [{data:certifications},organizationOptions,{data:assistedRequest},{data:liveLinks}]=await Promise.all([
+    sb.from("course_certifications").select("*").eq("course_id",courseId).order("created_at"),
+    certificationOrganizationOptions(sb,courseId),
+    sb.from("assisted_course_requests").select("*").eq("course_id",courseId).in("status",["pending","in_progress","draft_ready","changes_requested","owner_validated","pricing_review","ready_to_publish"]).order("requested_at",{ascending:false}).limit(1).maybeSingle(),
+    sb.from("course_live_content_links").select("id,course_id,event_id,media_id,title_override,position,required,is_active,live_events(id,title,delivery_type,status,starts_at,organizer_display_name),live_media(id,title,media_type,status,processing_status,sequence_no,event_id)").eq("course_id",courseId).eq("is_active",true).order("position").order("created_at")
+   ]);
+   return json({success:true,course,revenue_rules:revenueRules,certifications:certifications||[],organization_options:organizationOptions,assisted_request:assistedRequest||null,live_links:liveLinks||[]});
   }
   if(action==="save_commercialization"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
@@ -894,14 +899,60 @@ Deno.serve(async(req)=>{
    const updates:any={sale_mode:mode,desired_price_amount:amount,sale_currency:b.sale_currency||"XOF",promotion_price_amount:b.promotion_price_amount||null,structure_payment_mode:b.structure_payment_mode||"free",structure_fixed_amount:b.structure_fixed_amount||null,updated_at:new Date().toISOString()};
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("sale_mode,desired_price_amount,sale_currency,promotion_price_amount,structure_payment_mode,structure_fixed_amount").single();if(error)throw error;await log(sb,courseId,userId,"commercialization_saved",updates);return json({success:true,course:data});
   }
+  if(action==="list_live_content_options"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:course}=await sb.from("courses").select("creator_context,structure_id").eq("id",courseId).maybeSingle();
+   let eventQuery=sb.from("live_events").select("id,title,delivery_type,status,starts_at,owner_user_id,owner_structure_id,organizer_display_name").in("status",["approved","published","live","completed"]).order("updated_at",{ascending:false}).limit(250);
+   if(!isAdmin){
+    if(String(course?.creator_context||"")==="structure"&&course?.structure_id)eventQuery=eventQuery.eq("owner_structure_id",course.structure_id);
+    else eventQuery=eventQuery.eq("owner_user_id",userId);
+   }
+   const {data:events,error:eventError}=await eventQuery;if(eventError)throw eventError;
+   const eventIds=(events||[]).map((x:any)=>x.id);
+   let media:any[]=[];
+   if(eventIds.length){const {data,error}=await sb.from("live_media").select("id,event_id,title,media_type,status,processing_status,sequence_no").in("event_id",eventIds).in("media_type",["replay","recorded_video"]).neq("status","deleted").order("sequence_no",{ascending:true,nullsFirst:false}).order("created_at",{ascending:true});if(error)throw error;media=data||[]}
+   return json({success:true,events:events||[],media});
+  }
+  if(action==="add_course_live_link"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const eventId=String(b.event_id||"")||null,mediaId=String(b.media_id||"")||null;
+   if((eventId?1:0)+(mediaId?1:0)!==1)return json({success:false,error:"ONE_LIVE_TARGET_REQUIRED"},400);
+   const {data:course}=await sb.from("courses").select("creator_context,structure_id").eq("id",courseId).maybeSingle();
+   let targetEventId=eventId;
+   if(mediaId){const {data:media}=await sb.from("live_media").select("id,event_id,media_type").eq("id",mediaId).maybeSingle();if(!media||!["replay","recorded_video"].includes(String(media.media_type)))return json({success:false,error:"MEDIA_NOT_LINKABLE"},400);targetEventId=String(media.event_id||"")||null}
+   const {data:ev}=targetEventId?await sb.from("live_events").select("id,owner_user_id,owner_structure_id,status").eq("id",targetEventId).maybeSingle():{data:null};
+   if(!ev)return json({success:false,error:"LIVE_EVENT_NOT_FOUND"},404);
+   if(!isAdmin){const sameOwner=String(ev.owner_user_id||"")===userId;const sameStructure=course?.structure_id&&String(ev.owner_structure_id||"")===String(course.structure_id);if(!sameOwner&&!sameStructure)return json({success:false,error:"LIVE_CONTENT_NOT_OWNED"},403)}
+   const row:any={course_id:courseId,event_id:eventId,media_id:mediaId,title_override:String(b.title_override||"").trim()||null,position:Math.max(0,Number(b.position||0)),required:b.required===true,is_active:true,created_by:userId,updated_at:new Date().toISOString()};
+   let existingQuery=sb.from("course_live_content_links").select("id").eq("course_id",courseId);
+   existingQuery=eventId?existingQuery.eq("event_id",eventId):existingQuery.eq("media_id",mediaId as string);
+   const {data:existingLink,error:existingError}=await existingQuery.maybeSingle();if(existingError)throw existingError;
+   let data:any,error:any;
+   if(existingLink?.id){({data,error}=await sb.from("course_live_content_links").update(row).eq("id",existingLink.id).select("*").single());}
+   else {({data,error}=await sb.from("course_live_content_links").insert(row).select("*").single());}
+   if(error)throw error;
+   await log(sb,courseId,userId,"course_live_content_linked",{link_id:data.id,event_id:eventId,media_id:mediaId});
+   return json({success:true,link:data});
+  }
+  if(action==="remove_course_live_link"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const linkId=String(b.link_id||"");if(!linkId)return json({success:false,error:"LINK_ID_REQUIRED"},400);
+   const {data:link}=await sb.from("course_live_content_links").select("*").eq("id",linkId).eq("course_id",courseId).maybeSingle();if(!link)return json({success:false,error:"LINK_NOT_FOUND"},404);
+   const {error}=await sb.from("course_live_content_links").update({is_active:false,updated_at:new Date().toISOString()}).eq("id",linkId);if(error)throw error;
+   await log(sb,courseId,userId,"course_live_content_unlinked",{link_id:linkId,event_id:link.event_id,media_id:link.media_id});
+   return json({success:true});
+  }
+
   if(action==="request_assisted_entry"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
    const rs=await roles(sb,userId);
    if(rs.includes("super_admin"))return json({success:false,error:"ADMIN_ASSISTED_ENTRY_NOT_APPLICABLE",message:"L’Administration crée directement les formations au nom d’Omnia Global Academy."},403);
-   const requesterRole=rs.includes("responsable_structure")||rs.includes("gestionnaire_structure")||rs.includes("structure_admin")?"structure":"professeur";
-   const {data:existing}=await sb.from("assisted_course_requests").select("id,status").eq("course_id",courseId).in("status",["pending","in_progress"]).maybeSingle();if(existing)return json({success:false,error:"ACTIVE_REQUEST_EXISTS",message:"Une demande est déjà en cours."},409);
-   const {data:reqRow,error}=await sb.from("assisted_course_requests").insert({course_id:courseId,requester_id:userId,requester_role:requesterRole,service_type:b.service_type||"without_certification",instructions:String(b.instructions||""),documents:Array.isArray(b.documents)?b.documents:[],status:"pending"}).select("*").single();if(error)throw error;
-   await sb.from("courses").update({is_assisted:true,assisted_request_id:reqRow.id,assisted_status:"pending",updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"assisted_entry_requested",{request_id:reqRow.id,service_type:reqRow.service_type});return json({success:true,request:reqRow});
+   const {data:ownedCourse}=await sb.from("courses").select("creator_context,structure_id").eq("id",courseId).maybeSingle();
+   const requesterRole=String(ownedCourse?.creator_context||"")==="structure"?"structure":"professeur";
+   const activeStatuses=["pending","in_progress","draft_ready","changes_requested","owner_validated","pricing_review","ready_to_publish"];
+   const {data:existing}=await sb.from("assisted_course_requests").select("id,status").eq("course_id",courseId).in("status",activeStatuses).limit(1).maybeSingle();if(existing)return json({success:false,error:"ACTIVE_REQUEST_EXISTS",message:"Une demande est déjà en cours."},409);
+   const {data:reqRow,error}=await sb.from("assisted_course_requests").insert({course_id:courseId,requester_id:userId,requester_role:requesterRole,structure_id:ownedCourse?.structure_id||null,service_type:b.service_type||"without_certification",instructions:String(b.instructions||""),documents:Array.isArray(b.documents)?b.documents:[],status:"pending"}).select("*").single();if(error)throw error;
+   await sb.from("courses").update({is_assisted:true,assisted_request_id:reqRow.id,assisted_status:"pending",updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"assisted_entry_requested",{request_id:reqRow.id,service_type:reqRow.service_type,requester_role:requesterRole});return json({success:true,request:reqRow});
   }
   if(action==="list_assisted_requests"){
    const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
@@ -909,9 +960,31 @@ Deno.serve(async(req)=>{
   }
   if(action==="admin_update_assisted_request"){
    const rs=await roles(sb,userId);if(!rs.includes("super_admin"))return json({success:false,error:"FORBIDDEN"},403);
-   const status=String(b.status||"");if(!["pending","in_progress","completed","rejected","cancelled"].includes(status))return json({success:false,error:"INVALID_STATUS"},400);
-   const patch:any={status,updated_at:new Date().toISOString(),admin_comment:b.admin_comment||null};if(status==="in_progress"){patch.assigned_to=userId;patch.started_at=new Date().toISOString()}if(status==="completed")patch.completed_at=new Date().toISOString();
-   const {data,error}=await sb.from("assisted_course_requests").update(patch).eq("id",b.id).select("*").single();if(error)throw error;await sb.from("courses").update({assisted_status:status}).eq("id",data.course_id);return json({success:true,item:data});
+   const status=String(b.status||"");if(!["pending","in_progress","draft_ready","completed","rejected","cancelled"].includes(status))return json({success:false,error:"INVALID_STATUS"},400);
+   const {data:current}=await sb.from("assisted_course_requests").select("*,courses(is_published)").eq("id",b.id).maybeSingle();if(!current)return json({success:false,error:"NOT_FOUND"},404);
+   if(status==="completed"&&current.courses?.is_published!==true)return json({success:false,error:"COURSE_NOT_PUBLISHED",message:"La demande ne peut être clôturée qu’après publication de la formation au nom de son propriétaire."},409);
+   const patch:any={status,updated_at:new Date().toISOString(),admin_comment:b.admin_comment??current.admin_comment??null};
+   if(status==="in_progress"){patch.assigned_to=userId;patch.started_at=current.started_at||new Date().toISOString()}
+   if(status==="draft_ready"){patch.draft_ready_at=new Date().toISOString();patch.last_returned_at=new Date().toISOString()}
+   if(status==="completed")patch.completed_at=new Date().toISOString();
+   const {data,error}=await sb.from("assisted_course_requests").update(patch).eq("id",b.id).select("*").single();if(error)throw error;
+   await sb.from("courses").update({assisted_status:status,updated_at:new Date().toISOString()}).eq("id",data.course_id);
+   await log(sb,data.course_id,userId,"assisted_entry_admin_status",{request_id:data.id,status});
+   return json({success:true,item:data});
+  }
+  if(action==="owner_review_assisted_request"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const decision=String(b.decision||"");if(!["changes_requested","validated"].includes(decision))return json({success:false,error:"INVALID_DECISION"},400);
+   const {data:reqRow}=await sb.from("assisted_course_requests").select("*").eq("course_id",courseId).in("status",["draft_ready","changes_requested"]).order("requested_at",{ascending:false}).limit(1).maybeSingle();
+   if(!reqRow)return json({success:false,error:"NO_REVIEWABLE_ASSISTED_REQUEST",message:"Aucun brouillon assisté n’attend votre validation."},409);
+   const now=new Date().toISOString();
+   const status=decision==="validated"?"owner_validated":"changes_requested";
+   const patch:any={status,owner_comment:String(b.comment||""),updated_at:now};
+   if(decision==="validated")patch.owner_validated_at=now;else{patch.revision_count=Number(reqRow.revision_count||0)+1;patch.last_returned_at=now}
+   const {data,error}=await sb.from("assisted_course_requests").update(patch).eq("id",reqRow.id).select("*").single();if(error)throw error;
+   await sb.from("courses").update({assisted_status:status,updated_at:now}).eq("id",courseId);
+   await log(sb,courseId,userId,decision==="validated"?"assisted_draft_owner_validated":"assisted_draft_changes_requested",{request_id:reqRow.id,comment:String(b.comment||"")});
+   return json({success:true,request:data});
   }
   if(action==="save_course_certification_request"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);const c=b.certification||{};
@@ -1003,9 +1076,10 @@ Deno.serve(async(req)=>{
    return json({success:true,...report});
   }
   if(action==="submit_course"){
-   const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version,creator_context,creator_id,pricing_status,admin_selected_price_xof").eq("id",courseId).single();if(error)throw error;
+   const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version,creator_context,creator_id,pricing_status,admin_selected_price_xof,is_assisted,assisted_status").eq("id",courseId).single();if(error)throw error;
    if(!c.ready_to_submit)return json({success:false,errors:c.quality_report?.errors||["Exécutez le contrôle qualité et corrigez les éléments manquants."],warnings:c.quality_report?.warnings||[]},400);
    if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
+   if(c.is_assisted&&!["owner_validated","pricing_review","ready_to_publish","completed"].includes(String(c.assisted_status||"")))return json({success:false,errors:["Validez d’abord le brouillon préparé par Omnia, ou demandez les corrections nécessaires."],warnings:[]},409);
    const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
    const {data:lessons}=await sb.from("course_lessons").select("*").eq("course_id",courseId).order("position");
    const {data:blocks}=await sb.from("lesson_blocks").select("*").eq("course_id",courseId).order("position");
@@ -1014,8 +1088,14 @@ Deno.serve(async(req)=>{
    if(c.sale_mode==="free"){
     await sb.from("courses").update({is_free:true,price_xof:0,pricing_status:"accepted",professor_price_accepted:true,professor_price_accepted_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",courseId);
    }else if(accelerated&&c.pricing_status!=="accepted"){
-    const pricing=await calculateCoursePricing(sb,courseId);const selected=Math.max(0,Number(c.desired_price_amount||pricing.price_xof||0));
-    await sb.from("courses").update({score_calcule:pricing.score,prix_provisoire_xof:pricing.price_xof,pricing_snapshot:pricing,pricing_status:"accepted",admin_selected_price_source:Number(c.desired_price_amount||0)>0?"professor":"automatic",admin_selected_price_xof:selected,pricing_admin_decided_at:new Date().toISOString(),pricing_admin_decided_by:userId,professor_price_accepted:true,professor_price_accepted_at:new Date().toISOString(),price_xof:selected,is_free:false,updated_at:new Date().toISOString()}).eq("id",courseId);
+    const selected=Math.max(0,Number(c.desired_price_amount||0));
+    if(selected<=0)return json({success:false,errors:["Indiquez le prix décidé par Omnia."],warnings:[]},400);
+    await sb.from("courses").update({score_calcule:null,prix_provisoire_xof:null,pricing_snapshot:{mode:"omnia_direct",calculated_at:new Date().toISOString()},pricing_status:"accepted",admin_selected_price_source:"omnia",admin_selected_price_xof:selected,pricing_admin_decided_at:new Date().toISOString(),pricing_admin_decided_by:userId,professor_price_accepted:true,professor_price_accepted_at:new Date().toISOString(),price_xof:selected,is_free:false,updated_at:new Date().toISOString()}).eq("id",courseId);
+   }else if(c.sale_mode==="paid"&&c.pricing_status!=="accepted"&&String(c.creator_context||"")==="structure"){
+    if(c.pricing_status==="en_attente_acceptation_prix_structure")return json({success:true,pricing_required:true,pricing_status:c.pricing_status,message:"Omnia a ajusté le prix. La Structure doit accepter le nouveau montant avant la soumission pédagogique."});
+    await sb.from("courses").update({score_calcule:null,prix_provisoire_xof:null,pricing_snapshot:{mode:"structure_proposal_only",calculated_at:new Date().toISOString()},pricing_status:"en_attente_validation_prix_admin",professor_price_accepted:false,is_free:false,updated_at:new Date().toISOString()}).eq("id",courseId);
+    await log(sb,courseId,userId,"structure_price_submitted",{desired_price_amount:Number(c.desired_price_amount||0)});
+    return json({success:true,pricing_required:true,pricing_status:"en_attente_validation_prix_admin",message:"Le prix proposé par la Structure a été transmis à l’Administration Omnia. Aucun calcul automatique Professeur n’est appliqué."});
    }else if(c.sale_mode==="paid"&&c.pricing_status!=="accepted"){
     if(c.pricing_status==="en_attente_acceptation_prix_professeur")return json({success:true,pricing_required:true,pricing_status:c.pricing_status,message:"Le prix attend votre acceptation dans l’espace Tarification."});
     const pricing=await calculateCoursePricing(sb,courseId);

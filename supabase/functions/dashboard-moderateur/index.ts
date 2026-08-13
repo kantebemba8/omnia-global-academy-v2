@@ -119,7 +119,7 @@ async function loadControlQueues(sb: ReturnType<typeof createClient>, userId: st
   if (permissions.can_create_assisted_course) {
     const { data, error } = await sb.from("assisted_course_requests")
       .select("id,course_id,requester_id,requester_role,service_type,status,assigned_to,requested_at")
-      .in("status", ["pending", "in_progress"]).order("requested_at", { ascending: true }).limit(50);
+      .in("status", ["pending", "in_progress", "changes_requested"]).order("requested_at", { ascending: true }).limit(50);
     if (error) throw error;
     add("assisted_course_requests", (data ?? []).map((row) => ({
       id: String(row.id), target_type: "assisted_course_request",
@@ -437,7 +437,7 @@ Deno.serve(async (req: Request) => {
         const requestId = String(body.request_id || "").trim();
         if (!requestId) return json({ error: "INVALID_PARAMS" }, 400);
         const { data: requestRow, error: requestError } = await sb.from("assisted_course_requests")
-          .select("id,requester_id,status,assigned_to").eq("id", requestId).maybeSingle();
+          .select("id,course_id,requester_id,status,assigned_to").eq("id", requestId).maybeSingle();
         if (requestError) throw requestError;
         if (!requestRow) return json({ error: "REQUEST_NOT_FOUND" }, 404);
         if (await hasModeratorConflict(sb, userId, "assisted_course_request", requestId, [String(requestRow.requester_id || "")])) {
@@ -450,8 +450,10 @@ Deno.serve(async (req: Request) => {
           if (error) throw error;
         } else {
           if (String(requestRow.assigned_to || "") !== userId) return json({ error: "NOT_ASSIGNED_TO_YOU" }, 403);
-          const { error } = await sb.from("assisted_course_requests").update({ status: "completed", completed_at: now, updated_at: now }).eq("id", requestId).eq("assigned_to", userId);
+          if (!["in_progress", "changes_requested"].includes(String(requestRow.status || ""))) return json({ error: "INVALID_STATUS" }, 409);
+          const { error } = await sb.from("assisted_course_requests").update({ status: "draft_ready", draft_ready_at: now, last_returned_at: now, updated_at: now }).eq("id", requestId).eq("assigned_to", userId);
           if (error) throw error;
+          if (requestRow.course_id) await sb.from("courses").update({ assisted_status: "draft_ready", updated_at: now }).eq("id", requestRow.course_id);
         }
         await appendModeratorTeamAudit(sb, userId, userId, action, null, { assisted_request_id: requestId });
         return json({ success: true });

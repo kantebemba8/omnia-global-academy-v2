@@ -570,11 +570,25 @@ async function getEvent(
   const { data: media } = await sb
     .from("live_media")
     .select(
-      "id,session_id,media_type,status,title,description,mime_type,file_name,size_bytes,duration_seconds,access_policy,availability_scope,available_from,available_until,watermark_enabled,version,created_at",
+      "id,session_id,media_type,status,title,description,mime_type,file_name,size_bytes,duration_seconds,access_policy,availability_scope,available_from,available_until,watermark_enabled,version,sequence_no,created_at",
     )
     .eq("event_id", ev.id)
     .neq("status", "deleted")
-    .order("created_at", { ascending: false });
+    .order("sequence_no", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+
+  let viewerRegistration:any=null;
+  let viewerEntitledMediaIds:string[]=[];
+  if(ctx){
+    const nowIso=new Date().toISOString();
+    const [{data:registration},{data:entitlements}]=await Promise.all([
+      sb.from("live_registrations").select("id,status,access_source").eq("event_id",ev.id).eq("user_id",ctx.userId).maybeSingle(),
+      sb.from("live_replay_entitlements").select("media_id,starts_at,expires_at,revoked_at").eq("event_id",ev.id).eq("user_id",ctx.userId).is("revoked_at",null),
+    ]);
+    viewerRegistration=registration||null;
+    viewerEntitledMediaIds=(entitlements||[]).filter((x:any)=>(!x.starts_at||x.starts_at<=nowIso)&&(!x.expires_at||x.expires_at>nowIso)).map((x:any)=>String(x.media_id||"")).filter(Boolean);
+  }
+  const viewerHasAccess=!!ctx&&(isSuperAdmin(ctx)||ownerEventAccess(ctx,ev)||viewerRegistration?.status==="confirmed");
 
   return json({
     success: true,
@@ -582,6 +596,9 @@ async function getEvent(
     sessions: sessions ?? [],
     speakers: speakers ?? [],
     media: media ?? [],
+    viewer_registration: viewerRegistration,
+    viewer_has_access: viewerHasAccess,
+    viewer_entitled_media_ids: viewerEntitledMediaIds,
   });
 }
 
@@ -628,7 +645,8 @@ async function studioGet(
       .select("*")
       .eq("event_id", eventId)
       .neq("status", "deleted")
-      .order("created_at", { ascending: false }),
+      .order("sequence_no", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
 
     sb
       .from("live_commercial_terms")
@@ -1601,6 +1619,7 @@ async function mediaRegister(
     download_allowed: Boolean(body.download_allowed),
     is_primary: Boolean(body.is_primary),
     version: Number(body.version || 1),
+    sequence_no: body.sequence_no == null ? null : Math.max(1, Number(body.sequence_no)),
   };
 
   if (row.is_primary) {
@@ -1658,6 +1677,7 @@ async function mediaUpdate(
     "availability_scope",
     "published_at",
     "expires_at",
+    "sequence_no",
   ]) {
     if (body[key] !== undefined) patch[key] = body[key];
   }
@@ -1711,15 +1731,28 @@ async function playbackAuthorize(
   let allowed = isSuperAdmin(ctx) || ownerEventAccess(ctx, ev);
 
   if (!allowed) {
-    const { data: reg } = await sb
-      .from("live_registrations")
-      .select("id,status")
-      .eq("event_id", media.event_id)
-      .eq("user_id", ctx.userId)
-      .eq("status", "confirmed")
-      .maybeSingle();
+    const [{ data: reg }, { data: entitlement }] = await Promise.all([
+      sb.from("live_registrations")
+        .select("id,status")
+        .eq("event_id", media.event_id)
+        .eq("user_id", ctx.userId)
+        .eq("status", "confirmed")
+        .maybeSingle(),
+      sb.from("live_replay_entitlements")
+        .select("id,starts_at,expires_at,revoked_at")
+        .eq("event_id", media.event_id)
+        .eq("media_id", media.id)
+        .eq("user_id", ctx.userId)
+        .is("revoked_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-    allowed = !!reg;
+    const entitlementActive = !!entitlement &&
+      (!entitlement.starts_at || new Date(entitlement.starts_at) <= new Date()) &&
+      (!entitlement.expires_at || new Date(entitlement.expires_at) > new Date());
+    allowed = !!reg || entitlementActive;
   }
 
   if (!allowed && ev.visibility === "public" && Number(ev.price_amount || 0) === 0) {
@@ -1900,6 +1933,7 @@ async function uploadPrepare(
     size_bytes?: number;
     title?: string;
     session_id?: string | null;
+    sequence_no?: number | null;
   };
 
   if (!body.event_id || !body.media_type || !body.file_name) {
@@ -1944,6 +1978,7 @@ async function uploadPrepare(
       watermark_mode: ["recorded_video","replay"].includes(body.media_type) ? "dynamic" : "none",
       download_allowed: body.media_type === "document",
       version: 1,
+      sequence_no: body.sequence_no == null ? null : Math.max(1, Number(body.sequence_no)),
     })
     .select("*")
     .single();
@@ -5879,7 +5914,7 @@ async function participantLibrary(
       .eq("status","confirmed")
       .order("registered_at",{ascending:false}),
     sb.from("live_replay_entitlements")
-      .select("*,live_events(*),live_media(id,title,media_type,status,processing_status,duration_seconds,cover_url)")
+      .select("*,live_events(*),live_media(id,title,media_type,status,processing_status,duration_seconds,cover_url,sequence_no)")
       .eq("user_id",ctx.userId)
       .is("revoked_at",null)
       .order("created_at",{ascending:false}),
@@ -5887,9 +5922,11 @@ async function participantLibrary(
       .select("*")
       .eq("user_id",ctx.userId),
     sb.from("live_media")
-      .select("id,event_id,title,media_type,status,processing_status,duration_seconds")
+      .select("id,event_id,title,media_type,status,processing_status,duration_seconds,sequence_no")
       .eq("status","published")
-      .eq("processing_status","ready"),
+      .eq("processing_status","ready")
+      .order("sequence_no",{ascending:true,nullsFirst:false})
+      .order("created_at",{ascending:true}),
   ]);
 
   const progressMap:any={};

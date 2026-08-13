@@ -11,7 +11,7 @@ async function call(action:string,body:any={}){
   const r=await fetch(API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action,...body})});
   const d=await r.json(); if(!r.ok||d.success===false) throw new Error(d.message||d.error||'Erreur'); return d;
 }
-const frStatus=(s:string)=>({pending:'En attente',in_progress:'En cours',completed:'Terminée',rejected:'Refusée',validated:'Validée',expired:'Expirée'}[s]||s||'—');
+const frStatus=(s:string)=>({pending:'En attente',in_progress:'En cours',draft_ready:'Brouillon envoyé au propriétaire',changes_requested:'Corrections demandées',owner_validated:'Brouillon validé par le propriétaire',pricing_review:'Tarification en cours',ready_to_publish:'Prête à publier',completed:'Terminée',rejected:'Refusée',validated:'Validée',expired:'Expirée',cancelled:'Annulée'}[s]||s||'—');
 
 export default function AdminAssistedCourses(){
  const [tab,setTab]=useState<Tab>('assisted'),[items,setItems]=useState<any[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -39,15 +39,16 @@ export default function AdminAssistedCourses(){
          <div className="flex items-center gap-2">{tab==='assisted'?<UserRoundCog size={17} color={GOLD}/>:<ShieldCheck size={17} color={GOLD}/>}
            <h2 className="font-semibold text-sm" style={{color:BLUE}}>{tab==='assisted'?(x.courses?.title||'Formation sans titre'):(x.certification_name||'Certification')}</h2></div>
          <p className="text-xs text-gray-400 mt-1">{tab==='assisted'?`${x.users?.full_name||'Créateur'} · ${x.service_type||'Service non renseigné'}`:`${x.organization_name||'Organisme non renseigné'} · ${x.courses?.title||''}`}</p>
-         <p className="text-sm text-gray-600 mt-2">{x.instructions||x.certification_code||'Aucune précision supplémentaire.'}</p>
+         <p className="text-sm text-gray-600 mt-2">{x.instructions||x.certification_code||'Aucune précision supplémentaire.'}</p>{tab==='assisted'&&x.owner_comment&&<p className="mt-2 border-l-2 border-amber-400 pl-3 text-xs text-amber-800">Retour propriétaire : {x.owner_comment}</p>}{tab==='assisted'&&x.admin_comment&&<p className="mt-1 text-xs text-gray-500">Note Omnia : {x.admin_comment}</p>}
          {tab==='certifications'&&<div className="mt-2 flex flex-wrap gap-2 text-[11px]"><span className={`rounded-full px-2 py-1 ${x.display_on_course!==false?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>Page formation</span><span className={`rounded-full px-2 py-1 ${x.display_on_certificate!==false?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>Certificat</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-800">Logo soumis aux autorisations</span></div>}
        </div></div>
        <div className="flex items-center gap-3 flex-wrap">
          <span className="text-xs font-semibold text-gray-500">{frStatus(x.status)}</span>
          {tab==='assisted'?<>
-           <button onClick={()=>update(x.id,'in_progress')} className="text-xs font-semibold text-gray-700 inline-flex items-center gap-1"><Clock3 size={13}/>Prendre en charge</button>
-           <button onClick={()=>update(x.id,'completed')} className="text-xs font-semibold inline-flex items-center gap-1" style={{color:'#1E7A52'}}><CheckCircle2 size={13}/>Terminée</button>
-           <button onClick={()=>update(x.id,'rejected')} className="text-xs font-semibold text-red-700 inline-flex items-center gap-1"><XCircle size={13}/>Refuser</button>
+           {x.status==='pending'&&<button onClick={()=>update(x.id,'in_progress')} className="text-xs font-semibold text-gray-700 inline-flex items-center gap-1"><Clock3 size={13}/>Prendre en charge</button>}
+           {['in_progress','changes_requested'].includes(x.status)&&<button onClick={()=>update(x.id,'draft_ready')} className="text-xs font-semibold inline-flex items-center gap-1" style={{color:'#1E7A52'}}><CheckCircle2 size={13}/>Brouillon prêt</button>}
+           {['owner_validated','pricing_review','ready_to_publish'].includes(x.status)&&<button onClick={()=>update(x.id,'completed')} className="text-xs font-semibold inline-flex items-center gap-1" style={{color:'#1E7A52'}}><CheckCircle2 size={13}/>Clôturer après publication</button>}
+           {['pending','in_progress','changes_requested'].includes(x.status)&&<button onClick={()=>update(x.id,'rejected')} className="text-xs font-semibold text-red-700 inline-flex items-center gap-1"><XCircle size={13}/>Refuser</button>}
          </>:<>
            <button onClick={()=>update(x.id,'validated',x)} className="text-xs font-semibold" style={{color:'#1E7A52'}}>Valider</button>
            <button onClick={()=>update(x.id,'rejected')} className="text-xs font-semibold text-red-700">Refuser</button>

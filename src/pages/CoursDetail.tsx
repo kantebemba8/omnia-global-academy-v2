@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video } from 'lucide-react';
 import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -140,6 +140,16 @@ export function CoursDetail() {
     expires_at?: string | null;
     display_on_certificate?: boolean;
   }>;
+  const liveContent = (detail.live_content ?? []) as Array<{
+    id: string;
+    event_id?: string | null;
+    media_id?: string | null;
+    title_override?: string | null;
+    position?: number;
+    required?: boolean;
+    live_events?: { id:string; title:string; delivery_type?:string; status?:string; starts_at?:string|null; organizer_display_name?:string|null } | null;
+    live_media?: { id:string; event_id?:string; title?:string|null; media_type?:string; status?:string; processing_status?:string; sequence_no?:number|null; duration_seconds?:number|null } | null;
+  }>;
 
   const totalLessons = modules.reduce((s, m) => s + ((m.lessons as unknown[])?.length ?? 0), 0);
   const cpd = course.cpd_hours as number ?? 0;
@@ -253,6 +263,7 @@ export function CoursDetail() {
                     'Certificat à l\'obtention',
                     'Support via le forum du cours',
                     ...(course.cpd_accredited ? ['Certification ou reconnaissance professionnelle'] : []),
+                    ...(liveContent.length ? ['Lives / Replays Omnia inclus'] : []),
                   ].map(g => (
                     <li key={g} className="flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>
                       <Check size={12} style={{ color: '#1E7A52', flexShrink: 0 }} /> {g}
@@ -299,6 +310,31 @@ export function CoursDetail() {
                   <span className="text-sm" style={{ color: '#374151' }}>{obj}</span>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {liveContent.length > 0 && (
+          <section>
+            <div className="mb-4">
+              <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Inclus dans votre accès</p>
+              <h2 className="mt-1 font-bold" style={{ color: '#002050', fontSize: '22px' }}>Lives & Replays liés à la formation</h2>
+              <p className="mt-1 text-sm text-gray-500">Ces contenus restent hébergés dans Omnia Live. L’inscription ou l’achat de cette formation vous accorde automatiquement les droits correspondants.</p>
+            </div>
+            <div className="divide-y rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
+              {liveContent.map((link) => {
+                const media = link.live_media;
+                const event = link.live_events;
+                const title = link.title_override || media?.title || event?.title || 'Contenu Omnia Live';
+                const isMedia = !!media;
+                return <div key={link.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background:'#FFF9EA', color:'#BF8813' }}>{isMedia?<Video size={17}/>:<Radio size={17}/>}</span>
+                    <div className="min-w-0"><p className="font-semibold" style={{ color:'#002050' }}>{title}</p><p className="mt-1 text-xs text-gray-500">{isMedia?(media?.media_type==='replay'?'Replay Omnia Live':'Vidéo Omnia Live'):event?.delivery_type==='synchronous_training'?'Formation Live multi-sessions':'Live Omnia'}{event?.starts_at?` · ${new Date(event.starts_at).toLocaleString('fr-FR')}`:''}</p></div>
+                  </div>
+                  {isEnrolled?<button type="button" onClick={()=>navigate(isMedia?`/omnia-live/watch/${media?.id}`:`/omnia-live/${event?.id}`)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{background:'#002050'}}>{isMedia?'Regarder':'Ouvrir dans Omnia Live'}</button>:<span className="shrink-0 text-xs font-semibold text-gray-500">Accès après inscription</span>}
+                </div>;
+              })}
             </div>
           </section>
         )}

@@ -192,6 +192,22 @@ Deno.serve(async (req: Request) => {
       };
     });
 
+    // ── Lives / Replays inclus dans cette formation ──────────────────────────
+    const { data: liveLinks, error: liveLinksError } = await supabase
+      .from("course_live_content_links")
+      .select("id,event_id,media_id,title_override,position,required,live_events(id,title,delivery_type,status,starts_at,organizer_display_name),live_media(id,event_id,title,media_type,status,processing_status,sequence_no,duration_seconds)")
+      .eq("course_id", courseId)
+      .eq("is_active", true)
+      .order("position")
+      .order("created_at");
+    if (liveLinksError) throw liveLinksError;
+    const publicLiveContent = (liveLinks ?? []).filter((link: Record<string, any>) => {
+      const event = link.live_events as Record<string, any> | null;
+      const media = link.live_media as Record<string, any> | null;
+      if (media) return media.status === "published" && media.processing_status === "ready";
+      return !!event && ["published", "live", "completed"].includes(String(event.status || ""));
+    });
+
     // ── Enrollment check ─────────────────────────────────────────────────────
     let isEnrolled = false;
     if (sessionToken) {
@@ -222,6 +238,7 @@ Deno.serve(async (req: Request) => {
       free_preview_lesson_id: freePrevLessonId,
       free_preview_lesson: freePrevLesson,
       certifications: publicCertifications,
+      live_content: publicLiveContent,
     });
   } catch (err) {
     console.error("course-detail error:", err);
