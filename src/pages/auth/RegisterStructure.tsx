@@ -98,6 +98,7 @@ export function RegisterStructure() {
       <AuthLayout
         title="Inscrire une Structure"
         subtitle="Choisissez le type de votre structure"
+        variant="wide"
       >
         <div className="mt-2 space-y-2">
           {STRUCTURE_TYPES.map(type => (
@@ -261,6 +262,7 @@ export function RegisterStructure() {
     <AuthLayout
       title={selectedTypeObj?.display ?? 'Espace Structure'}
       subtitle="Remplissez les informations de votre structure"
+      variant="wide"
     >
       {/* Badge type sélectionné + bouton retour */}
       <div className="flex items-center gap-2 mb-4">
@@ -307,7 +309,7 @@ export function RegisterStructure() {
             placeholder={`Nom officiel de votre ${selectedTypeObj?.label?.toLowerCase() ?? 'structure'}`} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className={labelCls}>Pays <span style={{ color: '#DC2626' }}>*</span></label>
             <select className={inputCls} value={form.country}
@@ -339,8 +341,8 @@ export function RegisterStructure() {
 
         <div>
           <label className={labelCls}>Téléphone de la structure</label>
-          <div className="flex gap-2">
-            <select className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select className="w-full px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white sm:w-[210px]"
               value={form.country} onChange={e => set('country', e.target.value)}>
               <option value="">Indicatif</option>
               {COUNTRIES.map(c => (
@@ -380,7 +382,7 @@ export function RegisterStructure() {
           <div className="h-0.5 rounded" style={{ background: '#EEF2FF' }} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className={labelCls}>Nom complet <span style={{ color: '#DC2626' }}>*</span></label>
             <input className={inputCls} type="text" required value={form.responsible_name}
@@ -405,8 +407,8 @@ export function RegisterStructure() {
 
         <div>
           <label className={labelCls}>Téléphone du responsable</label>
-          <div className="flex gap-2">
-            <select className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select className="w-full px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white sm:w-[210px]"
               value={form.country} onChange={e => set('country', e.target.value)}>
               <option value="">Indicatif</option>
               {COUNTRIES.map(c => (

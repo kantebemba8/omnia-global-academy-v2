@@ -223,7 +223,7 @@ export function Login() {
   return (
     <AuthLayout title="Se connecter">
       {/* Tabs */}
-      <div className="flex rounded-xl p-1 mb-6" style={{ backgroundColor: '#F3F4F6' }}>
+      <div className="grid grid-cols-2 rounded-xl p-1 mb-6" style={{ backgroundColor: '#F3F4F6' }}>
         <button
           type="button"
           onClick={() => { setTab('email'); clearErrors(); }}
@@ -233,7 +233,8 @@ export function Login() {
             color: tab === 'email' ? '#FFFFFF' : '#6B7280',
           }}
         >
-          Email & Mot de passe
+          <span className="hidden sm:inline">Email & Mot de passe</span>
+          <span className="sm:hidden">Email</span>
         </button>
         <button
           type="button"
@@ -244,7 +245,8 @@ export function Login() {
             color: tab === 'phone' ? '#FFFFFF' : '#6B7280',
           }}
         >
-          Numéro de téléphone
+          <span className="hidden sm:inline">Numéro de téléphone</span>
+          <span className="sm:hidden">Téléphone</span>
         </button>
       </div>
 
@@ -358,9 +360,9 @@ export function Login() {
 
          <div>
             <label className={labelCls}>Numéro de téléphone</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
-                className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
+                className="w-full px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white sm:w-[190px]"
                 value={country}
                 onChange={e => setCountry(e.target.value)}
               >

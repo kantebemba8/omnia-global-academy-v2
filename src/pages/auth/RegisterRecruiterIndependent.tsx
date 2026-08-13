@@ -86,11 +86,12 @@ export function RegisterRecruiterIndependent() {
     <AuthLayout
       title="Inscription recruteur indépendant"
       subtitle="Créez un compte professionnel distinct pour utiliser Omnia Talent"
+      variant="wide"
     >
-      <form onSubmit={submit} className="mt-4 space-y-4">
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      <form onSubmit={submit} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 md:col-span-2">{error}</div>}
 
-        <div className="flex items-start gap-3 border-y border-amber-200 py-3 text-sm text-gray-600">
+        <div className="flex items-start gap-3 border-y border-amber-200 py-3 text-sm text-gray-600 md:col-span-2">
           <Info size={17} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
           <p>Ce compte est réservé au recrutement. Une adresse déjà utilisée par un compte apprenant ne peut pas être réutilisée.</p>
         </div>
@@ -99,21 +100,21 @@ export function RegisterRecruiterIndependent() {
         <div><label className={label}>Email professionnel</label><input required type="email" className={input} value={form.email} onChange={e => set('email', e.target.value)} autoComplete="email" /></div>
         <div><label className={label}>Entreprise ou cabinet</label><div className="relative"><BriefcaseBusiness size={17} className="absolute left-3 top-3.5 text-gray-400"/><input required className={`${input} pl-10`} value={form.company_name} onChange={e => set('company_name', e.target.value)} /></div></div>
         <div><label className={label}>Fonction</label><input required className={input} value={form.job_title} onChange={e => set('job_title', e.target.value)} placeholder="Responsable recrutement, consultant RH…" /></div>
-        <div><label className={label}>Téléphone</label><div className="flex gap-2"><select className={`${input} max-w-[190px]`} value={form.country_code} onChange={e => set('country_code', e.target.value)}><option value="">Indicatif</option>{COUNTRIES.map(country => <option key={country.code} value={country.code}>{country.prefix} {country.label}</option>)}</select><input required className={input} value={form.phone_local} onChange={e => set('phone_local', e.target.value)} autoComplete="tel" /></div></div>
-        <div><label className={label}>LinkedIn <span className="text-gray-400">(optionnel)</span></label><input type="url" className={input} value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="https://www.linkedin.com/in/..." /></div>
+        <div><label className={label}>Téléphone</label><div className="flex flex-col gap-2 sm:flex-row"><select className={`${input} sm:max-w-[190px]`} value={form.country_code} onChange={e => set('country_code', e.target.value)}><option value="">Indicatif</option>{COUNTRIES.map(country => <option key={country.code} value={country.code}>{country.prefix} {country.label}</option>)}</select><input required className={input} value={form.phone_local} onChange={e => set('phone_local', e.target.value)} autoComplete="tel" /></div></div>
+        <div className="md:col-span-1"><label className={label}>LinkedIn <span className="text-gray-400">(optionnel)</span></label><input type="url" className={input} value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="https://www.linkedin.com/in/..." /></div>
         <div><label className={label}>Site internet <span className="text-gray-400">(optionnel)</span></label><input type="url" className={input} value={form.website_url} onChange={e => set('website_url', e.target.value)} placeholder="https://..." /></div>
 
         <div><label className={label}>Mot de passe</label><div className="relative"><input required minLength={8} type={showPassword ? 'text' : 'password'} className={input} value={form.password} onChange={e => set('password', e.target.value)} autoComplete="new-password"/><button type="button" onClick={() => setShowPassword(value => !value)} className="absolute right-3 top-3.5 text-gray-400" aria-label="Afficher le mot de passe">{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></div>
         <div><label className={label}>Confirmer le mot de passe</label><input required minLength={8} type={showPassword ? 'text' : 'password'} className={input} value={form.confirm_password} onChange={e => set('confirm_password', e.target.value)} autoComplete="new-password" /></div>
 
-        <label className="flex items-start gap-3 border-t border-gray-200 pt-4 text-sm text-gray-600"><input type="checkbox" checked={form.subscribe_newsletter} onChange={e => set('subscribe_newsletter', e.target.checked)} className="mt-0.5"/><span>S’abonner à Omnia Newsletter. Ce consentement est facultatif et peut être retiré à tout moment.</span></label>
+        <label className="flex items-start gap-3 border-t border-gray-200 pt-4 text-sm text-gray-600 md:col-span-2"><input type="checkbox" checked={form.subscribe_newsletter} onChange={e => set('subscribe_newsletter', e.target.checked)} className="mt-0.5"/><span>S’abonner à Omnia Newsletter. Ce consentement est facultatif et peut être retiré à tout moment.</span></label>
 
-        <div className="flex items-start gap-3 border-y border-gray-200 py-3 text-sm text-gray-600">
+        <div className="flex items-start gap-3 border-y border-gray-200 py-3 text-sm text-gray-600 md:col-span-2">
           <ShieldCheck size={17} style={{ color: '#BF8813', flexShrink: 0, marginTop: 1 }} />
           <p>Après la confirmation de votre adresse e-mail, le dossier sera soumis à l’Administration Omnia. L’espace recruteur sera activé uniquement après validation.</p>
         </div>
 
-        <button disabled={loading} className="w-full rounded-lg bg-[#002050] py-3 font-semibold text-white disabled:opacity-60">
+        <button disabled={loading} className="w-full rounded-lg bg-[#002050] py-3 font-semibold text-white disabled:opacity-60 md:col-span-2">
           {loading ? 'Création du compte…' : 'Créer mon compte recruteur'}
         </button>
       </form>

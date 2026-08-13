@@ -137,15 +137,16 @@ export function RegisterApprenant() {
     <AuthLayout
       title={accessInvitationToken ? 'Créer votre compte personnel' : 'Inscription Apprenant'}
       subtitle={accessInvitationToken ? 'Votre accès professionnel sera ajouté après vérification' : "Créez votre espace d'apprentissage"}
+      variant="wide"
     >
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+      <form onSubmit={handleSubmit} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 md:col-span-2">
             {error}
           </div>
         )}
         {accessInvitationToken && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-800">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-800 md:col-span-2">
             Créez votre compte personnel avec l’adresse qui a reçu l’invitation. Aucun mot de passe temporaire ne sera transmis par une Structure ou par Omnia.
           </div>
         )}
@@ -171,9 +172,9 @@ export function RegisterApprenant() {
         {/* Téléphone (synchronisé avec pays) */}
         <div>
           <label className={labelCls}>Téléphone</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <select
-              className="px-3 py-3 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#002050] bg-white"
+              className="w-full px-3 py-3 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#002050] bg-white sm:w-[210px]"
               value={form.country_code}
               onChange={e => handleCountryChange(e.target.value)}
             >
@@ -281,7 +282,7 @@ export function RegisterApprenant() {
         )}
 
         {/* Consentements */}
-        <div className="pt-1 space-y-2">
+        <div className="pt-1 space-y-2 md:col-span-2">
           {(
             [
               { field: 'allow_email',          label: 'Recevoir les actualités par email' },
@@ -305,13 +306,13 @@ export function RegisterApprenant() {
 
         <button
           type="submit" disabled={loading}
-          className="w-full py-3 rounded-lg font-semibold text-white transition-all mt-2"
+          className="w-full py-3 rounded-lg font-semibold text-white transition-all mt-2 md:col-span-2"
           style={{ backgroundColor: loading ? '#9CA3AF' : '#002050' }}
         >
           {loading ? 'Inscription en cours...' : 'Créer mon compte'}
         </button>
 
-        <p className="text-center text-sm" style={{ color: '#6B7280' }}>
+        <p className="text-center text-sm md:col-span-2" style={{ color: '#6B7280' }}>
           Déjà un compte ?{' '}
           <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
             Se connecter

@@ -144,10 +144,11 @@ export function RegisterProfesseur() {
     <AuthLayout
       title="Inscription Professeur"
       subtitle="Partagez votre expertise avec nos apprenants"
+      variant="wide"
     >
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+      <form onSubmit={handleSubmit} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 md:col-span-2">
             {error}
           </div>
         )}
@@ -167,14 +168,13 @@ export function RegisterProfesseur() {
         {/* Téléphone */}
         <div>
           <label className={labelCls}>Téléphone</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <select
-              className="px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white"
+              className="w-full px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#002050] bg-white sm:w-[210px]"
               value={form.country_code}
               onChange={e => handleCountryChange(e.target.value)}
             >
               <option value="">Indicatif</option>
-              <option value="">Choisir un pays</option>
             {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.prefix} {c.label}</option>
               ))}
@@ -192,6 +192,7 @@ export function RegisterProfesseur() {
             onChange={e => handleCountryChange(e.target.value)}
             required
           >
+            <option value="">Choisir un pays</option>
             {COUNTRIES.map(c => (
               <option key={c.code} value={c.code}>{c.label}</option>
             ))}
@@ -261,7 +262,7 @@ export function RegisterProfesseur() {
         </div>
 
         {/* Biographie */}
-        <div>
+        <div className="md:col-span-2">
           <label className={labelCls}>Biographie <span className="text-gray-400 font-normal">(optionnel)</span></label>
           <textarea
             className={`${inputCls} resize-none`} rows={3}
@@ -271,7 +272,7 @@ export function RegisterProfesseur() {
         </div>
 
         {/* CV / Diplôme */}
-        <div>
+        <div className="md:col-span-2">
           <label className={labelCls}>
             CV / Diplôme <span style={{ color: '#DC2626' }}>*</span>
           </label>
@@ -296,7 +297,7 @@ export function RegisterProfesseur() {
         </div>
 
         {/* Consentements */}
-        <div className="pt-1 space-y-2">
+        <div className="pt-1 space-y-2 md:col-span-2">
           {(
             [
               { field: 'allow_email',          label: 'Recevoir les actualités par email' },
@@ -319,13 +320,13 @@ export function RegisterProfesseur() {
 
         <button
           type="submit" disabled={loading}
-          className="w-full py-3 rounded-lg font-semibold text-white transition-all"
+          className="w-full py-3 rounded-lg font-semibold text-white transition-all md:col-span-2"
           style={{ backgroundColor: loading ? '#9CA3AF' : '#002050' }}
         >
           {loading ? 'Inscription en cours...' : 'Soumettre ma candidature'}
         </button>
 
-        <p className="text-center text-sm" style={{ color: '#6B7280' }}>
+        <p className="text-center text-sm md:col-span-2" style={{ color: '#6B7280' }}>
           <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
         </p>
       </form>

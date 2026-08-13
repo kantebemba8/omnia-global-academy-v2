@@ -21,7 +21,7 @@ const roles = [
     key: 'organizer',
     icon: Radio,
     title: 'Organisateur',
-    description: "J’organise des Lives, conférences, masterclass et événements en ligne",
+    description: 'J’organise des Lives, conférences, masterclass et événements en ligne',
     path: '/inscription/organisateur',
   },
   {
@@ -44,33 +44,33 @@ export function SelectRole() {
   const navigate = useNavigate();
 
   return (
-    <AuthLayout title="Créer un compte" subtitle="Choisissez votre profil pour commencer">
-      <div className="space-y-3 mt-4">
-        {roles.map(({ key, icon: Icon, title, description, path }) => (
+    <AuthLayout
+      title="Créer un compte"
+      subtitle="Choisissez le profil qui correspond à votre utilisation de la plateforme"
+      variant="wide"
+    >
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {roles.map(({ key, icon: Icon, title, description, path }, index) => (
           <button
             key={key}
+            type="button"
             onClick={() => navigate(path)}
-            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all group"
+            className={`group flex min-h-[112px] w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#BF8813] hover:shadow-[0_12px_30px_rgba(0,32,80,0.08)] focus:outline-none focus:ring-2 focus:ring-[#BF8813]/30 ${index === roles.length - 1 ? 'sm:col-span-2' : ''}`}
             style={{ borderColor: '#E5E7EB' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#BF8813')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#E5E7EB')}
           >
-            <div
-              className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: '#F0F4FF' }}
-            >
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#F0F4FF] transition-colors group-hover:bg-[#FFF8E7]">
               <Icon size={22} style={{ color: '#002050' }} />
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm" style={{ color: '#002050' }}>{title}</div>
-              <div className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{description}</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold sm:text-[15px]" style={{ color: '#002050' }}>{title}</div>
+              <div className="mt-1 text-xs leading-5 sm:text-sm" style={{ color: '#6B7280' }}>{description}</div>
             </div>
-            <ChevronRight size={18} style={{ color: '#BF8813' }} />
+            <ChevronRight size={19} className="flex-shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: '#BF8813' }} />
           </button>
         ))}
       </div>
 
-      <p className="mt-6 text-center text-sm" style={{ color: '#6B7280' }}>
+      <p className="mt-7 text-center text-sm" style={{ color: '#6B7280' }}>
         Déjà un compte ?{' '}
         <Link to="/connexion" className="font-semibold" style={{ color: '#BF8813' }}>
           Se connecter
