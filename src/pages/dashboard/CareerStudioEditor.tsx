@@ -45,7 +45,7 @@ import {
   getTemplateMeta,
   normalizeTemplateKey,
 } from '../../lib/careerStudioData';
-import { consumeCareerTokenAction, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
+import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, renameCareerDocument, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
 import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
 import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
@@ -409,7 +409,7 @@ export default function CareerStudioEditor() {
   const [previewZoom, setPreviewZoom] = useState(0.62);
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingDocumentName, setPendingDocumentName] = useState('');
-  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | null>(null);
+  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | 'rename' | null>(null);
   const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
   const [personalizeOpen, setPersonalizeOpen] = useState(false);
   const [personalizeText, setPersonalizeText] = useState('');
@@ -481,6 +481,11 @@ export default function CareerStudioEditor() {
       setRemoteMode(loaded.remote);
       setDocument(normalized);
       setOfferText(getCareerMeta(normalized.doc_data, normalized.doc_type).target.job_description || '');
+      if ((docId === 'new' || !docId) && normalized.id.startsWith('local_')) {
+        setPendingDocumentName('');
+        setPendingSaveAction(null);
+        setNameDialogOpen(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -559,11 +564,33 @@ export default function CareerStudioEditor() {
 
   const confirmDocumentName = useCallback(async () => {
     if (!document || !pendingDocumentName.trim()) return;
-    const named = { ...document, title: pendingDocumentName.trim() };
+    const cleanTitle = pendingDocumentName.trim();
+    const named = { ...document, title: cleanTitle, updated_at: new Date().toISOString() };
+    const action = pendingSaveAction;
     setDocument(named);
     setNameDialogOpen(false);
-    const action = pendingSaveAction;
     setPendingSaveAction(null);
+
+    if (action === null) {
+      setDirty(true);
+      setSaveState('idle');
+      showToast('Nom défini. Le document ne sera créé qu’à votre premier enregistrement.');
+      return;
+    }
+
+    if (action === 'rename') {
+      try {
+        const result = await renameCareerDocument(named.doc_type, named.id, cleanTitle);
+        setDocument(current => current ? { ...current, title: result.title, updated_at: new Date().toISOString() } : current);
+        setSaveState('saved');
+        showToast('Document renommé.');
+      } catch (error) {
+        setSaveState('error');
+        showToast((error as Error).message || 'Impossible de renommer le document.');
+      }
+      return;
+    }
+
     try {
       await persistDocument(named);
       if (action === 'manual') showToast('Mise en page manuelle enregistrée');
@@ -576,6 +603,10 @@ export default function CareerStudioEditor() {
 
   useEffect(() => {
     if (!document || loading || !dirty) return;
+    // Un nouveau CV/LM reste uniquement en mémoire jusqu'à un enregistrement explicite.
+    // Cela évite de créer un brouillon simplement parce que l'utilisateur a ouvert un modèle,
+    // changé son nom ou commencé à explorer l'éditeur.
+    if (document.id.startsWith('local_')) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       saveNow(false);
@@ -678,6 +709,29 @@ export default function CareerStudioEditor() {
   async function manualSave() {
     const saved = await saveNow(true, 'save');
     if (saved) showToast('Document sauvegardé');
+  }
+
+  function openRenameDialog() {
+    if (!document) return;
+    if (previewMode) { showToast('La prévisualisation administrative Omnia est en lecture seule.'); return; }
+    setPendingDocumentName(document.title || '');
+    setPendingSaveAction(document.id.startsWith('local_') ? null : 'rename');
+    setNameDialogOpen(true);
+    setActionsOpen(false);
+  }
+
+  async function deleteCurrentDocument() {
+    if (!document) return;
+    if (previewMode) { showToast('La prévisualisation administrative Omnia est en lecture seule.'); return; }
+    if (!confirm(`Supprimer définitivement « ${document.title || 'ce document'} » ?`)) return;
+    try {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      await deleteCareerDocument(document.doc_type, document.id);
+      showToast('Document supprimé définitivement.');
+      navigate(withLearnerPreview(document.doc_type === 'cv' ? '/omnia-career/cv-builder' : '/omnia-career/lettres'), { replace: true });
+    } catch (error) {
+      showToast((error as Error).message || 'La suppression n’a pas été confirmée par le serveur.');
+    }
   }
 
 
@@ -1001,9 +1055,11 @@ export default function CareerStudioEditor() {
                   <button type="button" onClick={() => { setPersonalizeOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#bf8813]" />Personnaliser à partir d’un texte</button>
                   <button type="button" onClick={() => { setWorkspace('ai'); setToolPanelOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#002050]" />Ouvrir l’assistant IA</button>
                   {isCv && <button type="button" onClick={() => { createLinkedLetter(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail className="h-4 w-4 text-[#bf8813]" />Créer la LM associée</button>}
+                  <button type="button" onClick={openRenameDialog} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Renommer le document</button>
                   <button type="button" onClick={() => { setManualEditorOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Édition avancée libre</button>
                   <div className="my-1 border-t border-slate-100" />
-                  <button type="button" onClick={() => { resetDemoData(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Réinitialiser avec l’exemple</button>
+                  <button type="button" onClick={() => { resetDemoData(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#bf8813]" />Réinitialiser avec l’exemple</button>
+                  <button type="button" onClick={() => { setActionsOpen(false); void deleteCurrentDocument(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Supprimer le document</button>
                 </div>
               )}
             </div>
@@ -1153,10 +1209,10 @@ export default function CareerStudioEditor() {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
             <h2 className="text-xl font-semibold text-[#002050]">
-              {document.doc_type === 'cv' ? 'Nommer votre CV' : 'Nommer votre lettre de motivation'}
+              {pendingSaveAction === 'rename' ? 'Renommer le document' : document.doc_type === 'cv' ? 'Nommer votre CV' : 'Nommer votre lettre de motivation'}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Donnez un nom clair pour retrouver facilement ce document dans Omnia Career.
+              {pendingSaveAction === null ? 'Choisissez son nom dès maintenant. Aucun brouillon ne sera créé tant que vous ne cliquez pas sur Enregistrer.' : 'Donnez un nom clair pour retrouver facilement ce document dans Omnia Career.'}
             </p>
             <input
               autoFocus
@@ -1168,7 +1224,7 @@ export default function CareerStudioEditor() {
             />
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => { setNameDialogOpen(false); setPendingSaveAction(null); setSaveState('idle'); }} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Annuler</button>
-              <button type="button" disabled={!pendingDocumentName.trim()} onClick={confirmDocumentName} className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Enregistrer</button>
+              <button type="button" disabled={!pendingDocumentName.trim()} onClick={confirmDocumentName} className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{pendingSaveAction === 'rename' ? 'Renommer' : pendingSaveAction === null ? 'Utiliser ce nom' : 'Enregistrer'}</button>
             </div>
           </div>
         </div>

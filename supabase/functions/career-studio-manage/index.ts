@@ -297,12 +297,16 @@ async function saveAction(req: Request, sb: ReturnType<typeof createClient>) {
 
   if (operation === "delete") {
     if (!documentId) return json({ error: "DOCUMENT_ID_REQUIRED" }, 400);
-    const { error } = await sb.from("career_documents")
+    const { data, error } = await sb.from("career_documents")
       .delete()
       .eq("id", documentId)
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .select("id");
     if (error) throw error;
-    return json({ success: true, action: "deleted" });
+    if (!data || data.length !== 1) {
+      return json({ error: "DOCUMENT_NOT_FOUND", message: "Document introuvable ou déjà supprimé." }, 404);
+    }
+    return json({ success: true, action: "deleted", document_id: documentId });
   }
 
   if (operation === "duplicate") {

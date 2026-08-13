@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
-import { consumeCareerTokenAction, fetchCareerTemplateCatalog } from '../../lib/careerStudioApi';
+import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, renameCareerDocument } from '../../lib/careerStudioApi';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
@@ -186,6 +186,9 @@ export default function DashboardCareerStudio() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [renameTarget, setRenameTarget] = useState<CareerDocument | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
   const previewMode = isLearnerPreviewMode();
 
   const user = readUser();
@@ -358,17 +361,39 @@ export default function DashboardCareerStudio() {
 
   async function deleteDoc(docId: string) {
     if (previewMode) { showToast('La prévisualisation administrative Omnia est en lecture seule.'); return; }
-    if (!confirm('Supprimer ce document ?')) return;
+    const target = documents.find(item => item.id === docId);
+    if (!target) { showToast('Document introuvable.'); return; }
+    if (!confirm(`Supprimer définitivement « ${target.title} » ?`)) return;
     try {
-      await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=save`, {
-        method: 'POST',
-        headers: edgeAuthHeaders(),
-        body: JSON.stringify({ action: 'delete', document_id: docId }),
-      });
-      setDocuments((prev) => prev.filter((item) => item.id !== docId));
-      showToast('Document supprimé.');
-    } catch {
-      showToast('Erreur pendant la suppression.');
+      await deleteCareerDocument(target.doc_type, target.id);
+      setDocuments((prev) => prev.filter((item) => item.id !== target.id));
+      showToast('Document supprimé définitivement.');
+    } catch (error) {
+      showToast((error as Error).message || 'La suppression n’a pas été confirmée par le serveur.');
+    }
+  }
+
+  function startRename(document: CareerDocument) {
+    if (previewMode) { showToast('La prévisualisation administrative Omnia est en lecture seule.'); return; }
+    setRenameTarget(document);
+    setRenameValue(document.title || '');
+  }
+
+  async function confirmRename() {
+    if (!renameTarget || !renameValue.trim() || renameBusy) return;
+    setRenameBusy(true);
+    try {
+      const result = await renameCareerDocument(renameTarget.doc_type, renameTarget.id, renameValue);
+      setDocuments(current => current.map(item => item.id === renameTarget.id
+        ? { ...item, title: result.title, updated_at: new Date().toISOString() }
+        : item));
+      setRenameTarget(null);
+      setRenameValue('');
+      showToast('Document renommé.');
+    } catch (error) {
+      showToast((error as Error).message || 'Le renommage n’a pas été confirmé par le serveur.');
+    } finally {
+      setRenameBusy(false);
     }
   }
 
@@ -385,13 +410,34 @@ export default function DashboardCareerStudio() {
         {toast && <div className="fixed right-5 top-20 z-50 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg" style={{ color: OMNIA_BLUE, borderColor: BORDER }}>{toast}</div>}
         <main className="px-5 py-7 md:px-8">
           {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} previewMode={previewMode} />}
-          {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
-          {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} />}
+          {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} renameDoc={startRename} />}
+          {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} renameDoc={startRename} />}
           {activeView === 'interview' && <EnhancedInterview />}
           {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
           {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
           {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}
         </main>
+        {renameTarget && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Renommer le document</h2>
+              <p className="mt-2 text-sm leading-6" style={{ color: MUTED }}>Le contenu du CV ou de la lettre ne sera pas modifié.</p>
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={event => setRenameValue(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter' && renameValue.trim()) void confirmRename(); }}
+                className="mt-5 h-12 w-full rounded-2xl border px-4 text-sm outline-none focus:ring-4"
+                style={{ borderColor: BORDER }}
+                placeholder="Nom du document"
+              />
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" disabled={renameBusy} onClick={() => { setRenameTarget(null); setRenameValue(''); }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER }}>Annuler</button>
+                <button type="button" disabled={renameBusy || !renameValue.trim()} onClick={() => void confirmRename()} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: OMNIA_BLUE }}>{renameBusy ? 'Renommage…' : 'Renommer'}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </CareerLearnerLayout>
   );
@@ -494,24 +540,24 @@ function ActivityItem({ icon: Icon, title, date }: { icon: typeof FileText; titl
   return <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={16} color={OMNIA_BLUE} /></div><div className="flex-1"><div className="font-medium" style={{ color: OMNIA_BLUE }}>{title}</div><div className="text-xs" style={{ color: MUTED }}>{date}</div></div></div>;
 }
 
-function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc }: { documents: CareerDocument[]; templates: Template[]; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; deleteDoc: (id: string) => void }) {
+function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc, renameDoc }: { documents: CareerDocument[]; templates: Template[]; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; deleteDoc: (id: string) => void; renameDoc: (document: CareerDocument) => void }) {
   const list = templates.length ? templates : fallbackCvTemplates;
   return (
     <div className="space-y-5">
       <PageHeader title="CV Builder" subtitle="Choisissez un vrai modèle puis remplissez-le dans l’éditeur." actionLabel="Nouveau CV" onAction={() => createDoc('cv')} />
       <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles CV officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>La maquette choisie sera utilisée dans le Builder, l’aperçu et le PDF.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} />)}</div></Card>
-      <DocumentsList title="Mes CV" documents={documents} empty="Aucun CV enregistré pour le moment." createLabel="Créer un CV" onCreate={() => createDoc('cv')} onOpen={(id) => openDoc(id, 'cv')} onDelete={deleteDoc} />
+      <DocumentsList title="Mes CV" documents={documents} empty="Aucun CV enregistré pour le moment." createLabel="Créer un CV" onCreate={() => createDoc('cv')} onOpen={(id) => openDoc(id, 'cv')} onDelete={deleteDoc} onRename={renameDoc} />
     </div>
   );
 }
 
-function LettersView({ documents, templates, createDoc, openDoc, deleteDoc }: { documents: CareerDocument[]; templates: Template[]; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; deleteDoc: (id: string) => void }) {
+function LettersView({ documents, templates, createDoc, openDoc, deleteDoc, renameDoc }: { documents: CareerDocument[]; templates: Template[]; createDoc: (type: DocType, templateKey?: string) => void; openDoc: (id?: string, type?: DocType) => void; deleteDoc: (id: string) => void; renameDoc: (document: CareerDocument) => void }) {
   const list = templates.length ? templates : fallbackLmTemplates;
   return (
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Choisissez un modèle assorti à votre CV ou un modèle spécialisé." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
       <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles LM officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>Les 6 modèles officiels sont visibles et sélectionnables.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="lm" onClick={() => createDoc('lm',t.template_key)} />)}</div></Card>
-      <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} />
+      <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} onRename={renameDoc} />
     </div>
   );
 }
@@ -645,8 +691,8 @@ function EmptyState({ text, action, onAction }: { text: string; action?: string;
   return <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{text}</p>{action && <button onClick={onAction} className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_BLUE }}>{action}</button>}</div>;
 }
 
-function DocumentsList({ title, documents, empty, createLabel, onCreate, onOpen, onDelete }: { title: string; documents: CareerDocument[]; empty: string; createLabel: string; onCreate: () => void; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
-  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Mis à jour le {formatDate(doc.updated_at)}</div><div className="mt-4 flex gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-xl px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onDelete(doc.id)} className="rounded-xl border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} /></button></div></div>)}</div>}</Card>;
+function DocumentsList({ title, documents, empty, createLabel, onCreate, onOpen, onDelete, onRename }: { title: string; documents: CareerDocument[]; empty: string; createLabel: string; onCreate: () => void; onOpen: (id: string) => void; onDelete: (id: string) => void; onRename: (document: CareerDocument) => void }) {
+  return <Card className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold" style={{ color: OMNIA_BLUE }}>{title}</h2><button onClick={onCreate} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: OMNIA_GOLD }}>{createLabel}</button></div>{documents.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: BORDER }}><FileText className="mx-auto mb-3" color={MUTED} /><p className="text-sm" style={{ color: MUTED }}>{empty}</p></div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{documents.map(doc => <div key={doc.id} className="rounded-2xl border p-4" style={{ borderColor: BORDER }}><div className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{doc.title}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Mis à jour le {formatDate(doc.updated_at)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => onOpen(doc.id)} className="rounded-xl px-3 py-2 text-xs font-semibold text-white" style={{ background: OMNIA_BLUE }}>Ouvrir</button><button onClick={() => onRename(doc)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold" style={{ borderColor: BORDER, color: OMNIA_BLUE }}><Edit2 size={13} />Renommer</button><button onClick={() => onDelete(doc.id)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-red-600" style={{ borderColor: BORDER }}><Trash2 size={13} />Supprimer</button></div></div>)}</div>}</Card>;
 }
 
 function Badge({ label }: { label: string }) {

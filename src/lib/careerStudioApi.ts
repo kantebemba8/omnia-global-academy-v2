@@ -499,16 +499,55 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
   }
 }
 
-export async function deleteCareerDocument(docType: CareerDocType, documentId: string) {
-  try {
-    if (!documentId.startsWith('local_')) {
-      await functionPost('career-studio-manage?action=save', { action: 'delete', document_id: documentId });
-      return;
-    }
-  } catch {
-    // fallback local delete
+export async function deleteCareerDocument(docType: CareerDocType, documentId: string): Promise<{ success: true; remote: boolean }> {
+  if (!documentId) throw new Error('DOCUMENT_ID_REQUIRED');
+
+  if (documentId.startsWith('local_')) {
+    writeLocal(docType, readLocal(docType).filter(d => d.id !== documentId));
+    return { success: true, remote: false };
   }
-  writeLocal(docType, readLocal(docType).filter(d => d.id !== documentId));
+
+  const data = await functionPost<{ success?: boolean; action?: string }>('career-studio-manage?action=save', {
+    action: 'delete',
+    document_id: documentId,
+  });
+  if (data.success !== true || data.action !== 'deleted') {
+    throw new Error('DOCUMENT_DELETE_NOT_CONFIRMED');
+  }
+  return { success: true, remote: true };
+}
+
+export async function renameCareerDocument(
+  docType: CareerDocType,
+  documentId: string,
+  title: string,
+): Promise<{ success: true; title: string; remote: boolean }> {
+  const cleanTitle = String(title || '').trim();
+  if (!documentId) throw new Error('DOCUMENT_ID_REQUIRED');
+  if (!cleanTitle) throw new Error('DOCUMENT_TITLE_REQUIRED');
+
+  if (documentId.startsWith('local_')) {
+    const docs = readLocal(docType);
+    const next = docs.map(document => document.id === documentId
+      ? { ...document, title: cleanTitle, updated_at: nowIso() }
+      : document);
+    writeLocal(docType, next);
+    return { success: true, title: cleanTitle, remote: false };
+  }
+
+  const data = await functionPost<{
+    success?: boolean;
+    action?: string;
+    document?: { id?: string; title?: string };
+  }>('career-studio-manage?action=save', {
+    action: 'rename',
+    document_id: documentId,
+    title: cleanTitle,
+  });
+  if (data.success !== true || data.action !== 'renamed' || data.document?.id !== documentId) {
+    throw new Error('DOCUMENT_RENAME_NOT_CONFIRMED');
+  }
+  return { success: true, title: String(data.document.title || cleanTitle), remote: true };
 }
 
 
