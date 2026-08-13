@@ -7,7 +7,7 @@ import { getDashboardPathForRoles, getSessionToken, getStoredUser } from '../../
 
 type Invitation = {
   id: string;
-  invitation_type: 'moderator' | 'structure_team' | 'structure_recruiter';
+  invitation_type: 'moderator' | 'structure_team' | 'structure_recruiter' | 'coach_oga';
   email: string;
   full_name?: string | null;
   organization_name?: string | null;
@@ -38,6 +38,11 @@ const TYPE_CONTENT: Record<Invitation['invitation_type'], { title: string; descr
   structure_recruiter: {
     title: 'Invitation au recrutement d’une Structure',
     description: 'Cette invitation vous permet de recruter au nom de la Structure, dans le périmètre de ses données et de ses offres.',
+    icon: UserRoundCheck,
+  },
+  coach_oga: {
+    title: 'Invitation à rejoindre les Coachs OGA',
+    description: 'Cette invitation vous rattache à Omnia Coaching comme Coach OGA. Si vous créez votre compte, sa confirmation se fait par code OTP envoyé par email.',
     icon: UserRoundCheck,
   },
 };

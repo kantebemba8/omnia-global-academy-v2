@@ -20,7 +20,7 @@ export interface CourseCardData {
   creator_name?: string | null;
   content_origin?: 'internal' | 'external';
   provider_name?: string | null;
-  access_mode?: 'public' | 'registered' | 'premium';
+  access_mode?: 'public' | 'registered' | 'premium' | 'paid';
   certificate_available?: boolean;
   duration_label?: string | null;
   external_click_count?: number;
@@ -57,7 +57,8 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
   const coursePath = isExternal ? `/formation-externe/${course.id}` : `/cours/${course.id}`;
   const rating = Number.isFinite(course.average_rating) ? course.average_rating : 0;
   const creatorName = isExternal ? course.provider_name : course.creator_name;
-  const accessLabel = course.access_mode === 'registered' ? 'Après inscription' : course.access_mode === 'premium' ? 'Accès Premium' : 'Accès public';
+  const accessLabel = course.access_mode === 'registered' ? 'Après inscription' : course.access_mode === 'premium' ? 'Accès Premium' : course.access_mode === 'paid' ? 'Paiement sur Omnia' : 'Accès public';
+  const externalPriceLabel = course.access_mode === 'paid' ? `${Number(course.price_xof || 0).toLocaleString('fr-FR')} XOF` : accessLabel;
 
   if (variant === 'list') {
     return (
@@ -86,12 +87,12 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
             </div>
           )}
           <p className="mt-2 text-sm font-bold sm:hidden" style={{ color: isExternal ? '#002050' : course.is_free ? '#1E7A52' : '#002050' }}>
-            {isExternal ? accessLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
+            {isExternal ? externalPriceLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
           </p>
         </div>
         <div className="hidden flex-shrink-0 flex-col justify-center pr-4 text-right sm:flex">
           <span className="font-bold" style={{ color: isExternal ? '#002050' : course.is_free ? '#1E7A52' : '#002050', fontSize: '15px' }}>
-            {isExternal ? accessLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
+            {isExternal ? externalPriceLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
           </span>
           {isExternal && (course.external_click_count ?? 0) > 0 ? (
             <span className="text-xs" style={{ color: '#6B7280' }}>{course.external_click_count?.toLocaleString('fr-FR')} visites</span>
@@ -142,12 +143,12 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
           </div>
         )}
         {(course.cpd_hours ?? 0) > 0 && <p className="text-xs" style={{ color: '#6B7280' }}>Crédits reconnus · {course.cpd_hours} h</p>}
-        {isExternal && <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: course.access_mode === 'premium' ? '#8A5F09' : '#6B7280' }}>{course.access_mode === 'premium' ? <LockKeyhole size={12} /> : course.access_mode === 'registered' ? <LogIn size={12} /> : <ExternalLink size={12} />}{accessLabel}{course.is_free ? ' · Gratuit chez le fournisseur' : ''}{course.certificate_available ? ' · Certificat disponible' : ''}</p>}
+        {isExternal && <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: course.access_mode === 'premium' || course.access_mode === 'paid' ? '#8A5F09' : '#6B7280' }}>{course.access_mode === 'premium' || course.access_mode === 'paid' ? <LockKeyhole size={12} /> : course.access_mode === 'registered' ? <LogIn size={12} /> : <ExternalLink size={12} />}{accessLabel}{course.access_mode !== 'paid' && course.is_free ? ' · Gratuit chez le fournisseur' : ''}{course.certificate_available ? ' · Certificat disponible' : ''}</p>}
       </div>
 
       <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #F0F0F0' }}>
         <span className="font-bold" style={{ color: isExternal ? '#002050' : course.is_free ? '#1E7A52' : '#002050', fontSize: '15px' }}>
-          {isExternal ? accessLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
+          {isExternal ? externalPriceLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
         </span>
         {isExternal && (course.external_click_count ?? 0) > 0 ? (
           <span className="text-xs" style={{ color: '#6B7280' }}>{course.external_click_count?.toLocaleString('fr-FR')} visites</span>

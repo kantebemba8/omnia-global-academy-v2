@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, ExternalLink, FolderCog, Layers3, RefreshCw, Search, ShieldAlert, Star, UserRoundCheck, UsersRound, X } from 'lucide-react';
+import { Activity, ExternalLink, FolderCog, Layers3, RefreshCw, Search, ShieldAlert, Star, UserPlus, UserRoundCheck, UsersRound, X } from 'lucide-react';
 import AdminCoachingManagementLayout from '../../components/admin/AdminCoachingManagementLayout';
 import { CoachApplication, CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 
@@ -22,7 +22,7 @@ export default function AdminCoaching() {
   const location = useLocation(); const navigate = useNavigate(); const section = sectionFromPath(location.pathname);
   const [metrics, setMetrics] = useState<Metrics | null>(null); const [applications, setApplications] = useState<CoachApplication[]>([]); const [coaches, setCoaches] = useState<CoachProfile[]>([]); const [levels, setLevels] = useState<CoachingLevel[]>([]); const [domains, setDomains] = useState<CoachingDomain[]>([]);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [query, setQuery] = useState('');
-  const [reviewing, setReviewing] = useState<CoachApplication | null>(null); const [editingLevel, setEditingLevel] = useState<Partial<CoachingLevel> | null>(null); const [editingDomain, setEditingDomain] = useState<Partial<CoachingDomain> | null>(null); const [coachAction, setCoachAction] = useState<CoachProfile | null>(null);
+  const [reviewing, setReviewing] = useState<CoachApplication | null>(null); const [editingLevel, setEditingLevel] = useState<Partial<CoachingLevel> | null>(null); const [editingDomain, setEditingDomain] = useState<Partial<CoachingDomain> | null>(null); const [coachAction, setCoachAction] = useState<CoachProfile | null>(null); const [ogaCoachOpen, setOgaCoachOpen] = useState(false);
 
   async function load() {
     setLoading(true); setError('');
@@ -48,6 +48,9 @@ export default function AdminCoaching() {
         <p className="mt-2 text-sm text-slate-500">Validation des coachs, niveaux, domaines, visibilité et gouvernance.</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <button onClick={() => setOgaCoachOpen(true)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}>
+          <UserPlus size={15}/> Rattacher un Coach OGA
+        </button>
         <Link to="/coaching" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>
           <ExternalLink size={15}/> Voir Omnia Coaching
         </Link>
@@ -68,7 +71,38 @@ export default function AdminCoaching() {
     {coachAction && <CoachActionModal coach={coachAction} levels={levels} onClose={() => setCoachAction(null)} onDone={async message => { setCoachAction(null); setNotice(message); await load(); }}/>} 
     {editingLevel && <LevelModal level={editingLevel} onClose={() => setEditingLevel(null)} onDone={async message => { setEditingLevel(null); setNotice(message); await load(); }}/>} 
     {editingDomain && <DomainModal domain={editingDomain} onClose={() => setEditingDomain(null)} onDone={async message => { setEditingDomain(null); setNotice(message); await load(); }}/>} 
+    {ogaCoachOpen && <OgaCoachAttachModal onClose={() => setOgaCoachOpen(false)} onDone={async message => { setNotice(message); await load(); }}/>}
   </div></AdminCoachingManagementLayout>;
+}
+
+function OgaCoachAttachModal({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{ mode: 'link_code' | 'email_invitation'; code?: string; email: string; expires_at?: string } | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(''); setResult(null);
+    try {
+      const response = await coachingRequest<{ success: true; result: { mode: 'link_code' | 'email_invitation'; code?: string; email: string; expires_at?: string } }>('admin_prepare_oga_coach', { email, full_name: fullName });
+      setResult(response.result);
+      onDone(response.result.mode === 'link_code' ? 'Code de rattachement Coach OGA créé.' : 'Invitation Coach OGA envoyée par email.');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Rattachement impossible.'); }
+    finally { setBusy(false); }
+  }
+
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+    <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold" style={{ color: BLUE }}>Rattacher un Coach OGA</h2><p className="mt-2 text-sm leading-6 text-slate-500">Si le compte existe, Omnia génère un code de rattachement. Sinon, une invitation est envoyée par email et le nouveau compte sera confirmé par OTP.</p></div><button onClick={onClose} aria-label="Fermer"><X size={20}/></button></div>
+    <form onSubmit={submit} className="mt-5 space-y-4">
+      <label className="block text-sm font-medium text-slate-700">Email du Coach<input required type="email" value={email} onChange={event => setEmail(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border px-3 outline-none" style={{ borderColor: BORDER }}/></label>
+      <label className="block text-sm font-medium text-slate-700">Nom complet (si nouveau compte)<input value={fullName} onChange={event => setFullName(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border px-3 outline-none" style={{ borderColor: BORDER }}/></label>
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {result?.mode === 'link_code' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">Compte existant — code de rattachement</p><p className="mt-2 font-mono text-2xl font-black tracking-wider" style={{ color: BLUE }}>{result.code}</p><p className="mt-2 text-xs text-amber-800">Le Coach doit saisir ce code depuis son espace candidature Coach avec le même compte ({result.email}).</p></div>}
+      {result?.mode === 'email_invitation' && <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">Invitation envoyée à <strong>{result.email}</strong>. Le Coach suivra le lien puis confirmera son compte avec le code OTP reçu par email.</div>}
+      <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>Fermer</button><button disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{busy ? 'Traitement…' : 'Continuer'}</button></div>
+    </form>
+  </div></div>;
 }
 
 function Overview({ metrics, applications, coaches, onOpenApplications }: { metrics: Metrics | null; applications: CoachApplication[]; coaches: CoachProfile[]; onOpenApplications: () => void }) {

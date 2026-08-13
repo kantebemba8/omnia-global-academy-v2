@@ -16,6 +16,7 @@ import {
   FileText,
   Mail,
   MapPin,
+  Phone,
   Send,
   Sparkles,
   X,
@@ -46,6 +47,8 @@ interface Job {
   recruiter_company: string;
   recruiter_name: string;
   recruiter_email?: string | null;
+  recruiter_phone?: string | null;
+  recruiter_address?: string | null;
   views_count: number;
   applications_count: number;
   deadline: string | null;
@@ -234,6 +237,18 @@ export default function JobDetail() {
                 <h2 className="font-bold mb-4" style={{ color: OMNIA_BLUE }}>Compétences requises</h2>
                 <div className="flex flex-wrap gap-2">
                   {job.skills_required.map((s, i) => <span key={i} className="px-3 py-1.5 rounded-full text-sm font-medium" style={{ backgroundColor: '#FEF9EE', color: '#92660A' }}>{s}</span>)}
+                </div>
+              </div>
+            )}
+
+            {(job.is_external_recruiter || job.recruiter_phone || job.recruiter_address) && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                <h2 className="font-bold mb-4" style={{ color: OMNIA_BLUE }}>Contact de l’offre externe</h2>
+                <div className="space-y-3 text-sm text-gray-600">
+                  {job.recruiter_name && <p className="font-semibold text-gray-800">{job.recruiter_name}</p>}
+                  {job.recruiter_email && <a className="flex items-center gap-2 hover:underline" href={`mailto:${job.recruiter_email}`}><Mail className="h-4 w-4" />{job.recruiter_email}</a>}
+                  {job.recruiter_phone && <a className="flex items-center gap-2 hover:underline" href={`tel:${job.recruiter_phone}`}><Phone className="h-4 w-4" />{job.recruiter_phone}</a>}
+                  {job.recruiter_address && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{job.recruiter_address}</p>}
                 </div>
               </div>
             )}

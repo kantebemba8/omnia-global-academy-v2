@@ -1,7 +1,7 @@
 import { getSessionToken } from '../../lib/session';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Send, Upload, UserRoundCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCheck2, KeyRound, Loader2, Send, Upload, UserRoundCheck } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
 import { CoachApplication as CoachApplicationType, CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, fileToBase64 } from '../../lib/coachingApi';
 
@@ -41,6 +41,8 @@ export default function CoachApplication() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [linkCode, setLinkCode] = useState('');
+  const [linking, setLinking] = useState(false);
 
   useEffect(() => {
     coachingRequest<Bootstrap>('public_bootstrap').then(setBootstrap).catch(() => undefined);
@@ -65,6 +67,18 @@ export default function CoachApplication() {
     const base64 = await fileToBase64(file);
     const data = await coachingRequest<{ success: true; asset: UploadedAsset }>('upload_asset', { file_name: file.name, mime_type: file.type, base64, asset_type: assetType });
     return data.asset;
+  }
+
+  async function claimOgaCode(event: FormEvent) {
+    event.preventDefault();
+    if (!linkCode.trim()) return;
+    setLinking(true); setError(''); setSuccess('');
+    try {
+      await coachingRequest('claim_oga_link_code', { code: linkCode.trim() });
+      const refreshed = await coachingRequest<SelfStatus>('self_status');
+      setSelf(refreshed); setLinkCode(''); setSuccess('Votre rattachement Coach OGA est confirmé.');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Code de rattachement invalide.'); }
+    finally { setLinking(false); }
   }
 
   async function submit(event: FormEvent) {
@@ -104,6 +118,8 @@ export default function CoachApplication() {
     <div><span className="text-sm font-semibold uppercase tracking-[.12em]" style={{ color: GOLD }}>Candidature coach</span><h1 className="mt-2 text-3xl font-semibold" style={{ color: BLUE }}>Proposer vos compétences sur Omnia Coaching</h1><p className="mt-3 max-w-3xl leading-7 text-slate-600">L’Administration Omnia vérifie le profil, les domaines, les justificatifs, les tarifs, le niveau et la commission avant toute publication.</p></div>
     {error && <div className="mt-6 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><AlertCircle size={19} className="shrink-0"/>{error}</div>}
     {success && <div className="mt-6 flex gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700"><CheckCircle2 size={19} className="shrink-0"/>{success}</div>}
+
+    {!self?.profile && <section className="mt-6 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><div className="flex items-start gap-3"><KeyRound className="mt-0.5 shrink-0" size={20} color={GOLD}/><div className="min-w-0 flex-1"><h2 className="font-semibold" style={{ color: BLUE }}>J’ai reçu un code de rattachement Coach OGA</h2><p className="mt-1 text-sm leading-6 text-slate-500">Ce code est réservé aux Coachs OGA dont le compte Omnia existait déjà au moment du rattachement par l’Administration.</p><form onSubmit={claimOgaCode} className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={linkCode} onChange={event => setLinkCode(event.target.value.toUpperCase())} placeholder="OGA-XXXXXXXXXX" className="h-11 min-w-0 flex-1 rounded-xl border px-3 font-mono text-sm uppercase outline-none" style={{ borderColor: BORDER }}/><button disabled={linking || !linkCode.trim()} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: BLUE }}>{linking ? 'Rattachement…' : 'Valider le code'}</button></form></div></div></section>}
 
     {self?.application && <section className="mt-6 rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">État actuel</p><h2 className="mt-1 text-lg font-semibold" style={{ color: BLUE }}>{statusLabels[self.application.status] || self.application.status}</h2><p className="mt-1 text-sm text-slate-500">Soumise le {self.application.submitted_at ? new Date(self.application.submitted_at).toLocaleDateString('fr-FR') : '—'}</p></div>{self.profile && <Link to="/coach/dashboard" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: BLUE }}>Ouvrir mon espace coach</Link>}</div>{self.application.admin_message && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><strong>Modifications demandées :</strong> {self.application.admin_message}</div>}{self.application.rejection_reason && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><strong>Motif :</strong> {self.application.rejection_reason}</div>}</section>}
 
