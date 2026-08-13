@@ -602,7 +602,10 @@ Deno.serve(async (req: Request) => {
         });
         if (managerError) throw managerError;
 
-        await addRole(sb, session.userId, "responsable_structure");
+        // Le rôle Structure n'est accordé qu'après validation administrative.
+        // Une inscription historique peut déjà porter responsable_structure ;
+        // une candidature depuis un compte Omnia existant, elle, reste sans rôle
+        // supplémentaire jusqu'à la décision.
         await sb.from("user_roles").delete().eq("user_id", session.userId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
         await appendStructureAudit(sb, createdOrganizationId, session.userId, "structure", "structure_created", {
           status: "pending",
@@ -762,6 +765,8 @@ Deno.serve(async (req: Request) => {
 
       const fieldMap: Record<string, string> = {
         name: "org_name",
+        structure_type: "org_type",
+        country: "country",
         city: "city",
         address: "address",
         professional_email: "email",
@@ -775,7 +780,7 @@ Deno.serve(async (req: Request) => {
         responsible_phone: "contact_phone",
       };
 
-      let uploadedPath: string | null = null;
+      const uploadedPaths: string[] = [];
       try {
         const submitted: Record<string, unknown> = {};
         for (const [input, column] of Object.entries(fieldMap)) {
@@ -791,8 +796,20 @@ Deno.serve(async (req: Request) => {
             body.logo_mime,
             body.logo_name,
           );
-          uploadedPath = uploaded.path;
+          uploadedPaths.push(uploaded.path);
           submitted.logo_url = uploaded.publicUrl;
+        }
+        if (body.justificatif_base64) {
+          const uploaded = await uploadStructureAsset(
+            sb,
+            session.userId,
+            "justificatifs",
+            body.justificatif_base64,
+            body.justificatif_mime,
+            body.justificatif_name,
+          );
+          uploadedPaths.push(uploaded.path);
+          submitted.justificatif_url = uploaded.publicUrl;
         }
 
         const sensitiveColumns = new Set(Object.values(SENSITIVE_STRUCTURE_INPUTS));
@@ -866,7 +883,7 @@ Deno.serve(async (req: Request) => {
         });
         return json({ success: true, structure: mapStructure(data), pending_profile_change: null, requires_admin_review: false });
       } catch (error) {
-        if (uploadedPath) await sb.storage.from(STRUCTURE_ASSET_BUCKET).remove([uploadedPath]).catch(() => {});
+        if (uploadedPaths.length) await sb.storage.from(STRUCTURE_ASSET_BUCKET).remove(uploadedPaths).catch(() => {});
         throw error;
       }
     }
@@ -982,21 +999,27 @@ Deno.serve(async (req: Request) => {
           await addRole(sb, managerUserId, "responsable_structure");
           await sb.from("user_roles").delete().eq("user_id", managerUserId).in("role", ["etablissement_directeur", "etablissement_enseignant"]);
 
-          // La validation de la Structure doit aussi rendre le compte du
-          // responsable utilisable. Sans cette transition, auth-login continue
-          // de bloquer le compte en "en_attente_validation".
           const { error: activateUserError } = await sb
             .from("users")
             .update({ status: "actif", updated_at: new Date().toISOString() })
-            .eq("id", managerUserId);
+            .eq("id", managerUserId)
+            .eq("status", "en_attente_validation");
           if (activateUserError) throw activateUserError;
-        } else if (decision === "suspend") {
-          const { error: suspendUserError } = await sb
+        } else if (["reject", "request_changes", "suspend", "archive"].includes(decision)) {
+          // La décision porte sur l'espace Structure, pas sur l'identité Omnia.
+          // Les autres rôles et les sessions personnelles restent utilisables.
+          const { error: roleError } = await sb
+            .from("user_roles")
+            .delete()
+            .eq("user_id", managerUserId)
+            .in("role", ["responsable_structure", "structure", "etablissement_directeur", "etablissement_enseignant"]);
+          if (roleError) throw roleError;
+          const { error: keepAccountActiveError } = await sb
             .from("users")
-            .update({ status: "suspendu", updated_at: new Date().toISOString() })
-            .eq("id", managerUserId);
-          if (suspendUserError) throw suspendUserError;
-          await sb.from("user_sessions").delete().eq("user_id", managerUserId);
+            .update({ status: "actif", updated_at: new Date().toISOString() })
+            .eq("id", managerUserId)
+            .eq("status", "en_attente_validation");
+          if (keepAccountActiveError) throw keepAccountActiveError;
         }
 
         const { data: managerUser } = await sb

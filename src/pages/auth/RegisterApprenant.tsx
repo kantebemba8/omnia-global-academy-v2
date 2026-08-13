@@ -33,6 +33,7 @@ function getPasswordStrength(pwd: string): { level: string; color: string; width
 
 export function RegisterApprenant() {
   const navigate = useNavigate();
+  const coachIntent = new URLSearchParams(window.location.search).get('intent') === 'coach';
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -105,7 +106,7 @@ export function RegisterApprenant() {
     const phone_number = getPrefix(form.country_code) + form.phone_local.replace(/^0+/, '');
     try {
       const data = await authFetch<RegisterResponse>('auth-register', {
-        role: 'apprenant',
+        role: coachIntent ? 'coach_candidate' : 'apprenant',
         full_name: form.full_name,
         email: form.email,
         phone_number,
@@ -124,7 +125,14 @@ export function RegisterApprenant() {
         return;
       }
       navigate('/verifier-otp', {
-        state: { email: form.email.trim().toLowerCase(), purpose: 'inscription', user_id: data.user_id, access_invitation: Boolean(accessInvitationToken), initial_email_sent: data.email_sent !== false },
+        state: {
+          email: form.email.trim().toLowerCase(),
+          purpose: 'inscription',
+          user_id: data.user_id,
+          access_invitation: Boolean(accessInvitationToken),
+          initial_email_sent: data.email_sent !== false,
+          post_verify_redirect: coachIntent ? '/coaching/devenir-coach' : undefined,
+        },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
@@ -135,8 +143,12 @@ export function RegisterApprenant() {
 
   return (
     <AuthLayout
-      title={accessInvitationToken ? 'Créer votre compte personnel' : 'Inscription Apprenant'}
-      subtitle={accessInvitationToken ? 'Votre accès professionnel sera ajouté après vérification' : "Créez votre espace d'apprentissage"}
+      title={accessInvitationToken ? 'Créer votre compte personnel' : coachIntent ? 'Créer mon compte candidat Coach' : 'Inscription Apprenant'}
+      subtitle={accessInvitationToken
+        ? 'Votre accès professionnel sera ajouté après vérification'
+        : coachIntent
+        ? 'Créez votre identité Omnia, puis déposez votre candidature Coach. Le rôle Coach sera attribué uniquement après validation.'
+        : "Créez votre espace d'apprentissage"}
       variant="wide"
     >
       <form onSubmit={handleSubmit} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

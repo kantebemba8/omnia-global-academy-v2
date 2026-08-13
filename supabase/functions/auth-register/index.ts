@@ -60,6 +60,216 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
     const action = String(body.action || "");
+    const respond = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+    async function requireExistingAccount() {
+      const sessionToken = (req.headers.get("x-omnia-session-token") || "").replace(/^Bearer\s+/i, "").trim();
+      if (!sessionToken) return { error: respond({ success: false, error: "AUTH_REQUIRED", message: "Connectez-vous pour ajouter un espace à votre compte." }, 401) };
+      const { data: session, error: sessionError } = await supabase
+        .from("user_sessions")
+        .select("user_id")
+        .eq("session_token", sessionToken)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+      if (sessionError || !session?.user_id) return { error: respond({ success: false, error: "SESSION_INVALID", message: "Votre session a expiré." }, 401) };
+      const { data: account, error: accountError } = await supabase
+        .from("users")
+        .select("id,email,phone_number,full_name,country_code,status,email_status")
+        .eq("id", session.user_id)
+        .maybeSingle();
+      if (accountError || !account) return { error: respond({ success: false, error: "ACCOUNT_NOT_FOUND", message: "Compte introuvable." }, 404) };
+      if (String(account.status) !== "actif" || String(account.email_status || "valide") !== "valide") {
+        return { error: respond({ success: false, error: "ACCOUNT_NOT_ACTIVE", message: "Votre compte personnel doit être actif et votre e-mail vérifié." }, 403) };
+      }
+      const { data: roleRows, error: roleError } = await supabase.from("user_roles").select("role").eq("user_id", account.id);
+      if (roleError) throw roleError;
+      const roles = (roleRows || []).map((row: { role: string }) => String(row.role));
+      if (roles.includes("super_admin")) {
+        return { error: respond({ success: false, error: "PROTECTED_ACCOUNT", message: "Le compte Super-admin conserve un accès exclusif." }, 403) };
+      }
+      return { account, roles, sessionToken };
+    }
+
+    if (action === "role_pathways_status") {
+      const auth = await requireExistingAccount();
+      if ("error" in auth) return auth.error;
+      const userId = String(auth.account.id);
+      const [professorResult, recruiterResult, organizerResult, coachResult, structureManagerResult] = await Promise.all([
+        supabase.from("professeur_profiles").select("kyc_status,kyc_rejection_reason").eq("user_id", userId).maybeSingle(),
+        supabase.from("talent_recruiter_profiles").select("status,rejection_reason").eq("user_id", userId).maybeSingle(),
+        supabase.from("live_organizer_applications").select("status,admin_note").eq("user_id", userId).maybeSingle(),
+        supabase.from("coach_applications").select("status,admin_message,rejection_reason").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("partner_managers").select("organization_id,status,role_in_org,is_primary").eq("user_id", userId).order("is_primary", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const failures = [professorResult, recruiterResult, organizerResult, coachResult, structureManagerResult].filter(result => result.error);
+      if (failures.length) throw failures[0].error;
+      let structure: Record<string, unknown> | null = null;
+      if (structureManagerResult.data?.organization_id) {
+        const { data: organization, error: organizationError } = await supabase
+          .from("partner_organizations")
+          .select("id,org_name,status")
+          .eq("id", structureManagerResult.data.organization_id)
+          .maybeSingle();
+        if (organizationError) throw organizationError;
+        structure = organization ? {
+          organization_id: organization.id,
+          name: organization.org_name,
+          status: organization.status,
+          manager_status: structureManagerResult.data.status,
+        } : null;
+      }
+      return respond({
+        success: true,
+        roles: auth.roles,
+        applications: {
+          professeur: professorResult.data ? { status: professorResult.data.kyc_status, reason: professorResult.data.kyc_rejection_reason } : null,
+          recruteur: recruiterResult.data ? { status: recruiterResult.data.status, reason: recruiterResult.data.rejection_reason } : null,
+          organisateur: organizerResult.data ? { status: organizerResult.data.status, reason: organizerResult.data.admin_note } : null,
+          coach: coachResult.data ? { status: coachResult.data.status, reason: coachResult.data.rejection_reason || coachResult.data.admin_message } : null,
+          structure,
+        },
+      });
+    }
+
+    if (action === "apply_existing_role") {
+      const auth = await requireExistingAccount();
+      if ("error" in auth) return auth.error;
+      const userId = String(auth.account.id);
+      const targetRole = String(body.target_role || body.role || "").trim();
+      const now = new Date().toISOString();
+
+      if (targetRole === "apprenant") {
+        if (auth.roles.includes("apprenant")) return respond({ success: true, status: "active", roles: auth.roles });
+        const { error } = await supabase.from("user_roles").upsert({ user_id: userId, role: "apprenant" }, { onConflict: "user_id,role" });
+        if (error) throw error;
+        return respond({ success: true, status: "active", roles: [...auth.roles, "apprenant"] });
+      }
+
+      if (targetRole === "professeur") {
+        if (auth.roles.some((role: string) => ["professeur", "formateur"].includes(role))) {
+          return respond({ success: true, status: "active", message: "L’espace Professeur est déjà actif." });
+        }
+        const expertiseDomain = String(body.expertise_domain || "").trim();
+        if (!expertiseDomain) return respond({ success: false, message: "Domaine d'expertise requis." }, 400);
+        const { data: existing } = await supabase.from("professeur_profiles").select("cv_diploma_url,kyc_status").eq("user_id", userId).maybeSingle();
+        if (String(existing?.kyc_status || "") === "valide") {
+          await supabase.from("user_roles").upsert({ user_id: userId, role: "professeur" }, { onConflict: "user_id,role" });
+          return respond({ success: true, status: "active" });
+        }
+        let cvPath = existing?.cv_diploma_url ? String(existing.cv_diploma_url) : null;
+        if (body.cv_diploma_base64) {
+          cvPath = await uploadFile(supabase, "cv-documents", `${userId}/cv_${Date.now()}.pdf`, String(body.cv_diploma_base64), String(body.cv_diploma_mime || "application/pdf"));
+        }
+        if (!cvPath) return respond({ success: false, message: "Veuillez joindre votre CV ou diplôme (PDF)." }, 400);
+        const professorPayload = {
+          user_id: userId,
+          bio: String(body.bio || "").trim() || null,
+          expertise_domain: expertiseDomain,
+          cv_diploma_url: cvPath,
+          kyc_status: "en_attente",
+          kyc_validated_by: null,
+          kyc_validated_at: null,
+          kyc_rejection_reason: null,
+        };
+        const { error } = await supabase.from("professeur_profiles").upsert(professorPayload, { onConflict: "user_id" });
+        if (error) throw error;
+        await supabase.from("user_roles").delete().eq("user_id", userId).in("role", ["professeur", "formateur"]);
+        return respond({ success: true, status: "pending", message: "Votre candidature Professeur a été transmise." });
+      }
+
+      if (targetRole === "recruteur_independant") {
+        if (auth.roles.some((role: string) => ["recruteur_independant", "recruteur"].includes(role))) {
+          return respond({ success: true, status: "active", message: "L’espace Recruteur est déjà actif." });
+        }
+        const companyName = String(body.company_name || "").trim();
+        const jobTitle = String(body.job_title || "").trim();
+        if (!companyName || !jobTitle) return respond({ success: false, message: "Entreprise et fonction sont requises." }, 400);
+        const { data: existing } = await supabase.from("talent_recruiter_profiles").select("status").eq("user_id", userId).maybeSingle();
+        if (String(existing?.status || "") === "suspended") {
+          return respond({ success: false, error: "ROLE_SUSPENDED", message: "Votre accès Recruteur est suspendu. Contactez l’Administration Omnia." }, 403);
+        }
+        const recruiterPayload = {
+          user_id: userId,
+          recruiter_type: "independent",
+          organization_id: null,
+          company_name: companyName,
+          job_title: jobTitle,
+          professional_email: String(auth.account.email || "").toLowerCase(),
+          phone: String(auth.account.phone_number || ""),
+          country: String(auth.account.country_code || ""),
+          linkedin_url: String(body.linkedin_url || "").trim() || null,
+          website_url: String(body.website_url || "").trim() || null,
+          status: "pending",
+          visibility: "private",
+          notifications_enabled: true,
+          rejection_reason: null,
+          validated_by: null,
+          validated_at: null,
+          suspended_at: null,
+          updated_at: now,
+        };
+        const { error } = await supabase.from("talent_recruiter_profiles").upsert(recruiterPayload, { onConflict: "user_id" });
+        if (error) throw error;
+        await supabase.from("user_roles").delete().eq("user_id", userId).in("role", ["recruteur_independant", "recruteur"]);
+        if (!existing || String(existing.status) !== "pending") {
+          const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");
+          for (const admin of admins || []) {
+            await supabase.from("notification_queue").insert({
+              notification_type: "recruiter_application_submitted",
+              user_id: admin.user_id,
+              payload: { recruiter_user_id: userId },
+            }).catch(() => {});
+            await supabase.from("talent_notifications").insert({
+              user_id: admin.user_id,
+              notification_type: "recruiter_application_submitted",
+              title: "Nouvelle demande recruteur indépendant",
+              message: "Un utilisateur Omnia a déposé une candidature Recruteur.",
+              action_url: "/admin/talent",
+              payload: { recruiter_user_id: userId },
+            }).catch(() => {});
+          }
+        }
+        return respond({ success: true, status: "pending", message: "Votre candidature Recruteur a été transmise." });
+      }
+
+      if (targetRole === "organizer") {
+        if (auth.roles.some((role: string) => ["organizer", "organisateur"].includes(role))) {
+          return respond({ success: true, status: "active", message: "L’espace Organisateur est déjà actif." });
+        }
+        const displayName = String(body.display_name || "").trim();
+        const experienceSummary = String(body.experience_summary || "").trim();
+        if (!displayName || !experienceSummary) return respond({ success: false, message: "Nom public et expérience sont requis." }, 400);
+        const { data: existing } = await supabase.from("live_organizer_applications").select("status").eq("user_id", userId).maybeSingle();
+        if (String(existing?.status || "") === "suspended") {
+          return respond({ success: false, error: "ROLE_SUSPENDED", message: "Votre accès Organisateur est suspendu. Contactez l’Administration Omnia." }, 403);
+        }
+        const organizerPayload = {
+          user_id: userId,
+          display_name: displayName,
+          organizer_type: String(body.organizer_type || "independent"),
+          professional_title: String(body.professional_title || "").trim() || null,
+          organization_name: String(body.organization_name || "").trim() || null,
+          website_url: String(body.website_url || "").trim() || null,
+          bio: String(body.bio || "").trim() || null,
+          experience_summary: experienceSummary,
+          event_topics: Array.isArray(body.event_topics) ? body.event_topics.map((item: unknown) => String(item).trim()).filter(Boolean) : [],
+          status: "pending",
+          admin_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          updated_at: now,
+        };
+        const { error } = await supabase.from("live_organizer_applications").upsert(organizerPayload, { onConflict: "user_id" });
+        if (error) throw error;
+        await supabase.from("user_roles").delete().eq("user_id", userId).in("role", ["organizer", "organisateur"]);
+        return respond({ success: true, status: "pending", message: "Votre candidature Organisateur a été transmise." });
+      }
+
+      return respond({ success: false, error: "ROLE_PATHWAY_UNSUPPORTED", message: "Ce rôle utilise un parcours dédié." }, 400);
+    }
 
     if (action === "inspect_access_invitation") {
       const invitation = await inspectAccessInvitation(supabase, String(body.invitation_token || ""));
@@ -101,7 +311,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (!["apprenant", "professeur", "organizer", "responsable_structure", "etablissement", "recruteur_independant"].includes(role)) {
+    if (!["apprenant", "coach_candidate", "professeur", "organizer", "responsable_structure", "etablissement", "recruteur_independant"].includes(role)) {
       return new Response(JSON.stringify({ success: false, message: "Rôle invalide" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -135,17 +345,17 @@ Deno.serve(async (req: Request) => {
     }
 
     let fullName: string;
-    let roleForDB: string;
+    let roleForDB: string | null;
     let profileData: Record<string, unknown> | null = null;
 
-    if (role === "apprenant") {
+    if (role === "apprenant" || role === "coach_candidate") {
       if (!body.full_name?.trim()) {
         return new Response(JSON.stringify({ success: false, message: "Nom complet requis" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       fullName = body.full_name.trim();
-      roleForDB = "apprenant";
+      roleForDB = role === "apprenant" ? "apprenant" : null;
     } else if (role === "professeur") {
       if (!body.full_name?.trim()) {
         return new Response(JSON.stringify({ success: false, message: "Nom complet requis" }), {
@@ -158,7 +368,7 @@ Deno.serve(async (req: Request) => {
         });
       }
       fullName = body.full_name.trim();
-      roleForDB = "professeur";
+      roleForDB = null; // accordé uniquement après validation KYC
       profileData = { bio: body.bio?.trim() || null, expertise_domain: body.expertise_domain.trim(), cv_diploma_url: null };
     } else if (role === "recruteur_independant") {
       if (!body.full_name?.trim() || !body.company_name?.trim() || !body.job_title?.trim()) {
@@ -173,7 +383,7 @@ Deno.serve(async (req: Request) => {
         });
       }
       fullName = body.full_name.trim();
-      roleForDB = "recruteur_independant";
+      roleForDB = null; // accordé uniquement après validation Administration
       profileData = {
         recruiter_type: "independent",
         organization_id: null,
@@ -195,7 +405,7 @@ Deno.serve(async (req: Request) => {
         });
       }
       fullName = body.full_name.trim();
-      roleForDB = "apprenant"; // organizer role is granted only after Administration Omnia approval
+      roleForDB = null; // aucun rôle implicite : Organisateur est accordé après validation
       profileData = {
         display_name: body.display_name.trim(),
         organizer_type: body.organizer_type || "independent",
@@ -216,7 +426,7 @@ Deno.serve(async (req: Request) => {
         });
       }
       fullName = responsibleName;
-      roleForDB = "responsable_structure";
+      roleForDB = null; // accordé uniquement après validation de la Structure
       profileData = null;
     }
 
@@ -329,9 +539,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const rolesToInsert: { user_id: string; role: string }[] = [{ user_id: userId, role: roleForDB }];
-    const { error: rolesError } = await supabase.from("user_roles").insert(rolesToInsert);
-    if (rolesError) throw rolesError;
+    if (roleForDB) {
+      const { error: rolesError } = await supabase.from("user_roles").insert({ user_id: userId, role: roleForDB });
+      if (rolesError) throw rolesError;
+    }
 
     if (profileData) {
       const tableName =

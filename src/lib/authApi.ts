@@ -31,6 +31,24 @@ export async function authFetch<T>(slug: string, body: unknown): Promise<T> {
   return parseJson<T>(res);
 }
 
+
+/** Authenticated POST to an auth-related Edge Function using the Omnia opaque session. */
+export async function authSessionFetch<T>(slug: string, body: unknown): Promise<T> {
+  const sessionToken = getSessionToken();
+  if (!sessionToken) throw new Error('Votre session a expiré. Reconnectez-vous.');
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/${slug}`, {
+      method: 'POST',
+      headers: edgeGatewayHeaders({ 'x-omnia-session-token': sessionToken }),
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Erreur réseau. Vérifiez votre connexion.');
+  }
+  return parseJson<T>(res);
+}
+
 /** GET /auth-me — the Omnia session travels in its dedicated header. */
 export async function authGetMe<T>(sessionToken: string): Promise<T> {
   let res: Response;

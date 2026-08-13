@@ -497,35 +497,37 @@ Deno.serve(async (req: Request) => {
       const [{ data: currentProfile }, { data: targetRoles }, { data: targetUser }] = await Promise.all([
         sb.from("talent_recruiter_profiles").select("recruiter_type,status").eq("user_id", targetUserId).maybeSingle(),
         sb.from("user_roles").select("role").eq("user_id", targetUserId),
-        sb.from("users").select("email_status").eq("id", targetUserId).maybeSingle(),
+        sb.from("users").select("email_status,status").eq("id", targetUserId).maybeSingle(),
       ]);
       if (!targetUser || String(targetUser.email_status || "valide") !== "valide") {
         return json({ error: "EMAIL_VERIFICATION_REQUIRED", message: "Le recruteur doit d’abord confirmer son adresse e-mail avant l’examen de sa demande." }, 409);
       }
       const targetRoleNames = (targetRoles || []).map((row: any) => String(row.role));
-      if (status === "approved" && currentProfile?.recruiter_type === "independent" && targetRoleNames.includes("apprenant") && !targetRoleNames.includes("recruteur_independant")) {
-        return json({ error: "PROFESSIONAL_ACCOUNT_REQUIRED", message: "Cette demande provient d’un compte apprenant. Le candidat doit créer un compte recruteur professionnel distinct." }, 409);
-      }
       const patch: Record<string, unknown> = { status, rejection_reason: body.reason || null, updated_at: new Date().toISOString(), validated_by: session.userId };
       if (status === "approved") patch.validated_at = new Date().toISOString();
       if (status === "suspended") patch.suspended_at = new Date().toISOString();
       const { data, error } = await sb.from("talent_recruiter_profiles").update(patch).eq("user_id", targetUserId).select().single();
       if (error) throw error;
+
+      // Un statut Recruteur est un statut de rôle, jamais un statut du compte Omnia.
+      // Les autres espaces déjà possédés (Apprenant, Professeur, Coach...) sont conservés.
       if (status === "approved" && data.recruiter_type === "independent") {
         await sb.from("user_roles").upsert({ user_id: targetUserId, role: "recruteur_independant" }, { onConflict: "user_id,role" });
-        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["apprenant", "recruteur"]);
-        await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        await sb.from("user_roles").delete().eq("user_id", targetUserId).eq("role", "recruteur");
+        if (String(targetUser.status || "") === "en_attente_validation") {
+          await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        }
       } else if (status === "approved") {
         await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
-        await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        if (String(targetUser.status || "") === "en_attente_validation") {
+          await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        }
       }
-      if (status === "pending") await sb.from("users").update({ status: "en_attente_validation", updated_at: new Date().toISOString() }).eq("id", targetUserId);
-      if (status === "rejected") {
+      if (["rejected", "suspended"].includes(status)) {
         await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
-      }
-      if (status === "suspended") {
-        await sb.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["recruteur_independant", "recruteur"]);
-        await sb.from("users").update({ status: "suspendu", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        if (String(targetUser.status || "") === "en_attente_validation") {
+          await sb.from("users").update({ status: "actif", updated_at: new Date().toISOString() }).eq("id", targetUserId);
+        }
       }
       await queueNotification(sb, targetUserId, "recruiter_status_changed", { status, reason: body.reason || null });
 

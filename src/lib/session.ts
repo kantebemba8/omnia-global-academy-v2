@@ -3,6 +3,7 @@ import { KeychainAccess, SecureStorage } from '@aparajita/capacitor-secure-stora
 
 const SESSION_KEY = 'omnia_session_token';
 const USER_KEY = 'omnia_user';
+const ACTIVE_ROLE_KEY = 'omnia_active_role';
 const SECURE_STORAGE_PREFIX = 'omnia_session_';
 let nativeSessionToken: string | null = null;
 let sessionStorageInitialized = false;
@@ -114,6 +115,20 @@ export function normalizePlatformRoles(roles: readonly string[] | null | undefin
   return [...normalized];
 }
 
+export function setActivePlatformRole(role: CanonicalPlatformRole | null): void {
+  if (!role) {
+    localStorage.removeItem(ACTIVE_ROLE_KEY);
+    return;
+  }
+  localStorage.setItem(ACTIVE_ROLE_KEY, role);
+}
+
+export function getActivePlatformRole(roles: readonly string[] | null | undefined): CanonicalPlatformRole | null {
+  const owned = normalizePlatformRoles(roles);
+  const stored = localStorage.getItem(ACTIVE_ROLE_KEY) as CanonicalPlatformRole | null;
+  return stored && owned.includes(stored) ? stored : null;
+}
+
 function isNativeSessionStorage(): boolean {
   return Capacitor.isNativePlatform();
 }
@@ -162,6 +177,9 @@ export async function initializeSessionStorage(): Promise<void> {
 
 export function saveSession(token: string, user: unknown, notify = true): void {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  const userRoles = normalizePlatformRoles((user as { roles?: string[] } | null)?.roles || []);
+  const activeRole = localStorage.getItem(ACTIVE_ROLE_KEY) as CanonicalPlatformRole | null;
+  if (activeRole && !userRoles.includes(activeRole)) localStorage.removeItem(ACTIVE_ROLE_KEY);
 
   if (!isNativeSessionStorage()) {
     localStorage.setItem(SESSION_KEY, token);
@@ -204,6 +222,7 @@ export function getStoredUser<T>(): T | null {
 export function clearSession(): void {
   window.dispatchEvent(new CustomEvent('omnia:session-ending'));
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(ACTIVE_ROLE_KEY);
 
   if (!isNativeSessionStorage()) {
     localStorage.removeItem(SESSION_KEY);
@@ -236,7 +255,7 @@ export function getDashboardPathForRoles(roles: readonly string[]): string {
  * without changing permissions or stored roles.
  */
 export function getPostLoginPathForRoles(roles: readonly string[]): string {
-  return normalizePlatformRoles(roles).length > 0 ? '/home' : '/accueil';
+  return normalizePlatformRoles(roles).length > 0 ? '/home' : '/inscription?mode=add-role';
 }
 
 export function redirectByRoles(roles: string[], redirectUrl?: string): void {

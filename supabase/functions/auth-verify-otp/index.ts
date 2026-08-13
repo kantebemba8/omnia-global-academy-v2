@@ -89,57 +89,68 @@ Deno.serve(async (req: Request) => {
 
     const { data: rolesData, error: rolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
     if (rolesError) throw rolesError;
-    const userRoles = (rolesData ?? []).map((row: { role: string }) => row.role);
-    const requiresManualValidation = userRoles.some((role: string) =>
-      ["professeur", "responsable_structure", "recruteur_independant"].includes(role)
-    );
+    let userRoles = (rolesData ?? []).map((row: { role: string }) => row.role);
     const now = new Date().toISOString();
 
     if (purpose === "inscription") {
-      if (!requiresManualValidation) {
-        const { error: activationError } = await supabase.from("users").update({ status: "actif", email_status: "valide", updated_at: now }).eq("id", user.id);
-        if (activationError) throw activationError;
+      // L'identité Omnia est activée dès la confirmation e-mail.
+      // Les candidatures professionnelles gardent leur propre cycle de validation
+      // et ne bloquent jamais les autres espaces du même compte.
+      const [professorResult, recruiterResult, organizerResult, primaryManagerResult] = await Promise.all([
+        supabase.from("professeur_profiles").select("kyc_status").eq("user_id", user.id).maybeSingle(),
+        supabase.from("talent_recruiter_profiles").select("status,recruiter_type").eq("user_id", user.id).maybeSingle(),
+        supabase.from("live_organizer_applications").select("status").eq("user_id", user.id).maybeSingle(),
+        supabase.from("partner_managers").select("organization_id").eq("user_id", user.id).eq("is_primary", true).limit(1).maybeSingle(),
+      ]);
+      const lookupError = professorResult.error || recruiterResult.error || organizerResult.error || primaryManagerResult.error;
+      if (lookupError) throw lookupError;
 
-        await sendOmniaEmail({
-          to: { email: user.email, name: user.full_name || undefined },
-          templateKey: "account_welcome",
-          params: {
-            PRENOM: String(user.full_name || "").split(" ")[0],
-            ROLE_NAME: userRoles.includes("moderateur") ? "Équipe de modération" : userRoles.includes("recruteur_structure") ? "Recrutement Structure" : userRoles.includes("gestionnaire_structure") ? "Équipe Structure" : "Apprenant",
-            MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée et votre compte est actif.",
-            DASHBOARD_URL: `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/home`,
-          },
-          senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
-          userId: String(user.id),
-          sb: supabase,
-        });
-
-        const sessionToken = generateOpaqueToken();
-        const { error: sessionError } = await supabase.from("user_sessions").insert({
-          user_id: user.id,
-          session_token: sessionToken,
-          ip_address: clientIP,
-          user_agent: req.headers.get("user-agent") ?? "",
-          expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
-        });
-        if (sessionError) throw sessionError;
-        await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
-
-        return json({ success: true, session_token: sessionToken, user: { ...user, status: "actif", roles: userRoles } });
+      let structureStatus = "";
+      if (primaryManagerResult.data?.organization_id) {
+        const { data: organization, error: organizationError } = await supabase
+          .from("partner_organizations")
+          .select("status")
+          .eq("id", primaryManagerResult.data.organization_id)
+          .maybeSingle();
+        if (organizationError) throw organizationError;
+        structureStatus = String(organization?.status || "");
       }
 
-      const { error: pendingStatusError } = await supabase.from("users")
-        .update({ status: "en_attente_validation", email_status: "valide", updated_at: now })
+      const pendingRoleLabels: string[] = [];
+      const professorStatus = String(professorResult.data?.kyc_status || "");
+      const recruiterStatus = String(recruiterResult.data?.status || "");
+      const organizerStatus = String(organizerResult.data?.status || "");
+
+      // Compatibilité avec d'anciennes inscriptions qui attribuaient le rôle
+      // avant la validation : on retire uniquement le rôle professionnel concerné.
+      if (professorResult.data && professorStatus !== "valide") {
+        await supabase.from("user_roles").delete().eq("user_id", user.id).in("role", ["professeur", "formateur"]);
+        if (["en_attente", "pending", "under_review", "changes_requested"].includes(professorStatus) || !professorStatus) pendingRoleLabels.push("Professeur");
+      }
+      if (recruiterResult.data && recruiterStatus !== "approved") {
+        await supabase.from("user_roles").delete().eq("user_id", user.id).in("role", ["recruteur_independant", "recruteur"]);
+        if (["pending", "under_review", "changes_requested"].includes(recruiterStatus) || !recruiterStatus) pendingRoleLabels.push("Recruteur indépendant");
+      }
+      if (organizerResult.data && organizerStatus !== "approved") {
+        await supabase.from("user_roles").delete().eq("user_id", user.id).in("role", ["organizer", "organisateur"]);
+        if (["pending", "under_review", "changes_requested"].includes(organizerStatus) || !organizerStatus) pendingRoleLabels.push("Organisateur");
+      }
+      if (primaryManagerResult.data?.organization_id && structureStatus !== "validated") {
+        await supabase.from("user_roles").delete().eq("user_id", user.id).in("role", ["responsable_structure", "structure", "etablissement_directeur", "etablissement_enseignant"]);
+        if (["pending", "modification_requested"].includes(structureStatus) || !structureStatus) pendingRoleLabels.push("Structure");
+      }
+
+      const { data: refreshedRoles, error: refreshedRolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+      if (refreshedRolesError) throw refreshedRolesError;
+      userRoles = (refreshedRoles || []).map((row: { role: string }) => row.role);
+
+      const { error: activationError } = await supabase
+        .from("users")
+        .update({ status: "actif", email_status: "valide", updated_at: now })
         .eq("id", user.id);
-      if (pendingStatusError) throw pendingStatusError;
+      if (activationError) throw activationError;
 
-      const roleDisplay = userRoles.includes("professeur")
-        ? "Professeur"
-        : userRoles.includes("recruteur_independant")
-        ? "Recruteur indépendant"
-        : "Structure";
-
-      if (userRoles.includes("recruteur_independant")) {
+      if (recruiterResult.data && recruiterStatus === "pending") {
         const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");
         for (const admin of admins || []) {
           await supabase.from("notification_queue").insert({
@@ -158,21 +169,58 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      await sendOmniaEmail({
-        to: { email: user.email, name: user.full_name || undefined },
-        templateKey: "account_pending_validation",
-        params: {
-          PRENOM: String(user.full_name || "").split(" ")[0],
-          ROLE_NAME: roleDisplay,
-          MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée. Votre dossier est maintenant en attente de décision de l’Administration Omnia.",
-          DASHBOARD_URL: `${Deno.env.get("APP_URL") || "https://omniaglobalacademy.com"}/connexion`,
-        },
-        senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
-        userId: String(user.id),
-        sb: supabase,
-      });
+      const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
+      if (pendingRoleLabels.length) {
+        await sendOmniaEmail({
+          to: { email: user.email, name: user.full_name || undefined },
+          templateKey: "account_pending_validation",
+          params: {
+            PRENOM: String(user.full_name || "").split(" ")[0],
+            ROLE_NAME: pendingRoleLabels.join(" / "),
+            MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée et votre compte Omnia reste actif. Votre candidature professionnelle est en attente de décision ; vos autres espaces restent disponibles.",
+            DASHBOARD_URL: `${appUrl}/inscription?mode=add-role`,
+          },
+          senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+          userId: String(user.id),
+          sb: supabase,
+        });
+      } else {
+        const roleName = userRoles.includes("moderateur")
+          ? "Équipe de modération"
+          : userRoles.includes("recruteur_structure")
+          ? "Recrutement Structure"
+          : userRoles.includes("gestionnaire_structure")
+          ? "Équipe Structure"
+          : userRoles.includes("apprenant")
+          ? "Apprenant"
+          : "Compte Omnia";
+        await sendOmniaEmail({
+          to: { email: user.email, name: user.full_name || undefined },
+          templateKey: "account_welcome",
+          params: {
+            PRENOM: String(user.full_name || "").split(" ")[0],
+            ROLE_NAME: roleName,
+            MESSAGE_SPECIFIQUE: "Votre adresse e-mail est confirmée et votre compte est actif.",
+            DASHBOARD_URL: `${appUrl}/home`,
+          },
+          senderEmail: Deno.env.get("BREVO_AUTH_SENDER_EMAIL") || Deno.env.get("BREVO_SENDER_EMAIL") || "contact@omniaglobalacademy.com",
+          userId: String(user.id),
+          sb: supabase,
+        });
+      }
 
-      return json({ success: true, needs_validation: true, user: { ...user, status: "en_attente_validation", email_status: "valide", roles: userRoles } });
+      const sessionToken = generateOpaqueToken();
+      const { error: sessionError } = await supabase.from("user_sessions").insert({
+        user_id: user.id,
+        session_token: sessionToken,
+        ip_address: clientIP,
+        user_agent: req.headers.get("user-agent") ?? "",
+        expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
+      });
+      if (sessionError) throw sessionError;
+      await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
+
+      return json({ success: true, session_token: sessionToken, user: { ...user, status: "actif", email_status: "valide", roles: userRoles } });
     }
 
     if (purpose === "connexion") {

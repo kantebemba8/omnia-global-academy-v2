@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Building2, ChevronRight, ChevronLeft, Info, CheckCircle } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { COUNTRIES, getPrefix } from '../../lib/countries';
 import { edgeGatewayHeaders } from '../../lib/edgeAuth';
+import { getSessionToken, getStoredUser } from '../../lib/session';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const API = `${SUPABASE_URL}/functions/v1`;
@@ -51,6 +52,9 @@ const toBase64 = (file: File): Promise<string> =>
 
 export function RegisterStructure() {
   const navigate = useNavigate();
+  const existingUser = getStoredUser<{ full_name?: string; email?: string; phone_number?: string; roles?: string[] }>();
+  const existingSessionToken = getSessionToken();
+  const addingToExistingAccount = Boolean(existingSessionToken && existingUser);
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,6 +65,7 @@ export function RegisterStructure() {
   const [justifFile, setJustifFile] = useState<File | null>(null);
   const [registrationSessionToken, setRegistrationSessionToken] = useState('');
   const [registrationEmailSent, setRegistrationEmailSent] = useState<boolean | null>(null);
+  const [existingStructure, setExistingStructure] = useState<{ id: string; status?: string; logo_url?: string | null; justificatif_url?: string | null } | null>(null);
 
   const [form, setForm] = useState({
     // Structure
@@ -75,10 +80,10 @@ export function RegisterStructure() {
     description: '',
     objective: '',
     // Responsable
-    responsible_name: '',
+    responsible_name: existingUser?.full_name || '',
     responsible_function: '',
-    responsible_email: '',
-    responsible_phone: '',
+    responsible_email: existingUser?.email || '',
+    responsible_phone: existingUser?.phone_number || '',
     responsible_phone_local: '',
     // Compte
     password: '',
@@ -89,6 +94,55 @@ export function RegisterStructure() {
   });
 
   const set = (field: string, value: unknown) => setForm(f => ({ ...f, [field]: value }));
+
+  useEffect(() => {
+    if (!addingToExistingAccount || !existingSessionToken) return;
+    let active = true;
+    fetch(`${API}/structure-manage`, {
+      method: 'POST',
+      headers: edgeGatewayHeaders({ 'x-omnia-session-token': existingSessionToken }),
+      body: JSON.stringify({ action: 'get_my_structure' }),
+    })
+      .then(async response => ({ ok: response.ok, data: await response.json().catch(() => ({})) }))
+      .then(({ ok, data }) => {
+        if (!active || !ok || !data?.success || !data.structure) return;
+        const structure = data.structure as Record<string, any>;
+        const country = String(structure.country || '');
+        const prefix = country ? getPrefix(country) : '';
+        const localPhone = (value: unknown) => {
+          const phone = String(value || '');
+          return prefix && phone.startsWith(prefix) ? phone.slice(prefix.length) : phone;
+        };
+        setExistingStructure({
+          id: String(structure.id),
+          status: String(structure.status || ''),
+          logo_url: structure.logo_url || null,
+          justificatif_url: structure.justificatif_url || null,
+        });
+        setSelectedType(String(structure.structure_type || 'autre'));
+        setForm(current => ({
+          ...current,
+          name: String(structure.name || ''),
+          country,
+          city: String(structure.city || ''),
+          address: String(structure.address || ''),
+          professional_email: String(structure.professional_email || ''),
+          phone: String(structure.phone || ''),
+          phone_local: localPhone(structure.phone),
+          website: String(structure.website || ''),
+          description: String(structure.description || ''),
+          objective: String(structure.objective || ''),
+          responsible_name: String(structure.responsible_name || current.responsible_name || ''),
+          responsible_function: String(structure.responsible_function || ''),
+          responsible_email: String(structure.responsible_email || current.responsible_email || ''),
+          responsible_phone: String(structure.responsible_phone || ''),
+          responsible_phone_local: localPhone(structure.responsible_phone),
+        }));
+        setStep(2);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [addingToExistingAccount, existingSessionToken]);
 
   const selectedTypeObj = STRUCTURE_TYPES.find(t => t.value === selectedType);
 
@@ -123,7 +177,7 @@ export function RegisterStructure() {
           ))}
         </div>
         <p className="mt-5 text-center text-sm" style={{ color: '#6B7280' }}>
-          <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
+          <Link to="/inscription?mode=add-role" className="font-semibold" style={{ color: '#BF8813' }}>← {addingToExistingAccount ? 'Mes espaces' : 'Changer de profil'}</Link>
         </p>
       </AuthLayout>
     );
@@ -155,20 +209,20 @@ export function RegisterStructure() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.confirm_password) {
+    if (!addingToExistingAccount && form.password !== form.confirm_password) {
       setError('Les mots de passe ne correspondent pas'); return;
     }
     if (!form.country) {
       setError('Sélectionnez le pays de la Structure.'); return;
     }
-    if (!logoFile) {
+    if (!logoFile && !existingStructure?.logo_url) {
       setError('Veuillez téléverser le logo de votre structure'); return;
     }
     setError('');
     setLoading(true);
 
     try {
-      let sessionToken = registrationSessionToken;
+      let sessionToken = addingToExistingAccount ? existingSessionToken || '' : registrationSessionToken;
       let initialEmailSent = registrationEmailSent;
 
       // Le compte n'est créé qu'une seule fois. Si la création de la fiche
@@ -201,7 +255,7 @@ export function RegisterStructure() {
       }
 
       const [logoBase64, justificatifBase64] = await Promise.all([
-        toBase64(logoFile),
+        logoFile ? toBase64(logoFile) : Promise.resolve(''),
         justifFile ? toBase64(justifFile) : Promise.resolve(''),
       ]);
 
@@ -212,7 +266,8 @@ export function RegisterStructure() {
         method: 'POST',
         headers: edgeGatewayHeaders({ 'x-omnia-session-token': sessionToken }),
         body: JSON.stringify({
-          action: 'create_structure',
+          action: existingStructure ? 'update_structure' : 'create_structure',
+          structure_id: existingStructure?.id || undefined,
           name: form.name,
           structure_type: selectedType,
           country: form.country,
@@ -227,9 +282,9 @@ export function RegisterStructure() {
           responsible_function: form.responsible_function,
           responsible_email: form.responsible_email,
           responsible_phone: `${getPrefix(form.country)}${form.responsible_phone_local}`,
-          logo_base64: logoBase64,
-          logo_mime: logoFile.type,
-          logo_name: logoFile.name,
+          logo_base64: logoBase64 || undefined,
+          logo_mime: logoFile?.type || undefined,
+          logo_name: logoFile?.name || undefined,
           justificatif_base64: justificatifBase64 || undefined,
           justificatif_mime: justifFile?.type || undefined,
           justificatif_name: justifFile?.name || undefined,
@@ -237,7 +292,7 @@ export function RegisterStructure() {
       });
       const structData = await structRes.json().catch(() => ({}));
       if (!structRes.ok || !structData.success) {
-        if (structData.error === 'STRUCTURE_ALREADY_EXISTS') {
+        if (structData.error === 'STRUCTURE_ALREADY_EXISTS' && !addingToExistingAccount) {
           setRegistrationSessionToken('');
           navigate('/verifier-otp', { state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription', initial_email_sent: initialEmailSent !== false } });
           return;
@@ -246,6 +301,10 @@ export function RegisterStructure() {
       }
 
       setRegistrationSessionToken('');
+      if (addingToExistingAccount) {
+        navigate('/inscription?mode=add-role', { replace: true });
+        return;
+      }
       navigate('/verifier-otp', {
         state: { email: form.responsible_email.trim().toLowerCase(), purpose: 'inscription', initial_email_sent: initialEmailSent !== false },
       });
@@ -292,6 +351,13 @@ export function RegisterStructure() {
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        )}
+        {addingToExistingAccount && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-800">
+            {existingStructure
+              ? <>Vous mettez à jour et redéposez la demande Structure liée à <strong>{existingUser?.email}</strong>. Vos autres espaces Omnia restent disponibles pendant l’examen.</>
+              : <>Vous rattachez cette demande Structure à votre compte Omnia existant <strong>{existingUser?.email}</strong>. Aucun nouveau compte ni mot de passe ne sera créé.</>}
+          </div>
         )}
 
         {/* ── Section : Informations de la structure ── */}
@@ -386,7 +452,7 @@ export function RegisterStructure() {
           <div>
             <label className={labelCls}>Nom complet <span style={{ color: '#DC2626' }}>*</span></label>
             <input className={inputCls} type="text" required value={form.responsible_name}
-              onChange={e => set('responsible_name', e.target.value)} />
+              readOnly={addingToExistingAccount} onChange={e => set('responsible_name', e.target.value)} />
           </div>
           <div>
             <label className={labelCls}>Fonction <span style={{ color: '#DC2626' }}>*</span></label>
@@ -399,9 +465,9 @@ export function RegisterStructure() {
         <div>
           <label className={labelCls}>Email du responsable <span style={{ color: '#DC2626' }}>*</span></label>
           <input className={inputCls} type="email" required value={form.responsible_email}
-            onChange={e => set('responsible_email', e.target.value)} />
+            readOnly={addingToExistingAccount} onChange={e => set('responsible_email', e.target.value)} />
           <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-            Cet email sera utilisé pour vous connecter à votre Espace Structure.
+            {addingToExistingAccount ? 'Votre compte Omnia actuel restera votre identité de connexion.' : 'Cet email sera utilisé pour vous connecter à votre Espace Structure.'}
           </p>
         </div>
 
@@ -468,6 +534,7 @@ export function RegisterStructure() {
           </p>
         </div>
 
+        {!addingToExistingAccount && <>
         {/* ── Section : Mot de passe ── */}
         <div className="space-y-1 pb-1 pt-2">
           <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: '#002050' }}>
@@ -529,14 +596,16 @@ export function RegisterStructure() {
           ))}
         </div>
 
+        </>}
+
         <button type="submit" disabled={loading}
           className="w-full py-3 rounded-lg font-semibold text-white transition-all"
           style={{ backgroundColor: loading ? '#9CA3AF' : '#002050' }}>
-          {loading ? 'Envoi de la demande...' : 'Soumettre la demande'}
+          {loading ? 'Envoi de la demande...' : addingToExistingAccount ? 'Transmettre la demande Structure' : 'Soumettre la demande'}
         </button>
 
         <p className="text-center text-sm" style={{ color: '#6B7280' }}>
-          <Link to="/inscription" className="font-semibold" style={{ color: '#BF8813' }}>← Changer de profil</Link>
+          <Link to="/inscription?mode=add-role" className="font-semibold" style={{ color: '#BF8813' }}>← {addingToExistingAccount ? 'Mes espaces' : 'Changer de profil'}</Link>
         </p>
       </form>
     </AuthLayout>

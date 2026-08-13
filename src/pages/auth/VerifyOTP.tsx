@@ -10,6 +10,7 @@ type State = {
   user_id?: string;
   access_invitation?: boolean;
   initial_email_sent?: boolean;
+  post_verify_redirect?: string;
 };
 
 type VerifyResponse = {
@@ -102,6 +103,11 @@ export function VerifyOTP() {
         saveSession(data.session_token, data.user);
         if (data.user.force_password_change) {
           navigate('/changer-mot-de-passe', { state: { session_token: data.session_token, user: data.user } });
+          return;
+        }
+        const postVerifyRedirect = String(state?.post_verify_redirect || '');
+        if (postVerifyRedirect.startsWith('/') && !postVerifyRedirect.startsWith('//')) {
+          navigate(postVerifyRedirect, { replace: true });
           return;
         }
         redirectByRoles(data.user.roles);

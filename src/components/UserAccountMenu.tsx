@@ -1,13 +1,25 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Home, Languages, LogOut, Settings, UserRound } from 'lucide-react';
+import { Check, ChevronDown, Home, Languages, Layers3, LogOut, Plus, Settings, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardPathForRoles, normalizePlatformRoles } from '../lib/session';
+import { getActivePlatformRole, getDashboardPathForRoles, normalizePlatformRoles, setActivePlatformRole, type CanonicalPlatformRole } from '../lib/session';
 import { logoutOmniaSession } from '../lib/authApi';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 const BLUE = '#002050';
+
+const ROLE_LABELS: Partial<Record<CanonicalPlatformRole, string>> = {
+  moderateur: 'Modérateur',
+  structure: 'Structure',
+  gestionnaire_structure: 'Gestionnaire Structure',
+  recruteur_structure: 'Recruteur Structure',
+  organisateur: 'Organisateur',
+  recruteur: 'Recruteur',
+  professeur: 'Professeur',
+  coach: 'Coach',
+  apprenant: 'Apprenant',
+};
 
 type StoredUser = {
   full_name?: string;
@@ -96,11 +108,19 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
 
   const canonicalRoles = normalizePlatformRoles(user.roles || []);
   const isAdministration = canonicalRoles.includes('super_admin');
-  const target = dashboardPath || getDashboardPathForRoles(user.roles || []);
+  const switchableRoles = canonicalRoles.filter(role => role !== 'super_admin');
+  const activeRole = getActivePlatformRole(user.roles || []) || switchableRoles[0] || null;
+  const target = !isAdministration && activeRole ? `/home?role=${encodeURIComponent(activeRole)}` : (dashboardPath || getDashboardPathForRoles(user.roles || []));
 
   function go(path: string) {
     setOpen(false);
     navigate(path);
+  }
+
+  function switchRole(role: CanonicalPlatformRole) {
+    setActivePlatformRole(role);
+    setOpen(false);
+    navigate(`/home?role=${encodeURIComponent(role)}`);
   }
 
   async function logout() {
@@ -125,6 +145,37 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
         >
           <Home size={17} /> {isAdministration ? t('Accueil') : t('Accueil Omnia')}
         </button>
+        {!isAdministration && switchableRoles.length > 1 && (
+          <>
+            <div className="my-1 border-t border-slate-100" />
+            <div className="px-4 pb-1 pt-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              {t('Mes espaces')}
+            </div>
+            {switchableRoles.map(role => (
+              <button
+                key={role}
+                type="button"
+                role="menuitem"
+                onClick={() => switchRole(role)}
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Layers3 size={16} className="text-slate-500" />
+                <span className="flex-1">{t(ROLE_LABELS[role] || role)}</span>
+                {role === activeRole && <Check size={15} className="text-[#BF8813]" />}
+              </button>
+            ))}
+          </>
+        )}
+        {!isAdministration && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => go('/inscription?mode=add-role')}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Plus size={17} /> {t('Ajouter un espace')}
+          </button>
+        )}
         <button
           type="button"
           role="menuitem"

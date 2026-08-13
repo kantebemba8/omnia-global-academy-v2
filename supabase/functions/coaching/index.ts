@@ -104,12 +104,19 @@ const STRUCTURE_MANAGER_ROLES = new Set(["gestionnaire_partenaire", "gestionnair
 
 type CoachEligibility = {
   eligible: boolean;
-  source: "existing_coach" | "professor" | "structure_designation" | "none";
+  source: "existing_coach" | "professor" | "structure_designation" | "external_candidate" | "none";
   organization_id?: string | null;
   message: string;
 };
 
 async function coachEligibility(sb: Supabase, session: Session): Promise<CoachEligibility> {
+  if (session.roles.includes("super_admin") || session.roles.includes("service_role")) {
+    return {
+      eligible: false,
+      source: "none",
+      message: "Le compte d’Administration conserve un accès exclusif et ne peut pas candidater comme Coach.",
+    };
+  }
   if (session.roles.includes("coach")) {
     return { eligible: true, source: "existing_coach", message: "Votre profil coach est déjà actif ou en cours de gestion." };
   }
@@ -134,9 +141,9 @@ async function coachEligibility(sb: Supabase, session: Session): Promise<CoachEl
     };
   }
   return {
-    eligible: false,
-    source: "none",
-    message: "Un compte apprenant ne peut pas devenir coach directement. Vous devez être professeur/formateur OGA ou être désigné par une Structure.",
+    eligible: true,
+    source: "external_candidate",
+    message: "Vous pouvez déposer une candidature Coach avec votre compte Omnia. Le rôle Coach sera ajouté uniquement après validation de l’Administration.",
   };
 }
 
@@ -751,6 +758,16 @@ async function updateCoach(sb: Supabase, session: Session, body: Record<string, 
   }
   const { error: updateError } = await sb.from("coach_profiles").update(update).eq("id", coachId);
   if (updateError) throw updateError;
+  if (status === "active") {
+    const { error: roleError } = await sb.from("user_roles").upsert(
+      { user_id: current.user_id, role: "coach", granted_by: session.userId },
+      { onConflict: "user_id,role" },
+    );
+    if (roleError) throw roleError;
+  } else if (status === "suspended" || status === "archived") {
+    const { error: roleError } = await sb.from("user_roles").delete().eq("user_id", current.user_id).eq("role", "coach");
+    if (roleError) throw roleError;
+  }
   await audit(sb, session.userId, "coach_updated", "coach_profile", coachId, current, update);
   return { success: true };
 }

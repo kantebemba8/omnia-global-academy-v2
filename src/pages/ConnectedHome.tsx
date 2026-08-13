@@ -43,7 +43,7 @@ import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
-import { getDashboardPathForRoles, getSessionToken, normalizePlatformRoles, type CanonicalPlatformRole } from '../lib/session';
+import { getActivePlatformRole, getDashboardPathForRoles, getSessionToken, normalizePlatformRoles, setActivePlatformRole, type CanonicalPlatformRole } from '../lib/session';
 import { normalizeModeratorPermissions, type ModeratorPermissions } from '../lib/moderatorPermissions';
 
 const BLUE = '#002050';
@@ -581,12 +581,19 @@ export default function ConnectedHome() {
   const requestedPreviewRole = params.get('preview') === 'true' ? requestedRole : null;
   const previewMode = Boolean(isSuperAdmin && requestedPreviewRole && PREVIEWABLE_ROLES.has(requestedPreviewRole));
   const requestedOwnedRole = !previewMode && requestedRole && roles.includes(requestedRole as CanonicalPlatformRole) ? requestedRole : null;
+  const preferredOwnedRole = !previewMode ? getActivePlatformRole(user?.roles || []) : null;
 
   const audience = useMemo<HomeAudience>(() => {
     if (previewMode && requestedPreviewRole) return requestedPreviewRole;
     if (requestedOwnedRole) return requestedOwnedRole;
+    if (preferredOwnedRole && isHomeAudience(preferredOwnedRole)) return preferredOwnedRole;
     return ROLE_PRIORITY.find(role => roles.includes(role as CanonicalPlatformRole)) || 'apprenant';
-  }, [previewMode, requestedPreviewRole, requestedOwnedRole, roles]);
+  }, [previewMode, requestedPreviewRole, requestedOwnedRole, preferredOwnedRole, roles]);
+
+  useEffect(() => {
+    if (previewMode || !user || !roles.includes(audience as CanonicalPlatformRole)) return;
+    setActivePlatformRole(audience as CanonicalPlatformRole);
+  }, [audience, previewMode, roles, user]);
 
   const config = HOME_CONFIGS[audience];
   const dashboardPath = user ? getDashboardPathForRoles(user.roles || []) : '/accueil';
@@ -729,6 +736,7 @@ export default function ConnectedHome() {
     return <div className="grid min-h-screen place-items-center bg-white"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#002050]" /></div>;
   }
   if (!user) return <Navigate to="/connexion?redirect=%2Fhome" replace />;
+  if (roles.length === 0) return <Navigate to="/inscription?mode=add-role" replace />;
   if (audience === 'super_admin') return <Navigate to="/admin/dashboard" replace />;
 
   const otherRoleHomes = roles
