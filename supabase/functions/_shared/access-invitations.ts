@@ -2,7 +2,7 @@ import { generateOpaqueToken, sha256Hex } from "./auth-security.ts";
 import { appendModeratorTeamAudit } from "./moderator-access.ts";
 import { sendOmniaEmail } from "./brevo-mail.ts";
 
-export type AccessInvitationType = "moderator" | "structure_team" | "structure_recruiter";
+export type AccessInvitationType = "moderator" | "structure_team" | "structure_recruiter" | "coach_oga";
 
 type Client = any;
 
@@ -33,6 +33,7 @@ function normalizedEmail(value: unknown) {
 function invitationLabel(type: AccessInvitationType) {
   if (type === "moderator") return "missions de modération Omnia";
   if (type === "structure_recruiter") return "équipe de recrutement d’une Structure";
+  if (type === "coach_oga") return "équipe des Coachs OGA";
   return "équipe interne d’une Structure";
 }
 
@@ -154,6 +155,86 @@ async function ensureNotProtected(sb: Client, userId: string) {
   const { data, error } = await sb.from("user_roles").select("role").eq("user_id", userId).eq("role", "super_admin").maybeSingle();
   if (error) throw error;
   if (data) throw new Error("PROTECTED_ACCOUNT");
+}
+
+function coachSlug(value: unknown) {
+  return String(value || "coach")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "coach";
+}
+
+export async function ensureCoachOgaAccess(sb: Client, userId: string, grantedBy: string) {
+  await ensureNotProtected(sb, userId);
+  const { data: user, error: userError } = await sb.from("users").select("id,full_name,email").eq("id", userId).maybeSingle();
+  if (userError) throw userError;
+  if (!user) throw new Error("USER_NOT_FOUND");
+
+  const { data: existingProfile, error: existingProfileError } = await sb.from("coach_profiles").select("id,status").eq("user_id", userId).maybeSingle();
+  if (existingProfileError) throw existingProfileError;
+
+  if (!existingProfile) {
+    const { data: level, error: levelError } = await sb.from("coaching_levels")
+      .select("id,commission_percent,minimum_price_xof,maximum_price_xof")
+      .eq("is_active", true)
+      .order("catalogue_priority", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (levelError) throw levelError;
+    if (!level) throw new Error("COACHING_LEVEL_REQUIRED");
+    const now = new Date().toISOString();
+    const profilePayload = {
+      user_id: userId,
+      application_id: null,
+      level_id: level.id,
+      status: "active",
+      public_slug: `${coachSlug(user.full_name || user.email)}-${userId.slice(0, 8)}`,
+      professional_title: "Coach OGA",
+      biography: "",
+      specialties: [],
+      languages: [],
+      country: "",
+      timezone: "UTC",
+      photo_url: null,
+      linkedin_url: null,
+      website_url: null,
+      presentation_video_url: null,
+      preferred_session_modes: ["jitsi"],
+      price_30_xof: null,
+      price_60_xof: null,
+      price_90_xof: null,
+      custom_duration_enabled: false,
+      custom_hourly_price_xof: null,
+      commission_override_percent: Number(level.commission_percent || 0),
+      minimum_price_override_xof: Number(level.minimum_price_xof || 0),
+      maximum_price_override_xof: level.maximum_price_xof === null ? null : Number(level.maximum_price_xof),
+      badge_override: "Coach OGA",
+      is_featured: false,
+      catalogue_priority: 0,
+      approved_by: grantedBy,
+      approved_at: now,
+      suspended_by: null,
+      suspended_at: null,
+      suspension_reason: null,
+    };
+    const { error: profileError } = await sb.from("coach_profiles").insert(profilePayload);
+    if (profileError) throw profileError;
+  } else if (String(existingProfile.status || "") === "archived") {
+    const { error: profileError } = await sb.from("coach_profiles").update({
+      status: "active", approved_by: grantedBy, approved_at: new Date().toISOString(), suspended_by: null, suspended_at: null, suspension_reason: null,
+    }).eq("id", existingProfile.id);
+    if (profileError) throw profileError;
+  }
+
+  const { error: roleError } = await sb.from("user_roles").upsert(
+    { user_id: userId, role: "coach", granted_by: grantedBy },
+    { onConflict: "user_id,role", ignoreDuplicates: true },
+  );
+  if (roleError && roleError.code !== "23505") throw roleError;
+  return { user_id: userId, role: "coach" };
 }
 
 async function applyModeratorAccess(sb: Client, invitation: any, userId: string) {
@@ -303,6 +384,7 @@ export async function acceptAccessInvitation(sb: Client, rawToken: string, userI
   if (invitation.invitation_type === "moderator") await applyModeratorAccess(sb, invitation, userId);
   else if (invitation.invitation_type === "structure_team") await applyStructureTeamAccess(sb, invitation, userId);
   else if (invitation.invitation_type === "structure_recruiter") await applyStructureRecruiterAccess(sb, invitation, userId, email);
+  else if (invitation.invitation_type === "coach_oga") await ensureCoachOgaAccess(sb, userId, invitation.invited_by);
   else throw new Error("INVITATION_TYPE_INVALID");
 
   const now = new Date().toISOString();
@@ -333,6 +415,7 @@ export async function acceptPendingInvitationsForUser(sb: Client, userId: string
     if (invitation.invitation_type === "moderator") await applyModeratorAccess(sb, invitation, userId);
     else if (invitation.invitation_type === "structure_team") await applyStructureTeamAccess(sb, invitation, userId);
     else if (invitation.invitation_type === "structure_recruiter") await applyStructureRecruiterAccess(sb, invitation, userId, normalized);
+    else if (invitation.invitation_type === "coach_oga") await ensureCoachOgaAccess(sb, userId, invitation.invited_by);
     else continue;
     const now = new Date().toISOString();
     const { error: updateError } = await sb.from("platform_access_invitations")

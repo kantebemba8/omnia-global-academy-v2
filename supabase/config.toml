@@ -173,6 +173,9 @@ verify_jwt = false
 [functions.catalogue-list]
 verify_jwt = false
 
+[functions.external-course-commerce]
+verify_jwt = false
+
 [functions.certificate-admin]
 verify_jwt = false
 

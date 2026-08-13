@@ -267,6 +267,41 @@ Deno.serve(async (req: Request) => {
       return json({ received: true, resource: "omnia_live" });
     }
 
+    if (metadata.external_course_order_id || metadata.resource_type === "external_course") {
+      const orderId = String(metadata.external_course_order_id || "");
+      if (!orderId) throw new Error("EXTERNAL_COURSE_ORDER_ID_MISSING");
+      const { data: externalOrder, error } = await sb.from("external_course_orders")
+        .select("id,amount_xof,currency,payment_status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!externalOrder) throw new Error("EXTERNAL_COURSE_ORDER_NOT_FOUND");
+      assertTransactionMatches(transaction, Number(externalOrder.amount_xof || 0), String(externalOrder.currency || "XOF"));
+      if (approvedStatus(transaction) || eventName === "transaction.approved") {
+        const { error: settleError } = await sb.rpc("settle_external_course_order", {
+          p_order_id: externalOrder.id,
+          p_transaction_id: String(transaction.id || incomingTransactionId),
+        });
+        if (settleError) throw settleError;
+        await finishWebhookEvent(sb, trackedEventId, "processed", "external_course", String(externalOrder.id));
+        return json({ received: true, resource: "external_course", order_id: externalOrder.id });
+      }
+      if (failedStatus(transaction) || ["transaction.declined", "transaction.canceled", "transaction.cancelled"].includes(eventName)) {
+        if (externalOrder.payment_status !== "completed") {
+          await sb.from("external_course_orders").update({
+            payment_status: "failed",
+            failed_at: new Date().toISOString(),
+            provider_transaction_id: String(transaction.id || incomingTransactionId),
+            updated_at: new Date().toISOString(),
+          }).eq("id", externalOrder.id);
+        }
+        await finishWebhookEvent(sb, trackedEventId, "processed", "external_course", String(externalOrder.id));
+        return json({ received: true, resource: "external_course", status: "failed" });
+      }
+      await finishWebhookEvent(sb, trackedEventId, "ignored", "external_course", String(externalOrder.id));
+      return json({ received: true, resource: "external_course", ignored: true });
+    }
+
     if (await processCoachingWebhook(sb, event, eventName, transaction, incomingTransactionId)) {
       const coachingId = metadata.coaching_order_id ? String(metadata.coaching_order_id) : null;
       await finishWebhookEvent(sb, trackedEventId, "processed", "coaching", coachingId);

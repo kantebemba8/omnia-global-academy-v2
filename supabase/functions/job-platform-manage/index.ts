@@ -144,6 +144,8 @@ function cleanJob(input: any) {
     recruiter_name: String(input?.recruiter_name || "").trim() || null,
     recruiter_email: String(input?.recruiter_email || "").trim().toLowerCase() || null,
     recruiter_company: String(input?.recruiter_company || "").trim() || null,
+    recruiter_phone: String(input?.recruiter_phone || "").trim() || null,
+    recruiter_address: String(input?.recruiter_address || "").trim() || null,
     application_mode: mode,
     external_apply_url: mode === "external_link" ? String(input?.external_apply_url || "").trim() || null : null,
     external_apply_email: mode === "external_email" ? String(input?.external_apply_email || "").trim().toLowerCase() || null : null,
@@ -246,7 +248,9 @@ Deno.serve(async (req: Request) => {
 
     if (action === "create_job") {
       if (!can(session, "can_post_job")) return json({ error: "PERMISSION_DENIED" }, 403);
-      const job = cleanJob(body.job || body);
+      const rawJob = body.job || body;
+      const job = cleanJob(rawJob);
+      const externalOffer = isSuperAdmin(session) && rawJob?.external_offer === true;
       if (job.title.length < 3 || job.description.length < 20) {
         return json({ error: "INVALID_JOB", message: "Le titre et une description détaillée sont requis." }, 400);
       }
@@ -255,6 +259,12 @@ Deno.serve(async (req: Request) => {
       }
       if (job.application_mode === "external_email" && !job.external_apply_email) {
         return json({ error: "EXTERNAL_EMAIL_REQUIRED", message: "L’email externe est requis." }, 400);
+      }
+      if (externalOffer && (!job.recruiter_company || !job.recruiter_name || !job.recruiter_email || !job.recruiter_phone || !job.recruiter_address)) {
+        return json({ error: "EXTERNAL_CONTACT_REQUIRED", message: "Entreprise, contact, email, téléphone et adresse sont obligatoires pour une offre externe." }, 400);
+      }
+      if (externalOffer && job.application_mode === "omnia_managed") {
+        return json({ error: "EXTERNAL_APPLICATION_MODE_REQUIRED", message: "Une offre externe doit rediriger vers un lien ou un email de candidature externe." }, 400);
       }
       if (!isSuperAdmin(session)) {
         const commercial = await consumeCommerceBenefit(sb, session.userId, session.organizationId, "recruiter_job_posts", "job_offer");
@@ -267,8 +277,8 @@ Deno.serve(async (req: Request) => {
         ...job,
         posted_by_id: session.userId,
         organization_id: session.organizationId,
-        is_external_recruiter: isIndependentRecruiter(session),
-        created_by_role: directPublish ? "super_admin" : session.organizationId ? "structure" : "recruteur_independant",
+        is_external_recruiter: externalOffer || isIndependentRecruiter(session),
+        created_by_role: externalOffer ? "super_admin_external" : directPublish ? "super_admin" : session.organizationId ? "structure" : "recruteur_independant",
         status: directPublish ? "approved" : "pending_moderation",
         moderated_by: directPublish ? session.userId : null,
         moderated_at: directPublish ? now : null,

@@ -407,19 +407,71 @@ Deno.serve(async(req)=>{
   if(action==="admin_save_external_course"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
    const input=b.course||{};const id=String(input.id||"").trim();const externalUrl=String(input.external_url||"").trim();
+   const registrationUrl=String(input.registration_url||"").trim();const contactEmail=String(input.contact_email||"").trim().toLowerCase();const contactPhone=String(input.contact_phone||"").trim();
+   const accessMode=["public","registered","premium","paid"].includes(String(input.access_mode))?String(input.access_mode):"public";
+   const deliveryMethods=Array.isArray(input.delivery_methods)?[...new Set(input.delivery_methods.map((x:any)=>String(x)).filter((x:string)=>["private_link","access_code","manual_registration"].includes(x)))]:[];
+   const accessCodeMode=["none","provider","personal"].includes(String(input.access_code_mode))?String(input.access_code_mode):"none";
+   const priceXof=Math.max(0,Math.round(Number(input.price_xof||0)));
+   const registrationDeadline=String(input.registration_deadline||"").trim()||null;
    if(!String(input.title||"").trim()||!String(input.provider_name||"").trim()||!/^https:\/\//i.test(externalUrl))return json({success:false,error:"INVALID_EXTERNAL_COURSE",message:"Titre, fournisseur et URL HTTPS valides sont obligatoires."},400);
+   if(registrationUrl&&!/^https:\/\//i.test(registrationUrl))return json({success:false,error:"INVALID_REGISTRATION_URL",message:"Le lien d’inscription doit utiliser HTTPS."},400);
+   if(contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))return json({success:false,error:"INVALID_CONTACT_EMAIL",message:"L’email de contact est invalide."},400);
+   if(accessMode==="paid"){
+    if(priceXof<=0)return json({success:false,error:"EXTERNAL_COURSE_PRICE_REQUIRED",message:"Indiquez un prix supérieur à zéro pour une formation externe payante."},400);
+    if(!deliveryMethods.length)return json({success:false,error:"DELIVERY_METHOD_REQUIRED",message:"Choisissez au moins un mode d’accès après paiement."},400);
+    if(deliveryMethods.includes("private_link")&&!/^https:\/\//i.test(String(input.private_access_url||"").trim()))return json({success:false,error:"PRIVATE_ACCESS_URL_REQUIRED",message:"Le lien privé HTTPS est requis pour ce mode d’accès."},400);
+    if(deliveryMethods.includes("access_code")&&accessCodeMode==="none")return json({success:false,error:"ACCESS_CODE_MODE_REQUIRED",message:"Choisissez code fournisseur ou code personnel."},400);
+    if(deliveryMethods.includes("access_code")&&accessCodeMode==="provider"&&!String(input.provider_access_code||"").trim())return json({success:false,error:"PROVIDER_ACCESS_CODE_REQUIRED",message:"Le code fournisseur est requis."},400);
+   }
    const contentUsageConfirmed=input.content_usage_confirmed===true;
-   if(String(input.status)==="published"&&!contentUsageConfirmed)return json({success:false,error:"EXTERNAL_COURSE_VERIFICATION_REQUIRED",message:"Confirmez la vérification du lien, des conditions d’accès et des droits d’utilisation avant publication."},400);
-   const payload:any={title:String(input.title).trim().slice(0,500),short_description:String(input.short_description||"").trim().slice(0,4000)||null,provider_name:String(input.provider_name).trim().slice(0,240),external_url:externalUrl.slice(0,3000),cover_image_url:String(input.cover_image_url||"").trim().slice(0,3000)||null,category:String(input.category||"").trim().slice(0,200)||null,level:String(input.level||"").trim().slice(0,100)||null,language:String(input.language||"fr").trim().slice(0,20),duration_label:String(input.duration_label||"").trim().slice(0,100)||null,total_duration_seconds:Math.max(0,Math.round(Number(input.total_duration_seconds||0))),certificate_available:!!input.certificate_available,is_free:input.is_free!==false,access_mode:["public","registered","premium"].includes(String(input.access_mode))?String(input.access_mode):"public",premium_benefit_key:"external_course_premium_access",status:["draft","published","archived"].includes(String(input.status))?String(input.status):"draft",is_featured:!!input.is_featured,display_order:Math.round(Number(input.display_order||0)),admin_notes:String(input.admin_notes||"").trim().slice(0,4000)||null,content_usage_confirmed:contentUsageConfirmed,updated_by:userId,updated_at:new Date().toISOString()};
+   if(String(input.status)==="published"){
+    if(!contentUsageConfirmed)return json({success:false,error:"EXTERNAL_COURSE_VERIFICATION_REQUIRED",message:"Confirmez la vérification du lien, des conditions d’accès et des droits d’utilisation avant publication."},400);
+    if(!registrationDeadline)return json({success:false,error:"REGISTRATION_DEADLINE_REQUIRED",message:"La date limite d’inscription est requise avant publication."},400);
+    if(!registrationUrl&&!contactEmail&&!contactPhone)return json({success:false,error:"REGISTRATION_CONTACT_REQUIRED",message:"Indiquez un lien d’inscription ou un contact avant publication."},400);
+   }
+   const payload:any={
+    title:String(input.title).trim().slice(0,500),short_description:String(input.short_description||"").trim().slice(0,4000)||null,provider_name:String(input.provider_name).trim().slice(0,240),external_url:externalUrl.slice(0,3000),cover_image_url:String(input.cover_image_url||"").trim().slice(0,3000)||null,category:String(input.category||"").trim().slice(0,200)||null,level:String(input.level||"").trim().slice(0,100)||null,language:String(input.language||"fr").trim().slice(0,20),duration_label:String(input.duration_label||"").trim().slice(0,100)||null,total_duration_seconds:Math.max(0,Math.round(Number(input.total_duration_seconds||0))),certificate_available:!!input.certificate_available,
+    is_free:accessMode==="paid"?false:input.is_free!==false,access_mode:accessMode,premium_benefit_key:"external_course_premium_access",status:["draft","published","archived"].includes(String(input.status))?String(input.status):"draft",is_featured:!!input.is_featured,display_order:Math.round(Number(input.display_order||0)),admin_notes:String(input.admin_notes||"").trim().slice(0,4000)||null,content_usage_confirmed:contentUsageConfirmed,
+    registration_deadline:registrationDeadline,registration_url:registrationUrl.slice(0,3000)||null,contact_name:String(input.contact_name||"").trim().slice(0,240)||null,contact_email:contactEmail.slice(0,320)||null,contact_phone:contactPhone.slice(0,80)||null,contact_address:String(input.contact_address||"").trim().slice(0,2000)||null,
+    price_xof:accessMode==="paid"?priceXof:0,delivery_methods:accessMode==="paid"?deliveryMethods:[],private_access_url:accessMode==="paid"&&deliveryMethods.includes("private_link")?String(input.private_access_url||"").trim().slice(0,3000)||null:null,access_code_mode:accessMode==="paid"&&deliveryMethods.includes("access_code")?accessCodeMode:"none",provider_access_code:accessMode==="paid"&&deliveryMethods.includes("access_code")&&accessCodeMode==="provider"?String(input.provider_access_code||"").trim().slice(0,500)||null:null,
+    updated_by:userId,updated_at:new Date().toISOString()
+   };
    if(contentUsageConfirmed){payload.last_verified_at=new Date().toISOString();payload.last_verified_by=userId;}
    if(payload.status==="published")payload.published_at=new Date().toISOString();
    const result=id?await sb.from("external_courses").update(payload).eq("id",id).select("*").single():await sb.from("external_courses").insert({...payload,created_by:userId}).select("*").single();if(result.error)throw result.error;
-   await sb.from("course_audit_log").insert({actor_id:userId,action:id?"external_course_updated":"external_course_created",entity_type:"external_course",entity_id:result.data.id,metadata:{provider_name:payload.provider_name,access_mode:payload.access_mode,status:payload.status}}).then(()=>{}).catch(()=>{});
+   await sb.from("course_audit_log").insert({actor_id:userId,action:id?"external_course_updated":"external_course_created",entity_type:"external_course",entity_id:result.data.id,metadata:{provider_name:payload.provider_name,access_mode:payload.access_mode,status:payload.status,price_xof:payload.price_xof,delivery_methods:payload.delivery_methods}}).then(()=>{}).catch(()=>{});
    return json({success:true,course:result.data});
   }
   if(action==="admin_archive_external_course"){
    if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);const id=String(b.external_course_id||"");if(!id)return json({success:false,error:"ID_REQUIRED"},400);
    const {data,error}=await sb.from("external_courses").update({status:"archived",updated_by:userId,updated_at:new Date().toISOString()}).eq("id",id).select("*").single();if(error)throw error;return json({success:true,course:data});
+  }
+  if(action==="admin_list_external_access_grants"){
+   if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
+   let q=sb.from("external_course_access_grants").select("*").order("created_at",{ascending:false}).limit(300);
+   if(b.external_course_id)q=q.eq("external_course_id",String(b.external_course_id));
+   const {data:grants,error}=await q;if(error)throw error;
+   const userIds=[...new Set((grants||[]).map((x:any)=>x.user_id).filter(Boolean))];const courseIds=[...new Set((grants||[]).map((x:any)=>x.external_course_id).filter(Boolean))];
+   const [usersResult,coursesResult]=await Promise.all([userIds.length?sb.from("users").select("id,full_name,email").in("id",userIds):Promise.resolve({data:[]}),courseIds.length?sb.from("external_courses").select("id,title,provider_name,delivery_methods,access_code_mode").in("id",courseIds):Promise.resolve({data:[]})]);
+   if((usersResult as any).error)throw (usersResult as any).error;if((coursesResult as any).error)throw (coursesResult as any).error;
+   const users=new Map(((usersResult as any).data||[]).map((x:any)=>[String(x.id),x]));const courses=new Map(((coursesResult as any).data||[]).map((x:any)=>[String(x.id),x]));
+   return json({success:true,grants:(grants||[]).map((x:any)=>({...x,user:users.get(String(x.user_id))||null,course:courses.get(String(x.external_course_id))||null}))});
+  }
+  if(action==="admin_update_external_access_grant"){
+   if(!isAdmin)return json({success:false,error:"FORBIDDEN"},403);
+   const grantId=String(b.grant_id||"");const status=String(b.status||"");if(!grantId||!["registration_in_progress","access_ready","revoked"].includes(status))return json({success:false,error:"INVALID_GRANT_UPDATE"},400);
+   const {data:current,error:readError}=await sb.from("external_course_access_grants").select("*").eq("id",grantId).maybeSingle();if(readError)throw readError;if(!current)return json({success:false,error:"GRANT_NOT_FOUND"},404);
+   const {data:course,error:courseError}=await sb.from("external_courses").select("delivery_methods,access_code_mode").eq("id",current.external_course_id).maybeSingle();if(courseError)throw courseError;if(!course)return json({success:false,error:"EXTERNAL_COURSE_NOT_FOUND"},404);
+   const privateUrl=String(b.private_access_url??current.private_access_url??"").trim();const accessCode=String(b.access_code??current.access_code??"").trim();
+   if(privateUrl&&!/^https:\/\//i.test(privateUrl))return json({success:false,error:"INVALID_PRIVATE_ACCESS_URL"},400);
+   const methods=Array.isArray(course.delivery_methods)?course.delivery_methods.map((x:any)=>String(x)):[];
+   if(status==="access_ready"&&methods.includes("private_link")&&!privateUrl)return json({success:false,error:"PRIVATE_ACCESS_URL_REQUIRED",message:"Renseignez le lien privé avant de marquer l’accès comme prêt."},400);
+   if(status==="access_ready"&&methods.includes("access_code")&&String(course.access_code_mode)==="personal"&&!accessCode)return json({success:false,error:"PERSONAL_ACCESS_CODE_REQUIRED",message:"Renseignez le code personnel avant de marquer l’accès comme prêt."},400);
+   if(status==="access_ready"&&methods.includes("access_code")&&String(course.access_code_mode)==="provider"&&!accessCode)return json({success:false,error:"PROVIDER_ACCESS_CODE_REQUIRED",message:"Le code fournisseur est manquant pour cet accès."},400);
+   const update:any={status,private_access_url:privateUrl||null,access_code:accessCode||null,admin_note:String(b.admin_note||"").trim().slice(0,2000)||null,updated_by:userId,updated_at:new Date().toISOString(),ready_at:status==="access_ready"?(current.ready_at||new Date().toISOString()):null};
+   const {data,error}=await sb.from("external_course_access_grants").update(update).eq("id",grantId).select("*").single();if(error)throw error;
+   await sb.from("course_audit_log").insert({actor_id:userId,action:"external_course_access_updated",entity_type:"external_course_access",entity_id:grantId,metadata:{external_course_id:current.external_course_id,user_id:current.user_id,status}}).then(()=>{}).catch(()=>{});
+   return json({success:true,grant:data});
   }
   if(action==="get_my_courses"){
    const context=String(b.creator_context||"").trim();

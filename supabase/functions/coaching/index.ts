@@ -2,6 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { createAccessInvitation, ensureCoachOgaAccess } from "../_shared/access-invitations.ts";
+import { sha256Hex } from "../_shared/auth-security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -604,6 +606,92 @@ async function submitApplication(sb: Supabase, session: Session, body: Record<st
     if (error) throw error;
   }
   return applicationId;
+}
+
+function normalizeCoachLinkCode(value: unknown) {
+  return asText(value, 40).toUpperCase().replace(/\s+/g, "");
+}
+
+function newCoachLinkCode() {
+  const compact = crypto.randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase();
+  return `OGA-${compact}`;
+}
+
+async function adminPrepareOgaCoach(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  const email = asText(body.email, 320).toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("INVALID_EMAIL");
+  const fullName = asNullableText(body.full_name, 240);
+  const { data: existingUser, error: userError } = await sb.from("users").select("id,email,full_name").ilike("email", email).maybeSingle();
+  if (userError) throw userError;
+
+  if (!existingUser?.id) {
+    const invitation = await createAccessInvitation(sb, {
+      invitationType: "coach_oga",
+      email,
+      fullName,
+      invitedBy: session.userId,
+      internalRole: "Coach OGA",
+      message: "Vous êtes invité(e) à rejoindre Omnia Global Academy comme Coach OGA. La création de votre compte sera confirmée par code OTP envoyé par email.",
+    });
+    await audit(sb, session.userId, "coach_oga_invited", "platform_access_invitation", String(invitation.invitation.id), null, { email, email_sent: invitation.emailSent });
+    return { mode: "email_invitation", email, email_sent: invitation.emailSent, expires_at: invitation.invitation.expires_at };
+  }
+
+  const { data: protectedRole, error: protectedError } = await sb.from("user_roles").select("role").eq("user_id", existingUser.id).eq("role", "super_admin").maybeSingle();
+  if (protectedError) throw protectedError;
+  if (protectedRole) throw new Error("PROTECTED_ACCOUNT");
+
+  const now = new Date().toISOString();
+  const { error: revokeError } = await sb.from("coach_oga_link_codes")
+    .update({ status: "revoked", updated_at: now })
+    .eq("target_user_id", existingUser.id)
+    .eq("status", "pending");
+  if (revokeError) throw revokeError;
+
+  const code = newCoachLinkCode();
+  const codeHash = await sha256Hex(code);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: link, error: linkError } = await sb.from("coach_oga_link_codes").insert({
+    code_hash: codeHash,
+    target_user_id: existingUser.id,
+    created_by: session.userId,
+    status: "pending",
+    expires_at: expiresAt,
+  }).select("id,expires_at").single();
+  if (linkError) throw linkError;
+  await audit(sb, session.userId, "coach_oga_link_code_created", "coach_oga_link_code", String(link.id), null, { target_user_id: existingUser.id, email });
+  return {
+    mode: "link_code",
+    code,
+    email,
+    full_name: existingUser.full_name || fullName || null,
+    expires_at: link.expires_at,
+  };
+}
+
+async function claimOgaCoachLinkCode(sb: Supabase, session: Session, body: Record<string, unknown>) {
+  if (isAdmin(session) || isService(session)) throw new Error("PROTECTED_ACCOUNT");
+  const code = normalizeCoachLinkCode(body.code);
+  if (!code) throw new Error("COACH_LINK_CODE_REQUIRED");
+  const codeHash = await sha256Hex(code);
+  const { data: link, error } = await sb.from("coach_oga_link_codes")
+    .select("*")
+    .eq("code_hash", codeHash)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (error) throw error;
+  if (!link) throw new Error("COACH_LINK_CODE_INVALID_OR_EXPIRED");
+  if (String(link.target_user_id) !== session.userId) throw new Error("COACH_LINK_CODE_ACCOUNT_MISMATCH");
+
+  await ensureCoachOgaAccess(sb, session.userId, String(link.created_by));
+  const now = new Date().toISOString();
+  const { error: updateError } = await sb.from("coach_oga_link_codes").update({
+    status: "used", used_at: now, used_by: session.userId, updated_at: now,
+  }).eq("id", link.id).eq("status", "pending");
+  if (updateError) throw updateError;
+  await audit(sb, session.userId, "coach_oga_link_code_claimed", "coach_oga_link_code", String(link.id), null, { created_by: link.created_by });
+  return { status: "linked", role: "coach" };
 }
 
 async function audit(sb: Supabase, actorUserId: string, action: string, entityType: string, entityId: string | null, previousData: unknown, newData: unknown, metadata: Record<string, unknown> = {}) {
@@ -3236,6 +3324,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "store_payment_finalize") return json({ success: true, ...(await storePaymentFinalize(sb, session, body)) });
     if (action === "upload_asset") return json({ success: true, asset: await uploadAsset(sb, session, body) });
+    if (action === "claim_oga_link_code") return json({ success: true, result: await claimOgaCoachLinkCode(sb, session, body) });
     if (action === "self_status") {
       const [applications, profile] = await Promise.all([
         loadApplicationRows(sb, session.userId),
@@ -3342,6 +3431,7 @@ Deno.serve(async (req: Request) => {
       ]);
       return json({ success: true, metrics: { pending_applications: applicationsPending.count || 0, total_applications: applicationsAll.count || 0, active_coaches: coachesActive.count || 0, suspended_coaches: coachesSuspended.count || 0, levels: levels.length, domains: domains.length } });
     }
+    if (action === "admin_prepare_oga_coach") return json({ success: true, result: await adminPrepareOgaCoach(sb, session, body) });
     if (action === "admin_applications") return json({ success: true, applications: await loadApplicationRows(sb) });
     if (action === "admin_review_application") return json({ success: true, result: await reviewApplication(sb, session, body) });
     if (action === "admin_coaches") return json({ success: true, coaches: await allCoaches(sb), levels: await getLevels(sb, true) });

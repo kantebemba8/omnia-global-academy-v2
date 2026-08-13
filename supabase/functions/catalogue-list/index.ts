@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
       if (!id) return json({ success: false, error: "EXTERNAL_COURSE_ID_REQUIRED" }, 400);
       const { data: course, error } = await sb
         .from("external_courses")
-        .select("id,title,short_description,provider_name,external_url,cover_image_url,category,level,language,duration_label,total_duration_seconds,certificate_available,is_free,access_mode,premium_benefit_key,status")
+        .select("id,title,short_description,provider_name,external_url,cover_image_url,category,level,language,duration_label,total_duration_seconds,certificate_available,is_free,access_mode,premium_benefit_key,status,registration_deadline,registration_url,contact_name,contact_email,contact_phone,contact_address,price_xof,delivery_methods")
         .eq("id", id)
         .eq("status", "published")
         .maybeSingle();
@@ -89,6 +89,32 @@ Deno.serve(async (req: Request) => {
         const allowed = await hasPremiumExternalAccess(sb, session.userId, course.premium_benefit_key || "external_course_premium_access");
         if (!allowed) return json({ success: false, error: "PREMIUM_REQUIRED", course: { ...course, external_url: undefined } }, 403);
       }
+      if (course.access_mode === "paid") {
+        const safePaidCourse = { ...course, external_url: undefined, registration_url: undefined };
+        if (!session) return json({ success: false, error: "AUTH_REQUIRED", course: safePaidCourse }, 401);
+        const { data: grant, error: grantError } = await sb.from("external_course_access_grants")
+          .select("id,status,delivery_methods,private_access_url,access_code,ready_at")
+          .eq("user_id", session.userId).eq("external_course_id", course.id).maybeSingle();
+        if (grantError) throw grantError;
+        if (!grant) {
+          if (course.registration_deadline && new Date(`${course.registration_deadline}T23:59:59`).getTime() < Date.now()) {
+            return json({ success: false, error: "REGISTRATION_CLOSED", course: safePaidCourse }, 409);
+          }
+          return json({ success: false, error: "PAYMENT_REQUIRED", access_state: "payment_required", course: safePaidCourse }, 402);
+        }
+        if (grant.status === "revoked") return json({ success: false, error: "ACCESS_REVOKED", course: safePaidCourse }, 403);
+        if (grant.status === "registration_in_progress") {
+          return json({ success: true, allowed: false, access_state: "registration_in_progress", course: safePaidCourse });
+        }
+        const access = {
+          status: "access_ready",
+          delivery_methods: grant.delivery_methods || [],
+          private_access_url: grant.private_access_url || null,
+          access_code: grant.access_code || null,
+          ready_at: grant.ready_at || null,
+        };
+        return json({ success: true, allowed: true, access_state: "access_ready", course, access });
+      }
 
       if (p("track") === "1") {
         await Promise.allSettled([
@@ -103,7 +129,7 @@ Deno.serve(async (req: Request) => {
         ]);
       }
 
-      return json({ success: true, allowed: true, course });
+      return json({ success: true, allowed: true, access_state: "ready", course });
     }
 
     const q = p("q");
@@ -149,7 +175,7 @@ Deno.serve(async (req: Request) => {
 
     let externalQuery = sb
       .from("external_courses")
-      .select("id,title,short_description,provider_name,cover_image_url,category,level,language,duration_label,total_duration_seconds,certificate_available,is_free,access_mode,status,is_featured,display_order,click_count,created_at")
+      .select("id,title,short_description,provider_name,cover_image_url,category,level,language,duration_label,total_duration_seconds,certificate_available,is_free,access_mode,status,is_featured,display_order,click_count,created_at,price_xof,registration_deadline")
       .eq("status", "published")
       .limit(500);
     if (q) externalQuery = externalQuery.or(`title.ilike.%${q}%,provider_name.ilike.%${q}%`);
@@ -157,6 +183,10 @@ Deno.serve(async (req: Request) => {
     if (language) externalQuery = externalQuery.eq("language", language);
     if (level) externalQuery = externalQuery.eq("level", level);
     if (price === "gratuit") externalQuery = externalQuery.eq("is_free", true);
+    else if (price === "0-5000") externalQuery = externalQuery.eq("is_free", false).gte("price_xof", 0).lte("price_xof", 5000);
+    else if (price === "5001-15000") externalQuery = externalQuery.eq("is_free", false).gte("price_xof", 5001).lte("price_xof", 15000);
+    else if (price === "15001-25000") externalQuery = externalQuery.eq("is_free", false).gte("price_xof", 15001).lte("price_xof", 25000);
+    else if (price === "25001+") externalQuery = externalQuery.eq("is_free", false).gte("price_xof", 25001);
     if (duration === "courte") externalQuery = externalQuery.lt("total_duration_seconds", 7200);
     else if (duration === "moyenne") externalQuery = externalQuery.gte("total_duration_seconds", 7200).lte("total_duration_seconds", 18000);
     else if (duration === "longue") externalQuery = externalQuery.gt("total_duration_seconds", 18000);
@@ -195,7 +225,7 @@ Deno.serve(async (req: Request) => {
         content_origin: "external",
         creator_type: "external",
         creator_name: course.provider_name,
-        price_xof: 0,
+        price_xof: Number(course.price_xof || 0),
         cpd_hours: 0,
         cpd_accredited: false,
         average_rating: 0,
