@@ -143,7 +143,7 @@ export function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans text-slate-900">
+    <div className="oga-public-home-depth min-h-screen bg-white font-sans text-slate-900">
       <LandingSeo
         landingPage={experienceData.landingPage}
         featuredCourses={experienceData.featuredCourses}

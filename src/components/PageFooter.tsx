@@ -23,6 +23,7 @@ import { edgeGatewayHeaders } from '../lib/edgeAuth';
 import OmniaBrandLockup from './OmniaBrandLockup';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getEcosystem, type EcosystemId } from '../lib/ecosystemRegistry';
+import { getRoleTheme, type RoleThemeKey } from '../lib/roleTheme';
 
 type LegacySocialNetworks = Record<string, string | null | undefined>;
 type LegacyAppDownloads = { google_play?: string | null; app_store?: string | null };
@@ -45,6 +46,7 @@ interface FooterProps {
   managedOnly?: boolean;
   footerConfig?: LandingFooterConfig;
   ecosystem?: EcosystemId;
+  role?: RoleThemeKey;
 }
 
 const SOCIAL_ICON_MAP: Record<string, LucideIcon> = {
@@ -122,12 +124,14 @@ export function PageFooter({
   managedOnly = false,
   footerConfig,
   ecosystem,
+  role,
 }: FooterProps) {
   const fallback = createDefaultLandingPage().footer;
   const ecosystemTheme = ecosystem ? getEcosystem(ecosystem) : null;
-  const footerBackground = ecosystemTheme?.footerBackground || '#002050';
-  const footerBottom = ecosystemTheme?.footerBottom || '#001540';
-  const footerAccent = ecosystemTheme?.footerAccent || '#BF8813';
+  const roleTheme = !ecosystem && role ? getRoleTheme(role) : null;
+  const footerBackground = ecosystemTheme?.footerBackground || roleTheme?.footerBackground || '#002050';
+  const footerBottom = ecosystemTheme?.footerBottom || roleTheme?.footerBottom || '#001540';
+  const footerAccent = ecosystemTheme?.footerAccent || roleTheme?.footerAccent || '#BF8813';
   const config = footerConfig || fallback;
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterConsent, setNewsletterConsent] = useState(false);

@@ -46,6 +46,7 @@ type LanguageContextValue = {
 };
 
 const STORAGE_KEY = 'omnia_platform_language';
+const EXPLICIT_LANGUAGE_KEY = 'omnia_platform_language_explicit_v1';
 const CATALOG_STORAGE_PREFIX = 'omnia_i18n_runtime_catalog_v3_';
 const CATALOG_MAX_ENTRIES = 3500;
 const BATCH_SIZE = 25;
@@ -67,8 +68,9 @@ function getLanguageDefinition(language: PlatformLanguage) {
 function readStoredLanguage(): PlatformLanguage {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (isPlatformLanguage(stored)) return stored;
+    const explicit = localStorage.getItem(EXPLICIT_LANGUAGE_KEY) === '1';
     const rawUser = localStorage.getItem('omnia_user');
+    if (explicit && isPlatformLanguage(stored)) return stored;
     if (rawUser) {
       const preferred = (JSON.parse(rawUser) as { preferred_language?: string }).preferred_language;
       if (isPlatformLanguage(preferred)) return preferred;
@@ -76,9 +78,8 @@ function readStoredLanguage(): PlatformLanguage {
   } catch {
     // Le français reste le repli sûr si le stockage est indisponible.
   }
-  // La plateforme est française par défaut. La langue du navigateur ne doit jamais
-  // sélectionner automatiquement une traduction (ex. navigateur configuré en espagnol).
-  // Une autre langue n'est utilisée que si l'utilisateur l'a réellement enregistrée.
+  // Le français est le vrai défaut public. Une ancienne valeur locale créée par un
+  // ancien défaut navigateur (notamment ES) n'est plus considérée comme un choix utilisateur.
   return 'fr';
 }
 
@@ -262,6 +263,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const setLanguage = useCallback((next: PlatformLanguage) => {
     if (!isPlatformLanguage(next)) return;
     localStorage.setItem(STORAGE_KEY, next);
+    localStorage.setItem(EXPLICIT_LANGUAGE_KEY, '1');
     ensureCatalog(next);
     queued.current.clear();
     requestedAt.current.clear();
@@ -391,11 +393,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [catalogVersion, ensureCatalog, language, queueMissing]);
 
   useEffect(() => {
-    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (localStorage.getItem(EXPLICIT_LANGUAGE_KEY) === '1') return;
     let active = true;
     void getPreferredLanguage().then(preferred => {
       if (!active || !preferred || preferred === languageRef.current) return;
       localStorage.setItem(STORAGE_KEY, preferred);
+      localStorage.setItem(EXPLICIT_LANGUAGE_KEY, '1');
       ensureCatalog(preferred);
       setLanguageState(preferred);
     }).catch(() => undefined);

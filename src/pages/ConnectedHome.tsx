@@ -37,6 +37,8 @@ import OrganizerConnectedHomeSections from '../components/home/OrganizerConnecte
 import CoachConnectedHomeSections from '../components/home/CoachConnectedHomeSections';
 import ModeratorConnectedHomeSections from '../components/home/ModeratorConnectedHomeSections';
 import OmniaBrandLockup from '../components/OmniaBrandLockup';
+import { PageFooter } from '../components/PageFooter';
+import type { RoleThemeKey } from '../lib/roleTheme';
 import { PREVIEW_SESSION_KEY, PreviewReturnBar } from '../components/PreviewReturnButton';
 import type { CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -744,7 +746,7 @@ export default function ConnectedHome() {
     .map(role => ({ role: role as HomeAudience, home: HOME_CONFIGS[role as HomeAudience] }));
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
+    <div className="oga-connected-home-depth min-h-screen bg-[#F8FAFC] text-slate-900" style={{ '--oga-home-accent': config.accent, '--oga-home-soft': config.soft } as React.CSSProperties}>
       <header className="sticky top-0 z-40 border-b border-[#DCE5F0] bg-white/95 backdrop-blur-xl">
         <div className={`mx-auto flex min-h-[76px] max-w-7xl items-center gap-4 px-5 sm:px-6 lg:px-8 ${audience === 'apprenant' || audience === 'professeur' || audience === 'structure' || audience === 'recruteur' || audience === 'organisateur' || audience === 'coach' || audience === 'moderateur' ? 'flex-wrap py-2 lg:flex-nowrap' : 'justify-between'}`}>
           <OmniaBrandLockup href="/home" showSlogan={false} className="flex-none" />
@@ -796,7 +798,7 @@ export default function ConnectedHome() {
 
       {previewMode && <PreviewReturnBar label={config.label} />}
 
-      <main>
+      <main className="oga-connected-home-main">
         {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
@@ -1013,6 +1015,7 @@ export default function ConnectedHome() {
           </section>
         )}
       </main>
+      <PageFooter role={audience as RoleThemeKey} />
     </div>
   );
 }

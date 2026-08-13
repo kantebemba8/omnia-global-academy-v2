@@ -27,6 +27,7 @@ import type {
   SocialNetworkItem,
 } from '../../types/landingCms';
 import { resolvePublicHomeHero } from '../../types/landingCms';
+import { ECOSYSTEMS, type EcosystemId } from '../../lib/ecosystemRegistry';
 
 export type LandingPublicPartner = {
   id: string;
@@ -418,7 +419,6 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
 function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   const items = visibleItems(section);
   if (items.length === 0) return null;
-  const projects = items.find(item => safeHref(item.action_url) === '/projects' || item.title.toLowerCase().includes('project'));
 
   return (
     <>
@@ -477,78 +477,68 @@ function EcosystemSection({ section }: { section: LandingSectionConfig }) {
         </div>
       </section>
 
-      {projects && (
-        <section className="relative overflow-hidden border-b border-slate-200 bg-white px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div className="absolute right-[-8%] top-[-20%] h-[440px] w-[440px] rounded-full bg-[#EAF3FF] blur-3xl" />
-            <div className="absolute bottom-[-30%] left-[42%] h-[360px] w-[360px] rounded-full bg-[#FFF3D5] blur-3xl" />
-          </div>
-          <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,0.86fr)_minmax(470px,1.14fr)] lg:gap-16">
-            <div className="max-w-xl">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9A6A08]">Omnia Projects</p>
-              <h3 className="mt-3 text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{projects.title}</h3>
-              {projects.description && <p className="mt-5 text-base leading-8 text-slate-600">{projects.description}</p>}
-              <div className="mt-7 h-px w-24 bg-[#BF8813]" />
-              <p className="mt-5 text-sm leading-7 text-slate-500">Travaillez sur des briefs, produisez des livrables, recevez du feedback et construisez progressivement des preuves concrètes de vos compétences.</p>
-              {projects.action_url && projects.action_label && (
-                <Link to={safeHref(projects.action_url)} className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00183E]">
-                  {projects.action_label}<ArrowRight size={15} />
-                </Link>
-              )}
-            </div>
-
-            <div className="relative min-h-[360px] lg:min-h-[410px]" aria-hidden="true" style={{ perspective: '1400px' }}>
-              <div className="absolute left-[8%] top-[10%] h-[76%] w-[84%] rounded-[50%] bg-[radial-gradient(circle,rgba(71,134,222,0.18),rgba(71,134,222,0.04)_54%,transparent_72%)] blur-xl" />
-              <div className="absolute bottom-[8%] left-[14%] h-[56px] w-[72%] rounded-[50%] bg-[#002050]/15 blur-xl" />
-              <div className="absolute left-[18%] top-[17%] h-[245px] w-[335px] rounded-[26px] border border-[#BFD0E7] bg-white shadow-[0_32px_70px_rgba(0,32,80,0.16)]" style={{ transform: 'rotateY(-10deg) rotateX(5deg) translateZ(42px)' }}>
-                <div className="absolute inset-x-0 top-0 flex h-12 items-center justify-between rounded-t-[26px] border-b border-[#DCE6F2] bg-[#F7FAFE] px-5">
-                  <span className="h-2.5 w-24 rounded-full bg-[#002050]/80" />
-                  <span className="h-7 w-7 rounded-full border border-[#D6E1EF] bg-white" />
-                </div>
-                <div className="absolute left-6 top-[74px] right-6">
-                  <div className="h-3 w-[58%] rounded-full bg-[#002050]/85" />
-                  <div className="mt-3 h-2 w-[84%] rounded-full bg-slate-200" />
-                  <div className="mt-2 h-2 w-[69%] rounded-full bg-slate-200" />
-                  <div className="mt-7 grid grid-cols-[1fr_0.76fr] gap-4">
-                    <div className="space-y-3">
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                      <div className="h-10 rounded-xl border border-[#DCE6F2] bg-[#F8FAFD]" />
-                    </div>
-                    <div className="rounded-2xl bg-[#002050] p-4 shadow-[0_16px_32px_rgba(0,32,80,0.18)]">
-                      <div className="h-2 w-14 rounded-full bg-[#E8BC5B]" />
-                      <div className="mt-4 h-2 w-full rounded-full bg-white/20" />
-                      <div className="mt-2 h-2 w-[76%] rounded-full bg-white/20" />
-                      <div className="mt-7 h-8 rounded-lg bg-white/10" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="absolute right-[7%] top-[9%] h-[150px] w-[122px] rounded-[18px] border border-[#E1C67F] bg-[#FFFDF7] shadow-[0_22px_50px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(8deg) translateZ(78px)' }}>
-                <div className="mx-auto mt-5 h-12 w-12 rounded-full border-[5px] border-[#BF8813]/65 bg-[#FFF7E5]" />
-                <div className="mx-auto mt-4 h-2 w-16 rounded-full bg-[#002050]/75" />
-                <div className="mx-auto mt-2 h-2 w-11 rounded-full bg-slate-200" />
-              </div>
-              <div className="absolute bottom-[12%] left-[7%] h-[112px] w-[156px] rounded-[18px] border border-[#C5D5E9] bg-[#EEF5FD] shadow-[0_20px_42px_rgba(0,32,80,0.12)]" style={{ transform: 'rotate(-8deg) translateZ(62px)' }}>
-                <div className="absolute left-5 top-5 h-3 w-20 rounded-full bg-[#1E5FAE]/75" />
-                <div className="absolute left-5 top-11 h-2 w-[74%] rounded-full bg-[#AFC5E0]" />
-                <div className="absolute bottom-5 left-5 right-5 flex items-end gap-2">
-                  <span className="h-5 flex-1 rounded-t bg-[#89ACD8]" />
-                  <span className="h-9 flex-1 rounded-t bg-[#3778C6]" />
-                  <span className="h-12 flex-1 rounded-t bg-[#BF8813]" />
-                </div>
-              </div>
-              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 560 410" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M46 313C130 221 222 261 305 196C375 141 420 72 523 87" stroke="#BF8813" strokeOpacity="0.52" strokeWidth="1.4" />
-                <path d="M76 338C170 255 259 294 350 231C420 181 459 139 542 150" stroke="#2F6EBB" strokeOpacity="0.32" strokeWidth="1.2" />
-                <circle cx="305" cy="196" r="4" fill="#BF8813" />
-                <circle cx="523" cy="87" r="4" fill="#2F6EBB" />
-              </svg>
-            </div>
-          </div>
-        </section>
-      )}
+      <NextStepSection />
     </>
+  );
+}
+
+const NEXT_STEP_ORDER: EcosystemId[] = ['formations', 'projects', 'career', 'talent', 'coaching', 'community', 'live'];
+const NEXT_STEP_ICONS: Record<EcosystemId, LucideIcon> = {
+  formations: BookOpen,
+  projects: Target,
+  career: Briefcase,
+  talent: Users,
+  coaching: Heart,
+  community: MessageCircle,
+  live: Video,
+};
+
+function NextStepSection() {
+  const steps = NEXT_STEP_ORDER.map(id => ECOSYSTEMS.find(item => item.id === id)).filter((item): item is (typeof ECOSYSTEMS)[number] => Boolean(item));
+  return (
+    <section className="relative overflow-hidden border-b border-slate-200 bg-white px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute right-[-9%] top-[-25%] h-[440px] w-[440px] rounded-full bg-[#EAF3FF] blur-3xl" />
+        <div className="absolute bottom-[-42%] left-[32%] h-[420px] w-[420px] rounded-full bg-[#FFF4D9] blur-3xl" />
+      </div>
+      <div className="relative mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(300px,0.72fr)_minmax(0,1.28fr)] lg:items-start lg:gap-16">
+        <div className="lg:sticky lg:top-28">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#BF8813]">Votre prochaine étape</p>
+          <h3 className="mt-3 max-w-lg text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Un même parcours, plusieurs directions possibles.</h3>
+          <p className="mt-5 max-w-xl text-base leading-8 text-slate-600">Selon votre objectif, poursuivez votre apprentissage, passez à la pratique, préparez votre évolution professionnelle, développez votre réseau ou échangez avec la communauté.</p>
+          <div className="mt-7 h-px w-24 bg-[#BF8813]" />
+          <p className="mt-5 max-w-lg text-sm leading-7 text-slate-500">Chaque espace reste autonome, mais vos acquis, expériences et opportunités peuvent se prolonger naturellement d’un écosystème à l’autre.</p>
+        </div>
+
+        <div className="relative" style={{ perspective: '1200px' }}>
+          <div className="absolute bottom-3 left-7 top-3 w-px bg-gradient-to-b from-[#BF8813]/60 via-[#8CA8CC]/55 to-transparent sm:left-8" aria-hidden="true" />
+          <div className="divide-y divide-slate-200 border-y border-slate-200 bg-white/75 backdrop-blur-sm">
+            {steps.map((step, index) => {
+              const Icon = NEXT_STEP_ICONS[step.id];
+              return (
+                <Link
+                  key={step.id}
+                  to={step.publicPath}
+                  className="group relative grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-4 py-5 pr-2 transition duration-300 hover:translate-x-1 motion-reduce:transform-none motion-reduce:transition-none sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:gap-5 sm:py-6"
+                >
+                  <span className="relative z-10 flex h-11 w-11 items-center justify-center rounded-full border bg-white shadow-[0_10px_22px_rgba(0,32,80,0.10)] transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_30px_rgba(0,32,80,0.16)] motion-reduce:transform-none motion-reduce:transition-none sm:h-12 sm:w-12" style={{ borderColor: step.border, color: step.accent }}>
+                    <Icon size={19} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <strong className="text-base font-black text-[#002050] sm:text-lg">{step.id === 'community' ? 'Omnia Communauté' : `Omnia ${step.name}`}</strong>
+                      <span className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: step.accent }}>{String(index + 1).padStart(2, '0')}</span>
+                    </span>
+                    <span className="mt-1.5 block text-sm leading-6 text-slate-500">{step.description}</span>
+                  </span>
+                  <ArrowRight size={17} className="text-slate-300 transition duration-300 group-hover:translate-x-1 motion-reduce:transform-none motion-reduce:transition-none" style={{ color: step.accent }} />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -19,7 +19,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { Navbar } from '../components/Navbar';
+import { PageFooter } from '../components/PageFooter';
 import { useLanguage } from '../i18n/LanguageContext';
 import { decodeQrFile, downloadOrShareRemoteFile, isNativeApp, scanQrWithNativeCamera } from '../lib/mobile';
 
@@ -151,71 +152,6 @@ function StatusIcon({ status }: { status: ResultStatus }) {
   return <AlertTriangle className={`${common} text-red-700`} />;
 }
 
-function PublicHeader() {
-  return (
-    <header className="border-b border-[#E8E0D3] bg-[#FBF8F2]">
-      <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 lg:px-6">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/IMG_0349.png" alt="Logo Omnia Global Academy" className="h-11 w-11 object-contain" />
-          <div>
-            <div className="text-[18px] font-bold tracking-[0.16em] text-[#002050]">OMNIA</div>
-            <div className="mt-0.5 text-[9px] font-semibold tracking-[0.18em] text-[#BF8813]">GLOBAL ACADEMY</div>
-          </div>
-        </Link>
-        <nav className="hidden items-center gap-8 md:flex">
-          <Link to="/" className="text-sm font-medium text-slate-700 hover:text-[#002050]">Accueil</Link>
-          <Link to="/catalogue" className="text-sm font-medium text-slate-700 hover:text-[#002050]">Formations</Link>
-          <Link to="/verify" className="text-sm font-semibold text-[#BF8813]">Certifications</Link>
-          <Link to="/a-propos" className="text-sm font-medium text-slate-700 hover:text-[#002050]">À propos</Link>
-          <Link to="/contact" className="text-sm font-medium text-slate-700 hover:text-[#002050]">Contact</Link>
-        </nav>
-        <LanguageSwitcher />
-      </div>
-    </header>
-  );
-}
-
-function PublicFooter() {
-  return (
-    <footer className="border-t border-[#E9E1D5] bg-[#FBF8F2]">
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-5 lg:px-6">
-        <div className="sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-3">
-            <img src="/IMG_0349.png" alt="Omnia Global Academy" className="h-10 w-10 object-contain" />
-            <div>
-              <div className="font-bold tracking-[0.14em] text-[#002050]">OMNIA</div>
-              <div className="text-[8px] font-semibold tracking-[0.16em] text-[#BF8813]">GLOBAL ACADEMY</div>
-            </div>
-          </div>
-          <p className="mt-4 text-xs leading-5 text-slate-600">Un service public de vérification sécurisé pour les certificats délivrés par la plateforme.</p>
-        </div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#002050]">Plateforme</p>
-          <Link to="/catalogue" className="mt-3 block text-xs text-slate-600 hover:text-[#002050]">Formations</Link>
-          <Link to="/verify" className="mt-2 block text-xs text-slate-600 hover:text-[#002050]">Certifications</Link>
-          <Link to="/inscription/professeur" className="mt-2 block text-xs text-slate-600 hover:text-[#002050]">Devenir formateur</Link>
-        </div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#002050]">Ressources</p>
-          <Link to="/contact" className="mt-3 block text-xs text-slate-600 hover:text-[#002050]">Aide & support</Link>
-          <Link to="/forum" className="mt-2 block text-xs text-slate-600 hover:text-[#002050]">Communauté</Link>
-        </div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#002050]">Informations</p>
-          <Link to="/a-propos" className="mt-3 block text-xs text-slate-600 hover:text-[#002050]">À propos</Link>
-          <Link to="/cgu" className="mt-2 block text-xs text-slate-600 hover:text-[#002050]">Conditions d’utilisation</Link>
-          <Link to="/confidentialite" className="mt-2 block text-xs text-slate-600 hover:text-[#002050]">Confidentialité</Link>
-        </div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#002050]">Sécurité</p>
-          <p className="mt-3 text-xs leading-5 text-slate-600">Les informations affichées proviennent directement de la base sécurisée d’Omnia Global Academy.</p>
-        </div>
-      </div>
-      <div className="border-t border-[#E9E1D5] px-5 py-4 text-center text-xs text-slate-500">© 2026 Omnia Global Academy. Tous droits réservés.</div>
-    </footer>
-  );
-}
-
 export default function VerifyCertificate() {
   const { locale } = useLanguage();
   const { certificateId } = useParams<{ certificateId: string }>();
@@ -337,50 +273,58 @@ export default function VerifyCertificate() {
   }[status];
 
   return (
-    <div className="min-h-screen bg-[#FCFAF6] text-slate-900">
-      <PublicHeader />
+    <div className="min-h-screen bg-[#F7F9FC] text-slate-900">
+      <Navbar />
 
-      <main>
-        <section className="relative overflow-hidden border-b border-[#EEE5D8] bg-[#FBF8F2]">
-          <div className="absolute -left-28 top-12 h-72 w-72 rounded-full border border-[#E7D7B7]/60" />
-          <div className="absolute -right-20 bottom-0 h-64 w-64 rounded-full border border-[#E7D7B7]/60" />
-          <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:px-6 lg:py-14">
+      <main className="pt-20">
+        <section className="relative overflow-hidden border-b border-[#123B68] bg-[#002050] text-white">
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div className="absolute -right-24 -top-28 h-[420px] w-[420px] rounded-full bg-[#1F66B3]/25 blur-3xl" />
+            <div className="absolute -bottom-52 left-[38%] h-[420px] w-[420px] rounded-full bg-[#BF8813]/15 blur-3xl" />
+            <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,.16) 0 1px, transparent 1.5px)', backgroundSize: '28px 28px', maskImage: 'linear-gradient(90deg, transparent, black 42%, black)' }} />
+          </div>
+          <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-5 py-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-16">
             <div>
-              <h1 className="max-w-xl text-4xl font-bold leading-[1.13] tracking-tight text-[#002050] sm:text-5xl">
-                VÉRIFICATION<br />DE <span className="text-[#BF8813]">CERTIFICAT</span>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#E9BC58]">Authenticité & confiance</p>
+              <h1 className="mt-4 max-w-2xl text-4xl font-black leading-[1.05] tracking-[-0.045em] sm:text-5xl lg:text-[3.5rem]">
+                Vérifier un <span className="text-[#E9BC58]">certificat Omnia</span>.
               </h1>
-              <div className="mt-5 h-1 w-14 rounded-full bg-[#BF8813]" />
-              <p className="mt-7 max-w-xl text-base leading-7 text-slate-700">
-                Entrez l’identifiant du certificat ou importez son QR code pour vérifier son authenticité.
+              <p className="mt-6 max-w-xl text-base leading-7 text-blue-100/75 sm:text-lg">
+                Entrez l’identifiant du certificat ou importez son QR code pour confirmer son authenticité directement auprès d’Omnia Global Academy.
               </p>
+              <div className="mt-7 flex flex-wrap gap-2 text-xs font-bold text-white/65">
+                <span className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5">Vérification publique</span>
+                <span className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5">QR code local</span>
+                <span className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5">Données sécurisées</span>
+              </div>
             </div>
 
-            <div className="relative mx-auto flex h-56 w-full max-w-md items-center justify-center">
-              <div className="absolute right-8 top-1 h-48 w-40 rounded-lg border-2 border-[#D7B56D] bg-white shadow-sm">
-                <div className="absolute right-0 top-0 h-12 w-12 rounded-bl-xl bg-[#F3DFAD]" />
-                <div className="mx-auto mt-12 h-3 w-20 rounded-full bg-slate-200" />
-                <div className="mx-auto mt-4 h-2 w-24 rounded-full bg-slate-100" />
-                <div className="mx-auto mt-3 h-2 w-20 rounded-full bg-slate-100" />
-                <div className="absolute bottom-5 right-4 flex h-14 w-14 items-center justify-center rounded-full border-4 border-[#BF8813] bg-white">
-                  <Award className="h-7 w-7 text-[#002050]" />
+            <div className="relative mx-auto h-64 w-full max-w-md motion-reduce:transform-none" aria-hidden="true" style={{ perspective: '1200px' }}>
+              <div className="absolute bottom-5 left-[12%] h-10 w-[76%] rounded-[50%] bg-black/30 blur-xl" />
+              <div className="absolute right-8 top-4 h-52 w-44 rounded-[24px] border border-white/25 bg-white shadow-[0_34px_70px_rgba(0,0,0,0.28)]" style={{ transform: 'rotateY(-10deg) rotateX(4deg) translateZ(36px)' }}>
+                <div className="absolute inset-x-5 top-7 h-2 rounded-full bg-[#002050]/80" />
+                <div className="absolute left-5 right-12 top-14 h-2 rounded-full bg-slate-200" />
+                <div className="absolute left-5 right-8 top-20 h-2 rounded-full bg-slate-100" />
+                <div className="absolute bottom-6 right-5 flex h-16 w-16 items-center justify-center rounded-full border-[5px] border-[#BF8813] bg-[#FFF9E9] shadow-lg">
+                  <Award className="h-8 w-8 text-[#002050]" />
                 </div>
               </div>
-              <div className="absolute left-10 top-14 flex h-32 w-32 items-center justify-center rounded-full border-[9px] border-[#002050] bg-white shadow-lg">
-                <QrCode className="h-16 w-16 text-[#002050]" />
+              <div className="absolute left-5 top-16 flex h-32 w-32 items-center justify-center rounded-full border-[8px] border-[#E9BC58] bg-[#063A76] text-white shadow-[0_24px_55px_rgba(0,0,0,0.32)]" style={{ transform: 'translateZ(72px)' }}>
+                <QrCode className="h-16 w-16" />
               </div>
-              <div className="absolute left-[138px] top-[154px] h-20 w-5 -rotate-45 rounded-full bg-[#002050]" />
+              <div className="absolute left-[126px] top-[168px] h-20 w-5 -rotate-45 rounded-full bg-[#E9BC58] shadow-lg" style={{ transform: 'translateZ(48px)' }} />
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-5 py-8 lg:px-6">
-          <div className="rounded-2xl border border-[#E7E0D6] bg-white p-5 shadow-[0_12px_30px_rgba(47,40,28,0.08)] sm:p-7">
+        <section className="relative z-10 mx-auto -mt-7 max-w-6xl px-5 pb-12 lg:px-6">
+          <div className="rounded-[24px] border border-[#DCE5F0] bg-white p-5 shadow-[0_24px_60px_rgba(0,32,80,0.12)] sm:p-7">
             <div className="flex border-b border-slate-200">
-              <button onClick={() => setActiveTab('id')} className={`relative px-5 pb-4 text-sm font-semibold ${activeTab === 'id' ? 'text-[#9B6A0A]' : 'text-slate-600'}`}>
+              <button onClick={() => setActiveTab('id')} className={`relative px-5 pb-4 text-sm font-semibold ${activeTab === 'id' ? 'text-[#8A610D]' : 'text-slate-600'}`}>
                 PAR IDENTIFIANT
                 {activeTab === 'id' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#BF8813]" />}
               </button>
-              <button onClick={() => setActiveTab('qr')} className={`relative px-5 pb-4 text-sm font-semibold ${activeTab === 'qr' ? 'text-[#9B6A0A]' : 'text-slate-600'}`}>
+              <button onClick={() => setActiveTab('qr')} className={`relative px-5 pb-4 text-sm font-semibold ${activeTab === 'qr' ? 'text-[#8A610D]' : 'text-slate-600'}`}>
                 PAR QR CODE
                 {activeTab === 'qr' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#BF8813]" />}
               </button>
@@ -408,14 +352,14 @@ export default function VerifyCertificate() {
                 </button>
               </div>
             ) : (
-              <div className="mt-6 rounded-xl border border-dashed border-[#D6C39D] bg-[#FDFBF7] px-6 py-8 text-center">
+              <div className="mt-6 rounded-xl border border-dashed border-[#C8D7E8] bg-[#F7FAFD] px-6 py-8 text-center">
                 <QrCode className="mx-auto h-10 w-10 text-[#BF8813]" />
                 <p className="mt-3 text-sm font-semibold text-[#002050]">Importer une photo du QR code</p>
                 <p className="mt-1 text-xs text-slate-500">La lecture reste locale sur votre appareil. Aucune image du QR code n’est envoyée.</p>
                 <button
                   onClick={() => void scanQrCode()}
                   disabled={scanLoading}
-                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg border border-[#BF8813] px-5 text-sm font-semibold text-[#9B6A0A] hover:bg-[#FFF8E8] disabled:opacity-60"
+                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg border border-[#BF8813] px-5 text-sm font-semibold text-[#8A610D] hover:bg-[#FFF8E8] disabled:opacity-60"
                 >
                   {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : nativeApp ? <QrCode className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
                   {nativeApp ? 'Scanner avec la caméra' : 'Choisir une image'}
@@ -427,7 +371,7 @@ export default function VerifyCertificate() {
           </div>
 
           {searched && result && (
-            <div className="mt-6 overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(47,40,28,0.07)]" style={{ borderColor: statusTheme.border }}>
+            <div className="mt-6 overflow-hidden rounded-2xl border bg-white shadow-[0_22px_50px_rgba(0,32,80,0.10)]" style={{ borderColor: statusTheme.border }}>
               <div className="grid lg:grid-cols-[0.82fr_1.18fr]">
                 <div className="flex items-center gap-5 border-b p-7 lg:border-b-0 lg:border-r" style={{ backgroundColor: statusTheme.bg, borderColor: `${statusTheme.border}30` }}>
                   <div className="flex h-24 w-24 flex-shrink-0 items-center justify-center rounded-full bg-white/80 shadow-sm">
@@ -458,7 +402,7 @@ export default function VerifyCertificate() {
               </div>
 
               {certificate && (
-                <div className="grid border-t border-[#EEE8DF] bg-[#FDFBF7] sm:grid-cols-3">
+                <div className="grid border-t border-slate-200 bg-[#F7FAFD] sm:grid-cols-3">
                   <Metric icon={Clock3} label="Durée de la formation" value={formatDuration(certificate.duration_minutes)} />
                   <Metric icon={GraduationCap} label="Type de certification" value={accreditations[0]?.certification_name || 'Certification Omnia'} />
                   <Metric icon={CalendarDays} label="Vérifié le" value={verifiedAt ? formatDateTime(verifiedAt.toISOString(), locale) : '—'} />
@@ -466,11 +410,11 @@ export default function VerifyCertificate() {
               )}
 
               {certificate && accreditations.length > 0 && (
-                <div className="border-t border-[#EEE8DF] p-7">
+                <div className="border-t border-slate-200 p-7">
                   <h2 className="text-base font-bold text-[#002050]">Organismes et reconnaissances associés</h2>
                   <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {accreditations.map((item, index) => (
-                      <div key={`${item.organization_name}-${index}`} className="rounded-xl border border-[#E9E1D5] bg-[#FCFAF6] p-4">
+                      <div key={`${item.organization_name}-${index}`} className="rounded-xl border border-[#DCE5F0] bg-[#F8FAFD] p-4">
                         <div className="flex items-start gap-3">
                           {item.badge_url || item.logo_url ? (
                             <img src={item.badge_url || item.logo_url} alt={item.organization_name || 'Organisme certificateur'} className="h-12 w-12 rounded-lg object-contain" />
@@ -481,7 +425,7 @@ export default function VerifyCertificate() {
                             <p className="truncate text-sm font-bold text-[#002050]">{item.organization_name || 'Organisme certificateur'}</p>
                             <p className="mt-1 text-xs text-slate-600">{item.certification_name || 'Certification associée'}</p>
                             {item.certification_code && <p className="mt-2 text-[11px] font-medium text-slate-500">Code : {item.certification_code}</p>}
-                            {(item.credit_value || item.credit_unit) && <p className="mt-1 text-[11px] font-semibold text-[#9B6A0A]">{item.credit_value ?? ''} {item.credit_unit ?? ''}</p>}
+                            {(item.credit_value || item.credit_unit) && <p className="mt-1 text-[11px] font-semibold text-[#8A610D]">{item.credit_value ?? ''} {item.credit_unit ?? ''}</p>}
                           </div>
                         </div>
                       </div>
@@ -497,18 +441,18 @@ export default function VerifyCertificate() {
               <button onClick={() => { setInput(''); setResult(null); setSearched(false); navigate('/verify', { replace: true }); }} className="inline-flex items-center gap-2 text-sm font-semibold text-[#002050] hover:text-[#BF8813]">
                 <RefreshCcw className="h-4 w-4" /> Vérifier un autre certificat
               </button>
-              <Link to="/" className="text-sm font-semibold text-[#9B6A0A] hover:text-[#002050]">Retour à Omnia Global Academy</Link>
+              <Link to="/accueil" className="text-sm font-semibold text-[#8A610D] hover:text-[#002050]">Retour à Omnia Global Academy</Link>
             </div>
           )}
 
-          <div className="mx-auto mt-7 flex max-w-2xl items-start gap-3 rounded-xl border border-[#E9DFC9] bg-[#F8F2E8] px-5 py-4">
+          <div className="mx-auto mt-7 flex max-w-2xl items-start gap-3 rounded-xl border border-[#DCE5F0] bg-[#F3F7FC] px-5 py-4">
             <LockKeyhole className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#BF8813]" />
             <p className="text-xs leading-5 text-slate-600">Ce service de vérification est fourni par Omnia Global Academy. Les informations affichées proviennent de notre base de données sécurisée.</p>
           </div>
         </section>
       </main>
 
-      <PublicFooter />
+      <PageFooter />
     </div>
   );
 }
@@ -524,8 +468,8 @@ function Detail({ label, value, mono = false, accent }: { label: string; value: 
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Clock3; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 border-b border-[#EEE8DF] px-6 py-5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D9B96F] bg-white"><Icon className="h-5 w-5 text-[#BF8813]" /></div>
+    <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D9C17F] bg-white"><Icon className="h-5 w-5 text-[#BF8813]" /></div>
       <div>
         <p className="text-[11px] text-slate-500">{label}</p>
         <p className="mt-0.5 text-xs font-semibold text-[#002050]">{value}</p>

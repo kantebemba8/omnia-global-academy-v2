@@ -4464,3 +4464,62 @@ html.oga-native .oga-scorm-fullscreen {
 .oga-ecosystem-content [class*="bg-[#F8F9FA]"] {
   background-color: var(--oga-ecosystem-bg) !important;
 }
+
+
+/* Lot final design — profondeur légère des accueils, sans modifier les composants métiers. */
+.oga-connected-home-depth {
+  --oga-home-accent: #BF8813;
+  --oga-home-soft: #FFF7E6;
+  background:
+    radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--oga-home-accent) 8%, transparent), transparent 28rem),
+    #F8FAFC;
+}
+.oga-connected-home-main {
+  position: relative;
+  isolation: isolate;
+  perspective: 1400px;
+}
+.oga-connected-home-main > section {
+  position: relative;
+  transform-style: preserve-3d;
+}
+.oga-connected-home-main > section::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  right: clamp(1rem, 5vw, 5rem);
+  top: 1.25rem;
+  width: clamp(7rem, 13vw, 11rem);
+  height: clamp(2rem, 4vw, 3.5rem);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--oga-home-accent) 7%, transparent);
+  filter: blur(24px);
+  opacity: .7;
+}
+.oga-connected-home-main > section > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .oga-connected-home-main a[class*="rounded-"][class*="border"] {
+    transform: translateZ(0);
+    transition-property: transform, box-shadow, border-color, background-color;
+    transition-duration: 220ms;
+  }
+  .oga-connected-home-main a[class*="rounded-"][class*="border"]:hover {
+    transform: translateY(-2px) translateZ(8px);
+    box-shadow: 0 16px 34px rgba(0, 32, 80, .10);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oga-connected-home-depth *,
+  .oga-public-home-depth * {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
