@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   FileBadge2,
   GraduationCap,
+  Globe2,
   Heart,
   MessageCircle,
   ShieldCheck,
@@ -109,134 +110,183 @@ function actionFor(item: LandingContentItem) {
   );
 }
 
-function HeroPreviewCard() {
+function HeroJourneyBackground() {
   return (
-    <div className="relative mx-auto w-full max-w-[560px]">
-      <div className="absolute inset-0 -translate-x-2 translate-y-2 rounded-[2rem] border border-[#D8E4F8] bg-white/30 blur-sm" aria-hidden="true" />
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/20 bg-[linear-gradient(145deg,#08245C_0%,#0A357F_42%,#0F4FB4_100%)] p-5 text-white shadow-[0_26px_70px_rgba(0,32,80,0.28)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(255,220,122,0.42),rgba(255,220,122,0)_24%),radial-gradient(circle_at_18%_82%,rgba(255,255,255,0.10),rgba(255,255,255,0)_30%)]" />
-        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-70" viewBox="0 0 520 360" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M32 298C104 272 162 270 228 244C286 222 334 180 404 180C446 180 474 188 520 176" stroke="rgba(255,255,255,0.70)" strokeWidth="2" />
-          <path d="M56 324C130 292 196 294 268 264C332 238 376 206 440 206C474 206 496 212 520 206" stroke="rgba(229,186,98,0.78)" strokeWidth="1.8" />
-          <ellipse cx="388" cy="256" rx="112" ry="46" transform="rotate(-18 388 256)" stroke="rgba(255,255,255,0.24)" />
-          <ellipse cx="396" cy="260" rx="96" ry="38" transform="rotate(18 396 260)" stroke="rgba(229,186,98,0.22)" />
-          <circle cx="352" cy="140" r="4" fill="rgba(255,255,255,0.9)" />
-          <circle cx="430" cy="214" r="3.5" fill="rgba(229,186,98,0.95)" />
-          <circle cx="318" cy="286" r="2.6" fill="rgba(255,255,255,0.75)" />
-        </svg>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <div className="absolute inset-0 bg-[linear-gradient(105deg,#00132F_0%,#002050_43%,#063A76_72%,#0B3764_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_56%,rgba(255,193,74,0.30),rgba(255,193,74,0.08)_19%,transparent_42%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,48,0.98)_0%,rgba(0,32,80,0.92)_39%,rgba(0,32,80,0.48)_61%,rgba(0,32,80,0.06)_100%)]" />
 
-        <div className="relative flex flex-wrap gap-2 text-[11px] font-semibold text-white/80 sm:text-xs">
-          {['Apprendre', 'Pratiquer', 'Certifier', 'Évoluer'].map(label => (
-            <span key={label} className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 backdrop-blur-sm">{label}</span>
-          ))}
-        </div>
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 1600 760"
+        fill="none"
+        preserveAspectRatio="xMaxYMid slice"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id="ogaGoldTrail" x1="790" y1="740" x2="1525" y2="250" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#BF8813" stopOpacity="0" />
+            <stop offset="0.32" stopColor="#E8B84F" stopOpacity="0.75" />
+            <stop offset="0.72" stopColor="#FFE5A1" stopOpacity="1" />
+            <stop offset="1" stopColor="#BF8813" stopOpacity="0.2" />
+          </linearGradient>
+          <linearGradient id="ogaBlueTrail" x1="820" y1="690" x2="1540" y2="270" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#2E6CC7" stopOpacity="0" />
+            <stop offset="0.55" stopColor="#7FB9FF" stopOpacity="0.46" />
+            <stop offset="1" stopColor="#D8ECFF" stopOpacity="0.18" />
+          </linearGradient>
+          <radialGradient id="ogaSun" cx="0" cy="0" r="1" gradientTransform="translate(1258 476) rotate(90) scale(154 198)" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#FFF3C7" stopOpacity="0.98" />
+            <stop offset="0.2" stopColor="#F5C35C" stopOpacity="0.68" />
+            <stop offset="0.58" stopColor="#D69419" stopOpacity="0.18" />
+            <stop offset="1" stopColor="#D69419" stopOpacity="0" />
+          </radialGradient>
+          <filter id="ogaGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="10" result="blur" />
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="ogaSoftGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
 
-        <div className="relative mt-6 grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-[#E5BA62] sm:text-xs">Parcours Omnia</p>
-            <h3 className="mt-3 text-2xl font-black leading-tight sm:text-[2rem]">Développez des compétences utiles et rendez-les visibles.</h3>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-white/72">Une même expérience relie formation, pratique, preuves, accompagnement et accès aux opportunités.</p>
-          </div>
+        <circle cx="1258" cy="476" r="190" fill="url(#ogaSun)" />
 
-          <div className="grid gap-3">
-            {[
-              ['01. Formation', 'Parcours guidés et évaluations'],
-              ['02. Projets', 'Missions, portfolio et livrables'],
-              ['03. Preuves', 'Certificats et validations vérifiables'],
-              ['04. Opportunités', 'Career, Talent, coaching et réseau'],
-            ].map(([label, description], index) => (
-              <div key={label} className={`rounded-2xl border px-4 py-3 backdrop-blur-sm ${index === 3 ? 'border-[#E5BA62]/45 bg-[#0E275E]/70' : 'border-white/14 bg-white/10'}`}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/56">{label}</p>
-                <p className="mt-1.5 text-sm font-semibold leading-5 text-white">{description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        <g opacity="0.28" stroke="#E9BD62">
+          <ellipse cx="1160" cy="370" rx="360" ry="154" transform="rotate(-16 1160 370)" />
+          <ellipse cx="1160" cy="370" rx="290" ry="120" transform="rotate(16 1160 370)" />
+          <ellipse cx="1160" cy="370" rx="228" ry="92" transform="rotate(-31 1160 370)" />
+          <circle cx="992" cy="219" r="52" opacity="0.55" />
+        </g>
+
+        <g opacity="0.22" stroke="#8FC0FF">
+          <ellipse cx="1118" cy="365" rx="425" ry="186" transform="rotate(-8 1118 365)" />
+          <ellipse cx="1130" cy="372" rx="328" ry="147" transform="rotate(24 1130 372)" />
+        </g>
+
+        <path d="M0 604C180 560 345 578 505 592C697 610 838 576 986 542C1095 517 1174 506 1281 520C1398 536 1500 569 1600 570V760H0V604Z" fill="#001B3E" fillOpacity="0.68" />
+        <path d="M0 627C182 588 358 604 510 620C706 640 830 605 972 578C1119 551 1235 565 1351 596C1456 624 1531 638 1600 638V760H0V627Z" fill="#001329" fillOpacity="0.78" />
+
+        <g filter="url(#ogaGlow)">
+          <path d="M662 786C862 738 1040 691 1192 604C1292 547 1370 494 1435 408C1482 346 1515 289 1568 174" stroke="url(#ogaGoldTrail)" strokeWidth="17" strokeLinecap="round" />
+          <path d="M716 790C917 736 1060 690 1211 612C1322 555 1412 492 1478 398C1515 346 1544 298 1588 205" stroke="#FFF1BF" strokeOpacity="0.74" strokeWidth="4.5" strokeLinecap="round" />
+        </g>
+
+        <g opacity="0.74">
+          <path d="M620 752C815 710 998 664 1144 590C1257 532 1342 480 1419 393C1485 318 1515 250 1560 139" stroke="url(#ogaBlueTrail)" strokeWidth="3" strokeLinecap="round" />
+          <path d="M565 748C776 707 959 668 1114 603C1241 550 1358 483 1433 392C1491 321 1528 248 1584 116" stroke="#E5B95F" strokeOpacity="0.54" strokeWidth="1.4" strokeDasharray="3 8" />
+          <path d="M732 730C900 691 1040 644 1162 580C1280 517 1362 457 1423 372" stroke="#FFFFFF" strokeOpacity="0.28" strokeWidth="1.2" />
+        </g>
+
+        <g fill="#F3C466" filter="url(#ogaSoftGlow)">
+          <circle cx="910" cy="235" r="3.6" />
+          <circle cx="1018" cy="336" r="4.2" />
+          <circle cx="1142" cy="212" r="3" />
+          <circle cx="1202" cy="472" r="4.8" />
+          <circle cx="1320" cy="330" r="3.8" />
+          <circle cx="1436" cy="224" r="3.2" />
+          <circle cx="1495" cy="388" r="4" />
+          <circle cx="1550" cy="274" r="3.1" />
+        </g>
+
+        <g fill="#8DC1FF" opacity="0.72">
+          <circle cx="842" cy="322" r="2.7" />
+          <circle cx="1065" cy="176" r="2.4" />
+          <circle cx="1276" cy="231" r="2.8" />
+          <circle cx="1511" cy="491" r="2.5" />
+        </g>
+      </svg>
+
+      <div className="absolute inset-x-0 bottom-0 h-48 bg-[linear-gradient(180deg,transparent,rgba(0,18,45,0.50))]" />
     </div>
   );
 }
 
+type HeroStatConfig = {
+  key: keyof LandingStats;
+  label: string;
+  Icon: LucideIcon;
+};
+
+const HERO_STATS: HeroStatConfig[] = [
+  { key: 'apprenants', label: 'Apprenants', Icon: Users },
+  { key: 'formations', label: 'Formations', Icon: BookOpen },
+  { key: 'formateurs', label: 'Professeurs', Icon: GraduationCap },
+  { key: 'etablissements', label: 'Structures', Icon: Building2 },
+  { key: 'pays', label: 'Pays', Icon: Globe2 },
+];
+
 function HeroSection({ section, stats, statsVisibility }: { section: LandingSectionConfig; stats: LandingStats; statsVisibility: LandingStatsVisibility }) {
   const hero = resolvePublicHomeHero(section);
-  const visibleStats = ([
-    ['formations', 'Formations'],
-    ['apprenants', 'Apprenants'],
-    ['pays', 'Pays'],
-    ['formateurs', 'Professeurs'],
-    ['etablissements', 'Structures'],
-  ] as Array<[keyof LandingStats, string]>).filter(([key]) => statsVisibility[key] && stats[key]);
+  const visibleStats = HERO_STATS.filter(({ key }) => statsVisibility[key] && Boolean(stats[key]));
+  const primaryLabel = hero.primary_cta_label?.trim() || 'Créer mon compte';
+  const primaryHref = safeHref(hero.primary_cta_url, '/inscription');
+  const secondaryLabel = hero.secondary_cta_label?.trim() || 'Explorer les formations';
+  const secondaryHref = safeHref(hero.secondary_cta_url, '/catalogue');
+  const heroDescription = hero.subtitle?.trim() || hero.body?.trim();
 
   return (
-    <>
-      <section id="contenu-principal" className="border-b border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#F5F9FF_100%)] pt-[112px] sm:pt-[118px]">
-        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
-          <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-10">
-            <div className="max-w-2xl">
-              {hero.eyebrow && <p className="text-[11px] font-black uppercase tracking-[0.32em] text-[#BF8813] sm:text-xs">{hero.eyebrow}</p>}
-              <h1 className="mt-3 text-[2.2rem] font-black leading-[1.04] tracking-[-0.045em] text-[#002050] sm:text-[2.7rem] lg:text-[3.2rem]">
-                {hero.title}
-              </h1>
-              {hero.subtitle && <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">{hero.subtitle}</p>}
-              {hero.body && <p className="mt-4 max-w-xl text-sm leading-7 text-slate-500 sm:text-[0.96rem]">{hero.body}</p>}
+    <section id="contenu-principal" className="relative isolate overflow-hidden bg-[#002050] pt-[112px] text-white sm:pt-[118px]">
+      <HeroJourneyBackground />
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {[
-                  ['Formations guidées', 'Progressez avec des parcours, modules et évaluations structurés.'],
-                  ['Pratique concrète', 'Travaillez sur des projets, missions et livrables utiles.'],
-                  ['Preuves vérifiables', 'Valorisez certificats, badges et éléments de portfolio.'],
-                  ['Carrière connectée', 'Préparez votre profil et ouvrez l’accès aux opportunités.'],
-                ].map(([title, description], index) => (
-                  <div key={title} className={`rounded-2xl border px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] ${index === 0 || index === 3 ? 'border-[#D9E7FB] bg-white' : 'border-[#E7EEF8] bg-[#FBFDFF]'}`}>
-                    <p className="text-sm font-black text-[#002050]">{title}</p>
-                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className={`relative mx-auto flex min-h-[620px] max-w-7xl flex-col px-5 pb-8 pt-12 sm:px-6 sm:pb-10 sm:pt-14 lg:min-h-[650px] lg:px-8 lg:pb-10 lg:pt-16 ${visibleStats.length ? 'justify-between' : 'justify-center'}`}>
+        <div className="max-w-[720px] py-4 sm:py-6 lg:py-8">
+          {hero.eyebrow && (
+            <p className="mb-5 flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.28em] text-[#E9B84E] sm:text-xs">
+              <span className="h-px w-8 bg-[#BF8813]" />
+              {hero.eyebrow}
+            </p>
+          )}
 
-            <div className="lg:pl-4">
-              <HeroPreviewCard />
-            </div>
+          <h1 className="max-w-[720px] text-[2.65rem] font-black leading-[0.98] tracking-[-0.045em] text-white sm:text-[3.55rem] lg:text-[4.45rem]">
+            {hero.title === 'Transformez vos compétences en preuves et en opportunités.' ? (
+              <>
+                Transformez vos compétences en <span className="text-[#D59A20]">preuves et en opportunités.</span>
+              </>
+            ) : hero.title}
+          </h1>
+
+          {heroDescription && (
+            <p className="mt-6 max-w-[610px] text-[0.98rem] leading-7 text-white/80 sm:text-[1.05rem] sm:leading-8">
+              {heroDescription}
+            </p>
+          )}
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <Link
+              to={primaryHref}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#BF8813] px-6 py-3 text-sm font-black text-white shadow-[0_14px_36px_rgba(191,136,19,0.28)] transition hover:-translate-y-0.5 hover:bg-[#D09A24] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#002050]"
+            >
+              {primaryLabel}<ArrowRight size={17} />
+            </Link>
+            <Link
+              to={secondaryHref}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/50 bg-[#001A42]/40 px-6 py-3 text-sm font-black text-white backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-[#E2B451] hover:bg-[#00245A]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#002050]"
+            >
+              {secondaryLabel}<ArrowRight size={17} />
+            </Link>
           </div>
         </div>
-      </section>
 
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8 lg:gap-4 lg:py-6">
-          {[
-            ['Parcours structurés', 'Objectifs clairs, évaluations et suivi dans un même cadre.', Target],
-            ['Projets & pratique', 'Appliquez les acquis dans des contextes concrets.', BookOpen],
-            ['Preuves & visibilité', 'Certificats, portfolio et compétences vérifiables.', ShieldCheck],
-            ['Carrière & opportunités', 'Career, Talent, coaching et réseau professionnel.', Briefcase],
-          ].map(([title, description, Icon]) => {
-            const CapabilityIcon = Icon as LucideIcon;
-            return (
-              <div key={String(title)} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-[#FBFCFE] px-4 py-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF7E7] text-[#BF8813]"><CapabilityIcon size={20} /></span>
+        {visibleStats.length > 0 && (
+          <dl className="mt-8 grid grid-cols-1 overflow-hidden rounded-2xl border border-white/20 bg-[#00152F]/60 shadow-[0_20px_55px_rgba(0,0,0,0.18)] backdrop-blur-md min-[460px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            {visibleStats.map(({ key, label, Icon }, index) => (
+              <div key={key} className={`flex min-h-[112px] items-center gap-3 px-4 py-5 sm:px-5 ${index > 0 ? 'border-l border-white/10' : ''} ${index >= 2 ? 'border-t border-white/10 sm:border-t-0' : ''}`}>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#D7A23C]/50 bg-[#BF8813]/10 text-[#E7B956]">
+                  <Icon size={22} strokeWidth={1.8} />
+                </span>
                 <div>
-                  <strong className="block text-sm font-bold text-[#002050]">{String(title)}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">{String(description)}</span>
+                  <dd className="text-lg font-black text-white sm:text-xl">{stats[key]}</dd>
+                  <dt className="mt-0.5 text-xs font-semibold uppercase tracking-[0.12em] text-white/60">{label}</dt>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {visibleStats.length > 0 && (
-        <section className="border-b border-slate-200 bg-[#F8FAFC]">
-          <dl className="mx-auto grid max-w-7xl grid-cols-2 px-5 sm:px-6 md:grid-cols-3 lg:grid-cols-5 lg:px-8">
-            {visibleStats.map(([key, label]) => (
-              <div key={key} className="border-b border-slate-200 py-5 pr-4 sm:border-r md:border-b-0">
-                <dd className="text-xl font-black text-[#002050]">{stats[key]}</dd>
-                <dt className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
               </div>
             ))}
           </dl>
-        </section>
-      )}
-    </>
+        )}
+      </div>
+    </section>
   );
 }
 

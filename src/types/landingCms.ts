@@ -587,16 +587,17 @@ export function createLandingSection(type: LandingSectionType, order: number): L
 
 
 const HOME_HERO_REFRESH = {
-  eyebrow: 'Formation · pratique · certification · opportunités',
-  title: 'Apprenez, pratiquez, certifiez et avancez vers de vraies opportunités.',
-  subtitle: 'Omnia Global Academy réunit formations, projets, coaching, lives, communauté et outils carrière dans un même parcours pour transformer vos compétences en résultats concrets.',
-  body: 'Progressez avec des parcours structurés, produisez des preuves vérifiables, développez votre profil professionnel et rendez-vous plus visible pour les opportunités qui comptent.',
+  eyebrow: 'Apprendre · pratiquer · certifier · avancer',
+  title: 'Transformez vos compétences en preuves et en opportunités.',
+  subtitle: 'Apprenez de manière structurée, réalisez des projets concrets, obtenez des certifications vérifiables, bénéficiez de coaching personnalisé et progressez avec une communauté engagée vers votre prochaine opportunité.',
+  body: '',
 } as const;
 
 function shouldRefreshHomeHero(section: LandingSectionConfig) {
   const signal = `${section.eyebrow} ${section.title} ${section.subtitle} ${section.body}`.toLowerCase();
   return [
     'apprenez. prouvez vos compétences. avancez.',
+    'apprenez, pratiquez, certifiez et avancez vers de vraies opportunités.',
     'omnia réunit formations, projets, certifications vérifiables',
     'formez-vous',
     'certifiez-vous',
