@@ -1653,7 +1653,6 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
     setUploading(true);
     setUploadProgress(10);
     try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
       const bucketMap: Record<string, string> = {
         image: 'course-images', video: 'course-videos', audio: 'course-audios',
@@ -1685,13 +1684,13 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
 
       setUploadProgress(100);
       if (saveRes.success) {
-        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+        const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
         onUpdate({
-          file_url: publicUrl,
+          file_url: secureUrl,
           file_name: file.name,
           file_size: file.size,
           file_mime: file.type,
-          content_json: { ...c, url: publicUrl, title: c.title || file.name },
+          content_json: { ...c, url: secureUrl, title: c.title || file.name },
         });
       }
     } catch (err) {

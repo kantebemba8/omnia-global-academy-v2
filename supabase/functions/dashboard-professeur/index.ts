@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { signCertificatePdf, signStoredValue } from "../_shared/protected-storage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -302,13 +303,17 @@ Deno.serve(async (req: Request) => {
         sb.from("wallet_transactions").select("id,type,amount_xof,description,created_at").eq("wallet_id", wallet.id).order("created_at", { ascending: false }).limit(100),
         courseIds.length
           ? sb.from("certificates")
-            .select("id,omnia_certificate_id,user_id,student_full_name,course_id,course_title,cpd_accredited,status,pdf_url,issued_at")
+            .select("id,omnia_certificate_id,user_id,student_full_name,course_id,course_title,cpd_accredited,status,validity_status,expires_at,pdf_url,pdf_storage_path,issued_at")
             .in("course_id", courseIds)
             .order("issued_at", { ascending: false })
           : Promise.resolve({ data: [], error: null }),
       ])
       : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
     for (const result of [payoutResult, transactionResult, certificateResult]) if (result.error) throw result.error;
+
+    const professorForResponse=professor?{...professor}:null;
+    if(professorForResponse?.signature_url){professorForResponse.signature_url=await signStoredValue(sb,professorForResponse.signature_url,"certificates",900)||professorForResponse.signature_url;}
+    const certificates=await Promise.all((certificateResult.data??[]).map(async(certificate:any)=>{const revoked=certificate.validity_status==="revoked"||["revoked","revoque"].includes(String(certificate.status||"").toLowerCase());const expired=Boolean(certificate.expires_at&&new Date(certificate.expires_at)<new Date());const signedPdf=!revoked&&!expired?await signCertificatePdf(sb,certificate.pdf_storage_path,certificate.pdf_url,300):null;return {...certificate,pdf_url:signedPdf};}));
 
     const url = new URL(req.url);
     const analytics = url.searchParams.get("analytics") === "1"
@@ -320,7 +325,7 @@ Deno.serve(async (req: Request) => {
 
     return json({
       user,
-      professeur: professor || null,
+      professeur: professorForResponse,
       kpis: {
         solde_retirable_xof: Math.max(0, balance - reserved),
         gains_cumules_xof: Number(wallet?.total_earned_xof || 0),
@@ -328,7 +333,7 @@ Deno.serve(async (req: Request) => {
         note_globale: globalRating,
       },
       formations,
-      certificates: certificateResult.data ?? [],
+      certificates,
       payout_requests: payoutResult.data ?? [],
       transactions: transactionResult.data ?? [],
       wallet: {

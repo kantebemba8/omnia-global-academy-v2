@@ -232,7 +232,7 @@ export function ProfesseurProfil() {
                           });
                           const data=await res.json().catch(()=>({}));
                           if(!res.ok||!data.url){setMsg({text:data.message||data.error||'Téléversement de la signature impossible.',ok:false});return;}
-                          setProfForm((p)=>({...p,signature_url:data.url}));
+                          setProfForm((p)=>({...p,signature_url:data.preview_url||data.url}));
                           setMsg({text:'Signature professionnelle enregistrée.',ok:true});
                         };
                         reader.readAsDataURL(file);

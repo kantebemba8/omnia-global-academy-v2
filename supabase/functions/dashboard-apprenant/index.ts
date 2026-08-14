@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { signCertificatePdf } from "../_shared/protected-storage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,13 +51,14 @@ Deno.serve(async (req: Request) => {
     // Certificats réellement émis pour l'apprenant. Le tableau de bord ne doit
     // pas confondre une formation réussie avec un certificat déjà généré.
     const { data: certificates, error: certificatesError } = await sb.from("certificates")
-      .select("id,omnia_certificate_id,course_id,course_title,course_level,course_category,cpd_accredited,cpd_hours,cpd_badge_url,cpd_pending,pdf_url,qr_svg,verification_url,issued_at,status,validity_status,expires_at")
+      .select("id,omnia_certificate_id,course_id,course_title,course_level,course_category,cpd_accredited,cpd_hours,cpd_badge_url,cpd_pending,pdf_url,pdf_storage_path,qr_svg,verification_url,issued_at,status,validity_status,expires_at")
       .eq("user_id", userId)
       .order("issued_at", { ascending: false });
     if (certificatesError) throw certificatesError;
 
     const now = Date.now();
-    const validCertificates = (certificates ?? []).filter((row) => {
+    const certificateRows=await Promise.all((certificates??[]).map(async(row:any)=>{const status=String(row.status||"").toLowerCase(),validity=String(row.validity_status||"").toLowerCase();const revoked=validity==="revoked"||status==="revoked"||status==="revoque";const expired=Boolean(row.expires_at&&Date.parse(row.expires_at)<now);const signedPdf=!revoked&&!expired?await signCertificatePdf(sb,row.pdf_storage_path,row.pdf_url,300):null;return {...row,pdf_url:signedPdf};}));
+    const validCertificates = certificateRows.filter((row) => {
       const certificate = row as unknown as { status?: string | null; validity_status?: string | null; expires_at?: string | null };
       const status = String(certificate.status || "").toLowerCase();
       const validity = String(certificate.validity_status || "").toLowerCase();
@@ -170,7 +172,7 @@ Deno.serve(async (req: Request) => {
       },
       courses_en_cours: coursesEnCours.slice(0, 6),
       cours_termines: coursesTermines,
-      certificates: certificates ?? [],
+      certificates: certificateRows,
       activite_recente: (recentActivity ?? []).map((a) => {
         const act = a as unknown as { lesson_id: string; course_id: string; updated_at: string; course_lessons: { title: string } | null };
         return { lesson_id: act.lesson_id, course_id: act.course_id, lesson_title: act.course_lessons?.title ?? "", completed_at: act.updated_at };

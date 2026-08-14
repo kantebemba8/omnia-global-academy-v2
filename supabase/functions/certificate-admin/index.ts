@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { createSignedObjectUrl, signCertificatePdf, signStoredValue, storageRef } from "../_shared/protected-storage.ts";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
 const cors={
@@ -27,7 +28,7 @@ async function uploadBase64(sb:any,folder:string,filename:string,mime:string,dat
   const path=`${folder}/${crypto.randomUUID()}-${filename.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
   const {error}=await sb.storage.from("certificates").upload(path,bytes,{contentType:mime,upsert:false});
   if(error)throw error;
-  return sb.storage.from("certificates").getPublicUrl(path).data.publicUrl;
+  return {url:storageRef("certificates",path),preview_url:await createSignedObjectUrl(sb,"certificates",path,900)};
 }
 
 
@@ -70,7 +71,12 @@ Deno.serve(async req=>{
         .select("*")
         .order("issued_at",{ascending:false});
       if(error)throw error;
-      return json({success:true,certificates:data||[]});
+      const courseRows=(data||[]).filter((row:any)=>row.registry_source==="course");
+      const courseIds=courseRows.map((row:any)=>row.source_record_id);
+      const {data:courseCertificates}=courseIds.length?await sb.from("certificates").select("id,pdf_storage_path,pdf_url,status,validity_status,expires_at").in("id",courseIds):{data:[]};
+      const certMap=new Map((courseCertificates||[]).map((row:any)=>[String(row.id),row]));
+      const certificates=await Promise.all((data||[]).map(async(row:any)=>{if(row.registry_source!=="course")return row;const cert:any=certMap.get(String(row.source_record_id));if(!cert)return {...row,pdf_url:null};const revoked=cert.validity_status==="revoked"||["revoked","revoque"].includes(String(cert.status||"").toLowerCase());const expired=Boolean(cert.expires_at&&new Date(cert.expires_at)<new Date());const pdfUrl=!revoked&&!expired?await signCertificatePdf(sb,cert.pdf_storage_path,cert.pdf_url,300):null;return {...row,pdf_url:pdfUrl};}));
+      return json({success:true,certificates});
     }
 
     if(req.method==="GET" && action==="templates"){
@@ -83,7 +89,8 @@ Deno.serve(async req=>{
       if(!isAdmin(c))return json({success:false,error:"FORBIDDEN"},403);
       const {data,error}=await sb.from("certificate_settings").select("key,value");
       if(error)throw error;const settings:any={};for(const r of data||[])settings[r.key]=r.value;
-      return json({success:true,settings});
+      const asset_previews:any={};for(const key of ["certificate_logo_url","institution_signature_url"]){const value=settings[key];if(!value)continue;asset_previews[key]=await signStoredValue(sb,value,"certificates",900)||value;}
+      return json({success:true,settings,asset_previews});
     }
 
     if(req.method!=="POST")return json({success:false,error:"METHOD_NOT_ALLOWED"},405);
@@ -134,8 +141,8 @@ Deno.serve(async req=>{
 
     if(a==="upload_asset"){
       if(!isAdmin(c))return json({success:false,error:"FORBIDDEN"},403);
-      const url=await uploadBase64(sb,"admin-assets",String(b.filename||"asset.png"),String(b.mime||"image/png"),String(b.data_url||""));
-      return json({success:true,url});
+      const uploaded=await uploadBase64(sb,"admin-assets",String(b.filename||"asset.png"),String(b.mime||"image/png"),String(b.data_url||""));
+      return json({success:true,...uploaded});
     }
 
     if(a==="upload_my_signature"){
@@ -143,11 +150,11 @@ Deno.serve(async req=>{
       const structureRole=c.roles.some((r:string)=>["responsable_structure","gestionnaire_structure","gestionnaire_partenaire"].includes(r));
       const structureAllowed=structureRole ? Boolean(await validatedStructureAccess(sb,c.user_id)) : false;
       if(!professorAllowed&&!structureAllowed)return json({success:false,error:"FORBIDDEN"},403);
-      const url=await uploadBase64(sb,"signatures",String(b.filename||"signature.png"),String(b.mime||"image/png"),String(b.data_url||""));
+      const uploaded=await uploadBase64(sb,"signatures",String(b.filename||"signature.png"),String(b.mime||"image/png"),String(b.data_url||""));
       if(c.roles.includes("professeur")){
-        await sb.from("professeur_profiles").upsert({user_id:c.user_id,signature_url:url},{onConflict:"user_id"});
+        await sb.from("professeur_profiles").upsert({user_id:c.user_id,signature_url:uploaded.url},{onConflict:"user_id"});
       }
-      return json({success:true,url});
+      return json({success:true,...uploaded});
     }
 
     if(a==="revoke"){

@@ -14,7 +14,6 @@ import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../comp
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
@@ -201,7 +200,8 @@ export default function ProfessorCourseStart() {
           name: file.name,
           size: file.size,
           mime: file.type,
-          url: `${SUPABASE_URL}/storage/v1/object/public/course-resources/${path}`,
+          bucket_name: 'course-resources',
+          storage_path: path,
         });
       }
 
