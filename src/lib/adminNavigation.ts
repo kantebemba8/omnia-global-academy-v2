@@ -255,6 +255,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     id: 'platform-governance', label: 'Plateforme & gouvernance', icon: Settings,
     items: [
+      { path: '/admin/moteurs-services', label: 'Moteurs externes', icon: Gauge },
       { path: '/admin/cms-branding', label: 'CMS & identité', icon: Settings },
       { path: '/admin/traductions', label: 'Traductions', icon: Languages },
     ],

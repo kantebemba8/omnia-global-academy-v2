@@ -1,4 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+
 type SentryModule = typeof import('@sentry/react');
+type SentryRuntime = {
+  module: SentryModule;
+  initialize: (options: any) => Promise<void>;
+  runtimeTag: string;
+};
 
 const dsn = import.meta.env.VITE_SENTRY_DSN || '';
 const sentryEnabled =
@@ -7,7 +14,7 @@ const sentryEnabled =
   !dsn.includes('[') &&
   !dsn.includes(']');
 
-let modulePromise: Promise<SentryModule | null> | null = null;
+let runtimePromise: Promise<SentryRuntime | null> | null = null;
 let initializationPromise: Promise<void> | null = null;
 
 const SENSITIVE_PATH_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -52,17 +59,40 @@ function sanitizeBreadcrumb<T extends { data?: Record<string, unknown> }>(breadc
   return { ...breadcrumb, data };
 }
 
-function loadSentry(): Promise<SentryModule | null> {
-  if (!sentryEnabled) return Promise.resolve(null);
+async function loadSentryRuntime(): Promise<SentryRuntime | null> {
+  if (!sentryEnabled) return null;
 
-  if (!modulePromise) {
-    modulePromise = import('@sentry/react').catch((error) => {
+  if (!runtimePromise) {
+    runtimePromise = (async () => {
+      const ReactSentry = await import('@sentry/react');
+
+      if (Capacitor.isNativePlatform()) {
+        const CapacitorSentry = await import('@sentry/capacitor');
+        return {
+          // @sentry/capacitor réexporte les APIs de scope/capture compatibles
+          // avec le SDK JavaScript frère. Le cast reste local à ce pont runtime.
+          module: CapacitorSentry as unknown as SentryModule,
+          initialize: async (options) => {
+            await CapacitorSentry.init(options, ReactSentry.init);
+          },
+          runtimeTag: `capacitor-native:${Capacitor.getPlatform()}`,
+        };
+      }
+
+      return {
+        module: ReactSentry,
+        initialize: async (options) => {
+          ReactSentry.init(options);
+        },
+        runtimeTag: 'web',
+      };
+    })().catch((error) => {
       console.warn('Sentry n’a pas pu être chargé', error);
       return null;
     });
   }
 
-  return modulePromise;
+  return runtimePromise;
 }
 
 export function initSentry(): Promise<void> {
@@ -70,29 +100,28 @@ export function initSentry(): Promise<void> {
   if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
-    const Sentry = await loadSentry();
-    if (!Sentry) return;
+    const runtime = await loadSentryRuntime();
+    if (!runtime) return;
 
     const release = import.meta.env.VITE_APP_RELEASE || import.meta.env.VITE_GIT_SHA || undefined;
     const dist = import.meta.env.VITE_APP_BUILD || undefined;
 
-    Sentry.init({
+    await runtime.initialize({
       dsn,
       environment: import.meta.env.MODE,
       release,
       dist,
 
-      // La bêta conserve uniquement le diagnostic d'erreurs. Les replays de
-      // session et le suivi de performance automatique restent désactivés
-      // jusqu'à l'intégration d'un consentement explicite.
+      // Diagnostic d’erreurs uniquement : aucune PII par défaut, aucun replay,
+      // aucun profiling et aucune collecte automatique de performance.
       sendDefaultPii: false,
       tracesSampleRate: 0,
 
-      beforeBreadcrumb(breadcrumb) {
+      beforeBreadcrumb(breadcrumb: any) {
         return sanitizeBreadcrumb(breadcrumb);
       },
 
-      beforeSend(event) {
+      beforeSend(event: any) {
         if (event.request?.headers) {
           event.request.headers = {};
         }
@@ -116,7 +145,9 @@ export function initSentry(): Promise<void> {
         return event;
       },
     });
-    Sentry.setTag('runtime', 'web-or-capacitor-webview');
+
+    runtime.module.setTag('runtime', runtime.runtimeTag);
+    runtime.module.setTag('capacitor_platform', Capacitor.getPlatform());
   })();
 
   return initializationPromise;
@@ -126,8 +157,8 @@ async function withSentry(action: (Sentry: SentryModule) => void): Promise<void>
   if (!sentryEnabled) return;
 
   await initSentry();
-  const Sentry = await loadSentry();
-  if (Sentry) action(Sentry);
+  const runtime = await loadSentryRuntime();
+  if (runtime) action(runtime.module);
 }
 
 export function setSentryUser(user: { id: string; email: string; roles: string[] }) {

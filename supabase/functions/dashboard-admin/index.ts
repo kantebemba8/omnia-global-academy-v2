@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
+import { fedaPayConfiguration, fedaPaySecretKeyConfigured, fedaPayWebhookConfigured } from "../_shared/fedapay-security.ts";
+import { jaasConfigurationStatus } from "../_shared/jaas.ts";
+import { cloudflareStreamConfigured } from "../_shared/cloudflare-stream.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
@@ -724,6 +727,287 @@ async function handleDeletionPost(sb: any, session: SessionContext, body: any) {
   return json({ error: "ACTION_NOT_SUPPORTED" }, 404);
 }
 
+
+const EXTERNAL_SERVICE_IDS = new Set([
+  "openai", "anthropic", "brevo", "cloudflare", "fedapay", "jaas", "fcm", "apns", "sentry",
+]);
+
+function envConfigured(...names: string[]) {
+  return names.every((name) => Boolean(String(Deno.env.get(name) || "").trim()));
+}
+
+function currencyCode(value: unknown) {
+  return String(value || "").trim().toUpperCase().slice(0, 12);
+}
+
+function safeProvider(value: unknown) {
+  const provider = String(value || "").trim().toLowerCase();
+  return EXTERNAL_SERVICE_IDS.has(provider) ? provider : null;
+}
+
+function groupLedgerAmounts(entries: any[]) {
+  const balances: Record<string, number> = {};
+  const recharges: Record<string, number> = {};
+  const consumption: Record<string, number> = {};
+  const quantities: Record<string, number> = {};
+  for (const entry of entries) {
+    const currency = currencyCode(entry.currency);
+    const amount = Number(entry.amount);
+    if (currency && Number.isFinite(amount)) {
+      const sign = entry.entry_type === "usage" ? -1 : 1;
+      balances[currency] = Number(((balances[currency] || 0) + (sign * amount)).toFixed(6));
+      if (entry.entry_type === "recharge") recharges[currency] = Number(((recharges[currency] || 0) + amount).toFixed(6));
+      if (entry.entry_type === "usage") consumption[currency] = Number(((consumption[currency] || 0) + amount).toFixed(6));
+    }
+    const unit = String(entry.unit || "").trim();
+    const quantity = Number(entry.quantity);
+    if (unit && Number.isFinite(quantity)) {
+      quantities[unit] = Number(((quantities[unit] || 0) + quantity).toFixed(6));
+    }
+  }
+  return { tracked_balance: balances, recharges, consumption, quantities };
+}
+
+async function externalServiceGovernancePayload(sb: any) {
+  const now = new Date();
+  const start30 = new Date(now.getTime() - 30 * 86400000).toISOString();
+
+  const [ledger, budgets, audits, cronControls, cronRuns, notificationRows, pushRows, cloudflareMedia, jaasRooms, fedaCourseOrders, fedaLiveOrders] = await Promise.all([
+    rows(sb, "external_service_ledger", "id,provider,entry_type,source,occurred_at,amount,currency,quantity,unit,reference,description,metadata,created_by,created_at", q => q.order("occurred_at", { ascending: false }).limit(5000)),
+    rows(sb, "external_service_budget_settings", "provider,monthly_budget,currency,low_balance_threshold,notes,enabled,updated_at", q => q.order("provider", { ascending: true })),
+    rows(sb, "external_service_admin_audit", "id,provider,action,metadata,created_at", q => q.order("created_at", { ascending: false }).limit(100)),
+    rows(sb, "oga_cron_controls", "job_key,enabled,max_runtime_seconds,failure_threshold,consecutive_failures,last_started_at,last_finished_at,last_success_at,last_failure_at,last_error,updated_at", q => q.order("job_key", { ascending: true })),
+    rows(sb, "oga_cron_runs", "id,job_key,status,forced,started_at,finished_at,duration_ms,error_message", q => q.gte("started_at", start30).order("started_at", { ascending: false }).limit(200)),
+    rows(sb, "notification_log", "channel,status,sent_at", q => q.gte("sent_at", start30).order("sent_at", { ascending: false }).limit(5000)),
+    rows(sb, "mobile_notification_deliveries", "provider,status,created_at", q => q.gte("created_at", start30).order("created_at", { ascending: false }).limit(5000)),
+    countRows(sb, "live_media", q => q.not("cloudflare_stream_uid", "is", null).gte("created_at", start30)),
+    countRows(sb, "live_rooms", q => q.eq("provider", "jaas").gte("created_at", start30)),
+    countRows(sb, "orders", q => q.eq("payment_gateway", "fedapay").gte("created_at", start30)),
+    countRows(sb, "live_orders", q => q.eq("payment_provider", "fedapay").gte("created_at", start30)),
+  ]);
+
+  let fedaConfig: any = null;
+  try { fedaConfig = fedaPayConfiguration(); } catch (error) {
+    fedaConfig = { effective_mode: "sandbox", requested_mode: "invalid", live_enabled: false, live_blocked: true, configuration_error: error instanceof Error ? error.message : String(error) };
+  }
+  const jaas = jaasConfigurationStatus();
+  const notificationSummary = {
+    queued: await countRows(sb, "notification_queue", q => q.eq("processed", false)),
+    email_30d: (notificationRows || []).filter((r: any) => ["email", "brevo"].includes(String(r.channel || "").toLowerCase())).length,
+    sms_30d: (notificationRows || []).filter((r: any) => String(r.channel || "").toLowerCase() === "sms").length,
+    failures_30d: (notificationRows || []).filter((r: any) => ["failed", "error", "bounced"].includes(String(r.status || "").toLowerCase())).length,
+    fcm_sent_30d: (pushRows || []).filter((r: any) => r.provider === "fcm" && r.status === "sent").length,
+    fcm_failed_30d: (pushRows || []).filter((r: any) => r.provider === "fcm" && r.status === "failed").length,
+    apns_sent_30d: (pushRows || []).filter((r: any) => r.provider === "apns" && r.status === "sent").length,
+    apns_failed_30d: (pushRows || []).filter((r: any) => r.provider === "apns" && r.status === "failed").length,
+  };
+
+  const ledgerRows = ledger || [];
+  const budgetMap = new Map((budgets || []).map((row: any) => [String(row.provider), row]));
+  const providerLedger = (provider: string) => ledgerRows.filter((row: any) => row.provider === provider);
+  const provider = (id: string, label: string, details: Record<string, unknown>) => {
+    const entries = providerLedger(id);
+    const finance = groupLedgerAmounts(entries);
+    const finance30d = groupLedgerAmounts(entries.filter((entry: any) => String(entry.occurred_at || "") >= start30));
+    const budget = budgetMap.get(id) || null;
+    const budgetCurrency = currencyCode(budget?.currency);
+    const monthlyBudget = Number(budget?.monthly_budget);
+    const threshold = Number(budget?.low_balance_threshold);
+    const trackedBalance = budgetCurrency ? Number(finance.tracked_balance?.[budgetCurrency]) : NaN;
+    const monthlyConsumption = budgetCurrency ? Number(finance30d.consumption?.[budgetCurrency]) : NaN;
+    const budgetStatus = {
+      currency: budgetCurrency || null,
+      monthly_budget: Number.isFinite(monthlyBudget) ? monthlyBudget : null,
+      consumption_30d: Number.isFinite(monthlyConsumption) ? monthlyConsumption : null,
+      remaining_budget: Number.isFinite(monthlyBudget) && Number.isFinite(monthlyConsumption) ? Number((monthlyBudget - monthlyConsumption).toFixed(6)) : null,
+      low_balance_threshold: Number.isFinite(threshold) ? threshold : null,
+      tracked_balance: Number.isFinite(trackedBalance) ? trackedBalance : null,
+      low_balance_alert: Number.isFinite(threshold) && Number.isFinite(trackedBalance) ? trackedBalance <= threshold : false,
+      budget_exceeded: Number.isFinite(monthlyBudget) && Number.isFinite(monthlyConsumption) ? monthlyConsumption > monthlyBudget : false,
+    };
+    return {
+      id, label, budget,
+      finance,
+      finance_30d: finance30d,
+      budget_status: budgetStatus,
+      recent_entries: entries.slice(0, 20),
+      provider_balance_available: false,
+      secrets_exposed: false,
+      ...details,
+    };
+  };
+
+  const providers = [
+    provider("openai", "OpenAI", {
+      configured: Boolean(String(Deno.env.get("OPENAI_API_KEY") || "").trim()),
+      environment: "API",
+      billing_model: "usage",
+      role: "Texte, images, embeddings, transcription et synthèse vocale selon les moteurs OGA.",
+      usage_note: "Le journal financier OGA n’invente aucun coût : les montants sont enregistrés uniquement depuis des données fournisseur ou une saisie administrative justifiée.",
+      management_path: "/admin/moteurs-services",
+    }),
+    provider("anthropic", "Anthropic", {
+      configured: Boolean(String(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "").trim()),
+      environment: "API",
+      billing_model: "usage",
+      role: "Assistance pédagogique, Career Studio et génération/traitement de contenus selon les moteurs OGA.",
+      usage_note: "Suivi OGA sans estimation tarifaire automatique.",
+      management_path: "/admin/quality-center",
+    }),
+    provider("brevo", "Brevo", {
+      configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()),
+      environment: "production_account",
+      billing_model: "credits_or_plan",
+      role: "E-mails transactionnels, newsletter et SMS lorsque configuré.",
+      observed_usage_30d: { emails: notificationSummary.email_30d, sms: notificationSummary.sms_30d, failures: notificationSummary.failures_30d },
+      management_path: "/admin/cms-branding",
+    }),
+    provider("cloudflare", "Cloudflare R2 / Stream", {
+      configured: envConfigured("R2_ACCOUNT_ID") && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim()) && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim()),
+      stream_configured: cloudflareStreamConfigured(),
+      environment: "production_service",
+      billing_model: "usage",
+      role: "Stockage privé, diffusion vidéo et URLs signées.",
+      observed_usage_30d: { stream_media_created: cloudflareMedia ?? null },
+      management_path: "/admin/live",
+    }),
+    provider("fedapay", "FedaPay", {
+      configured: fedaPaySecretKeyConfigured(),
+      webhook_configured: fedaPayWebhookConfigured(),
+      environment: fedaConfig?.effective_mode || "sandbox",
+      requested_environment: fedaConfig?.requested_mode || "sandbox",
+      production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,
+      billing_model: "transactional",
+      role: "Paiements Omnia. Le passage Production reste contrôlé côté serveur.",
+      observed_usage_30d: { course_orders: fedaCourseOrders ?? null, live_orders: fedaLiveOrders ?? null },
+      management_path: "/admin/fintech",
+    }),
+    provider("jaas", "Jitsi / JaaS", {
+      configured: jaas.configured,
+      environment: jaas.public_jitsi_development_fallback ? "development_fallback" : "jaas",
+      production_ready: jaas.production_ready,
+      billing_model: "plan_or_usage",
+      role: "Infrastructure visioconférence Omnia Live.",
+      observed_usage_30d: { rooms_created: jaasRooms ?? null },
+      management_path: "/admin/live",
+    }),
+    provider("fcm", "Firebase Cloud Messaging", {
+      configured: envConfigured("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY"),
+      environment: "firebase",
+      billing_model: "service",
+      role: "Notifications push Android.",
+      observed_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d },
+      management_path: "/admin/moteurs-services",
+    }),
+    provider("apns", "Apple Push Notification Service", {
+      configured: envConfigured("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID"),
+      environment: String(Deno.env.get("APNS_ENVIRONMENT") || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox",
+      billing_model: "service",
+      role: "Notifications push iOS.",
+      observed_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
+      management_path: "/admin/moteurs-services",
+    }),
+    provider("sentry", "Sentry", {
+      configured: null,
+      configuration_scope: "frontend_build",
+      environment: "web_and_capacitor",
+      billing_model: "plan_or_quota",
+      role: "Diagnostic d’erreurs Web/PWA et natif. DSN public injecté au build, sans secret serveur exposé.",
+      usage_note: "Le backend ne lit pas le DSN Frontend. L’interface complète cet état localement.",
+      management_path: "/admin/moteurs-services",
+    }),
+  ];
+
+  const jobs = (cronControls || []).map((control: any) => ({
+    ...control,
+    runs_30d: (cronRuns || []).filter((run: any) => run.job_key === control.job_key).slice(0, 20),
+  }));
+
+  return {
+    success: true,
+    generated_at: now.toISOString(),
+    providers,
+    ledger: ledgerRows.slice(0, 200),
+    budgets: budgets || [],
+    admin_audit: audits || [],
+    automations: jobs,
+    notifications: notificationSummary,
+    security: {
+      secrets_exposed: false,
+      direct_notification_queue_write_closed_by_migration_167: true,
+      cron_default_policy: "disabled_until_explicit_admin_activation",
+    },
+    admin_surfaces: [
+      { id: "quality", label: "Centre Qualité", path: "/admin/quality-center", description: "Contrôles, critères, audits, non-conformités et gouvernance de l’assistant pédagogique." },
+      { id: "users", label: "Utilisateurs & accès", path: "/admin/section/utilisateurs-acces", description: "Rôles, comptes, sessions, invitations et permissions." },
+      { id: "fintech", label: "Configuration Fintech", path: "/admin/fintech", description: "FedaPay, environnement et sécurité des paiements." },
+      { id: "live", label: "Omnia Live", path: "/admin/live", description: "JaaS, Cloudflare Stream, files et automatisations Live." },
+      { id: "credentials", label: "Credentials pédagogiques", path: "/admin/credentials", description: "Open Badges, CLR, Skills Passport, signatures et révocations — distincts des secrets API." },
+      { id: "cms", label: "CMS & identité", path: "/admin/cms-branding", description: "Brevo, contenus publics et identité de la plateforme." },
+    ],
+  };
+}
+
+async function handleOperationsPost(sb: any, session: SessionContext, body: any) {
+  const action = String(body?.action || "");
+  const supported = new Set(["external_service_ledger_add", "external_service_budget_save", "cron_control_update"]);
+  if (!supported.has(action)) return null;
+  if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+
+  if (action === "external_service_ledger_add") {
+    const provider = safeProvider(body?.provider);
+    const entryType = String(body?.entry_type || "");
+    const amount = body?.amount === "" || body?.amount == null ? null : Number(body.amount);
+    const quantity = body?.quantity === "" || body?.quantity == null ? null : Number(body.quantity);
+    const currency = amount == null ? null : currencyCode(body?.currency);
+    const unit = quantity == null ? null : String(body?.unit || "").trim().slice(0, 80) || null;
+    const reference = String(body?.reference || "").trim().slice(0, 240) || null;
+    const description = String(body?.description || "").trim().slice(0, 1200) || null;
+    if (!provider || !["recharge", "usage", "refund", "adjustment"].includes(entryType)) return json({ error: "INVALID_ENTRY" }, 400);
+    if (amount != null && (!Number.isFinite(amount) || amount < 0 || !currency)) return json({ error: "INVALID_AMOUNT" }, 400);
+    if (quantity != null && (!Number.isFinite(quantity) || quantity < 0 || !unit)) return json({ error: "INVALID_QUANTITY" }, 400);
+    if (amount == null && quantity == null && !description) return json({ error: "EMPTY_ENTRY" }, 400);
+    const { data, error } = await sb.from("external_service_ledger").insert({
+      provider, entry_type: entryType, source: "manual", occurred_at: body?.occurred_at || new Date().toISOString(),
+      amount, currency, quantity, unit, reference, description, created_by: session.userId,
+      metadata: { evidence: String(body?.evidence || "").trim().slice(0, 1000) || null },
+    }).select("*").single();
+    if (error) throw error;
+    await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider, action: "ledger_entry_added", metadata: { entry_id: data.id, entry_type: entryType, amount, currency, quantity, unit, reference } });
+    return json({ success: true, entry: data });
+  }
+
+  if (action === "external_service_budget_save") {
+    const provider = safeProvider(body?.provider);
+    if (!provider) return json({ error: "INVALID_PROVIDER" }, 400);
+    const monthlyBudget = body?.monthly_budget === "" || body?.monthly_budget == null ? null : Number(body.monthly_budget);
+    const lowBalance = body?.low_balance_threshold === "" || body?.low_balance_threshold == null ? null : Number(body.low_balance_threshold);
+    const currency = monthlyBudget == null ? null : currencyCode(body?.currency);
+    if (monthlyBudget != null && (!Number.isFinite(monthlyBudget) || monthlyBudget < 0 || !currency)) return json({ error: "INVALID_BUDGET" }, 400);
+    if (lowBalance != null && (!Number.isFinite(lowBalance) || lowBalance < 0)) return json({ error: "INVALID_THRESHOLD" }, 400);
+    const { data, error } = await sb.from("external_service_budget_settings").upsert({
+      provider, monthly_budget: monthlyBudget, currency, low_balance_threshold: lowBalance,
+      notes: String(body?.notes || "").trim().slice(0, 1200) || null,
+      enabled: body?.enabled !== false, updated_by: session.userId, updated_at: new Date().toISOString(),
+    }, { onConflict: "provider" }).select("*").single();
+    if (error) throw error;
+    await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider, action: "budget_updated", metadata: { monthly_budget: monthlyBudget, currency, low_balance_threshold: lowBalance } });
+    return json({ success: true, budget: data });
+  }
+
+  const jobKey = String(body?.job_key || "").trim();
+  const enabled = body?.enabled === true;
+  if (!jobKey || body?.confirmed !== true) return json({ error: "CONFIRMATION_REQUIRED", message: "La modification d’une automatisation doit être confirmée explicitement." }, 400);
+  const patch: Record<string, unknown> = { enabled, updated_at: new Date().toISOString() };
+  if (body?.max_runtime_seconds != null) patch.max_runtime_seconds = Math.max(30, Math.min(7200, Number(body.max_runtime_seconds)));
+  if (body?.failure_threshold != null) patch.failure_threshold = Math.max(1, Math.min(20, Number(body.failure_threshold)));
+  const { data, error } = await sb.from("oga_cron_controls").update(patch).eq("job_key", jobKey).select("*").maybeSingle();
+  if (error) throw error;
+  if (!data) return json({ error: "JOB_NOT_FOUND" }, 404);
+  await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider: null, action: enabled ? "cron_enabled" : "cron_disabled", metadata: { job_key: jobKey } });
+  return json({ success: true, automation: data });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (!["GET", "POST"].includes(req.method)) return json({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -744,12 +1028,17 @@ Deno.serve(async (req: Request) => {
       const body = await req.json().catch(() => ({}));
       const adminUserResponse = await handleAdminUserPost(sb, session, body);
       if (adminUserResponse) return adminUserResponse;
+      const operationsResponse = await handleOperationsPost(sb, session, body);
+      if (operationsResponse) return operationsResponse;
       return await handleDeletionPost(sb, session, body);
     }
 
     if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
     const adminId = session.userId;
     const url = new URL(req.url);
+    if (url.searchParams.get("action") === "external_services_governance") {
+      return json(await externalServiceGovernancePayload(sb));
+    }
     const adminUsersResponse = await handleAdminUserGet(sb, adminId, url);
     if (adminUsersResponse) return adminUsersResponse;
 

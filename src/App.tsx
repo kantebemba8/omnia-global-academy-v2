@@ -118,6 +118,7 @@ const AdminUserDetail = lazy(() => import('./pages/admin/AdminUserDetail'));
 const AdminActivityToday = lazy(() => import('./pages/admin/AdminActivityToday'));
 const AdminCMS = lazy(() => import('./pages/admin/AdminCMS'));
 const AdminTranslations = lazy(() => import('./pages/admin/AdminTranslations'));
+const AdminExternalServices = lazy(() => import('./pages/admin/AdminExternalServices'));
 const LandingDraftPreview = lazy(() => import('./pages/admin/LandingDraftPreview'));
 const AdminFintech = lazy(() => import('./pages/admin/AdminFintech'));
 const AdminMonetization = lazy(() => import('./pages/admin/AdminMonetization'));
@@ -718,6 +719,7 @@ export default function App() {
 <Route path="/admin/assisted-courses" element={<AdminAssistedCourses />} />
         <Route path="/admin/cms-branding" element={<AdminCMS />} />
         <Route path="/admin/traductions" element={<AdminTranslations />} />
+        <Route path="/admin/moteurs-services" element={<AdminExternalServices />} />
         <Route path="/admin/cms-branding/preview" element={<LandingDraftPreview />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
         <Route path="/admin/monetization" element={<AdminMonetization />} />
