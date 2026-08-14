@@ -616,8 +616,8 @@ export default function App() {
           <Route path="/omnia-live/participant" element={<ParticipantDashboard />} />
           <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
-          <Route path="/omnia-live/participant/notifications" element={<Navigate to="/notifications?source=live" replace />} />
-          <Route path="/omnia-live/notifications" element={<Navigate to="/notifications?source=live" replace />} />
+          <Route path="/omnia-live/participant/notifications" element={<Navigate to="/notifications" replace />} />
+          <Route path="/omnia-live/notifications" element={<Navigate to="/notifications" replace />} />
           <Route path="/omnia-live/participant/remboursements" element={<ParticipantRefunds />} />
           <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
           <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />

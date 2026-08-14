@@ -66,6 +66,7 @@ type Provider = {
   };
   observed_usage_30d?: Record<string, unknown>;
   stream_configured?: boolean;
+  r2_configured?: boolean;
   webhook_configured?: boolean;
   production_enabled?: boolean;
   production_ready?: boolean;
@@ -107,6 +108,10 @@ function statusLabel(provider: Provider) {
   if (provider.id === 'sentry' && provider.configured === null) {
     const localConfigured = Boolean(import.meta.env.VITE_SENTRY_DSN);
     return { ok: localConfigured, text: localConfigured ? 'Configuré au build' : 'DSN non configuré au build' };
+  }
+  if (provider.id === 'cloudflare') {
+    const anyCloudflareService = provider.configured === true || provider.r2_configured === true || provider.stream_configured === true || provider.admin_billing_configured === true;
+    return { ok: anyCloudflareService, text: anyCloudflareService ? 'Configuré' : 'Non configuré' };
   }
   if (provider.configured) return { ok: true, text: 'Configuré' };
   return { ok: false, text: 'Non configuré' };
@@ -235,7 +240,20 @@ export default function AdminExternalServices() {
     setBusy(`sync:${provider}`); setError(''); setMessage('');
     try {
       const result = await call('POST', { action: 'external_service_provider_sync', provider });
-      const count = Number(result?.sync?.rows_synced || 0);
+      const sync = result?.sync || {};
+      if (sync?.skipped === true) {
+        const reason = String(sync?.reason || 'SYNC_SKIPPED');
+        const labels: Record<string, string> = {
+          CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING: 'token Billing ou Account ID Cloudflare manquant',
+          OPENAI_ADMIN_KEY_MISSING: 'clé Admin OpenAI manquante',
+          ANTHROPIC_ADMIN_KEY_MISSING: 'clé Admin Anthropic manquante',
+          BREVO_API_KEY_MISSING: 'clé API Brevo manquante',
+          SENTRY_CONFIGURATION_MISSING: 'configuration Sentry incomplète',
+          AUTO_SYNC_DISABLED: 'synchronisation automatique désactivée',
+        };
+        throw new Error(`Synchronisation non exécutée : ${labels[reason] || reason}.`);
+      }
+      const count = Number(sync?.rows_synced || 0);
       setMessage(`Synchronisation ${provider === 'openai' ? 'OpenAI' : provider} réussie · ${count} ligne(s) fournisseur traitée(s).`);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Synchronisation impossible'); }

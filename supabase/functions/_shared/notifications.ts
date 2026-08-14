@@ -92,7 +92,7 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
   const client = sb ?? getSupabase();
   const { data: user } = await client
     .from("users")
-    .select("email, phone_number, full_name, allow_email, allow_sms, allow_push, email_status")
+    .select("email, phone_number, full_name, allow_email, allow_sms, email_status")
     .eq("id", userId)
     .maybeSingle();
   if (!user) return;
@@ -116,45 +116,48 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
     });
   }
 
-  if (user.allow_push === true) {
-    const params = emailConfig?.params || {};
-    const firstText = (...keys: string[]) => {
-      for (const key of keys) {
-        const value = params[key];
-        if (typeof value === "string" && value.trim()) return value.trim();
-      }
-      return "";
-    };
-    const pushMessage = (
-      smsMessage ||
-      firstText("MESSAGE_SPECIFIQUE", "MESSAGE", "DESCRIPTION", "DETAIL")
-    ).slice(0, 1000);
+  const params = emailConfig?.params || {};
+  const firstText = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = params[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+  };
+  const contextLabel = firstText("FORMATION_TITRE", "ROLE_NAME", "SCHOOL_NAME", "STATUT", "FACTURE_NUM", "PRODUCT_TITLE", "OFFER_TITLE");
+  const inAppMessage = (
+    smsMessage ||
+    firstText("MESSAGE_SPECIFIQUE", "MESSAGE", "DESCRIPTION", "DETAIL", "COMMENTAIRE") ||
+    (emailConfig ? (contextLabel ? `Nouvelle mise à jour Omnia : ${contextLabel}.` : "Une nouvelle information concernant votre compte Omnia est disponible.") : "")
+  ).slice(0, 1000);
 
-    if (pushMessage) {
-      const title = (firstText("TITRE", "TITLE", "OBJET", "SUBJECT") || "Omnia Global Academy").slice(0, 180);
-      const actionUrl = firstText("ACTION_URL", "URL_ACTION", "LIEN_ACTION", "CTA_URL", "LIEN", "URL") || null;
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-      if (supabaseUrl) {
-        try {
-          const response = await fetch(`${supabaseUrl}/functions/v1/mobile-notifications?action=dispatch`, {
-            method: "POST",
-            headers: omniaInternalHeaders(),
-            body: JSON.stringify({
-              user_id: userId,
-              title,
-              message: pushMessage,
-              action_url: actionUrl,
-              notification_type: "business_event",
-              payload: { source: "notify-dispatch" },
-            }),
-          });
-          if (!response.ok) {
-            console.warn("notifyUser push dispatch failed", response.status);
-          }
-        } catch (error) {
-          // Une panne Push ne doit jamais annuler l'e-mail/SMS ou le traitement métier.
-          console.warn("notifyUser push unavailable", error instanceof Error ? error.message : String(error));
+  // La boîte Omnia est indépendante des préférences Push : une notification métier
+  // doit rester visible dans la plateforme même si l'utilisateur refuse FCM/APNs.
+  if (inAppMessage) {
+    const title = (firstText("TITRE", "TITLE", "OBJET", "SUBJECT", "FORMATION_TITRE", "ROLE_NAME") || "Omnia Global Academy").slice(0, 180);
+    const actionUrl = firstText("ACTION_URL", "URL_ACTION", "LIEN_ACTION", "CTA_URL", "LIEN", "URL", "DASHBOARD_URL", "COURSE_URL", "PDF_URL") || null;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    if (supabaseUrl) {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/mobile-notifications?action=dispatch`, {
+          method: "POST",
+          headers: omniaInternalHeaders(),
+          body: JSON.stringify({
+            user_id: userId,
+            title,
+            message: inAppMessage,
+            action_url: actionUrl,
+            notification_type: "business_event",
+            payload: { source: "notify-dispatch" },
+          }),
+        });
+        if (!response.ok) {
+          console.warn("notifyUser in-app dispatch failed", response.status);
         }
+      } catch (error) {
+        // Une panne du centre de notifications ne doit jamais annuler l'e-mail/SMS
+        // ni le traitement métier principal.
+        console.warn("notifyUser in-app unavailable", error instanceof Error ? error.message : String(error));
       }
     }
   }

@@ -1183,7 +1183,9 @@ async function syncCloudflareBilling(sb: any, options: { force?: boolean; actorU
   const state = await providerSyncState(sb, provider);
   const token = cloudflareBillingToken(); const accountId = cloudflareAccountId();
   if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
-  if (!token || !accountId) return { success: true, skipped: true, reason: "CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING", state };
+  if (!token || !accountId) return force
+    ? { success: false, skipped: true, reason: "CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING", error: "Token Billing ou Account ID Cloudflare manquant.", state }
+    : { success: true, skipped: true, reason: "CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING", state };
   if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
   await providerSyncBegin(sb, provider, state);
   try {
@@ -1449,15 +1451,20 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
       recharge_automation: { provider_managed: true, provider_name: "Brevo", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "provider_plan_or_credit_purchase", note: "Aucune saisie n’est requise pour le suivi courant ; le plan/crédit est lu automatiquement. Une écriture manuelle reste un secours si une facture doit être rapprochée." },
       sync_attempt: brevoSyncAttempt, management_path: "/admin/cms-branding",
     }),
-    provider("cloudflare", "Cloudflare R2 / Stream", {
-      configured: envConfigured("R2_ACCOUNT_ID") && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim()) && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim()),
-      admin_billing_configured: Boolean(cloudflareBillingToken() && cloudflareAccountId()), stream_configured: cloudflareStreamConfigured(),
-      environment: "production_service", billing_model: "usage", role: "Stockage privé, diffusion vidéo et URLs signées.",
-      observed_usage_30d: { stream_media_created: cloudflareMedia ?? null },
-      usage_note: cloudflareBillingToken() ? "Coûts et quantités facturables synchronisés automatiquement depuis l’API Billing Cloudflare." : "Ajoutez un token séparé CLOUDFLARE_BILLING_API_TOKEN avec Billing Read pour automatiser les coûts sans élargir les permissions du token Stream.",
-      recharge_automation: { provider_managed: true, provider_name: "Cloudflare", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "postpaid_or_subscription", note: "Cloudflare est généralement facturé à l’usage ou par abonnement : il n’y a pas de recharge OGA à saisir." },
-      sync_attempt: cloudflareSyncAttempt, management_path: "/admin/live",
-    }),
+    (() => {
+      const r2Configured = envConfigured("R2_ACCOUNT_ID") && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim()) && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim());
+      const billingConfigured = Boolean(cloudflareBillingToken() && cloudflareAccountId());
+      const streamConfigured = cloudflareStreamConfigured();
+      return provider("cloudflare", "Cloudflare R2 / Stream", {
+        configured: r2Configured || billingConfigured || streamConfigured,
+        r2_configured: r2Configured, admin_billing_configured: billingConfigured, stream_configured: streamConfigured,
+        environment: "production_service", billing_model: "usage", role: "Stockage privé, diffusion vidéo et URLs signées.",
+        observed_usage_30d: { stream_media_created: cloudflareMedia ?? null },
+        usage_note: billingConfigured ? "Coûts et quantités facturables synchronisés automatiquement depuis l’API Billing Cloudflare." : "Ajoutez un token séparé CLOUDFLARE_BILLING_API_TOKEN avec Billing Read et un Account ID pour automatiser les coûts sans élargir les permissions du token Stream.",
+        recharge_automation: { provider_managed: true, provider_name: "Cloudflare", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "postpaid_or_subscription", note: "Cloudflare est généralement facturé à l’usage ou par abonnement : il n’y a pas de recharge OGA à saisir." },
+        sync_attempt: cloudflareSyncAttempt, management_path: "/admin/live",
+      });
+    })(),
     provider("fedapay", "FedaPay", {
       configured: fedaPaySecretKeyConfigured(), webhook_configured: fedaPayWebhookConfigured(), environment: fedaConfig?.effective_mode || "sandbox",
       requested_environment: fedaConfig?.requested_mode || "sandbox", production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,

@@ -39,15 +39,17 @@ async function createNotification(
   message: string,
 ) {
   try {
-    await sb.from("notifications").insert({
+    await sb.from("mobile_notification_inbox").insert({
       user_id: userId,
+      notification_type: "course_pricing",
       title,
       message,
-      type: "course_pricing",
-      is_read: false,
+      action_url: null,
+      payload: { source: "course-pricing-workflow" },
+      priority: "normal",
     });
   } catch (error) {
-    console.warn("Notification non créée :", error);
+    console.warn("Notification Omnia non créée :", error);
   }
 }
 

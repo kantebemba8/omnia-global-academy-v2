@@ -54,7 +54,7 @@ const PARTICIPATION: LiveNavGroup = {
     { label: 'Mes accès', path: '/omnia-live/mes-acces', description: 'Droits et accès associés à vos achats ou invitations.', icon: KeyRound },
     { label: 'Achats & factures', path: '/omnia-live/mes-achats', description: 'Historique commercial de vos Lives.', icon: ReceiptText },
     { label: 'Mes documents', path: '/omnia-live/mes-documents', description: 'Documents, attestations et preuves Live.', icon: FileBadge },
-    { label: 'Notifications', path: '/notifications?source=live', description: 'Alertes liées à vos sessions.', icon: Bell },
+    { label: 'Notifications', path: '/notifications', description: 'Alertes liées à vos sessions.', icon: Bell },
     { label: 'Remboursements', path: '/omnia-live/participant/remboursements', description: 'Suivre vos demandes de remboursement.', icon: RotateCcw },
     { label: 'Accès privé', path: '/omnia-live/acces-prive', description: 'Utiliser un code ou une invitation privée.', icon: KeyRound },
   ],

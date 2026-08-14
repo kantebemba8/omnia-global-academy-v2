@@ -345,14 +345,16 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (targetUserError) throw targetUserError;
       if (!targetUser || targetUser.status === "suspendu") return json({ error: "USER_NOT_AVAILABLE" }, 404);
-      if (targetUser.allow_push !== true) return json({ success: true, skipped: true, reason: "PUSH_NOT_ALLOWED" });
       const actionUrl = safeActionUrl(body.action_url);
-      const notificationType = text(body.notification_type, 100) || "mobile";
+      const notificationType = text(body.notification_type, 100) || "business_event";
       const payload = body.payload && typeof body.payload === "object" ? body.payload as Record<string, unknown> : {};
       const { data: inbox, error } = await sb.from("mobile_notification_inbox").insert({ user_id: userId, notification_type: notificationType, title, message, action_url: actionUrl, payload, priority: ["low","normal","high","critical"].includes(text(body.priority, 20)) ? text(body.priority, 20) : "normal" }).select("id").single();
       if (error) throw error;
-      const deliveries = await dispatchToUser(sb, userId, String(inbox.id), title, message, actionUrl, { ...payload, notification_type: notificationType });
-      return json({ success: true, notification_id: inbox.id, deliveries });
+      const pushAllowed = targetUser.allow_push === true;
+      const deliveries = pushAllowed
+        ? await dispatchToUser(sb, userId, String(inbox.id), title, message, actionUrl, { ...payload, notification_type: notificationType })
+        : [];
+      return json({ success: true, notification_id: inbox.id, in_app_created: true, push_allowed: pushAllowed, push_skipped: pushAllowed ? null : "PUSH_NOT_ALLOWED", deliveries });
     }
 
     return json({ error: "UNKNOWN_ACTION" }, 400);

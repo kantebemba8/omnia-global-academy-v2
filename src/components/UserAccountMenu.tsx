@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Home, Languages, Layers3, LogOut, Plus, Settings, UserRound } from 'lucide-react';
+import { Bell, Check, ChevronDown, Home, Languages, Layers3, LogOut, Plus, Settings, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getActivePlatformRole, getDashboardPathForRoles, normalizePlatformRoles, setActivePlatformRole, type CanonicalPlatformRole } from '../lib/session';
 import { logoutOmniaSession } from '../lib/authApi';
@@ -177,6 +177,14 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '', s
             <Plus size={17} /> {t('Ajouter un espace')}
           </button>
         )}
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => go('/notifications')}
+          className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <Bell size={17} /> {t('Notifications')}
+        </button>
         <button
           type="button"
           role="menuitem"

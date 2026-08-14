@@ -344,6 +344,17 @@ Deno.serve(async (req: Request) => {
           userId: payload.userId as string,
           sb,
         });
+        if (payload.userId) {
+          await sb.from("mobile_notification_inbox").insert({
+            user_id: payload.userId as string,
+            notification_type: type,
+            title: `Invitation ${roleName}`,
+            message: `Votre accès ${roleName} Omnia est prêt. Connectez-vous pour découvrir votre espace.`,
+            action_url: "/connexion",
+            payload: { source: "notify-dispatch", role: roleName },
+            priority: "normal",
+          }).catch(() => {});
+        }
         break;
       }
 
