@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
-import { fedaPayConfiguration, fedaPaySecretKeyConfigured, fedaPayWebhookConfigured } from "../_shared/fedapay-security.ts";
+import { fedaPayApiBase, fedaPayConfiguration, fedaPaySecretKey, fedaPaySecretKeyConfigured, fedaPayWebhookConfigured } from "../_shared/fedapay-security.ts";
 import { jaasConfigurationStatus } from "../_shared/jaas.ts";
 import { cloudflareStreamConfigured } from "../_shared/cloudflare-stream.ts";
 
@@ -745,6 +745,583 @@ function safeProvider(value: unknown) {
   return EXTERNAL_SERVICE_IDS.has(provider) ? provider : null;
 }
 
+
+const OPENAI_PROJECT_DEFAULT_NAME = "Omnia Global Academy";
+
+function openAiAdminKey() {
+  return String(Deno.env.get("OPENAI_ADMIN_KEY") || "").trim();
+}
+
+function openAiProjectName() {
+  return String(Deno.env.get("OPENAI_PROJECT_NAME") || OPENAI_PROJECT_DEFAULT_NAME).trim() || OPENAI_PROJECT_DEFAULT_NAME;
+}
+
+async function openAiAdminFetch(path: string) {
+  const key = openAiAdminKey();
+  if (!key) throw new Error("OPENAI_ADMIN_KEY_NOT_CONFIGURED");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`https://api.openai.com/v1${path}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = String(payload?.error?.message || payload?.message || `HTTP_${response.status}`).slice(0, 500);
+      throw new Error(`OPENAI_ADMIN_API_${response.status}:${message}`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveOpenAiProject() {
+  const explicitId = String(Deno.env.get("OPENAI_PROJECT_ID") || "").trim();
+  const targetName = openAiProjectName();
+  if (explicitId) return { id: explicitId, name: targetName, source: "env" };
+
+  const projects: any[] = [];
+  let after = "";
+  for (let page = 0; page < 10; page += 1) {
+    const params = new URLSearchParams({ limit: "100", include_archived: "false" });
+    if (after) params.set("after", after);
+    const payload = await openAiAdminFetch(`/organization/projects?${params.toString()}`);
+    const batch = Array.isArray(payload?.data) ? payload.data : [];
+    projects.push(...batch);
+    if (!payload?.has_more || !payload?.last_id) break;
+    after = String(payload.last_id);
+  }
+
+  const normalizedTarget = targetName.toLocaleLowerCase("fr");
+  const matches = projects.filter((project: any) =>
+    String(project?.name || "").trim().toLocaleLowerCase("fr") === normalizedTarget
+    && String(project?.status || "active").toLowerCase() !== "archived"
+  );
+  if (matches.length === 1) {
+    return { id: String(matches[0].id), name: String(matches[0].name || targetName), source: "name" };
+  }
+  if (matches.length > 1) throw new Error("OPENAI_PROJECT_AMBIGUOUS_SET_OPENAI_PROJECT_ID");
+  throw new Error(`OPENAI_PROJECT_NOT_FOUND:${targetName}`);
+}
+
+function openAiSyncConfigured() {
+  return Boolean(openAiAdminKey());
+}
+
+async function syncOpenAiCosts(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const now = new Date();
+
+  const { data: stateRow } = await sb
+    .from("external_service_sync_state")
+    .select("*")
+    .eq("provider", "openai")
+    .maybeSingle();
+
+  const state = stateRow || { provider: "openai", auto_sync_enabled: true };
+  if (state.auto_sync_enabled === false && !force) {
+    return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  }
+  if (!openAiAdminKey()) {
+    return {
+      success: true,
+      skipped: true,
+      reason: "OPENAI_ADMIN_KEY_NOT_CONFIGURED",
+      state: { ...state, admin_key_configured: false },
+    };
+  }
+
+  const lastAttemptMs = state.last_attempt_at ? new Date(state.last_attempt_at).getTime() : 0;
+  if (!force && Number.isFinite(lastAttemptMs) && (now.getTime() - lastAttemptMs) < 15 * 60 * 1000) {
+    return { success: true, skipped: true, reason: "RECENT_SYNC", state: { ...state, admin_key_configured: true } };
+  }
+
+  await sb.from("external_service_sync_state").upsert({
+    provider: "openai",
+    auto_sync_enabled: state.auto_sync_enabled !== false,
+    last_attempt_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  }, { onConflict: "provider" });
+
+  try {
+    const project = await resolveOpenAiProject();
+    const endSeconds = Math.floor(now.getTime() / 1000);
+    const startDate = new Date(now.getTime() - 90 * 86400000);
+    startDate.setUTCHours(0, 0, 0, 0);
+    const startSeconds = Math.floor(startDate.getTime() / 1000);
+
+    const costRows: any[] = [];
+    let pageToken = "";
+    for (let page = 0; page < 20; page += 1) {
+      const params = new URLSearchParams({
+        start_time: String(startSeconds),
+        end_time: String(endSeconds),
+        bucket_width: "1d",
+        limit: "90",
+      });
+      params.append("project_ids", project.id);
+      params.append("group_by", "project_id");
+      params.append("group_by", "line_item");
+      if (pageToken) params.set("page", pageToken);
+
+      const payload = await openAiAdminFetch(`/organization/costs?${params.toString()}`);
+      for (const bucket of Array.isArray(payload?.data) ? payload.data : []) {
+        for (const result of Array.isArray(bucket?.results) ? bucket.results : []) {
+          const amount = Number(result?.amount?.value);
+          const currency = currencyCode(result?.amount?.currency);
+          if (!Number.isFinite(amount) || amount < 0 || !currency) continue;
+          const lineItem = String(result?.line_item || "total").trim() || "total";
+          const key = [
+            "openai-cost",
+            String(bucket?.start_time || ""),
+            String(bucket?.end_time || ""),
+            String(result?.project_id || project.id),
+            lineItem,
+            currency,
+          ].join(":");
+          costRows.push({
+            provider_entry_key: key,
+            provider: "openai",
+            entry_type: "usage",
+            source: "provider",
+            occurred_at: new Date(Number(bucket?.start_time || startSeconds) * 1000).toISOString(),
+            amount,
+            currency,
+            quantity: Number.isFinite(Number(result?.quantity)) ? Number(result.quantity) : null,
+            unit: Number.isFinite(Number(result?.quantity)) ? "provider_quantity" : null,
+            reference: key,
+            description: lineItem === "total"
+              ? "Coût OpenAI synchronisé automatiquement."
+              : `Coût OpenAI synchronisé automatiquement · ${lineItem}`,
+            metadata: {
+              provider: "openai",
+              project_id: String(result?.project_id || project.id),
+              project_name: project.name,
+              line_item: result?.line_item || null,
+              api_key_id: result?.api_key_id || null,
+              bucket_start: bucket?.start_time || null,
+              bucket_end: bucket?.end_time || null,
+              sync_source: "openai_organization_costs_api",
+            },
+            created_by: actorUserId,
+          });
+        }
+      }
+
+      if (!payload?.has_more || !payload?.next_page) break;
+      pageToken = String(payload.next_page);
+    }
+
+    if (costRows.length) {
+      const chunkSize = 200;
+      for (let i = 0; i < costRows.length; i += chunkSize) {
+        const chunk = costRows.slice(i, i + chunkSize);
+        const { error } = await sb
+          .from("external_service_ledger")
+          .upsert(chunk, { onConflict: "provider_entry_key" });
+        if (error) throw error;
+      }
+    }
+
+    const successState = {
+      provider: "openai",
+      auto_sync_enabled: state.auto_sync_enabled !== false,
+      last_attempt_at: now.toISOString(),
+      last_success_at: now.toISOString(),
+      last_error: null,
+      last_project_id: project.id,
+      last_project_name: project.name,
+      last_rows_synced: costRows.length,
+      metadata: {
+        ...(state?.metadata || {}),
+        lookback_days: 90,
+        project_resolution: project.source,
+        provider_endpoint: "organization/costs",
+      },
+      updated_at: now.toISOString(),
+    };
+    const { error: stateError } = await sb
+      .from("external_service_sync_state")
+      .upsert(successState, { onConflict: "provider" });
+    if (stateError) throw stateError;
+
+    await sb.from("external_service_admin_audit").insert({
+      actor_user_id: actorUserId,
+      provider: "openai",
+      action: force ? "provider_sync_forced" : "provider_sync_automatic",
+      metadata: {
+        rows_synced: costRows.length,
+        project_id: project.id,
+        project_name: project.name,
+        lookback_days: 90,
+      },
+    });
+
+    return {
+      success: true,
+      skipped: false,
+      rows_synced: costRows.length,
+      project,
+      state: { ...successState, admin_key_configured: true },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failureState = {
+      provider: "openai",
+      auto_sync_enabled: state.auto_sync_enabled !== false,
+      last_attempt_at: now.toISOString(),
+      last_error: message.slice(0, 1000),
+      updated_at: now.toISOString(),
+    };
+    await sb.from("external_service_sync_state").upsert(failureState, { onConflict: "provider" });
+    await sb.from("external_service_admin_audit").insert({
+      actor_user_id: actorUserId,
+      provider: "openai",
+      action: "provider_sync_failed",
+      metadata: { error: message.slice(0, 1000) },
+    });
+    return {
+      success: false,
+      skipped: false,
+      error: message,
+      state: { ...state, ...failureState, admin_key_configured: true },
+    };
+  }
+}
+
+
+const PROVIDER_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+
+async function providerSyncState(sb: any, provider: string) {
+  const { data } = await sb.from("external_service_sync_state").select("*").eq("provider", provider).maybeSingle();
+  return data || { provider, auto_sync_enabled: true, metadata: {} };
+}
+
+function providerSyncRecent(state: any, force: boolean) {
+  if (force) return false;
+  const lastAttemptMs = state?.last_attempt_at ? new Date(state.last_attempt_at).getTime() : 0;
+  return Number.isFinite(lastAttemptMs) && (Date.now() - lastAttemptMs) < PROVIDER_SYNC_INTERVAL_MS;
+}
+
+async function providerSyncBegin(sb: any, provider: string, state: any) {
+  const now = new Date().toISOString();
+  await sb.from("external_service_sync_state").upsert({
+    provider,
+    auto_sync_enabled: state?.auto_sync_enabled !== false,
+    last_attempt_at: now,
+    updated_at: now,
+  }, { onConflict: "provider" });
+  return now;
+}
+
+async function providerSyncSuccess(sb: any, provider: string, state: any, rowsSynced: number, metadata: Record<string, unknown>, actorUserId: string | null, force: boolean) {
+  const now = new Date().toISOString();
+  const row = {
+    provider,
+    auto_sync_enabled: state?.auto_sync_enabled !== false,
+    last_attempt_at: now,
+    last_success_at: now,
+    last_error: null,
+    last_rows_synced: rowsSynced,
+    metadata: { ...(state?.metadata || {}), ...metadata },
+    updated_at: now,
+  };
+  await sb.from("external_service_sync_state").upsert(row, { onConflict: "provider" });
+  await sb.from("external_service_admin_audit").insert({
+    actor_user_id: actorUserId,
+    provider,
+    action: force ? "provider_sync_forced" : "provider_sync_automatic",
+    metadata: { rows_synced: rowsSynced, ...metadata },
+  });
+  return row;
+}
+
+async function providerSyncFailure(sb: any, provider: string, state: any, error: unknown, actorUserId: string | null) {
+  const message = error instanceof Error ? error.message : String(error);
+  const now = new Date().toISOString();
+  const row = {
+    provider,
+    auto_sync_enabled: state?.auto_sync_enabled !== false,
+    last_attempt_at: now,
+    last_error: message.slice(0, 1000),
+    updated_at: now,
+  };
+  await sb.from("external_service_sync_state").upsert(row, { onConflict: "provider" });
+  await sb.from("external_service_admin_audit").insert({
+    actor_user_id: actorUserId,
+    provider,
+    action: "provider_sync_failed",
+    metadata: { error: message.slice(0, 1000) },
+  });
+  return { success: false, skipped: false, error: message, state: { ...state, ...row } };
+}
+
+async function upsertProviderLedgerRows(sb: any, rowsToWrite: any[]) {
+  if (!rowsToWrite.length) return;
+  for (let i = 0; i < rowsToWrite.length; i += 200) {
+    const { error } = await sb.from("external_service_ledger").upsert(rowsToWrite.slice(i, i + 200), { onConflict: "provider_entry_key" });
+    if (error) throw error;
+  }
+}
+
+function anthropicAdminKey() {
+  return String(Deno.env.get("ANTHROPIC_ADMIN_KEY") || "").trim();
+}
+
+async function anthropicAdminFetch(path: string) {
+  const key = anthropicAdminKey();
+  if (!key) throw new Error("ANTHROPIC_ADMIN_KEY_NOT_CONFIGURED");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`https://api.anthropic.com${path}`, {
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "User-Agent": "OmniaGlobalAcademy/1.0",
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`ANTHROPIC_ADMIN_API_${response.status}:${String(payload?.error?.message || payload?.message || "REQUEST_FAILED").slice(0, 500)}`);
+    return payload;
+  } finally { clearTimeout(timer); }
+}
+
+async function syncAnthropicCosts(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "anthropic";
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const state = await providerSyncState(sb, provider);
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!anthropicAdminKey()) return { success: true, skipped: true, reason: "ANTHROPIC_ADMIN_KEY_NOT_CONFIGURED", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
+  try {
+    const end = new Date(); end.setUTCHours(0, 0, 0, 0);
+    const start = new Date(end.getTime() - 30 * 86400000);
+    const paramsBase = new URLSearchParams({
+      starting_at: start.toISOString(), ending_at: end.toISOString(), bucket_width: "1d", limit: "31",
+    });
+    paramsBase.append("group_by[]", "description");
+    const rowsToWrite: any[] = [];
+    let page = "";
+    for (let i = 0; i < 20; i += 1) {
+      const params = new URLSearchParams(paramsBase);
+      if (page) params.set("page", page);
+      const payload = await anthropicAdminFetch(`/v1/organizations/cost_report?${params.toString()}`);
+      for (const bucket of Array.isArray(payload?.data) ? payload.data : []) {
+        for (const result of Array.isArray(bucket?.results) ? bucket.results : []) {
+          const cents = Number(result?.amount);
+          if (!Number.isFinite(cents) || cents < 0) continue;
+          const amount = Number((cents / 100).toFixed(6));
+          const description = String(result?.description || result?.cost_type || "usage").trim() || "usage";
+          const key = ["anthropic-cost", String(bucket?.starting_at || start.toISOString()), String(bucket?.ending_at || ""), description, String(result?.workspace_id || "default")].join(":");
+          rowsToWrite.push({
+            provider_entry_key: key, provider, entry_type: "usage", source: "provider",
+            occurred_at: String(bucket?.starting_at || start.toISOString()), amount, currency: "USD",
+            reference: key, description: `Coût Anthropic synchronisé automatiquement · ${description}`,
+            metadata: {
+              sync_source: "anthropic_cost_report_api", description,
+              workspace_id: result?.workspace_id || null, cost_type: result?.cost_type || null,
+              model: result?.model || null, inference_geo: result?.inference_geo || null,
+              context_window: result?.context_window || null, amount_minor_units: String(result?.amount ?? ""),
+            }, created_by: actorUserId,
+          });
+        }
+      }
+      if (!payload?.has_more || !payload?.next_page) break;
+      page = String(payload.next_page);
+    }
+    await upsertProviderLedgerRows(sb, rowsToWrite);
+    const successState = await providerSyncSuccess(sb, provider, state, rowsToWrite.length, {
+      source: "anthropic_cost_report_api", lookback_days: 30, currency: "USD", recharge_mode: "provider_auto_reload",
+    }, actorUserId, force);
+    return { success: true, skipped: false, rows_synced: rowsToWrite.length, state: successState };
+  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+}
+
+async function syncBrevoAccount(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "brevo";
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const state = await providerSyncState(sb, provider);
+  const key = String(Deno.env.get("BREVO_API_KEY") || "").trim();
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!key) return { success: true, skipped: true, reason: "BREVO_API_KEY_NOT_CONFIGURED", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
+  try {
+    const response = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": key, accept: "application/json" } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`BREVO_ACCOUNT_API_${response.status}:${String(payload?.message || "REQUEST_FAILED").slice(0, 500)}`);
+    const plans = (Array.isArray(payload?.plan) ? payload.plan : []).map((plan: any) => ({ type: plan?.type || null, credits: Number(plan?.credits ?? 0), credits_type: plan?.creditsType || null }));
+    const planVerticals = (Array.isArray(payload?.planVerticals) ? payload.planVerticals : []).map((plan: any) => ({ category: plan?.planCategory || null, type: plan?.planType || null, name: plan?.name || null, status: plan?.status || null, credits: plan?.credits ?? null, end_date: plan?.endDate || null }));
+    const successState = await providerSyncSuccess(sb, provider, state, 0, {
+      source: "brevo_account_api", company_name: payload?.companyName || null, organization_id: payload?.organization_id || null,
+      plans, plan_verticals: planVerticals, relay_enabled: payload?.relay?.enabled === true,
+      recharge_mode: "provider_plan_or_credit_purchase",
+    }, actorUserId, force);
+    return { success: true, skipped: false, rows_synced: 0, state: successState };
+  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+}
+
+function cloudflareBillingToken() { return String(Deno.env.get("CLOUDFLARE_BILLING_API_TOKEN") || "").trim(); }
+function cloudflareAccountId() { return String(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") || Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("R2_ACCOUNT_ID") || "").trim(); }
+
+async function syncCloudflareBilling(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "cloudflare";
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const state = await providerSyncState(sb, provider);
+  const token = cloudflareBillingToken(); const accountId = cloudflareAccountId();
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!token || !accountId) return { success: true, skipped: true, reason: "CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
+  try {
+    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/billable-usage`, { headers: { Authorization: `Bearer ${token}`, accept: "application/json" } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success === false) throw new Error(`CLOUDFLARE_BILLING_API_${response.status}:${String(payload?.errors?.[0]?.message || "REQUEST_FAILED").slice(0, 500)}`);
+    const result = Array.isArray(payload?.result) ? payload.result : (Array.isArray(payload) ? payload : []);
+    const rowsToWrite = result.flatMap((item: any) => {
+      const amount = Number(item?.BilledCost ?? item?.ContractedCost ?? item?.EffectiveCost);
+      const currency = currencyCode(item?.BillingCurrency);
+      if (!Number.isFinite(amount) || amount < 0 || !currency) return [];
+      const key = ["cloudflare-cost", item?.ChargePeriodStart || item?.BillingPeriodStart || "current", item?.ChargePeriodEnd || "", item?.ServiceName || "service", item?.ChargeDescription || "usage", currency].join(":");
+      return [{
+        provider_entry_key: key, provider, entry_type: "usage", source: "provider",
+        occurred_at: item?.ChargePeriodStart || item?.BillingPeriodStart || new Date().toISOString(), amount, currency,
+        quantity: Number.isFinite(Number(item?.ConsumedQuantity)) ? Number(item.ConsumedQuantity) : null,
+        unit: String(item?.ConsumedUnit || item?.PricingUnit || "").trim() || null,
+        reference: key, description: `Coût Cloudflare synchronisé automatiquement · ${String(item?.ServiceName || item?.ChargeDescription || "Usage")}`,
+        metadata: { sync_source: "cloudflare_billable_usage_api", service_name: item?.ServiceName || null, service_family: item?.ServiceFamilyName || null, charge_description: item?.ChargeDescription || null, subscription_id: item?.SubscriptionId || null },
+        created_by: actorUserId,
+      }];
+    });
+    await upsertProviderLedgerRows(sb, rowsToWrite);
+    const successState = await providerSyncSuccess(sb, provider, state, rowsToWrite.length, { source: "cloudflare_billable_usage_api", account_id: accountId, recharge_mode: "postpaid_or_subscription" }, actorUserId, force);
+    return { success: true, skipped: false, rows_synced: rowsToWrite.length, state: successState };
+  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+}
+
+async function fedaPayFetch(path: string) {
+  const response = await fetch(`${fedaPayApiBase()}${path}`, { headers: { Authorization: `Bearer ${fedaPaySecretKey()}`, accept: "application/json" } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`FEDAPAY_API_${response.status}:${String(payload?.message || payload?.error || "REQUEST_FAILED").slice(0, 500)}`);
+  return payload;
+}
+
+async function syncFedaPayBilling(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "fedapay";
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const state = await providerSyncState(sb, provider);
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!fedaPaySecretKeyConfigured()) return { success: true, skipped: true, reason: "FEDAPAY_SECRET_KEY_NOT_CONFIGURED", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
+  try {
+    const [balancesPayload, txPayload] = await Promise.all([fedaPayFetch("/balances"), fedaPayFetch("/transactions?per_page=100")]);
+    const balances = Array.isArray(balancesPayload) ? balancesPayload : (Array.isArray(balancesPayload?.balances) ? balancesPayload.balances : []);
+    const transactions = Array.isArray(txPayload) ? txPayload : (Array.isArray(txPayload?.transactions) ? txPayload.transactions : (Array.isArray(txPayload?.data) ? txPayload.data : []));
+    const currencyIds = Array.from(new Set(transactions.map((tx: any) => Number(tx?.currency_id)).filter((id: number) => Number.isFinite(id) && id > 0)));
+    const currencyMap = new Map<number, string>();
+    await Promise.all(currencyIds.slice(0, 20).map(async (id: number) => {
+      try {
+        const raw = await fedaPayFetch(`/currencies/${id}`);
+        const item = Array.isArray(raw) ? raw[0] : (raw?.currency || raw);
+        const code = currencyCode(item?.iso || item?.code || item?.name);
+        if (code) currencyMap.set(id, code);
+      } catch { /* cost row skipped if currency cannot be proven */ }
+    }));
+    const rowsToWrite: any[] = [];
+    for (const tx of transactions) {
+      const providerFeeUnits = Number(tx?.fees ?? 0) + Number(tx?.commission ?? 0) + Number(tx?.fixed_commission ?? 0);
+      const currency = currencyMap.get(Number(tx?.currency_id)) || "";
+      if (!(providerFeeUnits > 0)) continue;
+      const txId = String(tx?.id || tx?.reference || tx?.transaction_key || "").trim();
+      if (!txId) continue;
+      const key = `fedapay-fee:${txId}:${currency || "unknown"}`;
+      // FedaPay expose des montants dans l'unité propre à la devise. Ne pas supposer
+      // arbitrairement 2 décimales (XOF, par exemple, ne doit pas être divisé par 100).
+      // On conserve donc la quantité brute fournisseur tant que l'échelle monétaire
+      // n'est pas explicitement prouvée par les métadonnées de devise.
+      rowsToWrite.push({
+        provider_entry_key: key,
+        provider,
+        entry_type: "usage",
+        source: "provider",
+        occurred_at: tx?.approved_at || tx?.created_at || new Date().toISOString(),
+        amount: null,
+        currency: null,
+        quantity: providerFeeUnits,
+        unit: currency ? `${currency}_provider_units` : "provider_units",
+        reference: tx?.reference || txId,
+        description: "Frais FedaPay synchronisés automatiquement (unités fournisseur, sans conversion estimée).",
+        metadata: {
+          sync_source: "fedapay_transactions_api",
+          transaction_id: tx?.id || null,
+          status: tx?.status || null,
+          fees_provider_units: tx?.fees ?? null,
+          commission_provider_units: tx?.commission ?? null,
+          fixed_commission_provider_units: tx?.fixed_commission ?? null,
+          currency_id: tx?.currency_id || null,
+          currency_code: currency || null,
+          monetary_scale_assumed: false,
+        },
+        created_by: actorUserId,
+      });
+    }
+    await upsertProviderLedgerRows(sb, rowsToWrite);
+    const successState = await providerSyncSuccess(sb, provider, state, rowsToWrite.length, { source: "fedapay_transactions_and_balances_api", balances: balances.map((b: any) => ({ id: b?.id || null, amount_minor: b?.amount ?? null, mode: b?.mode || null, updated_at: b?.updated_at || null })), transaction_count: transactions.length, recharge_mode: "not_applicable_merchant_balance" }, actorUserId, force);
+    return { success: true, skipped: false, rows_synced: rowsToWrite.length, state: successState };
+  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+}
+
+function sentrySyncConfigured() { return Boolean(String(Deno.env.get("SENTRY_AUTH_TOKEN") || "").trim() && String(Deno.env.get("SENTRY_ORG_SLUG") || "").trim()); }
+
+async function syncSentryStats(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "sentry";
+  const force = options.force === true;
+  const actorUserId = options.actorUserId || null;
+  const state = await providerSyncState(sb, provider);
+  const token = String(Deno.env.get("SENTRY_AUTH_TOKEN") || "").trim();
+  const org = String(Deno.env.get("SENTRY_ORG_SLUG") || "").trim();
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!token || !org) return { success: true, skipped: true, reason: "SENTRY_TOKEN_OR_ORG_NOT_CONFIGURED", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
+  try {
+    const params = new URLSearchParams({ "field": "sum(quantity)", "groupBy": "category", "statsPeriod": "30d" });
+    const response = await fetch(`https://sentry.io/api/0/organizations/${encodeURIComponent(org)}/stats_v2/?${params.toString()}`, { headers: { Authorization: `Bearer ${token}`, accept: "application/json" } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`SENTRY_STATS_API_${response.status}:${String(payload?.detail || "REQUEST_FAILED").slice(0, 500)}`);
+    const groups = Array.isArray(payload?.groups) ? payload.groups : [];
+    const snapshot = groups.map((g: any) => ({ category: g?.by?.category || null, quantity: g?.totals?.["sum(quantity)"] ?? null }));
+    const successState = await providerSyncSuccess(sb, provider, state, 0, { source: "sentry_stats_v2_api", organization: org, usage_30d: snapshot, recharge_mode: "subscription_or_quota" }, actorUserId, force);
+    return { success: true, skipped: false, rows_synced: 0, state: successState };
+  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+}
+
+async function syncExternalProvider(sb: any, provider: string, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  if (provider === "openai") return await syncOpenAiCosts(sb, options);
+  if (provider === "anthropic") return await syncAnthropicCosts(sb, options);
+  if (provider === "brevo") return await syncBrevoAccount(sb, options);
+  if (provider === "cloudflare") return await syncCloudflareBilling(sb, options);
+  if (provider === "fedapay") return await syncFedaPayBilling(sb, options);
+  if (provider === "sentry") return await syncSentryStats(sb, options);
+  if (["jaas", "fcm", "apns"].includes(provider)) return { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY", rows_synced: 0 };
+  return { success: false, skipped: true, reason: "PROVIDER_SYNC_NOT_SUPPORTED" };
+}
+
 function groupLedgerAmounts(entries: any[]) {
   const balances: Record<string, number> = {};
   const recharges: Record<string, number> = {};
@@ -768,13 +1345,18 @@ function groupLedgerAmounts(entries: any[]) {
   return { tracked_balance: balances, recharges, consumption, quantities };
 }
 
-async function externalServiceGovernancePayload(sb: any) {
+async function externalServiceGovernancePayload(sb: any, actorUserId: string | null = null) {
+  const [openAiSyncAttempt, anthropicSyncAttempt, brevoSyncAttempt, cloudflareSyncAttempt, fedaPaySyncAttempt, sentrySyncAttempt] = await Promise.all([
+    syncOpenAiCosts(sb, { actorUserId }), syncAnthropicCosts(sb, { actorUserId }), syncBrevoAccount(sb, { actorUserId }),
+    syncCloudflareBilling(sb, { actorUserId }), syncFedaPayBilling(sb, { actorUserId }), syncSentryStats(sb, { actorUserId }),
+  ]);
   const now = new Date();
   const start30 = new Date(now.getTime() - 30 * 86400000).toISOString();
 
-  const [ledger, budgets, audits, cronControls, cronRuns, notificationRows, pushRows, cloudflareMedia, jaasRooms, fedaCourseOrders, fedaLiveOrders] = await Promise.all([
-    rows(sb, "external_service_ledger", "id,provider,entry_type,source,occurred_at,amount,currency,quantity,unit,reference,description,metadata,created_by,created_at", q => q.order("occurred_at", { ascending: false }).limit(5000)),
+  const [ledger, budgets, syncStates, audits, cronControls, cronRuns, notificationRows, pushRows, cloudflareMedia, jaasRooms, fedaCourseOrders, fedaLiveOrders] = await Promise.all([
+    rows(sb, "external_service_ledger", "id,provider,entry_type,source,occurred_at,amount,currency,quantity,unit,reference,description,metadata,provider_entry_key,created_by,created_at", q => q.order("occurred_at", { ascending: false }).limit(5000)),
     rows(sb, "external_service_budget_settings", "provider,monthly_budget,currency,low_balance_threshold,notes,enabled,updated_at", q => q.order("provider", { ascending: true })),
+    rows(sb, "external_service_sync_state", "provider,auto_sync_enabled,last_attempt_at,last_success_at,last_error,last_project_id,last_project_name,last_rows_synced,metadata,updated_at", q => q.order("provider", { ascending: true })),
     rows(sb, "external_service_admin_audit", "id,provider,action,metadata,created_at", q => q.order("created_at", { ascending: false }).limit(100)),
     rows(sb, "oga_cron_controls", "job_key,enabled,max_runtime_seconds,failure_threshold,consecutive_failures,last_started_at,last_finished_at,last_success_at,last_failure_at,last_error,updated_at", q => q.order("job_key", { ascending: true })),
     rows(sb, "oga_cron_runs", "id,job_key,status,forced,started_at,finished_at,duration_ms,error_message", q => q.gte("started_at", start30).order("started_at", { ascending: false }).limit(200)),
@@ -804,6 +1386,7 @@ async function externalServiceGovernancePayload(sb: any) {
 
   const ledgerRows = ledger || [];
   const budgetMap = new Map((budgets || []).map((row: any) => [String(row.provider), row]));
+  const syncMap = new Map((syncStates || []).map((row: any) => [String(row.provider), row]));
   const providerLedger = (provider: string) => ledgerRows.filter((row: any) => row.provider === provider);
   const provider = (id: string, label: string, details: Record<string, unknown>) => {
     const entries = providerLedger(id);
@@ -814,6 +1397,8 @@ async function externalServiceGovernancePayload(sb: any) {
     const monthlyBudget = Number(budget?.monthly_budget);
     const threshold = Number(budget?.low_balance_threshold);
     const trackedBalance = budgetCurrency ? Number(finance.tracked_balance?.[budgetCurrency]) : NaN;
+    const trackedRecharge = budgetCurrency ? Number(finance.recharges?.[budgetCurrency]) : NaN;
+    const hasManualFundingReference = Number.isFinite(trackedRecharge) && trackedRecharge > 0;
     const monthlyConsumption = budgetCurrency ? Number(finance30d.consumption?.[budgetCurrency]) : NaN;
     const budgetStatus = {
       currency: budgetCurrency || null,
@@ -822,11 +1407,15 @@ async function externalServiceGovernancePayload(sb: any) {
       remaining_budget: Number.isFinite(monthlyBudget) && Number.isFinite(monthlyConsumption) ? Number((monthlyBudget - monthlyConsumption).toFixed(6)) : null,
       low_balance_threshold: Number.isFinite(threshold) ? threshold : null,
       tracked_balance: Number.isFinite(trackedBalance) ? trackedBalance : null,
-      low_balance_alert: Number.isFinite(threshold) && Number.isFinite(trackedBalance) ? trackedBalance <= threshold : false,
+      // Le solde calculé par le journal n'est qu'un rapprochement de secours. Si les
+      // recharges sont gérées automatiquement par le fournisseur et non importables,
+      // ne jamais produire une fausse alerte de solde négatif à partir des seuls coûts.
+      low_balance_alert: hasManualFundingReference && Number.isFinite(threshold) && Number.isFinite(trackedBalance) ? trackedBalance <= threshold : false,
       budget_exceeded: Number.isFinite(monthlyBudget) && Number.isFinite(monthlyConsumption) ? monthlyConsumption > monthlyBudget : false,
     };
     return {
       id, label, budget,
+      sync: syncMap.get(id) || null,
       finance,
       finance_30d: finance30d,
       budget_status: budgetStatus,
@@ -839,82 +1428,71 @@ async function externalServiceGovernancePayload(sb: any) {
 
   const providers = [
     provider("openai", "OpenAI", {
-      configured: Boolean(String(Deno.env.get("OPENAI_API_KEY") || "").trim()),
-      environment: "API",
-      billing_model: "usage",
-      role: "Texte, images, embeddings, transcription et synthèse vocale selon les moteurs OGA.",
-      usage_note: "Le journal financier OGA n’invente aucun coût : les montants sont enregistrés uniquement depuis des données fournisseur ou une saisie administrative justifiée.",
-      management_path: "/admin/moteurs-services",
+      configured: Boolean(String(Deno.env.get("OPENAI_API_KEY") || "").trim()), admin_billing_configured: openAiSyncConfigured(),
+      environment: "API", billing_model: "usage", role: "Texte, images, embeddings, transcription et synthèse vocale selon les moteurs OGA.",
+      usage_note: openAiSyncConfigured() ? "Coûts réels synchronisés automatiquement via l’API Costs OpenAI. Les recharges futures peuvent être gérées par Auto-reload chez OpenAI : aucune saisie OGA n’est requise par défaut." : "Ajoutez OPENAI_ADMIN_KEY côté Supabase pour la synchronisation automatique des coûts. La clé applicative actuelle reste inchangée.",
+      recharge_automation: { provider_managed: true, provider_name: "OpenAI", auto_reload_supported: true, transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload", note: "Auto-reload est géré par OpenAI. OGA importe les coûts réels ; la saisie manuelle reste uniquement un secours comptable si nécessaire." },
+      sync_attempt: openAiSyncAttempt, management_path: "/admin/moteurs-services",
     }),
     provider("anthropic", "Anthropic", {
-      configured: Boolean(String(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "").trim()),
-      environment: "API",
-      billing_model: "usage",
-      role: "Assistance pédagogique, Career Studio et génération/traitement de contenus selon les moteurs OGA.",
-      usage_note: "Suivi OGA sans estimation tarifaire automatique.",
-      management_path: "/admin/quality-center",
+      configured: Boolean(String(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "").trim()), admin_billing_configured: Boolean(anthropicAdminKey()),
+      environment: "API", billing_model: "usage", role: "Assistance pédagogique, Career Studio et génération/traitement de contenus selon les moteurs OGA.",
+      usage_note: anthropicAdminKey() ? "Coûts réels synchronisés automatiquement via l’API Cost Report Anthropic." : "Ajoutez ANTHROPIC_ADMIN_KEY pour activer la synchronisation automatique des coûts.",
+      recharge_automation: { provider_managed: true, provider_name: "Anthropic", auto_reload_supported: true, transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload", note: "Les crédits et l’auto-reload sont gérés par Anthropic ; OGA importe automatiquement les coûts." },
+      sync_attempt: anthropicSyncAttempt, management_path: "/admin/quality-center",
     }),
     provider("brevo", "Brevo", {
-      configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()),
-      environment: "production_account",
-      billing_model: "credits_or_plan",
-      role: "E-mails transactionnels, newsletter et SMS lorsque configuré.",
+      configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()), admin_billing_configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()),
+      environment: "production_account", billing_model: "credits_or_plan", role: "E-mails transactionnels, newsletter et SMS lorsque configuré.",
       observed_usage_30d: { emails: notificationSummary.email_30d, sms: notificationSummary.sms_30d, failures: notificationSummary.failures_30d },
-      management_path: "/admin/cms-branding",
+      usage_note: "Plan et crédits disponibles sont lus automatiquement via l’API Account Brevo ; les envois OGA sont comptés depuis la plateforme.",
+      recharge_automation: { provider_managed: true, provider_name: "Brevo", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "provider_plan_or_credit_purchase", note: "Aucune saisie n’est requise pour le suivi courant ; le plan/crédit est lu automatiquement. Une écriture manuelle reste un secours si une facture doit être rapprochée." },
+      sync_attempt: brevoSyncAttempt, management_path: "/admin/cms-branding",
     }),
     provider("cloudflare", "Cloudflare R2 / Stream", {
       configured: envConfigured("R2_ACCOUNT_ID") && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim()) && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim()),
-      stream_configured: cloudflareStreamConfigured(),
-      environment: "production_service",
-      billing_model: "usage",
-      role: "Stockage privé, diffusion vidéo et URLs signées.",
+      admin_billing_configured: Boolean(cloudflareBillingToken() && cloudflareAccountId()), stream_configured: cloudflareStreamConfigured(),
+      environment: "production_service", billing_model: "usage", role: "Stockage privé, diffusion vidéo et URLs signées.",
       observed_usage_30d: { stream_media_created: cloudflareMedia ?? null },
-      management_path: "/admin/live",
+      usage_note: cloudflareBillingToken() ? "Coûts et quantités facturables synchronisés automatiquement depuis l’API Billing Cloudflare." : "Ajoutez un token séparé CLOUDFLARE_BILLING_API_TOKEN avec Billing Read pour automatiser les coûts sans élargir les permissions du token Stream.",
+      recharge_automation: { provider_managed: true, provider_name: "Cloudflare", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "postpaid_or_subscription", note: "Cloudflare est généralement facturé à l’usage ou par abonnement : il n’y a pas de recharge OGA à saisir." },
+      sync_attempt: cloudflareSyncAttempt, management_path: "/admin/live",
     }),
     provider("fedapay", "FedaPay", {
-      configured: fedaPaySecretKeyConfigured(),
-      webhook_configured: fedaPayWebhookConfigured(),
-      environment: fedaConfig?.effective_mode || "sandbox",
-      requested_environment: fedaConfig?.requested_mode || "sandbox",
-      production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,
-      billing_model: "transactional",
-      role: "Paiements Omnia. Le passage Production reste contrôlé côté serveur.",
+      configured: fedaPaySecretKeyConfigured(), webhook_configured: fedaPayWebhookConfigured(), environment: fedaConfig?.effective_mode || "sandbox",
+      requested_environment: fedaConfig?.requested_mode || "sandbox", production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,
+      billing_model: "transactional", role: "Paiements Omnia. Le passage Production reste contrôlé côté serveur.",
       observed_usage_30d: { course_orders: fedaCourseOrders ?? null, live_orders: fedaLiveOrders ?? null },
-      management_path: "/admin/fintech",
+      usage_note: "Balances et frais de transactions sont synchronisés automatiquement depuis l’API FedaPay lorsque la clé de l’environnement actif est configurée.",
+      recharge_automation: { provider_managed: true, provider_name: "FedaPay", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "merchant_balance", note: "FedaPay est un compte marchand : pas de recharge à saisir. OGA suit automatiquement les balances et frais disponibles." },
+      sync_attempt: fedaPaySyncAttempt, management_path: "/admin/fintech",
     }),
     provider("jaas", "Jitsi / JaaS", {
-      configured: jaas.configured,
-      environment: jaas.public_jitsi_development_fallback ? "development_fallback" : "jaas",
-      production_ready: jaas.production_ready,
-      billing_model: "plan_or_usage",
-      role: "Infrastructure visioconférence Omnia Live.",
-      observed_usage_30d: { rooms_created: jaasRooms ?? null },
-      management_path: "/admin/live",
+      configured: jaas.configured, environment: jaas.public_jitsi_development_fallback ? "development_fallback" : "jaas", production_ready: jaas.production_ready,
+      billing_model: "plan_or_usage", role: "Infrastructure visioconférence Omnia Live.", observed_usage_30d: { rooms_created: jaasRooms ?? null },
+      usage_note: "L’activité OGA est suivie automatiquement en temps réel. JaaS expose la facturation dans sa console ; aucune saisie manuelle n’est requise par défaut.",
+      recharge_automation: { provider_managed: true, provider_name: "JaaS", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "subscription_invoice", note: "Abonnement/facture fournisseur ; la saisie n’est qu’un secours de rapprochement." },
+      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/live",
     }),
     provider("fcm", "Firebase Cloud Messaging", {
-      configured: envConfigured("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY"),
-      environment: "firebase",
-      billing_model: "service",
-      role: "Notifications push Android.",
-      observed_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d },
-      management_path: "/admin/moteurs-services",
+      configured: envConfigured("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY"), environment: "firebase", billing_model: "no_cost_service", role: "Notifications push Android.",
+      observed_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d }, usage_note: "FCM Cloud Messaging est suivi automatiquement par les livraisons OGA et n’a pas de recharge à enregistrer.",
+      recharge_automation: { provider_managed: true, provider_name: "FCM", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable", note: "Service sans coût de Cloud Messaging : aucune recharge." },
+      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/moteurs-services",
     }),
     provider("apns", "Apple Push Notification Service", {
-      configured: envConfigured("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID"),
-      environment: String(Deno.env.get("APNS_ENVIRONMENT") || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox",
-      billing_model: "service",
-      role: "Notifications push iOS.",
-      observed_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
-      management_path: "/admin/moteurs-services",
+      configured: envConfigured("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID"), environment: String(Deno.env.get("APNS_ENVIRONMENT") || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox",
+      billing_model: "service", role: "Notifications push iOS.", observed_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
+      usage_note: "Les livraisons APNs sont suivies automatiquement par OGA. Le coût éventuel du programme développeur Apple est distinct d’APNs.",
+      recharge_automation: { provider_managed: true, provider_name: "APNs", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable", note: "Aucune recharge APNs." },
+      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/moteurs-services",
     }),
     provider("sentry", "Sentry", {
-      configured: null,
-      configuration_scope: "frontend_build",
-      environment: "web_and_capacitor",
-      billing_model: "plan_or_quota",
+      configured: null, configuration_scope: "frontend_build", admin_billing_configured: sentrySyncConfigured(), environment: "web_and_capacitor", billing_model: "plan_or_quota",
       role: "Diagnostic d’erreurs Web/PWA et natif. DSN public injecté au build, sans secret serveur exposé.",
-      usage_note: "Le backend ne lit pas le DSN Frontend. L’interface complète cet état localement.",
-      management_path: "/admin/moteurs-services",
+      usage_note: sentrySyncConfigured() ? "Volumes d’événements synchronisés automatiquement via l’API Stats Sentry." : "Ajoutez SENTRY_AUTH_TOKEN et SENTRY_ORG_SLUG si vous souhaitez importer automatiquement les volumes Sentry dans cette console.",
+      recharge_automation: { provider_managed: true, provider_name: "Sentry", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "subscription_or_quota", note: "Plan/quota fournisseur : aucune recharge quotidienne à saisir." },
+      sync_attempt: sentrySyncAttempt, management_path: "/admin/moteurs-services",
     }),
   ];
 
@@ -950,9 +1528,17 @@ async function externalServiceGovernancePayload(sb: any) {
 
 async function handleOperationsPost(sb: any, session: SessionContext, body: any) {
   const action = String(body?.action || "");
-  const supported = new Set(["external_service_ledger_add", "external_service_budget_save", "cron_control_update"]);
+  const supported = new Set(["external_service_ledger_add", "external_service_ledger_update", "external_service_ledger_delete", "external_service_budget_save", "external_service_provider_sync", "cron_control_update"]);
   if (!supported.has(action)) return null;
   if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+
+  if (action === "external_service_provider_sync") {
+    const provider = safeProvider(body?.provider);
+    if (!provider) return json({ error: "PROVIDER_INVALID" }, 400);
+    const result = await syncExternalProvider(sb, provider, { force: true, actorUserId: session.userId });
+    if (!result.success) return json({ error: "PROVIDER_SYNC_FAILED", message: result.error || `Synchronisation ${provider} impossible.`, sync: result }, 502);
+    return json({ success: true, sync: result });
+  }
 
   if (action === "external_service_ledger_add") {
     const provider = safeProvider(body?.provider);
@@ -975,6 +1561,42 @@ async function handleOperationsPost(sb: any, session: SessionContext, body: any)
     if (error) throw error;
     await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider, action: "ledger_entry_added", metadata: { entry_id: data.id, entry_type: entryType, amount, currency, quantity, unit, reference } });
     return json({ success: true, entry: data });
+  }
+
+  if (action === "external_service_ledger_update") {
+    const id = String(body?.id || "").trim();
+    const provider = safeProvider(body?.provider);
+    const entryType = String(body?.entry_type || "");
+    const amount = body?.amount === "" || body?.amount == null ? null : Number(body.amount);
+    const quantity = body?.quantity === "" || body?.quantity == null ? null : Number(body.quantity);
+    const currency = amount == null ? null : currencyCode(body?.currency);
+    const unit = quantity == null ? null : String(body?.unit || "").trim().slice(0, 80) || null;
+    const reference = String(body?.reference || "").trim().slice(0, 240) || null;
+    const description = String(body?.description || "").trim().slice(0, 1200) || null;
+    if (!id || !provider || !["recharge", "usage", "refund", "adjustment"].includes(entryType)) return json({ error: "INVALID_ENTRY" }, 400);
+    if (amount != null && (!Number.isFinite(amount) || amount < 0 || !currency)) return json({ error: "INVALID_AMOUNT" }, 400);
+    if (quantity != null && (!Number.isFinite(quantity) || quantity < 0 || !unit)) return json({ error: "INVALID_QUANTITY" }, 400);
+    if (amount == null && quantity == null && !description) return json({ error: "EMPTY_ENTRY" }, 400);
+    const { data, error } = await sb.from("external_service_ledger").update({
+      provider, entry_type: entryType, occurred_at: body?.occurred_at || new Date().toISOString(),
+      amount, currency, quantity, unit, reference, description,
+      metadata: { evidence: String(body?.evidence || "").trim().slice(0, 1000) || null },
+    }).eq("id", id).eq("source", "manual").select("*").maybeSingle();
+    if (error) throw error;
+    if (!data) return json({ error: "MANUAL_ENTRY_NOT_FOUND", message: "Seules les saisies manuelles existantes peuvent être modifiées." }, 404);
+    await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider, action: "ledger_entry_updated", metadata: { entry_id: data.id, entry_type: entryType, amount, currency, quantity, unit, reference } });
+    return json({ success: true, entry: data });
+  }
+
+  if (action === "external_service_ledger_delete") {
+    const id = String(body?.id || "").trim();
+    if (!id) return json({ error: "INVALID_ENTRY_ID" }, 400);
+    const { data, error } = await sb.from("external_service_ledger").delete().eq("id", id).eq("source", "manual")
+      .select("id,provider,entry_type,amount,currency,quantity,unit,reference").maybeSingle();
+    if (error) throw error;
+    if (!data) return json({ error: "MANUAL_ENTRY_NOT_FOUND", message: "Seules les saisies manuelles existantes peuvent être supprimées." }, 404);
+    await sb.from("external_service_admin_audit").insert({ actor_user_id: session.userId, provider: data.provider, action: "ledger_entry_deleted", metadata: { entry_id: data.id, entry_type: data.entry_type, amount: data.amount, currency: data.currency, quantity: data.quantity, unit: data.unit, reference: data.reference } });
+    return json({ success: true, deleted_id: data.id });
   }
 
   if (action === "external_service_budget_save") {
@@ -1037,7 +1659,7 @@ Deno.serve(async (req: Request) => {
     const adminId = session.userId;
     const url = new URL(req.url);
     if (url.searchParams.get("action") === "external_services_governance") {
-      return json(await externalServiceGovernancePayload(sb));
+      return json(await externalServiceGovernancePayload(sb, session.userId));
     }
     const adminUsersResponse = await handleAdminUserGet(sb, adminId, url);
     if (adminUsersResponse) return adminUsersResponse;

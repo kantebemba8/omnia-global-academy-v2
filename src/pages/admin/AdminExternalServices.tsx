@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Activity, AlertTriangle, BellRing, Bot, CheckCircle2, Clock3, Coins,
   CreditCard, Gauge, KeyRound, RefreshCw, Save, Server, ShieldCheck,
-  Wallet, XCircle,
+  Wallet, XCircle, Pencil, Trash2,
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -24,6 +24,33 @@ type Provider = {
   usage_note?: string;
   management_path?: string;
   provider_balance_available?: boolean;
+  admin_billing_configured?: boolean;
+  sync?: {
+    auto_sync_enabled?: boolean;
+    last_attempt_at?: string | null;
+    last_success_at?: string | null;
+    last_error?: string | null;
+    last_project_id?: string | null;
+    last_project_name?: string | null;
+    last_rows_synced?: number | null;
+    metadata?: Record<string, any>;
+  } | null;
+  sync_attempt?: {
+    success?: boolean;
+    skipped?: boolean;
+    reason?: string;
+    rows_synced?: number;
+    error?: string;
+  } | null;
+  recharge_automation?: {
+    provider_managed?: boolean;
+    provider_name?: string;
+    auto_reload_supported?: boolean;
+    transaction_sync_supported?: boolean;
+    manual_fallback?: boolean;
+    mode?: string;
+    note?: string;
+  };
   finance?: {
     tracked_balance?: Record<string, number>;
     recharges?: Record<string, number>;
@@ -68,6 +95,14 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 4 }).format(number);
 }
 
+function dateTimeLocalValue(value: unknown) {
+  if (!value) return '';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function statusLabel(provider: Provider) {
   if (provider.id === 'sentry' && provider.configured === null) {
     const localConfigured = Boolean(import.meta.env.VITE_SENTRY_DSN);
@@ -77,23 +112,50 @@ function statusLabel(provider: Provider) {
   return { ok: false, text: 'Non configuré' };
 }
 
+function automaticStatus(provider: Provider) {
+  const liveTelemetry = provider.sync_attempt?.reason === 'LIVE_PLATFORM_TELEMETRY';
+  const providerApiReady = Boolean(provider.admin_billing_configured) || (provider.id === 'fedapay' && provider.configured === true);
+  const ready = liveTelemetry || providerApiReady;
+  const syncable = !['jaas', 'fcm', 'apns'].includes(provider.id);
+  const lastSuccess = provider.sync?.last_success_at || null;
+  return { liveTelemetry, providerApiReady, ready, syncable, lastSuccess };
+}
+
 function FinanceSummary({ provider }: { provider: Provider }) {
-  const balance = Object.entries(provider.finance?.tracked_balance || {});
   const recharges = Object.entries(provider.finance?.recharges || {});
   const usage = Object.entries(provider.finance?.consumption || {});
+  const auto = automaticStatus(provider);
+  const observed = Object.keys(provider.observed_usage_30d || {}).length > 0;
+  const rechargeText = recharges.length
+    ? recharges.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ')
+    : provider.recharge_automation?.provider_managed
+      ? 'Gérées par le fournisseur'
+      : 'Non applicable';
+  const usageText = usage.length
+    ? usage.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ')
+    : (auto.ready || observed)
+      ? 'Suivi automatique'
+      : 'À configurer';
+  const statusText = auto.liveTelemetry
+    ? 'Temps réel OGA'
+    : auto.lastSuccess
+      ? `Synchronisé ${new Date(auto.lastSuccess).toLocaleDateString('fr-FR')}`
+      : auto.ready
+        ? 'Prêt à synchroniser'
+        : 'Configuration requise';
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-        <p className="text-gray-500 font-semibold">Recharges suivies</p>
-        <p className="font-black mt-1" style={{ color: BLUE }}>{recharges.length ? recharges.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ') : 'Aucune'}</p>
+        <p className="text-gray-500 font-semibold">Recharges / facturation</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{rechargeText}</p>
       </div>
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-        <p className="text-gray-500 font-semibold">Consommations suivies</p>
-        <p className="font-black mt-1" style={{ color: BLUE }}>{usage.length ? usage.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ') : 'Aucune'}</p>
+        <p className="text-gray-500 font-semibold">Consommations / usage</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{usageText}</p>
       </div>
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-        <p className="text-gray-500 font-semibold">Solde suivi OGA</p>
-        <p className="font-black mt-1" style={{ color: BLUE }}>{balance.length ? balance.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ') : 'Non disponible'}</p>
+        <p className="text-gray-500 font-semibold">Synchronisation</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{statusText}</p>
       </div>
     </div>
   );
@@ -134,11 +196,49 @@ export default function AdminExternalServices() {
 
   async function saveLedger() {
     if (!entryForm?.provider || !entryForm?.entry_type) return;
-    setBusy('ledger'); setError('');
+    const editing = Boolean(entryForm?.id);
+    setBusy('ledger'); setError(''); setMessage('');
     try {
-      await call('POST', { action: 'external_service_ledger_add', ...entryForm });
-      setEntryForm(null); setMessage('Écriture enregistrée et auditée.'); await load();
+      const result = await call('POST', { action: editing ? 'external_service_ledger_update' : 'external_service_ledger_add', ...entryForm });
+      if (!result?.entry?.id) throw new Error(editing ? 'La modification n’a pas été confirmée par le serveur.' : 'La création n’a pas été confirmée par le serveur.');
+      setEntryForm(null); setMessage(editing ? 'Saisie manuelle modifiée et auditée.' : 'Écriture enregistrée et auditée.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement impossible'); }
+    finally { setBusy(''); }
+  }
+
+  function editLedger(row: any) {
+    if (row?.source !== 'manual') return;
+    setTab('finance');
+    setEntryForm({
+      id: row.id, provider: row.provider, entry_type: row.entry_type, occurred_at: row.occurred_at,
+      amount: row.amount ?? '', currency: row.currency || '', quantity: row.quantity ?? '', unit: row.unit || '',
+      reference: row.reference || '', description: row.description || '', evidence: row.metadata?.evidence || '',
+    });
+  }
+
+  async function deleteLedger(row: any) {
+    if (row?.source !== 'manual' || !row?.id) return;
+    const providerLabel = data.providers.find(p => p.id === row.provider)?.label || row.provider;
+    if (!window.confirm(`Supprimer définitivement cette saisie manuelle ${providerLabel} ? Cette action sera journalisée.`)) return;
+    setBusy(`ledger-delete:${row.id}`); setError(''); setMessage('');
+    try {
+      const result = await call('POST', { action: 'external_service_ledger_delete', id: row.id });
+      if (result?.deleted_id !== row.id) throw new Error('La suppression n’a pas été confirmée par le serveur.');
+      if (entryForm?.id === row.id) setEntryForm(null);
+      setMessage('Saisie manuelle supprimée et auditée.');
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Suppression impossible'); }
+    finally { setBusy(''); }
+  }
+
+  async function syncProvider(provider: string) {
+    setBusy(`sync:${provider}`); setError(''); setMessage('');
+    try {
+      const result = await call('POST', { action: 'external_service_provider_sync', provider });
+      const count = Number(result?.sync?.rows_synced || 0);
+      setMessage(`Synchronisation ${provider === 'openai' ? 'OpenAI' : provider} réussie · ${count} ligne(s) fournisseur traitée(s).`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Synchronisation impossible'); }
     finally { setBusy(''); }
   }
 
@@ -232,19 +332,61 @@ export default function AdminExternalServices() {
                   </div>
                   {provider.observed_usage_30d && <div className="rounded-lg border border-gray-100 p-3"><p className="text-xs font-bold text-gray-600 mb-2">Activité observée par OGA · 30 jours</p><div className="flex flex-wrap gap-2">{Object.entries(provider.observed_usage_30d).map(([key, value]) => <span key={key} className="text-xs rounded-md bg-gray-50 px-2 py-1 text-gray-600">{key.replaceAll('_',' ')} : <strong>{formatNumber(value)}</strong></span>)}</div></div>}
                   <FinanceSummary provider={provider}/>
+                  {(() => {
+                    const auto = automaticStatus(provider);
+                    const syncError = provider.sync?.last_error || provider.sync_attempt?.error;
+                    return (
+                      <div className={`rounded-lg border p-3 text-xs ${auto.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className={`font-black ${auto.ready ? 'text-emerald-900' : 'text-amber-900'}`}>
+                              Suivi automatique prioritaire
+                            </p>
+                            {auto.liveTelemetry ? (
+                              <p className="mt-1 text-emerald-800">Usage suivi automatiquement par la télémétrie OGA. Aucune saisie quotidienne n’est nécessaire.</p>
+                            ) : auto.ready ? (
+                              <p className="mt-1 text-emerald-800">
+                                Synchronisation fournisseur prête.
+                                {' '}Dernier succès : {provider.sync?.last_success_at ? new Date(provider.sync.last_success_at).toLocaleString('fr-FR') : 'pas encore exécuté'}.
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-amber-800">{provider.usage_note || 'La synchronisation automatique nécessite encore la configuration serveur du fournisseur.'}</p>
+                            )}
+                            {syncError && <p className="mt-1 text-red-700">Dernière erreur : {syncError}</p>}
+                          </div>
+                          {auto.syncable && (
+                            <button
+                              onClick={() => void syncProvider(provider.id)}
+                              disabled={!auto.ready || busy === `sync:${provider.id}`}
+                              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-current px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <RefreshCw size={14} className={busy === `sync:${provider.id}` ? 'animate-spin' : ''}/>Synchroniser maintenant
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-3 border-t border-current/10 pt-3">
+                          <p className="font-bold">Facturation / recharges</p>
+                          <p className="mt-1 leading-relaxed">{provider.recharge_automation?.note || 'Le fournisseur reste la source prioritaire. La saisie manuelle n’est utilisée qu’en secours.'}</p>
+                          {provider.recharge_automation?.manual_fallback !== false && (
+                            <p className="mt-1 font-semibold">Saisie manuelle disponible uniquement en secours ou pour un rapprochement exceptionnel.</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {(provider.budget_status?.budget_exceeded || provider.budget_status?.low_balance_alert) && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
                       <AlertTriangle size={15} className="shrink-0 mt-0.5"/>
                       <span>
                         {provider.budget_status?.budget_exceeded
                           ? `Budget mensuel dépassé${provider.budget_status.currency ? ` (${provider.budget_status.currency})` : ''}.`
-                          : `Solde suivi OGA au niveau ou sous le seuil d’alerte${provider.budget_status?.currency ? ` (${provider.budget_status.currency})` : ''}.`}
-                        {' '}Vérifiez la console du fournisseur avant toute recharge.
+                          : `Solde comptable de secours au niveau ou sous le seuil d’alerte${provider.budget_status?.currency ? ` (${provider.budget_status.currency})` : ''}.`}
+                        {' '}Le fournisseur reste la source de vérité ; vérifiez sa console avant toute action.
                       </span>
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => { setTab('finance'); setEntryForm({ provider: provider.id, entry_type: 'recharge', currency: provider.budget?.currency || 'EUR' }); }} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: BLUE }}><Wallet size={14}/>Enregistrer recharge/usage</button>
+                    {provider.recharge_automation?.manual_fallback !== false && <button onClick={() => { setTab('finance'); setEntryForm({ provider: provider.id, entry_type: 'recharge', currency: provider.budget?.currency || 'EUR' }); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-700"><Wallet size={14}/>Saisie de secours</button>}
                     <button onClick={() => setBudgetForm({ provider: provider.id, monthly_budget: provider.budget?.monthly_budget ?? '', currency: provider.budget?.currency || 'EUR', low_balance_threshold: provider.budget?.low_balance_threshold ?? '', notes: provider.budget?.notes || '', enabled: provider.budget?.enabled !== false })} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Gauge size={14}/>Budget & seuil</button>
                     {provider.management_path && provider.management_path !== '/admin/moteurs-services' && <Link to={provider.management_path} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Activity size={14}/>Ouvrir l’espace métier</Link>}
                   </div>
@@ -256,12 +398,12 @@ export default function AdminExternalServices() {
         ) : tab === 'finance' ? (
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4">
-              <div><h2 className="font-black" style={{ color: BLUE }}>Journal financier des moteurs externes</h2><p className="text-xs text-gray-500 mt-1">Seuls les montants réellement fournis par un fournisseur ou saisis depuis une facture/recharge sont enregistrés. Aucun coût estimé n’est présenté comme réel.</p></div>
-              <button onClick={() => setEntryForm({ provider: data.providers[0]?.id || 'openai', entry_type: 'recharge', currency: 'EUR' })} className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-white" style={{ background: BLUE }}><CreditCard size={15}/>Nouvelle écriture</button>
+              <div><h2 className="font-black" style={{ color: BLUE }}>Suivi automatique des moteurs externes</h2><p className="text-xs text-gray-500 mt-1">Automatique par défaut : OGA synchronise les coûts, crédits, balances ou volumes via les API officielles disponibles et sa propre télémétrie. La saisie manuelle n’est qu’un secours si une synchronisation fournisseur est indisponible ou pour un rapprochement exceptionnel.</p></div>
+              <button onClick={() => setEntryForm({ provider: data.providers[0]?.id || 'openai', entry_type: 'recharge', currency: 'EUR' })} className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-bold text-gray-700"><CreditCard size={15}/>Saisie de secours</button>
             </div>
 
             {entryForm && <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-              <div className="flex items-center justify-between"><h3 className="font-black" style={{ color: BLUE }}>Recharge / consommation / ajustement</h3><button onClick={() => setEntryForm(null)}><XCircle size={18} className="text-gray-400"/></button></div>
+              <div className="flex items-center justify-between"><div><h3 className="font-black" style={{ color: BLUE }}>{entryForm.id ? 'Modifier la saisie manuelle' : 'Saisie manuelle de secours'}</h3><p className="mt-1 text-xs text-amber-700">À utiliser uniquement si la synchronisation automatique du fournisseur ne permet pas de récupérer l’opération ou pour un rapprochement exceptionnel.</p></div><button onClick={() => setEntryForm(null)}><XCircle size={18} className="text-gray-400"/></button></div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <label className="text-xs font-semibold text-gray-600">Service<select value={entryForm.provider || ''} onChange={e => setEntryForm({ ...entryForm, provider: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm">{data.providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
                 <label className="text-xs font-semibold text-gray-600">Type<select value={entryForm.entry_type || 'recharge'} onChange={e => setEntryForm({ ...entryForm, entry_type: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm"><option value="recharge">Recharge</option><option value="usage">Consommation</option><option value="refund">Remboursement</option><option value="adjustment">Ajustement</option></select></label>
@@ -270,10 +412,10 @@ export default function AdminExternalServices() {
                 <label className="text-xs font-semibold text-gray-600">Quantité<input type="number" min="0" step="0.000001" value={entryForm.quantity ?? ''} onChange={e => setEntryForm({ ...entryForm, quantity: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm" placeholder="optionnel"/></label>
                 <label className="text-xs font-semibold text-gray-600">Unité<input value={entryForm.unit || ''} onChange={e => setEntryForm({ ...entryForm, unit: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm" placeholder="tokens, emails, minutes…"/></label>
                 <label className="text-xs font-semibold text-gray-600">Référence<input value={entryForm.reference || ''} onChange={e => setEntryForm({ ...entryForm, reference: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm" placeholder="facture / transaction"/></label>
-                <label className="text-xs font-semibold text-gray-600">Date<input type="datetime-local" value={entryForm.occurred_at || ''} onChange={e => setEntryForm({ ...entryForm, occurred_at: e.target.value ? new Date(e.target.value).toISOString() : '' })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm"/></label>
+                <label className="text-xs font-semibold text-gray-600">Date<input type="datetime-local" value={dateTimeLocalValue(entryForm.occurred_at)} onChange={e => setEntryForm({ ...entryForm, occurred_at: e.target.value ? new Date(e.target.value).toISOString() : '' })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm"/></label>
               </div>
-              <label className="text-xs font-semibold text-gray-600 block">Description / preuve<textarea value={entryForm.description || ''} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm min-h-20" placeholder="Ex. recharge confirmée sur facture fournisseur…"/></label>
-              <button onClick={() => void saveLedger()} disabled={busy === 'ledger'} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50" style={{ background: BLUE }}><Save size={15}/>Enregistrer</button>
+              <label className="text-xs font-semibold text-gray-600 block">Description / preuve<textarea value={entryForm.description || ''} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 p-2.5 text-sm min-h-20" placeholder="Ex. opération confirmée par facture fournisseur, saisie car la synchronisation automatique était indisponible…"/></label>
+              <button onClick={() => void saveLedger()} disabled={busy === 'ledger'} className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50" style={{ background: BLUE }}><Save size={15}/>{entryForm.id ? 'Enregistrer les modifications' : 'Enregistrer'}</button>
             </div>}
 
             {budgetForm && <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
@@ -289,7 +431,7 @@ export default function AdminExternalServices() {
 
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100"><h3 className="font-black" style={{ color: BLUE }}>Historique</h3></div>
-              <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Service</th><th className="text-left px-4 py-3">Type</th><th className="text-right px-4 py-3">Montant</th><th className="text-right px-4 py-3">Quantité</th><th className="text-left px-4 py-3">Référence</th></tr></thead><tbody>{data.ledger.length ? data.ledger.map(row => <tr key={row.id} className="border-t border-gray-100"><td className="px-4 py-3 whitespace-nowrap">{new Date(row.occurred_at).toLocaleString('fr-FR')}</td><td className="px-4 py-3 font-semibold">{data.providers.find(p => p.id === row.provider)?.label || row.provider}</td><td className="px-4 py-3">{row.entry_type}</td><td className="px-4 py-3 text-right">{row.amount == null ? '—' : `${formatNumber(row.amount)} ${row.currency}`}</td><td className="px-4 py-3 text-right">{row.quantity == null ? '—' : `${formatNumber(row.quantity)} ${row.unit || ''}`}</td><td className="px-4 py-3 text-gray-500">{row.reference || row.description || '—'}</td></tr>) : <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500">Aucune recharge ou consommation enregistrée.</td></tr>}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Service</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Source</th><th className="text-right px-4 py-3">Montant</th><th className="text-right px-4 py-3">Quantité</th><th className="text-left px-4 py-3">Référence</th><th className="text-right px-4 py-3">Actions</th></tr></thead><tbody>{data.ledger.length ? data.ledger.map(row => <tr key={row.id} className="border-t border-gray-100"><td className="px-4 py-3 whitespace-nowrap">{new Date(row.occurred_at).toLocaleString('fr-FR')}</td><td className="px-4 py-3 font-semibold">{data.providers.find(p => p.id === row.provider)?.label || row.provider}</td><td className="px-4 py-3">{row.entry_type}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[11px] font-bold ${row.source === 'provider' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{row.source === 'provider' ? 'Fournisseur' : row.source === 'platform' ? 'OGA' : 'Manuel'}</span></td><td className="px-4 py-3 text-right">{row.amount == null ? '—' : `${formatNumber(row.amount)} ${row.currency}`}</td><td className="px-4 py-3 text-right">{row.quantity == null ? '—' : `${formatNumber(row.quantity)} ${row.unit || ''}`}</td><td className="px-4 py-3 text-gray-500">{row.reference || row.description || '—'}</td><td className="px-4 py-3"><div className="flex justify-end gap-1">{row.source === 'manual' ? <><button type="button" onClick={() => editLedger(row)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-bold text-gray-700" title="Modifier cette saisie manuelle"><Pencil size={13}/>Modifier</button><button type="button" onClick={() => void deleteLedger(row)} disabled={busy === `ledger-delete:${row.id}`} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50" title="Supprimer cette saisie manuelle"><Trash2 size={13}/>Supprimer</button></> : <span className="text-[11px] text-gray-400">Source externe</span>}</div></td></tr>) : <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-500">Aucune recharge ou consommation enregistrée.</td></tr>}</tbody></table></div>
             </div>
           </div>
         ) : tab === 'automations' ? (
