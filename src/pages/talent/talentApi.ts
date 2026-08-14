@@ -269,7 +269,9 @@ export async function loadTalentNotifications() {
   return data;
 }
 export async function markTalentNotificationRead(notificationId?: string) {
-  return recruitmentRequest<{ success: true }>('mark_notification_read', { notification_id: notificationId || null });
+  const result = await recruitmentRequest<{ success: true }>('mark_notification_read', { notification_id: notificationId || null });
+  if (result?.success) window.dispatchEvent(new CustomEvent('omnia:notifications-changed'));
+  return result;
 }
 export async function adminLoadTalentSupervision(status?: string) {
   return recruitmentRequest<{ success: true; recruiters: any[]; contacts: any[]; activity: any[]; metrics: Record<string, number> }>('admin_talent_supervision', status ? { status } : {}, 'admin');

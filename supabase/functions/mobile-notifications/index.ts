@@ -169,6 +169,39 @@ async function dispatchToUser(sb: Supabase, userId: string, notificationId: stri
   return deliveries;
 }
 
+async function listInboxLatest(sb: Supabase, userId: string, limit: number) {
+  const perSourceLimit = Math.min(200, Math.max(20, limit));
+  const [mobile, live, talent, unreadMobile, unreadLive, unreadTalent] = await Promise.all([
+    sb.from("mobile_notification_inbox").select("*").eq("user_id", userId).is("dismissed_at", null).order("created_at", { ascending: false }).limit(perSourceLimit),
+    sb.from("live_notification_inbox").select("*").eq("user_id", userId).is("dismissed_at", null).order("created_at", { ascending: false }).limit(perSourceLimit),
+    sb.from("talent_notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(perSourceLimit),
+    sb.from("mobile_notification_inbox").select("id", { count: "exact", head: true }).eq("user_id", userId).is("read_at", null).is("dismissed_at", null),
+    sb.from("live_notification_inbox").select("id", { count: "exact", head: true }).eq("user_id", userId).is("read_at", null).is("dismissed_at", null),
+    sb.from("talent_notifications").select("id", { count: "exact", head: true }).eq("user_id", userId).is("read_at", null),
+  ]);
+  for (const result of [mobile, live, talent, unreadMobile, unreadLive, unreadTalent]) if (result.error) throw result.error;
+  const rows = [
+    ...(mobile.data || []).map((row: any) => ({ ...row, source: "mobile" })),
+    ...(live.data || []).map((row: any) => ({ ...row, source: "live" })),
+    ...(talent.data || []).map((row: any) => ({ ...row, source: "talent", priority: row.payload?.priority || "normal" })),
+  ].sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, limit).map((row: any) => ({
+    id: String(row.id), source: row.source, notification_type: String(row.notification_type || "notification"),
+    title: String(row.title || row.payload?.title || "Omnia Global Academy"), message: String(row.message || row.payload?.message || ""),
+    action_url: safeActionUrl(row.action_url || row.payload?.action_url), payload: row.payload || {}, priority: String(row.priority || "normal"),
+    read_at: row.read_at || null, created_at: row.created_at,
+  }));
+  const unreadBySource = {
+    mobile: Number(unreadMobile.count || 0),
+    live: Number(unreadLive.count || 0),
+    talent: Number(unreadTalent.count || 0),
+  };
+  return {
+    notifications: rows,
+    unread_by_source: unreadBySource,
+    unread_count: unreadBySource.mobile + unreadBySource.live + unreadBySource.talent,
+  };
+}
+
 async function syncInbox(sb: Supabase, userId: string, cursor: string | null, limit: number) {
   const from = cursor && !Number.isNaN(Date.parse(cursor)) ? new Date(cursor).toISOString() : null;
   const applyCursor = (query: any) => from ? query.gt("created_at", from) : query;
@@ -245,6 +278,12 @@ Deno.serve(async (req) => {
       return json({ success: true });
     }
 
+    if (action === "list") {
+      if (!session) return json({ error: "UNAUTHORIZED" }, 401);
+      const result = await listInboxLatest(sb, session.userId, Math.min(200, Math.max(1, Number(body.limit || 100))));
+      return json({ success: true, ...result, provider_configured: config.android || config.ios });
+    }
+
     if (action === "sync") {
       if (!session) return json({ error: "UNAUTHORIZED" }, 401);
       const result = await syncInbox(sb, session.userId, text(body.cursor, 80) || null, Math.min(200, Math.max(1, Number(body.limit || 100))));
@@ -258,10 +297,26 @@ Deno.serve(async (req) => {
       const operation = text(body.action, 20);
       const table = source === "mobile" ? "mobile_notification_inbox" : source === "live" ? "live_notification_inbox" : source === "talent" ? "talent_notifications" : "";
       if (!table || !id || !["read", "dismiss"].includes(operation)) return json({ error: "INVALID_MARK_REQUEST" }, 400);
-      const patch = operation === "read" ? { read_at: new Date().toISOString() } : source === "talent" ? { read_at: new Date().toISOString() } : { dismissed_at: new Date().toISOString() };
-      const { error } = await sb.from(table).update(patch).eq("id", id).eq("user_id", session.userId);
+      const now = new Date().toISOString();
+      const patch = operation === "read" ? { read_at: now } : source === "talent" ? { read_at: now } : { dismissed_at: now };
+      const selectColumns = operation === "read" || source === "talent" ? "id,read_at" : "id,dismissed_at";
+      const { data, error } = await sb.from(table).update(patch).eq("id", id).eq("user_id", session.userId).select(selectColumns).maybeSingle();
       if (error) throw error;
-      return json({ success: true });
+      if (!data?.id) return json({ error: "NOTIFICATION_NOT_FOUND" }, 404);
+      return json({ success: true, updated_id: String(data.id), source, operation, read_at: (data as any).read_at || null, dismissed_at: (data as any).dismissed_at || null });
+    }
+
+    if (action === "mark_all_read") {
+      if (!session) return json({ error: "UNAUTHORIZED" }, 401);
+      const now = new Date().toISOString();
+      const [mobile, live, talent] = await Promise.all([
+        sb.from("mobile_notification_inbox").update({ read_at: now }).eq("user_id", session.userId).is("read_at", null).is("dismissed_at", null).select("id"),
+        sb.from("live_notification_inbox").update({ read_at: now }).eq("user_id", session.userId).is("read_at", null).is("dismissed_at", null).select("id"),
+        sb.from("talent_notifications").update({ read_at: now }).eq("user_id", session.userId).is("read_at", null).select("id"),
+      ]);
+      for (const result of [mobile, live, talent]) if (result.error) throw result.error;
+      const updatedCount = (mobile.data || []).length + (live.data || []).length + (talent.data || []).length;
+      return json({ success: true, updated_count: updatedCount, unread_count: 0, read_at: now });
     }
 
     if (action === "test") {

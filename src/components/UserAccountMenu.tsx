@@ -6,6 +6,7 @@ import { getActivePlatformRole, getDashboardPathForRoles, normalizePlatformRoles
 import { logoutOmniaSession } from '../lib/authApi';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import GlobalNotificationsButton from './GlobalNotificationsButton';
 
 const BLUE = '#002050';
 
@@ -31,6 +32,7 @@ type StoredUser = {
 type Props = {
   dashboardPath?: string;
   buttonClassName?: string;
+  showNotifications?: boolean;
 };
 
 type MenuPosition = { top: number; right: number };
@@ -40,7 +42,7 @@ function initials(user: StoredUser | null) {
   return source.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
 }
 
-export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }: Props) {
+export default function UserAccountMenu({ dashboardPath, buttonClassName = '', showNotifications = true }: Props) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -205,22 +207,25 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '' }:
     : null;
 
   return (
-    <div ref={rootRef} className="relative" data-no-auto-translate="true">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen(value => !value)}
-        className={`flex min-h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] ${buttonClassName}`}
-        aria-label={t('Ouvrir le menu du compte')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        {user.avatar_url
-          ? <img src={user.avatar_url} alt={t('Photo du compte')} className="h-8 w-8 rounded-full object-cover" />
-          : <span className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>}
-        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {menu}
+    <div className="flex items-center gap-2" data-no-auto-translate="true">
+      {showNotifications && <GlobalNotificationsButton />}
+      <div ref={rootRef} className="relative">
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => setOpen(value => !value)}
+          className={`flex min-h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BF8813] ${buttonClassName}`}
+          aria-label={t('Ouvrir le menu du compte')}
+          aria-haspopup="menu"
+          aria-expanded={open}
+        >
+          {user.avatar_url
+            ? <img src={user.avatar_url} alt={t('Photo du compte')} className="h-8 w-8 rounded-full object-cover" />
+            : <span className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BLUE }}>{initials(user)}</span>}
+          <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {menu}
+      </div>
     </div>
   );
 }

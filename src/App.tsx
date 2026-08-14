@@ -256,7 +256,7 @@ const OrganizerSettings = lazy(() => import('./pages/omnia-live/organizer/Organi
 const ParticipantDashboard = lazy(() => import('./pages/omnia-live/participant/ParticipantDashboard'));
 const ParticipantMyLives = lazy(() => import('./pages/omnia-live/participant/ParticipantMyLives'));
 const ParticipantLibrary = lazy(() => import('./pages/omnia-live/participant/ParticipantLibrary'));
-const ParticipantNotifications = lazy(() => import('./pages/omnia-live/participant/ParticipantNotifications'));
+const NotificationsCenter = lazy(() => import('./pages/NotificationsCenter'));
 const ParticipantRefunds = lazy(() => import('./pages/omnia-live/participant/ParticipantRefunds'));
 const OmniaLiveMediaHub = lazy(() => import('./pages/omnia-live/media/OmniaLiveMediaHub'));
 const OmniaLiveMediaVersions = lazy(() => import('./pages/omnia-live/media/OmniaLiveMediaVersions'));
@@ -616,8 +616,8 @@ export default function App() {
           <Route path="/omnia-live/participant" element={<ParticipantDashboard />} />
           <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
-          <Route path="/omnia-live/participant/notifications" element={<ParticipantNotifications />} />
-          <Route path="/omnia-live/notifications" element={<Navigate to="/omnia-live/participant/notifications" replace />} />
+          <Route path="/omnia-live/participant/notifications" element={<Navigate to="/notifications?source=live" replace />} />
+          <Route path="/omnia-live/notifications" element={<Navigate to="/notifications?source=live" replace />} />
           <Route path="/omnia-live/participant/remboursements" element={<ParticipantRefunds />} />
           <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
           <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />
@@ -776,6 +776,7 @@ export default function App() {
 
         {/* Profil utilisateur unifié — tous les rôles */}
         <Route path="/mon-profil" element={<UnifiedProfilePage />} />
+        <Route path="/notifications" element={<NotificationsCenter />} />
         <Route path="/profil/:userId" element={<PublicProfilePage />} />
         <Route path="/moderator/profile" element={<Navigate to="/mon-profil" replace />} />
         <Route path="/moderateur/profil" element={<Navigate to="/mon-profil" replace />} />
@@ -842,7 +843,7 @@ export default function App() {
 <Route path="/structure/rattachements" element={<StructureMembres />} />
 <Route path="/structure/demandes" element={<Navigate to="/structure/rattachements" replace />} />
 <Route path="/structure/statistiques" element={<Navigate to="/structure/suivi-rh" replace />} />
-<Route path="/structure/notifications" element={<Navigate to="/mon-profil?tab=notifications" replace />} />
+<Route path="/structure/notifications" element={<Navigate to="/notifications" replace />} />
 <Route path="/structure/parametres" element={<Navigate to="/mon-profil?tab=visibilite" replace />} />
 <Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
 <Route path="/structure/commerce-b2b" element={<StructureB2B />} />

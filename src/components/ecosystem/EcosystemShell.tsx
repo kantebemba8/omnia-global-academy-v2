@@ -296,7 +296,7 @@ export function EcosystemPublicHeader({
 
           <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
             {hasUser ? (
-              <UserAccountMenu />
+              <UserAccountMenu showNotifications={false} />
             ) : (
               <div className="hidden items-center gap-2 2xl:flex">
                 <Link to="/connexion" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-[#002050] transition hover:bg-slate-50">

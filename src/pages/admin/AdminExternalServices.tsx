@@ -246,8 +246,9 @@ export default function AdminExternalServices() {
     if (!budgetForm?.provider) return;
     setBusy('budget'); setError('');
     try {
-      await call('POST', { action: 'external_service_budget_save', ...budgetForm });
-      setBudgetForm(null); setMessage('Budget et seuil enregistrés.'); await load();
+      const result = await call('POST', { action: 'external_service_budget_save', ...budgetForm });
+      if (!result?.budget || result.budget.provider !== budgetForm.provider) throw new Error('La sauvegarde du budget n’a pas été confirmée par le serveur.');
+      setBudgetForm(null); setMessage('Budget et seuil enregistrés et confirmés par le serveur.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Enregistrement impossible'); }
     finally { setBusy(''); }
   }
@@ -357,7 +358,7 @@ export default function AdminExternalServices() {
                           {auto.syncable && (
                             <button
                               onClick={() => void syncProvider(provider.id)}
-                              disabled={!auto.ready || busy === `sync:${provider.id}`}
+                              disabled={busy === `sync:${provider.id}`}
                               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-current px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               <RefreshCw size={14} className={busy === `sync:${provider.id}` ? 'animate-spin' : ''}/>Synchroniser maintenant
@@ -387,7 +388,7 @@ export default function AdminExternalServices() {
                   )}
                   <div className="flex flex-wrap gap-2">
                     {provider.recharge_automation?.manual_fallback !== false && <button onClick={() => { setTab('finance'); setEntryForm({ provider: provider.id, entry_type: 'recharge', currency: provider.budget?.currency || 'EUR' }); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-700"><Wallet size={14}/>Saisie de secours</button>}
-                    <button onClick={() => setBudgetForm({ provider: provider.id, monthly_budget: provider.budget?.monthly_budget ?? '', currency: provider.budget?.currency || 'EUR', low_balance_threshold: provider.budget?.low_balance_threshold ?? '', notes: provider.budget?.notes || '', enabled: provider.budget?.enabled !== false })} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Gauge size={14}/>Budget & seuil</button>
+                    <button onClick={() => { setTab('finance'); setBudgetForm({ provider: provider.id, monthly_budget: provider.budget?.monthly_budget ?? '', currency: provider.budget?.currency || 'EUR', low_balance_threshold: provider.budget?.low_balance_threshold ?? '', notes: provider.budget?.notes || '', enabled: provider.budget?.enabled !== false }); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Gauge size={14}/>Budget & seuil</button>
                     {provider.management_path && provider.management_path !== '/admin/moteurs-services' && <Link to={provider.management_path} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Activity size={14}/>Ouvrir l’espace métier</Link>}
                   </div>
                   {provider.usage_note && <p className="text-[11px] leading-relaxed text-gray-500">{provider.usage_note}</p>}

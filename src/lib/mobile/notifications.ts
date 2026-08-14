@@ -235,6 +235,7 @@ export async function markMobileNotification(
 ): Promise<void> {
   if (!getSessionToken() || notification.source === 'push') return;
   await mobileNotificationApi('mark', { id: notification.id, source: notification.source, action });
+  window.dispatchEvent(new CustomEvent('omnia:notifications-changed'));
   await syncMobileNotifications({ emitNew: false });
 }
 

@@ -114,7 +114,7 @@ export default function CoachingHeader({ showSearch = true }: Props) {
               </Link>
               <LanguageSwitcher compact />
             </>
-          ) : <UserAccountMenu dashboardPath={dashboardPath} />}
+          ) : <UserAccountMenu dashboardPath={dashboardPath} showNotifications={false} />}
         </div>
       </header>
       {showSearch && <div className="border-b border-[#DFE4C9] bg-[#FBFCFA] px-4 py-3 lg:hidden"><CoachingHeaderSearch /></div>}
