@@ -9,6 +9,7 @@ import {
 } from "../_shared/auth-security.ts";
 import { acceptPendingInvitationsForUser } from "../_shared/access-invitations.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { createOmniaSession } from "../_shared/omnia-auth.ts";
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = makeCorsHeaders(req);
@@ -207,15 +208,12 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const sessionToken = generateOpaqueToken();
-      const { error: sessionError } = await supabase.from("user_sessions").insert({
-        user_id: user.id,
-        session_token: sessionToken,
-        ip_address: clientIP,
-        user_agent: req.headers.get("user-agent") ?? "",
-        expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
+      const { token: sessionToken } = await createOmniaSession(supabase, {
+        userId: String(user.id),
+        ipAddress: clientIP,
+        userAgent: req.headers.get("user-agent") ?? "",
+        expiresAt: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
       });
-      if (sessionError) throw sessionError;
       await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
 
       return json({ success: true, session_token: sessionToken, user: { ...user, status: "actif", email_status: "valide", roles: userRoles } });
@@ -223,15 +221,12 @@ Deno.serve(async (req: Request) => {
 
     if (purpose === "connexion") {
       if (user.status !== "actif") return json({ success: false, message: "Compte inactif ou en attente de validation" }, 403);
-      const sessionToken = generateOpaqueToken();
-      const { error: sessionError } = await supabase.from("user_sessions").insert({
-        user_id: user.id,
-        session_token: sessionToken,
-        ip_address: clientIP,
-        user_agent: req.headers.get("user-agent") ?? "",
-        expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
+      const { token: sessionToken } = await createOmniaSession(supabase, {
+        userId: String(user.id),
+        ipAddress: clientIP,
+        userAgent: req.headers.get("user-agent") ?? "",
+        expiresAt: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
       });
-      if (sessionError) throw sessionError;
       await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
       return json({ success: true, session_token: sessionToken, user: { ...user, roles: userRoles } });
     }

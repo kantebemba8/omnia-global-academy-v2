@@ -38,13 +38,25 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
+    const cooldown = await consumeRateLimit(supabase, `auth-resend-otp:cooldown:${purpose}:${emailHash}`, 1, 59);
+    const emailLimit = await consumeRateLimit(supabase, `auth-resend-otp:email:${purpose}:${emailHash}`, 3, 60 * 60);
+    const ipLimit = await consumeRateLimit(supabase, `auth-resend-otp:ip:${clientIP}`, 10, 60 * 60);
+    if (!cooldown.allowed || !emailLimit.allowed || !ipLimit.allowed) {
+      const retryAfter = Math.max(cooldown.retryAfter, emailLimit.retryAfter, ipLimit.retryAfter);
+      return json({ success: false, retry_after: retryAfter, message: `Veuillez réessayer dans ${retryAfter} secondes.` }, 429);
+    }
+
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id,email,full_name,status,email_status")
       .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
-    if (!user) return json({ success: false, message: "Aucun compte correspondant" }, 404);
+    if (!user) {
+      // Ne pas permettre à la fonction de renvoi de réintroduire l'énumération
+      // supprimée de auth-login-otp. Aucun OTP n'est créé pour une adresse inconnue.
+      return json({ success: true, next_step: "verify_otp", delivery: "email" });
+    }
 
     const emailStatus = String(user.email_status || "valide");
     if (purpose === "inscription" && emailStatus === "valide") {
@@ -52,14 +64,6 @@ Deno.serve(async (req: Request) => {
     }
     if (["connexion", "reset_password"].includes(purpose) && emailStatus === "a_verifier") {
       return json({ success: false, error: "EMAIL_VERIFICATION_REQUIRED", needs_email_verification: true, message: "Confirmez d’abord votre adresse e-mail depuis l’écran de connexion." }, 409);
-    }
-
-    const cooldown = await consumeRateLimit(supabase, `auth-resend-otp:cooldown:${purpose}:${emailHash}`, 1, 59);
-    const emailLimit = await consumeRateLimit(supabase, `auth-resend-otp:email:${purpose}:${emailHash}`, 3, 60 * 60);
-    const ipLimit = await consumeRateLimit(supabase, `auth-resend-otp:ip:${clientIP}`, 10, 60 * 60);
-    if (!cooldown.allowed || !emailLimit.allowed || !ipLimit.allowed) {
-      const retryAfter = Math.max(cooldown.retryAfter, emailLimit.retryAfter, ipLimit.retryAfter);
-      return json({ success: false, retry_after: retryAfter, message: `Veuillez réessayer dans ${retryAfter} secondes.` }, 429);
     }
 
     await supabase.from("otp_codes")

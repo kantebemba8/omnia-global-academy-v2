@@ -4,12 +4,12 @@ import bcrypt from "npm:bcryptjs@2.4.3";
 import {
   consumeRateLimit,
   createHashedEmailOtp,
-  generateOpaqueToken,
   getClientIP,
   makeCorsHeaders,
   sha256Hex,
 } from "../_shared/auth-security.ts";
 import { acceptAccessInvitation, inspectAccessInvitation } from "../_shared/access-invitations.ts";
+import { createOmniaSession, getActiveOmniaSession } from "../_shared/omnia-auth.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 import { setNewsletterConsent } from "../_shared/newsletter.ts";
 function base64ToBytes(b64: string): Uint8Array {
@@ -68,13 +68,8 @@ Deno.serve(async (req: Request) => {
     async function requireExistingAccount() {
       const sessionToken = (req.headers.get("x-omnia-session-token") || "").replace(/^Bearer\s+/i, "").trim();
       if (!sessionToken) return { error: respond({ success: false, error: "AUTH_REQUIRED", message: "Connectez-vous pour ajouter un espace à votre compte." }, 401) };
-      const { data: session, error: sessionError } = await supabase
-        .from("user_sessions")
-        .select("user_id")
-        .eq("session_token", sessionToken)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
-      if (sessionError || !session?.user_id) return { error: respond({ success: false, error: "SESSION_INVALID", message: "Votre session a expiré." }, 401) };
+      const session = await getActiveOmniaSession(supabase, sessionToken);
+      if (!session?.user_id) return { error: respond({ success: false, error: "SESSION_INVALID", message: "Votre session a expiré." }, 401) };
       const { data: account, error: accountError } = await supabase
         .from("users")
         .select("id,email,phone_number,full_name,country_code,status,email_status")
@@ -280,7 +275,7 @@ Deno.serve(async (req: Request) => {
     if (action === "accept_access_invitation") {
       const sessionToken = (req.headers.get("x-omnia-session-token") || String(body.session_token || "")).replace(/^Bearer\s+/i, "").trim();
       if (!sessionToken) return new Response(JSON.stringify({ success: false, error: "AUTH_REQUIRED", message: "Connectez-vous pour accepter cette invitation." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      const { data: session } = await supabase.from("user_sessions").select("user_id").eq("session_token", sessionToken).gt("expires_at", new Date().toISOString()).maybeSingle();
+      const session = await getActiveOmniaSession(supabase, sessionToken);
       if (!session) return new Response(JSON.stringify({ success: false, error: "SESSION_INVALID", message: "Votre session a expiré." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const { data: account } = await supabase.from("users").select("id,email").eq("id", session.user_id).maybeSingle();
       if (!account) return new Response(JSON.stringify({ success: false, error: "ACCOUNT_NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -606,12 +601,13 @@ Deno.serve(async (req: Request) => {
     // la validation manuelle ; l’adresse e-mail devra néanmoins être confirmée.
     let registrationSessionToken: string | undefined;
     if (["responsable_structure", "etablissement"].includes(role)) {
-      registrationSessionToken = generateOpaqueToken();
-      await supabase.from("user_sessions").insert({
-        user_id: userId,
-        session_token: registrationSessionToken,
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      const registrationSession = await createOmniaSession(supabase, {
+        userId: String(userId),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        ipAddress: getClientIP(req),
+        userAgent: req.headers.get("user-agent") ?? "",
       });
+      registrationSessionToken = registrationSession.token;
     }
 
     return new Response(JSON.stringify({

@@ -2,9 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import bcrypt from "npm:bcryptjs@2.4.3";
 import { setNewsletterConsent } from "../_shared/newsletter.ts";
+import { getActiveOmniaSession, getOmniaRoles, getOmniaSessionToken } from "../_shared/omnia-auth.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
   "Access-Control-Allow-Methods": "POST, PATCH, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
 };
@@ -160,32 +161,16 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function tokenFromRequest(req: Request) {
-  return (req.headers.get("x-omnia-session-token") ?? req.headers.get("Authorization") ?? "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-}
-
 async function resolveSession(sb: DbClient, req: Request, required = true): Promise<SessionContext | null | Response> {
-  const token = tokenFromRequest(req);
+  const token = getOmniaSessionToken(req);
   if (!token) return required ? json({ error: "AUTH_REQUIRED" }, 401) : null;
 
-  const { data: session, error: sessionError } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
-  if (sessionError || !session) return required ? json({ error: "SESSION_INVALID" }, 401) : null;
+  const session = await getActiveOmniaSession(sb, token);
+  if (!session) return required ? json({ error: "SESSION_INVALID" }, 401) : null;
 
-  const { data: roleRows, error: roleError } = await sb
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", session.user_id);
-  if (roleError) throw roleError;
   return {
     userId: String(session.user_id),
-    roles: (roleRows || []).map((row: { role: string }) => String(row.role)),
+    roles: await getOmniaRoles(sb, String(session.user_id)),
   };
 }
 

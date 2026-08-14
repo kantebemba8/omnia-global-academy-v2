@@ -10,6 +10,7 @@ import {
   sha256Hex,
 } from "../_shared/auth-security.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { createOmniaSession } from "../_shared/omnia-auth.ts";
 
 async function checkIPBlocklist(supabase: any, ip: string): Promise<boolean> {
   if (ip === "unknown") return false;
@@ -252,18 +253,14 @@ Deno.serve(async (req: Request) => {
 
       await supabase.from("user_sessions").delete().eq("user_id", user.id);
 
-      const sessionToken = generateOpaqueToken();
       const heartbeatToken = generateOpaqueToken();
       const now = new Date().toISOString();
-
-      const { error: sessionError } = await supabase.from("user_sessions").insert({
-        user_id: user.id,
-        session_token: sessionToken,
-        ip_address: clientIP,
-        user_agent: userAgent,
-        expires_at: demoConfig.expires_at,
+      const { token: sessionToken } = await createOmniaSession(supabase, {
+        userId: String(user.id),
+        ipAddress: clientIP,
+        userAgent,
+        expiresAt: String(demoConfig.expires_at),
       });
-      if (sessionError) throw sessionError;
 
       await supabase
         .from("demo_account_config")
@@ -476,17 +473,13 @@ Deno.serve(async (req: Request) => {
     if (rolesError) throw rolesError;
 
     const userRoles = (rolesData ?? []).map((row: { role: string }) => row.role);
-    const sessionToken = generateOpaqueToken();
     const now = new Date().toISOString();
-
-    const { error: sessionError } = await supabase.from("user_sessions").insert({
-      user_id: user.id,
-      session_token: sessionToken,
-      ip_address: clientIP,
-      user_agent: userAgent,
-      expires_at: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
+    const { token: sessionToken } = await createOmniaSession(supabase, {
+      userId: String(user.id),
+      ipAddress: clientIP,
+      userAgent,
+      expiresAt: new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(),
     });
-    if (sessionError) throw sessionError;
 
     await supabase.from("users").update({ last_login_at: now }).eq("id", user.id);
 

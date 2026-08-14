@@ -42,7 +42,11 @@ Deno.serve(async (req: Request) => {
       .eq("email", email)
       .maybeSingle();
     if (userError) throw userError;
-    if (!user) return json({ success: false, not_found: true, message: "Aucun compte trouvé. Souhaitez-vous vous inscrire ?" }, 404);
+    if (!user) {
+      // Réponse volontairement identique à un envoi réussi : ne jamais révéler
+      // publiquement si une adresse possède ou non un compte Omnia.
+      return json({ success: true, next_step: "enter_otp", delivery: "email" });
+    }
 
     if (user.status === "suspendu") {
       const selfSuspended = user.suspension_source === "self";
