@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -38,12 +39,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: session } = await sb
-      .from("user_sessions")
-      .select("user_id")
-      .eq("session_token", token)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
+    const { data: session } = await getActiveOmniaSessionResult(sb, token);
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
 
     const { data: settings } = await sb

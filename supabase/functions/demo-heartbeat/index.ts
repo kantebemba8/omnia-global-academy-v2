@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { hashOmniaToken } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -21,12 +22,12 @@ Deno.serve(async (req: Request) => {
 
   const { data: demoConfig } = await sb
     .from("demo_account_config")
-    .select("id, heartbeat_token, active_session_token, expires_at, is_online")
+    .select("id, heartbeat_token_hash, active_session_token_hash, expires_at, is_online")
     .order("configured_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (!demoConfig || demoConfig.heartbeat_token !== heartbeatToken) {
+  if (!demoConfig || demoConfig.heartbeat_token_hash !== await hashOmniaToken(heartbeatToken)) {
     return json({ error: "INVALID_HEARTBEAT_TOKEN" }, 401);
   }
 
@@ -36,13 +37,13 @@ Deno.serve(async (req: Request) => {
   if (!expiresAt || expiresAt <= now) {
     // Invalidate session on expiry
     await sb.from("demo_account_config")
-      .update({ is_online: false, active_session_token: null, heartbeat_token: null })
+      .update({ is_online: false, active_session_token_hash: null, heartbeat_token_hash: null })
       .eq("id", demoConfig.id);
 
-    if (demoConfig.active_session_token) {
+    if (demoConfig.active_session_token_hash) {
       await sb.from("user_sessions")
         .update({ expires_at: now.toISOString() })
-        .eq("session_token", demoConfig.active_session_token);
+        .eq("session_token_hash", demoConfig.active_session_token_hash);
     }
 
     return json({ expired: true, time_remaining_seconds: 0 });

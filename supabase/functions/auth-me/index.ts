@@ -1,11 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { makeCorsHeaders } from "../_shared/auth-security.ts";
-import {
-  getOmniaRoles,
-  getOmniaSessionByToken,
-  getOmniaSessionToken,
-} from "../_shared/omnia-auth.ts";
+import { getOmniaRoles, getOmniaSessionByToken, getOmniaSessionToken, hashOmniaToken } from "../_shared/omnia-auth.ts";
 
 const DEMO_EMAIL = "test@omniaglobalacademy.com";
 
@@ -48,13 +44,13 @@ Deno.serve(async (req: Request) => {
     if (user.email === DEMO_EMAIL) {
       const { data: demoConfig, error: demoError } = await supabase
         .from("demo_account_config")
-        .select("active_session_token, expires_at, demo_roles")
+        .select("active_session_token_hash, expires_at, demo_roles")
         .order("configured_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (demoError) throw demoError;
 
-      if (!demoConfig || demoConfig.active_session_token !== sessionToken) {
+      if (!demoConfig || demoConfig.active_session_token_hash !== await hashOmniaToken(sessionToken)) {
         return json({
           success: false,
           error: "DEMO_SESSION_REPLACED",

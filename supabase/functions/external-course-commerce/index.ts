@@ -7,6 +7,7 @@ import {
   failedStatus,
   retrieveFedaPayTransaction,
 } from "../_shared/fedapay-security.ts";
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,11 +42,7 @@ async function authenticate(sb: Supabase, req: Request): Promise<User | null> {
     .replace(/^Bearer\s+/i, "")
     .trim();
   if (!token) return null;
-  const { data: session, error } = await sb.from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error } = await getActiveOmniaSessionResult(sb, token);
   if (error || !session?.user_id) return null;
   const { data: user, error: userError } = await sb.from("users")
     .select("id,email,full_name,phone_number,country_code,status")

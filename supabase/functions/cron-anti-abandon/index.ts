@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { beginCronRun, finishCronRun, normalizeCronSecret } from "../_shared/cron-control.ts";
 
+import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -21,7 +22,7 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get("Authorization") ?? "";
   const bearerToken = normalizeCronSecret(authHeader.replace(/^Bearer\s+/i, ""));
   const headerSecret = normalizeCronSecret(req.headers.get("x-cron-secret"));
-  const authorized = Boolean(serviceRoleKey && bearerToken === serviceRoleKey) ||
+  const authorized = isOmniaInternalRequest(req) ||
     Boolean(cronSecret && (bearerToken === cronSecret || headerSecret === cronSecret));
   if (!authorized) return json({ error: "UNAUTHORIZED" }, 401);
 
@@ -106,7 +107,7 @@ Deno.serve(async (req: Request) => {
       try {
         const notificationResponse = await fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+          headers: omniaInternalHeaders(),
           body: JSON.stringify({
             type: "anti_abandon",
             payload: {

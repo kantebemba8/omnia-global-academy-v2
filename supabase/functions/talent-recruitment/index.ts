@@ -4,6 +4,7 @@ import { createAccessInvitation } from "../_shared/access-invitations.ts";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -25,7 +26,7 @@ type Session = { userId: string; roles: string[]; organizationId: string | null;
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
   const token = sessionToken(req);
   if (!token) return null;
-  const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
   const userId = String(session.user_id);
   const [{ data: roles }, { data: recruiter }, structureAccess] = await Promise.all([
@@ -226,7 +227,7 @@ async function listPublicProfiles(sb: ReturnType<typeof createClient>) {
 async function savePublicProfile(sb: ReturnType<typeof createClient>, req: Request, body: any) {
   const token = sessionToken(req);
   if (!token) return json({ error: "SESSION_INVALID" }, 401);
-  const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return json({ error: "SESSION_INVALID" }, 401);
   const userId = String(session.user_id);
   const { data: internalRole } = await sb.from("user_roles")

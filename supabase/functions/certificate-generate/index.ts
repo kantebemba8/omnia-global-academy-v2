@@ -4,6 +4,7 @@ import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import QRCode from "npm:qrcode@1.5.3";
 import { createSignedObjectUrl, downloadStoredValue, parseStorageLocator, signCertificatePdf, storageRef } from "../_shared/protected-storage.ts";
 
+import { getActiveOmniaSessionResult, isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token"};
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
 const BLUE="#002050",GOLD="#BF8813",WHITE="#FFFFFF",GREY="#667085";
@@ -13,7 +14,7 @@ type AccreditationSnapshot={id:string;organization_name:string;certification_nam
 
 async function verifySession(sb:any,token:string){
  const normalized=token.replace(/^Bearer\s+/i,"").trim();if(!normalized)return null;
- const {data:sess}=await sb.from("user_sessions").select("user_id").eq("session_token",normalized).gt("expires_at",new Date().toISOString()).maybeSingle();
+ const {data:sess}=await getActiveOmniaSessionResult(sb, normalized);
  if(sess?.user_id)return sess.user_id;
  const {data}=await sb.auth.getUser(normalized);return data?.user?.id||null;
 }
@@ -138,7 +139,7 @@ Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response(null,{status:200,headers:corsHeaders});
  try{
   const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);const body=await req.json();
-  const headerToken=req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"";const callerId=await verifySession(sb,headerToken);const internal=body.internal_request===true&&headerToken.replace(/^Bearer\s+/i,"")===Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!callerId&&!internal)return json({error:"UNAUTHORIZED"},401);
+  const headerToken=req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"";const callerId=await verifySession(sb,headerToken);const internal=body.internal_request===true&&isOmniaInternalRequest(req);if(!callerId&&!internal)return json({error:"UNAUTHORIZED"},401);
   const userId=String(body.user_id||callerId||""),courseId=String(body.course_id||"");if(!userId||!courseId)return json({error:"MISSING_FIELDS"},400);
   if(callerId&&userId!==callerId&&!internal){const {data:role}=await sb.from("user_roles").select("role").eq("user_id",callerId).in("role",["super_admin","admin"]).maybeSingle();if(!role)return json({error:"FORBIDDEN"},403);}
   const {data:assessments}=await sb.from("course_assessments").select("id,title,scope,passing_score").eq("course_id",courseId).eq("required",true).eq("is_active",true);const missing:string[]=[];
@@ -167,7 +168,7 @@ Deno.serve(async(req:Request)=>{
   if(accSnapshots.length){const rows=accSnapshots.map((a,index)=>({certificate_id:cert.id,course_certification_id:a.id,organization_name:a.organization_name,certification_name:a.certification_name,certification_code:a.certification_code,credit_value:a.credit_value,credit_unit:a.credit_unit,badge_url:a.logo?.snapshot_url||null,logo_url:a.logo?.snapshot_url||null,signature_url:a.signature?.snapshot_url||null,stamp_url:a.stamp?.snapshot_url||null,verification_url:a.verification_url,valid_from:null,expires_at:null,status:"valid",partner_snapshot:{organization_name:a.organization_name,certification_name:a.certification_name,assets:{logo:a.logo,signature:a.signature,stamp:a.stamp},captured_at:issuedAt.toISOString()},logo_permission_snapshot:a.permission_snapshot,display_order:index}));const {error}=await sb.from("certificate_accreditations").insert(rows);if(error)throw error;}
   const awards=await awardAutomaticBadges(sb,user,course,cert,accreditations||[],appUrl);if(awards.length)await sb.from("certificates").update({badge_awards_snapshot:awards.map((a:any)=>({id:a.id,template_id:a.template_id,credential_uuid:a.credential_uuid,verification_code:a.verification_code,issued_at:a.issued_at}))}).eq("id",cert.id);
   const creditSummary=(accreditations||[]).map((a:any)=>({organization:a.organization_name,value:a.credit_value,unit:a.credit_unit}));await sb.from("user_profile_certifications").upsert({user_id:userId,certificate_id:cert.id,course_id:courseId,title:course.title,issuer:issuerName,credential_id:certId,verification_url:verifyUrl,issued_at:cert.issued_at,expires_at:null,hours_or_credits:creditSummary,status:"valid",updated_at:new Date().toISOString()},{onConflict:"user_id,certificate_id"});await sb.from("user_enrollments").update({completed_at:new Date().toISOString()}).eq("user_id",userId).eq("course_id",courseId);await sb.from("certificate_generation_audit").insert({user_id:userId,course_id:courseId,certificate_id:cert.id,result:"generated",source:body.source||"automatic"});
-  fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`,{method:"POST",headers:{Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({type:"certificat_genere",payload:{userId,formation_titre:course.title,certificate_id:certId,verify_url:verifyUrl,pdf_url:verifyUrl}})}).catch(()=>{});
+  fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-dispatch`,{method:"POST",headers:omniaInternalHeaders(),body:JSON.stringify({type:"certificat_genere",payload:{userId,formation_titre:course.title,certificate_id:certId,verify_url:verifyUrl,pdf_url:verifyUrl}})}).catch(()=>{});
   return json({certificate_id:certId,pdf_url:pdfDownloadUrl,pdf_sha256:pdfHash,verification_url:verifyUrl,accreditations:creditSummary,automatic_badges:awards.length});
  }catch(error){console.error("certificate-generate",error);return json({error:"INTERNAL",message:error instanceof Error?error.message:String(error)},500);}
 });

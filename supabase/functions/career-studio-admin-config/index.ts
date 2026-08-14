@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -23,12 +24,7 @@ async function requireSuperAdmin(sb: any, req: Request): Promise<string | null> 
     .trim();
   if (!token) return null;
 
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
 
   const { data: role } = await sb

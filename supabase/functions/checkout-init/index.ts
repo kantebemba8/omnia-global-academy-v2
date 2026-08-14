@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -10,8 +11,7 @@ const corsHeaders = {
 };
 
 async function verifySession(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id")
-    .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: sess } = await getActiveOmniaSessionResult(sb, token);
   if (!sess) return null;
   const { data: user } = await sb.from("users")
     .select("id, email, full_name, phone_number, country_code, status, ai_tokens")

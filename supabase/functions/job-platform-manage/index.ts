@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -28,12 +29,7 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
   const token = (req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
 
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
 
   const userId = String(session.user_id);

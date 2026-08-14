@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, X-Client-Info, Apikey"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 
@@ -13,7 +14,7 @@ Deno.serve(async(req:Request)=>{
   if(!courseId)return json({error:"course_id requis"},400);
   try{
     const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
-    const {data:sess}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
+    const {data:sess}=await getActiveOmniaSessionResult(sb, token);
     if(!sess)return json({error:"SESSION_INVALID"},401);
     const userId=sess.user_id;
     const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",courseId).maybeSingle();

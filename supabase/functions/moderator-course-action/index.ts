@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -39,12 +40,7 @@ function normalizePermissions(row: Record<string, unknown> | null): PermissionMa
 }
 
 async function verifyModerator(sb: SupabaseClient, token: string) {
-  const { data: session, error: sessionError } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error: sessionError } = await getActiveOmniaSessionResult(sb, token);
   if (sessionError || !session) return null;
 
   const { data: role, error: roleError } = await sb

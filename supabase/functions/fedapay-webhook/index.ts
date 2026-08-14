@@ -10,6 +10,7 @@ import {
   transactionMetadata,
   verifyFedaPayWebhook,
 } from "../_shared/fedapay-security.ts";
+import { omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 
 type SB = ReturnType<typeof createClient>;
@@ -76,11 +77,10 @@ async function finishWebhookEvent(sb: SB, id: string, status: "processed" | "ign
 }
 async function postInternal(path: string, body: Record<string, unknown>) {
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !key) return null;
+  if (!url) return null;
   const response = await fetch(`${url}/functions/v1/${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify(body),
   });
   return response;
@@ -251,13 +251,11 @@ Deno.serve(async (req: Request) => {
       if (!liveOrder) throw new Error("OMNIA_LIVE_ORDER_NOT_FOUND");
       assertTransactionMatches(transaction, Number(liveOrder.amount || 0), String(liveOrder.currency || "XOF"));
       const url = Deno.env.get("SUPABASE_URL") || "";
-      const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
       const webhookSecret = Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "";
       const response = await fetch(`${url}/functions/v1/omnia-live?action=fedapay_webhook`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${serviceRole}`,
-          "Content-Type": "application/json",
+          ...omniaInternalHeaders(),
           "x-omnia-webhook-secret": webhookSecret,
         },
         body: JSON.stringify(event),

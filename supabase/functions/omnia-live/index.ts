@@ -6,6 +6,7 @@ import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import { hasStructurePermission, validatedStructureAccess, type ValidatedStructureAccess } from "../_shared/structure-access.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
+import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/omnia-auth.ts";
 /*
   OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
 
@@ -24,7 +25,7 @@ import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token, x-omnia-internal-secret",
 };
 
 function json(data: unknown, status = 200) {
@@ -51,16 +52,7 @@ function tokenFrom(req: Request) {
 
 async function sessionContext(sb: ReturnType<typeof createClient>, token: string) {
   if (!token) return null;
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("DB_SERVICE_ROLE_KEY") || "";
-  if (serviceRole && token === serviceRole) {
-    return { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"], structureOrganizationId: null, structureAccess: null as ValidatedStructureAccess | null };
-  }
-
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id,expires_at")
-    .eq("session_token", token)
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
 
   if (!session || !session.expires_at || new Date(session.expires_at) <= new Date()) return null;
 
@@ -8229,7 +8221,9 @@ Deno.serve(async (req: Request) => {
   try {
     const sb = supabaseAdmin();
     const token = tokenFrom(req);
-    let ctx = await sessionContext(sb, token);
+    let ctx = isOmniaInternalRequest(req)
+      ? { user: { id: "service", full_name: "Service", email: "service@omnia.local", status: "actif" }, userId: "service", roles: ["service_role"], structureOrganizationId: null, structureAccess: null as ValidatedStructureAccess | null }
+      : await sessionContext(sb, token);
     const requestUrl = new URL(req.url);
     const action = requestUrl.searchParams.get("action") ?? "list";
     const previewRole = requestUrl.searchParams.get("preview_role");

@@ -6,6 +6,7 @@ import JSZip from "npm:jszip@3.10.1";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
 
+import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
@@ -16,7 +17,7 @@ async function decorateStudioBlock(sb:any,block:any){const bucket=String(block?.
 async function sessionUser(sb:any, req:Request, bodyToken=""){
  const token=(bodyToken||req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
  if(!token) return null;
- const {data}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
+ const {data}=await getActiveOmniaSessionResult(sb, token);
  if(data?.user_id) return data.user_id;
  // Compatibilité avec les jetons Supabase Auth utilisés par certaines pages.
  const {data:authData}=await sb.auth.getUser(token);
@@ -29,9 +30,8 @@ async function log(sb:any,courseId:string,userId:string,action:string,details:an
 
 async function triggerCertificate(userId:string,courseId:string,source:string){
  try{
-  const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
   const url=`${Deno.env.get("SUPABASE_URL")}/functions/v1/certificate-generate`;
-  const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${serviceKey}`,"Content-Type":"application/json"},body:JSON.stringify({user_id:userId,course_id:courseId,source,internal_request:true})});
+  const response=await fetch(url,{method:"POST",headers:omniaInternalHeaders(),body:JSON.stringify({user_id:userId,course_id:courseId,source,internal_request:true})});
   if(!response.ok){const detail=await response.text().catch(()=>"");console.warn("certificate_generate_deferred",response.status,detail.slice(0,500));}
  }catch(error){console.warn("certificate_generate_unavailable",error instanceof Error?error.message:String(error));}
 }

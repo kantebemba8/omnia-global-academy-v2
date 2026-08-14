@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { beginCronRun, finishCronRun, normalizeCronSecret } from "../_shared/cron-control.ts";
 
+import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -19,16 +20,14 @@ async function authorized(req: Request) {
   const expected = normalizeCronSecret(Deno.env.get("COACHING_CRON_SECRET") || Deno.env.get("CRON_SECRET"));
   const supplied = normalizeCronSecret(req.headers.get("x-cron-secret"));
   const bearer = normalizeCronSecret((req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, ""));
-  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  return Boolean((expected && supplied === expected) || (service && bearer === service));
+  return Boolean((expected && supplied === expected) || isOmniaInternalRequest(req) || (expected && bearer === expected));
 }
 
 async function dispatch(type: string, payload: Record<string, unknown>) {
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const response = await fetch(`${url}/functions/v1/notify-dispatch`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify({ type, payload }),
   });
   if (!response.ok) throw new Error(`NOTIFY_${response.status}:${await response.text()}`);

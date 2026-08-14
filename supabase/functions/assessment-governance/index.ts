@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -39,7 +40,7 @@ function appUrl() { return (Deno.env.get("PUBLIC_APP_URL") || "https://omniaglob
 async function authenticate(sb: Sb, req: Request, bodyToken = ""): Promise<Session | null> {
   const token = (bodyToken || req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
-  const { data } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data } = await getActiveOmniaSessionResult(sb, token);
   let userId = data?.user_id ? String(data.user_id) : "";
   if (!userId) {
     const { data: authData } = await sb.auth.getUser(token);

@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -211,12 +212,7 @@ Deno.serve(async (req: Request) => {
     // ── Enrollment check ─────────────────────────────────────────────────────
     let isEnrolled = false;
     if (sessionToken) {
-      const { data: sess } = await supabase
-        .from("user_sessions")
-        .select("user_id")
-        .eq("session_token", sessionToken)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
+      const { data: sess } = await getActiveOmniaSessionResult(supabase, sessionToken);
 
       if (sess?.user_id) {
         const { data: enroll } = await supabase

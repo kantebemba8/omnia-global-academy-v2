@@ -265,8 +265,8 @@ Deno.serve(async (req: Request) => {
       await supabase
         .from("demo_account_config")
         .update({
-          active_session_token: sessionToken,
-          heartbeat_token: heartbeatToken,
+          active_session_token_hash: await sha256Hex(sessionToken),
+          heartbeat_token_hash: await sha256Hex(heartbeatToken),
           is_online: true,
           last_seen_at: now,
         })

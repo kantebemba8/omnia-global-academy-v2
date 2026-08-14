@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 type TrackAction =
   | "list"
   | "get"
@@ -44,12 +45,7 @@ async function getUserId(
   const token = tokenFrom(req);
   if (!token) return null;
 
-  const { data: session, error } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error } = await getActiveOmniaSessionResult(sb, token);
 
   if (error || !session) return null;
 

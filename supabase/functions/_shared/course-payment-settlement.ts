@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { assertTransactionMatches, transactionMetadata } from "./fedapay-security.ts";
 
+import { omniaInternalHeaders } from "./omnia-auth.ts";
 export type SettlementResult = {
   order_id: string;
   already_completed?: boolean;
@@ -49,11 +50,10 @@ async function notifyProfessorSale(sb: SupabaseClient, result: Record<string, an
     sb.from("wallets").select("balance_xof").eq("user_id", professorId).maybeSingle(),
   ]);
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !serviceRole) return;
+  if (!url) return;
   await fetch(`${url}/functions/v1/notify-dispatch`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${serviceRole}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify({
       type: "alerte_vente",
       payload: {

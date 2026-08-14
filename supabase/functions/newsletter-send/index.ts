@@ -9,6 +9,7 @@ import {
   setNewsletterConsent,
   syncBrevoNewsletterContact,
 } from "../_shared/newsletter.ts";
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 
 const ALLOWED_LOCALES = new Set(["fr", "en", "es", "pt", "ar", "zh", "ru", "de"]);
 type DbClient = ReturnType<typeof createClient>;
@@ -43,11 +44,7 @@ function sessionToken(req: Request) {
 async function requireAdmin(sb: DbClient, req: Request) {
   const token = sessionToken(req);
   if (!token) return null;
-  const { data: session } = await sb.from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session?.user_id) return null;
   const { data: role } = await sb.from("user_roles")
     .select("role")

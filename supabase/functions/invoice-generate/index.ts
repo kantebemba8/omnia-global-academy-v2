@@ -2,10 +2,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
+import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-internal-secret",
 };
 
 function buildInvoiceHtml(order: Record<string, unknown>, course: Record<string, unknown>, buyer: Record<string, unknown>): string {
@@ -216,11 +217,10 @@ async function buildCoachingPdf(data: {
 
 async function notifyCoachingInvoice(userId: string, invoiceNumber: string, offerTitle: string, amountXof: number) {
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !key) return;
+  if (!url) return;
   await fetch(`${url}/functions/v1/notify-dispatch`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify({
       type: "coaching_invoice_available",
       payload: { userId, invoice_number: invoiceNumber, offer_title: offerTitle, amount_xof: amountXof, action_url: "/dashboard/coaching" },
@@ -300,6 +300,7 @@ async function generateCoachingInvoice(sb: ReturnType<typeof createClient>, coac
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (!isOmniaInternalRequest(req)) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);

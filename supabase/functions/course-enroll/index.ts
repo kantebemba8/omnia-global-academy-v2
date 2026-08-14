@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -35,12 +36,7 @@ Deno.serve(async (req: Request) => {
     );
 
     // Validate session
-    const { data: session } = await supabase
-      .from("user_sessions")
-      .select("user_id")
-      .eq("session_token", sessionToken)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
+    const { data: session } = await getActiveOmniaSessionResult(supabase, sessionToken);
 
     if (!session) return json({ success: false, message: "Session invalide ou expirée" }, 401);
     const userId = session.user_id;

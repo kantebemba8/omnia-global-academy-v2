@@ -13,6 +13,7 @@ import {
   type StoreProductType,
   type StoreTargetType,
 } from "../_shared/mobile-store-billing.ts";
+import { getActiveOmniaSessionResult, isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -35,11 +36,10 @@ function bearer(req: Request) {
 }
 
 async function context(sb: SB, req: Request): Promise<UserContext | null> {
+  if (isOmniaInternalRequest(req)) return { id: "service", email: "service@omnia.local", full_name: "Service", roles: ["service_role"] };
   const token = bearer(req);
   if (!token) return null;
-  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (token === service) return { id: "service", email: "service@omnia.local", full_name: "Service", roles: ["service_role"] };
-  const { data: session } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
   const [{ data: user }, { data: roles }] = await Promise.all([
     sb.from("users").select("id,email,full_name,phone_number,country_code,status").eq("id", session.user_id).maybeSingle(),
@@ -370,15 +370,14 @@ async function resolveStoreProduct(sb: SB, target: StoreOrderTarget, platform: S
 
 async function postInternal(functionName: string, body: Record<string, unknown>) {
   const url = String(Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !serviceRole) throw new Error("INTERNAL_SERVICE_CONFIGURATION_MISSING");
+  if (!url) throw new Error("INTERNAL_SERVICE_CONFIGURATION_MISSING");
   const action = String(body.action || "");
   const endpoint = functionName === "omnia-live" && action
     ? `${url}/functions/v1/${functionName}?action=${encodeURIComponent(action)}`
     : `${url}/functions/v1/${functionName}`;
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: `Bearer ${serviceRole}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({}));

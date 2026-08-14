@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -21,11 +22,7 @@ function tokenFrom(req: Request) {
 }
 
 async function verifySession(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: session, error } = await sb.from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error } = await getActiveOmniaSessionResult(sb, token);
   if (error || !session) return null;
   const { data: user, error: userError } = await sb.from("users")
     .select("id,full_name,email,cv_tokens,career_studio_enabled,profile_completion")

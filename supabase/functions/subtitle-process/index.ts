@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-internal-secret",
 };
 
 function json(d: unknown, s = 200) {
@@ -86,12 +87,10 @@ Deno.serve(async (req: Request) => {
 
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  // Accept service role key for cron/webhook triggers
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const cronSecret = Deno.env.get("CRON_SECRET");
-
-  const isAuthorized = token === serviceKey || (cronSecret && token === cronSecret);
+  // Headless execution: dedicated Cron secret or dedicated Omnia internal secret.
+  const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  const cronSecret = (Deno.env.get("CRON_SECRET") || "").trim();
+  const isAuthorized = isOmniaInternalRequest(req) || Boolean(cronSecret && token === cronSecret);
   if (!isAuthorized) return json({ error: "UNAUTHORIZED" }, 401);
 
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
@@ -185,7 +184,7 @@ Deno.serve(async (req: Request) => {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       fetch(`${supabaseUrl}/functions/v1/notify-dispatch`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        headers: omniaInternalHeaders(),
         body: JSON.stringify({
           type: "subtitle_ready",
           user_id: job.requested_by,

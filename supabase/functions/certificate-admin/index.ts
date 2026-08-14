@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createSignedObjectUrl, signCertificatePdf, signStoredValue, storageRef } from "../_shared/protected-storage.ts";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const cors={
   "Access-Control-Allow-Origin":"*",
   "Access-Control-Allow-Headers":"authorization,x-omnia-session-token,x-client-info,apikey,content-type",
@@ -14,8 +15,7 @@ async function ctx(sb:any,req:Request){
   const token=(req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"")
     .replace(/^Bearer\s+/i,"").trim();
   if(!token)return null;
-  const {data:session}=await sb.from("user_sessions").select("user_id")
-    .eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();
+  const {data:session}=await getActiveOmniaSessionResult(sb, token);
   if(!session)return null;
   const {data:roles}=await sb.from("user_roles").select("role").eq("user_id",session.user_id);
   return {user_id:session.user_id,roles:(roles||[]).map((r:any)=>r.role)};

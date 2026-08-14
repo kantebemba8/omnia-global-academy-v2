@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -15,12 +16,7 @@ const json = (data: unknown, status = 200) =>
   });
 
 async function verifySuperAdmin(sb: any, token: string) {
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
 
   const { data: role } = await sb
@@ -356,12 +352,7 @@ type DeletionTarget = {
 
 async function verifySessionContext(sb: any, token: string): Promise<SessionContext | null> {
   if (!token) return null;
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session?.user_id) return null;
 
   const { data: roleRows } = await sb

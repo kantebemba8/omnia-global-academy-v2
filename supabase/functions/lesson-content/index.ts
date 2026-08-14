@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { PRIVATE_COURSE_BUCKET_SET, createSignedObjectUrl, parseStorageLocator } from "../_shared/protected-storage.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, X-Client-Info, Apikey"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 
@@ -12,7 +13,7 @@ Deno.serve(async(req:Request)=>{
  const url=new URL(req.url),lessonId=url.searchParams.get("lesson_id"),courseId=url.searchParams.get("course_id");if(!lessonId||!courseId)return json({error:"lesson_id + course_id requis"},400);
  try{
   const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
-  const {data:sess}=await sb.from("user_sessions").select("user_id").eq("session_token",token).gt("expires_at",new Date().toISOString()).maybeSingle();if(!sess)return json({error:"SESSION_INVALID"},401);const userId=sess.user_id;
+  const {data:sess}=await getActiveOmniaSessionResult(sb, token);if(!sess)return json({error:"SESSION_INVALID"},401);const userId=sess.user_id;
   const {data:enroll}=await sb.from("user_enrollments").select("id,enrolled_at").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(!enroll)return json({error:"NOT_ENROLLED"},403);
   const {data:course}=await sb.from("courses").select("learning_design_settings").eq("id",courseId).maybeSingle();if(!course)return json({error:"COURSE_NOT_FOUND"},404);
   const design=(course.learning_design_settings||{}) as Record<string,unknown>;

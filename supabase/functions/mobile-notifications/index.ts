@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -33,8 +34,7 @@ async function authenticate(sb: Supabase, req: Request): Promise<Session | null>
   const bearer = text(req.headers.get("authorization"), 600).replace(/^Bearer\s+/i, "");
   const token = explicit || bearer;
   if (!token) return null;
-  const { data: session, error } = await sb.from("user_sessions").select("user_id").eq("session_token", token)
-    .gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: session, error } = await getActiveOmniaSessionResult(sb, token);
   if (error || !session?.user_id) return null;
   const userId = String(session.user_id);
   const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", userId);

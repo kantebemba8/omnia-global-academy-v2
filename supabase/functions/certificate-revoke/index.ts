@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -16,8 +17,7 @@ Deno.serve(async (req: Request) => {
     const token = req.headers.get("Authorization")?.replace("Bearer ", "");
     if (!token) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: sess } = await sb.from("user_sessions").select("user_id")
-      .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+    const { data: sess } = await getActiveOmniaSessionResult(sb, token);
     if (!sess) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     // La révocation définitive d’un certificat est une décision finale réservée au Super-admin

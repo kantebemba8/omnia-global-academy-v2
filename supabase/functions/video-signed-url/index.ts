@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { makeCorsHeaders, getClientIP, logSecurityEvent } from "../_shared/security.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 async function signCfUrl(uid: string, keyId: string, pemBase64: string): Promise<string> {
   const pem = atob(pemBase64);
   const key = await crypto.subtle.importKey("pkcs8", new TextEncoder().encode(pem).buffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
@@ -31,7 +32,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-    const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+    const { data: sess } = await getActiveOmniaSessionResult(sb, token);
     if (!sess) return json({ error: "SESSION_INVALID" }, 401);
     const userId = sess.user_id as string;
     const { data: enroll } = await sb.from("user_enrollments").select("id").eq("user_id", userId).eq("course_id", course_id).maybeSingle();

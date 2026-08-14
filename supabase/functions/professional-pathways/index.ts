@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -26,7 +27,7 @@ function tokenFrom(req: Request, bodyToken = "") {
 async function authenticate(sb: any, req: Request, bodyToken = ""): Promise<Session | null> {
   const token = tokenFrom(req, bodyToken);
   if (!token) return null;
-  const { data: active } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: active } = await getActiveOmniaSessionResult(sb, token);
   if (!active?.user_id) return null;
   const { data: roleRows } = await sb.from("user_roles").select("role").eq("user_id", active.user_id);
   const roles = (roleRows || []).map((row: any) => text(row.role, 80).toLowerCase());

@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { validatedStructureAccess } from "../_shared/structure-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -23,12 +24,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 });
 
 async function session(sb: any, token: string) {
-  const { data: activeSession, error: sessionError } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: activeSession, error: sessionError } = await getActiveOmniaSessionResult(sb, token);
   if (sessionError || !activeSession) return null;
 
   const { data: roles, error: rolesError } = await sb

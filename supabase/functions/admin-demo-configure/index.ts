@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hashSync } from "npm:bcryptjs@2.4.3";
 import { appendModeratorTeamAudit } from "../_shared/moderator-access.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -21,12 +22,7 @@ function clean(value: unknown, max = 4000) {
 }
 
 async function verifySuperAdmin(sb: any, token: string) {
-  const { data: session } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
 
   const { data: role } = await sb
@@ -336,7 +332,7 @@ async function configureDemo(sb: any, adminId: string, body: any) {
   }
 
   const { error: heartbeatError } = await sb.from("demo_account_config")
-    .update({ active_session_token: null, heartbeat_token: null, is_online: false })
+    .update({ active_session_token_hash: null, heartbeat_token_hash: null, is_online: false })
     .neq("id", "00000000-0000-0000-0000-000000000000");
   if (heartbeatError) throw heartbeatError;
 
@@ -393,8 +389,8 @@ Deno.serve(async (req: Request) => {
         revoked_at: now,
         revoked_by: adminId,
         revoke_reason: reason,
-        active_session_token: null,
-        heartbeat_token: null,
+        active_session_token_hash: null,
+        heartbeat_token_hash: null,
         is_online: false,
       }).eq("id", current.id);
       if (updateError) throw updateError;

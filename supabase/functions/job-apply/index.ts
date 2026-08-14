@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -24,8 +25,7 @@ Deno.serve(async (req: Request) => {
   ).replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  const { data: sess } = await sb.from("user_sessions").select("user_id")
-    .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: sess } = await getActiveOmniaSessionResult(sb, token);
   if (!sess) return json({ error: "SESSION_INVALID" }, 401);
   const userId = sess.user_id;
 

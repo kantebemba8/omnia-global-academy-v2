@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -22,12 +23,7 @@ function authToken(req: Request) {
 async function resolveSession(sb: any, req: Request) {
   const token = authToken(req);
   if (!token) return null;
-  const { data } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data } = await getActiveOmniaSessionResult(sb, token);
   return data?.user_id ? { userId: String(data.user_id), token } : null;
 }
 

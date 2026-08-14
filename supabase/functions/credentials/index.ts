@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { calculateJwkThumbprint, compactVerify, decodeProtectedHeader, importJWK, SignJWT } from "npm:jose@5.9.6";
 import QRCode from "npm:qrcode@1.5.4";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -70,8 +71,7 @@ async function authenticate(sb: Supabase, req: Request): Promise<Session | null>
   const bearerToken = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   const token = explicitToken || bearerToken;
   if (!token) return null;
-  const { data: current, error } = await sb.from("user_sessions")
-    .select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: current, error } = await getActiveOmniaSessionResult(sb, token);
   if (error || !current?.user_id) return null;
   const userId = String(current.user_id);
   const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", userId);

@@ -5,10 +5,11 @@ import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
 import { createAccessInvitation, ensureCoachOgaAccess } from "../_shared/access-invitations.ts";
 import { sha256Hex } from "../_shared/auth-security.ts";
 
+import { getActiveOmniaSessionResult, isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token, x-omnia-internal-secret",
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -75,18 +76,12 @@ function isHttpUrl(value: string | null): boolean {
 }
 
 async function authenticate(sb: Supabase, req: Request): Promise<Session | null> {
+  if (isOmniaInternalRequest(req)) return { userId: "service", roles: ["service_role"] };
   const explicitToken = (req.headers.get("x-omnia-session-token") || "").trim();
   const bearerToken = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   const token = explicitToken || bearerToken;
   if (!token) return null;
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (serviceRole && token === serviceRole) return { userId: "service", roles: ["service_role"] };
-  const { data: session, error } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error } = await getActiveOmniaSessionResult(sb, token);
   if (error || !session?.user_id) return null;
   const userId = String(session.user_id);
   const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", userId);
@@ -1568,22 +1563,20 @@ function coachingOrderNumber(): string {
 
 async function invokeNotification(type: string, payload: Record<string, unknown>) {
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !key) return;
+  if (!url) return;
   await fetch(`${url}/functions/v1/notify-dispatch`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify({ type, payload }),
   }).catch(() => undefined);
 }
 
 async function requestCoachingInvoice(orderId: string) {
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!url || !key) return;
+  if (!url) return;
   await fetch(`${url}/functions/v1/invoice-generate`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: omniaInternalHeaders(),
     body: JSON.stringify({ coaching_order_id: orderId }),
   }).catch(() => undefined);
 }

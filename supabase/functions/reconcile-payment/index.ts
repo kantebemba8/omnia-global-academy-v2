@@ -4,14 +4,14 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { approvedStatus, fedaPayApiBase, retrieveFedaPayTransaction } from "../_shared/fedapay-security.ts";
 import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
 async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: session } = await sb.from("user_sessions").select("user_id")
-    .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
   const { data: role } = await sb.from("user_roles").select("role")
     .eq("user_id", session.user_id).eq("role", "super_admin").maybeSingle();

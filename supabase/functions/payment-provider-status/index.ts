@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { fedaPayConfiguration } from "../_shared/fedapay-security.ts";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,OPTIONS",
@@ -21,11 +22,7 @@ async function admin(sb: any, req: Request) {
   ).replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
 
-  const { data: session } = await sb.from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session } = await getActiveOmniaSessionResult(sb, token);
   if (!session) return null;
 
   const { data: role } = await sb.from("user_roles")

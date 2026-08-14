@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -46,15 +47,13 @@ async function getEmbedding(text: string, openaiKey: string): Promise<number[]> 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace("Bearer ", "");
+  const authHeader = req.headers.get("x-omnia-session-token") || req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  // Accept service role key OR valid admin session
-  if (token !== serviceKey) {
-    const { data: sess } = await sb.from("user_sessions").select("user_id")
-      .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  // Internal Edge-to-Edge calls use a dedicated Omnia secret, never the Supabase service role.
+  if (!isOmniaInternalRequest(req)) {
+    const { data: sess } = await getActiveOmniaSessionResult(sb, token);
     if (!sess) return json({ error: "AUTH_REQUIRED" }, 401);
     const { data: u } = await sb.from("users").select("role").eq("id", sess.user_id).maybeSingle();
     if (!u || u.role !== "super_admin") return json({ error: "FORBIDDEN" }, 403);

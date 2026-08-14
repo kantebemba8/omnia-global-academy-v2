@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -17,8 +18,7 @@ Deno.serve(async (req: Request) => {
       .replace(/^Bearer\s+/i, "").trim();
     if (!token) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: sess } = await sb.from("user_sessions").select("user_id")
-      .eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+    const { data: sess } = await getActiveOmniaSessionResult(sb, token);
     if (!sess) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const url = new URL(req.url);

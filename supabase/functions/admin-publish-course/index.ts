@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
+import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -12,7 +13,7 @@ function json(d: unknown, s = 200) {
 }
 
 async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: string) {
-  const { data: sess } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: sess } = await getActiveOmniaSessionResult(sb, token);
   if (!sess) return null;
   const { data: role } = await sb.from("user_roles").select("role").eq("user_id", (sess as { user_id: string }).user_id).eq("role", "super_admin").maybeSingle();
   if (!role) return null;
@@ -63,10 +64,9 @@ Deno.serve(async (req: Request) => {
 
       // Trigger RAG indexation asynchronously (fire-and-forget)
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       fetch(`${supabaseUrl}/functions/v1/rag-index-course`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        headers: omniaInternalHeaders(),
         body: JSON.stringify({ course_id }),
       }).catch(() => {});
 

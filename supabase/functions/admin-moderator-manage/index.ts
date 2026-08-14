@@ -9,6 +9,7 @@ import {
   normalizeModeratorPermissions,
   sanitizeModeratorPermissions,
 } from "../_shared/moderator-access.ts";
+import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,12 +34,7 @@ function text(value: unknown, max = 1000) {
 }
 
 async function verifySuperAdmin(sb: SupabaseClient, token: string) {
-  const { data: session, error: sessionError } = await sb
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+  const { data: session, error: sessionError } = await getActiveOmniaSessionResult(sb, token);
   if (sessionError || !session) return null;
 
   const { data: role, error: roleError } = await sb
