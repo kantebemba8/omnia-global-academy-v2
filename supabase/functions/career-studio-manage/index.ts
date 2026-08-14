@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicQualityModel } from "../_shared/ai-models.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -423,7 +424,7 @@ Tu ne dois jamais inventer des diplômes, expériences ou compétences non fourn
 Tu améliores et reformules uniquement les informations reçues.`;
 
 async function callClaude(system: string, prompt: string) {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
+  const apiKey = getAnthropicApiKey();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY_MISSING");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -433,7 +434,7 @@ async function callClaude(system: string, prompt: string) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-6",
+      model: getAnthropicQualityModel(),
       max_tokens: 2048,
       system,
       messages: [{ role: "user", content: prompt }],

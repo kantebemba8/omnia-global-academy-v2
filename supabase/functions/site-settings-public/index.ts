@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { getAnthropicApiKey, getAnthropicFastModel, getOpenAITextModel } from "../_shared/ai-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get('ALLOWED_ORIGIN') || "https://omniaglobalacademy.com",
@@ -55,7 +56,7 @@ async function generateUiTranslations(language: string, sources: string[]) {
     JSON.stringify(sources),
   ].join("\n");
 
-  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "";
+  const anthropicKey = getAnthropicApiKey();
   if (anthropicKey) {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -65,7 +66,7 @@ async function generateUiTranslations(language: string, sources: string[]) {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: Deno.env.get("ANTHROPIC_MODEL") || "claude-3-5-haiku-latest",
+        model: getAnthropicFastModel(),
         max_tokens: 6000,
         temperature: 0,
         messages: [{ role: "user", content: prompt }],
@@ -87,7 +88,7 @@ async function generateUiTranslations(language: string, sources: string[]) {
       method: "POST",
       headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: Deno.env.get("OPENAI_TEXT_MODEL") || "gpt-4o-mini",
+        model: getOpenAITextModel(),
         temperature: 0,
         messages: [{ role: "user", content: prompt }],
       }),

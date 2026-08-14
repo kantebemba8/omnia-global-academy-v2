@@ -212,9 +212,6 @@ verify_jwt = false
 [functions.cpd-credits-recharge]
 verify_jwt = false
 
-[functions.dall-e-cover]
-verify_jwt = false
-
 [functions.demo-heartbeat]
 verify_jwt = false
 

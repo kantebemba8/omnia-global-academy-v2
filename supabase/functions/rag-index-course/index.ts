@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/omnia-auth.ts";
+import { getOpenAIEmbeddingModel } from "../_shared/ai-models.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -37,7 +38,7 @@ async function getEmbedding(text: string, openaiKey: string): Promise<number[]> 
   const resp = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+    body: JSON.stringify({ model: getOpenAIEmbeddingModel(), input: text }),
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error?.message || "OpenAI embedding error");

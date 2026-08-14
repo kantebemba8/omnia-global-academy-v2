@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getAnthropicQualityModel, normalizeAnthropicModel } from "../_shared/ai-models.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -460,7 +461,7 @@ Deno.serve(async (req) => {
       const payload = {
         id: 1,
         enabled: body.enabled !== false,
-        model: String(body.model || "claude-sonnet-4-6"),
+        model: normalizeAnthropicModel(body.model || getAnthropicQualityModel(), "quality"),
         max_tokens: Math.max(200, Math.min(4000, Number(body.max_tokens || 1000))),
         hourly_limit: Math.max(1, Math.min(200, Number(body.hourly_limit || 20))),
         max_chunks: Math.max(1, Math.min(12, Number(body.max_chunks || 6))),
@@ -483,7 +484,7 @@ Deno.serve(async (req) => {
         course_id: courseId,
         enabled: body.enabled !== false,
         allowed_modes: Array.isArray(body.allowed_modes) ? body.allowed_modes : ["question","explanation","reformulation","exercise","revision_plan","recommendation"],
-        model: body.model || null,
+        model: body.model ? normalizeAnthropicModel(body.model, "quality") : null,
         max_tokens: body.max_tokens ? Number(body.max_tokens) : null,
         hourly_limit: body.hourly_limit ? Number(body.hourly_limit) : null,
         quality_notes: body.quality_notes || null,

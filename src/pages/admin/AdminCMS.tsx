@@ -1088,12 +1088,10 @@ export default function AdminCMS() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèle Claude</label>
-                      <select value={settings['ai_model'] || 'claude-sonnet-4-6'} onChange={e => set('ai_model', e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
-                        <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommandé)</option>
-                        <option value="claude-opus-4-7">claude-opus-4-7 (haute qualité)</option>
-                        <option value="claude-haiku-4-5">claude-haiku-4-5 (économique)</option>
-                      </select>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        Claude Sonnet 5 (qualité) · Claude Haiku 4.5 (rapide)
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">Les modèles opérationnels sont centralisés côté serveur. La gouvernance pédagogique reste gérée dans le Centre Qualité.</p>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1.5">Max tokens par réponse</label>
@@ -1108,23 +1106,18 @@ export default function AdminCMS() {
 
               {/* La gestion des jetons est centralisée exclusivement dans Admin > Omnia Career > Jetons. */}
 
-              {/* DALL-E Couvertures */}
+              {/* Génération d’images OpenAI */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <Image className="w-5 h-5" style={{ color: '#002050' }} />
-                  <h3 className="font-bold" style={{ color: '#002050' }}>Couvertures DALL-E</h3>
+                  <h3 className="font-bold" style={{ color: '#002050' }}>Génération d’images OpenAI</h3>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèle DALL-E</label>
-                  <select value={settings['dall_e_model'] || 'dall-e-3'} onChange={e => set('dall_e_model', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 max-w-xs">
-                    <option value="dall-e-3">dall-e-3 (recommandé)</option>
-                    <option value="dall-e-2">dall-e-2 (économique)</option>
-                  </select>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 max-w-md">
+                  GPT Image 2 · couvertures générées depuis le Studio de formation
                 </div>
                 <div className="mt-3 flex items-start gap-2 p-3 rounded-lg border border-amber-200" style={{ backgroundColor: '#FFFBEB' }}>
                   <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#D97706' }} />
-                  <p className="text-xs text-amber-700">Le prompt impose toujours "NO people, NO faces, NO hands" — cette règle est absolue et non configurable.</p>
+                  <p className="text-xs text-amber-700">L’ancien moteur DALL·E a été retiré. La règle Omnia sans personne reste appliquée par défaut aux couvertures générées.</p>
                 </div>
               </div>
 

@@ -7,6 +7,7 @@ import * as XLSX from "npm:xlsx@0.18.5";
 import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
 
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicFastModel, getOpenAIImageModel } from "../_shared/ai-models.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
@@ -278,10 +279,10 @@ function normalizeImportBlueprint(value:any,fallback:CourseImportBlueprint):Cour
  return {title:String(source.title||fallback.title).trim().slice(0,500)||fallback.title,short_description:String(source.short_description||fallback.short_description).trim().slice(0,500),objectives:stringList(source.objectives,12).length?stringList(source.objectives,12):fallback.objectives,target_audience:String(source.target_audience||fallback.target_audience).trim().slice(0,2000),learning_outcomes:stringList(source.learning_outcomes,12).length?stringList(source.learning_outcomes,12):fallback.learning_outcomes,modules:modules.length?modules:fallback.modules};
 }
 async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint){
- const key=Deno.env.get("ANTHROPIC_API_KEY");if(!key)return {blueprint:fallback,ai_used:false};
+ const key=getAnthropicApiKey();if(!key)return {blueprint:fallback,ai_used:false};
  const excerpt=cleanImportedText(text).slice(0,50000);const prompt=`Transforme le contenu suivant en brouillon de formation éditable. N'invente aucun fait. Réponds uniquement avec un JSON valide, sans Markdown, conforme à ce schéma : {"title":"","short_description":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","lessons":[{"title":"","objective":"","content":"texte brut","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}]}]}. Limites : 8 modules, 10 leçons par module, 2 QCM par leçon. Les questions sont facultatives si le contenu ne permet pas une réponse certaine. Le résultat reste un brouillon non publié.\n\nTITRE SUGGÉRÉ : ${fallback.title}\n\nCONTENU :\n${excerpt}`;
  try{
-  const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:Deno.env.get("ANTHROPIC_MODEL")||"claude-3-5-haiku-latest",max_tokens:5000,messages:[{role:"user",content:prompt}]})});
+  const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:5000,messages:[{role:"user",content:prompt}]})});
   if(!response.ok)return {blueprint:fallback,ai_used:false};const output=await response.json();const raw=String(output?.content?.[0]?.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false};
   return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback),ai_used:true};
  }catch{return {blueprint:fallback,ai_used:false}}
@@ -1202,7 +1203,7 @@ Deno.serve(async(req)=>{
    const count=Math.min(4,Math.max(1,Number(b.count)||3));const images:string[]=[];
    const safePrompt=`Image de couverture professionnelle pour une formation en ligne. ${prompt}. Format horizontal 16:9, composition claire, lisible en miniature, sans texte, sans logo, sans filigrane, sans personne sauf demande explicite. Style éducatif premium adapté à l'Afrique et au monde.`;
    for(let i=0;i<count;i++){
-    const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Authorization":`Bearer ${openaiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:Deno.env.get("OPENAI_IMAGE_MODEL")||"gpt-image-1",prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium",n:1})});
+    const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Authorization":`Bearer ${openaiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:getOpenAIImageModel(),prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium",n:1})});
     const out=await r.json();if(!r.ok)throw new Error(out?.error?.message||"IMAGE_GENERATION_FAILED");const b64=out?.data?.[0]?.b64_json;if(!b64)throw new Error("IMAGE_DATA_MISSING");
     const bytes=Uint8Array.from(atob(b64),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
     images.push(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/course-images/${path}`);
@@ -1211,9 +1212,9 @@ Deno.serve(async(req)=>{
   }
   if(String(action).startsWith("ai_")){
    const input=String(b.text||b.content||b.topic||"").trim();if(!input)return json({success:false,error:"TEXT_REQUIRED"},400);
-   const key=Deno.env.get("ANTHROPIC_API_KEY");if(!key)return json({success:true,result:"Service IA non configuré. Votre texte original a été conservé.",fallback:true});
+   const key=getAnthropicApiKey();if(!key)return json({success:true,result:"Service IA non configuré. Votre texte original a été conservé.",fallback:true});
    const prompts:Record<string,string>={ai_improve_text:"Améliore ce contenu pédagogique en français, sans inventer de faits.",ai_simplify_text:"Simplifie ce contenu pour un public débutant.",ai_correct_grammar:"Corrige uniquement la langue et la grammaire.",ai_summarize:"Résume clairement ce contenu.",ai_generate_qcm:"Génère un QCM avec 1 bonne réponse, 3 mauvaises réponses et une explication. Réponds en JSON.",ai_generate_true_false:"Génère une question vrai/faux avec explication. Réponds en JSON.",ai_generate_quiz:"Génère 5 questions variées avec corrigés. Réponds en JSON.",ai_create_summary:"Crée un résumé pédagogique structuré.",ai_create_remember:"Crée une liste concise de points à retenir.",ai_suggest_structure:"Propose une structure de modules et leçons.",ai_suggest_objectives:"Propose des objectifs pédagogiques mesurables.",ai_suggest_example:"Propose un exemple concret et réaliste."};
-   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-3-5-haiku-latest",max_tokens:1400,messages:[{role:"user",content:`${prompts[action]||"Aide à améliorer ce contenu pédagogique."}\n\n${input}`} ]})});const out=await r.json();return json({success:r.ok,result:out?.content?.[0]?.text||"",error:r.ok?undefined:"AI_ERROR"},r.ok?200:502);
+   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:1400,messages:[{role:"user",content:`${prompts[action]||"Aide à améliorer ce contenu pédagogique."}\n\n${input}`} ]})});const out=await r.json();return json({success:r.ok,result:out?.content?.[0]?.text||"",error:r.ok?undefined:"AI_ERROR"},r.ok?200:502);
   }
   return json({success:false,error:"UNKNOWN_ACTION",action},400);
  }catch(e){console.error("studio-unified",e);return json({success:false,error:"SERVER_ERROR",message:(e as Error).message},500)}

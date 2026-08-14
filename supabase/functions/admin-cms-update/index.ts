@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicFastModel, getOpenAITextModel } from "../_shared/ai-models.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
@@ -27,7 +28,7 @@ const UI_LANGUAGE_NAMES: Record<string, string> = {
 };
 
 function aiTranslationEnabled() {
-  return Boolean(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || Deno.env.get("OPENAI_API_KEY"));
+  return Boolean(getAnthropicApiKey() || Deno.env.get("OPENAI_API_KEY"));
 }
 
 function extractTranslationArray(raw: string): string[] | null {
@@ -50,12 +51,12 @@ async function generateTranslationValues(language: string, sources: string[]) {
     "Use concise, natural, professional interface language. Do not add explanations.",
     JSON.stringify(sources),
   ].join("\n");
-  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "";
+  const anthropicKey = getAnthropicApiKey();
   if (anthropicKey) {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: Deno.env.get("ANTHROPIC_MODEL") || "claude-3-5-haiku-latest", max_tokens: 6000, temperature: 0, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: getAnthropicFastModel(), max_tokens: 6000, temperature: 0, messages: [{ role: "user", content: prompt }] }),
     });
     if (response.ok) {
       const payload = await response.json();
@@ -69,7 +70,7 @@ async function generateTranslationValues(language: string, sources: string[]) {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: Deno.env.get("OPENAI_TEXT_MODEL") || "gpt-4o-mini", temperature: 0, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: getOpenAITextModel(), temperature: 0, messages: [{ role: "user", content: prompt }] }),
     });
     if (response.ok) {
       const payload = await response.json();

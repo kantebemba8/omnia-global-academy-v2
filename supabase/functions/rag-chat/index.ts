@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicQualityModel, getOpenAIEmbeddingModel, normalizeAnthropicModel } from "../_shared/ai-models.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -67,12 +68,12 @@ Deno.serve(async (req: Request) => {
     if (Number(count || 0) >= hourlyLimit) return json({ success: false, error: "RATE_LIMIT", message: `Limite de ${hourlyLimit} demandes par heure atteinte.` }, 429);
 
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const claudeKey = Deno.env.get("CLAUDE_API_KEY");
+    const claudeKey = getAnthropicApiKey();
     if (!openaiKey || !claudeKey) return json({ success: false, error: "AI_NOT_CONFIGURED", message: "Le service d’assistance n’est pas encore configuré." }, 503);
 
     const embResp = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST", headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: message }),
+      body: JSON.stringify({ model: getOpenAIEmbeddingModel(), input: message }),
     });
     if (!embResp.ok) throw new Error("EMBEDDING_FAILED");
     const embData = await embResp.json();
@@ -89,7 +90,7 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, reply: "Je n’ai pas trouvé de réponse dans le contenu validé de cette formation. Reformulez votre demande ou consultez le forum du cours.", sources_found: false, chunks_used: 0 });
     }
 
-    const model = String(courseSetting?.model || governance?.model || "claude-sonnet-4-6");
+    const model = normalizeAnthropicModel(courseSetting?.model || governance?.model || getAnthropicQualityModel(), "quality");
     const maxTokens = Number(courseSetting?.max_tokens || governance?.max_tokens || 1000);
     const instruction = MODE_LABELS[mode] || MODE_LABELS.question;
     const system = `Tu es l’assistant pédagogique gouverné d’Omnia Global Academy pour la formation « ${course.title} ».

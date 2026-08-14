@@ -90,7 +90,6 @@ export const ENDPOINTS ={
   // Module 15 — IA / RAG
   ragIndexCourse: `${API_BASE_URL}/rag-index-course`,
   ragChat: `${API_BASE_URL}/rag-chat`,
-  dallecover: `${API_BASE_URL}/dall-e-cover`,
   subtitleRequest: `${API_BASE_URL}/subtitle-request`,
   subtitleProcess: `${API_BASE_URL}/subtitle-process`,
   demoHeartbeat: `${API_BASE_URL}/demo-heartbeat`,

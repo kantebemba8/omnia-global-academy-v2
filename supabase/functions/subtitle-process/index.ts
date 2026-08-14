@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicQualityModel, getOpenAISubtitleTranscriptionModel } from "../_shared/ai-models.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -23,7 +24,7 @@ function srtToVtt(srt: string): string {
   );
 }
 
-async function transcribeWithWhisper(audioUrl: string, openaiKey: string, sourceLanguage: string): Promise<string> {
+async function transcribeForSubtitles(audioUrl: string, openaiKey: string, sourceLanguage: string): Promise<string> {
   // Fetch audio content
   const audioResp = await fetch(audioUrl);
   if (!audioResp.ok) throw new Error(`Failed to fetch audio: ${audioResp.status}`);
@@ -31,7 +32,7 @@ async function transcribeWithWhisper(audioUrl: string, openaiKey: string, source
 
   const formData = new FormData();
   formData.append("file", new Blob([audioBuffer], { type: "audio/mp4" }), "audio.mp4");
-  formData.append("model", "whisper-1");
+  formData.append("model", getOpenAISubtitleTranscriptionModel());
   formData.append("language", sourceLanguage);
   formData.append("response_format", "srt");
 
@@ -71,7 +72,7 @@ ${srtContent}`;
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: getAnthropicQualityModel(),
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -94,7 +95,7 @@ Deno.serve(async (req: Request) => {
   if (!isAuthorized) return json({ error: "UNAUTHORIZED" }, 401);
 
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  const claudeKey = Deno.env.get("CLAUDE_API_KEY");
+  const claudeKey = getAnthropicApiKey();
   if (!openaiKey || !claudeKey) return json({ error: "AI_NOT_CONFIGURED" }, 500);
 
   // Fetch one pending job
@@ -138,10 +139,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Fallback: Whisper transcription
+    // Fallback: subtitle transcription. Whisper remains intentional here because SRT/timestamps are required.
     if (!srtContent) {
       const videoUrl = `https://videodelivery.net/${lesson.cloudflare_stream_id}/downloads/default.mp4`;
-      srtContent = await transcribeWithWhisper(videoUrl, openaiKey, job.source_language);
+      srtContent = await transcribeForSubtitles(videoUrl, openaiKey, job.source_language);
     }
 
     // Translate with Claude if source != target

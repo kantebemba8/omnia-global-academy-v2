@@ -155,7 +155,7 @@ export default function AdminTranslations() {
         {!overview?.ai_enabled && !loading && (
           <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <AlertTriangle size={19} className="mt-0.5 flex-none" />
-            <p>La traduction automatique nécessite un secret ANTHROPIC_API_KEY, CLAUDE_API_KEY ou OPENAI_API_KEY. La révision manuelle reste disponible.</p>
+            <p>La traduction automatique utilise ANTHROPIC_API_KEY en priorité ou OPENAI_API_KEY en secours. CLAUDE_API_KEY reste accepté uniquement comme compatibilité temporaire. La révision manuelle reste disponible.</p>
           </div>
         )}
         {error && <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}

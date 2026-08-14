@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getOpenAITtsModel } from "../_shared/ai-models.ts";
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -36,7 +37,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "tts-1",
+        model: getOpenAITtsModel(),
         input: text.substring(0, 4096),
         voice: "nova",
         response_format: "mp3",
