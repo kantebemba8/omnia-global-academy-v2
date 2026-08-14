@@ -7,7 +7,7 @@ import { getDashboardPathForRoles, getSessionToken, getStoredUser } from '../../
 
 type Invitation = {
   id: string;
-  invitation_type: 'moderator' | 'structure_team' | 'structure_recruiter' | 'coach_oga';
+  invitation_type: 'moderator' | 'structure_team' | 'coach_oga';
   email: string;
   full_name?: string | null;
   organization_name?: string | null;
@@ -34,11 +34,6 @@ const TYPE_CONTENT: Record<Invitation['invitation_type'], { title: string; descr
     title: 'Invitation à l’équipe d’une Structure',
     description: 'Cette invitation vous rattache à l’équipe interne de la Structure avec des permissions professionnelles précises.',
     icon: Building2,
-  },
-  structure_recruiter: {
-    title: 'Invitation au recrutement d’une Structure',
-    description: 'Cette invitation vous permet de recruter au nom de la Structure, dans le périmètre de ses données et de ses offres.',
-    icon: UserRoundCheck,
   },
   coach_oga: {
     title: 'Invitation à rejoindre les Coachs OGA',

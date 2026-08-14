@@ -35,7 +35,6 @@ function dashboardPathForRoles(roles: string[]): string {
   if (roles.includes('coach')) return '/coach/dashboard';
   if (roles.includes('responsable_structure') || roles.includes('gestionnaire_structure') || roles.includes('structure_admin') || roles.includes('directeur') || roles.includes('gestionnaire_partenaire')) return '/structure/dashboard';
   if (roles.includes('recruteur_independant') || roles.includes('recruteur')) return '/talent/recruteur/dashboard';
-  if (roles.includes('recruteur_structure')) return '/structure/recrutement/dashboard';
   if (roles.includes('professeur') || roles.includes('formateur') || roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
   if (roles.includes('moderateur')) return '/moderateur/dashboard';
   if (roles.includes('organisateur') || roles.includes('organizer')) return '/omnia-live/organisateur';

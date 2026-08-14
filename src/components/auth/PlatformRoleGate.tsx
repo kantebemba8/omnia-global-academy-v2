@@ -52,7 +52,7 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
     return { allowedRoles: ['professeur'], previewRole: 'professeur' };
   }
   if (startsWithSpace(pathname, '/structure/recrutement') || pathname === '/structure/offres-emploi') {
-    return { allowedRoles: ['structure', 'gestionnaire_structure', 'recruteur_structure'], previewRole: 'structure' };
+    return { allowedRoles: ['structure', 'gestionnaire_structure'], previewRole: 'structure' };
   }
   if (startsWithSpace(pathname, '/structure') || startsWithSpace(pathname, '/partner') || startsWithSpace(pathname, '/school')) {
     return { allowedRoles: ['structure', 'gestionnaire_structure'], previewRole: 'structure' };

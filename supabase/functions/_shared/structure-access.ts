@@ -69,3 +69,39 @@ export async function hasValidatedStructureAccess(
 ) {
   return Boolean(await validatedStructureAccess(sb, userId, requestedOrganizationId));
 }
+
+
+export const STRUCTURE_RECRUITMENT_PERMISSION_KEYS = [
+  "can_post_job",
+  "can_search_talent",
+  "can_contact_talent",
+  "can_manage_jobs",
+  "can_view_applications",
+  "can_schedule_interview",
+  "can_manage_team",
+] as const;
+
+export async function validatedStructureRecruitmentAccess(
+  sb: any,
+  userId: string,
+  requestedOrganizationId = "",
+) {
+  const access = await validatedStructureAccess(sb, userId, requestedOrganizationId);
+  if (!access) return null;
+  if (access.isPrimary) {
+    return {
+      ...access,
+      recruitmentPermissions: Object.fromEntries(STRUCTURE_RECRUITMENT_PERMISSION_KEYS.map((key) => [key, true])) as Record<string, boolean>,
+    };
+  }
+
+  const { data, error } = await sb.from("talent_structure_permissions")
+    .select("can_post_job,can_search_talent,can_contact_talent,can_manage_jobs,can_view_applications,can_schedule_interview,can_manage_team")
+    .eq("organization_id", access.organizationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const recruitmentPermissions = data && typeof data === "object" ? data as Record<string, boolean> : {};
+  if (!STRUCTURE_RECRUITMENT_PERMISSION_KEYS.some((key) => recruitmentPermissions[key] === true)) return null;
+  return { ...access, recruitmentPermissions };
+}

@@ -19,7 +19,7 @@ function sessionToken(req: Request) {
   ).replace(/^Bearer\s+/i, "").trim();
 }
 
-type RecruiterProfile = { recruiter_type: "independent" | "structure"; organization_id: string | null; status: "pending" | "approved" | "rejected" | "suspended" };
+type RecruiterProfile = { recruiter_type: "independent"; organization_id: null; status: "pending" | "approved" | "rejected" | "suspended" };
 type Session = { userId: string; roles: string[]; organizationId: string | null; isPrimaryManager: boolean; permissions: Record<string, boolean>; recruiterProfile: RecruiterProfile | null };
 
 async function authenticate(sb: ReturnType<typeof createClient>, req: Request): Promise<Session | null> {
@@ -39,16 +39,16 @@ async function authenticate(sb: ReturnType<typeof createClient>, req: Request): 
     const { data: explicit } = await sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId).eq("user_id", userId).maybeSingle();
     if (explicit) permissions = { ...permissions, ...explicit };
   }
-  const recruiterProfile: RecruiterProfile | null = recruiter ? {
-    recruiter_type: recruiter.recruiter_type === "structure" ? "structure" : "independent",
-    organization_id: recruiter.organization_id ? String(recruiter.organization_id) : null,
+  const recruiterProfile: RecruiterProfile | null = recruiter?.recruiter_type === "independent" ? {
+    recruiter_type: "independent",
+    organization_id: null,
     status: recruiter.status,
   } : null;
   return { userId, roles: (roles || []).map((r: any) => String(r.role)), organizationId, isPrimaryManager: !!structureAccess?.isPrimary, permissions, recruiterProfile };
 }
 
 function hasRole(s: Session, ...roles: string[]) { return roles.some(r => s.roles.includes(r)); }
-const STRUCTURE_RECRUITER_CORE_PERMISSIONS = [
+const RECRUITMENT_CORE_PERMISSIONS = [
   "can_post_job",
   "can_search_talent",
   "can_contact_talent",
@@ -62,27 +62,25 @@ function isIndependentRecruiter(s: Session) {
     && s.recruiterProfile?.recruiter_type === "independent"
     && s.recruiterProfile.status === "approved";
 }
-function isStructureRecruiter(s: Session) {
-  return hasRole(s, "recruteur_structure") && !!s.organizationId;
-}
 function canUseRecruiter(s: Session) {
-  if (hasRole(s, "super_admin") || isStructureRecruiter(s)) return true;
-  const hasStructureRecruitmentPermission = [
-    "can_post_job",
-    "can_search_talent",
-    "can_contact_talent",
-    "can_manage_jobs",
-    "can_view_applications",
-    "can_schedule_interview",
-    "can_manage_team",
-  ].some((key) => s.permissions[key] === true);
-  if (s.organizationId && (s.isPrimaryManager || hasStructureRecruitmentPermission || s.recruiterProfile?.status === "approved")) return true;
+  if (hasRole(s, "super_admin")) return true;
+  if (s.organizationId) {
+    const hasStructureRecruitmentPermission = [
+      "can_post_job",
+      "can_search_talent",
+      "can_contact_talent",
+      "can_manage_jobs",
+      "can_view_applications",
+      "can_schedule_interview",
+      "can_manage_team",
+    ].some((key) => s.permissions[key] === true);
+    if (s.isPrimaryManager || hasStructureRecruitmentPermission) return true;
+  }
   return isIndependentRecruiter(s);
 }
 function can(s: Session, permission: string) {
   if (hasRole(s, "super_admin") || s.isPrimaryManager) return true;
-  if (isIndependentRecruiter(s) && STRUCTURE_RECRUITER_CORE_PERMISSIONS.includes(permission as typeof STRUCTURE_RECRUITER_CORE_PERMISSIONS[number])) return true;
-  if (isStructureRecruiter(s) && STRUCTURE_RECRUITER_CORE_PERMISSIONS.includes(permission as typeof STRUCTURE_RECRUITER_CORE_PERMISSIONS[number])) return true;
+  if (isIndependentRecruiter(s) && RECRUITMENT_CORE_PERMISSIONS.includes(permission as typeof RECRUITMENT_CORE_PERMISSIONS[number])) return true;
   return s.permissions[permission] === true;
 }
 function scopeOrg(s: Session, scope: string) { return scope === "structure" ? s.organizationId : null; }
@@ -130,7 +128,6 @@ function notificationCopy(type: string) {
     talent_new_message: ["Nouveau message", "Vous avez reçu un nouveau message dans Omnia Talent.", "/dashboard/career-studio"],
     recruiter_application_submitted: ["Nouvelle demande recruteur", "Un compte recruteur attend votre validation.", "/admin/talent"],
     recruiter_status_changed: ["Statut recruteur mis à jour", "Le statut de votre compte recruteur a changé.", "/talent/recruteurs"],
-    recruiter_joined_structure: ["Recruteur rattaché", "Un recruteur a rejoint votre équipe recrutement.", "/structure/recrutement/equipe"],
   };
   return map[type] || ["Notification Talent", "Une nouvelle activité Talent vous concerne.", null];
 }
@@ -463,7 +460,7 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_talent_supervision" || action === "admin_update_recruiter_status") {
       if (!hasRole(session, "super_admin")) return json({ error: "FORBIDDEN" }, 403);
       if (action === "admin_talent_supervision") {
-        let rq = sb.from("talent_recruiter_profiles").select("*");
+        let rq = sb.from("talent_recruiter_profiles").select("*").eq("recruiter_type", "independent");
         if (body.status) rq = rq.eq("status", String(body.status));
         const [recruitersResult, contactsResult, activityResult] = await Promise.all([
           rq.order("created_at", { ascending: false }),
@@ -576,91 +573,6 @@ Deno.serve(async (req: Request) => {
     const scope = body.scope === "structure" ? "structure" : "recruiter";
     const organizationId = scopeOrg(session, scope);
     if (scope === "structure" && !organizationId && !hasRole(session, "super_admin")) return json({ error: "NO_STRUCTURE" }, 403);
-
-    if (action === "create_structure_recruiter") {
-      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
-      const fullName = String(body.full_name || "").trim();
-      const email = String(body.email || "").trim().toLowerCase();
-      const jobTitle = String(body.job_title || "Recruteur rattaché à la Structure").trim();
-      const roleLabel = String(body.role_label || jobTitle).trim();
-      if (fullName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return json({ error: "INVALID_RECRUITER", message: "Le nom et une adresse e-mail valide sont requis." }, 400);
-      }
-      try {
-        const result = await createAccessInvitation(sb, {
-          invitationType: "structure_recruiter",
-          email,
-          fullName,
-          organizationId,
-          invitedBy: session.userId,
-          internalRole: roleLabel,
-          permissions: { can_manage_team: body.permissions?.can_manage_team === true },
-          message: String(body.message || "").trim() || null,
-        });
-        await logActivity(sb, session, organizationId, result.invitation.target_user_id || null, "structure_recruiter_invited", "access_invitation", result.invitation.id, {
-          role_label: roleLabel,
-          account_exists: result.accountExists,
-          email_sent: result.emailSent,
-        });
-        return json({
-          success: true,
-          invitation: result.invitation,
-          invitation_url: result.invitationUrl,
-          account_exists: result.accountExists,
-          email_sent: result.emailSent,
-          status: "invited",
-        });
-      } catch (error) {
-        const code = error instanceof Error ? error.message : String(error);
-        if (code === "PROTECTED_ACCOUNT") return json({ error: code, message: "Ce compte système protégé ne peut pas être rattaché à une Structure." }, 403);
-        if (code === "INVALID_EMAIL") return json({ error: code, message: "L’adresse e-mail est invalide." }, 400);
-        throw error;
-      }
-    }
-
-    if (action === "revoke_structure_recruiter_invitation") {
-      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
-      const invitationId = String(body.invitation_id || "");
-      if (!invitationId) return json({ error: "INVITATION_REQUIRED" }, 400);
-      const { data: invitation, error: findError } = await sb.from("platform_access_invitations")
-        .select("id,status,target_user_id")
-        .eq("id", invitationId)
-        .eq("organization_id", organizationId)
-        .eq("invitation_type", "structure_recruiter")
-        .maybeSingle();
-      if (findError) throw findError;
-      if (!invitation) return json({ error: "INVITATION_NOT_FOUND" }, 404);
-      if (invitation.status !== "pending") return json({ error: "INVITATION_NOT_PENDING" }, 409);
-      const { error: revokeError } = await sb.from("platform_access_invitations")
-        .update({ status: "revoked", updated_at: new Date().toISOString() })
-        .eq("id", invitationId)
-        .eq("status", "pending");
-      if (revokeError) throw revokeError;
-      await logActivity(sb, session, organizationId, invitation.target_user_id || null, "structure_recruiter_invitation_revoked", "access_invitation", invitationId);
-      return json({ success: true });
-    }
-
-    if (action === "set_structure_recruiter_status") {
-      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
-      const targetUserId = String(body.user_id || "");
-      const status = String(body.status || "");
-      if (!targetUserId || !["actif", "suspendu", "retire"].includes(status)) return json({ error: "INVALID_STATUS" }, 400);
-      const { data: member } = await sb.from("partner_managers").select("user_id,is_primary").eq("organization_id", organizationId).eq("user_id", targetUserId).maybeSingle();
-      if (!member || member.is_primary) return json({ error: "MEMBER_NOT_EDITABLE" }, 403);
-      if (status === "retire") {
-        await sb.from("partner_managers").delete().eq("organization_id", organizationId).eq("user_id", targetUserId);
-        await sb.from("talent_structure_permissions").delete().eq("organization_id", organizationId).eq("user_id", targetUserId);
-        await sb.from("talent_recruiter_profiles").update({ status: "suspended", suspended_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", targetUserId).eq("organization_id", organizationId);
-        await sb.from("user_roles").delete().eq("user_id", targetUserId).eq("role", "recruteur_structure");
-      } else {
-        const managerStatus = status === "actif" ? "actif" : "suspendu";
-        const profileStatus = status === "actif" ? "approved" : "suspended";
-        await sb.from("partner_managers").update({ status: managerStatus }).eq("organization_id", organizationId).eq("user_id", targetUserId);
-        await sb.from("talent_recruiter_profiles").update({ status: profileStatus, suspended_at: status === "actif" ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", targetUserId).eq("organization_id", organizationId);
-      }
-      await logActivity(sb, session, organizationId, targetUserId, "structure_recruiter_status_changed", "user", targetUserId, { status });
-      return json({ success: true });
-    }
 
     if (action === "dashboard") {
       const favoriteQuery = organizationId ? sb.from("talent_favorites").select("id", { count: "exact", head: true }).eq("organization_id", organizationId) : sb.from("talent_favorites").select("id", { count: "exact", head: true }).eq("actor_user_id", session.userId).is("organization_id", null);
@@ -788,50 +700,53 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "list_team_permissions") {
-      if (!organizationId) return json({ error: "NO_STRUCTURE" }, 403);
-      const { data: members, error } = await sb.from("partner_managers").select("user_id,role_in_org,is_primary,status").eq("organization_id", organizationId).order("is_primary", { ascending: false });
+      if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
+      const { data: members, error } = await sb.from("partner_managers")
+        .select("user_id,role_in_org,is_primary,status")
+        .eq("organization_id", organizationId)
+        .neq("status", "retire")
+        .order("is_primary", { ascending: false });
       if (error) throw error;
       const userIds = (members || []).map((member: any) => member.user_id).filter(Boolean);
-      const [{ data: permissions }, { data: users }, { data: invitations }] = await Promise.all([
+      const [{ data: permissions }, { data: users }] = await Promise.all([
         sb.from("talent_structure_permissions").select("*").eq("organization_id", organizationId),
         userIds.length ? sb.from("users").select("id,full_name,email,created_at").in("id", userIds) : Promise.resolve({ data: [] as any[] }),
-        sb.from("platform_access_invitations").select("id,email,full_name,internal_role,permissions,status,created_at,expires_at,target_user_id")
-          .eq("organization_id", organizationId).eq("invitation_type", "structure_recruiter").eq("status", "pending").order("created_at", { ascending: false }),
       ]);
       const byUser = new Map((permissions || []).map((permission: any) => [String(permission.user_id), permission]));
       const usersById = new Map((users || []).map((user: any) => [String(user.id), user]));
-      const activeMembers = (members || []).map((member: any) => ({
-        ...member,
-        users: usersById.get(String(member.user_id)) || null,
-        recruitment_permissions: byUser.get(String(member.user_id)) || null,
-      }));
-      const pendingMembers = (invitations || []).map((invitation: any) => ({
-        id: `invitation:${invitation.id}`,
-        invitation_id: invitation.id,
-        user_id: invitation.target_user_id || null,
-        role_in_org: invitation.internal_role || "Recruteur rattaché à la Structure",
-        is_primary: false,
-        status: "invited",
-        users: { id: invitation.target_user_id || null, full_name: invitation.full_name || "", email: invitation.email },
-        recruitment_permissions: invitation.permissions || {},
-        invitation_expires_at: invitation.expires_at,
-      }));
-      return json({ success: true, members: [...activeMembers, ...pendingMembers] });
+      return json({
+        success: true,
+        members: (members || []).map((member: any) => ({
+          ...member,
+          users: usersById.get(String(member.user_id)) || null,
+          recruitment_permissions: byUser.get(String(member.user_id)) || null,
+        })),
+      });
     }
 
     if (action === "update_team_permissions") {
       if (!organizationId || !can(session, "can_manage_team")) return json({ error: "PERMISSION_DENIED" }, 403);
       const targetUserId = String(body.user_id || "");
       if (!targetUserId) return json({ error: "USER_REQUIRED" }, 400);
+      const { data: member, error: memberError } = await sb.from("partner_managers")
+        .select("user_id,is_primary,status")
+        .eq("organization_id", organizationId)
+        .eq("user_id", targetUserId)
+        .neq("status", "retire")
+        .maybeSingle();
+      if (memberError) throw memberError;
+      if (!member) return json({ error: "STRUCTURE_MEMBER_REQUIRED" }, 404);
+      if (member.is_primary) return json({ error: "PRIMARY_MANAGER_PERMISSIONS_FIXED" }, 409);
+
       const row: Record<string, unknown> = {
         organization_id: organizationId,
         user_id: targetUserId,
-        can_post_job: true,
-        can_search_talent: true,
-        can_contact_talent: true,
-        can_manage_jobs: true,
-        can_view_applications: true,
-        can_schedule_interview: true,
+        can_post_job: body.permissions?.can_post_job === true,
+        can_search_talent: body.permissions?.can_search_talent === true,
+        can_contact_talent: body.permissions?.can_contact_talent === true,
+        can_manage_jobs: body.permissions?.can_manage_jobs === true,
+        can_view_applications: body.permissions?.can_view_applications === true,
+        can_schedule_interview: body.permissions?.can_schedule_interview === true,
         can_manage_team: body.permissions?.can_manage_team === true,
         updated_at: new Date().toISOString(),
       };

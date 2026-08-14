@@ -148,7 +148,6 @@ const PRIMARY_ROLE_LABELS: Record<string, string> = {
 };
 const DELEGATION_LABELS: Record<string, string> = {
   gestionnaire_structure: "Gestionnaire de Structure",
-  recruteur_structure: "Recruteur rattaché à une Structure",
 };
 const CANONICAL_PRIMARY_BY_STORED: Record<string, string> = {
   apprenant: "apprenant", professeur: "professeur", formateur: "professeur", enseignant: "professeur", etablissement_enseignant: "professeur",
@@ -156,7 +155,7 @@ const CANONICAL_PRIMARY_BY_STORED: Record<string, string> = {
   organisateur: "organisateur", organizer: "organisateur", recruteur: "recruteur", recruteur_independant: "recruteur",
   coach: "coach", moderateur: "moderateur", moderator: "moderateur",
 };
-const DELEGATED_ROLES = new Set(["gestionnaire_structure", "recruteur_structure"]);
+const DELEGATED_ROLES = new Set(["gestionnaire_structure"]);
 const TEST_EMAILS = new Set([
   "test@omniaglobalacademy.com", "apprenant.test@omniaglobalacademy.com", "mod.test@omniaglobalacademy.com",
   "prof.test@omniaglobalacademy.com", "structure.test@omniaglobalacademy.com", "organisateur.test@omniaglobalacademy.com",

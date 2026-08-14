@@ -3,7 +3,6 @@ export type RoleThemeKey =
   | 'professeur'
   | 'structure'
   | 'gestionnaire_structure'
-  | 'recruteur_structure'
   | 'recruteur'
   | 'organisateur'
   | 'coach'
@@ -27,7 +26,6 @@ export const ROLE_THEMES: Record<RoleThemeKey, RoleTheme> = {
   professeur: { key: 'professeur', accent: '#3E63B8', soft: '#EDF2FF', secondary: '#293F75', footerBackground: '#293F75', footerBottom: '#1B2B52', footerAccent: '#9BB2F0' },
   structure: { key: 'structure', accent: '#087F79', soft: '#E8F7F5', secondary: '#0B4F54', footerBackground: '#0B4F54', footerBottom: '#07373B', footerAccent: '#73C8C1' },
   gestionnaire_structure: { key: 'gestionnaire_structure', accent: '#087F79', soft: '#E8F7F5', secondary: '#0B4F54', footerBackground: '#0B4F54', footerBottom: '#07373B', footerAccent: '#73C8C1' },
-  recruteur_structure: { key: 'recruteur_structure', accent: '#315FA8', soft: '#EAF1FF', secondary: '#243E73', footerBackground: '#243E73', footerBottom: '#17284E', footerAccent: '#91B4EF' },
   recruteur: { key: 'recruteur', accent: '#9C436D', soft: '#FAEDF3', secondary: '#62304A', footerBackground: '#62304A', footerBottom: '#431F32', footerAccent: '#D99DBA' },
   organisateur: { key: 'organisateur', accent: '#7A55B8', soft: '#F2EDFB', secondary: '#49316F', footerBackground: '#49316F', footerBottom: '#302047', footerAccent: '#BCA2E3' },
   coach: { key: 'coach', accent: '#0F766E', soft: '#E9F8F5', secondary: '#0B4F54', footerBackground: '#0B4F54', footerBottom: '#07373B', footerAccent: '#78CEC5' },

@@ -692,7 +692,7 @@ Deno.serve(async (req: Request) => {
 
       const [managersResult, invitationsResult, membersResult, profileChange, auditResult] = await Promise.all([
         sb.from("partner_managers").select("id,user_id,role_in_org,is_primary,status,permissions").eq("organization_id", organizationId).order("is_primary", { ascending: false }),
-        sb.from("platform_access_invitations").select("id,email,full_name,internal_role,status,expires_at,created_at,target_user_id").eq("organization_id", organizationId).in("invitation_type", ["structure_team", "structure_recruiter"]).eq("status", "pending"),
+        sb.from("platform_access_invitations").select("id,email,full_name,internal_role,status,expires_at,created_at,target_user_id").eq("organization_id", organizationId).eq("invitation_type", "structure_team").eq("status", "pending"),
         sb.from("partner_code_users").select("id,user_id,status,created_at").eq("organization_id", organizationId),
         getOpenProfileChange(sb, organizationId),
         sb.from("structure_governance_audit").select("id,actor_user_id,actor_scope,event_type,target_user_id,metadata,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(30),

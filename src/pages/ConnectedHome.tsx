@@ -56,7 +56,6 @@ type HomeAudience =
   | 'moderateur'
   | 'structure'
   | 'gestionnaire_structure'
-  | 'recruteur_structure'
   | 'organisateur'
   | 'recruteur'
   | 'professeur'
@@ -228,41 +227,6 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
       LINK('Omnia Talent', 'Accéder à l’écosystème professionnel.', '/talent', Users),
       LINK('Omnia Live', 'Événements et expériences en direct.', '/omnia-live', Radio),
       LINK('Omnia Communauté', 'Échanges et ressources transversales.', '/forum', MessageCircle),
-    ],
-  },
-  recruteur_structure: {
-    label: 'Recruteur Structure',
-    eyebrow: 'Recrutement délégué',
-    title: 'Faire avancer le recrutement de votre Structure.',
-    intro: 'Cette vue concentre uniquement le pipeline de recrutement qui vous est délégué : offres, talents, preuves, candidats, entretiens et échanges.',
-    accent: '#315FA8', soft: '#EAF1FF', secondary: '#243E73', variant: 'pipeline',
-    primary: LINK('Ouvrir le recrutement', 'Accéder au tableau de bord recrutement Structure.', '/structure/recrutement/dashboard', Briefcase),
-    secondaryAction: LINK('Explorer les talents', 'Rechercher les profils utiles à votre organisation.', '/structure/recrutement/talents', Users),
-    workflow: [
-      { label: 'Publier', description: 'Gérer les offres de la Structure.' },
-      { label: 'Sourcer', description: 'Explorer talents et compétences vérifiées.' },
-      { label: 'Qualifier', description: 'Suivre candidats, favoris et preuves.' },
-      { label: 'Échanger', description: 'Organiser entretiens et messages.' },
-    ],
-    groups: [
-      { eyebrow: 'Sourcing', title: 'Trouver les bons profils', description: 'Vos outils de recherche et de sélection Structure.', items: [
-        LINK('Offres d’emploi', 'Créer et gérer les offres de la Structure.', '/structure/offres-emploi', Briefcase),
-        LINK('Talents', 'Explorer les talents disponibles.', '/structure/recrutement/talents', Users),
-        LINK('Compétences vérifiées', 'Consulter les preuves de compétences.', '/structure/recrutement/competences-verifiees', ShieldCheck),
-        LINK('Favoris', 'Retrouver les profils présélectionnés.', '/structure/recrutement/favoris', Heart),
-      ]},
-      { eyebrow: 'Pipeline', title: 'Candidats & échanges', description: 'Suivre le recrutement jusqu’aux échanges avec les candidats.', items: [
-        LINK('Candidats', 'Suivre les candidatures reçues.', '/structure/recrutement/candidats', UserCheck),
-        LINK('Entretiens', 'Organiser et suivre les entretiens.', '/structure/recrutement/entretiens', CalendarDays),
-        LINK('Messages', 'Échanger avec les profils concernés.', '/structure/recrutement/messages', MessageCircle),
-        LINK('Tableau de bord', 'Revenir à la synthèse du recrutement.', '/structure/recrutement/dashboard', LayoutDashboard),
-      ]},
-    ],
-    ecosystem: [
-      LINK('Omnia Talent', 'Accéder à l’écosystème Talent.', '/talent', Users),
-      LINK('Omnia Live', 'Suivre les événements et rencontres.', '/omnia-live', Radio),
-      LINK('Omnia Communauté', 'Participer aux échanges professionnels.', '/forum', MessageCircle),
-      LINK('Opportunités', 'Explorer l’espace public emploi.', '/forum/emploi', Briefcase),
     ],
   },
   organisateur: {
@@ -456,7 +420,6 @@ const ROLE_PRIORITY: HomeAudience[] = [
   'moderateur',
   'structure',
   'gestionnaire_structure',
-  'recruteur_structure',
   'organisateur',
   'recruteur',
   'professeur',
@@ -523,7 +486,6 @@ function searchPlaceholderFor(audience: HomeAudience) {
     case 'moderateur': return 'Rechercher dans vos outils de modération…';
     case 'structure': return 'Rechercher membres, formations, recrutement, suivi…';
     case 'gestionnaire_structure': return 'Rechercher dans votre périmètre Structure…';
-    case 'recruteur_structure': return 'Rechercher offres, talents, candidats, entretiens…';
     case 'organisateur': return 'Rechercher événements, participants, médias, revenus…';
     case 'recruteur': return 'Rechercher offres, talents, candidatures, entretiens…';
     case 'professeur': return 'Rechercher formations, évaluations, apprenants, revenus…';

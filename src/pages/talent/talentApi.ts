@@ -226,32 +226,9 @@ export async function loadRecruitmentTeam() {
 export async function updateRecruitmentPermissions(userId: string, permissions: Record<string, boolean>) {
   return recruitmentRequest<{ success: true }>('update_team_permissions', { user_id: userId, permissions }, 'structure');
 }
-export async function createStructureRecruiter(input: {
-  full_name: string;
-  email: string;
-  job_title?: string;
-  role_label?: string;
-  message?: string;
-  permissions?: Record<string, boolean>;
-}) {
-  return recruitmentRequest<{
-    success: true;
-    invitation: { id: string; status: string; expires_at?: string | null };
-    invitation_url: string;
-    account_exists: boolean;
-    email_sent: boolean;
-  }>('create_structure_recruiter', input, 'structure');
-}
-export async function revokeStructureRecruiterInvitation(invitationId: string) {
-  return recruitmentRequest<{ success: true }>('revoke_structure_recruiter_invitation', { invitation_id: invitationId }, 'structure');
-}
-export async function setStructureRecruiterStatus(userId: string, status: 'actif'|'suspendu'|'retire') {
-  return recruitmentRequest<{ success: true }>('set_structure_recruiter_status', { user_id: userId, status }, 'structure');
-}
-
 export type RecruiterStatus = {
   user_id: string;
-  recruiter_type: 'independent' | 'structure';
+  recruiter_type: 'independent';
   organization_id?: string | null;
   company_name?: string | null;
   job_title?: string | null;

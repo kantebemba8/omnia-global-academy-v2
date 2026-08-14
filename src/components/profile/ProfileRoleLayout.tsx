@@ -21,7 +21,7 @@ export function ProfileRoleLayout({ children }: { children: ReactNode }) {
 
   if (roles.includes('super_admin')) return <SuperAdminProfileLayout>{children}</SuperAdminProfileLayout>;
   if (roles.includes('moderateur')) return <ModerateurLayout>{children}</ModerateurLayout>;
-  if (roles.includes('structure') || roles.includes('gestionnaire_structure') || roles.includes('recruteur_structure')) return <StructureLayout>{children}</StructureLayout>;
+  if (roles.includes('structure') || roles.includes('gestionnaire_structure')) return <StructureLayout>{children}</StructureLayout>;
   if (roles.includes('organisateur')) return <DashboardLayout role="organisateur">{children}</DashboardLayout>;
   if (roles.includes('recruteur')) return <DashboardLayout role="recruteur">{children}</DashboardLayout>;
   if (roles.includes('coach')) return <DashboardLayout role="coach">{children}</DashboardLayout>;

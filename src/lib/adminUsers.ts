@@ -93,7 +93,6 @@ export const PRIMARY_ROLE_LABELS: Record<string, string> = {
 
 export const DELEGATION_LABELS: Record<string, string> = {
   gestionnaire_structure: 'Gestionnaire de Structure',
-  recruteur_structure: 'Recruteur rattaché à une Structure',
 };
 
 export function userStatusLabel(status: AdminUserStatus): string {

@@ -13,7 +13,6 @@ const ROLE_LABELS: Partial<Record<CanonicalPlatformRole, string>> = {
   moderateur: 'Modérateur',
   structure: 'Structure',
   gestionnaire_structure: 'Gestionnaire Structure',
-  recruteur_structure: 'Recruteur Structure',
   organisateur: 'Organisateur',
   recruteur: 'Recruteur',
   professeur: 'Professeur',

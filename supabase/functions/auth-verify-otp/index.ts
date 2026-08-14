@@ -187,8 +187,6 @@ Deno.serve(async (req: Request) => {
       } else {
         const roleName = userRoles.includes("moderateur")
           ? "Équipe de modération"
-          : userRoles.includes("recruteur_structure")
-          ? "Recrutement Structure"
           : userRoles.includes("gestionnaire_structure")
           ? "Équipe Structure"
           : userRoles.includes("apprenant")

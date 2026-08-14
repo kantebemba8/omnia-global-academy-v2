@@ -67,7 +67,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const STRUCTURE_RECRUITER_NAV_GROUPS: NavGroup[] = [
+const RECRUITMENT_ONLY_NAV_GROUPS: NavGroup[] = [
   {
     id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
     items: [{ path: '/structure/recrutement/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
@@ -106,7 +106,6 @@ function filterStructureNavigation(
   permissions: Record<string, boolean>,
   recruitmentPermissions: Record<string, boolean>,
   isPrimary: boolean,
-  roles: string[],
 ): NavGroup[] {
   if (isPrimary) return STRUCTURE_NAV_GROUPS;
 
@@ -114,8 +113,7 @@ function filterStructureNavigation(
     'can_create_courses', 'can_edit_courses', 'can_submit_courses', 'can_assign_trainers',
     'can_manage_lessons', 'can_upload_files',
   ]);
-  const recruitmentAccess = roles.includes('recruteur_structure')
-    || Object.values(recruitmentPermissions).some(Boolean);
+  const recruitmentAccess = Object.values(recruitmentPermissions).some(Boolean);
 
   return STRUCTURE_NAV_GROUPS.map(group => {
     if (group.id === 'organization') {
@@ -169,13 +167,9 @@ export function StructureLayout({ children, headerTitle, headerSubtitle, headerS
   const [structureContext, setStructureContext] = useState<StructureContext | null>(null);
   const user = getStoredUser<StoredUser>();
   const roles = user?.roles || [];
-  const roleThemeKey = roles.includes('structure')
-    ? 'structure'
-    : roles.includes('recruteur_structure')
-      ? 'recruteur_structure'
-      : roles.includes('gestionnaire_structure')
-        ? 'gestionnaire_structure'
-        : 'structure';
+  const roleThemeKey = roles.includes('gestionnaire_structure') && !roles.includes('structure')
+    ? 'gestionnaire_structure'
+    : 'structure';
 
   useEffect(() => {
     let active = true;
@@ -202,12 +196,13 @@ export function StructureLayout({ children, headerTitle, headerSubtitle, headerS
     const recruitmentPermissions = structureContext?.my_recruitment_permissions || {};
     const isPrimary = structureContext?.is_primary === true;
     const hasNonRecruitmentDelegation = Object.values(permissions).some(Boolean);
-    const dedicatedRecruiter = roles.includes('recruteur_structure') && !isPrimary && !hasNonRecruitmentDelegation;
+    const hasRecruitmentDelegation = Object.values(recruitmentPermissions).some(Boolean);
+    const recruitmentOnlyMember = !isPrimary && hasRecruitmentDelegation && !hasNonRecruitmentDelegation;
 
     if (!structureContext) return [];
-    if (dedicatedRecruiter) return STRUCTURE_RECRUITER_NAV_GROUPS;
-    return filterStructureNavigation(permissions, recruitmentPermissions, isPrimary, roles);
-  }, [roles, structureContext]);
+    if (recruitmentOnlyMember) return RECRUITMENT_ONLY_NAV_GROUPS;
+    return filterStructureNavigation(permissions, recruitmentPermissions, isPrimary);
+  }, [structureContext]);
 
   const recruitmentItems = visibleGroups.find(group => group.id === 'recruitment')?.items || [];
   const showRecruitmentSearch = recruitmentItems.length > 0

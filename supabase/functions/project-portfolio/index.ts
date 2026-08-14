@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { validatedStructureAccess } from "../_shared/structure-access.ts";
+import { validatedStructureAccess, validatedStructureRecruitmentAccess } from "../_shared/structure-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,10 +23,11 @@ async function sessionFrom(req: Request, sb: any, bodyToken = ""): Promise<Sessi
   const { data: active } = await sb.from("user_sessions").select("user_id").eq("session_token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!active?.user_id) throw new Error("AUTH_REQUIRED");
   const userId = String(active.user_id);
-  const [{ data: user }, { data: roleRows }, structureAccess] = await Promise.all([
+  const [{ data: user }, { data: roleRows }, structureAccess, recruitmentAccess] = await Promise.all([
     sb.from("users").select("id,full_name,email,status,avatar_url").eq("id", userId).maybeSingle(),
     sb.from("user_roles").select("role").eq("user_id", userId),
     validatedStructureAccess(sb, userId),
+    validatedStructureRecruitmentAccess(sb, userId),
   ]);
   const roles = (roleRows || []).map((row: any) => text(row.role, 80).toLowerCase());
   return {
@@ -34,7 +35,7 @@ async function sessionFrom(req: Request, sb: any, bodyToken = ""): Promise<Sessi
     user: user || {},
     roles,
     isAdmin: roles.some((role: string) => ["super_admin", "admin"].includes(role)),
-    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || (roles.includes("recruteur_structure") && !!structureAccess),
+    isRecruiter: roles.some((role: string) => ["recruteur", "recruteur_independant", "recruiter"].includes(role)) || !!recruitmentAccess,
     organizationId: structureAccess?.organizationId || null,
   };
 }

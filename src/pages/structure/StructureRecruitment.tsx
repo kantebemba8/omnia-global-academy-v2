@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Briefcase, CalendarDays, CheckCircle2, FileText, Heart,
-  Copy, Mail, MessageSquare, Plus, Search, UsersRound,
+  Mail, MessageSquare, Plus, Search, UsersRound,
 } from 'lucide-react';
 import { TalentAudienceLayout } from '../../components/talent/TalentRoleLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { contactTalent, createStructureRecruiter, loadPublicTalents, loadRecruitmentTeam, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, setStructureRecruiterStatus, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, updateRecruitmentPermissions, revokeStructureRecruiterInvitation } from '../talent/talentApi';
+import { contactTalent, loadPublicTalents, loadRecruitmentTeam, loadTalentConversations, loadTalentFavorites, loadTalentInterviews, PublicTalent, TalentConversation, TalentInterview, toggleTalentFavorite, loadTalentAnalytics, TalentAnalytics, updateRecruitmentPermissions } from '../talent/talentApi';
 import TalentAnalyticsPanel, { PeriodSelector } from '../../components/talent/TalentAnalyticsPanel';
 
 const BLUE = '#002050';
@@ -199,24 +199,9 @@ function Team(){
     ['can_view_applications','Voir les candidatures'],
     ['can_schedule_interview','Programmer les entretiens'],
   ] as const;
-  const defaultPermissions:Record<string,boolean> = {
-    can_post_job:true, can_search_talent:true, can_contact_talent:true,
-    can_manage_jobs:true, can_view_applications:true, can_schedule_interview:true,
-    can_manage_team:false,
-  };
-  const initialForm = {
-    full_name:'',
-    email:'',
-    job_title:'Recruteur rattaché à la Structure',
-    role_label:'Recruteur rattaché à la Structure',
-    message:'',
-  };
   const [members,setMembers]=useState<any[]>([]);
-  const [form,setForm]=useState(initialForm);
-  const [permissions,setPermissions]=useState<Record<string,boolean>>(defaultPermissions);
-  const [busy,setBusy]=useState(false);
+  const [busyUserId,setBusyUserId]=useState('');
   const [error,setError]=useState('');
-  const [success,setSuccess]=useState<{email:string;emailSent:boolean;accountExists:boolean;invitationUrl:string}|null>(null);
 
   async function load(){
     try { const result=await loadRecruitmentTeam(); setMembers(result.members||[]); }
@@ -224,75 +209,69 @@ function Team(){
   }
   useEffect(()=>{void load()},[]);
 
-  async function invite(){
-    setBusy(true); setError(''); setSuccess(null);
-    try{
-      const result=await createStructureRecruiter({...form,permissions});
-      setSuccess({email:form.email.trim(),emailSent:result.email_sent,accountExists:result.account_exists,invitationUrl:result.invitation_url||''});
-      setForm(initialForm);
-      setPermissions(defaultPermissions);
-      await load();
-    }catch(e){setError(e instanceof Error?e.message:'Invitation impossible.');}
-    finally{setBusy(false);}
-  }
-
-  async function changeStatus(userId:string,status:'actif'|'suspendu'|'retire'){
-    setBusy(true); setError('');
-    try{ await setStructureRecruiterStatus(userId,status); await load(); }
-    catch(e){ setError(e instanceof Error?e.message:'Modification impossible.'); }
-    finally{ setBusy(false); }
-  }
-
-  async function revokeInvitation(member:any){
-    const invitationId=String(member.invitation_id||String(member.id||'').replace(/^invitation:/,''));
-    if(!invitationId) return;
-    setBusy(true); setError('');
-    try{ await revokeStructureRecruiterInvitation(invitationId); await load(); }
-    catch(e){ setError(e instanceof Error?e.message:'Annulation impossible.'); }
-    finally{ setBusy(false); }
-  }
-
-  async function togglePermission(member:any,key:string){
-    if(!member.user_id||member.status==='invited') return;
-    const current = member.recruitment_permissions || {};
-    const next = {...current,[key]:!current[key]};
-    setBusy(true); setError('');
+  async function setRecruitmentAccess(member:any,enabled:boolean){
+    if(!member.user_id||member.is_primary) return;
+    const next:Record<string,boolean> = Object.fromEntries(corePermissions.map(([key])=>[key,enabled]));
+    next.can_manage_team = enabled && member.recruitment_permissions?.can_manage_team === true;
+    setBusyUserId(String(member.user_id)); setError('');
     try{ await updateRecruitmentPermissions(member.user_id,next); await load(); }
     catch(e){ setError(e instanceof Error?e.message:'Permission non enregistrée.'); }
-    finally{ setBusy(false); }
+    finally{ setBusyUserId(''); }
+  }
+
+  async function toggleManageTeam(member:any){
+    if(!member.user_id||member.is_primary) return;
+    const current = member.recruitment_permissions || {};
+    const next = {...current,can_manage_team:current.can_manage_team!==true};
+    setBusyUserId(String(member.user_id)); setError('');
+    try{ await updateRecruitmentPermissions(member.user_id,next); await load(); }
+    catch(e){ setError(e instanceof Error?e.message:'Permission non enregistrée.'); }
+    finally{ setBusyUserId(''); }
   }
 
   return <div className="space-y-8">
     <section className="border-y py-6" style={{borderColor:BORDER}}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><h2 className="text-base font-semibold" style={{color:BLUE}}>Inviter un recruteur rattaché</h2><p className="mt-1 max-w-2xl text-sm leading-6" style={{color:MUTED}}>Saisissez son adresse e-mail. Si la personne possède déjà un compte Omnia, elle utilisera ce compte. Sinon, elle sera invitée à créer son compte personnel. Aucun mot de passe ne vous est communiqué.</p></div>
-        <Link to="/structure/equipe" className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{borderColor:GOLD,color:BLUE}}>Équipe générale<ArrowRight size={16}/></Link>
+        <div>
+          <h2 className="text-base font-semibold" style={{color:BLUE}}>Permissions de recrutement</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6" style={{color:MUTED}}>Le recrutement n’est pas un rôle séparé. La Structure accorde ou retire ici les droits de recrutement à un membre déjà rattaché à son équipe.</p>
+        </div>
+        <Link to="/structure/equipe" className="inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-semibold" style={{borderColor:GOLD,color:BLUE}}>Gérer les membres<ArrowRight size={16}/></Link>
       </div>
       {error&&<div className="mt-4 border-l-4 border-red-500 py-2 pl-3 text-sm text-red-700">{error}</div>}
-      {success&&<div className="mt-4 border-l-4 py-3 pl-3 text-sm" style={{borderColor:GOLD,color:BLUE}}><p className="font-semibold">Invitation créée pour {success.email}</p><p className="mt-1 text-xs text-gray-500">{success.emailSent?'Le lien personnel a été envoyé par e-mail.':'L’envoi automatique n’a pas abouti. Copiez le lien personnel ci-dessous et transmettez-le uniquement à la personne invitée.'}</p>{!success.emailSent&&success.invitationUrl&&<div className="mt-3 flex flex-col gap-2 sm:flex-row"><input readOnly value={success.invitationUrl} className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs" style={{borderColor:BORDER}}/><button type="button" onClick={()=>void navigator.clipboard.writeText(success.invitationUrl).catch(()=>setError('La copie automatique a échoué. Sélectionnez le lien manuellement.'))} className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{background:BLUE}}><Copy size={14}/>Copier le lien</button><button type="button" onClick={()=>setSuccess(null)} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:BORDER}}>Masquer</button></div>}</div>}
-      <div className="mt-6 grid gap-5 md:grid-cols-2">
-        <FieldLine label="Nom complet" value={form.full_name} onChange={value=>setForm({...form,full_name:value})}/>
-        <FieldLine label="Adresse e-mail" value={form.email} onChange={value=>setForm({...form,email:value})} type="email"/>
-        <FieldLine label="Fonction" value={form.job_title} onChange={value=>setForm({...form,job_title:value})}/>
-        <label className="block"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>Intitulé dans la Structure</span><select value={form.role_label} onChange={event=>setForm({...form,role_label:event.target.value})} className="h-11 w-full border-b bg-transparent px-1 text-sm" style={{borderColor:GOLD}}><option>Responsable recrutement</option><option>Recruteur rattaché à la Structure</option><option>Chargé de sourcing</option></select></label>
-        <label className="block md:col-span-2"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>Message d’invitation (optionnel)</span><textarea value={form.message} onChange={event=>setForm({...form,message:event.target.value})} rows={3} className="w-full border-b bg-transparent px-1 py-2 text-sm outline-none" style={{borderColor:GOLD}} placeholder="Précisez le contexte ou les missions confiées."/></label>
+      <div className="mt-5 border-l-4 py-3 pl-4 text-sm leading-6" style={{borderColor:GOLD,color:MUTED}}>
+        Pour ajouter une nouvelle personne, utilisez d’abord <strong style={{color:BLUE}}>Équipe & délégations</strong>. Une fois membre de la Structure, son accès recrutement peut être activé ici.
       </div>
-      <div className="mt-6 border-y py-5" style={{borderColor:BORDER}}><p className="text-xs font-semibold uppercase tracking-wider" style={{color:BLUE}}>Accès recrutement inclus</p><p className="mt-2 max-w-3xl text-sm leading-6" style={{color:MUTED}}>Ce profil n’est pas un rôle principal Omnia. Il reçoit les mêmes capacités de recrutement qu’un recruteur indépendant, mais toutes ses offres, candidatures, favoris, contacts et entretiens restent rattachés à votre Structure.</p><div className="mt-3 grid gap-x-8 md:grid-cols-2">{corePermissions.map(([,label])=><div key={label} className="flex items-center gap-2 border-b py-3 text-sm" style={{borderColor:BORDER}}><CheckCircle2 size={16} color="#15803D"/><span>{label}</span></div>)}</div><label className="mt-4 flex items-start justify-between gap-5 border-l-4 py-2 pl-3 text-sm" style={{borderColor:GOLD}}><span><strong style={{color:BLUE}}>Délégation supplémentaire :</strong> autoriser cette personne à gérer les autres membres de l’équipe recrutement.</span><input type="checkbox" checked={!!permissions.can_manage_team} onChange={()=>setPermissions({...permissions,can_manage_team:!permissions.can_manage_team})}/></label></div>
-      <div className="mt-6 flex justify-end"><button onClick={invite} disabled={busy||!form.full_name.trim()||!form.email.trim()} className="border-b-2 px-2 py-2 text-sm font-semibold disabled:opacity-40" style={{borderColor:GOLD,color:BLUE}}>{busy?'Envoi…':'Envoyer l’invitation'}</button></div>
     </section>
 
     <section>
-      <div className="border-b pb-3" style={{borderColor:BORDER}}><h2 className="font-semibold" style={{color:BLUE}}>Équipe de recrutement</h2><p className="mt-1 text-sm" style={{color:MUTED}}>Les droits sont appliqués uniquement au recrutement de votre Structure.</p></div>
-      {members.length===0?<p className="py-8 text-sm" style={{color:MUTED}}>Aucun recruteur rattaché ni invitation en attente.</p>:<div className="divide-y" style={{borderColor:BORDER}}>{members.map((member:any)=>{
-        const invited=member.status==='invited';
-        const key=member.id||member.user_id;
-        return <div key={key} className="py-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-semibold" style={{color:BLUE}}>{member.users?.full_name||'Personne invitée'}</p><p className="mt-1 text-sm" style={{color:MUTED}}>{member.users?.email||'Email non affiché'} · {member.role_in_org||'Recruteur rattaché'}</p><p className="mt-1 text-xs" style={{color:invited?GOLD:member.status==='actif'?'#15803D':'#B91C1C'}}>{member.is_primary?'Responsable principal':invited?'Invitation en attente':member.status==='actif'?'Actif':'Suspendu'}</p>{invited&&member.invitation_expires_at&&<p className="mt-1 text-xs text-gray-500">Expire le {new Date(member.invitation_expires_at).toLocaleDateString('fr-FR')}</p>}</div>{!member.is_primary&&<div className="flex gap-2">{invited?<button onClick={()=>void revokeInvitation(member)} disabled={busy} className="px-2 py-2 text-xs font-semibold text-red-700">Annuler l’invitation</button>:<>{member.status==='actif'?<button onClick={()=>void changeStatus(member.user_id,'suspendu')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-amber-700">Suspendre</button>:<button onClick={()=>void changeStatus(member.user_id,'actif')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-green-700">Réactiver</button>}<button onClick={()=>void changeStatus(member.user_id,'retire')} disabled={busy} className="px-2 py-2 text-xs font-semibold text-red-700">Retirer</button></>}</div>}</div>{!member.is_primary&&<div className="mt-4"><div className="grid gap-x-8 md:grid-cols-2">{corePermissions.map(([,label])=><div key={label} className="flex items-center gap-2 border-b py-2 text-xs" style={{borderColor:BORDER}}><CheckCircle2 size={14} color="#15803D"/><span>{label}</span><span className="ml-auto font-semibold text-green-700">Inclus</span></div>)}</div><label className="mt-3 flex items-center justify-between border-l-4 py-2 pl-3 text-xs" style={{borderColor:GOLD}}><span>Peut gérer l’équipe recrutement</span><input type="checkbox" checked={!!member.recruitment_permissions?.can_manage_team} onChange={()=>void togglePermission(member,'can_manage_team')} disabled={busy||invited||member.status!=='actif'}/></label></div>}</div>;
+      <div className="border-b pb-3" style={{borderColor:BORDER}}>
+        <h2 className="font-semibold" style={{color:BLUE}}>Membres de la Structure</h2>
+        <p className="mt-1 text-sm" style={{color:MUTED}}>Les données de recrutement restent toujours rattachées à la Structure, jamais à un rôle autonome.</p>
+      </div>
+      {members.length===0?<p className="py-8 text-sm" style={{color:MUTED}}>Aucun membre d’équipe disponible. Ajoutez d’abord un membre depuis Équipe & délégations.</p>:<div className="divide-y" style={{borderColor:BORDER}}>{members.map((member:any)=>{
+        const current=member.recruitment_permissions||{};
+        const hasAccess=member.is_primary||corePermissions.some(([key])=>current[key]===true);
+        const busy=busyUserId===String(member.user_id);
+        return <div key={member.user_id} className="py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="font-semibold" style={{color:BLUE}}>{member.users?.full_name||'Membre de la Structure'}</p>
+              <p className="mt-1 text-sm" style={{color:MUTED}}>{member.users?.email||'Email non affiché'} · {member.role_in_org||'Membre'}</p>
+              <p className="mt-1 text-xs" style={{color:member.status==='actif'||member.status==='active'?'#15803D':'#B91C1C'}}>{member.is_primary?'Responsable principal':member.status==='actif'||member.status==='active'?'Membre actif':'Membre non actif'}</p>
+            </div>
+            <label className="flex items-center gap-3 text-sm font-semibold" style={{color:BLUE}}>
+              <span>{member.is_primary?'Accès recrutement inclus':'Accès recrutement'}</span>
+              <input type="checkbox" checked={hasAccess} disabled={member.is_primary||busy||!['actif','active'].includes(String(member.status))} onChange={event=>void setRecruitmentAccess(member,event.target.checked)}/>
+            </label>
+          </div>
+          {hasAccess&&<div className="mt-4">
+            <div className="grid gap-x-8 md:grid-cols-2">{corePermissions.map(([key,label])=><div key={key} className="flex items-center gap-2 border-b py-2 text-xs" style={{borderColor:BORDER}}><CheckCircle2 size={14} color="#15803D"/><span>{label}</span><span className="ml-auto font-semibold text-green-700">Autorisé</span></div>)}</div>
+            {!member.is_primary&&<label className="mt-3 flex items-center justify-between border-l-4 py-2 pl-3 text-xs" style={{borderColor:GOLD}}><span>Peut gérer les permissions recrutement des autres membres</span><input type="checkbox" checked={current.can_manage_team===true} onChange={()=>void toggleManageTeam(member)} disabled={busy}/></label>}
+          </div>}
+        </div>;
       })}</div>}
     </section>
   </div>;
-}
-
-function FieldLine({label,value,onChange,type='text'}:{label:string;value:string;onChange:(value:string)=>void;type?:string}){
-  return <label className="block"><span className="mb-1 block text-xs font-semibold" style={{color:BLUE}}>{label}</span><input type={type} value={value} onChange={event=>onChange(event.target.value)} className="h-11 w-full border-b bg-transparent px-1 text-sm outline-none" style={{borderColor:GOLD}}/></label>;
 }
 

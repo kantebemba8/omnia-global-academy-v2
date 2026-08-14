@@ -2,7 +2,7 @@ import { generateOpaqueToken, sha256Hex } from "./auth-security.ts";
 import { appendModeratorTeamAudit } from "./moderator-access.ts";
 import { sendOmniaEmail } from "./brevo-mail.ts";
 
-export type AccessInvitationType = "moderator" | "structure_team" | "structure_recruiter" | "coach_oga";
+export type AccessInvitationType = "moderator" | "structure_team" | "coach_oga";
 
 type Client = any;
 
@@ -17,14 +17,21 @@ type CreateInvitationInput = {
   message?: string | null;
 };
 
-const RECRUITER_CORE_PERMISSIONS = {
-  can_post_job: true,
-  can_search_talent: true,
-  can_contact_talent: true,
-  can_manage_jobs: true,
-  can_view_applications: true,
-  can_schedule_interview: true,
-} as const;
+const RECRUITMENT_PERMISSION_KEYS = [
+  "can_post_job",
+  "can_search_talent",
+  "can_contact_talent",
+  "can_manage_jobs",
+  "can_view_applications",
+  "can_schedule_interview",
+  "can_manage_team",
+] as const;
+
+function recruitmentPermissions(value: unknown) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const normalized = Object.fromEntries(RECRUITMENT_PERMISSION_KEYS.map((key) => [key, source[key] === true])) as Record<string, boolean>;
+  return RECRUITMENT_PERMISSION_KEYS.some((key) => normalized[key] === true) ? normalized : null;
+}
 
 function normalizedEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -32,7 +39,6 @@ function normalizedEmail(value: unknown) {
 
 function invitationLabel(type: AccessInvitationType) {
   if (type === "moderator") return "missions de modération Omnia";
-  if (type === "structure_recruiter") return "équipe de recrutement d’une Structure";
   if (type === "coach_oga") return "équipe des Coachs OGA";
   return "équipe interne d’une Structure";
 }
@@ -305,6 +311,18 @@ async function applyStructureTeamAccess(sb: Client, invitation: any, userId: str
   if (linkError) throw linkError;
   const { error: roleError } = await sb.from("user_roles").upsert({ user_id: userId, role: "gestionnaire_structure", granted_by: invitation.invited_by }, { onConflict: "user_id,role", ignoreDuplicates: true });
   if (roleError && roleError.code !== "23505") throw roleError;
+
+  const recruitment = recruitmentPermissions(invitation.permissions);
+  if (recruitment) {
+    const { error: recruitmentError } = await sb.from("talent_structure_permissions").upsert({
+      organization_id: invitation.organization_id,
+      user_id: userId,
+      ...recruitment,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "organization_id,user_id" });
+    if (recruitmentError) throw recruitmentError;
+  }
+
   const { error: auditError } = await sb.from("structure_governance_audit").insert({
     organization_id: invitation.organization_id,
     actor_user_id: invitation.invited_by,
@@ -316,57 +334,6 @@ async function applyStructureTeamAccess(sb: Client, invitation: any, userId: str
   if (auditError) throw auditError;
 }
 
-async function applyStructureRecruiterAccess(sb: Client, invitation: any, userId: string, email: string) {
-  if (!invitation.organization_id) throw new Error("ORGANIZATION_REQUIRED");
-  await ensureNotProtected(sb, userId);
-  const { data: organization, error: organizationError } = await sb.from("partner_organizations").select("id,status").eq("id", invitation.organization_id).maybeSingle();
-  if (organizationError) throw organizationError;
-  if (!organization || String(organization.status || "") !== "validated") throw new Error("STRUCTURE_NOT_ACTIVE");
-  const permissions = { ...RECRUITER_CORE_PERMISSIONS, can_manage_team: invitation.permissions?.can_manage_team === true };
-  const now = new Date().toISOString();
-  const { error: managerError } = await sb.from("partner_managers").upsert({
-    organization_id: invitation.organization_id,
-    user_id: userId,
-    role_in_org: invitation.internal_role || "Recruteur rattaché à la Structure",
-    is_primary: false,
-    status: "actif",
-    permissions,
-  }, { onConflict: "organization_id,user_id" });
-  if (managerError) throw managerError;
-  const { error: permissionError } = await sb.from("talent_structure_permissions").upsert({
-    organization_id: invitation.organization_id,
-    user_id: userId,
-    ...permissions,
-    updated_at: now,
-  }, { onConflict: "organization_id,user_id" });
-  if (permissionError) throw permissionError;
-  const { error: profileError } = await sb.from("talent_recruiter_profiles").upsert({
-    user_id: userId,
-    recruiter_type: "structure",
-    organization_id: invitation.organization_id,
-    job_title: invitation.internal_role || "Recruteur rattaché à la Structure",
-    professional_email: email,
-    status: "approved",
-    visibility: "private",
-    notifications_enabled: true,
-    validated_by: invitation.invited_by,
-    validated_at: now,
-    suspended_at: null,
-    updated_at: now,
-  }, { onConflict: "user_id" });
-  if (profileError) throw profileError;
-  const { error: roleError } = await sb.from("user_roles").upsert({ user_id: userId, role: "recruteur_structure", granted_by: invitation.invited_by }, { onConflict: "user_id,role", ignoreDuplicates: true });
-  if (roleError && roleError.code !== "23505") throw roleError;
-  const { error: auditError } = await sb.from("structure_governance_audit").insert({
-    organization_id: invitation.organization_id,
-    actor_user_id: invitation.invited_by,
-    actor_scope: "structure",
-    event_type: "recruiter_joined",
-    target_user_id: userId,
-    metadata: { invitation_id: invitation.id, internal_role: invitation.internal_role || "Recruteur rattaché à la Structure" },
-  });
-  if (auditError) throw auditError;
-}
 
 export async function acceptAccessInvitation(sb: Client, rawToken: string, userId: string, userEmail: string) {
   const token = String(rawToken || "").trim();
@@ -383,7 +350,6 @@ export async function acceptAccessInvitation(sb: Client, rawToken: string, userI
 
   if (invitation.invitation_type === "moderator") await applyModeratorAccess(sb, invitation, userId);
   else if (invitation.invitation_type === "structure_team") await applyStructureTeamAccess(sb, invitation, userId);
-  else if (invitation.invitation_type === "structure_recruiter") await applyStructureRecruiterAccess(sb, invitation, userId, email);
   else if (invitation.invitation_type === "coach_oga") await ensureCoachOgaAccess(sb, userId, invitation.invited_by);
   else throw new Error("INVITATION_TYPE_INVALID");
 
@@ -414,7 +380,6 @@ export async function acceptPendingInvitationsForUser(sb: Client, userId: string
     if (invitation.target_user_id && String(invitation.target_user_id) !== userId) continue;
     if (invitation.invitation_type === "moderator") await applyModeratorAccess(sb, invitation, userId);
     else if (invitation.invitation_type === "structure_team") await applyStructureTeamAccess(sb, invitation, userId);
-    else if (invitation.invitation_type === "structure_recruiter") await applyStructureRecruiterAccess(sb, invitation, userId, normalized);
     else if (invitation.invitation_type === "coach_oga") await ensureCoachOgaAccess(sb, userId, invitation.invited_by);
     else continue;
     const now = new Date().toISOString();

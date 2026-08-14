@@ -31,11 +31,10 @@ export type PrimaryPlatformRole =
   | 'apprenant';
 
 /**
- * Accès délégués rattachés à un rôle principal ou à une organisation.
- * `recruteur_structure` reste une valeur technique de contrôle d'accès,
- * mais ne constitue pas un rôle principal de la plateforme.
+ * Accès délégués rattachés à une organisation.
+ * Ces valeurs techniques ne constituent jamais des rôles publics autonomes.
  */
-export type DelegatedPlatformAccess = 'recruteur_structure' | 'gestionnaire_structure';
+export type DelegatedPlatformAccess = 'gestionnaire_structure';
 
 export type CanonicalPlatformRole = InternalSystemRole | PrimaryPlatformRole | DelegatedPlatformAccess;
 
@@ -61,16 +60,11 @@ export function isInternalSystemRole(role: CanonicalPlatformRole): role is Inter
   return role === 'super_admin';
 }
 
-export function hasStructureRecruiterAccess(roles: readonly string[] | null | undefined): boolean {
-  return normalizePlatformRoles(roles).includes('recruteur_structure');
-}
-
 const ROLE_REDIRECT_PRIORITY: ReadonlyArray<readonly [CanonicalPlatformRole, string]> = [
   ['super_admin', '/admin/dashboard'],
   ['moderateur', '/moderateur/dashboard'],
   ['structure', '/structure/dashboard'],
   ['gestionnaire_structure', '/structure/dashboard'],
-  ['recruteur_structure', '/structure/recrutement/dashboard'],
   ['organisateur', '/omnia-live/organisateur'],
   ['recruteur', '/talent/recruteur/dashboard'],
   ['professeur', '/professeur/dashboard'],
@@ -83,7 +77,6 @@ const CANONICAL_ROLE_BY_STORED_ROLE: Readonly<Record<string, CanonicalPlatformRo
   moderateur: 'moderateur',
   structure: 'structure',
   responsable_structure: 'structure',
-  recruteur_structure: 'recruteur_structure',
   gestionnaire_structure: 'gestionnaire_structure',
   organisateur: 'organisateur',
   organizer: 'organisateur',

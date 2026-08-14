@@ -159,7 +159,7 @@ export function resolveCoachingAudience(
     return requested as CoachingAudience;
   }
   if (normalized.includes('super_admin')) return 'super_admin';
-  if (normalized.includes('structure') || normalized.includes('recruteur_structure') || normalized.includes('gestionnaire_structure')) return 'structure';
+  if (normalized.includes('structure') || normalized.includes('gestionnaire_structure')) return 'structure';
   const priority: CoachingAudience[] = ['moderateur', 'organisateur', 'recruteur', 'professeur', 'coach', 'apprenant'];
   return priority.find(role => normalized.includes(role as CanonicalPlatformRole)) || (normalized.length ? 'apprenant' : 'public');
 }

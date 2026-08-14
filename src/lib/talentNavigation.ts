@@ -153,7 +153,7 @@ export function resolveTalentAudience(roles: readonly string[] | null | undefine
   const requested = requestedRole as CanonicalPlatformRole | undefined;
   if (requested && normalized.includes('super_admin') && ['apprenant', 'professeur', 'structure', 'moderateur', 'recruteur', 'organisateur', 'coach'].includes(requested)) return requested as TalentAudience;
   if (normalized.includes('super_admin')) return 'super_admin';
-  if (normalized.includes('structure') || normalized.includes('recruteur_structure')) return 'structure';
+  if (normalized.includes('structure')) return 'structure';
   const priority: TalentAudience[] = ['moderateur', 'organisateur', 'recruteur', 'professeur', 'coach', 'apprenant'];
   return priority.find(role => normalized.includes(role as CanonicalPlatformRole)) || (normalized.length ? 'apprenant' : 'public');
 }

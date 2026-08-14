@@ -82,7 +82,7 @@ export function resolveCareerAudience(roles: readonly string[] | null | undefine
   const requested = requestedRole as CanonicalPlatformRole | undefined;
   if (requested && normalized.includes('super_admin') && ['apprenant','professeur','structure','moderateur','recruteur','organisateur','coach'].includes(requested)) return requested as CareerAudience;
   if (normalized.includes('super_admin')) return 'super_admin';
-  if (normalized.includes('structure') || normalized.includes('recruteur_structure') || normalized.includes('gestionnaire_structure')) return 'structure';
+  if (normalized.includes('structure') || normalized.includes('gestionnaire_structure')) return 'structure';
   const priority: CareerAudience[] = ['moderateur','organisateur','recruteur','professeur','coach','apprenant'];
   return priority.find(role => normalized.includes(role as CanonicalPlatformRole)) || (normalized.length ? 'apprenant' : 'public');
 }
