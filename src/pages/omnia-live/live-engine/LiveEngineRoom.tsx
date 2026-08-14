@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
+import JaasMeetingFrame, { type JaasMeetingAccess } from '../../../components/video/JaasMeetingFrame';
 import { liveApi } from '../liveApi';
 import { liveStatusLabel } from '../../../lib/omniaLiveLabels';
 
@@ -18,6 +19,7 @@ export default function LiveEngineRoom(){
  async function ask(){if(!text.trim()||!roomId)return;try{await liveApi('question_create',{method:'POST',body:JSON.stringify({room_id:roomId,question:text})});setText('');await refresh()}catch(e){setError(e instanceof Error?e.message:'Erreur')}}
  async function voteQuestion(id:string){await liveApi('question_vote',{method:'POST',body:JSON.stringify({question_id:id})});await refresh()}
  async function votePoll(id:string,i:number){await liveApi('poll_vote',{method:'POST',body:JSON.stringify({poll_id:id,option_index:i})});await refresh()}
+ const jaasMeeting=useMemo<JaasMeetingAccess|null>(()=>join?.provider?.type==='jaas'?join.provider as JaasMeetingAccess:null,[join]);
  const joinUrl=useMemo(()=>join?.provider?.join_url||join?.room?.provider_join_url||'', [join]);
 
  if(error)return <OmniaLiveLayout><div className="mx-auto max-w-5xl px-4 py-10"><div className="rounded-2xl bg-red-50 p-6 text-red-700">{error}</div></div></OmniaLiveLayout>;
@@ -25,7 +27,7 @@ export default function LiveEngineRoom(){
  if(join.waiting)return <OmniaLiveLayout><div className="mx-auto flex min-h-[65vh] max-w-3xl items-center justify-center px-4 text-center"><div><div className="text-5xl">⏳</div><h1 className="mt-4 text-2xl font-black text-[#002050]">Salle d’attente</h1><p className="mt-2 text-slate-600">L’organisateur doit vous admettre avant l’entrée.</p></div></div></OmniaLiveLayout>;
 
  return <OmniaLiveLayout><section className="mx-auto max-w-[1600px] px-3 py-5 md:px-6"><div className="mb-4 flex justify-between"><button onClick={()=>navigate(-1)} className="font-semibold text-[#002050]">← Quitter</button><span className="font-bold text-[#002050]">OMNIA LIVE</span></div><div className="grid gap-4 xl:grid-cols-[1fr_380px]">
- <div className="overflow-hidden rounded-3xl bg-black">{joinUrl?<iframe title="Omnia Live" src={joinUrl} allow="camera; microphone; fullscreen; display-capture; autoplay" className="h-[76vh] w-full border-0"/>:<div className="flex h-[76vh] items-center justify-center text-white">Moteur vidéo non configuré.</div>}</div>
+ <div className="overflow-hidden rounded-3xl bg-black">{jaasMeeting?<JaasMeetingFrame meeting={jaasMeeting}/>:joinUrl?<iframe title="Omnia Live — mode de développement" src={joinUrl} allow="camera; microphone; fullscreen; display-capture; autoplay" className="h-[76vh] w-full border-0"/>:<div className="flex h-[76vh] items-center justify-center text-white">Moteur vidéo sécurisé non configuré.</div>}</div>
  <aside className="overflow-hidden rounded-3xl border bg-white"><div className="flex border-b">{[['chat','Chat'],['qa','Q&A'],['polls','Sondages']].map(([k,l])=><button key={k} onClick={()=>setTab(k as any)} className={`flex-1 px-3 py-3 text-sm font-bold ${tab===k?'border-b-2 border-[#BF8813] text-[#002050]':'text-slate-500'}`}>{l}</button>)}</div>
  <div className="h-[58vh] overflow-auto p-4">
  {tab==='chat'&&<div className="space-y-3">{messages.map(m=><div key={m.id} className="rounded-xl bg-slate-50 p-3"><div className="text-xs font-bold text-[#002050]">{m.users?.full_name||'Participant'}</div><div className="mt-1 text-sm">{m.message}</div></div>)}</div>}

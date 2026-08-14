@@ -127,6 +127,46 @@ export function fedaPayApiBase(): string {
   return configuration.api_base;
 }
 
+
+export function fedaPaySecretKey(): string {
+  const configuration = fedaPayConfiguration();
+  if (configuration.live_blocked) throw new Error("FEDAPAY_LIVE_NOT_ENABLED");
+  const value = configuration.effective_mode === "live"
+    ? String(Deno.env.get("FEDAPAY_LIVE_SECRET_KEY") || Deno.env.get("FEDAPAY_SECRET_KEY") || "").trim()
+    : String(Deno.env.get("FEDAPAY_SANDBOX_SECRET_KEY") || Deno.env.get("FEDAPAY_SECRET_KEY") || "").trim();
+  if (!value) throw new Error("FEDAPAY_SECRET_KEY_MISSING");
+  return value;
+}
+
+export function fedaPaySecretKeyConfigured(): boolean {
+  try { return Boolean(fedaPaySecretKey()); } catch { return false; }
+}
+
+export function fedaPayWebhookSecret(): string {
+  const configuration = fedaPayConfiguration();
+  if (configuration.live_blocked) throw new Error("FEDAPAY_LIVE_NOT_ENABLED");
+  if (configuration.effective_mode === "live") {
+    const liveSecret = String(Deno.env.get("FEDAPAY_LIVE_WEBHOOK_SECRET") || "").trim();
+    if (!liveSecret) throw new Error("FEDAPAY_LIVE_WEBHOOK_SECRET_MISSING");
+    return liveSecret;
+  }
+  const sandboxSecret = String(
+    Deno.env.get("FEDAPAY_SANDBOX_WEBHOOK_SECRET") ||
+    Deno.env.get("FEDAPAY_WEBHOOK_SECRET") ||
+    "",
+  ).trim();
+  if (!sandboxSecret) throw new Error("FEDAPAY_WEBHOOK_SECRET_MISSING");
+  return sandboxSecret;
+}
+
+export function fedaPayWebhookConfigured(): boolean {
+  try {
+    return Boolean(fedaPayWebhookSecret());
+  } catch {
+    return false;
+  }
+}
+
 export function extractFedaPayTransaction(payload: Record<string, unknown>): Record<string, any> {
   const data = payload.data as Record<string, unknown> | undefined;
   return (
@@ -164,8 +204,7 @@ export function assertTransactionMatches(
 }
 
 export async function retrieveFedaPayTransaction(transactionId: string): Promise<Record<string, any>> {
-  const secretKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-  if (!secretKey) throw new Error("FEDAPAY_SECRET_KEY_MISSING");
+  const secretKey = fedaPaySecretKey();
   if (!transactionId) throw new Error("FEDAPAY_TRANSACTION_ID_MISSING");
 
   const response = await fetch(`${fedaPayApiBase()}/transactions/${encodeURIComponent(transactionId)}`, {

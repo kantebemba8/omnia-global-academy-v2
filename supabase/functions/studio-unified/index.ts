@@ -8,12 +8,21 @@ import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unp
 
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 import { getAnthropicApiKey, getAnthropicFastModel, getOpenAIImageModel } from "../_shared/ai-models.ts";
+import { cloudflareStreamConfigured, createDirectStreamUpload, deleteStreamVideo, getStreamVideo, signedStreamManifest } from "../_shared/cloudflare-stream.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
 const STUDIO_UPLOAD_BUCKETS=new Set<string>(["course-images",...PRIVATE_COURSE_BUCKET_SET]);
 function validCourseStoragePath(courseId:string,path:unknown){const clean=String(path||"").trim().replace(/^\/+/,"");return clean&&clean.startsWith(`${courseId}/`)?clean:""}
-async function decorateStudioBlock(sb:any,block:any){const bucket=String(block?.bucket_name||"");if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return block;const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:{...(block.content_json||{}),url:null}};const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);return {...block,file_url:signed,content_json:{...(block.content_json||{}),url:signed},_signed:!!signed}}
+async function decorateStudioBlock(sb:any,block:any){
+ const content={...(block?.content_json||{})};
+ const streamUid=String(content.cloudflare_stream_uid||"").trim();
+ if(streamUid){
+  try{const signed=await signedStreamManifest(streamUid,900);return {...block,file_url:signed.iframe_url,content_json:{...content,url:signed.iframe_url,provider:"cloudflare_stream"},_signed:true,_stream:true};}
+  catch{return {...block,file_url:null,content_json:{...content,url:null,provider:"cloudflare_stream"},_signed:false,_stream:true};}
+ }
+ const bucket=String(block?.bucket_name||"");if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return block;const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:{...content,url:null}};const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);return {...block,file_url:signed,content_json:{...content,url:signed},_signed:!!signed}
+}
 
 async function sessionUser(sb:any, req:Request, bodyToken=""){
  const token=(bodyToken||req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
@@ -674,11 +683,15 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("lesson_blocks").insert({course_id:courseId,module_id:b.module_id,lesson_id:b.lesson_id,block_type:b.block_type,position:pos,content_json:b.content_json||defaults[b.block_type]||{},settings_json:b.settings_json||{},created_by:userId,ai_generated:!!b.ai_generated,source_type:b.ai_generated?"ai":"manual"}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"block_created",{block_id:data.id,type:data.block_type});return json({success:true,block:data});
   }
   if(action==="update_block"){
-   const {data:blk}=await sb.from("lesson_blocks").select("course_id,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
-   const allowed:any={updated_at:new Date().toISOString()};for(const k of ["title","content_json","settings_json","file_url","file_name","file_size","file_mime","source_type","ai_generated"])if(b[k]!==undefined)allowed[k]=b[k];if(PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))&&blk.storage_path){allowed.file_url=String(blk.storage_path);if(allowed.content_json&&typeof allowed.content_json==="object")allowed.content_json={...allowed.content_json,url:String(blk.storage_path)};}const {data,error}=await sb.from("lesson_blocks").update(allowed).eq("id",b.block_id).select("*").single();if(error)throw error;return json({success:true,block:await decorateStudioBlock(sb,data)});
+   const {data:blk}=await sb.from("lesson_blocks").select("course_id,storage_path,bucket_name,content_json,block_type").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const allowed:any={updated_at:new Date().toISOString()};for(const k of ["title","content_json","settings_json","file_url","file_name","file_size","file_mime","source_type","ai_generated"])if(b[k]!==undefined)allowed[k]=b[k];
+   const incomingContent=allowed.content_json&&typeof allowed.content_json==="object"?allowed.content_json:null;const streamUid=String(incomingContent?.cloudflare_stream_uid||blk.content_json?.cloudflare_stream_uid||"").trim();
+   if(streamUid){allowed.file_url=null;allowed.content_json={...(blk.content_json||{}),...(incomingContent||{}),url:null,provider:"cloudflare_stream",cloudflare_stream_uid:streamUid};}
+   else if(PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))&&blk.storage_path){allowed.file_url=String(blk.storage_path);if(incomingContent)allowed.content_json={...incomingContent,url:String(blk.storage_path)};}
+   const {data,error}=await sb.from("lesson_blocks").update(allowed).eq("id",b.block_id).select("*").single();if(error)throw error;return json({success:true,block:await decorateStudioBlock(sb,data)});
   }
   if(action==="delete_block"){
-   const {data:blk}=await sb.from("lesson_blocks").select("course_id").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);await sb.from("lesson_blocks").delete().eq("id",b.block_id);await log(sb,blk.course_id,userId,"block_deleted",{block_id:b.block_id});return json({success:true});
+   const {data:blk}=await sb.from("lesson_blocks").select("course_id,lesson_id,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);const streamUid=String(blk.content_json?.cloudflare_stream_uid||"").trim();await sb.from("lesson_blocks").delete().eq("id",b.block_id);if(streamUid){await deleteStreamVideo(streamUid).catch(()=>{});const {data:remainingVideos}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});const nextUid=String((remainingVideos||[]).map((row:any)=>row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).then(()=>{}).catch(()=>{});await log(sb,blk.course_id,userId,"block_deleted",{block_id:b.block_id,stream_deleted:!!streamUid});return json({success:true});
   }
   if(action==="reorder_blocks"){
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
@@ -1192,10 +1205,31 @@ Deno.serve(async(req)=>{
   }
   if(action==="get_change_logs"){const {data,error}=await sb.from("course_studio_logs").select("*,users(full_name)").eq("course_id",courseId).order("created_at",{ascending:false}).limit(100);if(error)throw error;return json({success:true,logs:data||[]})}
   if(action==="prepare_upload"){
-   const bucket=String(b.bucket_name||"course-resources"),path=validCourseStoragePath(courseId,b.storage_path);if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||!path)return json({success:false,error:"INVALID_STORAGE_TARGET"},400);const {data,error}=await sb.storage.from(bucket).createSignedUploadUrl(path,{upsert:true});if(error)throw error;return json({success:true,...data,bucket,path});
+   const bucket=String(b.bucket_name||"course-resources");
+   if(bucket==="course-videos"&&cloudflareStreamConfigured()){
+    const fileName=String(b.file_name||"").trim();const sizeBytes=Math.max(0,Number(b.size_bytes||0));
+    if(!fileName||sizeBytes<=0)return json({success:false,error:"VIDEO_FILE_METADATA_REQUIRED"},400);
+    const upload=await createDirectStreamUpload({fileName,sizeBytes,creator:String(userId),metadata:{course_id:String(courseId),module_id:String(b.module_id||""),lesson_id:String(b.lesson_id||""),block_id:String(b.block_id||"")}});
+    return json({success:true,provider:"cloudflare_stream",stream_uid:upload.uid,protocol:upload.protocol,upload_url:upload.upload_url,headers:upload.headers,chunk_size_bytes:upload.chunk_size_bytes,requires_signed_urls:true});
+   }
+   const path=validCourseStoragePath(courseId,b.storage_path);if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||!path)return json({success:false,error:"INVALID_STORAGE_TARGET"},400);const {data,error}=await sb.storage.from(bucket).createSignedUploadUrl(path,{upsert:true});if(error)throw error;return json({success:true,...data,provider:"supabase_storage",bucket,path});
   }
   if(action==="upload_block_file"){
-   const {data:blk}=await sb.from("lesson_blocks").select("course_id,content_json").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_upload_files")))return json({success:false,error:"FORBIDDEN"},403);const bucket=String(b.bucket_name||""),path=validCourseStoragePath(String(blk.course_id),b.storage_path);if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||!path)return json({success:false,error:"INVALID_STORAGE_TARGET"},400);const isPrivate=PRIVATE_COURSE_BUCKET_SET.has(bucket);const persistedUrl=isPrivate?path:`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${bucket}/${path}`;const persistedContent={...(blk.content_json||{}),url:persistedUrl};const {data,error}=await sb.from("lesson_blocks").update({file_url:persistedUrl,content_json:persistedContent,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:path,bucket_name:bucket,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;const decorated=await decorateStudioBlock(sb,data);return json({success:true,block:decorated,file_url:decorated.file_url});
+   const {data:blk}=await sb.from("lesson_blocks").select("course_id,module_id,lesson_id,block_type,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_upload_files")))return json({success:false,error:"FORBIDDEN"},403);
+   if(String(b.provider||"")==="cloudflare_stream"){
+    if(String(blk.block_type)!=="video")return json({success:false,error:"STREAM_ONLY_FOR_VIDEO_BLOCKS"},400);
+    const streamUid=String(b.stream_uid||"").trim();if(!streamUid)return json({success:false,error:"STREAM_UID_REQUIRED"},400);
+    const video=await getStreamVideo(streamUid);const meta=video?.meta||{};
+    if(meta.course_id&&String(meta.course_id)!==String(blk.course_id))return json({success:false,error:"STREAM_COURSE_MISMATCH"},403);
+    if(meta.block_id&&String(meta.block_id)!==String(b.block_id))return json({success:false,error:"STREAM_BLOCK_MISMATCH"},403);
+    const persistedContent={...(blk.content_json||{}),url:null,provider:"cloudflare_stream",cloudflare_stream_uid:streamUid};
+    const previousStreamUid=String(blk.content_json?.cloudflare_stream_uid||"").trim();const previousBucket=String((blk as any).bucket_name||"");const previousPath=String((blk as any).storage_path||"");
+    const {data,error}=await sb.from("lesson_blocks").update({file_url:null,content_json:persistedContent,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:null,bucket_name:null,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;
+    await sb.from("course_lessons").update({cloudflare_stream_uid:streamUid,video_url:null,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);
+    if(previousStreamUid&&previousStreamUid!==streamUid)await deleteStreamVideo(previousStreamUid).catch(()=>{});if(previousPath&&PRIVATE_COURSE_BUCKET_SET.has(previousBucket))await sb.storage.from(previousBucket).remove([previousPath]).then(()=>{}).catch(()=>{});
+    const decorated=await decorateStudioBlock(sb,data);return json({success:true,provider:"cloudflare_stream",stream_uid:streamUid,block:decorated,file_url:decorated.file_url});
+   }
+   const bucket=String(b.bucket_name||""),path=validCourseStoragePath(String(blk.course_id),b.storage_path);if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||!path)return json({success:false,error:"INVALID_STORAGE_TARGET"},400);const isPrivate=PRIVATE_COURSE_BUCKET_SET.has(bucket);const persistedUrl=isPrivate?path:`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${bucket}/${path}`;const persistedContent={...(blk.content_json||{}),url:persistedUrl,provider:"supabase_storage",cloudflare_stream_uid:null};const {data,error}=await sb.from("lesson_blocks").update({file_url:persistedUrl,content_json:persistedContent,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:path,bucket_name:bucket,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;const decorated=await decorateStudioBlock(sb,data);return json({success:true,provider:"supabase_storage",block:decorated,file_url:decorated.file_url});
   }
   if(action==="ai_generate_cover_images"){
    const prompt=String(b.prompt||"").trim();if(!prompt)return json({success:false,error:"PROMPT_REQUIRED"},400);

@@ -4,6 +4,7 @@ import {
   approvedStatus,
   assertTransactionMatches,
   fedaPayApiBase,
+  fedaPaySecretKey,
   failedStatus,
   retrieveFedaPayTransaction,
 } from "../_shared/fedapay-security.ts";
@@ -144,8 +145,7 @@ Deno.serve(async (req: Request) => {
     if (registrationClosed(course.registration_deadline)) return json({ success: false, error: "REGISTRATION_CLOSED", message: "La date limite d’inscription est dépassée." }, 409);
 
     const apiBase = fedaPayApiBase();
-    const secretKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-    if (!secretKey) throw new Error("FEDAPAY_SECRET_KEY_MISSING");
+    const secretKey = fedaPaySecretKey();
     const appUrl = (Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
     const pendingSince = new Date(Date.now() - 20 * 60 * 1000).toISOString();
     const { data: reusable, error: reusableError } = await sb.from("external_course_orders")

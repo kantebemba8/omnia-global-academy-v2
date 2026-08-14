@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { initSentry } from './lib/sentry';
+import { captureError, initSentry } from './lib/sentry';
 import { getRuntimeConfigIssues } from './lib/runtimeConfig';
 import ConfigurationError from './pages/ConfigurationError';
 import { LanguageProvider } from './i18n/LanguageContext';
@@ -10,6 +10,7 @@ import { initializeSessionStorage } from './lib/session';
 import { initializeMobileNotificationRuntime, initializeNativeRuntime, initializeNetworkRuntime } from './lib/mobile';
 
 async function bootstrap(): Promise<void> {
+  await initSentry();
   await initializeSessionStorage();
   await initializeNetworkRuntime();
   await initializeNativeRuntime();
@@ -29,17 +30,11 @@ async function bootstrap(): Promise<void> {
 
   void initializeMobileNotificationRuntime();
 
-  // La télémétrie est chargée après le premier rendu afin de ne pas ralentir
-  // l’affichage initial. Une erreur précoce déclenchera tout de même son
-  // chargement via captureError.
-  if (runtimeConfigIssues.length === 0) {
-    window.setTimeout(() => {
-      void initSentry();
-    }, 1500);
-  }
 }
 
 void bootstrap().catch(error => {
+  const captured = error instanceof Error ? error : new Error(String(error));
+  captureError(captured, { phase: 'bootstrap' });
   console.error('[Omnia] Échec du démarrage de l’application.', error);
   const root = document.getElementById('root');
   if (root) {

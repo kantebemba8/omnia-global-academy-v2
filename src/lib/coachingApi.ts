@@ -340,8 +340,8 @@ export type CoachingRoom = {
   provider_room_id: string;
   room_slug: string;
   status: 'ready' | 'open' | 'live' | 'ended';
-  provider_join_url: string;
-  provider_host_url: string;
+  provider_join_url: string | null;
+  provider_host_url: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
 };

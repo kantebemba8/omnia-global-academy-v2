@@ -1,13 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { fedaPayConfiguration } from "../_shared/fedapay-security.ts";
-
+import { fedaPayConfiguration, fedaPaySecretKeyConfigured, fedaPayWebhookConfigured } from "../_shared/fedapay-security.ts";
+import { corsHeaders as cors } from "../_shared/cors.ts";
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Client-Info,Apikey,x-omnia-session-token",
-};
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -76,8 +71,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const provider = String(settings.payment_provider_primary || "fedapay");
-    const fedapayConfigured = Boolean(Deno.env.get("FEDAPAY_SECRET_KEY"));
-    const webhookConfigured = Boolean(Deno.env.get("FEDAPAY_WEBHOOK_SECRET"));
+    const fedapayConfigured = fedaPaySecretKeyConfigured();
+    const webhookConfigured = fedaPayWebhookConfigured();
 
     return json({
       success: true,

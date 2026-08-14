@@ -374,6 +374,7 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
   const [loaded, setLoaded] = useState(!eco);
   const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
   const isVimeo = url.includes('vimeo.com');
+  const isCloudflareStream = /\/(?:[^/?#]+)\/iframe(?:[?#]|$)/.test(url) || url.includes('cloudflarestream.com') && url.includes('/iframe');
 
   function getEmbedUrl(u: string) {
     if (u.includes('youtu.be/')) return `https://www.youtube.com/embed/${u.split('youtu.be/')[1].split('?')[0]}`;
@@ -394,7 +395,7 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
           <p className="text-sm font-semibold" style={{ color: '#002050' }}>Cliquer pour charger la vidéo</p>
           <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Mode éco-data — évite la consommation de données</p>
         </div>
-      ) : (isYoutube || isVimeo) ? (
+      ) : (isYoutube || isVimeo || isCloudflareStream) ? (
         <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
           <iframe src={getEmbedUrl(url)} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
             frameBorder="0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />

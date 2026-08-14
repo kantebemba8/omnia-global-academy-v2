@@ -1,16 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
-import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { fedaPayApiBase, fedaPaySecretKey } from "../_shared/fedapay-security.ts";
 import { createAccessInvitation, ensureCoachOgaAccess } from "../_shared/access-invitations.ts";
 import { sha256Hex } from "../_shared/auth-security.ts";
-
+import { createJaasMeetingAccess, jaasConfigured, publicJitsiDevEnabled } from "../_shared/jaas.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 import { getActiveOmniaSessionResult, isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token, x-omnia-internal-secret",
-};
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -1660,7 +1656,7 @@ async function coachingPaymentCheckout(sb: Supabase, session: Session, body: Rec
   const order = orderResult.data;
   await sb.from("coaching_sessions").update({ payment_order_id: order.id, payment_status: "pending", policy_snapshot: policySnapshot }).eq("id", booking.id);
 
-  const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+  const fedaKey = fedaPaySecretKey();
   if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
   const apiBase = fedaPayApiBase();
   const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
@@ -1978,17 +1974,36 @@ async function ensureCoachingRoom(sb: Supabase, access: CoachingSessionAccess, a
   if (String(access.booking.meeting_mode) !== "jitsi") throw new Error("INVALID_SESSION_MODE");
   const { data: existing, error: existingError } = await sb.from("coaching_rooms").select("*").eq("session_id", access.booking.id).maybeSingle();
   if (existingError) throw existingError;
-  if (existing) return existing;
-  const roomSlug = coachingRoomSlug(String(access.booking.id));
-  const provider = (Deno.env.get("LIVE_VIDEO_PROVIDER") || "jitsi_embed").toLowerCase();
+
+  const provider = jaasConfigured() ? "jaas" : publicJitsiDevEnabled() ? "jitsi_embed" : "unconfigured";
   const embedBase = (Deno.env.get("LIVE_VIDEO_EMBED_BASE_URL") || "https://meet.jit.si").replace(/\/+$/, "");
-  const roomUrl = `${embedBase}/${encodeURIComponent(roomSlug)}`;
+  if (existing) {
+    if (provider !== "unconfigured" && existing.provider !== provider) {
+      const roomSlug = String(existing.room_slug || existing.provider_room_id || coachingRoomSlug(String(access.booking.id)));
+      const roomUrl = provider === "jitsi_embed" ? `${embedBase}/${encodeURIComponent(roomSlug)}` : null;
+      const update = await sb.from("coaching_rooms").update({
+        provider,
+        provider_room_id: roomSlug,
+        room_slug: roomSlug,
+        provider_join_url: roomUrl,
+        provider_host_url: roomUrl,
+        status: "ready",
+        updated_at: new Date().toISOString(),
+      }).eq("id", existing.id).select("*").single();
+      if (update.error) throw update.error;
+      return update.data;
+    }
+    return existing;
+  }
+
+  const roomSlug = coachingRoomSlug(String(access.booking.id));
+  const roomUrl = provider === "jitsi_embed" ? `${embedBase}/${encodeURIComponent(roomSlug)}` : null;
   const { data: created, error } = await sb.from("coaching_rooms").insert({
     session_id: access.booking.id,
     provider,
     provider_room_id: roomSlug,
     room_slug: roomSlug,
-    status: "ready",
+    status: provider === "unconfigured" ? "pending" : "ready",
     provider_join_url: roomUrl,
     provider_host_url: roomUrl,
     created_by: actorUserId,
@@ -1998,9 +2013,10 @@ async function ensureCoachingRoom(sb: Supabase, access: CoachingSessionAccess, a
     if (concurrent) return concurrent;
     throw error;
   }
-  await sb.from("coaching_session_actions").insert({ session_id: access.booking.id, room_id: created.id, actor_user_id: actorUserId, action: "room_created" });
+  await sb.from("coaching_session_actions").insert({ session_id: access.booking.id, room_id: created.id, actor_user_id: actorUserId, action: "room_created", metadata: { provider } });
   return created;
 }
+
 
 async function coachingAttendance(sb: Supabase, sessionId: string) {
   const { data, error } = await sb.rpc("coaching_attendance_summary", { p_session_id: sessionId });
@@ -2120,8 +2136,28 @@ async function coachingRoomJoin(sb: Supabase, actor: Session, body: Record<strin
     await sb.from("coaching_rooms").update({ status: "live", starts_at: room.starts_at || nowIso }).eq("id", room.id);
   }
   if (Object.keys(sessionPatch).length) await sb.from("coaching_sessions").update(sessionPatch).eq("id", sessionId);
-  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room.id, actor_user_id: actor.userId, action: "participant_joined", metadata: { role: access.role, source: "jitsi" } });
-  return { room, member: memberResult.data, role: access.role, join_url: access.role === "coach" || access.role === "admin_supervisor" ? room.provider_host_url : room.provider_join_url };
+  await sb.from("coaching_session_actions").insert({ session_id: sessionId, room_id: room.id, actor_user_id: actor.userId, action: "participant_joined", metadata: { role: access.role, source: "jitsi", provider: room.provider } });
+
+  if (jaasConfigured()) {
+    const { data: user } = await sb.from("users").select("full_name,email").eq("id", actor.userId).maybeSingle();
+    const meeting = await createJaasMeetingAccess({
+      roomName: String(room.room_slug || room.provider_room_id),
+      userId: actor.userId,
+      name: user?.full_name || null,
+      email: user?.email || null,
+      moderator: access.role === "coach" || access.role === "admin_supervisor",
+    });
+    return { room, member: memberResult.data, role: access.role, join_url: null, meeting };
+  }
+  if (!publicJitsiDevEnabled()) throw new Error("VIDEO_PROVIDER_NOT_CONFIGURED");
+  return {
+    room,
+    member: memberResult.data,
+    role: access.role,
+    join_url: access.role === "coach" || access.role === "admin_supervisor" ? room.provider_host_url : room.provider_join_url,
+    meeting: null,
+    security_mode: "development_public_jitsi",
+  };
 }
 
 async function coachingRoomHeartbeat(sb: Supabase, actor: Session, body: Record<string, unknown>) {
@@ -3052,7 +3088,7 @@ async function advancedCheckout(sb: Supabase, actor: Session, body: Record<strin
     return { order: paidOrder || { ...order, payment_status: "paid", provider_transaction_id: freeReference }, payment_url: null, already_paid: true, free_order: true };
   }
   if (nativeStore) return { order, payment_url: null, already_paid: false, native_store: true, platform: nativePlatform };
-  const fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || ""; if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
+  const fedaKey = fedaPaySecretKey(); if (!fedaKey) throw new Error("PAYMENT_CONFIGURATION_MISSING");
   const apiBase = fedaPayApiBase();
   const appUrl = (Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "");
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
@@ -3267,13 +3303,54 @@ async function recordingSignedUrl(sb: Supabase, actor: Session, body: Record<str
 }
 
 async function groupRoomAccess(sb: Supabase, actor: Session, body: Record<string, unknown>) {
-  const programId=asText(body.program_id,80); const {data:program}=await sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id)").eq("id",programId).maybeSingle(); if(!program) throw new Error("GROUP_NOT_FOUND");
-  const coachUser=String((program.coach as Record<string,unknown>).user_id); const isCoach=coachUser===actor.userId; const registration=isCoach||isAdmin(actor)?null:(await sb.from("coaching_group_registrations").select("*").eq("program_id",programId).eq("user_id",actor.userId).in("status",["confirmed","attended"]).maybeSingle()).data; if(!isCoach&&!isAdmin(actor)&&!registration) throw new Error("FORBIDDEN");
-  const settings=await advancedSettings(sb); const opens=new Date(new Date(String(program.scheduled_start)).getTime()-Number(settings.group_access_before_minutes||30)*60000); const closes=new Date(new Date(String(program.scheduled_end)).getTime()+Number(settings.group_access_after_minutes||30)*60000); const now=Date.now(); const accessStatus=now<opens.getTime()?"too_early":now>closes.getTime()?"closed":"available";
+  const programId=asText(body.program_id,80);
+  const {data:program}=await sb.from("coaching_group_programs").select("*,coach:coach_profiles(id,user_id)").eq("id",programId).maybeSingle();
+  if(!program) throw new Error("GROUP_NOT_FOUND");
+  const coachUser=String((program.coach as Record<string,unknown>).user_id);
+  const isCoach=coachUser===actor.userId;
+  const registration=isCoach||isAdmin(actor)?null:(await sb.from("coaching_group_registrations").select("*").eq("program_id",programId).eq("user_id",actor.userId).in("status",["confirmed","attended"]).maybeSingle()).data;
+  if(!isCoach&&!isAdmin(actor)&&!registration) throw new Error("FORBIDDEN");
+  const settings=await advancedSettings(sb);
+  const opens=new Date(new Date(String(program.scheduled_start)).getTime()-Number(settings.group_access_before_minutes||30)*60000);
+  const closes=new Date(new Date(String(program.scheduled_end)).getTime()+Number(settings.group_access_after_minutes||30)*60000);
+  const now=Date.now();
+  const accessStatus=now<opens.getTime()?"too_early":now>closes.getTime()?"closed":"available";
   const {count}=await sb.from("coaching_group_registrations").select("id",{count:"exact",head:true}).eq("program_id",programId).in("status",["confirmed","attended"]);
-  const joinUrl=program.meeting_mode==="jitsi"?`https://meet.jit.si/${program.room_slug}#config.prejoinPageEnabled=false`:program.external_meeting_url;
-  return {program:{...program,confirmed_count:count||0},role:isAdmin(actor)?"admin_supervisor":isCoach?"coach":"learner",access_status:accessStatus,opens_at:opens.toISOString(),closes_at:closes.toISOString(),join_url:accessStatus==="available"?joinUrl:null,registration};
+  const role=isAdmin(actor)?"admin_supervisor":isCoach?"coach":"learner";
+
+  let joinUrl:string|null=null;
+  let meeting:Record<string,unknown>|null=null;
+  if(accessStatus==="available"&&program.meeting_mode==="jitsi"){
+    if(jaasConfigured()){
+      const {data:user}=await sb.from("users").select("full_name,email").eq("id",actor.userId).maybeSingle();
+      meeting=await createJaasMeetingAccess({
+        roomName:String(program.room_slug),
+        userId:actor.userId,
+        name:user?.full_name||null,
+        email:user?.email||null,
+        moderator:role==="coach"||role==="admin_supervisor",
+      });
+    }else if(publicJitsiDevEnabled()){
+      joinUrl=`https://meet.jit.si/${encodeURIComponent(String(program.room_slug))}#config.prejoinPageEnabled=false`;
+    }else{
+      throw new Error("VIDEO_PROVIDER_NOT_CONFIGURED");
+    }
+  }else if(accessStatus==="available"){
+    joinUrl=program.external_meeting_url;
+  }
+  return {
+    program:{...program,confirmed_count:count||0},
+    role,
+    access_status:accessStatus,
+    opens_at:opens.toISOString(),
+    closes_at:closes.toISOString(),
+    join_url:joinUrl,
+    meeting,
+    security_mode:meeting?"jaas":program.meeting_mode==="jitsi"&&joinUrl?"development_public_jitsi":null,
+    registration,
+  };
 }
+
 
 async function groupRoomPresence(sb: Supabase, actor: Session, body: Record<string, unknown>, action: "join"|"leave"|"start"|"end") {
   const access=await groupRoomAccess(sb,actor,body); const program=access.program as Record<string,unknown>; if(["start","end"].includes(action)&&!["coach","admin_supervisor"].includes(access.role)) throw new Error("FORBIDDEN"); if(access.access_status!=="available"&&action!=="end") throw new Error(access.access_status==="too_early"?"SESSION_TOO_EARLY":"SESSION_OUTSIDE_ACCESS_WINDOW"); const now=new Date().toISOString();

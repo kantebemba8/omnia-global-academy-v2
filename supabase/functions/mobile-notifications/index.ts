@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
-import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/omnia-auth.ts";
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -203,8 +203,7 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const action = new URL(req.url).searchParams.get("action") || "status";
   const session = await authenticate(sb, req);
-  const internalSecret = text(req.headers.get("x-mobile-push-secret"), 500);
-  const internalAuthorized = Boolean(internalSecret && internalSecret === text(Deno.env.get("MOBILE_PUSH_INTERNAL_SECRET"), 500));
+  const internalAuthorized = isOmniaInternalRequest(req);
   if (!session && !internalAuthorized) return json({ error: "UNAUTHORIZED" }, 401);
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
   const config = providerConfiguration();
@@ -285,6 +284,13 @@ Deno.serve(async (req) => {
       const title = text(body.title, 180) || "Omnia Global Academy";
       const message = text(body.message, 1000);
       if (!userId || !message) return json({ error: "MISSING_PARAMS" }, 400);
+      const { data: targetUser, error: targetUserError } = await sb.from("users")
+        .select("id,allow_push,status")
+        .eq("id", userId)
+        .maybeSingle();
+      if (targetUserError) throw targetUserError;
+      if (!targetUser || targetUser.status === "suspendu") return json({ error: "USER_NOT_AVAILABLE" }, 404);
+      if (targetUser.allow_push !== true) return json({ success: true, skipped: true, reason: "PUSH_NOT_ALLOWED" });
       const actionUrl = safeActionUrl(body.action_url);
       const notificationType = text(body.notification_type, 100) || "mobile";
       const payload = body.payload && typeof body.payload === "object" ? body.payload as Record<string, unknown> : {};

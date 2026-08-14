@@ -3,19 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { makeCorsHeaders, getClientIP, logSecurityEvent } from "../_shared/security.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-async function signCfUrl(uid: string, keyId: string, pemBase64: string): Promise<string> {
-  const pem = atob(pemBase64);
-  const key = await crypto.subtle.importKey("pkcs8", new TextEncoder().encode(pem).buffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
-  const now = Math.floor(Date.now() / 1000);
-  const payload = { sub: uid, kid: keyId, exp: now + 60, accessRules: [{ type: "any", action: "allow" }] };
-  const header = { alg: "RS256", kid: keyId };
-  const enc = (o: unknown) => btoa(JSON.stringify(o)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  const sigInput = `${enc(header)}.${enc(payload)}`;
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(sigInput));
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  return `https://videodelivery.net/${uid}/manifest/video.m3u8?token=${sigInput}.${sigB64}`;
-}
-
+import { signedStreamManifest } from "../_shared/cloudflare-stream.ts";
+import { PRIVATE_COURSE_BUCKET_SET, createSignedObjectUrl, parseStorageLocator } from "../_shared/protected-storage.ts";
 Deno.serve(async (req: Request) => {
   const corsHeaders = makeCorsHeaders();
   const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -86,12 +75,22 @@ Deno.serve(async (req: Request) => {
     const { data: recentAccess } = await sb.from("security_audit_log").select("ip_address").eq("user_id", userId).eq("event_type", "video_access").gte("created_at", new Date(Date.now() - 60_000).toISOString());
     const uniqueIPs = new Set((recentAccess ?? []).map((r: any) => r.ip_address).filter(Boolean));
     if (uniqueIPs.size >= 3) await logSecurityEvent(sb, { event_type: "drm_violation_suspected", user_id: userId, ip_address: clientIP, endpoint: "video-signed-url", severity: "critical", details: { lesson_id, unique_ips: Array.from(uniqueIPs) } });
-    const keyId = Deno.env.get("CF_STREAM_KEY_ID");
-    const pem = Deno.env.get("CF_STREAM_PEM");
-    if (keyId && pem && lesson.cloudflare_stream_uid) {
-      try { return json({ url: await signCfUrl(lesson.cloudflare_stream_uid, keyId, pem), expires_in: 55 }); } catch { /* fallback */ }
+    if (lesson.cloudflare_stream_uid) {
+      const signed = await signedStreamManifest(String(lesson.cloudflare_stream_uid), 15 * 60);
+      return json({ url: signed.iframe_url, manifest_url: signed.url, expires_in: signed.expires_in, provider: "cloudflare_stream" });
     }
-    return json({ url: lesson.video_url ?? null, expires_in: null });
+
+    // Compatibilité contrôlée pour les vidéos historiques déjà stockées dans le
+    // bucket privé course-videos. Aucune URL publique permanente n'est renvoyée.
+    const locator = parseStorageLocator(lesson.video_url, "course-videos");
+    if (locator && PRIVATE_COURSE_BUCKET_SET.has(locator.bucket)) {
+      const signedStorageUrl = await createSignedObjectUrl(sb, locator.bucket, locator.path, 15 * 60);
+      if (signedStorageUrl) return json({ url: signedStorageUrl, expires_in: 15 * 60, provider: "supabase_storage_legacy" });
+    }
+    return json({
+      error: "VIDEO_STREAM_NOT_CONFIGURED",
+      message: "Cette vidéo n'est pas encore reliée au moteur de streaming sécurisé.",
+    }, 409);
   } catch (err) {
     console.error("video-signed-url", err);
     return json({ error: "SERVER_ERROR", message: (err as Error).message }, 500);

@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { approvedStatus, fedaPayApiBase, retrieveFedaPayTransaction } from "../_shared/fedapay-security.ts";
+import { approvedStatus, fedaPayApiBase, fedaPaySecretKey, retrieveFedaPayTransaction } from "../_shared/fedapay-security.ts";
 import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
@@ -21,8 +21,7 @@ async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: stri
 async function findFedaPayTransaction(reference: string): Promise<Record<string, any> | null> {
   if (/^\d+$/.test(reference)) return retrieveFedaPayTransaction(reference);
 
-  const secretKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-  if (!secretKey) throw new Error("FEDAPAY_SECRET_KEY_MISSING");
+  const secretKey = fedaPaySecretKey();
   const response = await fetch(`${fedaPayApiBase()}/transactions?reference=${encodeURIComponent(reference)}`, {
     headers: { Authorization: `Bearer ${secretKey}`, Accept: "application/json" },
   });

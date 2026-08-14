@@ -73,9 +73,14 @@ export function initSentry(): Promise<void> {
     const Sentry = await loadSentry();
     if (!Sentry) return;
 
+    const release = import.meta.env.VITE_APP_RELEASE || import.meta.env.VITE_GIT_SHA || undefined;
+    const dist = import.meta.env.VITE_APP_BUILD || undefined;
+
     Sentry.init({
       dsn,
       environment: import.meta.env.MODE,
+      release,
+      dist,
 
       // La bêta conserve uniquement le diagnostic d'erreurs. Les replays de
       // session et le suivi de performance automatique restent désactivés
@@ -111,6 +116,7 @@ export function initSentry(): Promise<void> {
         return event;
       },
     });
+    Sentry.setTag('runtime', 'web-or-capacitor-webview');
   })();
 
   return initializationPromise;

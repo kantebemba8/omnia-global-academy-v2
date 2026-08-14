@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendOmniaEmail } from "./brevo-mail.ts";
 import { templateKeyFromLegacyId } from "./email-templates.ts";
+import { omniaInternalHeaders } from "./omnia-auth.ts";
 
 export function getSupabase() {
   return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -48,7 +49,7 @@ export async function sendBrevoSMS({ to, message, userId, sb }: SendSMSParams): 
   const brevoKey = Deno.env.get("BREVO_API_KEY") ?? "";
   if (!brevoKey) return false;
 
-  const response = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+  const response = await fetch("https://api.brevo.com/v3/transactionalSMS/send", {
     method: "POST",
     headers: {
       "Accept": "application/json",
@@ -56,7 +57,7 @@ export async function sendBrevoSMS({ to, message, userId, sb }: SendSMSParams): 
       "api-key": brevoKey,
     },
     body: JSON.stringify({
-      sender: "OmniaAcad",
+      sender: Deno.env.get("BREVO_SMS_SENDER") || "OmniaAcad",
       recipient: to,
       content: message.substring(0, 160),
       type: "transactional",
@@ -73,7 +74,11 @@ export async function sendBrevoSMS({ to, message, userId, sb }: SendSMSParams): 
       recipient: to,
       status: ok ? "sent" : "failed",
       error_message: ok ? null : (response ? await response.text().catch(() => "unknown") : "fetch_error"),
-      metadata: { message },
+      metadata: {
+        provider: "brevo",
+        endpoint: "transactionalSMS/send",
+        character_count: message.length,
+      },
     }).catch(() => {});
   }
 
@@ -87,7 +92,7 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
   const client = sb ?? getSupabase();
   const { data: user } = await client
     .from("users")
-    .select("email, phone_number, full_name, allow_email, allow_sms, email_status")
+    .select("email, phone_number, full_name, allow_email, allow_sms, allow_push, email_status")
     .eq("id", userId)
     .maybeSingle();
   if (!user) return;
@@ -109,5 +114,48 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
       userId,
       sb: client,
     });
+  }
+
+  if (user.allow_push === true) {
+    const params = emailConfig?.params || {};
+    const firstText = (...keys: string[]) => {
+      for (const key of keys) {
+        const value = params[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+      return "";
+    };
+    const pushMessage = (
+      smsMessage ||
+      firstText("MESSAGE_SPECIFIQUE", "MESSAGE", "DESCRIPTION", "DETAIL")
+    ).slice(0, 1000);
+
+    if (pushMessage) {
+      const title = (firstText("TITRE", "TITLE", "OBJET", "SUBJECT") || "Omnia Global Academy").slice(0, 180);
+      const actionUrl = firstText("ACTION_URL", "URL_ACTION", "LIEN_ACTION", "CTA_URL", "LIEN", "URL") || null;
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      if (supabaseUrl) {
+        try {
+          const response = await fetch(`${supabaseUrl}/functions/v1/mobile-notifications?action=dispatch`, {
+            method: "POST",
+            headers: omniaInternalHeaders(),
+            body: JSON.stringify({
+              user_id: userId,
+              title,
+              message: pushMessage,
+              action_url: actionUrl,
+              notification_type: "business_event",
+              payload: { source: "notify-dispatch" },
+            }),
+          });
+          if (!response.ok) {
+            console.warn("notifyUser push dispatch failed", response.status);
+          }
+        } catch (error) {
+          // Une panne Push ne doit jamais annuler l'e-mail/SMS ou le traitement métier.
+          console.warn("notifyUser push unavailable", error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
   }
 }

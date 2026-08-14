@@ -4,6 +4,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 import { getOpenAITtsModel } from "../_shared/ai-models.ts";
+import { storageRef } from "../_shared/protected-storage.ts";
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -54,18 +55,16 @@ Deno.serve(async (req: Request) => {
     const storagePath = `audio/lessons/${lesson_id}/tts_${Date.now()}.mp3`;
 
     const { error: uploadError } = await sb.storage
-      .from("course-media")
+      .from("course-audios")
       .upload(storagePath, audioBytes, { contentType: "audio/mpeg", upsert: true });
 
     if (uploadError) {
       return json({ error: "UPLOAD_FAILED", details: uploadError.message }, 500);
     }
 
-    const { data: publicUrlData } = sb.storage
-      .from("course-media")
-      .getPublicUrl(storagePath);
-
-    const audioUrl = publicUrlData.publicUrl;
+    // Store only the private storage locator. lesson-content authorizes access
+    // and replaces it with a short-lived signed URL for entitled learners.
+    const audioUrl = storageRef("course-audios", storagePath);
 
     await sb.from("course_lessons").update({
       audio_url: audioUrl,

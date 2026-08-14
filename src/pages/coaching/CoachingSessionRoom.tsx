@@ -3,13 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock3, Download, DoorOpen, ExternalLink, Headphones, Link2, Loader2, LogOut, Play, Radio, RefreshCw, ShieldCheck, Square, UsersRound, Video } from 'lucide-react';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
+import JaasMeetingFrame, { type JaasMeetingAccess } from '../../components/video/JaasMeetingFrame';
 import { CoachingAttendance, CoachingRecording, CoachingSessionRoomAccess, coachingRequest, formatCoachingDate } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
-type JoinedRoom = { join_url: string; room: { id: string; status: string }; role: string } | null;
+type JoinedRoom = { join_url: string | null; meeting?: JaasMeetingAccess | null; room: { id: string; status: string }; role: string } | null;
 type RecordingState = { role: string; recording_enabled: boolean; consents: Array<{ user_id: string; party_role: string; consent_status: string }>; recording: CoachingRecording | null };
 
 export default function CoachingSessionRoom() {
@@ -84,7 +85,7 @@ export default function CoachingSessionRoom() {
     if (!sessionId) return;
     setBusy('join'); setError('');
     try {
-      const response = await coachingRequest<{ success: true; join_url: string; room: { id: string; status: string }; role: string }>('session_room_join', { session_id: sessionId });
+      const response = await coachingRequest<{ success: true; join_url: string | null; meeting?: JaasMeetingAccess | null; room: { id: string; status: string }; role: string }>('session_room_join', { session_id: sessionId });
       setJoined(response);
       startHeartbeat();
       await load(true);
@@ -183,7 +184,7 @@ export default function CoachingSessionRoom() {
         <section className="overflow-hidden rounded-3xl bg-slate-950 shadow-xl">
           {data.session.meeting_mode === 'jitsi' ? <>
             <div className="relative min-h-[68vh]">
-              {joined?.join_url && !audioOnly ? <iframe title="Session Omnia Coaching" src={joined.join_url} allow="camera; microphone; fullscreen; display-capture; autoplay" className="h-[68vh] w-full border-0"/> : joined?.join_url && audioOnly ? <div className="flex min-h-[68vh] items-center justify-center text-center text-white"><div><Headphones className="mx-auto" size={52}/><h2 className="mt-4 text-xl font-semibold">Mode audio uniquement</h2><p className="mt-2 max-w-md text-sm text-slate-400">La vidéo est masquée dans l’interface pour limiter la consommation de données.</p></div></div> : <div className="flex min-h-[68vh] items-center justify-center p-8 text-center text-white"><div><Video className="mx-auto" size={52}/><h2 className="mt-4 text-xl font-semibold">Salle vidéo Omnia</h2><p className="mt-2 text-sm text-slate-400">Rejoignez la salle pour activer la caméra, le microphone et le chat.</p><button disabled={busy === 'join'} onClick={joinRoom} className="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" style={{ background: GOLD }}>{busy === 'join' ? <Loader2 className="animate-spin" size={17}/> : <DoorOpen size={17}/>}Rejoindre la salle</button></div></div>}
+              {joined && audioOnly ? <div className="flex min-h-[68vh] items-center justify-center text-center text-white"><div><Headphones className="mx-auto" size={52}/><h2 className="mt-4 text-xl font-semibold">Mode audio uniquement</h2><p className="mt-2 max-w-md text-sm text-slate-400">La vidéo est masquée dans l’interface pour limiter la consommation de données.</p></div></div> : joined?.meeting ? <JaasMeetingFrame meeting={joined.meeting} className="h-[68vh] w-full"/> : joined?.join_url ? <iframe title="Session Omnia Coaching — mode de développement" src={joined.join_url} allow="camera; microphone; fullscreen; display-capture; autoplay" className="h-[68vh] w-full border-0"/> : <div className="flex min-h-[68vh] items-center justify-center p-8 text-center text-white"><div><Video className="mx-auto" size={52}/><h2 className="mt-4 text-xl font-semibold">Salle vidéo Omnia</h2><p className="mt-2 text-sm text-slate-400">Rejoignez la salle pour activer la caméra, le microphone et le chat.</p><button disabled={busy === 'join'} onClick={joinRoom} className="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" style={{ background: GOLD }}>{busy === 'join' ? <Loader2 className="animate-spin" size={17}/> : <DoorOpen size={17}/>}Rejoindre la salle</button></div></div>}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 p-4 text-white"><span className="text-xs text-slate-400">Salle intégrée OGA · {data.role}</span><div className="flex flex-wrap gap-2">{joined && <button onClick={() => setAudioOnly(value => !value)} className="rounded-xl border border-white/20 px-3 py-2 text-sm">{audioOnly ? 'Afficher la vidéo' : 'Audio uniquement'}</button>}{joined && <button disabled={busy === 'leave'} onClick={leaveRoom} className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-3 py-2 text-sm"><LogOut size={15}/>Quitter</button>}</div></div>
           </> : <ExternalSession data={data} meetingUrl={meetingUrl} setMeetingUrl={setMeetingUrl} canManage={canManage} present={externalPresent} busy={busy} onSave={saveExternalLink} onJoin={() => markExternal('join')} onLeave={() => markExternal('leave')}/>} 

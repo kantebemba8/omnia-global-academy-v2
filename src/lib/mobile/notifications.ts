@@ -300,7 +300,8 @@ export async function initializeMobileNotificationRuntime(): Promise<void> {
   });
 
   await syncMobileNotifications({ emitNew: false });
-  syncTimer = window.setInterval(() => void syncMobileNotifications({ emitNew: true }), 45_000);
+  // Le Push natif est la voie principale. Ce timer n'est qu'un filet de sécurité.
+  syncTimer = window.setInterval(() => void syncMobileNotifications({ emitNew: true }), 15 * 60_000);
   window.addEventListener('beforeunload', () => {
     if (syncTimer !== null) window.clearInterval(syncTimer);
   }, { once: true });

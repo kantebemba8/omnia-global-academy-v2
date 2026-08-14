@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
-import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { fedaPayApiBase, fedaPaySecretKey } from "../_shared/fedapay-security.ts";
 import { settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
 import {
   finishGooglePlayPurchase,
@@ -767,7 +767,7 @@ function commerceReturnPath(product: Record<string, any>, isPlan: boolean) {
 }
 
 async function createFedaPay(order: Record<string, any>, user: UserContext, label: string, returnPath: string) {
-  const key = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+  const key = fedaPaySecretKey();
   if (!key) throw new Error("FEDAPAY_NOT_CONFIGURED");
   const base = fedaPayApiBase();
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";

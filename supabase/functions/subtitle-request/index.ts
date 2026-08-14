@@ -2,11 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -39,11 +35,11 @@ Deno.serve(async (req: Request) => {
 
   // Fetch lesson + course
   const { data: lesson } = await sb.from("course_lessons")
-    .select("id, course_id, cloudflare_stream_id, courses(creator_id, establishment_id)")
+    .select("id, course_id, cloudflare_stream_uid, courses(creator_id, establishment_id)")
     .eq("id", body.lesson_id).maybeSingle();
 
   if (!lesson) return json({ error: "LESSON_NOT_FOUND" }, 404);
-  if (!lesson.cloudflare_stream_id) return json({ error: "NO_VIDEO", message: "Cette leçon n'a pas de vidéo associée." }, 400);
+  if (!lesson.cloudflare_stream_uid) return json({ error: "NO_VIDEO", message: "Cette leçon n'a pas de vidéo associée." }, 400);
 
   // Check authorization: must be course creator
   const courseData = lesson.courses as unknown as { creator_id: string; establishment_id: string | null };
@@ -68,6 +64,9 @@ Deno.serve(async (req: Request) => {
     source_language: body.source_language || "fr",
     target_language: body.target_language || "en",
     requested_by: userId,
+    storage_bucket: null,
+    srt_storage_path: null,
+    vtt_storage_path: null,
     srt_url: null,
     vtt_url: null,
     error_message: null,

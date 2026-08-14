@@ -3,11 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 import { getAnthropicApiKey, getAnthropicQualityModel, getOpenAISubtitleTranscriptionModel } from "../_shared/ai-models.ts";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-internal-secret",
-};
+import { fetchStreamCaption, signedStreamDownload } from "../_shared/cloudflare-stream.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 function json(d: unknown, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -22,6 +19,67 @@ function srtToVtt(srt: string): string {
       .replace(/\n{3,}/g, "\n\n")
       .trim()
   );
+}
+
+function vttToSrt(vtt: string): string {
+  const normalized = String(vtt || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+  const blocks = normalized.split(/\n{2,}/);
+  const cues: string[] = [];
+
+  for (const block of blocks) {
+    const lines = block.split("\n").map((line) => line.trimEnd());
+    const timestampIndex = lines.findIndex((line) => line.includes("-->"));
+    if (timestampIndex < 0) continue;
+
+    const match = lines[timestampIndex].match(
+      /(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s+-->\s+(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})/,
+    );
+    if (!match) continue;
+
+    const startHours = match[1] || "00";
+    const endHours = match[5] || "00";
+    const timestamp = `${startHours}:${match[2]}:${match[3]},${match[4]} --> ${endHours}:${match[6]}:${match[7]},${match[8]}`;
+    const textLines = lines.slice(timestampIndex + 1).filter((line) => line.trim());
+    if (!textLines.length) continue;
+
+    cues.push(`${cues.length + 1}\n${timestamp}\n${textLines.join("\n")}`);
+  }
+
+  if (!cues.length) throw new Error("CLOUDFLARE_STREAM_CAPTION_VTT_INVALID");
+  return `${cues.join("\n\n")}\n`;
+}
+
+async function cleanupLegacyPublicSubtitleObjects(sb: ReturnType<typeof createClient>): Promise<void> {
+  const storage = sb.storage.from("course-covers");
+  const paths: string[] = [];
+
+  async function walk(prefix: string, depth: number): Promise<void> {
+    if (depth > 4 || paths.length >= 5000) return;
+    for (let offset = 0; offset < 5000; offset += 1000) {
+      const { data, error } = await storage.list(prefix, { limit: 1000, offset, sortBy: { column: "name", order: "asc" } });
+      if (error) throw error;
+      const items = data || [];
+      for (const item of items) {
+        const child = `${prefix}/${item.name}`;
+        if (item.id || item.metadata) paths.push(child);
+        else await walk(child, depth + 1);
+        if (paths.length >= 5000) break;
+      }
+      if (items.length < 1000 || paths.length >= 5000) break;
+    }
+  }
+
+  try {
+    await walk("subtitles", 0);
+    for (let offset = 0; offset < paths.length; offset += 100) {
+      const { error } = await storage.remove(paths.slice(offset, offset + 100));
+      if (error) throw error;
+    }
+    if (paths.length) console.info(`Removed ${paths.length} legacy public subtitle object(s)`);
+  } catch (error) {
+    // Best effort only: subtitle processing itself must not be blocked by old cleanup.
+    console.warn("Legacy public subtitle cleanup failed", error instanceof Error ? error.message : String(error));
+  }
 }
 
 async function transcribeForSubtitles(audioUrl: string, openaiKey: string, sourceLanguage: string): Promise<string> {
@@ -98,6 +156,10 @@ Deno.serve(async (req: Request) => {
   const claudeKey = getAnthropicApiKey();
   if (!openaiKey || !claudeKey) return json({ error: "AI_NOT_CONFIGURED" }, 500);
 
+  // Remove old subtitle files that were historically written into the public
+  // course-covers bucket. New files are stored only in private course-resources.
+  await cleanupLegacyPublicSubtitleObjects(sb);
+
   // Fetch one pending job
   const { data: job } = await sb.from("subtitle_jobs")
     .select("*")
@@ -114,35 +176,30 @@ Deno.serve(async (req: Request) => {
   try {
     // Fetch lesson video info
     const { data: lesson } = await sb.from("course_lessons")
-      .select("cloudflare_stream_id, course_id")
+      .select("cloudflare_stream_uid, course_id")
       .eq("id", job.lesson_id).maybeSingle();
 
-    if (!lesson?.cloudflare_stream_id) throw new Error("No Cloudflare stream ID");
-
-    const cfAccountId = Deno.env.get("CF_ACCOUNT_ID");
-    const cfStreamToken = Deno.env.get("CF_STREAM_API_TOKEN");
+    if (!lesson?.cloudflare_stream_uid) throw new Error("No Cloudflare Stream UID");
 
     let srtContent: string | null = null;
 
-    // Try Cloudflare Stream auto-captions first
-    if (cfAccountId && cfStreamToken) {
-      const cfResp = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/stream/${lesson.cloudflare_stream_id}/captions/${job.source_language}`,
-        { headers: { "Authorization": `Bearer ${cfStreamToken}` } }
-      );
+    // Try Cloudflare Stream captions first through the canonical authenticated
+    // VTT endpoint, then normalize to SRT for the existing translation pipeline.
+    try {
+      const cfResp = await fetchStreamCaption(String(lesson.cloudflare_stream_uid), String(job.source_language || "fr"));
       if (cfResp.ok) {
-        const cfData = await cfResp.json();
-        if (cfData.result?.src) {
-          const captionResp = await fetch(cfData.result.src);
-          if (captionResp.ok) srtContent = await captionResp.text();
-        }
+        const vttContent = await cfResp.text();
+        if (vttContent.trim()) srtContent = vttToSrt(vttContent);
       }
+    } catch (error) {
+      console.warn("Cloudflare captions unavailable", error instanceof Error ? error.message : String(error));
     }
 
-    // Fallback: subtitle transcription. Whisper remains intentional here because SRT/timestamps are required.
+    // Fallback: obtain a short-lived downloadable Stream URL, then transcribe.
+    // Whisper remains intentional here because Omnia requires SRT timestamps.
     if (!srtContent) {
-      const videoUrl = `https://videodelivery.net/${lesson.cloudflare_stream_id}/downloads/default.mp4`;
-      srtContent = await transcribeForSubtitles(videoUrl, openaiKey, job.source_language);
+      const signed = await signedStreamDownload(String(lesson.cloudflare_stream_uid), 10 * 60);
+      srtContent = await transcribeForSubtitles(signed.url, openaiKey, job.source_language);
     }
 
     // Translate with Claude if source != target
@@ -154,25 +211,32 @@ Deno.serve(async (req: Request) => {
     // Convert SRT to VTT
     const vttContent = srtToVtt(translatedSrt);
 
-    // Upload both to Supabase Storage
+    // Course subtitles are learning content and must never be placed in a public bucket.
+    const subtitleBucket = "course-resources";
     const srtPath = `subtitles/${job.course_id}/${job.lesson_id}_${job.target_language}.srt`;
     const vttPath = `subtitles/${job.course_id}/${job.lesson_id}_${job.target_language}.vtt`;
 
-    await sb.storage.from("course-covers").upload(srtPath, new TextEncoder().encode(translatedSrt), {
+    const srtUpload = await sb.storage.from(subtitleBucket).upload(srtPath, new TextEncoder().encode(translatedSrt), {
       contentType: "text/plain", upsert: true,
     });
-    await sb.storage.from("course-covers").upload(vttPath, new TextEncoder().encode(vttContent), {
+    if (srtUpload.error) throw srtUpload.error;
+    const vttUpload = await sb.storage.from(subtitleBucket).upload(vttPath, new TextEncoder().encode(vttContent), {
       contentType: "text/vtt", upsert: true,
     });
+    if (vttUpload.error) throw vttUpload.error;
 
-    const { data: srtUrlData } = sb.storage.from("course-covers").getPublicUrl(srtPath);
-    const { data: vttUrlData } = sb.storage.from("course-covers").getPublicUrl(vttPath);
+    const signedVtt = await sb.storage.from(subtitleBucket).createSignedUrl(vttPath, 24 * 60 * 60);
+    if (signedVtt.error || !signedVtt.data?.signedUrl) throw signedVtt.error || new Error("SUBTITLE_SIGNED_URL_FAILED");
+    const signedVttExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    // Update job as completed
+    // Persist storage references, never permanent public URLs.
     await sb.from("subtitle_jobs").update({
       status: "completed",
-      srt_url: srtUrlData.publicUrl,
-      vtt_url: vttUrlData.publicUrl,
+      storage_bucket: subtitleBucket,
+      srt_storage_path: srtPath,
+      vtt_storage_path: vttPath,
+      srt_url: null,
+      vtt_url: null,
       completed_at: new Date().toISOString(),
       error_message: null,
     }).eq("id", job.id);
@@ -189,7 +253,7 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           type: "subtitle_ready",
           user_id: job.requested_by,
-          payload: { lesson_id: job.lesson_id, vtt_url: vttUrlData.publicUrl },
+          payload: { lesson_id: job.lesson_id, vtt_url: signedVtt.data.signedUrl, vtt_url_expires_at: signedVttExpiresAt },
         }),
       }).catch(() => {});
     }
@@ -197,10 +261,11 @@ Deno.serve(async (req: Request) => {
     return json({ success: true, processed: 1, job_id: job.id });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
+    const retryable = errorMsg.includes("CLOUDFLARE_STREAM_DOWNLOAD_NOT_READY");
     await sb.from("subtitle_jobs").update({
-      status: "failed",
+      status: retryable ? "pending" : "failed",
       error_message: errorMsg,
     }).eq("id", job.id);
-    return json({ success: false, error: errorMsg, job_id: job.id }, 500);
+    return json({ success: false, retryable, error: errorMsg, job_id: job.id }, retryable ? 202 : 500);
   }
 });

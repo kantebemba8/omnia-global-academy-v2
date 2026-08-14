@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { fedaPayApiBase } from "../_shared/fedapay-security.ts";
+import { fedaPayApiBase, fedaPaySecretKey } from "../_shared/fedapay-security.ts";
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -262,7 +262,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!nativeStore) {
-      fedaKey = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+      fedaKey = fedaPaySecretKey();
       if (!fedaKey) {
         return new Response(JSON.stringify({ error: "FEDAPAY_NOT_CONFIGURED", message: "Le paiement est temporairement indisponible." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

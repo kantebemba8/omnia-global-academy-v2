@@ -1662,19 +1662,98 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       const bucket = bucketMap[blockType] || 'course-resources';
       const path = `${courseId}/${moduleId}/${lessonId}/${block.id}.${ext}`;
 
-      setUploadProgress(30);
-      const signed = await api('prepare_upload', { course_id: courseId, bucket_name: bucket, storage_path: path });
-      if (!signed.success || !signed.signedUrl) throw new Error('Impossible de préparer le téléversement');
-      const uploadRes = await fetch(signed.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+      setUploadProgress(20);
+      const prepared = await api('prepare_upload', {
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+        block_id: block.id,
+        bucket_name: bucket,
+        storage_path: path,
+        file_name: file.name,
+        size_bytes: file.size,
+        file_mime: file.type,
+      });
+      if (!prepared.success) throw new Error(prepared.message || prepared.error || 'Impossible de préparer le téléversement');
+
+      if (prepared.provider === 'cloudflare_stream') {
+        const uploadUrl = String(prepared.upload_url || '');
+        const streamUid = String(prepared.stream_uid || '');
+        if (!uploadUrl || !streamUid) throw new Error('Réponse Cloudflare Stream incomplète');
+
+        if (prepared.protocol === 'stream_tus') {
+          const chunkSize = Math.max(256 * 1024, Number(prepared.chunk_size_bytes || 50 * 1024 * 1024));
+          let offset = 0;
+          while (offset < file.size) {
+            const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+            const uploadRes = await fetch(uploadUrl, {
+              method: 'PATCH',
+              headers: {
+                'Tus-Resumable': '1.0.0',
+                'Upload-Offset': String(offset),
+                'Content-Type': 'application/offset+octet-stream',
+              },
+              body: chunk,
+            });
+            if (!uploadRes.ok) throw new Error(`Erreur Cloudflare Stream TUS (${uploadRes.status})`);
+            const nextOffset = Number(uploadRes.headers.get('Upload-Offset') || offset + chunk.size);
+            if (!Number.isFinite(nextOffset) || nextOffset <= offset) throw new Error('Offset TUS invalide');
+            offset = nextOffset;
+            setUploadProgress(20 + Math.round((offset / file.size) * 60));
+          }
+        } else {
+          const form = new FormData();
+          form.append('file', file, file.name);
+          const uploadRes = await fetch(uploadUrl, { method: 'POST', body: form });
+          if (!uploadRes.ok) throw new Error(`Erreur Cloudflare Stream (${uploadRes.status})`);
+          setUploadProgress(80);
+        }
+
+        const saveRes = await api('upload_block_file', {
+          block_id: block.id,
+          course_id: courseId,
+          module_id: moduleId,
+          lesson_id: lessonId,
+          provider: 'cloudflare_stream',
+          stream_uid: streamUid,
+          file_name: file.name,
+          file_size: file.size,
+          file_mime: file.type,
+        });
+        if (!saveRes.success) throw new Error(saveRes.message || saveRes.error || 'Impossible d’enregistrer la vidéo');
+        const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
+        setUploadProgress(100);
+        onUpdate({
+          file_url: secureUrl,
+          file_name: file.name,
+          file_size: file.size,
+          file_mime: file.type,
+          content_json: {
+            ...c,
+            url: secureUrl,
+            title: c.title || file.name,
+            provider: 'cloudflare_stream',
+            cloudflare_stream_uid: streamUid,
+          },
+        });
+        return;
+      }
+
+      if (!prepared.signedUrl) throw new Error('URL d’upload Supabase absente');
+      const uploadRes = await fetch(prepared.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
       setUploadProgress(80);
       if (!uploadRes.ok) throw new Error('Erreur upload');
 
-      // Enregistrer le fichier via studio-unified
       const saveRes = await api('upload_block_file', {
         block_id: block.id,
         course_id: courseId,
         module_id: moduleId,
         lesson_id: lessonId,
+        provider: 'supabase_storage',
         file_name: file.name,
         file_size: file.size,
         file_mime: file.type,
@@ -1683,16 +1762,15 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       });
 
       setUploadProgress(100);
-      if (saveRes.success) {
-        const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
-        onUpdate({
-          file_url: secureUrl,
-          file_name: file.name,
-          file_size: file.size,
-          file_mime: file.type,
-          content_json: { ...c, url: secureUrl, title: c.title || file.name },
-        });
-      }
+      if (!saveRes.success) throw new Error(saveRes.message || saveRes.error || 'Impossible d’enregistrer le fichier');
+      const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
+      onUpdate({
+        file_url: secureUrl,
+        file_name: file.name,
+        file_size: file.size,
+        file_mime: file.type,
+        content_json: { ...c, url: secureUrl, title: c.title || file.name, provider: 'supabase_storage', cloudflare_stream_uid: null },
+      });
     } catch (err) {
       console.error('Upload error:', err);
     } finally {

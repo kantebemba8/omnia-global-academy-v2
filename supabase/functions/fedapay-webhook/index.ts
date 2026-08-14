@@ -9,6 +9,7 @@ import {
   retrieveFedaPayTransaction,
   transactionMetadata,
   verifyFedaPayWebhook,
+  fedaPayWebhookSecret,
 } from "../_shared/fedapay-security.ts";
 import { omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 import { resolvePlatformOrder, settlePlatformOrder } from "../_shared/course-payment-settlement.ts";
@@ -212,7 +213,7 @@ Deno.serve(async (req: Request) => {
     await verifyFedaPayWebhook(
       rawBody,
       req.headers.get("x-fedapay-signature"),
-      Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "",
+      fedaPayWebhookSecret(),
     );
 
     const incomingEvent = JSON.parse(rawBody) as Record<string, any>;
@@ -251,13 +252,9 @@ Deno.serve(async (req: Request) => {
       if (!liveOrder) throw new Error("OMNIA_LIVE_ORDER_NOT_FOUND");
       assertTransactionMatches(transaction, Number(liveOrder.amount || 0), String(liveOrder.currency || "XOF"));
       const url = Deno.env.get("SUPABASE_URL") || "";
-      const webhookSecret = Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "";
       const response = await fetch(`${url}/functions/v1/omnia-live?action=fedapay_webhook`, {
         method: "POST",
-        headers: {
-          ...omniaInternalHeaders(),
-          "x-omnia-webhook-secret": webhookSecret,
-        },
+        headers: omniaInternalHeaders(),
         body: JSON.stringify(event),
       });
       if (!response.ok) throw new Error(`OMNIA_LIVE_WEBHOOK_FAILED:${await response.text().catch(() => "")}`);

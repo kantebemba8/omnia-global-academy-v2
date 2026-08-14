@@ -1,12 +1,39 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import { hasStructurePermission, validatedStructureAccess, type ValidatedStructureAccess } from "../_shared/structure-access.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
 
 import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/omnia-auth.ts";
+import {
+  approvedStatus,
+  assertTransactionMatches,
+  extractFedaPayTransaction,
+  failedStatus,
+  fedaPayApiBase,
+  fedaPayConfiguration,
+  fedaPaySecretKey,
+  fedaPaySecretKeyConfigured,
+  retrieveFedaPayTransaction,
+  transactionMetadata,
+} from "../_shared/fedapay-security.ts";
+import {
+  cloudflareStreamConfigured,
+  createDirectStreamUpload,
+  deleteStreamVideo,
+  getStreamVideo,
+  signedStreamManifest,
+  streamConfigurationStatus,
+  streamVideoReady,
+} from "../_shared/cloudflare-stream.ts";
+import {
+  createJaasMeetingAccess,
+  jaasConfigured,
+  jaasConfigurationStatus,
+  publicJitsiDevEnabled,
+} from "../_shared/jaas.ts";
 /*
   OMNIA LIVE — FINAL CONSOLIDATED EDGE FUNCTION
 
@@ -23,7 +50,7 @@ import { getActiveOmniaSessionResult, isOmniaInternalRequest } from "../_shared/
 
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://omniaglobalacademy.com",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-omnia-session-token, x-omnia-internal-secret",
 };
@@ -1708,7 +1735,7 @@ async function playbackAuthorize(
 
   const { data: media } = await sb
     .from("live_media")
-    .select("id,event_id,status,processing_status,storage_key,streaming_manifest_key,audio_track_key,watermark_enabled,watermark_mode,download_allowed,available_from,available_until")
+    .select("id,event_id,status,processing_status,storage_provider,storage_key,streaming_manifest_key,audio_track_key,cloudflare_stream_uid,cloudflare_stream_status,watermark_enabled,watermark_mode,download_allowed,available_from,available_until")
     .eq("id", body.media_id)
     .maybeSingle();
 
@@ -1789,36 +1816,42 @@ async function playbackAuthorize(
 
   if (error) throw error;
 
+  if (media.storage_provider === "cloudflare_stream" || media.cloudflare_stream_uid) {
+    if (!media.cloudflare_stream_uid) return json({ error: "MEDIA_STREAM_NOT_CONFIGURED" }, 409);
+    const signed = await signedStreamManifest(String(media.cloudflare_stream_uid), 15 * 60);
+    return json({
+      success: true,
+      playback_token: rawToken,
+      expires_at: expiresAt,
+      watermark,
+      watermark_mode: media.watermark_mode,
+      video_url: signed.url,
+      embed_url: signed.iframe_url,
+      audio_url: null,
+      download_allowed: false,
+      provider: "cloudflare_stream",
+      stream_expires_in: signed.expires_in,
+    });
+  }
+
   const bucket = Deno.env.get("R2_BUCKET_NAME") ?? "";
   if (!bucket) throw new Error("R2_BUCKET_NAME_NOT_CONFIGURED");
-
   const client = r2Client();
   const videoKey = media.streaming_manifest_key || media.storage_key;
   if (!videoKey) return json({ error: "MEDIA_STREAM_NOT_CONFIGURED" }, 409);
-
-  const videoUrl = await getSignedUrl(
-    client,
-    new GetObjectCommand({
-      Bucket: bucket,
-      Key: videoKey,
-      ResponseContentDisposition: "inline",
-    }),
-    { expiresIn: 15 * 60 },
-  );
-
+  const videoUrl = await getSignedUrl(client, new GetObjectCommand({
+    Bucket: bucket,
+    Key: videoKey,
+    ResponseContentDisposition: "inline",
+  }), { expiresIn: 15 * 60 });
   let audioUrl: string | null = null;
   if (media.audio_track_key) {
-    audioUrl = await getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: bucket,
-        Key: media.audio_track_key,
-        ResponseContentDisposition: "inline",
-      }),
-      { expiresIn: 15 * 60 },
-    );
+    audioUrl = await getSignedUrl(client, new GetObjectCommand({
+      Bucket: bucket,
+      Key: media.audio_track_key,
+      ResponseContentDisposition: "inline",
+    }), { expiresIn: 15 * 60 });
   }
-
   return json({
     success: true,
     playback_token: rawToken,
@@ -1828,6 +1861,7 @@ async function playbackAuthorize(
     video_url: videoUrl,
     audio_url: audioUrl,
     download_allowed: media.download_allowed,
+    provider: "r2",
   });
 }
 
@@ -1928,63 +1962,98 @@ async function uploadPrepare(
     sequence_no?: number | null;
   };
 
-  if (!body.event_id || !body.media_type || !body.file_name) {
-    return json({ error: "MISSING_PARAMS" }, 400);
-  }
-
-  if (!(await canManageEvent(sb, ctx, body.event_id))) {
-    return json({ error: "FORBIDDEN" }, 403);
-  }
+  if (!body.event_id || !body.media_type || !body.file_name) return json({ error: "MISSING_PARAMS" }, 400);
+  if (!(await canManageEvent(sb, ctx, body.event_id))) return json({ error: "FORBIDDEN" }, 403);
 
   const allowedTypes = new Set(["cover","document","recorded_video","replay","subtitle","audio"]);
-  if (!allowedTypes.has(body.media_type)) {
-    return json({ error: "INVALID_MEDIA_TYPE" }, 400);
-  }
+  if (!allowedTypes.has(body.media_type)) return json({ error: "INVALID_MEDIA_TYPE" }, 400);
 
   const maxUploadBytes = Number(Deno.env.get("OMNIA_LIVE_MAX_UPLOAD_BYTES") || 10 * 1024 * 1024 * 1024);
-  if (body.size_bytes && body.size_bytes > maxUploadBytes) {
-    return json({ error: "FILE_TOO_LARGE", max_bytes: maxUploadBytes }, 413);
-  }
+  if (body.size_bytes && body.size_bytes > maxUploadBytes) return json({ error: "FILE_TOO_LARGE", max_bytes: maxUploadBytes }, 413);
 
-  const bucket = Deno.env.get("R2_BUCKET_NAME") ?? "";
-  if (!bucket) throw new Error("R2_BUCKET_NAME_NOT_CONFIGURED");
+  const streamMedia = ["recorded_video", "replay"].includes(body.media_type);
+  if (streamMedia && cloudflareStreamConfigured()) {
+    if (!body.size_bytes || body.size_bytes < 1) return json({ error: "FILE_SIZE_REQUIRED" }, 400);
+    const direct = await createDirectStreamUpload({
+      fileName: body.file_name,
+      sizeBytes: Number(body.size_bytes),
+      creator: ctx.userId,
+      metadata: {
+        omnia_event_id: body.event_id,
+        omnia_media_type: body.media_type,
+      },
+    });
 
-  const key = mediaStorageKey(body.event_id, body.media_type, body.file_name);
-
-  const { data: media, error } = await sb
-    .from("live_media")
-    .insert({
+    const { data: media, error } = await sb.from("live_media").insert({
       event_id: body.event_id,
       session_id: body.session_id || null,
       media_type: body.media_type,
       title: body.title || body.file_name,
       file_name: body.file_name,
-      mime_type: body.mime_type || "application/octet-stream",
+      mime_type: body.mime_type || "video/mp4",
       size_bytes: body.size_bytes || null,
-      storage_provider: "r2",
-      storage_key: key,
-      original_storage_key: key,
-      status: "draft",
+      storage_provider: "cloudflare_stream",
+      storage_key: null,
+      original_storage_key: null,
+      cloudflare_stream_uid: direct.uid,
+      cloudflare_stream_status: "uploading",
+      status: "uploading",
       processing_status: "pending",
-      watermark_enabled: ["recorded_video","replay"].includes(body.media_type),
-      watermark_mode: ["recorded_video","replay"].includes(body.media_type) ? "dynamic" : "none",
-      download_allowed: body.media_type === "document",
+      watermark_enabled: true,
+      watermark_mode: "dynamic",
+      download_allowed: false,
       version: 1,
       sequence_no: body.sequence_no == null ? null : Math.max(1, Number(body.sequence_no)),
-    })
-    .select("*")
-    .single();
+    }).select("*").single();
 
+    if (error) {
+      await deleteStreamVideo(direct.uid).catch(() => {});
+      throw error;
+    }
+
+    return json({
+      success: true,
+      media,
+      upload: {
+        url: direct.upload_url,
+        method: direct.protocol === "stream_basic" ? "POST" : "PATCH",
+        protocol: direct.protocol,
+        headers: direct.headers,
+        chunk_size_bytes: direct.chunk_size_bytes || null,
+        provider: "cloudflare_stream",
+      },
+    }, 201);
+  }
+
+  const bucket = Deno.env.get("R2_BUCKET_NAME") ?? "";
+  if (!bucket) throw new Error("R2_BUCKET_NAME_NOT_CONFIGURED");
+  const key = mediaStorageKey(body.event_id, body.media_type, body.file_name);
+  const { data: media, error } = await sb.from("live_media").insert({
+    event_id: body.event_id,
+    session_id: body.session_id || null,
+    media_type: body.media_type,
+    title: body.title || body.file_name,
+    file_name: body.file_name,
+    mime_type: body.mime_type || "application/octet-stream",
+    size_bytes: body.size_bytes || null,
+    storage_provider: "r2",
+    storage_key: key,
+    original_storage_key: key,
+    status: "uploading",
+    processing_status: "pending",
+    watermark_enabled: streamMedia,
+    watermark_mode: streamMedia ? "dynamic" : "none",
+    download_allowed: body.media_type === "document",
+    version: 1,
+    sequence_no: body.sequence_no == null ? null : Math.max(1, Number(body.sequence_no)),
+  }).select("*").single();
   if (error) throw error;
 
-  const client = r2Client();
-  const command = new PutObjectCommand({
+  const uploadUrl = await getSignedUrl(r2Client(), new PutObjectCommand({
     Bucket: bucket,
     Key: key,
     ContentType: body.mime_type || "application/octet-stream",
-  });
-
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 15 * 60 });
+  }), { expiresIn: 15 * 60 });
 
   return json({
     success: true,
@@ -1992,10 +2061,10 @@ async function uploadPrepare(
     upload: {
       url: uploadUrl,
       method: "PUT",
+      protocol: "r2_put",
+      provider: "r2",
       expires_in_seconds: 900,
-      headers: {
-        "Content-Type": body.mime_type || "application/octet-stream",
-      },
+      headers: { "Content-Type": body.mime_type || "application/octet-stream" },
     },
   }, 201);
 }
@@ -2006,64 +2075,49 @@ async function uploadComplete(
   ctx: Awaited<ReturnType<typeof sessionContext>>,
 ) {
   if (!ctx) return json({ error: "AUTH_REQUIRED" }, 401);
-
-  const body = (await req.json().catch(() => ({}))) as {
-    media_id?: string;
-  };
-
+  const body = (await req.json().catch(() => ({}))) as { media_id?: string };
   if (!body.media_id) return json({ error: "MEDIA_ID_REQUIRED" }, 400);
 
-  const { data: media } = await sb
-    .from("live_media")
-    .select("*")
-    .eq("id", body.media_id)
-    .maybeSingle();
-
+  const { data: media } = await sb.from("live_media").select("*").eq("id", body.media_id).maybeSingle();
   if (!media) return json({ error: "MEDIA_NOT_FOUND" }, 404);
+  if (!(await canManageEvent(sb, ctx, media.event_id))) return json({ error: "FORBIDDEN" }, 403);
 
-  if (!(await canManageEvent(sb, ctx, media.event_id))) {
-    return json({ error: "FORBIDDEN" }, 403);
+  if (media.storage_provider === "cloudflare_stream" || media.cloudflare_stream_uid) {
+    if (!media.cloudflare_stream_uid) return json({ error: "STREAM_UID_MISSING" }, 409);
+    const video = await getStreamVideo(String(media.cloudflare_stream_uid));
+    const ready = streamVideoReady(video);
+    const state = String(video?.status?.state || (ready ? "ready" : "processing"));
+    const now = new Date().toISOString();
+    const { data, error } = await sb.from("live_media").update({
+      size_bytes: Number(video?.size || media.size_bytes || 0) || media.size_bytes,
+      duration_seconds: Number(video?.duration || media.duration_seconds || 0) || media.duration_seconds,
+      cloudflare_stream_status: state,
+      stream_ready_at: ready ? now : media.stream_ready_at,
+      processing_status: ready ? "ready" : "processing",
+      processing_error: null,
+      status: ready ? "published" : "processing",
+      published_at: ready ? (media.published_at || now) : media.published_at,
+      updated_at: now,
+    }).eq("id", media.id).select("*").single();
+    if (error) throw error;
+    return json({ success: true, media: data, processing_required: !ready, provider_managed: true });
   }
 
   const bucket = Deno.env.get("R2_BUCKET_NAME") ?? "";
   if (!bucket || !media.storage_key) throw new Error("R2_STORAGE_NOT_CONFIGURED");
-
-  const client = r2Client();
-
   try {
-    const head = await client.send(
-      new HeadObjectCommand({
-        Bucket: bucket,
-        Key: media.storage_key,
-      }),
-    );
-
-    const { data, error } = await sb
-      .from("live_media")
-      .update({
-        size_bytes: Number(head.ContentLength ?? media.size_bytes ?? 0),
-        mime_type: head.ContentType ?? media.mime_type,
-        processing_status:
-          ["recorded_video","replay","audio"].includes(media.media_type)
-            ? "uploaded"
-            : "ready",
-        status:
-          ["document","cover","subtitle"].includes(media.media_type)
-            ? "published"
-            : "draft",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", media.id)
-      .select("*")
-      .single();
-
+    const head = await r2Client().send(new HeadObjectCommand({ Bucket: bucket, Key: media.storage_key }));
+    const needsProcessing = ["recorded_video","replay","audio"].includes(media.media_type);
+    const { data, error } = await sb.from("live_media").update({
+      size_bytes: Number(head.ContentLength ?? media.size_bytes ?? 0),
+      mime_type: head.ContentType ?? media.mime_type,
+      processing_status: needsProcessing ? "uploaded" : "ready",
+      status: needsProcessing ? "processing" : "published",
+      published_at: needsProcessing ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", media.id).select("*").single();
     if (error) throw error;
-
-    return json({
-      success: true,
-      media: data,
-      processing_required: ["recorded_video","replay","audio"].includes(media.media_type),
-    });
+    return json({ success: true, media: data, processing_required: needsProcessing, provider_managed: false });
   } catch (error) {
     console.error("R2 HeadObject failed:", error);
     return json({ error: "UPLOAD_NOT_FOUND_OR_INCOMPLETE" }, 409);
@@ -2093,6 +2147,24 @@ async function processingQueue(
   if (!media) return json({ error: "MEDIA_NOT_FOUND" }, 404);
   if (!(await canManageEvent(sb, ctx, media.event_id))) {
     return json({ error: "FORBIDDEN" }, 403);
+  }
+
+  if (media.storage_provider === "cloudflare_stream" || media.cloudflare_stream_uid) {
+    if (!media.cloudflare_stream_uid) return json({ error: "STREAM_UID_MISSING" }, 409);
+    const video = await getStreamVideo(String(media.cloudflare_stream_uid));
+    const ready = streamVideoReady(video);
+    const state = String(video?.status?.state || (ready ? "ready" : "processing"));
+    const now = new Date().toISOString();
+    const { data: updated, error } = await sb.from("live_media").update({
+      cloudflare_stream_status: state,
+      stream_ready_at: ready ? now : media.stream_ready_at,
+      processing_status: ready ? "ready" : "processing",
+      status: ready ? "published" : "processing",
+      published_at: ready ? (media.published_at || now) : media.published_at,
+      updated_at: now,
+    }).eq("id", media.id).select("*").single();
+    if (error) throw error;
+    return json({ success: true, media: updated, provider_managed: true, ready });
   }
 
   if (!["recorded_video","replay","audio"].includes(media.media_type)) {
@@ -2291,7 +2363,7 @@ async function processingStatus(
 
   const { data: media } = await sb
     .from("live_media")
-    .select("id,event_id,processing_status,processing_error,status")
+    .select("id,event_id,processing_status,processing_error,status,storage_provider,cloudflare_stream_uid,cloudflare_stream_status,stream_ready_at,published_at")
     .eq("id", mediaId)
     .maybeSingle();
 
@@ -2303,6 +2375,27 @@ async function processingStatus(
 
   if (!allowed) return json({ error: "FORBIDDEN" }, 403);
 
+  let currentMedia = media;
+  if ((media.storage_provider === "cloudflare_stream" || media.cloudflare_stream_uid) && media.cloudflare_stream_uid) {
+    try {
+      const video = await getStreamVideo(String(media.cloudflare_stream_uid));
+      const ready = streamVideoReady(video);
+      const state = String(video?.status?.state || (ready ? "ready" : "processing"));
+      const now = new Date().toISOString();
+      const { data: refreshed } = await sb.from("live_media").update({
+        cloudflare_stream_status: state,
+        stream_ready_at: ready ? (media.stream_ready_at || now) : media.stream_ready_at,
+        processing_status: ready ? "ready" : "processing",
+        status: ready ? "published" : media.status,
+        published_at: ready ? (media.published_at || now) : media.published_at,
+        updated_at: now,
+      }).eq("id", media.id).select("id,event_id,processing_status,processing_error,status,storage_provider,cloudflare_stream_uid,cloudflare_stream_status,stream_ready_at,published_at").single();
+      if (refreshed) currentMedia = refreshed;
+    } catch (error) {
+      console.warn("Cloudflare Stream status refresh failed", error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const { data: job } = await sb
     .from("live_media_processing_jobs")
     .select("*")
@@ -2313,7 +2406,7 @@ async function processingStatus(
 
   return json({
     success: true,
-    media,
+    media: currentMedia,
     job: job || null,
   });
 }
@@ -2325,9 +2418,14 @@ function makeRoomSlug(eventId: string, sessionId?: string | null) {
 }
 
 function configuredVideoProvider() {
-  const provider = (Deno.env.get("LIVE_VIDEO_PROVIDER") || "jitsi_embed").toLowerCase();
-  const embedBase = (Deno.env.get("LIVE_VIDEO_EMBED_BASE_URL") || "https://meet.jit.si").replace(/\/+$/, "");
-  return { provider, embedBase };
+  if (jaasConfigured()) {
+    return { provider: "jaas", embedBase: "https://8x8.vc", productionReady: true };
+  }
+  if (publicJitsiDevEnabled()) {
+    const embedBase = (Deno.env.get("LIVE_VIDEO_EMBED_BASE_URL") || "https://meet.jit.si").replace(/\/+$/, "");
+    return { provider: "jitsi_embed", embedBase, productionReady: false };
+  }
+  return { provider: "unconfigured", embedBase: "", productionReady: false };
 }
 
 async function roomEnsure(
@@ -2349,10 +2447,27 @@ async function roomEnsure(
     : query.is("session_id", null);
 
   const { data: existing } = await query.maybeSingle();
-  if (existing) return existing;
+  const { provider, embedBase, productionReady } = configuredVideoProvider();
+  if (existing) {
+    if (provider !== "unconfigured" && existing.provider !== provider) {
+      const roomSlug = existing.room_slug || existing.provider_room_id || makeRoomSlug(eventId, sessionId || null);
+      const providerUrl = provider === "jitsi_embed" ? `${embedBase}/${encodeURIComponent(roomSlug)}` : null;
+      const { data: migrated } = await sb.from("live_rooms").update({
+        provider,
+        provider_room_id: roomSlug,
+        room_slug: roomSlug,
+        provider_join_url: providerUrl,
+        provider_host_url: providerUrl,
+        status: "ready",
+        updated_at: new Date().toISOString(),
+      }).eq("id", existing.id).select("*").single();
+      return migrated || existing;
+    }
+    return existing;
+  }
 
   const roomSlug = makeRoomSlug(eventId, sessionId || null);
-  const { provider, embedBase } = configuredVideoProvider();
+  const providerUrl = provider === "jitsi_embed" ? `${embedBase}/${encodeURIComponent(roomSlug)}` : null;
 
   const { data: created, error } = await sb
     .from("live_rooms")
@@ -2362,13 +2477,14 @@ async function roomEnsure(
       provider,
       provider_room_id: roomSlug,
       room_slug: roomSlug,
-      status: "ready",
+      status: provider === "unconfigured" ? "pending" : "ready",
       starts_at: sessionId ? null : ev.starts_at,
       recording_enabled: Boolean(ev.replay_enabled),
       waiting_room_enabled: Number(ev.waiting_room_minutes ?? 0) > 0,
       max_participants: ev.max_participants || null,
-      provider_join_url: `${embedBase}/${encodeURIComponent(roomSlug)}`,
-      provider_host_url: `${embedBase}/${encodeURIComponent(roomSlug)}`,
+      provider_join_url: providerUrl,
+      provider_host_url: providerUrl,
+      provider_metadata: { video_provider_production_ready: productionReady },
       created_by: ctx?.userId || null,
     })
     .select("*")
@@ -2572,6 +2688,14 @@ async function roomJoin(
   }
 
   const role = await deriveRoomRole(sb, ctx, body.event_id);
+  const videoProvider = configuredVideoProvider();
+  if (videoProvider.provider === "unconfigured") {
+    return json({
+      error: "VIDEO_PROVIDER_NOT_CONFIGURED",
+      message: "Configurez JaaS avant d'ouvrir les salles vidéo en production.",
+      provider_status: jaasConfigurationStatus(),
+    }, 503);
+  }
   const bypassWaiting = ["host","co_host","speaker","moderator","admin_supervisor"].includes(role);
   const accessStatus = room.waiting_room_enabled && !bypassWaiting ? "waiting" : "admitted";
   const now = new Date().toISOString();
@@ -2622,17 +2746,41 @@ async function roomJoin(
     segmentId = segment?.id || null;
   }
 
+  let providerAccess: Record<string, unknown> = {
+    type: videoProvider.provider,
+    join_url: null,
+    room_slug: room.room_slug,
+  };
+  if (accessStatus === "admitted") {
+    if (videoProvider.provider === "jaas") {
+      providerAccess = {
+        ...(await createJaasMeetingAccess({
+          roomName: String(room.room_slug || room.provider_room_id),
+          userId: ctx.userId,
+          name: ctx.user.full_name,
+          email: ctx.user.email,
+          moderator: ["host","co_host","moderator","admin_supervisor"].includes(role),
+        })),
+        room_slug: room.room_slug,
+      };
+    } else {
+      providerAccess = {
+        type: "jitsi_embed",
+        join_url: room.provider_join_url,
+        room_slug: room.room_slug,
+        security_mode: "development_public_jitsi",
+        production_ready: false,
+      };
+    }
+  }
+
   return json({
     success: true,
     room,
     member,
     attendance_segment_id: segmentId,
     waiting: accessStatus === "waiting",
-    provider: {
-      type: room.provider,
-      join_url: accessStatus === "admitted" ? room.provider_join_url : null,
-      room_slug: room.room_slug,
-    },
+    provider: providerAccess,
   });
 }
 
@@ -4495,16 +4643,8 @@ async function analyticsGet(
 }
 
 
-function fedapayBaseUrl() {
-  const env = (Deno.env.get("FEDAPAY_ENV") || "sandbox").toLowerCase();
-  return env === "live"
-    ? "https://api.fedapay.com/v1"
-    : "https://sandbox-api.fedapay.com/v1";
-}
-
 function fedapayHeaders() {
-  const key = Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-  if (!key) throw new Error("FEDAPAY_SECRET_KEY_NOT_CONFIGURED");
+  const key = fedaPaySecretKey();
 
   return {
     "Authorization": `Bearer ${key}`,
@@ -4585,7 +4725,7 @@ async function fedapayPrepare(
   };
 
   const createResponse = await fetch(
-    `${fedapayBaseUrl()}/transactions`,
+    `${fedaPayApiBase()}/transactions`,
     {
       method: "POST",
       headers: fedapayHeaders(),
@@ -4622,7 +4762,7 @@ async function fedapayPrepare(
   }
 
   const tokenResponse = await fetch(
-    `${fedapayBaseUrl()}/transactions/${transactionId}/token`,
+    `${fedaPayApiBase()}/transactions/${transactionId}/token`,
     {
       method: "POST",
       headers: fedapayHeaders(),
@@ -4651,7 +4791,7 @@ async function fedapayPrepare(
         ...(order.payment_metadata || {}),
         fedapay_transaction_id: transactionId,
         fedapay_reference: reference,
-        fedapay_environment: Deno.env.get("FEDAPAY_ENV") || "sandbox",
+        fedapay_environment: fedaPayConfiguration().effective_mode,
       },
       updated_at: new Date().toISOString(),
     })
@@ -4661,7 +4801,7 @@ async function fedapayPrepare(
     success: true,
     order_id: order.id,
     provider: "fedapay",
-    environment: Deno.env.get("FEDAPAY_ENV") || "sandbox",
+    environment: fedaPayConfiguration().effective_mode,
     transaction_id: transactionId,
     reference,
     payment_url: tokenJson.url,
@@ -4673,65 +4813,27 @@ async function fedapayWebhook(
   req: Request,
   sb: ReturnType<typeof createClient>,
 ) {
-  const configuredSecret = Deno.env.get("FEDAPAY_WEBHOOK_SECRET") || "";
-  const providedSecret =
-    req.headers.get("X-Omnia-Webhook-Secret") ||
-    req.headers.get("x-omnia-webhook-secret") ||
-    "";
-
-  if (!configuredSecret || providedSecret !== configuredSecret) {
-    return json({ error: "INVALID_WEBHOOK_SECRET" }, 401);
+  if (!isOmniaInternalRequest(req)) {
+    return json({ error: "INTERNAL_AUTH_REQUIRED" }, 401);
   }
 
-  const payload = await req.json().catch(() => ({})) as any;
+  const payload = await req.json().catch(() => ({})) as Record<string, any>;
+  const incoming = extractFedaPayTransaction(payload);
+  const transactionId = String(
+    payload?.data?.id || incoming?.id || payload?.transaction_id || "",
+  );
+  if (!transactionId) return json({ error: "FEDAPAY_TRANSACTION_ID_MISSING" }, 400);
 
-  const providerEventId =
-    payload.id != null ? String(payload.id) :
-    payload.event?.id != null ? String(payload.event.id) :
-    null;
-
-  const eventType =
-    payload.name ||
-    payload.type ||
-    payload.event?.name ||
-    "unknown";
-
-  const entity =
-    payload.entity ||
-    payload.data?.entity ||
-    payload.data ||
-    payload.transaction ||
-    {};
-
-  const reference =
-    entity.reference ||
-    payload.reference ||
-    payload.data?.reference ||
-    null;
-
-  const transactionId =
-    entity.id ||
-    payload.transaction_id ||
-    payload.data?.id ||
-    null;
-
-  const status =
-    String(
-      entity.status ||
-      payload.status ||
-      payload.data?.status ||
-      "",
-    ).toLowerCase();
-
-  const metadata =
-    entity.custom_metadata ||
-    payload.custom_metadata ||
-    payload.data?.custom_metadata ||
-    {};
-
-  const omniaOrderId =
-    metadata.omnia_order_id ||
-    null;
+  const transaction = await retrieveFedaPayTransaction(transactionId);
+  const metadata = transactionMetadata(transaction);
+  const reference = transaction.reference || incoming.reference || null;
+  const providerEventId = payload.id != null
+    ? String(payload.id)
+    : payload.event?.id != null
+      ? String(payload.event.id)
+      : `${transactionId}:${String(transaction.status || "unknown")}`;
+  const eventType = String(payload.name || payload.type || transaction.status || "unknown");
+  const omniaOrderId = metadata.omnia_order_id || null;
 
   const { data: eventRow, error: eventInsertError } = await sb
     .from("live_payment_events")
@@ -4739,111 +4841,68 @@ async function fedapayWebhook(
       provider: "fedapay",
       provider_event_id: providerEventId,
       provider_reference: reference ? String(reference) : null,
-      event_type: String(eventType),
-      payload,
+      event_type: eventType,
+      payload: { ...payload, data: transaction },
       processed: false,
     })
     .select("*")
     .single();
 
   if (eventInsertError) {
-    if (eventInsertError.code === "23505") {
-      return json({ success: true, duplicate: true });
-    }
+    if (eventInsertError.code === "23505") return json({ success: true, duplicate: true });
     throw eventInsertError;
   }
 
   let orderQuery = sb.from("live_orders").select("*");
-
   if (omniaOrderId) {
     orderQuery = orderQuery.eq("id", omniaOrderId);
   } else if (reference) {
     orderQuery = orderQuery.eq("provider_reference", String(reference));
-  } else if (transactionId) {
-    orderQuery = orderQuery.contains("payment_metadata", {
-      fedapay_transaction_id: transactionId,
-    });
   } else {
-    await sb.from("live_payment_events").update({
-      processing_error: "ORDER_IDENTIFIER_MISSING",
-      processed_at: new Date().toISOString(),
-    }).eq("id", eventRow.id);
-
-    return json({ success: true, ignored: true });
+    orderQuery = orderQuery.contains("payment_metadata", { fedapay_transaction_id: transactionId });
   }
 
   const { data: order } = await orderQuery.maybeSingle();
-
   if (!order) {
     await sb.from("live_payment_events").update({
       processing_error: "ORDER_NOT_FOUND",
       processed_at: new Date().toISOString(),
     }).eq("id", eventRow.id);
-
     return json({ success: true, ignored: true });
   }
 
-  const paidStatuses = new Set(["approved","paid","successful","success","completed"]);
-  const failedStatuses = new Set(["declined","failed","canceled","cancelled"]);
+  assertTransactionMatches(transaction, Number(order.amount || 0), String(order.currency || "XOF"));
+  const status = String(transaction.status || "").toLowerCase();
 
-  if (paidStatuses.has(status) && order.payment_status !== "paid") {
+  if (approvedStatus(transaction) && order.payment_status !== "paid") {
     const now = new Date().toISOString();
-
-    const { data: paidOrder, error: orderError } = await sb
-      .from("live_orders")
-      .update({
-        payment_status: "paid",
-        provider_reference: reference ? String(reference) : order.provider_reference,
-        payment_metadata: {
-          ...(order.payment_metadata || {}),
-          fedapay_transaction_id: transactionId,
-          fedapay_last_status: status,
-        },
-        paid_at: now,
-        access_granted_at: now,
-        updated_at: now,
-      })
-      .eq("id", order.id)
-      .select("*")
-      .single();
-
+    const { data: paidOrder, error: orderError } = await sb.from("live_orders").update({
+      payment_status: "paid",
+      provider_reference: reference ? String(reference) : order.provider_reference,
+      payment_metadata: {
+        ...(order.payment_metadata || {}),
+        fedapay_transaction_id: transactionId,
+        fedapay_last_status: status,
+      },
+      paid_at: now,
+      access_granted_at: now,
+      updated_at: now,
+    }).eq("id", order.id).select("*").single();
     if (orderError) throw orderError;
 
-    await sb.from("live_registrations").update({
-      status: "confirmed",
-    }).eq("id", order.registration_id);
-
-    const { data: user } = await sb
-      .from("users")
-      .select("id,full_name,email")
-      .eq("id", order.user_id)
-      .single();
-
+    await sb.from("live_registrations").update({ status: "confirmed" }).eq("id", order.registration_id);
+    const { data: user } = await sb.from("users").select("id,full_name,email").eq("id", order.user_id).single();
     const ev = await eventForAccess(sb, order.event_id);
+    const { data: existingInvoice } = await sb.from("live_invoices").select("*").eq("order_id", order.id).maybeSingle();
+    if (!existingInvoice && user && ev) await createInvoicePdf(sb, paidOrder, user, ev);
 
-    const { data: existingInvoice } = await sb
-      .from("live_invoices")
-      .select("*")
-      .eq("order_id", order.id)
-      .maybeSingle();
-
-    if (!existingInvoice && user && ev) {
-      await createInvoicePdf(sb, paidOrder, user, ev);
-    }
-
-    const { data: existingLedger } = await sb
-      .from("live_organizer_ledger")
-      .select("id")
-      .eq("order_id", order.id)
-      .eq("entry_type", "sale")
-      .maybeSingle();
-
+    const { data: existingLedger } = await sb.from("live_organizer_ledger").select("id")
+      .eq("order_id", order.id).eq("entry_type", "sale").maybeSingle();
     if (!existingLedger && ["live","replay","recorded_video"].includes(paidOrder.purchase_type || "live")) {
       await organizerLedgerCreateForOrder(sb, paidOrder);
     }
-
     await commerceFinalizePaidOrder(sb, paidOrder);
-  } else if (failedStatuses.has(status) && order.payment_status !== "paid") {
+  } else if (failedStatus(transaction) && order.payment_status !== "paid") {
     await sb.from("live_orders").update({
       payment_status: "failed",
       failed_at: new Date().toISOString(),
@@ -6417,6 +6476,17 @@ async function mediaRetentionSchedule(
   return json({success:true,retention_job:data},201);
 }
 
+async function deleteR2Objects(keys: Array<string | null | undefined>): Promise<void> {
+  const unique = [...new Set(keys.map((key) => String(key || "").trim()).filter(Boolean))];
+  if (!unique.length) return;
+  const bucket = Deno.env.get("R2_BUCKET_NAME") || "";
+  if (!bucket) throw new Error("R2_BUCKET_NAME_NOT_CONFIGURED");
+  const client = r2Client();
+  for (const key of unique) {
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  }
+}
+
 async function mediaRetentionRun(
   req: Request,
   sb: ReturnType<typeof createClient>,
@@ -6430,7 +6500,6 @@ async function mediaRetentionRun(
   if(error) throw error;
 
   let completed=0,failed=0;
-  const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
 
   for(const job of jobs??[]){
     try{
@@ -6442,16 +6511,23 @@ async function mediaRetentionRun(
           archived_at:now,status:"archived",updated_at:now
         }).eq("id",media.id);
       } else if(job.action==="delete_original"){
-        if(bucket&&media.original_storage_key){
-          // Object deletion is intentionally delegated to the storage worker/provider.
+        if(media.storage_provider==="r2"&&media.original_storage_key){
+          await deleteR2Objects([media.original_storage_key]);
         }
         await sb.from("live_media").update({
           original_storage_key:null,updated_at:now
         }).eq("id",media.id);
       } else if(job.action==="delete_all"){
+        if(media.cloudflare_stream_uid){
+          await deleteStreamVideo(String(media.cloudflare_stream_uid));
+        }
+        if(media.storage_provider==="r2"){
+          await deleteR2Objects([media.storage_key,media.original_storage_key,media.streaming_manifest_key,media.audio_track_key]);
+        }
         await sb.from("live_media").update({
           status:"deleted",deleted_at:now,storage_key:null,original_storage_key:null,
-          streaming_manifest_key:null,audio_track_key:null,updated_at:now
+          streaming_manifest_key:null,audio_track_key:null,cloudflare_stream_uid:null,
+          cloudflare_stream_status:"deleted",updated_at:now
         }).eq("id",media.id);
       }
 
@@ -7962,7 +8038,29 @@ async function integrityChecksRun(req:Request,sb:any,ctx:any){
   return json({success:true,checks,summary});
 }
 async function integrityCheckResolve(req:Request,sb:any,ctx:any){if(!ctx||!isSuperAdmin(ctx))return json({error:"FORBIDDEN"},403);const b=await req.json().catch(()=>({}));if(!b.check_id)return json({error:"CHECK_ID_REQUIRED"},400);const {data,error}=await sb.from("live_integrity_checks").update({status:b.status||"resolved",resolved_at:new Date().toISOString(),resolved_by:ctx.userId}).eq("id",b.check_id).select("*").single();if(error)throw error;return json({success:true,check:data});}
-async function systemStatus(sb:any){const services:any={database:{status:"ok"},r2:{status:Deno.env.get("R2_BUCKET_NAME")?"configured":"missing"},brevo:{status:Deno.env.get("BREVO_API_KEY")?"configured":"missing"},fedapay:{status:Deno.env.get("FEDAPAY_SECRET_KEY")?"configured":"disabled_or_missing"},media_worker:{status:Deno.env.get("MEDIA_WORKER_SECRET")?"configured":"missing"},recording:{status:Deno.env.get("LIVE_RECORDING_SECRET")?"configured":"disabled_or_missing"}};const ok=!Object.values(services).some((x:any)=>x.status==="missing");return json({success:true,ok,services});}
+async function systemStatus(sb:any){
+  const fedapay=fedaPayConfiguration();
+  const stream=streamConfigurationStatus();
+  const jaas=jaasConfigurationStatus();
+  const services:any={
+    database:{status:"ok"},
+    r2:{status:Deno.env.get("R2_BUCKET_NAME")?"configured":"missing"},
+    cloudflare_stream:{status:stream.configured?"configured":"missing",...stream},
+    jaas:{status:jaas.configured?"configured":jaas.public_jitsi_development_fallback?"development_fallback":"missing",...jaas},
+    brevo:{status:Deno.env.get("BREVO_API_KEY")?"configured":"missing"},
+    fedapay:{
+      status:fedaPaySecretKeyConfigured()?(fedapay.live_blocked?"sandbox_safety_lock":"configured"):"disabled_or_missing",
+      requested_mode:fedapay.requested_mode,
+      effective_mode:fedapay.effective_mode,
+      live_enabled:fedapay.live_enabled,
+      live_blocked:fedapay.live_blocked,
+    },
+    media_worker:{status:Deno.env.get("MEDIA_WORKER_SECRET")?"configured":"missing"},
+    recording:{status:Deno.env.get("LIVE_RECORDING_SECRET")?"configured":"disabled_or_missing"},
+  };
+  const ok=!Object.values(services).some((x:any)=>x.status==="missing");
+  return json({success:true,ok,services});
+}
 
 
 async function adminCreateLive(
