@@ -465,7 +465,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
               </button>
               <button
                 type="button"
-                onClick={() => window.location.assign('/accueil')}
+                onClick={() => window.location.assign(window.location.pathname.startsWith('/omnia-career') ? '/omnia-career' : (window.localStorage.getItem('omnia_session_token') ? '/home' : '/accueil'))}
                 className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-[#002050] hover:bg-slate-50"
               >
                 Retour à l’accueil

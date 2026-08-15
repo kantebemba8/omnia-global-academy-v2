@@ -34,7 +34,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
-import { cacheCareerTemplates, getCareerTemplates, normalizeTemplateKey } from '../../lib/careerStudioData';
+import { cacheCareerTemplates, getCareerTemplates, mergeCareerTemplateCatalog, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, renameCareerDocument } from '../../lib/careerStudioApi';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -264,8 +264,12 @@ export default function DashboardCareerStudio() {
       ].sort((a, b) => new Date(b.updated_at || b.created_at || '').getTime() - new Date(a.updated_at || a.created_at || '').getTime());
 
       setDocuments(loadedDocs);
-      const loadedCvTemplates = (((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : publicCv) as Template[];
-      const loadedLmTemplates = (((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : publicLm) as Template[];
+      const rawCvTemplates = ((((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : publicCv) || []) as Template[];
+      const rawLmTemplates = ((((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : publicLm) || []) as Template[];
+      // The user-facing catalog exposes only the canonical 12 CV / 6 LM templates.
+      // Legacy aliases remain supported when old documents are opened, but never create duplicate cards.
+      const loadedCvTemplates = mergeCareerTemplateCatalog('cv', rawCvTemplates, { authoritative: true }) as Template[];
+      const loadedLmTemplates = mergeCareerTemplateCatalog('lm', rawLmTemplates, { authoritative: true }) as Template[];
       setCvTemplates(loadedCvTemplates);
       setLmTemplates(loadedLmTemplates);
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
@@ -332,8 +336,14 @@ export default function DashboardCareerStudio() {
   }
 
   async function createDoc(docType: DocType, templateKey?: string) {
+    // Creation never silently chooses the first template: the learner must choose it.
+    if (!templateKey) {
+      goToView(docType === 'cv' ? 'cv' : 'lm');
+      showToast(docType === 'cv' ? 'Choisissez un modèle CV pour commencer.' : 'Choisissez un modèle de lettre pour commencer.');
+      return;
+    }
     const templates = docType === 'cv' ? cvTemplates : lmTemplates;
-    const chosen = normalizeTemplateKey(docType, templateKey || templates[0]?.template_key || undefined);
+    const chosen = normalizeTemplateKey(docType, templateKey);
     const selected = templates.find(template => template.template_key === chosen);
 
     if (!previewMode && selected && selected.is_free === false) {

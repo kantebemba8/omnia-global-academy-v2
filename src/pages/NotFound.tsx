@@ -1,8 +1,12 @@
 import { ArrowLeft, Home } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { getSessionToken } from '../lib/session';
 
 export default function NotFound() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const authenticated = Boolean(getSessionToken());
+  const homePath = authenticated && location.pathname.startsWith('/omnia-career') ? '/omnia-career' : authenticated ? '/home' : '/accueil';
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12">
@@ -23,7 +27,7 @@ export default function NotFound() {
             Page précédente
           </button>
           <Link
-            to="/accueil"
+            to={homePath}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#002050] px-5 py-3 text-sm font-semibold text-white hover:bg-[#00183d]"
           >
             <Home aria-hidden="true" size={17} />
