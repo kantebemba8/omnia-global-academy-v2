@@ -1614,7 +1614,9 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
       recent_entries: entries.slice(0, 20),
       provider_balance_available: false,
       balance_mode: "provider_not_exposed",
-      technical_usage_30d: sync?.metadata?.technical_usage_30d || (Object.keys(finance30d.quantities || {}).length ? finance30d.quantities : {}),
+      technical_usage_30d: Object.keys(sync?.metadata?.technical_usage_30d || {}).length
+        ? sync.metadata.technical_usage_30d
+        : (Object.keys(finance30d.quantities || {}).length ? finance30d.quantities : {}),
       technical_usage_by_model_30d: sync?.metadata?.technical_usage_by_model_30d || {},
       secrets_exposed: false,
       ...details,

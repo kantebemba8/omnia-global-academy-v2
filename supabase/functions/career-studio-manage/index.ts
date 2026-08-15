@@ -426,6 +426,7 @@ Tu améliores et reformules uniquement les informations reçues.`;
 async function callClaude(system: string, prompt: string) {
   const apiKey = getAnthropicApiKey();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY_MISSING");
+  const model = getAnthropicQualityModel();
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -434,7 +435,7 @@ async function callClaude(system: string, prompt: string) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: getAnthropicQualityModel(),
+      model,
       max_tokens: 2048,
       system,
       messages: [{ role: "user", content: prompt }],
@@ -442,7 +443,52 @@ async function callClaude(system: string, prompt: string) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error?.message || `ANTHROPIC_HTTP_${response.status}`);
-  return String(payload?.content?.[0]?.text || "");
+  const usage = payload?.usage || {};
+  return {
+    text: String(payload?.content?.[0]?.text || ""),
+    provider: "anthropic",
+    model: String(payload?.model || model),
+    messageId: String(payload?.id || crypto.randomUUID()),
+    usage: {
+      input_tokens: Number(usage?.input_tokens || 0),
+      output_tokens: Number(usage?.output_tokens || 0),
+      cache_creation_input_tokens: Number(usage?.cache_creation_input_tokens || 0),
+      cache_read_input_tokens: Number(usage?.cache_read_input_tokens || 0),
+    },
+  };
+}
+
+async function recordAnthropicPlatformUsage(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  action: string,
+  result: Awaited<ReturnType<typeof callClaude>>,
+) {
+  const rows: any[] = [];
+  const occurredAt = new Date().toISOString();
+  const add = (suffix: string, quantity: number, unit: string) => {
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    rows.push({
+      provider_entry_key: `anthropic-app:${result.messageId}:${suffix}`,
+      provider: "anthropic",
+      entry_type: "usage",
+      source: "platform",
+      occurred_at: occurredAt,
+      quantity,
+      unit,
+      reference: result.messageId,
+      description: `Usage Anthropic Career Studio — ${action}`,
+      metadata: { source: "career_studio", action, model: result.model, provider_message_id: result.messageId },
+      created_by: userId,
+    });
+  };
+  add("input", result.usage.input_tokens, "input_tokens");
+  add("output", result.usage.output_tokens, "output_tokens");
+  add("cache_creation", result.usage.cache_creation_input_tokens, "cache_creation_input_tokens");
+  add("cache_read", result.usage.cache_read_input_tokens, "cache_read_input_tokens");
+  if (!rows.length) return;
+  const { error } = await sb.from("external_service_ledger").upsert(rows, { onConflict: "provider_entry_key", ignoreDuplicates: true });
+  if (error) console.warn("CAREER_ANTHROPIC_TELEMETRY_FAILED", error.message);
 }
 
 async function centralCareerCredits(sb: ReturnType<typeof createClient>, userId: string, quantity: number, consume = false) {
@@ -523,7 +569,9 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   else if (action === "ats_score") prompt = `Analyse ce CV et réponds en JSON avec lisibilite, structure, orthographe, compatibilite_ats, longueur, mots_cles, professionnalisme, score_global et conseils.\nCV : ${JSON.stringify(body.doc_data || text)}`;
   else return json({ error: "UNKNOWN_AI_ACTION", action }, 400);
 
-  const result = await callClaude(SYSTEM_PROMPT, prompt);
+  const aiResult = await callClaude(SYSTEM_PROMPT, prompt);
+  await recordAnthropicPlatformUsage(sb, user.id, action, aiResult);
+  const result = aiResult.text;
 
   let tokensRemaining = Number(user.cv_tokens || 0);
   let subscriptionCreditsRemaining: number | null = null;
@@ -553,6 +601,9 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
     tokens_consumed: tokensToConsume,
     tokens_remaining: tokensRemaining,
     subscription_credits_remaining: subscriptionCreditsRemaining,
+    provider: aiResult.provider,
+    model: aiResult.model,
+    provider_usage: aiResult.usage,
   });
 }
 

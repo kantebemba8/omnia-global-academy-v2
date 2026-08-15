@@ -399,7 +399,7 @@ export default function CareerStudioEditor() {
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
+  const [aiLoadingAction, setAiLoadingAction] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
   const [offerText, setOfferText] = useState('');
   const saveTimer = useRef<number | null>(null);
@@ -744,8 +744,8 @@ export default function CareerStudioEditor() {
 
   async function requestAi(mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) {
     if (previewMode) { showToast('L’IA est désactivée dans la prévisualisation administrative Omnia.'); return; }
-    if (!document || aiLoading) return;
-    setAiLoading(true);
+    if (!document || aiLoadingAction) return;
+    setAiLoadingAction(action);
     setAiSuggestion(null);
     try {
       const isCvDoc = document.doc_type === 'cv';
@@ -773,7 +773,7 @@ export default function CareerStudioEditor() {
       if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
       setAiSuggestion({
         title: getAiTitle(mode, action),
-        text: result.result,
+        text: formatStructuredAiResult(action, result.result),
         mode,
         tokensConsumed: result.tokens_consumed,
         tokensRemaining: result.tokens_remaining,
@@ -783,7 +783,7 @@ export default function CareerStudioEditor() {
     } catch (err) {
       showToast((err as Error).message || 'Impossible de générer la suggestion IA.');
     } finally {
-      setAiLoading(false);
+      setAiLoadingAction(null);
     }
   }
 
@@ -1120,7 +1120,7 @@ export default function CareerStudioEditor() {
               {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
               {workspace === 'quality' && <CareerQualityPanel report={qualityReport} started={qualityStarted} onCreateAtsVersion={qualityStarted ? createAtsVersion : undefined} />}
               {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
-              {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loading={aiLoading} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
+              {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loadingAction={aiLoadingAction} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
               {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
             </div>
           </aside>
@@ -1251,6 +1251,56 @@ function cleanAiText(text: string) {
     .trim();
 }
 
+function formatStructuredAiResult(action: string, text: string) {
+  const cleaned = cleanAiText(text);
+  if (!['adapt_to_offer', 'ats_score'].includes(action)) return cleaned;
+
+  let parsed: Record<string, unknown> | null = null;
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  for (const candidate of [cleaned, first >= 0 && last > first ? cleaned.slice(first, last + 1) : '']) {
+    if (!candidate) continue;
+    try {
+      const value = JSON.parse(candidate);
+      if (value && typeof value === 'object' && !Array.isArray(value)) { parsed = value as Record<string, unknown>; break; }
+    } catch {}
+  }
+  if (!parsed) return cleaned;
+
+  const list = (value: unknown) => Array.isArray(value)
+    ? value.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  const score = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? `${Math.max(0, Math.min(100, Math.round(n)))}/100` : '';
+  };
+  const section = (title: string, items: string[]) => items.length
+    ? `\n${title}\n${items.map(item => `• ${item}`).join('\n')}`
+    : '';
+
+  if (action === 'adapt_to_offer') {
+    return [
+      `Compatibilité avec l’offre : ${score(parsed.score) || 'non calculée'}`,
+      section('Mots-clés manquants', list(parsed.missing_keywords)),
+      section('Compétences à vérifier / ajouter', list(parsed.skills_to_add)),
+      section('Expériences à retravailler', list(parsed.experiences_to_rewrite)),
+      section('Recommandations', list(parsed.recommendations)),
+      typeof parsed.cover_letter === 'string' && parsed.cover_letter.trim() ? `\nProposition de lettre\n${parsed.cover_letter.trim()}` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  const labels: Array<[string, string]> = [
+    ['score_global', 'Score global'], ['lisibilite', 'Lisibilité'], ['structure', 'Structure'],
+    ['orthographe', 'Orthographe'], ['compatibilite_ats', 'Compatibilité ATS'], ['longueur', 'Longueur'],
+    ['mots_cles', 'Mots-clés'], ['professionnalisme', 'Professionnalisme'],
+  ];
+  const scores = labels.map(([key, label]) => {
+    const value = score(parsed?.[key]);
+    return value ? `${label} : ${value}` : '';
+  }).filter(Boolean);
+  return [scores.join('\n'), section('Conseils prioritaires', list(parsed.conseils))].filter(Boolean).join('\n');
+}
+
 function splitParagraphs(text: string) {
   return cleanAiText(text)
     .split(/\n{2,}/)
@@ -1281,7 +1331,7 @@ function mergeLetterText(data: LmData, text: string): LmData {
 
 function AiAssistantPanel({
   isCv,
-  loading,
+  loadingAction,
   suggestion,
   offerText,
   onOfferTextChange,
@@ -1290,7 +1340,7 @@ function AiAssistantPanel({
   onDismiss,
 }: {
   isCv: boolean;
-  loading: boolean;
+  loadingAction: string | null;
   suggestion: AiSuggestion | null;
   offerText: string;
   onOfferTextChange: (value: string) => void;
@@ -1317,11 +1367,11 @@ function AiAssistantPanel({
             <textarea className={inputClass('min-h-[92px] resize-y')} placeholder="Collez l’offre pour adapter le CV sans inventer de compétence…" value={offerText} onChange={(e) => onOfferTextChange(e.target.value)} />
           </label>
           <div className="grid grid-cols-1 gap-2">
-            <AiButton loading={loading} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
-            <AiButton loading={loading} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
-            <AiButton loading={loading} label="Suggérer des compétences à vérifier" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
-            <AiButton loading={loading} label="Comparer le CV à l’offre" onClick={() => onRequest('analysis', 'adapt_to_offer')} />
-            <AiButton loading={loading} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
+            <AiButton loading={loadingAction === 'improve_summary'} disabled={Boolean(loadingAction)} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
+            <AiButton loading={loadingAction === 'rewrite_experience'} disabled={Boolean(loadingAction)} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
+            <AiButton loading={loadingAction === 'suggest_skills'} disabled={Boolean(loadingAction)} label="Suggérer des compétences à vérifier" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
+            <AiButton loading={loadingAction === 'adapt_to_offer'} disabled={Boolean(loadingAction)} label="Comparer le CV à l’offre" onClick={() => onRequest('analysis', 'adapt_to_offer')} />
+            <AiButton loading={loadingAction === 'ats_score'} disabled={Boolean(loadingAction)} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
           </div>
         </div>
       ) : (
@@ -1336,10 +1386,10 @@ function AiAssistantPanel({
             />
           </label>
           <div className="grid grid-cols-1 gap-2">
-            <AiButton loading={loading} label="Générer une lettre complète" onClick={() => onRequest('lm_full', 'generate_lm')} />
-            <AiButton loading={loading} label="Adapter à l’offre" onClick={() => onRequest('lm_full', 'adapt_to_offer')} />
-            <AiButton loading={loading} label="Rendre plus professionnel" onClick={() => onRequest('lm_section', 'make_professional')} subtle />
-            <AiButton loading={loading} label="Corriger la langue" onClick={() => onRequest('lm_section', 'fix_grammar')} subtle />
+            <AiButton loading={loadingAction === 'generate_lm'} disabled={Boolean(loadingAction)} label="Générer une lettre complète" onClick={() => onRequest('lm_full', 'generate_lm')} />
+            <AiButton loading={loadingAction === 'adapt_to_offer'} disabled={Boolean(loadingAction)} label="Adapter à l’offre" onClick={() => onRequest('lm_full', 'adapt_to_offer')} />
+            <AiButton loading={loadingAction === 'make_professional'} disabled={Boolean(loadingAction)} label="Rendre plus professionnel" onClick={() => onRequest('lm_section', 'make_professional')} subtle />
+            <AiButton loading={loadingAction === 'fix_grammar'} disabled={Boolean(loadingAction)} label="Corriger la langue" onClick={() => onRequest('lm_section', 'fix_grammar')} subtle />
           </div>
         </div>
       )}
@@ -1369,12 +1419,12 @@ function AiAssistantPanel({
   );
 }
 
-function AiButton({ label, loading, onClick, subtle = false }: { label: string; loading: boolean; onClick: () => void; subtle?: boolean }) {
+function AiButton({ label, loading, disabled, onClick, subtle = false }: { label: string; loading: boolean; disabled: boolean; onClick: () => void; subtle?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={loading}
+      disabled={disabled}
       className={subtle
         ? 'inline-flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
         : 'inline-flex items-center justify-between rounded-xl bg-[#002050] px-3 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60'}
