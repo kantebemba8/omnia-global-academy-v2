@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
@@ -1039,6 +1040,15 @@ Deno.serve(async (req: Request) => {
                 DASHBOARD_URL: `${appUrl}/structure/dashboard`,
               },
             });
+            await dispatchOmniaInAppNotification({
+              userId: managerUserId,
+              notificationType: decision === "restore" ? "structure_restored" : "structure_approved",
+              title: decision === "restore" ? "Structure réactivée" : "Structure validée",
+              message: `${String(data.org_name || "Votre Structure")} est maintenant active sur Omnia Global Academy.`,
+              actionUrl: "/structure/dashboard",
+              priority: "high",
+              payload: { domain: "structure", organization_id: organizationId, decision },
+            });
           } else if (["reject", "request_changes", "suspend"].includes(decision)) {
             const statusLabel = decision === "reject"
               ? "Dossier non validé"
@@ -1063,6 +1073,25 @@ Deno.serve(async (req: Request) => {
                 CTA_LABEL: "Consulter Omnia",
                 CTA_URL: `${appUrl}/connexion`,
               },
+            });
+            await dispatchOmniaInAppNotification({
+              userId: managerUserId,
+              notificationType: decision === "reject"
+                ? "structure_rejected"
+                : decision === "request_changes"
+                ? "structure_changes_requested"
+                : "structure_suspended",
+              title: statusLabel,
+              message: body.admin_comment || body.rejection_reason || (
+                decision === "request_changes"
+                  ? "Des modifications sont demandées avant la validation de votre Structure."
+                  : decision === "reject"
+                  ? "La demande de validation de votre Structure n’a pas été approuvée."
+                  : "L’accès opérationnel de votre Structure a été suspendu."
+              ),
+              actionUrl: decision === "suspend" ? "/mon-profil" : "/structure/dashboard",
+              priority: "high",
+              payload: { domain: "structure", organization_id: organizationId, decision },
             });
           }
         }

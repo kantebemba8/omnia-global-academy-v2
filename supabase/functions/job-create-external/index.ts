@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +92,17 @@ Deno.serve(async (req: Request) => {
           ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/moderateur`,
         },
       });
+      if (mu.id) {
+        await dispatchOmniaInAppNotification({
+          userId: String(mu.id),
+          notificationType: "job_moderation_required",
+          title: "Offre d’emploi à modérer",
+          message: `Une nouvelle offre externe de ${company_name} attend votre contrôle.`,
+          actionUrl: "/moderateur",
+          priority: "normal",
+          payload: { domain: "moderation", job_title, company_name },
+        });
+      }
     }
   }
 

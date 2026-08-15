@@ -220,7 +220,7 @@ export default function GlobalNotificationsButton() {
         <Bell size={19} />
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
-            {unread}
+            {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>

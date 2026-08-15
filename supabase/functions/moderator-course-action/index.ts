@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 import { getModeratorAccess, hasModeratorConflict } from "../_shared/moderator-access.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
@@ -77,6 +78,17 @@ async function notifyInstructor(
       COMMENTAIRE: comment,
       ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/formations`,
     },
+  });
+  await dispatchOmniaInAppNotification({
+    userId: instructorId,
+    notificationType: params.STATUS === "rejetee" ? "course_rejected" : "course_changes_requested",
+    title: status,
+    message: comment || (params.STATUS === "rejetee"
+      ? "Votre formation n’a pas été validée. Consultez le motif avant de poursuivre."
+      : "Des modifications sont nécessaires avant la prochaine étape de validation."),
+    actionUrl: "/professeur/formations",
+    priority: "high",
+    payload: { domain: "formations", status: params.STATUS || "changes_requested" },
   });
 }
 

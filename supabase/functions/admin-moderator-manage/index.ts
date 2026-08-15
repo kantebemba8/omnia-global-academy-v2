@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { createAccessInvitation } from "../_shared/access-invitations.ts";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 import {
   MODERATOR_PERMISSION_KEYS,
   appendModeratorTeamAudit,
@@ -290,6 +291,15 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
             DASHBOARD_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/dashboard`,
           },
         });
+        await dispatchOmniaInAppNotification({
+          userId: String(request.target_user_id),
+          notificationType: "professor_approved",
+          title: "Dossier Professeur validé",
+          message: "Votre rôle Professeur est maintenant actif sur Omnia Global Academy.",
+          actionUrl: "/professeur/dashboard",
+          priority: "high",
+          payload: { domain: "professeur", decision: "approved" },
+        });
       }
     } else if (request.action_type === "kyc_reject") {
       const { data: verificationUser } = await sb.from("users").select("email_status,status").eq("id", request.target_user_id).maybeSingle();
@@ -323,6 +333,15 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
             CTA_LABEL: "Se connecter à Omnia",
             CTA_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/connexion`,
           },
+        });
+        await dispatchOmniaInAppNotification({
+          userId: String(request.target_user_id),
+          notificationType: "professor_review_update",
+          title: "Mise à jour de votre dossier Professeur",
+          message: request.reason || "Votre dossier Professeur nécessite une nouvelle étape avant activation.",
+          actionUrl: "/mon-profil",
+          priority: "high",
+          payload: { domain: "professeur", decision: "rejected" },
         });
       }
     } else {

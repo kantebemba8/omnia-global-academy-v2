@@ -30,6 +30,58 @@ export interface NotifyUserParams {
   sb?: ReturnType<typeof createClient>;
 }
 
+export interface InAppNotificationParams {
+  userId: string;
+  title: string;
+  message: string;
+  actionUrl?: string | null;
+  notificationType?: string;
+  priority?: "low" | "normal" | "high" | "critical";
+  payload?: Record<string, unknown>;
+}
+
+export async function dispatchOmniaInAppNotification({
+  userId,
+  title,
+  message,
+  actionUrl = null,
+  notificationType = "business_event",
+  priority = "normal",
+  payload = {},
+}: InAppNotificationParams): Promise<boolean> {
+  const normalizedUserId = String(userId || "").trim();
+  const normalizedMessage = String(message || "").trim().slice(0, 1000);
+  if (!normalizedUserId || !normalizedMessage) return false;
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  if (!supabaseUrl) return false;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/mobile-notifications?action=dispatch`, {
+      method: "POST",
+      headers: omniaInternalHeaders(),
+      body: JSON.stringify({
+        user_id: normalizedUserId,
+        title: String(title || "Omnia Global Academy").trim().slice(0, 180) || "Omnia Global Academy",
+        message: normalizedMessage,
+        action_url: actionUrl || null,
+        notification_type: String(notificationType || "business_event").slice(0, 100),
+        priority,
+        payload: { ...payload, source: payload.source || "omnia-business" },
+      }),
+    });
+    if (!response.ok) {
+      console.warn("dispatchOmniaInAppNotification failed", response.status);
+      return false;
+    }
+    const result = await response.json().catch(() => ({}));
+    return result?.success === true || Boolean(result?.notification_id);
+  } catch (error) {
+    console.warn("dispatchOmniaInAppNotification unavailable", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
 export async function sendBrevoEmail({ templateId, to, params, from, userId, sb }: SendEmailParams): Promise<boolean> {
   const message = String(params.MESSAGE_SPECIFIQUE || "").toLowerCase();
   const templateKey = templateId === 4 && (message.includes("validation") || message.includes("vérification") || message.includes("examin"))
@@ -136,29 +188,13 @@ export async function notifyUser({ userId, emailConfig, smsMessage, sb }: Notify
   if (inAppMessage) {
     const title = (firstText("TITRE", "TITLE", "OBJET", "SUBJECT", "FORMATION_TITRE", "ROLE_NAME") || "Omnia Global Academy").slice(0, 180);
     const actionUrl = firstText("ACTION_URL", "URL_ACTION", "LIEN_ACTION", "CTA_URL", "LIEN", "URL", "DASHBOARD_URL", "COURSE_URL", "PDF_URL") || null;
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-    if (supabaseUrl) {
-      try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/mobile-notifications?action=dispatch`, {
-          method: "POST",
-          headers: omniaInternalHeaders(),
-          body: JSON.stringify({
-            user_id: userId,
-            title,
-            message: inAppMessage,
-            action_url: actionUrl,
-            notification_type: "business_event",
-            payload: { source: "notify-dispatch" },
-          }),
-        });
-        if (!response.ok) {
-          console.warn("notifyUser in-app dispatch failed", response.status);
-        }
-      } catch (error) {
-        // Une panne du centre de notifications ne doit jamais annuler l'e-mail/SMS
-        // ni le traitement métier principal.
-        console.warn("notifyUser in-app unavailable", error instanceof Error ? error.message : String(error));
-      }
-    }
+    await dispatchOmniaInAppNotification({
+      userId,
+      title,
+      message: inAppMessage,
+      actionUrl,
+      notificationType: "business_event",
+      payload: { source: "notify-dispatch" },
+    });
   }
 }

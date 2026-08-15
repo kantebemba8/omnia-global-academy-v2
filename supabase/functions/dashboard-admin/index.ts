@@ -814,54 +814,120 @@ function openAiSyncConfigured() {
   return Boolean(openAiAdminKey());
 }
 
+type OpenAiUsageSurfaceSpec = {
+  id: string;
+  path: string;
+  groupByModel?: boolean;
+};
+
+const OPENAI_USAGE_SURFACES: OpenAiUsageSurfaceSpec[] = [
+  { id: "completions", path: "/organization/usage/completions", groupByModel: true },
+  { id: "embeddings", path: "/organization/usage/embeddings", groupByModel: true },
+  { id: "images", path: "/organization/usage/images", groupByModel: true },
+  { id: "audio_speeches", path: "/organization/usage/audio_speeches", groupByModel: true },
+  { id: "audio_transcriptions", path: "/organization/usage/audio_transcriptions", groupByModel: true },
+  { id: "moderations", path: "/organization/usage/moderations", groupByModel: true },
+  { id: "vector_stores", path: "/organization/usage/vector_stores" },
+  { id: "code_interpreter_sessions", path: "/organization/usage/code_interpreter_sessions" },
+  { id: "file_search_calls", path: "/organization/usage/file_search_calls" },
+  { id: "web_search_calls", path: "/organization/usage/web_search_calls", groupByModel: true },
+];
+
+function finiteMetric(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
+function addMetric(target: Record<string, number>, key: string, value: unknown) {
+  const number = finiteMetric(value);
+  if (number > 0) target[key] = Number(((target[key] || 0) + number).toFixed(6));
+}
+
+function normalizeOpenAiUsageResult(target: Record<string, number>, result: any) {
+  addMetric(target, "input_tokens", result?.input_tokens);
+  addMetric(target, "output_tokens", result?.output_tokens);
+  addMetric(target, "cached_input_tokens", result?.input_cached_tokens);
+  addMetric(target, "cache_write_tokens", result?.input_cache_write_tokens);
+  addMetric(target, "model_requests", result?.num_model_requests);
+  addMetric(target, "images", result?.images);
+  addMetric(target, "tts_characters", result?.characters);
+  addMetric(target, "audio_seconds", result?.seconds);
+  addMetric(target, "storage_bytes", result?.usage_bytes);
+  addMetric(target, "sessions", result?.num_sessions);
+  addMetric(target, "tool_requests", result?.num_requests);
+}
+
+async function fetchOpenAiUsageSurface(
+  spec: OpenAiUsageSurfaceSpec,
+  projectId: string,
+  startSeconds: number,
+  endSeconds: number,
+) {
+  const totals: Record<string, number> = {};
+  const byModel: Record<string, Record<string, number>> = {};
+  let records = 0;
+  let pageToken = "";
+
+  for (let page = 0; page < 20; page += 1) {
+    const params = new URLSearchParams({
+      start_time: String(startSeconds),
+      end_time: String(endSeconds),
+      bucket_width: "1d",
+      limit: "31",
+    });
+    params.append("project_ids", projectId);
+    if (spec.groupByModel) {
+      params.append("group_by", "project_id");
+      params.append("group_by", "model");
+    }
+    if (pageToken) params.set("page", pageToken);
+
+    const payload = await openAiAdminFetch(`${spec.path}?${params.toString()}`);
+    for (const bucket of Array.isArray(payload?.data) ? payload.data : []) {
+      for (const result of Array.isArray(bucket?.results) ? bucket.results : []) {
+        records += 1;
+        normalizeOpenAiUsageResult(totals, result);
+        const model = String(result?.model || "").trim();
+        if (model) {
+          byModel[model] ||= {};
+          normalizeOpenAiUsageResult(byModel[model], result);
+        }
+      }
+    }
+    if (!payload?.has_more || !payload?.next_page) break;
+    pageToken = String(payload.next_page);
+  }
+  return { totals, by_model: byModel, records };
+}
+
 async function syncOpenAiCosts(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
+  const provider = "openai";
   const force = options.force === true;
   const actorUserId = options.actorUserId || null;
-  const now = new Date();
-
-  const { data: stateRow } = await sb
-    .from("external_service_sync_state")
-    .select("*")
-    .eq("provider", "openai")
-    .maybeSingle();
-
-  const state = stateRow || { provider: "openai", auto_sync_enabled: true };
-  if (state.auto_sync_enabled === false && !force) {
-    return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
-  }
-  if (!openAiAdminKey()) {
-    return {
-      success: true,
-      skipped: true,
-      reason: "OPENAI_ADMIN_KEY_NOT_CONFIGURED",
-      state: { ...state, admin_key_configured: false },
-    };
-  }
-
-  const lastAttemptMs = state.last_attempt_at ? new Date(state.last_attempt_at).getTime() : 0;
-  if (!force && Number.isFinite(lastAttemptMs) && (now.getTime() - lastAttemptMs) < 15 * 60 * 1000) {
-    return { success: true, skipped: true, reason: "RECENT_SYNC", state: { ...state, admin_key_configured: true } };
-  }
-
-  await sb.from("external_service_sync_state").upsert({
-    provider: "openai",
-    auto_sync_enabled: state.auto_sync_enabled !== false,
-    last_attempt_at: now.toISOString(),
-    updated_at: now.toISOString(),
-  }, { onConflict: "provider" });
+  const state = await providerSyncState(sb, provider);
+  if (state.auto_sync_enabled === false && !force) return { success: true, skipped: true, reason: "AUTO_SYNC_DISABLED", state };
+  if (!openAiAdminKey()) return { success: true, skipped: true, reason: "OPENAI_ADMIN_KEY_NOT_CONFIGURED", state };
+  if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
+  await providerSyncBegin(sb, provider, state);
 
   try {
+    const now = new Date();
     const project = await resolveOpenAiProject();
     const endSeconds = Math.floor(now.getTime() / 1000);
-    const startDate = new Date(now.getTime() - 90 * 86400000);
-    startDate.setUTCHours(0, 0, 0, 0);
-    const startSeconds = Math.floor(startDate.getTime() / 1000);
+
+    const costStart = new Date(now.getTime() - 90 * 86400000);
+    costStart.setUTCHours(0, 0, 0, 0);
+    const costStartSeconds = Math.floor(costStart.getTime() / 1000);
+
+    const usageStart = new Date(now.getTime() - 30 * 86400000);
+    usageStart.setUTCHours(0, 0, 0, 0);
+    const usageStartSeconds = Math.floor(usageStart.getTime() / 1000);
 
     const costRows: any[] = [];
     let pageToken = "";
     for (let page = 0; page < 20; page += 1) {
       const params = new URLSearchParams({
-        start_time: String(startSeconds),
+        start_time: String(costStartSeconds),
         end_time: String(endSeconds),
         bucket_width: "1d",
         limit: "90",
@@ -888,10 +954,10 @@ async function syncOpenAiCosts(sb: any, options: { force?: boolean; actorUserId?
           ].join(":");
           costRows.push({
             provider_entry_key: key,
-            provider: "openai",
+            provider,
             entry_type: "usage",
             source: "provider",
-            occurred_at: new Date(Number(bucket?.start_time || startSeconds) * 1000).toISOString(),
+            occurred_at: new Date(Number(bucket?.start_time || costStartSeconds) * 1000).toISOString(),
             amount,
             currency,
             quantity: Number.isFinite(Number(result?.quantity)) ? Number(result.quantity) : null,
@@ -901,7 +967,7 @@ async function syncOpenAiCosts(sb: any, options: { force?: boolean; actorUserId?
               ? "Coût OpenAI synchronisé automatiquement."
               : `Coût OpenAI synchronisé automatiquement · ${lineItem}`,
             metadata: {
-              provider: "openai",
+              provider,
               project_id: String(result?.project_id || project.id),
               project_name: project.name,
               line_item: result?.line_item || null,
@@ -914,88 +980,80 @@ async function syncOpenAiCosts(sb: any, options: { force?: boolean; actorUserId?
           });
         }
       }
-
       if (!payload?.has_more || !payload?.next_page) break;
       pageToken = String(payload.next_page);
     }
+    await upsertProviderLedgerRows(sb, costRows);
 
-    if (costRows.length) {
-      const chunkSize = 200;
-      for (let i = 0; i < costRows.length; i += chunkSize) {
-        const chunk = costRows.slice(i, i + chunkSize);
-        const { error } = await sb
-          .from("external_service_ledger")
-          .upsert(chunk, { onConflict: "provider_entry_key" });
-        if (error) throw error;
+    const technicalUsage: Record<string, number> = {};
+    const usageBySurface: Record<string, Record<string, number>> = {};
+    const usageByModel: Record<string, Record<string, number>> = {};
+    const usageErrors: Array<{ surface: string; error: string }> = [];
+    let usageRecordsProcessed = 0;
+    let successfulUsageSurfaces = 0;
+
+    const surfaceResults = await Promise.all(OPENAI_USAGE_SURFACES.map(async (spec) => {
+      try {
+        const result = await fetchOpenAiUsageSurface(spec, project.id, usageStartSeconds, endSeconds);
+        return { spec, result, error: null as string | null };
+      } catch (error) {
+        return { spec, result: null, error: error instanceof Error ? error.message : String(error) };
+      }
+    }));
+
+    for (const item of surfaceResults) {
+      if (!item.result) {
+        usageErrors.push({ surface: item.spec.id, error: String(item.error || "REQUEST_FAILED").slice(0, 500) });
+        continue;
+      }
+      successfulUsageSurfaces += 1;
+      usageRecordsProcessed += item.result.records;
+      usageBySurface[item.spec.id] = item.result.totals;
+      for (const [metric, value] of Object.entries(item.result.totals)) addMetric(technicalUsage, metric, value);
+      for (const [model, metrics] of Object.entries(item.result.by_model)) {
+        usageByModel[model] ||= {};
+        for (const [metric, value] of Object.entries(metrics)) addMetric(usageByModel[model], metric, value);
       }
     }
 
-    const successState = {
-      provider: "openai",
-      auto_sync_enabled: state.auto_sync_enabled !== false,
-      last_attempt_at: now.toISOString(),
-      last_success_at: now.toISOString(),
-      last_error: null,
-      last_project_id: project.id,
-      last_project_name: project.name,
-      last_rows_synced: costRows.length,
-      metadata: {
-        ...(state?.metadata || {}),
-        lookback_days: 90,
-        project_resolution: project.source,
-        provider_endpoint: "organization/costs",
-      },
-      updated_at: now.toISOString(),
-    };
-    const { error: stateError } = await sb
-      .from("external_service_sync_state")
-      .upsert(successState, { onConflict: "provider" });
-    if (stateError) throw stateError;
+    const usageStatus = successfulUsageSurfaces === OPENAI_USAGE_SURFACES.length
+      ? "complete"
+      : successfulUsageSurfaces > 0
+      ? "partial"
+      : "unavailable";
 
-    await sb.from("external_service_admin_audit").insert({
-      actor_user_id: actorUserId,
-      provider: "openai",
-      action: force ? "provider_sync_forced" : "provider_sync_automatic",
-      metadata: {
-        rows_synced: costRows.length,
-        project_id: project.id,
-        project_name: project.name,
-        lookback_days: 90,
-      },
-    });
+    const successState = await providerSyncSuccess(sb, provider, state, costRows.length, {
+      source: "openai_admin_costs_and_usage_api",
+      cost_lookback_days: 90,
+      usage_lookback_days: 30,
+      project_resolution: project.source,
+      project_id: project.id,
+      project_name: project.name,
+      cost_endpoint: "organization/costs",
+      usage_status: usageStatus,
+      usage_surfaces_ok: successfulUsageSurfaces,
+      usage_surfaces_total: OPENAI_USAGE_SURFACES.length,
+      usage_records_processed: usageRecordsProcessed,
+      technical_usage_30d: technicalUsage,
+      technical_usage_by_surface_30d: usageBySurface,
+      technical_usage_by_model_30d: usageByModel,
+      usage_errors: usageErrors,
+      recharge_mode: "provider_auto_reload",
+    }, actorUserId, force);
 
     return {
       success: true,
       skipped: false,
       rows_synced: costRows.length,
+      usage_records_processed: usageRecordsProcessed,
+      usage_status: usageStatus,
       project,
       state: { ...successState, admin_key_configured: true },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const failureState = {
-      provider: "openai",
-      auto_sync_enabled: state.auto_sync_enabled !== false,
-      last_attempt_at: now.toISOString(),
-      last_error: message.slice(0, 1000),
-      updated_at: now.toISOString(),
-    };
-    await sb.from("external_service_sync_state").upsert(failureState, { onConflict: "provider" });
-    await sb.from("external_service_admin_audit").insert({
-      actor_user_id: actorUserId,
-      provider: "openai",
-      action: "provider_sync_failed",
-      metadata: { error: message.slice(0, 1000) },
-    });
-    return {
-      success: false,
-      skipped: false,
-      error: message,
-      state: { ...state, ...failureState, admin_key_configured: true },
-    };
+    return await providerSyncFailure(sb, provider, state, error, actorUserId);
   }
 }
-
 
 const PROVIDER_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -1095,6 +1153,67 @@ async function anthropicAdminFetch(path: string) {
   } finally { clearTimeout(timer); }
 }
 
+function anthropicCacheCreationTokens(value: unknown) {
+  if (typeof value === "number") return finiteMetric(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  return Object.values(value as Record<string, unknown>).reduce<number>((sum, item) => sum + finiteMetric(item), 0);
+}
+
+async function fetchAnthropicMessagesUsage(start: Date, end: Date) {
+  const totals: Record<string, number> = {};
+  const byModel: Record<string, Record<string, number>> = {};
+  let records = 0;
+  let page = "";
+
+  for (let i = 0; i < 20; i += 1) {
+    const params = new URLSearchParams({
+      starting_at: start.toISOString(),
+      ending_at: end.toISOString(),
+      bucket_width: "1d",
+      limit: "31",
+    });
+    params.append("group_by[]", "model");
+    if (page) params.set("page", page);
+
+    const payload = await anthropicAdminFetch(`/v1/organizations/usage_report/messages?${params.toString()}`);
+    for (const bucket of Array.isArray(payload?.data) ? payload.data : []) {
+      for (const result of Array.isArray(bucket?.results) ? bucket.results : []) {
+        records += 1;
+        const uncachedInput = Number.isFinite(Number(result?.uncached_input_tokens))
+          ? finiteMetric(result?.uncached_input_tokens)
+          : finiteMetric(result?.input_tokens);
+        const cacheRead = finiteMetric(result?.cache_read_input_tokens);
+        const cacheCreation = finiteMetric(result?.cache_creation_input_tokens) || anthropicCacheCreationTokens(result?.cache_creation);
+        const output = finiteMetric(result?.output_tokens);
+        const model = String(result?.model || "").trim();
+        const serverToolUse = result?.server_tool_use && typeof result.server_tool_use === "object" && !Array.isArray(result.server_tool_use)
+          ? result.server_tool_use as Record<string, unknown>
+          : {};
+
+        addMetric(totals, "uncached_input_tokens", uncachedInput);
+        addMetric(totals, "cache_read_input_tokens", cacheRead);
+        addMetric(totals, "cache_creation_input_tokens", cacheCreation);
+        addMetric(totals, "input_tokens", uncachedInput + cacheRead + cacheCreation);
+        addMetric(totals, "output_tokens", output);
+        for (const [tool, value] of Object.entries(serverToolUse)) addMetric(totals, `server_tool_${tool}`, value);
+
+        if (model) {
+          byModel[model] ||= {};
+          addMetric(byModel[model], "uncached_input_tokens", uncachedInput);
+          addMetric(byModel[model], "cache_read_input_tokens", cacheRead);
+          addMetric(byModel[model], "cache_creation_input_tokens", cacheCreation);
+          addMetric(byModel[model], "input_tokens", uncachedInput + cacheRead + cacheCreation);
+          addMetric(byModel[model], "output_tokens", output);
+          for (const [tool, value] of Object.entries(serverToolUse)) addMetric(byModel[model], `server_tool_${tool}`, value);
+        }
+      }
+    }
+    if (!payload?.has_more || !payload?.next_page) break;
+    page = String(payload.next_page);
+  }
+  return { totals, by_model: byModel, records };
+}
+
 async function syncAnthropicCosts(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
   const provider = "anthropic";
   const force = options.force === true;
@@ -1104,13 +1223,19 @@ async function syncAnthropicCosts(sb: any, options: { force?: boolean; actorUser
   if (!anthropicAdminKey()) return { success: true, skipped: true, reason: "ANTHROPIC_ADMIN_KEY_NOT_CONFIGURED", state };
   if (providerSyncRecent(state, force)) return { success: true, skipped: true, reason: "RECENT_SYNC", state };
   await providerSyncBegin(sb, provider, state);
+
   try {
-    const end = new Date(); end.setUTCHours(0, 0, 0, 0);
+    const end = new Date();
     const start = new Date(end.getTime() - 30 * 86400000);
+
     const paramsBase = new URLSearchParams({
-      starting_at: start.toISOString(), ending_at: end.toISOString(), bucket_width: "1d", limit: "31",
+      starting_at: start.toISOString(),
+      ending_at: end.toISOString(),
+      bucket_width: "1d",
+      limit: "31",
     });
     paramsBase.append("group_by[]", "description");
+
     const rowsToWrite: any[] = [];
     let page = "";
     for (let i = 0; i < 20; i += 1) {
@@ -1125,15 +1250,26 @@ async function syncAnthropicCosts(sb: any, options: { force?: boolean; actorUser
           const description = String(result?.description || result?.cost_type || "usage").trim() || "usage";
           const key = ["anthropic-cost", String(bucket?.starting_at || start.toISOString()), String(bucket?.ending_at || ""), description, String(result?.workspace_id || "default")].join(":");
           rowsToWrite.push({
-            provider_entry_key: key, provider, entry_type: "usage", source: "provider",
-            occurred_at: String(bucket?.starting_at || start.toISOString()), amount, currency: "USD",
-            reference: key, description: `Coût Anthropic synchronisé automatiquement · ${description}`,
+            provider_entry_key: key,
+            provider,
+            entry_type: "usage",
+            source: "provider",
+            occurred_at: String(bucket?.starting_at || start.toISOString()),
+            amount,
+            currency: "USD",
+            reference: key,
+            description: `Coût Anthropic synchronisé automatiquement · ${description}`,
             metadata: {
-              sync_source: "anthropic_cost_report_api", description,
-              workspace_id: result?.workspace_id || null, cost_type: result?.cost_type || null,
-              model: result?.model || null, inference_geo: result?.inference_geo || null,
-              context_window: result?.context_window || null, amount_minor_units: String(result?.amount ?? ""),
-            }, created_by: actorUserId,
+              sync_source: "anthropic_cost_report_api",
+              description,
+              workspace_id: result?.workspace_id || null,
+              cost_type: result?.cost_type || null,
+              model: result?.model || null,
+              inference_geo: result?.inference_geo || null,
+              context_window: result?.context_window || null,
+              amount_minor_units: String(result?.amount ?? ""),
+            },
+            created_by: actorUserId,
           });
         }
       }
@@ -1141,11 +1277,48 @@ async function syncAnthropicCosts(sb: any, options: { force?: boolean; actorUser
       page = String(payload.next_page);
     }
     await upsertProviderLedgerRows(sb, rowsToWrite);
+
+    let usageStatus = "unavailable";
+    let usageRecordsProcessed = 0;
+    let technicalUsage: Record<string, number> = {};
+    let technicalUsageByModel: Record<string, Record<string, number>> = {};
+    let usageError: string | null = null;
+
+    try {
+      const usage = await fetchAnthropicMessagesUsage(start, end);
+      technicalUsage = usage.totals;
+      technicalUsageByModel = usage.by_model;
+      usageRecordsProcessed = usage.records;
+      usageStatus = "complete";
+    } catch (error) {
+      usageError = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+    }
+
     const successState = await providerSyncSuccess(sb, provider, state, rowsToWrite.length, {
-      source: "anthropic_cost_report_api", lookback_days: 30, currency: "USD", recharge_mode: "provider_auto_reload",
+      source: "anthropic_cost_and_messages_usage_api",
+      lookback_days: 30,
+      currency: "USD",
+      cost_endpoint: "/v1/organizations/cost_report",
+      usage_endpoint: "/v1/organizations/usage_report/messages",
+      usage_status: usageStatus,
+      usage_records_processed: usageRecordsProcessed,
+      technical_usage_30d: technicalUsage,
+      technical_usage_by_model_30d: technicalUsageByModel,
+      usage_error: usageError,
+      recharge_mode: "provider_auto_reload",
     }, actorUserId, force);
-    return { success: true, skipped: false, rows_synced: rowsToWrite.length, state: successState };
-  } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
+
+    return {
+      success: true,
+      skipped: false,
+      rows_synced: rowsToWrite.length,
+      usage_records_processed: usageRecordsProcessed,
+      usage_status: usageStatus,
+      state: successState,
+    };
+  } catch (error) {
+    return await providerSyncFailure(sb, provider, state, error, actorUserId);
+  }
 }
 
 async function syncBrevoAccount(sb: any, options: { force?: boolean; actorUserId?: string | null } = {}) {
@@ -1308,7 +1481,23 @@ async function syncSentryStats(sb: any, options: { force?: boolean; actorUserId?
     if (!response.ok) throw new Error(`SENTRY_STATS_API_${response.status}:${String(payload?.detail || "REQUEST_FAILED").slice(0, 500)}`);
     const groups = Array.isArray(payload?.groups) ? payload.groups : [];
     const snapshot = groups.map((g: any) => ({ category: g?.by?.category || null, quantity: g?.totals?.["sum(quantity)"] ?? null }));
-    const successState = await providerSyncSuccess(sb, provider, state, 0, { source: "sentry_stats_v2_api", organization: org, usage_30d: snapshot, recharge_mode: "subscription_or_quota" }, actorUserId, force);
+    const technicalUsage: Record<string, number> = {};
+    let totalEvents = 0;
+    for (const item of snapshot) {
+      const quantity = Number(item.quantity);
+      if (!Number.isFinite(quantity) || quantity < 0) continue;
+      const category = String(item.category || "events").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "events";
+      technicalUsage[`events_${category}`] = Number((technicalUsage[`events_${category}`] || 0) + quantity);
+      totalEvents += quantity;
+    }
+    if (totalEvents > 0) technicalUsage.events_total = Number(totalEvents.toFixed(6));
+    const successState = await providerSyncSuccess(sb, provider, state, 0, {
+      source: "sentry_stats_v2_api",
+      organization: org,
+      usage_30d: snapshot,
+      technical_usage_30d: technicalUsage,
+      recharge_mode: "subscription_or_quota",
+    }, actorUserId, force);
     return { success: true, skipped: false, rows_synced: 0, state: successState };
   } catch (error) { return await providerSyncFailure(sb, provider, state, error, actorUserId); }
 }
@@ -1387,14 +1576,15 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
   };
 
   const ledgerRows = ledger || [];
-  const budgetMap = new Map((budgets || []).map((row: any) => [String(row.provider), row]));
-  const syncMap = new Map((syncStates || []).map((row: any) => [String(row.provider), row]));
+  const budgetMap = new Map<string, any>((budgets || []).map((row: any) => [String(row.provider), row]));
+  const syncMap = new Map<string, any>((syncStates || []).map((row: any) => [String(row.provider), row]));
   const providerLedger = (provider: string) => ledgerRows.filter((row: any) => row.provider === provider);
   const provider = (id: string, label: string, details: Record<string, unknown>) => {
     const entries = providerLedger(id);
     const finance = groupLedgerAmounts(entries);
     const finance30d = groupLedgerAmounts(entries.filter((entry: any) => String(entry.occurred_at || "") >= start30));
     const budget = budgetMap.get(id) || null;
+    const sync = syncMap.get(id) || null;
     const budgetCurrency = currencyCode(budget?.currency);
     const monthlyBudget = Number(budget?.monthly_budget);
     const threshold = Number(budget?.low_balance_threshold);
@@ -1417,90 +1607,257 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
     };
     return {
       id, label, budget,
-      sync: syncMap.get(id) || null,
+      sync,
       finance,
       finance_30d: finance30d,
       budget_status: budgetStatus,
       recent_entries: entries.slice(0, 20),
       provider_balance_available: false,
+      balance_mode: "provider_not_exposed",
+      technical_usage_30d: sync?.metadata?.technical_usage_30d || (Object.keys(finance30d.quantities || {}).length ? finance30d.quantities : {}),
+      technical_usage_by_model_30d: sync?.metadata?.technical_usage_by_model_30d || {},
       secrets_exposed: false,
       ...details,
     };
   };
 
   const providers = [
-    provider("openai", "OpenAI", {
-      configured: Boolean(String(Deno.env.get("OPENAI_API_KEY") || "").trim()), admin_billing_configured: openAiSyncConfigured(),
-      environment: "API", billing_model: "usage", role: "Texte, images, embeddings, transcription et synthèse vocale selon les moteurs OGA.",
-      usage_note: openAiSyncConfigured() ? "Coûts réels synchronisés automatiquement via l’API Costs OpenAI. Les recharges futures peuvent être gérées par Auto-reload chez OpenAI : aucune saisie OGA n’est requise par défaut." : "Ajoutez OPENAI_ADMIN_KEY côté Supabase pour la synchronisation automatique des coûts. La clé applicative actuelle reste inchangée.",
-      recharge_automation: { provider_managed: true, provider_name: "OpenAI", auto_reload_supported: true, transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload", note: "Auto-reload est géré par OpenAI. OGA importe les coûts réels ; la saisie manuelle reste uniquement un secours comptable si nécessaire." },
-      sync_attempt: openAiSyncAttempt, management_path: "/admin/moteurs-services",
-    }),
-    provider("anthropic", "Anthropic", {
-      configured: Boolean(String(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "").trim()), admin_billing_configured: Boolean(anthropicAdminKey()),
-      environment: "API", billing_model: "usage", role: "Assistance pédagogique, Career Studio et génération/traitement de contenus selon les moteurs OGA.",
-      usage_note: anthropicAdminKey() ? "Coûts réels synchronisés automatiquement via l’API Cost Report Anthropic." : "Ajoutez ANTHROPIC_ADMIN_KEY pour activer la synchronisation automatique des coûts.",
-      recharge_automation: { provider_managed: true, provider_name: "Anthropic", auto_reload_supported: true, transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload", note: "Les crédits et l’auto-reload sont gérés par Anthropic ; OGA importe automatiquement les coûts." },
-      sync_attempt: anthropicSyncAttempt, management_path: "/admin/quality-center",
-    }),
-    provider("brevo", "Brevo", {
-      configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()), admin_billing_configured: Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim()),
-      environment: "production_account", billing_model: "credits_or_plan", role: "E-mails transactionnels, newsletter et SMS lorsque configuré.",
-      observed_usage_30d: { emails: notificationSummary.email_30d, sms: notificationSummary.sms_30d, failures: notificationSummary.failures_30d },
-      usage_note: "Plan et crédits disponibles sont lus automatiquement via l’API Account Brevo ; les envois OGA sont comptés depuis la plateforme.",
-      recharge_automation: { provider_managed: true, provider_name: "Brevo", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "provider_plan_or_credit_purchase", note: "Aucune saisie n’est requise pour le suivi courant ; le plan/crédit est lu automatiquement. Une écriture manuelle reste un secours si une facture doit être rapprochée." },
-      sync_attempt: brevoSyncAttempt, management_path: "/admin/cms-branding",
-    }),
     (() => {
-      const r2Configured = envConfigured("R2_ACCOUNT_ID") && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim()) && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim());
+      const appConfigured = Boolean(String(Deno.env.get("OPENAI_API_KEY") || "").trim());
+      const adminConfigured = openAiSyncConfigured();
+      return provider("openai", "OpenAI", {
+        configured: appConfigured,
+        admin_billing_configured: adminConfigured,
+        environment: "API",
+        billing_model: "usage",
+        role: "Texte, images, embeddings, transcription et synthèse vocale selon les moteurs OGA.",
+        components: [
+          { id: "application_api", label: "API applicative OGA", configured: appConfigured },
+          { id: "admin_usage", label: "Suivi coûts & usage", configured: adminConfigured },
+        ],
+        balance_mode: "provider_not_exposed",
+        balance_note: "Le solde prépayé OpenAI n’est pas exposé par cette API d’administration. OGA affiche séparément les recharges suivies et les coûts réels.",
+        usage_note: adminConfigured
+          ? "Coûts et usage technique sont synchronisés automatiquement via les API Admin OpenAI (tokens, requêtes, images, audio et autres surfaces disponibles)."
+          : "Ajoutez OPENAI_ADMIN_KEY côté Supabase pour synchroniser automatiquement coûts et usage. La clé applicative reste inchangée.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "OpenAI", auto_reload_supported: true,
+          transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload",
+          note: "Auto-reload est géré par OpenAI. OGA importe les coûts et l’usage ; une saisie manuelle reste uniquement un secours comptable pour une recharge non exposée par l’API.",
+        },
+        sync_attempt: openAiSyncAttempt,
+        management_path: "/admin/moteurs-services",
+      });
+    })(),
+    (() => {
+      const appConfigured = Boolean(String(Deno.env.get("ANTHROPIC_API_KEY") || Deno.env.get("CLAUDE_API_KEY") || "").trim());
+      const adminConfigured = Boolean(anthropicAdminKey());
+      return provider("anthropic", "Anthropic", {
+        configured: appConfigured,
+        admin_billing_configured: adminConfigured,
+        environment: "API",
+        billing_model: "usage",
+        role: "Assistance pédagogique, Career Studio et génération/traitement de contenus selon les moteurs OGA.",
+        components: [
+          { id: "application_api", label: "API applicative OGA", configured: appConfigured },
+          { id: "admin_usage", label: "Suivi coûts & usage", configured: adminConfigured },
+        ],
+        balance_mode: "provider_not_exposed",
+        balance_note: "Le solde prépayé Anthropic n’est pas exposé par l’Usage & Cost Admin API. OGA conserve donc la recharge de secours séparément des coûts et tokens synchronisés.",
+        usage_note: adminConfigured
+          ? "Coûts et usage Messages sont synchronisés automatiquement via les rapports Cost et Usage Anthropic, avec tokens d’entrée, sortie et cache."
+          : "Ajoutez ANTHROPIC_ADMIN_KEY pour activer la synchronisation automatique des coûts et des tokens.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "Anthropic", auto_reload_supported: true,
+          transaction_sync_supported: false, manual_fallback: true, mode: "provider_auto_reload",
+          note: "Les crédits et l’auto-reload sont gérés par Anthropic ; OGA importe coûts et usage. Une recharge non exposée par l’API peut rester saisie en secours.",
+        },
+        sync_attempt: anthropicSyncAttempt,
+        management_path: "/admin/quality-center",
+      });
+    })(),
+    (() => {
+      const configured = Boolean(String(Deno.env.get("BREVO_API_KEY") || "").trim());
+      const brevoSync = syncMap.get("brevo") || null;
+      return provider("brevo", "Brevo", {
+        configured,
+        admin_billing_configured: configured,
+        environment: "production_account",
+        billing_model: "credits_or_plan",
+        role: "E-mails transactionnels, newsletter et SMS lorsque configuré.",
+        components: [{ id: "account_api", label: "Compte & crédits Brevo", configured }],
+        provider_credit_plans: brevoSync?.metadata?.plans || [],
+        provider_credit_verticals: brevoSync?.metadata?.plan_verticals || [],
+        balance_mode: "provider_credits",
+        observed_usage_30d: { emails: notificationSummary.email_30d, sms: notificationSummary.sms_30d, failures: notificationSummary.failures_30d },
+        technical_usage_30d: { emails_sent_or_logged: notificationSummary.email_30d, sms_sent_or_logged: notificationSummary.sms_30d, failures: notificationSummary.failures_30d },
+        usage_note: "Le compte et les crédits disponibles sont lus via l’API Account Brevo ; les envois OGA sont comptés depuis les journaux de la plateforme.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "Brevo", auto_reload_supported: false,
+          transaction_sync_supported: false, manual_fallback: true, mode: "provider_plan_or_credit_purchase",
+          note: "Aucune saisie n’est requise pour le suivi courant ; plan/crédits sont lus automatiquement. Une écriture manuelle reste un secours de rapprochement.",
+        },
+        sync_attempt: brevoSyncAttempt,
+        management_path: "/admin/cms-branding",
+      });
+    })(),
+    (() => {
+      const r2Configured = envConfigured("R2_ACCOUNT_ID")
+        && Boolean(String(Deno.env.get("R2_ACCESS_KEY_ID") || Deno.env.get("R2_ACCESS_KEY") || "").trim())
+        && Boolean(String(Deno.env.get("R2_SECRET_ACCESS_KEY") || Deno.env.get("R2_SECRET_KEY") || "").trim());
       const billingConfigured = Boolean(cloudflareBillingToken() && cloudflareAccountId());
       const streamConfigured = cloudflareStreamConfigured();
       return provider("cloudflare", "Cloudflare R2 / Stream", {
         configured: r2Configured || billingConfigured || streamConfigured,
-        r2_configured: r2Configured, admin_billing_configured: billingConfigured, stream_configured: streamConfigured,
-        environment: "production_service", billing_model: "usage", role: "Stockage privé, diffusion vidéo et URLs signées.",
+        r2_configured: r2Configured,
+        admin_billing_configured: billingConfigured,
+        stream_configured: streamConfigured,
+        environment: "production_service",
+        billing_model: "usage",
+        role: "Stockage privé, diffusion vidéo et URLs signées.",
+        components: [
+          { id: "r2", label: "R2 stockage privé", configured: r2Configured },
+          { id: "stream", label: "Stream vidéo", configured: streamConfigured },
+          { id: "billing", label: "Suivi Billing", configured: billingConfigured },
+        ],
+        balance_mode: "not_applicable_postpaid",
         observed_usage_30d: { stream_media_created: cloudflareMedia ?? null },
-        usage_note: billingConfigured ? "Coûts et quantités facturables synchronisés automatiquement depuis l’API Billing Cloudflare." : "Ajoutez un token séparé CLOUDFLARE_BILLING_API_TOKEN avec Billing Read et un Account ID pour automatiser les coûts sans élargir les permissions du token Stream.",
-        recharge_automation: { provider_managed: true, provider_name: "Cloudflare", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "postpaid_or_subscription", note: "Cloudflare est généralement facturé à l’usage ou par abonnement : il n’y a pas de recharge OGA à saisir." },
-        sync_attempt: cloudflareSyncAttempt, management_path: "/admin/live",
+        usage_note: billingConfigured
+          ? "Coûts et quantités facturables sont synchronisés depuis l’API Billing Cloudflare. R2, Stream et Billing sont affichés séparément."
+          : "Ajoutez un token CLOUDFLARE_BILLING_API_TOKEN avec Billing Read et un Account ID pour automatiser les coûts, sans élargir les permissions R2/Stream.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "Cloudflare", auto_reload_supported: false,
+          transaction_sync_supported: true, manual_fallback: true, mode: "postpaid_or_subscription",
+          note: "Cloudflare est facturé à l’usage ou par abonnement : il n’y a pas de recharge OGA à saisir.",
+        },
+        sync_attempt: cloudflareSyncAttempt,
+        management_path: "/admin/live",
       });
     })(),
-    provider("fedapay", "FedaPay", {
-      configured: fedaPaySecretKeyConfigured(), webhook_configured: fedaPayWebhookConfigured(), environment: fedaConfig?.effective_mode || "sandbox",
-      requested_environment: fedaConfig?.requested_mode || "sandbox", production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,
-      billing_model: "transactional", role: "Paiements Omnia. Le passage Production reste contrôlé côté serveur.",
-      observed_usage_30d: { course_orders: fedaCourseOrders ?? null, live_orders: fedaLiveOrders ?? null },
-      usage_note: "Balances et frais de transactions sont synchronisés automatiquement depuis l’API FedaPay lorsque la clé de l’environnement actif est configurée.",
-      recharge_automation: { provider_managed: true, provider_name: "FedaPay", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: true, mode: "merchant_balance", note: "FedaPay est un compte marchand : pas de recharge à saisir. OGA suit automatiquement les balances et frais disponibles." },
-      sync_attempt: fedaPaySyncAttempt, management_path: "/admin/fintech",
-    }),
+    (() => {
+      const secretConfigured = fedaPaySecretKeyConfigured();
+      const webhookConfigured = fedaPayWebhookConfigured();
+      const fedaSync = syncMap.get("fedapay") || null;
+      const apiAuthenticated = Boolean(fedaSync?.last_success_at && !fedaSync?.last_error);
+      return provider("fedapay", "FedaPay", {
+        configured: secretConfigured,
+        webhook_configured: webhookConfigured,
+        provider_api_authenticated: apiAuthenticated,
+        environment: fedaConfig?.effective_mode || "sandbox",
+        requested_environment: fedaConfig?.requested_mode || "sandbox",
+        production_enabled: fedaConfig?.live_enabled === true && fedaConfig?.live_blocked !== true,
+        billing_model: "transactional",
+        role: "Paiements Omnia. Le passage Production reste contrôlé côté serveur.",
+        components: [
+          { id: "secret", label: `Clé ${fedaConfig?.effective_mode === "live" ? "Production" : "Sandbox"}`, configured: secretConfigured },
+          { id: "api_auth", label: "Authentification API", configured: apiAuthenticated },
+          { id: "webhook", label: "Webhook paiement", configured: webhookConfigured },
+        ],
+        balance_mode: "merchant_balance_provider_units",
+        provider_balances: fedaSync?.metadata?.balances || [],
+        observed_usage_30d: { course_orders: fedaCourseOrders ?? null, live_orders: fedaLiveOrders ?? null },
+        usage_note: "Balances et transactions sont lues depuis l’environnement FedaPay actif. Une clé présente n’est considérée authentifiée qu’après une synchronisation fournisseur réussie.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "FedaPay", auto_reload_supported: false,
+          transaction_sync_supported: true, manual_fallback: true, mode: "merchant_balance",
+          note: "FedaPay est un compte marchand : aucune recharge OGA. Les balances et frais disponibles sont suivis automatiquement sans conversion monétaire estimée.",
+        },
+        sync_attempt: fedaPaySyncAttempt,
+        management_path: "/admin/fintech",
+      });
+    })(),
     provider("jaas", "Jitsi / JaaS", {
-      configured: jaas.configured, environment: jaas.public_jitsi_development_fallback ? "development_fallback" : "jaas", production_ready: jaas.production_ready,
-      billing_model: "plan_or_usage", role: "Infrastructure visioconférence Omnia Live.", observed_usage_30d: { rooms_created: jaasRooms ?? null },
-      usage_note: "L’activité OGA est suivie automatiquement en temps réel. JaaS expose la facturation dans sa console ; aucune saisie manuelle n’est requise par défaut.",
-      recharge_automation: { provider_managed: true, provider_name: "JaaS", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "subscription_invoice", note: "Abonnement/facture fournisseur ; la saisie n’est qu’un secours de rapprochement." },
-      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/live",
+      configured: jaas.configured,
+      environment: jaas.public_jitsi_development_fallback ? "development_fallback" : "jaas",
+      production_ready: jaas.production_ready,
+      billing_model: "plan_or_usage",
+      role: "Infrastructure visioconférence Omnia Live.",
+      components: [
+        { id: "jaas", label: "JaaS production", configured: jaas.production_ready === true },
+        { id: "fallback", label: "Fallback Jitsi développement", configured: jaas.public_jitsi_development_fallback === true },
+      ],
+      balance_mode: "provider_console_only",
+      observed_usage_30d: { rooms_created: jaasRooms ?? null },
+      technical_usage_30d: { rooms_created: jaasRooms ?? 0 },
+      usage_note: jaas.production_ready
+        ? "JaaS est prêt pour la production ; l’activité Live est suivie par OGA."
+        : jaas.public_jitsi_development_fallback
+        ? "Le fallback Jitsi de développement est actif. Il permet les tests mais ne doit pas être présenté comme JaaS production."
+        : "JaaS production n’est pas encore configuré.",
+      recharge_automation: {
+        provider_managed: true, provider_name: "JaaS", auto_reload_supported: false,
+        transaction_sync_supported: false, manual_fallback: true, mode: "subscription_invoice",
+        note: "Abonnement/facture fournisseur ; la saisie n’est qu’un secours de rapprochement.",
+      },
+      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" },
+      management_path: "/admin/live",
     }),
-    provider("fcm", "Firebase Cloud Messaging", {
-      configured: envConfigured("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY"), environment: "firebase", billing_model: "no_cost_service", role: "Notifications push Android.",
-      observed_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d }, usage_note: "FCM Cloud Messaging est suivi automatiquement par les livraisons OGA et n’a pas de recharge à enregistrer.",
-      recharge_automation: { provider_managed: true, provider_name: "FCM", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable", note: "Service sans coût de Cloud Messaging : aucune recharge." },
-      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/moteurs-services",
-    }),
-    provider("apns", "Apple Push Notification Service", {
-      configured: envConfigured("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID"), environment: String(Deno.env.get("APNS_ENVIRONMENT") || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox",
-      billing_model: "service", role: "Notifications push iOS.", observed_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
-      usage_note: "Les livraisons APNs sont suivies automatiquement par OGA. Le coût éventuel du programme développeur Apple est distinct d’APNs.",
-      recharge_automation: { provider_managed: true, provider_name: "APNs", auto_reload_supported: false, transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable", note: "Aucune recharge APNs." },
-      sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" }, management_path: "/admin/moteurs-services",
-    }),
-    provider("sentry", "Sentry", {
-      configured: null, configuration_scope: "frontend_build", admin_billing_configured: sentrySyncConfigured(), environment: "web_and_capacitor", billing_model: "plan_or_quota",
-      role: "Diagnostic d’erreurs Web/PWA et natif. DSN public injecté au build, sans secret serveur exposé.",
-      usage_note: sentrySyncConfigured() ? "Volumes d’événements synchronisés automatiquement via l’API Stats Sentry." : "Ajoutez SENTRY_AUTH_TOKEN et SENTRY_ORG_SLUG si vous souhaitez importer automatiquement les volumes Sentry dans cette console.",
-      recharge_automation: { provider_managed: true, provider_name: "Sentry", auto_reload_supported: false, transaction_sync_supported: false, manual_fallback: true, mode: "subscription_or_quota", note: "Plan/quota fournisseur : aucune recharge quotidienne à saisir." },
-      sync_attempt: sentrySyncAttempt, management_path: "/admin/moteurs-services",
-    }),
+    (() => {
+      const configured = envConfigured("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY");
+      return provider("fcm", "Firebase Cloud Messaging", {
+        configured,
+        environment: "firebase",
+        billing_model: "no_cost_service",
+        role: "Notifications push Android.",
+        components: [{ id: "firebase", label: "Identifiants Firebase", configured }],
+        balance_mode: "not_applicable",
+        observed_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d },
+        technical_usage_30d: { sent: notificationSummary.fcm_sent_30d, failed: notificationSummary.fcm_failed_30d },
+        usage_note: "FCM est suivi automatiquement par les livraisons OGA et n’a pas de recharge à enregistrer.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "FCM", auto_reload_supported: false,
+          transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable",
+          note: "Service Cloud Messaging sans recharge OGA.",
+        },
+        sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" },
+        management_path: "/admin/moteurs-services",
+      });
+    })(),
+    (() => {
+      const configured = envConfigured("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID");
+      const environment = String(Deno.env.get("APNS_ENVIRONMENT") || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox";
+      return provider("apns", "Apple Push Notification Service", {
+        configured,
+        environment,
+        billing_model: "service",
+        role: "Notifications push iOS.",
+        components: [{ id: "apns", label: `Identifiants APNs ${environment}`, configured }],
+        balance_mode: "not_applicable",
+        observed_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
+        technical_usage_30d: { sent: notificationSummary.apns_sent_30d, failed: notificationSummary.apns_failed_30d },
+        usage_note: "Les livraisons APNs sont suivies automatiquement par OGA. Le programme développeur Apple est distinct du service APNs.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "APNs", auto_reload_supported: false,
+          transaction_sync_supported: true, manual_fallback: false, mode: "not_applicable",
+          note: "Aucune recharge APNs.",
+        },
+        sync_attempt: { success: true, skipped: true, reason: "LIVE_PLATFORM_TELEMETRY" },
+        management_path: "/admin/moteurs-services",
+      });
+    })(),
+    (() => {
+      const statsConfigured = sentrySyncConfigured();
+      return provider("sentry", "Sentry", {
+        configured: null,
+        configuration_scope: "frontend_build",
+        admin_billing_configured: statsConfigured,
+        environment: "web_and_capacitor",
+        billing_model: "plan_or_quota",
+        role: "Diagnostic d’erreurs Web/PWA et natif. Le DSN public est injecté au build sans exposer de secret serveur.",
+        components: [{ id: "stats_api", label: "API statistiques Sentry", configured: statsConfigured }],
+        balance_mode: "provider_console_only",
+        usage_note: statsConfigured
+          ? "Les volumes d’événements sont synchronisés automatiquement via l’API Stats Sentry. Le DSN de collecte est contrôlé séparément au build."
+          : "La collecte peut être active au build même sans API Stats. Ajoutez SENTRY_AUTH_TOKEN et SENTRY_ORG_SLUG uniquement pour importer automatiquement les volumes dans cette console.",
+        recharge_automation: {
+          provider_managed: true, provider_name: "Sentry", auto_reload_supported: false,
+          transaction_sync_supported: false, manual_fallback: true, mode: "subscription_or_quota",
+          note: "Plan/quota fournisseur : aucune recharge quotidienne à saisir.",
+        },
+        sync_attempt: sentrySyncAttempt,
+        management_path: "/admin/moteurs-services",
+      });
+    })(),
   ];
 
   const jobs = (cronControls || []).map((control: any) => ({
@@ -1543,7 +1900,7 @@ async function handleOperationsPost(sb: any, session: SessionContext, body: any)
     const provider = safeProvider(body?.provider);
     if (!provider) return json({ error: "PROVIDER_INVALID" }, 400);
     const result = await syncExternalProvider(sb, provider, { force: true, actorUserId: session.userId });
-    if (!result.success) return json({ error: "PROVIDER_SYNC_FAILED", message: result.error || `Synchronisation ${provider} impossible.`, sync: result }, 502);
+    if (!result.success) return json({ error: "PROVIDER_SYNC_FAILED", message: ("error" in result ? result.error : null) || `Synchronisation ${provider} impossible.`, sync: result }, 502);
     return json({ success: true, sync: result });
   }
 

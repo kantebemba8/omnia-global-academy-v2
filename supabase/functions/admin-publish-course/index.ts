@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
@@ -121,6 +122,17 @@ Deno.serve(async (req: Request) => {
               : "Votre formation est publiée sur Omnia Global Academy.",
             ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/formations`,
           },
+        });
+        await dispatchOmniaInAppNotification({
+          userId: String(cr.instructor_id),
+          notificationType: "course_published",
+          title: "Formation publiée",
+          message: final_price_xof != null
+            ? `« ${cr.title} » est publiée au prix final de ${Number(final_price_xof).toLocaleString("fr-FR")} XOF.`
+            : `« ${cr.title} » est maintenant publiée sur Omnia Global Academy.`,
+          actionUrl: "/professeur/formations",
+          priority: "high",
+          payload: { domain: "formations", course_id: course_id || cr.id },
         });
       }
     } else if (action === "reject") {

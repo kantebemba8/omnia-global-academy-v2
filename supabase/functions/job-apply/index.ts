@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendOmniaEmail } from "../_shared/brevo-mail.ts";
+import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 const corsHeaders = {
@@ -58,6 +59,21 @@ Deno.serve(async (req: Request) => {
         ACTION_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/talent/recruteur`,
       },
     });
+    const { data: internalRecruiter } = await sb.from("users")
+      .select("id")
+      .ilike("email", String(job.recruiter_email))
+      .maybeSingle();
+    if (internalRecruiter?.id) {
+      await dispatchOmniaInAppNotification({
+        userId: String(internalRecruiter.id),
+        notificationType: "job_application_received",
+        title: "Nouvelle candidature",
+        message: `Une nouvelle candidature a été reçue pour « ${String(job.title || "votre offre")} ».`,
+        actionUrl: "/talent/recruteur",
+        priority: "normal",
+        payload: { domain: "talent", job_id: String(job.id) },
+      });
+    }
   }
 
   return json({

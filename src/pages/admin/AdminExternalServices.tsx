@@ -71,6 +71,16 @@ type Provider = {
   production_enabled?: boolean;
   production_ready?: boolean;
   configuration_scope?: string;
+  requested_environment?: string;
+  provider_api_authenticated?: boolean;
+  components?: Array<{ id: string; label: string; configured: boolean; note?: string }>;
+  balance_mode?: 'provider_not_exposed' | 'provider_credits' | 'not_applicable_postpaid' | 'merchant_balance_provider_units' | 'provider_console_only' | 'not_applicable' | string;
+  balance_note?: string;
+  provider_balances?: any[];
+  provider_credit_plans?: any[];
+  provider_credit_verticals?: any[];
+  technical_usage_30d?: Record<string, number>;
+  technical_usage_by_model_30d?: Record<string, Record<string, number>>;
 };
 
 type GovernancePayload = {
@@ -104,59 +114,208 @@ function dateTimeLocalValue(value: unknown) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function statusLabel(provider: Provider) {
-  if (provider.id === 'sentry' && provider.configured === null) {
-    const localConfigured = Boolean(import.meta.env.VITE_SENTRY_DSN);
-    return { ok: localConfigured, text: localConfigured ? 'Configuré au build' : 'DSN non configuré au build' };
+type ServiceLevel = 'operational' | 'partial' | 'development' | 'error' | 'missing';
+
+function hasLastSyncSuccess(provider: Provider) {
+  return Boolean(provider.sync?.last_success_at && !provider.sync?.last_error);
+}
+
+function serviceStatus(provider: Provider): { level: ServiceLevel; text: string; detail: string } {
+  const syncError = String(provider.sync?.last_error || provider.sync_attempt?.error || '').trim();
+  const synced = hasLastSyncSuccess(provider);
+
+  if (provider.id === 'sentry') {
+    const dsnConfigured = Boolean(import.meta.env.VITE_SENTRY_DSN);
+    if (dsnConfigured && provider.admin_billing_configured && synced) return { level: 'operational', text: 'Collecte & suivi actifs', detail: 'DSN Web/Capacitor et API Stats Sentry opérationnels.' };
+    if (dsnConfigured && syncError) return { level: 'partial', text: 'Collecte active · suivi en erreur', detail: 'Les erreurs peuvent être envoyées à Sentry, mais l’import des volumes doit être corrigé.' };
+    if (dsnConfigured) return { level: 'partial', text: 'Collecte active · stats non connectées', detail: 'Le DSN est intégré au build ; l’API Stats n’est pas encore entièrement opérationnelle.' };
+    if (provider.admin_billing_configured) return { level: 'partial', text: 'Stats connectées · DSN build absent', detail: 'Le suivi serveur est configuré, mais le DSN de collecte n’est pas présent dans ce build.' };
+    return { level: 'missing', text: 'À configurer', detail: 'Aucun DSN de collecte détecté dans ce build et aucune API Stats configurée.' };
   }
+
+  if (provider.id === 'jaas') {
+    if (provider.production_ready) return { level: 'operational', text: 'JaaS production prêt', detail: 'Infrastructure visioconférence prête pour Omnia Live.' };
+    if (provider.environment === 'development_fallback') return { level: 'development', text: 'Fallback développement actif', detail: 'Les tests peuvent utiliser Jitsi public, mais JaaS production n’est pas encore prêt.' };
+    return { level: 'missing', text: 'JaaS production à configurer', detail: 'Aucune infrastructure JaaS de production complète détectée.' };
+  }
+
+  if (provider.id === 'fcm') {
+    return provider.configured
+      ? { level: 'operational', text: 'Prêt Android', detail: 'Identifiants Firebase disponibles ; les livraisons sont suivies par OGA.' }
+      : { level: 'missing', text: 'À configurer avant publication Android', detail: 'Les identifiants Firebase requis ne sont pas tous présents.' };
+  }
+
+  if (provider.id === 'apns') {
+    if (!provider.configured) return { level: 'missing', text: 'À configurer avant publication iOS', detail: 'Les identifiants APNs requis ne sont pas tous présents.' };
+    if (provider.environment === 'production') return { level: 'operational', text: 'Prêt iOS', detail: 'APNs est configuré pour la production.' };
+    return { level: 'development', text: 'APNs Sandbox configuré', detail: 'La configuration Push iOS existe mais reste en environnement Sandbox.' };
+  }
+
+  if (provider.id === 'fedapay') {
+    if (!provider.configured) return { level: 'missing', text: 'Clé FedaPay absente', detail: 'La clé de l’environnement actif doit être configurée.' };
+    if (syncError) return { level: 'error', text: 'Clé présente · authentification en échec', detail: syncError };
+    if (synced) {
+      return provider.environment === 'sandbox'
+        ? { level: 'operational', text: 'Sandbox opérationnel', detail: 'Authentification fournisseur validée en Sandbox. Le passage Production reste volontairement bloqué.' }
+        : { level: 'operational', text: 'Production opérationnelle', detail: 'Authentification fournisseur validée sur l’environnement actif.' };
+    }
+    return { level: 'partial', text: 'Clé présente · test requis', detail: 'La configuration est détectée mais aucune synchronisation fournisseur réussie ne la valide encore.' };
+  }
+
   if (provider.id === 'cloudflare') {
-    const anyCloudflareService = provider.configured === true || provider.r2_configured === true || provider.stream_configured === true || provider.admin_billing_configured === true;
-    return { ok: anyCloudflareService, text: anyCloudflareService ? 'Configuré' : 'Non configuré' };
+    const configuredParts = [provider.r2_configured, provider.stream_configured, provider.admin_billing_configured].filter(Boolean).length;
+    if (configuredParts === 0) return { level: 'missing', text: 'À configurer', detail: 'R2, Stream et Billing sont actuellement non configurés.' };
+    if (syncError && provider.admin_billing_configured) return { level: 'partial', text: 'Services actifs · Billing en erreur', detail: syncError };
+    if (configuredParts === 3 && synced) return { level: 'operational', text: 'R2 · Stream · Billing actifs', detail: 'Les trois composantes Cloudflare nécessaires sont détectées et la facturation est synchronisée.' };
+    return { level: 'partial', text: 'Partiellement configuré', detail: `${configuredParts}/3 composantes Cloudflare détectées. R2, Stream et Billing sont contrôlés séparément.` };
   }
-  if (provider.configured) return { ok: true, text: 'Configuré' };
-  return { ok: false, text: 'Non configuré' };
+
+  if (provider.id === 'openai' || provider.id === 'anthropic') {
+    if (!provider.configured && !provider.admin_billing_configured) return { level: 'missing', text: 'Non configuré', detail: 'API applicative et suivi Admin absents.' };
+    if (provider.configured && provider.admin_billing_configured && syncError) return { level: 'partial', text: 'Service actif · suivi en erreur', detail: syncError };
+    if (provider.configured && provider.admin_billing_configured && synced) {
+      const usageStatus = String(provider.sync?.metadata?.usage_status || '');
+      return usageStatus === 'partial' || usageStatus === 'unavailable'
+        ? { level: 'partial', text: 'Service actif · usage partiel', detail: 'Les coûts sont synchronisés mais certaines métriques d’usage ne sont pas encore disponibles.' }
+        : { level: 'operational', text: 'Service & suivi opérationnels', detail: 'API applicative, coûts et usage technique sont suivis.' };
+    }
+    if (provider.configured) return { level: 'partial', text: 'Service actif · suivi à compléter', detail: 'L’API applicative est présente, mais le suivi Admin n’est pas entièrement opérationnel.' };
+    return { level: 'partial', text: 'Suivi configuré · API applicative absente', detail: 'Le suivi Admin est détecté sans clé applicative OGA.' };
+  }
+
+  if (provider.id === 'brevo') {
+    if (!provider.configured) return { level: 'missing', text: 'Non configuré', detail: 'La clé API Brevo est absente.' };
+    if (syncError) return { level: 'error', text: 'Clé présente · API en erreur', detail: syncError };
+    return synced
+      ? { level: 'operational', text: 'Compte synchronisé', detail: 'Compte, plan/crédits et activité OGA sont suivis.' }
+      : { level: 'partial', text: 'Clé présente · test requis', detail: 'La clé est détectée mais aucune synchronisation réussie récente ne la valide.' };
+  }
+
+  if (provider.configured) return { level: 'operational', text: 'Configuré', detail: 'Service configuré.' };
+  return { level: 'missing', text: 'Non configuré', detail: 'Configuration requise.' };
+}
+
+function statusClasses(level: ServiceLevel) {
+  if (level === 'operational') return { pill: 'bg-emerald-50 text-emerald-700', icon: 'text-emerald-600', panel: 'border-emerald-200 bg-emerald-50', panelText: 'text-emerald-900' };
+  if (level === 'error') return { pill: 'bg-red-50 text-red-700', icon: 'text-red-600', panel: 'border-red-200 bg-red-50', panelText: 'text-red-900' };
+  if (level === 'development') return { pill: 'bg-sky-50 text-sky-700', icon: 'text-sky-600', panel: 'border-sky-200 bg-sky-50', panelText: 'text-sky-900' };
+  if (level === 'partial') return { pill: 'bg-amber-50 text-amber-700', icon: 'text-amber-600', panel: 'border-amber-200 bg-amber-50', panelText: 'text-amber-900' };
+  return { pill: 'bg-gray-100 text-gray-600', icon: 'text-gray-400', panel: 'border-gray-200 bg-gray-50', panelText: 'text-gray-700' };
 }
 
 function automaticStatus(provider: Provider) {
   const liveTelemetry = provider.sync_attempt?.reason === 'LIVE_PLATFORM_TELEMETRY';
   const providerApiReady = Boolean(provider.admin_billing_configured) || (provider.id === 'fedapay' && provider.configured === true);
-  const ready = liveTelemetry || providerApiReady;
+  const status = serviceStatus(provider);
+  const ready = status.level !== 'missing' && status.level !== 'error';
   const syncable = !['jaas', 'fcm', 'apns'].includes(provider.id);
   const lastSuccess = provider.sync?.last_success_at || null;
-  return { liveTelemetry, providerApiReady, ready, syncable, lastSuccess };
+  return { liveTelemetry, providerApiReady, ready, syncable, lastSuccess, status };
+}
+
+const USAGE_LABELS: Record<string, string> = {
+  input_tokens: 'Tokens entrée',
+  output_tokens: 'Tokens sortie',
+  cached_input_tokens: 'Tokens cache lus',
+  cache_read_input_tokens: 'Tokens cache lus',
+  cache_write_tokens: 'Tokens cache écrits',
+  cache_creation_input_tokens: 'Tokens cache créés',
+  uncached_input_tokens: 'Tokens entrée hors cache',
+  model_requests: 'Requêtes modèle',
+  images: 'Images',
+  tts_characters: 'Caractères TTS',
+  audio_seconds: 'Secondes audio',
+  storage_bytes: 'Octets stockage',
+  sessions: 'Sessions',
+  tool_requests: 'Appels outils',
+  server_tool_web_search_requests: 'Recherches Web serveur',
+  server_tool_web_fetch_requests: 'Récupérations Web serveur',
+  emails_sent_or_logged: 'E-mails',
+  sms_sent_or_logged: 'SMS',
+  failures: 'Échecs',
+  sent: 'Envoyées',
+  failed: 'Échouées',
+  rooms_created: 'Salles créées',
+  stream_media_created: 'Médias Stream créés',
+  course_orders: 'Commandes formations',
+  live_orders: 'Commandes Live',
+};
+
+function usageLabel(key: string) {
+  if (key === 'events_total') return 'Événements Sentry';
+  if (key.startsWith('events_')) return `Sentry · ${key.slice('events_'.length).replaceAll('_', ' ')}`;
+  return USAGE_LABELS[key] || key.replaceAll('_', ' ');
+}
+
+function usageValue(key: string, value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  if (key.includes('tokens') || key.startsWith('events_') || key.startsWith('server_tool_') || ['model_requests', 'images', 'tts_characters', 'audio_seconds', 'storage_bytes', 'sessions', 'tool_requests', 'sent', 'failed', 'failures', 'rooms_created', 'course_orders', 'live_orders'].includes(key)) {
+    return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(number);
+  }
+  return formatNumber(number);
+}
+
+function trackedBalanceText(provider: Provider) {
+  const tracked = Object.entries(provider.finance?.tracked_balance || {});
+  const recharges = Object.entries(provider.finance?.recharges || {});
+  if (provider.balance_mode === 'not_applicable' || provider.balance_mode === 'not_applicable_postpaid') return 'Pas de recharge';
+  if (provider.balance_mode === 'provider_console_only') return tracked.length ? tracked.map(([c, v]) => `Suivi OGA ${formatNumber(v)} ${c}`).join(' · ') : 'Voir console fournisseur';
+  if (provider.balance_mode === 'provider_credits') {
+    const credits = [...(provider.provider_credit_plans || []), ...(provider.provider_credit_verticals || [])]
+      .filter(item => item?.credits != null)
+      .map(item => `${formatNumber(item.credits)}${item.credits_type ? ` ${item.credits_type}` : ' crédits'}`);
+    return credits.length ? credits.join(' · ') : 'Plan synchronisé';
+  }
+  if (provider.balance_mode === 'merchant_balance_provider_units') {
+    return provider.provider_balances?.length ? `${provider.provider_balances.length} solde(s) marchand synchronisé(s)` : 'Solde marchand à synchroniser';
+  }
+  if (recharges.length || tracked.length) {
+    const values = tracked.length ? tracked : recharges;
+    return values.map(([c, v]) => `Suivi OGA ${formatNumber(v)} ${c}`).join(' · ');
+  }
+  return 'Solde fournisseur non exposé par l’API';
+}
+
+function technicalUsageEntries(provider: Provider) {
+  return Object.entries(provider.technical_usage_30d || {}).filter(([, value]) => Number.isFinite(Number(value)) && Number(value) !== 0);
 }
 
 function FinanceSummary({ provider }: { provider: Provider }) {
-  const recharges = Object.entries(provider.finance?.recharges || {});
-  const usage = Object.entries(provider.finance?.consumption || {});
+  const usage = Object.entries(provider.finance_30d?.consumption || {});
+  const technical = technicalUsageEntries(provider);
   const auto = automaticStatus(provider);
-  const observed = Object.keys(provider.observed_usage_30d || {}).length > 0;
-  const rechargeText = recharges.length
-    ? recharges.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ')
-    : provider.recharge_automation?.provider_managed
-      ? 'Gérées par le fournisseur'
-      : 'Non applicable';
-  const usageText = usage.length
+  const costText = usage.length
     ? usage.map(([c, v]) => `${formatNumber(v)} ${c}`).join(' · ')
-    : (auto.ready || observed)
-      ? 'Suivi automatique'
-      : 'À configurer';
-  const statusText = auto.liveTelemetry
-    ? 'Temps réel OGA'
-    : auto.lastSuccess
-      ? `Synchronisé ${new Date(auto.lastSuccess).toLocaleDateString('fr-FR')}`
-      : auto.ready
-        ? 'Prêt à synchroniser'
-        : 'Configuration requise';
+    : auto.ready ? '0 coût synchronisé sur 30 j' : 'À synchroniser';
+  const technicalText = technical.length
+    ? technical.slice(0, 2).map(([key, value]) => `${usageLabel(key)} : ${usageValue(key, value)}`).join(' · ')
+    : (provider.id === 'openai' || provider.id === 'anthropic') && provider.admin_billing_configured
+      ? 'Aucun usage technique sur 30 j'
+      : 'Selon disponibilité fournisseur';
+  const statusText = provider.sync?.last_error
+    ? 'Dernière synchro en erreur'
+    : auto.liveTelemetry
+      ? 'Télémétrie OGA'
+      : auto.lastSuccess
+        ? `Succès ${new Date(auto.lastSuccess).toLocaleDateString('fr-FR')}`
+        : auto.providerApiReady
+          ? 'Prêt à tester'
+          : 'Configuration requise';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 text-xs">
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-        <p className="text-gray-500 font-semibold">Recharges / facturation</p>
-        <p className="font-black mt-1" style={{ color: BLUE }}>{rechargeText}</p>
+        <p className="text-gray-500 font-semibold">Solde / crédits / quota</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{trackedBalanceText(provider)}</p>
       </div>
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-        <p className="text-gray-500 font-semibold">Consommations / usage</p>
-        <p className="font-black mt-1" style={{ color: BLUE }}>{usageText}</p>
+        <p className="text-gray-500 font-semibold">Coûts · 30 jours</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{costText}</p>
+      </div>
+      <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+        <p className="text-gray-500 font-semibold">Usage technique · 30 jours</p>
+        <p className="font-black mt-1" style={{ color: BLUE }}>{technicalText}</p>
       </div>
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
         <p className="text-gray-500 font-semibold">Synchronisation</p>
@@ -245,11 +404,13 @@ export default function AdminExternalServices() {
         const reason = String(sync?.reason || 'SYNC_SKIPPED');
         const labels: Record<string, string> = {
           CLOUDFLARE_BILLING_TOKEN_OR_ACCOUNT_MISSING: 'token Billing ou Account ID Cloudflare manquant',
-          OPENAI_ADMIN_KEY_MISSING: 'clé Admin OpenAI manquante',
-          ANTHROPIC_ADMIN_KEY_MISSING: 'clé Admin Anthropic manquante',
-          BREVO_API_KEY_MISSING: 'clé API Brevo manquante',
-          SENTRY_CONFIGURATION_MISSING: 'configuration Sentry incomplète',
+          OPENAI_ADMIN_KEY_NOT_CONFIGURED: 'clé Admin OpenAI manquante',
+          ANTHROPIC_ADMIN_KEY_NOT_CONFIGURED: 'clé Admin Anthropic manquante',
+          BREVO_API_KEY_NOT_CONFIGURED: 'clé API Brevo manquante',
+          FEDAPAY_SECRET_KEY_NOT_CONFIGURED: 'clé FedaPay de l’environnement actif manquante',
+          SENTRY_TOKEN_OR_ORG_NOT_CONFIGURED: 'token Sentry ou organisation Sentry manquant',
           AUTO_SYNC_DISABLED: 'synchronisation automatique désactivée',
+          RECENT_SYNC: 'une synchronisation récente existe déjà',
         };
         throw new Error(`Synchronisation non exécutée : ${labels[reason] || reason}.`);
       }
@@ -288,7 +449,7 @@ export default function AdminExternalServices() {
     finally { setBusy(''); }
   }
 
-  const configuredCount = useMemo(() => data.providers.filter(p => statusLabel(p).ok).length, [data.providers]);
+  const configuredCount = useMemo(() => data.providers.filter(p => serviceStatus(p).level !== 'missing').length, [data.providers]);
   const failedPush = Number(data.notifications?.fcm_failed_30d || 0) + Number(data.notifications?.apns_failed_30d || 0);
 
   return (
@@ -335,64 +496,162 @@ export default function AdminExternalServices() {
         ) : tab === 'services' ? (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {data.providers.map(provider => {
-              const status = statusLabel(provider);
+              const status = serviceStatus(provider);
+              const statusStyle = statusClasses(status.level);
+              const technical = technicalUsageEntries(provider);
+              const modelUsage = Object.entries(provider.technical_usage_by_model_30d || {})
+                .filter(([, metrics]) => Object.values(metrics || {}).some(value => Number(value) > 0))
+                .sort((a, b) => Number(b[1]?.input_tokens || 0) + Number(b[1]?.output_tokens || 0) - Number(a[1]?.input_tokens || 0) - Number(a[1]?.output_tokens || 0))
+                .slice(0, 6);
+              const auto = automaticStatus(provider);
+              const syncError = provider.sync?.last_error || provider.sync_attempt?.error;
               return (
                 <div key={provider.id} className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2"><h2 className="font-black" style={{ color: BLUE }}>{provider.label}</h2><span className={`text-[11px] font-bold px-2 py-1 rounded-full ${status.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{status.text}</span></div>
-                      <p className="text-xs text-gray-500 mt-1">{provider.role}</p>
-                    </div>
-                    {status.ok ? <CheckCircle2 className="text-emerald-600" size={20}/> : <AlertTriangle className="text-amber-600" size={20}/>} 
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-gray-50 p-3"><p className="text-gray-500">Environnement</p><p className="font-bold mt-1" style={{ color: BLUE }}>{provider.environment || '—'}</p></div>
-                    <div className="rounded-lg bg-gray-50 p-3"><p className="text-gray-500">Facturation</p><p className="font-bold mt-1" style={{ color: BLUE }}>{provider.billing_model || '—'}</p></div>
-                  </div>
-                  {provider.observed_usage_30d && <div className="rounded-lg border border-gray-100 p-3"><p className="text-xs font-bold text-gray-600 mb-2">Activité observée par OGA · 30 jours</p><div className="flex flex-wrap gap-2">{Object.entries(provider.observed_usage_30d).map(([key, value]) => <span key={key} className="text-xs rounded-md bg-gray-50 px-2 py-1 text-gray-600">{key.replaceAll('_',' ')} : <strong>{formatNumber(value)}</strong></span>)}</div></div>}
-                  <FinanceSummary provider={provider}/>
-                  {(() => {
-                    const auto = automaticStatus(provider);
-                    const syncError = provider.sync?.last_error || provider.sync_attempt?.error;
-                    return (
-                      <div className={`rounded-lg border p-3 text-xs ${auto.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className={`font-black ${auto.ready ? 'text-emerald-900' : 'text-amber-900'}`}>
-                              Suivi automatique prioritaire
-                            </p>
-                            {auto.liveTelemetry ? (
-                              <p className="mt-1 text-emerald-800">Usage suivi automatiquement par la télémétrie OGA. Aucune saisie quotidienne n’est nécessaire.</p>
-                            ) : auto.ready ? (
-                              <p className="mt-1 text-emerald-800">
-                                Synchronisation fournisseur prête.
-                                {' '}Dernier succès : {provider.sync?.last_success_at ? new Date(provider.sync.last_success_at).toLocaleString('fr-FR') : 'pas encore exécuté'}.
-                              </p>
-                            ) : (
-                              <p className="mt-1 text-amber-800">{provider.usage_note || 'La synchronisation automatique nécessite encore la configuration serveur du fournisseur.'}</p>
-                            )}
-                            {syncError && <p className="mt-1 text-red-700">Dernière erreur : {syncError}</p>}
-                          </div>
-                          {auto.syncable && (
-                            <button
-                              onClick={() => void syncProvider(provider.id)}
-                              disabled={busy === `sync:${provider.id}`}
-                              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-current px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              <RefreshCw size={14} className={busy === `sync:${provider.id}` ? 'animate-spin' : ''}/>Synchroniser maintenant
-                            </button>
-                          )}
-                        </div>
-                        <div className="mt-3 border-t border-current/10 pt-3">
-                          <p className="font-bold">Facturation / recharges</p>
-                          <p className="mt-1 leading-relaxed">{provider.recharge_automation?.note || 'Le fournisseur reste la source prioritaire. La saisie manuelle n’est utilisée qu’en secours.'}</p>
-                          {provider.recharge_automation?.manual_fallback !== false && (
-                            <p className="mt-1 font-semibold">Saisie manuelle disponible uniquement en secours ou pour un rapprochement exceptionnel.</p>
-                          )}
-                        </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="font-black" style={{ color: BLUE }}>{provider.label}</h2>
+                        <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${statusStyle.pill}`}>{status.text}</span>
                       </div>
-                    );
-                  })()}
+                      <p className="text-xs text-gray-500 mt-1">{provider.role}</p>
+                      <p className="text-[11px] font-semibold mt-1 text-gray-500">{status.detail}</p>
+                    </div>
+                    {status.level === 'operational'
+                      ? <CheckCircle2 className={statusStyle.icon} size={20}/>
+                      : status.level === 'error'
+                        ? <XCircle className={statusStyle.icon} size={20}/>
+                        : <AlertTriangle className={statusStyle.icon} size={20}/>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <p className="text-gray-500">Environnement</p>
+                      <p className="font-bold mt-1" style={{ color: BLUE }}>{provider.environment || '—'}</p>
+                      {provider.requested_environment && provider.requested_environment !== provider.environment && <p className="mt-1 text-[10px] text-amber-700">Demandé : {provider.requested_environment}</p>}
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <p className="text-gray-500">Facturation</p>
+                      <p className="font-bold mt-1" style={{ color: BLUE }}>{provider.billing_model || '—'}</p>
+                    </div>
+                  </div>
+
+                  {provider.components?.length ? (
+                    <div className="rounded-lg border border-gray-100 p-3">
+                      <p className="text-xs font-bold text-gray-600 mb-2">Configuration détaillée</p>
+                      <div className="flex flex-wrap gap-2">
+                        {provider.components.map(component => (
+                          <span key={component.id} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold ${component.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {component.configured ? <CheckCircle2 size={12}/> : <XCircle size={12}/>}
+                            {component.label}
+                          </span>
+                        ))}
+                        {provider.id === 'sentry' && (
+                          <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold ${import.meta.env.VITE_SENTRY_DSN ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {import.meta.env.VITE_SENTRY_DSN ? <CheckCircle2 size={12}/> : <XCircle size={12}/>}
+                            DSN collecte Web/Capacitor
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <FinanceSummary provider={provider}/>
+
+                  {technical.length > 0 && (
+                    <div className="rounded-lg border border-gray-100 p-3">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <p className="text-xs font-bold text-gray-600">Consommation technique réelle · 30 jours</p>
+                        {(provider.id === 'openai' || provider.id === 'anthropic') && provider.sync?.metadata?.usage_status && (
+                          <span className={`text-[10px] font-black rounded-full px-2 py-1 ${provider.sync.metadata.usage_status === 'complete' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            Usage {provider.sync.metadata.usage_status === 'complete' ? 'complet' : 'partiel'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {technical.map(([key, value]) => (
+                          <span key={key} className="text-xs rounded-md bg-gray-50 px-2 py-1 text-gray-600">
+                            {usageLabel(key)} : <strong>{usageValue(key, value)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {modelUsage.length > 0 && (
+                    <div className="rounded-lg border border-gray-100 p-3">
+                      <p className="text-xs font-bold text-gray-600 mb-2">Usage par modèle · 30 jours</p>
+                      <div className="space-y-1.5">
+                        {modelUsage.map(([model, metrics]) => (
+                          <div key={model} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-50 px-2.5 py-2 text-[11px]">
+                            <span className="font-bold text-gray-700">{model}</span>
+                            <span className="text-gray-500">
+                              {Number(metrics.input_tokens || 0) > 0 ? `Entrée ${usageValue('input_tokens', metrics.input_tokens)}` : ''}
+                              {Number(metrics.output_tokens || 0) > 0 ? `${Number(metrics.input_tokens || 0) > 0 ? ' · ' : ''}Sortie ${usageValue('output_tokens', metrics.output_tokens)}` : ''}
+                              {Number(metrics.model_requests || 0) > 0 ? ` · ${usageValue('model_requests', metrics.model_requests)} requête(s)` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {provider.observed_usage_30d && Object.keys(provider.observed_usage_30d).length > 0 && (
+                    <div className="rounded-lg border border-gray-100 p-3">
+                      <p className="text-xs font-bold text-gray-600 mb-2">Activité observée par OGA · 30 jours</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(provider.observed_usage_30d).map(([key, value]) => (
+                          <span key={key} className="text-xs rounded-md bg-gray-50 px-2 py-1 text-gray-600">{usageLabel(key)} : <strong>{formatNumber(value)}</strong></span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {provider.balance_note && (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2 text-[11px] leading-relaxed text-blue-900">
+                      <strong>Solde :</strong> {provider.balance_note}
+                    </div>
+                  )}
+
+                  <div className={`rounded-lg border p-3 text-xs ${statusStyle.panel}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className={`font-black ${statusStyle.panelText}`}>Suivi automatique prioritaire</p>
+                        {auto.liveTelemetry ? (
+                          <p className="mt-1 text-gray-700">Usage suivi par la télémétrie OGA. Aucune saisie quotidienne n’est nécessaire.</p>
+                        ) : (
+                          <p className="mt-1 text-gray-700">
+                            {provider.sync?.last_success_at
+                              ? `Dernier succès fournisseur : ${new Date(provider.sync.last_success_at).toLocaleString('fr-FR')}.`
+                              : provider.admin_billing_configured || provider.configured
+                                ? 'Configuration détectée. Lancez la synchronisation pour valider l’accès fournisseur.'
+                                : provider.usage_note || 'La synchronisation automatique nécessite encore une configuration serveur.'}
+                          </p>
+                        )}
+                        {syncError && <p className="mt-1 font-semibold text-red-700">Dernière erreur : {syncError}</p>}
+                        {provider.sync?.metadata?.usage_error && <p className="mt-1 font-semibold text-amber-700">Usage technique : {String(provider.sync.metadata.usage_error)}</p>}
+                        {Array.isArray(provider.sync?.metadata?.usage_errors) && provider.sync.metadata.usage_errors.length > 0 && (
+                          <p className="mt-1 font-semibold text-amber-700">{provider.sync.metadata.usage_errors.length} surface(s) d’usage n’ont pas pu être lues ; les métriques disponibles restent affichées.</p>
+                        )}
+                      </div>
+                      {auto.syncable && (
+                        <button
+                          onClick={() => void syncProvider(provider.id)}
+                          disabled={busy === `sync:${provider.id}`}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-current px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <RefreshCw size={14} className={busy === `sync:${provider.id}` ? 'animate-spin' : ''}/>Synchroniser maintenant
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-3 border-t border-current/10 pt-3">
+                      <p className="font-bold">Facturation / recharges</p>
+                      <p className="mt-1 leading-relaxed">{provider.recharge_automation?.note || 'Le fournisseur reste la source prioritaire. La saisie manuelle n’est utilisée qu’en secours.'}</p>
+                      {provider.recharge_automation?.manual_fallback !== false && (
+                        <p className="mt-1 font-semibold">Saisie manuelle disponible uniquement en secours ou pour un rapprochement exceptionnel.</p>
+                      )}
+                    </div>
+                  </div>
+
                   {(provider.budget_status?.budget_exceeded || provider.budget_status?.low_balance_alert) && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
                       <AlertTriangle size={15} className="shrink-0 mt-0.5"/>
@@ -404,6 +663,7 @@ export default function AdminExternalServices() {
                       </span>
                     </div>
                   )}
+
                   <div className="flex flex-wrap gap-2">
                     {provider.recharge_automation?.manual_fallback !== false && <button onClick={() => { setTab('finance'); setEntryForm({ provider: provider.id, entry_type: 'recharge', currency: provider.budget?.currency || 'EUR' }); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-700"><Wallet size={14}/>Saisie de secours</button>}
                     <button onClick={() => { setTab('finance'); setBudgetForm({ provider: provider.id, monthly_budget: provider.budget?.monthly_budget ?? '', currency: provider.budget?.currency || 'EUR', low_balance_threshold: provider.budget?.low_balance_threshold ?? '', notes: provider.budget?.notes || '', enabled: provider.budget?.enabled !== false }); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"><Gauge size={14}/>Budget & seuil</button>
