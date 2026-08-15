@@ -118,6 +118,11 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [frameworkWarning, setFrameworkWarning] = useState('');
+  const [policy, setPolicy] = useState({
+    lesson_assessment_required: false,
+    module_assessment_required: false,
+    final_assessment_required: false,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +142,11 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
       ]);
 
       setFrameworks(catalog.frameworks || []);
+      setPolicy({
+        lesson_assessment_required: data.policy?.lesson_assessment_required === true,
+        module_assessment_required: data.policy?.module_assessment_required === true,
+        final_assessment_required: data.policy?.final_assessment_required === true,
+      });
       setRows((data.assessments || []).map((row: Partial<AssessmentRow> & Pick<AssessmentRow, 'id' | 'title' | 'scope'>) => ({
         ...row,
         passing_score: Number(row.passing_score || 70),
@@ -200,10 +210,6 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
   }
 
   async function save() {
-    if (!rows.length) {
-      setError('Aucune évaluation n’est disponible à enregistrer.');
-      return;
-    }
     setSaving(true);
     setMessage('');
     setError('');
@@ -216,10 +222,14 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
           default_retry_cooldown_hours: rows[0]?.retry_cooldown_hours ?? 24,
           default_remediation_after_attempts: rows[0]?.remediation_after_attempts ?? 3,
           default_remediation_mode: rows[0]?.remediation_mode ?? 'review_module',
+          lesson_assessment_required: policy.lesson_assessment_required,
+          module_assessment_required: policy.module_assessment_required,
+          final_assessment_required: policy.final_assessment_required,
         },
         assessments: rows,
       });
-      setMessage('Les règles d’évaluation, de jury, de révision et de compétences ont été enregistrées. Elles seront contrôlées par le Centre Qualité.');
+      await call('ensure_assessments', { course_id: courseId });
+      setMessage('Les règles d’évaluation, de jury, de révision et de compétences ont été enregistrées. Les évaluations ne sont créées que lorsqu’elles sont requises.');
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.');
@@ -240,6 +250,28 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          <div className="mb-5 rounded-2xl border bg-slate-50 p-4" style={{ borderColor: BORDER }}>
+            <h3 className="text-sm font-bold" style={{ color: BLUE }}>Politique d’évaluation de la formation</h3>
+            <p className="mt-1 text-xs leading-5 text-gray-600">Les évaluations de leçon et de module sont facultatives par défaut. L’examen final peut être imposé par votre politique ; il reste automatiquement requis lorsqu’une certification ou un parcours CPD l’exige.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {[
+                ['lesson_assessment_required', 'Évaluation à chaque leçon'],
+                ['module_assessment_required', 'Évaluation à chaque module'],
+                ['final_assessment_required', 'Examen final obligatoire'],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-3 rounded-xl border bg-white p-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>
+                  <input
+                    type="checkbox"
+                    checked={policy[key as keyof typeof policy]}
+                    onChange={event => setPolicy(current => ({ ...current, [key]: event.target.checked }))}
+                    disabled={locked || saving}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="mb-5 grid gap-3 md:grid-cols-5">
             <Info icon={RotateCcw} title="Tentatives" text="La remédiation remplace le blocage définitif pour une formation achetée." />
             <Info icon={ShieldCheck} title="Contrôle qualité" text="L’Administration Omnia valide les règles proposées avant publication." />

@@ -6,6 +6,7 @@ import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 
 import { captureError } from './lib/sentry';
 import { isRecoverableChunkError, recoverFromChunkError } from './lib/pwaRecovery';
+import { getSessionToken } from './lib/session';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import { PlatformRoleGate } from './components/auth/PlatformRoleGate';
@@ -465,7 +466,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
               </button>
               <button
                 type="button"
-                onClick={() => window.location.assign(window.location.pathname.startsWith('/omnia-career') ? '/omnia-career' : (window.localStorage.getItem('omnia_session_token') ? '/home' : '/accueil'))}
+                onClick={() => window.location.assign(window.location.pathname.startsWith('/omnia-career') ? '/omnia-career' : (getSessionToken() ? '/home' : '/accueil'))}
                 className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-[#002050] hover:bg-slate-50"
               >
                 Retour à l’accueil

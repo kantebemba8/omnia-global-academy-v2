@@ -42,7 +42,7 @@ import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
-import { EnhancedDashboard, EnhancedInterview, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
+import { EnhancedDashboard, EnhancedApplications, EnhancedProfile, EnhancedSettings } from '../../components/career/CareerEnhancedViews';
 import type { SubspaceSearchResult } from '../../components/SubspaceHamburgerLayout';
 import CareerLearnerLayout from '../../components/career/CareerRoleLayout';
 
@@ -268,8 +268,10 @@ export default function DashboardCareerStudio() {
       const rawLmTemplates = ((((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : publicLm) || []) as Template[];
       // The user-facing catalog exposes only the canonical 12 CV / 6 LM templates.
       // Legacy aliases remain supported when old documents are opened, but never create duplicate cards.
-      const loadedCvTemplates = mergeCareerTemplateCatalog('cv', rawCvTemplates, { authoritative: true }) as Template[];
-      const loadedLmTemplates = mergeCareerTemplateCatalog('lm', rawLmTemplates, { authoritative: true }) as Template[];
+      const loadedCvTemplates = mergeCareerTemplateCatalog('cv', rawCvTemplates, { authoritative: true })
+        .filter(template => /^cv_(horizon|sahara|atlas|kora|nile|executive|baobab|digital|academia|hospitality|qhse|impact)$/.test(template.template_key)) as Template[];
+      const loadedLmTemplates = mergeCareerTemplateCatalog('lm', rawLmTemplates, { authoritative: true })
+        .filter(template => /^lm_(horizon|sahara|atlas|kora|digital|executive)$/.test(template.template_key)) as Template[];
       setCvTemplates(loadedCvTemplates);
       setLmTemplates(loadedLmTemplates);
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
@@ -422,7 +424,7 @@ export default function DashboardCareerStudio() {
           {activeView === 'dashboard' && <EnhancedDashboard displayName={displayName} loading={loading} cvDocs={cvDocs} lmDocs={lmDocs} cvTemplates={cvTemplates as any} lmTemplates={lmTemplates as any} onView={(view) => goToView(view as ActiveView)} onCreate={createDoc} onOpen={openDoc} previewMode={previewMode} />}
           {activeView === 'cv' && <CvBuilderView documents={cvDocs} templates={cvTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} renameDoc={startRename} />}
           {activeView === 'lm' && <LettersView documents={lmDocs} templates={lmTemplates} createDoc={createDoc} openDoc={openDoc} deleteDoc={deleteDoc} renameDoc={startRename} />}
-          {activeView === 'interview' && <EnhancedInterview />}
+          {activeView === 'interview' && <InterviewView jobId={searchParams.get('job_id') || undefined} />}
           {activeView === 'applications' && <EnhancedApplications navigate={navigate} />}
           {activeView === 'profile' && <EnhancedProfile displayName={displayName} />}
           {activeView === 'settings' && <EnhancedSettings tokens={tokens} user={user} />}

@@ -386,7 +386,8 @@ export default function CareerStudioEditor() {
   const { docId } = useParams<{ docId: string }>();
   const [searchParams] = useSearchParams();
   const docType = (searchParams.get('type') === 'lm' ? 'lm' : 'cv') as CareerDocType;
-  const requestedTemplate = normalizeTemplateKey(docType, searchParams.get('template') || getDefaultTemplateKey(docType));
+  const rawRequestedTemplate = String(searchParams.get('template') || '').trim();
+  const requestedTemplate = rawRequestedTemplate ? normalizeTemplateKey(docType, rawRequestedTemplate) : '';
   const previewMode = isLearnerPreviewMode();
 
   const [document, setDocument] = useState<CareerDocumentFull | null>(null);
@@ -458,6 +459,10 @@ export default function CareerStudioEditor() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if ((docId === 'new' || !docId) && !requestedTemplate) {
+        navigate(docType === 'cv' ? '/omnia-career/cv-builder' : '/omnia-career/lettres', { replace: true });
+        return;
+      }
       if (previewMode) {
         const catalog = await fetchCareerTemplateCatalog(docType);
         setTemplates(catalog);
@@ -681,7 +686,7 @@ export default function CareerStudioEditor() {
       ...doc,
       doc_data: createDefaultData(doc.doc_type),
       design_options: createDefaultDesign(doc.doc_type),
-      template_key: getDefaultTemplateKey(doc.doc_type),
+      template_key: doc.template_key,
       title: getDefaultDocTitle(doc.doc_type),
       ats_score: 0,
     }), { startQuality: false });

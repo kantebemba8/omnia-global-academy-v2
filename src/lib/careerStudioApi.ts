@@ -45,13 +45,15 @@ function writeLocal(docType: CareerDocType, docs: CareerDocumentFull[]) {
 }
 
 function createLocalDocument(docType: CareerDocType, templateKey?: string): CareerDocumentFull {
+  const explicitTemplate = String(templateKey || '').trim();
+  if (!explicitTemplate) throw new Error('TEMPLATE_SELECTION_REQUIRED');
   const id = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const data = createDefaultData(docType);
   return {
     id,
     title: getDefaultDocTitle(docType),
     doc_type: docType,
-    template_key: normalizeTemplateKey(docType, templateKey || getDefaultTemplateKey(docType)),
+    template_key: normalizeTemplateKey(docType, explicitTemplate),
     language: 'fr',
     status: 'draft',
     ats_score: 0,

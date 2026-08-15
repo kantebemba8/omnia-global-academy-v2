@@ -45,7 +45,7 @@ interface Course {
   objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
   target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
   course_intro_summary?: string; studio_status: string;
-  studio_mode?: string; word_count?: number; estimated_read_min?: number;
+  studio_mode?: string; word_count?: number; estimated_read_min?: number; calculated_duration_minutes?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
@@ -397,7 +397,7 @@ export default function StudioConceptionFormation() {
       case 'pdf': return { url: '', title: '', description: '', downloadable: true };
       case 'word': return { url: '', title: '', description: '' };
       case 'excel': return { url: '', title: '', sheet: '', preview_rows: [] };
-      case 'scorm': return { url: '', title: '', package_type: 'scorm_12', duration_min: 0 };
+      case 'scorm': return { url: '', title: '', package_type: 'scorm_2004', duration_min: 0, duration_source: 'automatic', scorm_ready: false };
       case 'download': return { url: '', title: '', description: '' };
       case 'qcm': return { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '' };
       case 'true_false': return { statement: '', answer: true, explanation: '' };
@@ -697,7 +697,7 @@ export default function StudioConceptionFormation() {
 
   const locked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
-  const visibleBlocks = advancedMode ? BLOCK_DEFS : BLOCK_DEFS.filter(b => b.mode === 'simple');
+  const visibleBlocks = BLOCK_DEFS;
 
   if (loading) {
     return (
@@ -810,13 +810,15 @@ export default function StudioConceptionFormation() {
             {/* Onglet Blocs */}
             {activeLibTab === 'blocs' && (
               <div>
-                {['structure', 'pedagogique', 'media', 'evaluation', ...(advancedMode ? ['avance'] : [])].map(group => {
+                {['structure', 'pedagogique', 'media', 'evaluation', 'avance'].map(group => {
                   const groupBlocks = visibleBlocks.filter(b => b.group === group);
                   if (groupBlocks.length === 0) return null;
                   const groupLabels: Record<string, string> = { structure: 'Structure', pedagogique: 'Pédagogie', media: 'Médias & Fichiers', evaluation: 'Évaluation', avance: 'Avancés' };
                   return (
                     <div key={group} className="mb-4">
-                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>{groupLabels[group]}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>
+                        {groupLabels[group]} {group === 'avance' && <span className="ml-1 normal-case font-medium text-[#BF8813]">— disponibles dans toutes les formations</span>}
+                      </p>
                       <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
                           <button key={def.type} onClick={() => addBlock(def.type)} disabled={locked} draggable={!locked && !!currentLesson}
@@ -850,6 +852,11 @@ export default function StudioConceptionFormation() {
                   { label: 'Quiz rapide', blocks: ['qcm', 'true_false'] },
                   { label: 'Résumé de leçon', blocks: ['remember', 'summary'] },
                   { label: 'Document + Questions', blocks: ['pdf', 'qcm'] },
+                  { label: 'Concept interactif', blocks: ['heading', 'accordion', 'flashcards', 'summary'] },
+                  { label: 'Étude de cas guidée', blocks: ['case_study', 'rubric', 'assignment_upload'] },
+                  { label: 'Démonstration technique', blocks: ['code', 'formula', 'chart', 'remember'] },
+                  { label: 'Parcours visuel', blocks: ['timeline', 'gallery', 'checklist'] },
+                  { label: 'Module SCORM accompagné', blocks: ['objective', 'scorm', 'summary'] },
                 ].map(section => (
                   <button key={section.label} disabled={locked}
                     onClick={async () => { for (const bt of section.blocks) { await addBlock(bt); } }}
@@ -957,7 +964,7 @@ export default function StudioConceptionFormation() {
             <div className="mx-auto max-w-5xl">
               <AssessmentRulesCard
                 courseId={course.id || 'new'}
-                durationMinutes={(course as any).calculated_duration_minutes || course.estimated_read_min || 0}
+                durationMinutes={course.calculated_duration_minutes || 0}
                 busy={openingAssessmentPolicy || creatingDraft}
                 locked={locked}
                 onConfigure={openAssessmentPolicy}
@@ -1607,6 +1614,58 @@ function BlockPreview({ block, def, locked, onChange }: {
         <input className={inputCls} style={style} value={c.explanation || ''} onChange={e => onChange({ ...c, explanation: e.target.value })} placeholder="Explication..." disabled={locked} />
       </div>
     );
+
+    case 'audio': return (
+      <div className="space-y-2">
+        <input className={inputCls} style={style} value={c.description || ''} onChange={e=>onChange({...c,description:e.target.value})} placeholder="Description de l’audio" disabled={locked}/>
+        <textarea className={inputCls} style={style} rows={4} value={c.transcription || ''} onChange={e=>onChange({...c,transcription:e.target.value})} placeholder="Transcription / texte alternatif" disabled={locked}/>
+      </div>
+    );
+    case 'quote': return (
+      <div className="space-y-2">
+        <textarea className={inputCls} style={style} rows={3} value={c.text || ''} onChange={e=>onChange({...c,text:e.target.value})} placeholder="Citation ou témoignage" disabled={locked}/>
+        <input className={inputCls} style={style} value={c.author || ''} onChange={e=>onChange({...c,author:e.target.value})} placeholder="Auteur / source" disabled={locked}/>
+      </div>
+    );
+    case 'checklist': return (
+      <div className="space-y-2">
+        {(c.items || []).map((item:any,i:number)=><div key={item.id||i} className="flex items-center gap-2">
+          <input type="checkbox" checked={item.checked===true} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,checked:e.target.checked};onChange({...c,items})}} disabled={locked}/>
+          <input className={`${inputCls} flex-1`} style={style} value={item.text||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,text:e.target.value};onChange({...c,items})}} placeholder="Élément de checklist" disabled={locked}/>
+          {!locked&&<button type="button" onClick={()=>onChange({...c,items:(c.items||[]).filter((_:any,index:number)=>index!==i)})} className="px-2 text-red-600">×</button>}
+        </div>)}
+        {!locked&&<button type="button" onClick={()=>onChange({...c,items:[...(c.items||[]),{id:crypto.randomUUID(),text:'',checked:false}]})} className="text-xs font-semibold text-[#002050]">+ Ajouter un élément</button>}
+      </div>
+    );
+    case 'link_button': return <div className="grid gap-2 sm:grid-cols-2"><input className={inputCls} style={style} value={c.label||''} onChange={e=>onChange({...c,label:e.target.value})} placeholder="Libellé du bouton" disabled={locked}/><input className={inputCls} style={style} value={c.url||''} onChange={e=>onChange({...c,url:e.target.value})} placeholder="https://..." disabled={locked}/></div>;
+    case 'accordion': return (
+      <div className="space-y-3">{(c.items||[]).map((item:any,i:number)=><div key={item.id||i} className="rounded-xl border p-3" style={style}><input className={inputCls} style={style} value={item.title||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,title:e.target.value};onChange({...c,items})}} placeholder={`Section ${i+1}`} disabled={locked}/><textarea className={`${inputCls} mt-2`} style={style} rows={3} value={item.content||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,content:e.target.value};onChange({...c,items})}} placeholder="Contenu" disabled={locked}/>{!locked&&<button type="button" className="mt-2 text-xs text-red-600" onClick={()=>onChange({...c,items:(c.items||[]).filter((_:any,index:number)=>index!==i)})}>Supprimer</button>}</div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,items:[...(c.items||[]),{id:crypto.randomUUID(),title:`Section ${(c.items||[]).length+1}`,content:''}]})}>+ Ajouter une section</button>}</div>
+    );
+    case 'flashcards': return (
+      <div className="space-y-3">{(c.cards||[]).map((card:any,i:number)=><div key={card.id||i} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2" style={style}><textarea className={inputCls} style={style} rows={2} value={card.front||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,front:e.target.value};onChange({...c,cards})}} placeholder="Recto" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={card.back||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,back:e.target.value};onChange({...c,cards})}} placeholder="Verso" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,cards:[...(c.cards||[]),{id:crypto.randomUUID(),front:'',back:''}]})}>+ Ajouter une carte</button>}</div>
+    );
+    case 'interactive_table': return (
+      <div className="space-y-2">
+        <input className={inputCls} style={style} value={(c.headers||[]).join(' | ')} onChange={e=>onChange({...c,headers:e.target.value.split('|').map((x:string)=>x.trim())})} placeholder="Colonnes séparées par |" disabled={locked}/>
+        <textarea className={inputCls} style={style} rows={5} value={(c.rows||[]).map((r:any[])=>r.join(' | ')).join('\n')} onChange={e=>onChange({...c,rows:e.target.value.split('\n').map((line:string)=>line.split('|').map(x=>x.trim()))})} placeholder={"Une ligne par rangée, cellules séparées par |\nValeur 1 | Valeur 2"} disabled={locked}/>
+      </div>
+    );
+    case 'timeline': return (
+      <div className="space-y-2">{(c.steps||[]).map((step:any,i:number)=><div key={step.id||i} className="grid gap-2 sm:grid-cols-[180px_1fr]"><input className={inputCls} style={style} value={step.title||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,title:e.target.value};onChange({...c,steps})}} placeholder={`Étape ${i+1}`} disabled={locked}/><input className={inputCls} style={style} value={step.description||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,description:e.target.value};onChange({...c,steps})}} placeholder="Description" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,steps:[...(c.steps||[]),{id:crypto.randomUUID(),title:`Étape ${(c.steps||[]).length+1}`,description:''}]})}>+ Ajouter une étape</button>}</div>
+    );
+    case 'columns': return <div className="grid gap-3 md:grid-cols-2">{(c.columns||[]).map((col:any,i:number)=><textarea key={col.id||i} className={inputCls} style={style} rows={5} value={col.content||''} onChange={e=>{const columns=[...(c.columns||[])];columns[i]={...col,content:e.target.value};onChange({...c,columns})}} placeholder={`Colonne ${i+1}`} disabled={locked}/>)}</div>;
+    case 'code': return <div className="space-y-2"><input className={inputCls} style={style} value={c.language||'text'} onChange={e=>onChange({...c,language:e.target.value})} placeholder="Langage" disabled={locked}/><textarea className={`${inputCls} font-mono`} style={style} rows={8} value={c.code||''} onChange={e=>onChange({...c,code:e.target.value})} placeholder="Code..." disabled={locked}/></div>;
+    case 'embed': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du contenu" disabled={locked}/><input className={inputCls} style={style} value={c.url||''} onChange={e=>onChange({...c,url:e.target.value})} placeholder="URL HTTPS à intégrer" disabled={locked}/></div>;
+    case 'gallery': return (
+      <div className="space-y-2">{(c.images||[]).map((img:any,i:number)=><div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input className={inputCls} style={style} value={typeof img==='string'?img:(img.url||'')} onChange={e=>{const images=[...(c.images||[])];images[i]=typeof img==='string'?e.target.value:{...img,url:e.target.value};onChange({...c,images})}} placeholder="URL image" disabled={locked}/><input className={inputCls} style={style} value={typeof img==='string'?'':(img.alt||'')} onChange={e=>{const images=[...(c.images||[])];images[i]=typeof img==='string'?{url:img,alt:e.target.value}:{...img,alt:e.target.value};onChange({...c,images})}} placeholder="Texte alternatif" disabled={locked}/>{!locked&&<button type="button" onClick={()=>onChange({...c,images:(c.images||[]).filter((_:any,index:number)=>index!==i)})} className="px-2 text-red-600">×</button>}</div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,images:[...(c.images||[]),{url:'',alt:''}]})}>+ Ajouter une image</button>}</div>
+    );
+    case 'formula': return <textarea className={`${inputCls} font-mono`} style={style} rows={3} value={c.latex||''} onChange={e=>onChange({...c,latex:e.target.value})} placeholder="LaTeX : E = mc^2" disabled={locked}/>;
+    case 'chart': return <div className="space-y-2"><select className={inputCls} style={style} value={c.chart_type||'bar'} onChange={e=>onChange({...c,chart_type:e.target.value})} disabled={locked}><option value="bar">Barres</option><option value="line">Courbe</option><option value="pie">Camembert</option></select><input className={inputCls} style={style} value={(c.labels||[]).join(', ')} onChange={e=>onChange({...c,labels:e.target.value.split(',').map((x:string)=>x.trim())})} placeholder="Libellés séparés par des virgules" disabled={locked}/><input className={inputCls} style={style} value={(c.values||[]).join(', ')} onChange={e=>onChange({...c,values:e.target.value.split(',').map((x:string)=>Number(x.trim())||0)})} placeholder="Valeurs séparées par des virgules" disabled={locked}/></div>;
+    case 'assignment_upload': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du travail" disabled={locked}/><textarea className={inputCls} style={style} rows={5} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes détaillées" disabled={locked}/><input type="number" min={1} className={inputCls} style={style} value={c.max_size_mb||10} onChange={e=>onChange({...c,max_size_mb:Math.max(1,Number(e.target.value)||10)})} disabled={locked}/></div>;
+    case 'rubric': return (
+      <div className="space-y-2">{(c.criteria||[]).map((criterion:any,i:number)=><div key={i} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[180px_1fr_90px]" style={style}><input className={inputCls} style={style} value={criterion.name||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,name:e.target.value};onChange({...c,criteria})}} placeholder="Critère" disabled={locked}/><input className={inputCls} style={style} value={criterion.description||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,description:e.target.value};onChange({...c,criteria})}} placeholder="Description" disabled={locked}/><input type="number" min={0} className={inputCls} style={style} value={criterion.points||0} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,points:Number(e.target.value)||0};onChange({...c,criteria})}} disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,criteria:[...(c.criteria||[]),{name:`Critère ${(c.criteria||[]).length+1}`,description:'',points:10}]})}>+ Ajouter un critère</button>}</div>
+    );
+
     case 'separator': return <hr style={{ borderColor: '#E4E7EC' }} />;
     case 'pdf': case 'word': case 'excel': case 'scorm': case 'download': return (
       <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: '#F8F9FA', border: '1px solid #E4E7EC' }}>
@@ -1915,7 +1974,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                     <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>ou cliquez pour sélectionner</p>
                     {block.block_type === 'scorm' && (
                       <p className="text-xs mt-2 px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                        ⚠️ Format ZIP — SCORM 1.2 ou 2004
+                        Format ZIP — SCORM 2004 4th Edition (moteur OGA)
                       </p>
                     )}
                   </div>
@@ -1951,18 +2010,18 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
               <div className="space-y-2">
                 <div>
                   <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Type de package</label>
-                  <select className={inputCls} style={style} value={c.package_type || 'scorm_12'}
+                  <select className={inputCls} style={style} value={c.package_type || 'scorm_2004'}
                     onChange={e => onUpdate({ content_json: { ...c, package_type: e.target.value } })} disabled={locked}>
-                    <option value="scorm_12">SCORM 1.2</option>
-                    <option value="scorm_2004">SCORM 2004</option>
-                    <option value="xapi">xAPI (Tin Can)</option>
-                    <option value="aicc">AICC</option>
+                    <option value="scorm_2004">SCORM 2004 4th Edition — moteur OGA</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Durée estimée (minutes)</label>
-                  <input type="number" className={inputCls} style={style} value={c.duration_min || 0}
-                    onChange={e => onUpdate({ content_json: { ...c, duration_min: parseInt(e.target.value) } })} disabled={locked} />
+                  <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Durée pédagogique SCORM</label>
+                  <input type="number" min={0} className={inputCls} style={style} value={c.duration_min || 0}
+                    onChange={e => onUpdate({ content_json: { ...c, duration_min: Math.max(0, parseInt(e.target.value) || 0), duration_source: 'manual_fallback' } })} disabled={locked || c.duration_source === 'manifest'} />
+                  <p className="mt-1 text-[11px]" style={{ color: '#9CA3AF' }}>
+                    {c.duration_source === 'manifest' ? 'Durée détectée automatiquement dans le package.' : 'Automatique si le package fournit une durée ; saisie manuelle uniquement en secours.'}
+                  </p>
                 </div>
               </div>
             </div>

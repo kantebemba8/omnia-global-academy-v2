@@ -4,6 +4,7 @@ import {
   Download, Play, FileText, Table, Layers, ChevronDown, ChevronUp,
   RotateCcw, Check, X, WifiOff
 } from 'lucide-react';
+import { ScormPlayer } from './ScormPlayer';
 
 interface Block {
   id: string;
@@ -496,28 +497,38 @@ function ScormBlock({ block }: { block: Block }) {
   const [launched, setLaunched] = useState(false);
   const c = block.content_json;
   const url = block.file_url || c.url || '';
+  const packageType = c.package_type || 'scorm_2004';
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden border" style={{ borderColor: '#E4E7EC' }}>
+    <div className="my-4 overflow-hidden rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
       <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: '#78350F' }}>
         <Layers size={16} color="white" />
         <span className="font-semibold text-sm text-white">{c.title || 'Module SCORM'}</span>
-        {c.duration_min && <span className="ml-auto text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>~{c.duration_min} min</span>}
+        <span className="ml-auto rounded-full bg-white/15 px-2 py-0.5 text-xs text-white/80">
+          SCORM 2004 4th Edition
+        </span>
       </div>
       {!launched ? (
         <div className="p-8 text-center" style={{ background: '#FFF7ED' }}>
           <Layers size={36} className="mx-auto mb-3" style={{ color: '#92400E' }} />
           <p className="font-semibold mb-1" style={{ color: '#78350F' }}>Module interactif SCORM</p>
           {c.description && <p className="text-sm mb-4" style={{ color: '#6B7280' }}>{c.description}</p>}
-          <button onClick={() => setLaunched(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white mx-auto"
+          {c.duration_min ? <p className="mb-4 text-xs" style={{ color: '#6B7280' }}>Durée pédagogique : ~{c.duration_min} min</p> : null}
+          <button onClick={() => setLaunched(true)} disabled={!url}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white mx-auto disabled:opacity-40"
             style={{ background: '#78350F' }}>
             <Play size={15} /> Lancer le module
           </button>
-          <p className="text-xs mt-3" style={{ color: '#9CA3AF' }}>Le module ne se charge que sur demande</p>
+          {!c.scorm_ready && <p className="mt-3 text-xs text-amber-700">Le package doit être validé et extrait avant lecture.</p>}
         </div>
       ) : url ? (
-        <iframe src={url} className="w-full" style={{ height: '600px', border: 'none' }} title={c.title || 'SCORM'} />
+        <ScormPlayer
+          scormUrl={url}
+          packageType={packageType}
+          title={c.title || block.title || 'Module SCORM'}
+          runtimeToken={c.runtime_session_token}
+          initialData={c.runtime_state || {}}
+        />
       ) : (
         <div className="p-6 text-center" style={{ color: '#9CA3AF' }}>
           <p>Fichier SCORM non disponible</p>
