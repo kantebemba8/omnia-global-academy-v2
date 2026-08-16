@@ -19,7 +19,6 @@ import {
   MapPin,
   Phone,
   Save,
-  Settings,
   Shield,
   Trash2,
   Upload,
@@ -700,35 +699,80 @@ export default function UnifiedProfilePage() {
 
       <Notice value={message} />
 
-      {tab === 'apercu' && <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        <Section title={isAdministration ? 'Informations du compte' : 'Votre présence Omnia'} icon={Globe} description={isAdministration ? 'Données internes utilisées pour sécuriser et administrer votre accès.' : 'Les informations publiques visibles dans Omnia Communauté, Talent, Career et vos autres espaces.'}>
-          <div className="space-y-5">
-            {profileForm.bio ? <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{profileForm.bio}</p> : <Empty text="Ajoutez une présentation professionnelle dans l’onglet Professionnel." />}
-            <InfoGrid values={[
-              ['Localisation', [profileForm.city, userForm.country_code].filter(Boolean).join(', ')],
-              ['Disponibilité', profileForm.availability_text], ['Langues', profileForm.languages.join(', ')], ['Compétences', profileForm.skills.join(', ')],
-            ]} />
-          </div>
+      {tab === 'apercu' && (isAdministration ? <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        <Section title="Informations du compte" icon={Globe} description="Données internes utilisées pour sécuriser et administrer votre accès.">
+          <InfoGrid values={[["Nom", userForm.full_name], ["E-mail", userForm.email], ["Téléphone", userForm.phone_number], ["Pays", userForm.country_code]]} />
         </Section>
-        <div className="space-y-6">
-          <Section title="Accès rapides" icon={Settings}>
-            <div className="space-y-2">
-              <QuickLink to={getDashboardPathForRoles(roles)} icon={User} label="Retour à mon Dashboard" />
-              <QuickLink to="/mon-profil?tab=securite#gestion-compte" icon={Shield} label="Gérer la suspension ou la suppression du compte" />
-              {isLearner && <><QuickLink to="/dashboard/skills-passport" icon={Award} label="Skills Passport" /><QuickLink to="/dashboard/learning-record" icon={BookOpen} label="Learning Record" /></>}
-              {isStructure && <QuickLink to="/structure/profil" icon={Users} label="Profil public de la structure" />}
-              {isProfessor && <QuickLink to="/professeur/dossier-professionnel" icon={Shield} label="Dossier professeur et signature" />}
-              {isOrganizer && <QuickLink to="/omnia-live/profil-organisateur" icon={Shield} label="Dossier organisateur Omnia Live" />}
+        <Section title="Protection du compte" icon={Shield}><p className="text-sm leading-6 text-slate-600">Ce compte ne possède aucune page publique et n’apparaît dans aucun annuaire de la plateforme.</p></Section>
+      </div> : <div className="space-y-6">
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_70px_rgba(0,32,80,.10)]">
+          <div className="h-28 bg-[radial-gradient(circle_at_86%_20%,rgba(191,136,19,.32),transparent_27%),linear-gradient(115deg,#001B46,#063A76)] sm:h-36" />
+          <div className="px-5 pb-6 sm:px-7 sm:pb-7">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
+              <div className="-mt-12 h-24 w-24 flex-none overflow-hidden rounded-[24px] border-4 border-white bg-[#BF8813] shadow-xl sm:-mt-14 sm:h-28 sm:w-28">
+                {avatar ? <img src={avatar} alt="Photo de profil" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-3xl font-black text-[#002050]">{monogram(profileForm.display_name || userForm.full_name)}</div>}
+              </div>
+              <div className="min-w-0 flex-1 pb-1">
+                <div className="flex flex-wrap gap-2">{roleLabels.map(label => <span key={label} className="rounded-full border border-[#BF8813]/25 bg-[#BF8813]/10 px-3 py-1 text-xs font-extrabold text-[#805A0C]">{label}</span>)}</div>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.025em] text-[#002050] sm:text-3xl">{profileForm.display_name || userForm.full_name}</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{profileForm.headline || 'Ajoutez un titre professionnel pour présenter clairement votre profil.'}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:pb-1">
+                <button type="button" onClick={() => switchTab('professionnel')} className="inline-flex items-center gap-2 rounded-xl border border-[#002050]/15 bg-white px-4 py-2.5 text-sm font-black text-[#002050]"><Briefcase size={16} /> Modifier le profil</button>
+                <Link to={`/profil/${bundle.user.id}`} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white"><Eye size={16} /> Voir comme les autres</Link>
+              </div>
             </div>
-          </Section>
-          <Section title={isAdministration ? 'Protection du compte' : 'Confidentialité actuelle'} icon={Eye}>
-            {isAdministration ? <p className="text-sm text-slate-600">Ce compte ne possède aucune page publique et n’apparaît dans aucun annuaire de la plateforme.</p> : <>
-              <p className="text-sm text-slate-600">Visibilité : <strong className="text-[#002050]">{profileForm.visibility === 'public' ? 'Tout le monde' : profileForm.visibility === 'members' ? 'Membres connectés' : 'Privé'}</strong></p>
-              <p className="mt-2 text-xs text-slate-500">Les coordonnées privées ne sont jamais affichées sauf si vous activez explicitement leur visibilité.</p>
-            </>}
-          </Section>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-[1.45fr_.75fr]">
+              <div className="space-y-6">
+                <div className="border-t border-slate-200 pt-5">
+                  <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-black uppercase tracking-[0.12em] text-[#002050]">À propos</h3><span className="text-xs font-semibold text-slate-400">Aperçu professionnel</span></div>
+                  {profileForm.field_visibility.bio !== false && profileForm.bio ? <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{profileForm.bio}</p> : <p className="mt-3 text-sm leading-6 text-slate-400">Votre présentation publique apparaîtra ici lorsque vous l’aurez renseignée et rendue visible.</p>}
+                </div>
+
+                {(profileForm.field_visibility.skills !== false || profileForm.field_visibility.languages !== false || profileForm.field_visibility.interests !== false) && <div className="grid gap-5 border-t border-slate-200 pt-5 md:grid-cols-2">
+                  {profileForm.field_visibility.skills !== false && <div><h3 className="text-sm font-black text-[#002050]">Compétences</h3><div className="mt-3 flex flex-wrap gap-2">{profileForm.skills.length ? profileForm.skills.map(item => <span key={item} className="rounded-lg bg-[#EEF4FC] px-3 py-1.5 text-xs font-bold text-[#002050]">{item}</span>) : <span className="text-sm text-slate-400">Aucune compétence renseignée.</span>}</div></div>}
+                  {profileForm.field_visibility.languages !== false && <div><h3 className="text-sm font-black text-[#002050]">Langues</h3><p className="mt-3 text-sm leading-6 text-slate-600">{profileForm.languages.length ? profileForm.languages.join(' · ') : 'Aucune langue renseignée.'}</p></div>}
+                  {profileForm.field_visibility.interests !== false && profileForm.interests.length > 0 && <div className="md:col-span-2"><h3 className="text-sm font-black text-[#002050]">Centres d’intérêt professionnels</h3><div className="mt-3 flex flex-wrap gap-2">{profileForm.interests.map(item => <span key={item} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600">{item}</span>)}</div></div>}
+                </div>}
+
+                <div className="border-t border-slate-200 pt-5">
+                  <h3 className="text-sm font-black text-[#002050]">Parcours et objectifs</h3>
+                  <InfoGrid values={[
+                    ['Localisation', profileForm.field_visibility.city !== false || profileForm.field_visibility.country_code !== false ? [profileForm.city, userForm.country_code].filter(Boolean).join(', ') : ''],
+                    ['Disponibilité', profileForm.field_visibility.availability_text !== false ? profileForm.availability_text : ''],
+                    ['Objectif professionnel', profileForm.field_visibility.career_goal !== false ? roleForm.career_goal : ''],
+                    ['Postes recherchés', profileForm.field_visibility.target_roles !== false ? roleForm.target_roles.join(', ') : ''],
+                  ]} />
+                </div>
+              </div>
+
+              <aside className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-[#F8FAFD] p-5">
+                  <div className="flex items-center justify-between text-sm font-black text-[#002050]"><span>Complétude</span><span>{completion}%</span></div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width: `${completion}%`, background: ROLE_ACCENT }} /></div>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">Complétez uniquement les informations utiles à votre présence professionnelle.</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <h3 className="text-sm font-black text-[#002050]">Visibilité</h3>
+                  <p className="mt-2 text-sm font-semibold text-slate-700">{profileForm.visibility === 'public' ? 'Tout le monde' : profileForm.visibility === 'members' ? 'Membres Omnia connectés' : 'Profil privé'}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Chaque champ reste contrôlable séparément dans Confidentialité.</p>
+                  <button type="button" onClick={() => switchTab('visibilite')} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#002050]"><Shield size={15} /> Gérer la confidentialité</button>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <h3 className="text-sm font-black text-[#002050]">Accès rapides</h3>
+                  <div className="mt-3 space-y-2">
+                    {isLearner && <><QuickLink to="/dashboard/skills-passport" icon={Award} label="Skills Passport" /><QuickLink to="/dashboard/learning-record" icon={BookOpen} label="Learning Record" /></>}
+                    {isStructure && <QuickLink to="/structure/profil" icon={Users} label="Profil de la structure" />}
+                    {isProfessor && <QuickLink to="/professeur/dossier-professionnel" icon={Shield} label="Dossier professeur" />}
+                    {isOrganizer && <QuickLink to="/omnia-live/profil-organisateur" icon={Shield} label="Profil organisateur" />}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
         </div>
-      </div>}
+      </div>)}
 
       {tab === 'identite' && <Section title="Informations personnelles" icon={User} description="Ces données servent à votre compte. Les coordonnées publiques sont contrôlées séparément.">
         <div className="grid gap-5 md:grid-cols-2">

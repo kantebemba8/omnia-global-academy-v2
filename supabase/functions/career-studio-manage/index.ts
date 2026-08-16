@@ -423,6 +423,25 @@ Tu réponds en français sauf demande contraire.
 Tu ne dois jamais inventer des diplômes, expériences ou compétences non fournis par l'utilisateur.
 Tu améliores et reformules uniquement les informations reçues.`;
 
+
+const INTERVIEW_SYSTEM_PROMPT = `Tu es l'Assistant IA de préparation aux entretiens d'Omnia Global Academy.
+Tu aides un candidat à améliorer une réponse d'entretien de manière pédagogique, exigeante et bienveillante.
+Tu n'inventes jamais une expérience, un diplôme, une compétence, un résultat ou une information absente des données fournies.
+Tu utilises le contexte de l'offre uniquement lorsqu'il est fourni.
+Pour une réponse individuelle, analyse la pertinence, la précision, la méthode STAR et l'adéquation au poste.
+Pour un bilan global, synthétise uniquement les réponses réellement fournies.
+Réponds exclusivement avec un objet JSON valide, sans bloc markdown ni texte autour.`;
+
+function parseAiJsonObject(text: string): Record<string, unknown> | null {
+  const cleaned = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 async function callClaude(system: string, prompt: string) {
   const apiKey = getAnthropicApiKey();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY_MISSING");
@@ -567,9 +586,22 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   else if (action === "adapt_to_offer") prompt = `${languageInstruction}\nAnalyse la correspondance entre le profil et l'offre. Réponds en JSON avec score, missing_keywords, skills_to_add, experiences_to_rewrite, recommendations, cover_letter.\nProfil : ${JSON.stringify(body.doc_data || text)}\nOffre : ${body.offer_text || ""}`;
   else if (action === "translate") prompt = `Traduis professionnellement ce texte en ${language === "en" ? "anglais" : "français"} :\n\n${text}`;
   else if (action === "ats_score") prompt = `Analyse ce CV et réponds en JSON avec lisibilite, structure, orthographe, compatibilite_ats, longueur, mots_cles, professionnalisme, score_global et conseils.\nCV : ${JSON.stringify(body.doc_data || text)}`;
+  else if (action === "interview_feedback") {
+    if (String(aiConfig.interview_feedback_enabled ?? "true") === "false") {
+      return json({ error: "AI_DISABLED", message: "La correction IA des entretiens est désactivée." }, 403);
+    }
+    const mode = String(body.interview_mode || "answer") === "summary" ? "summary" : "answer";
+    const question = String(body.question || "").trim();
+    const answer = String(body.answer || text || "").trim();
+    const jobContext = body.job_context && typeof body.job_context === "object" ? body.job_context : {};
+    const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+    if (mode === "answer" && (!question || !answer)) return json({ error: "INTERVIEW_INPUT_REQUIRED" }, 400);
+    if (mode === "summary" && Object.keys(answers as Record<string, unknown>).length === 0) return json({ error: "INTERVIEW_ANSWERS_REQUIRED" }, 400);
+    prompt = `${languageInstruction}\nMode : ${mode}.\nContexte du poste : ${JSON.stringify(jobContext)}\nQuestion : ${question}\nRéponse : ${answer}\nRéponses sauvegardées : ${JSON.stringify(answers)}\n\nRetourne exactement un JSON avec : {"score": nombre 0-100, "strengths": [chaînes], "improvements": [chaînes], "star_analysis": {"situation": chaîne, "task": chaîne, "action": chaîne, "result": chaîne}, "relevance": chaîne, "improved_answer": chaîne, "next_tip": chaîne}.\nPour un bilan global, improved_answer doit contenir un plan d'action synthétique plutôt qu'une réponse fictive.`;
+  }
   else return json({ error: "UNKNOWN_AI_ACTION", action }, 400);
 
-  const aiResult = await callClaude(SYSTEM_PROMPT, prompt);
+  const aiResult = await callClaude(action === "interview_feedback" ? INTERVIEW_SYSTEM_PROMPT : SYSTEM_PROMPT, prompt);
   await recordAnthropicPlatformUsage(sb, user.id, action, aiResult);
   const result = aiResult.text;
 
@@ -594,10 +626,13 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
     }
   }
 
+  const interviewFeedback = action === "interview_feedback" ? parseAiJsonObject(result) : null;
+
   return json({
     success: true,
     action,
     result,
+    ...(interviewFeedback ? { feedback: interviewFeedback } : {}),
     tokens_consumed: tokensToConsume,
     tokens_remaining: tokensRemaining,
     subscription_credits_remaining: subscriptionCreditsRemaining,

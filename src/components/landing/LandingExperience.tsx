@@ -419,66 +419,46 @@ function JourneySection({ section }: { section: LandingSectionConfig }) {
 function EcosystemSection({ section }: { section: LandingSectionConfig }) {
   const items = visibleItems(section);
   if (items.length === 0) return null;
+  return <NextStepSection />;
+}
+
+function CertificateVerificationSection({ section }: { section: LandingSectionConfig }) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const identifier = String(form.get('certificate') || '').trim();
+    if (!identifier) return;
+    window.location.assign(`/verify/${encodeURIComponent(identifier)}`);
+  }
 
   return (
-    <>
-      <section id="ecosysteme" className="relative overflow-hidden bg-[#001B46] px-5 py-14 text-white sm:px-6 lg:px-8 lg:py-16">
-        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <div className="absolute left-1/2 top-[62%] h-[420px] w-[900px] rounded-[50%] border border-[#3B78CB]/20" style={{ transform: 'translate(-50%, -50%) rotateX(72deg)', boxShadow: '0 0 90px rgba(22,91,183,0.14)' }} />
-          <div className="absolute left-1/2 top-[63%] h-[300px] w-[720px] rounded-[50%] border border-[#BF8813]/25" style={{ transform: 'translate(-50%, -50%) rotateX(72deg)' }} />
-          <div className="absolute -left-28 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-blue-500/10 blur-3xl" />
-          <div className="absolute -right-24 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[#BF8813]/10 blur-3xl" />
-          <div className="absolute inset-0 opacity-35" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(92,153,238,.18) 0 1px, transparent 1.5px)', backgroundSize: '23px 23px', maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)' }} />
-          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#073C7F]/35 to-transparent" />
-        </div>
-
-        <div className="relative mx-auto max-w-7xl">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">{section.title}</h2>
-            {section.subtitle && <p className="mt-3 text-sm leading-6 text-blue-100/75">{section.subtitle}</p>}
+    <section className="relative overflow-hidden border-y border-[#DDE6F2] bg-[#F7FAFE] px-5 py-14 sm:px-6 lg:px-8 lg:py-16">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -right-28 -top-28 h-72 w-72 rounded-full bg-[#DCEBFF] blur-3xl" />
+        <div className="absolute -bottom-32 -left-24 h-72 w-72 rounded-full bg-[#F6E7BE] blur-3xl" />
+      </div>
+      <div className="relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1fr_0.95fr] lg:items-center">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#BF8813]/25 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-[#8A620D]"><ShieldCheck size={15} /> Vérification publique</div>
+          <h2 className="mt-4 max-w-2xl text-3xl font-black tracking-[-0.035em] text-[#002050] sm:text-4xl">{section.title || 'Vérifiez un certificat Omnia'}</h2>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">{section.subtitle || 'Confirmez instantanément l’authenticité d’un certificat délivré par Omnia Global Academy.'}</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {['Authenticité du document', 'Statut et émetteur', 'Accès public sécurisé'].map((label) => <div key={label} className="flex items-center gap-2 text-sm font-semibold text-[#002050]"><CheckCircle2 size={17} className="text-[#BF8813]" />{label}</div>)}
           </div>
-
-          <div className="relative mt-11" style={{ perspective: '1500px' }}>
-            <div className="absolute left-[6%] right-[6%] top-9 hidden h-px bg-gradient-to-r from-transparent via-[#D9A22B]/75 to-transparent xl:block" aria-hidden="true" />
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              {items.map((item, index) => {
-                const Icon = ICONS[item.icon_key] || ArrowRight;
-                const depth = index % 2 === 0 ? 18 : 30;
-                return (
-                  <Link
-                    key={item.id}
-                    to={safeHref(item.action_url)}
-                    className="group relative flex min-w-0 flex-col items-center rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-5 text-center shadow-[0_18px_44px_rgba(0,10,32,0.18)] transition duration-300 hover:-translate-y-2 hover:border-[#BF8813]/45 hover:bg-white/[0.065]"
-                    style={{ transformStyle: 'preserve-3d' }}
-                  >
-                    <span className="relative z-10 block h-16 w-16" style={{ transformStyle: 'preserve-3d' }}>
-                      <span className="absolute inset-[7px] rounded-full bg-[#061D43] shadow-[0_18px_24px_rgba(0,0,0,0.32)]" style={{ transform: 'translateY(12px) translateZ(-24px) scaleX(1.25)' }} />
-                      <span className="absolute inset-1 rounded-full border border-[#BF8813]/35 bg-[#07326E]" style={{ transform: `translateZ(${depth - 14}px)` }} />
-                      <span className="absolute inset-0 flex items-center justify-center rounded-full border border-[#D7A63A] bg-[radial-gradient(circle_at_36%_28%,#0E4D9A,#002050_62%)] text-[#F0C15A] shadow-[0_0_0_6px_rgba(0,32,80,0.72),0_0_28px_rgba(57,128,232,0.30),inset_0_1px_0_rgba(255,255,255,0.12)] transition group-hover:border-white group-hover:text-white" style={{ transform: `translateZ(${depth}px)` }}>
-                        <Icon size={21} />
-                      </span>
-                    </span>
-                    <h3 className="mt-4 text-sm font-black text-white">{item.title}</h3>
-                    {item.description && <p className="mt-2 max-w-[190px] text-xs leading-5 text-blue-100/65">{item.description}</p>}
-                    {item.action_label && <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#E8B94E]">{item.action_label}<ArrowRight size={13} /></span>}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-
-          {section.primary_cta_label && (
-            <div className="mt-9 text-center">
-              <Link to={safeHref(section.primary_cta_url)} className="inline-flex items-center gap-2 rounded-lg border border-[#BF8813]/70 bg-[#BF8813]/10 px-4 py-2.5 text-sm font-black text-[#F1C568] transition hover:bg-[#BF8813]/20">
-                {section.primary_cta_label}<ArrowRight size={15} />
-              </Link>
-            </div>
-          )}
         </div>
-      </section>
-
-      <NextStepSection />
-    </>
+        <div className="rounded-3xl border border-white bg-white p-5 shadow-[0_22px_65px_rgba(0,32,80,.12)] sm:p-6">
+          <div className="flex items-start gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#002050] text-[#F1C568]"><FileBadge2 size={21} /></div><div><h3 className="font-black text-[#002050]">Vérifier maintenant</h3><p className="mt-1 text-sm leading-6 text-slate-500">Saisissez le numéro ou le code imprimé sur le certificat.</p></div></div>
+          <form onSubmit={submit} className="mt-5 space-y-3">
+            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500" htmlFor="landing-certificate-code">Numéro / code du certificat</label>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input id="landing-certificate-code" name="certificate" required className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-[#002050] outline-none transition focus:border-[#BF8813] focus:ring-2 focus:ring-[#BF8813]/15" placeholder="Ex. OGA-2026-..." />
+              <button className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#002050] px-5 text-sm font-black text-white transition hover:bg-[#00183E]">Vérifier <ArrowRight size={16} /></button>
+            </div>
+          </form>
+          <Link to="/verify" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#002050] hover:underline"><FileBadge2 size={16} /> Ouvrir le vérificateur complet et le scanner QR</Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -732,7 +712,8 @@ export function LandingExperience({ data }: LandingExperienceProps) {
         if (section.type === 'featured_courses') return <CourseList key={section.id} section={section} courses={data.featuredCourses} />;
         if (section.type === 'omnia_journey') return <JourneySection key={section.id} section={section} />;
         if (section.type === 'ecosystem') return <EcosystemSection key={section.id} section={section} />;
-        if (section.type === 'credentials' || section.type === 'career_recruitment' || section.type === 'structures') return null;
+        if (section.type === 'credentials') return <CertificateVerificationSection key={section.id} section={section} />;
+        if (section.type === 'career_recruitment' || section.type === 'structures') return null;
         if (section.type === 'partners') return <PartnersSection key={section.id} section={section} partners={data.partners} />;
         if (section.type === 'mobile_apps' || section.type === 'social_networks') return <ConnectionsSection key={section.id} section={section} apps={data.mobileApps} networks={data.socialNetworks} />;
         if (section.type === 'final_cta') return <FinalCta key={section.id} section={section} />;

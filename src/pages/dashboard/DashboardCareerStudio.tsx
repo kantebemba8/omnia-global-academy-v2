@@ -29,13 +29,11 @@ import {
   Target,
   Trash2,
   UserRound,
-  AlertCircle,
-  Check,
   RefreshCw,
 } from 'lucide-react';
 import { APPLICATION_MODE_SHORT_LABELS, JobApplicationMode, labelApplicationStatus, normalizeApplicationMode, STATUS_TONE } from '../../lib/jobApplicationModes';
 import { cacheCareerTemplates, getCareerTemplates, mergeCareerTemplateCatalog, normalizeTemplateKey } from '../../lib/careerStudioData';
-import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, renameCareerDocument } from '../../lib/careerStudioApi';
+import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerJobContext, listCareerApplications, renameCareerDocument, type CareerJobContext, type CareerTrackedApplication } from '../../lib/careerStudioApi';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
@@ -574,34 +572,176 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc, rena
   );
 }
 
-function InterviewView({ jobId }: { jobId?: string }) {
-  const categories = ['Général','RH','Comportemental','Technique','Sectoriel','Lié à une offre'] as const;
-  const questionBank: Record<string,string[]> = {
-    Général:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?','Quel accomplissement vous rend le plus fier ?'],
-    RH:['Quelles sont vos principales motivations ?','Quel environnement de travail vous convient le mieux ?','Comment gérez-vous un désaccord avec un collègue ?','Où vous voyez-vous dans trois ans ?'],
-    Comportemental:['Parlez d’une situation difficile que vous avez résolue.','Décrivez une erreur et ce que vous en avez appris.','Donnez un exemple de prise d’initiative.','Racontez une situation où vous avez dû convaincre.'],
-    Technique:['Expliquez une compétence technique importante pour votre métier.','Comment contrôlez-vous la qualité de votre travail ?','Décrivez un problème technique complexe que vous avez résolu.','Comment restez-vous à jour dans votre domaine ?'],
-    Sectoriel:['Quels sont les principaux enjeux actuels de votre secteur ?','Comment votre expérience répond-elle aux besoins du secteur ?','Quelle évolution du secteur vous semble la plus importante ?','Quels indicateurs utiliseriez-vous pour mesurer votre performance ?'],
-    'Lié à une offre':['Pourquoi cette offre vous intéresse-t-elle ?','Quelles compétences correspondent le mieux à cette offre ?','Quel élément de votre parcours répond au besoin principal ?','Que feriez-vous pendant vos 90 premiers jours ?'],
+type InterviewFeedback = {
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  star_analysis: { situation?: string; task?: string; action?: string; result?: string };
+  relevance: string;
+  improved_answer: string;
+  next_tip: string;
+};
+
+const EMPTY_INTERVIEW_FEEDBACK: InterviewFeedback = {
+  score: 0,
+  strengths: [],
+  improvements: [],
+  star_analysis: {},
+  relevance: '',
+  improved_answer: '',
+  next_tip: '',
+};
+
+function normalizeInterviewFeedback(value: unknown): InterviewFeedback {
+  const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const stringList = (entry: unknown) => Array.isArray(entry) ? entry.map(item => String(item || '').trim()).filter(Boolean) : [];
+  const star = raw.star_analysis && typeof raw.star_analysis === 'object' ? raw.star_analysis as Record<string, unknown> : {};
+  return {
+    score: Math.max(0, Math.min(100, Number(raw.score || 0))),
+    strengths: stringList(raw.strengths),
+    improvements: stringList(raw.improvements),
+    star_analysis: {
+      situation: String(star.situation || '').trim(), task: String(star.task || '').trim(),
+      action: String(star.action || '').trim(), result: String(star.result || '').trim(),
+    },
+    relevance: String(raw.relevance || '').trim(),
+    improved_answer: String(raw.improved_answer || '').trim(),
+    next_tip: String(raw.next_tip || '').trim(),
   };
-  const [category,setCategory]=useState<typeof categories[number]>('Général');
+}
+
+function InterviewFeedbackCard({ feedback }: { feedback: InterviewFeedback }) {
+  const starRows = [
+    ['Situation', feedback.star_analysis.situation], ['Tâche', feedback.star_analysis.task],
+    ['Action', feedback.star_analysis.action], ['Résultat', feedback.star_analysis.result],
+  ].filter(([, value]) => Boolean(value));
+  return <div className="mt-4 space-y-4 rounded-2xl border border-[#DCE5F1] bg-[#F8FAFD] p-4 sm:p-5">
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-[#8A620D]">Analyse Assistant IA</p><h4 className="mt-1 font-black text-[#002050]">Retour pédagogique sur votre réponse</h4></div><div className="rounded-xl bg-[#002050] px-3 py-2 text-sm font-black text-white">{Math.round(feedback.score)}/100</div></div>
+    <div className="grid gap-4 md:grid-cols-2">
+      <div><p className="text-sm font-black text-emerald-700">Points forts</p><ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">{feedback.strengths.length ? feedback.strengths.map(item => <li key={item}>• {item}</li>) : <li>• Aucun point fort suffisamment précis n’a été identifié.</li>}</ul></div>
+      <div><p className="text-sm font-black text-amber-700">À améliorer</p><ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">{feedback.improvements.length ? feedback.improvements.map(item => <li key={item}>• {item}</li>) : <li>• Continuez à préciser vos exemples et résultats.</li>}</ul></div>
+    </div>
+    {starRows.length > 0 && <div><p className="text-sm font-black text-[#002050]">Lecture STAR</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{starRows.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-3"><span className="text-xs font-black text-[#002050]">{label}</span><p className="mt-1 text-xs leading-5 text-slate-500">{value}</p></div>)}</div></div>}
+    {feedback.relevance && <div><p className="text-sm font-black text-[#002050]">Pertinence pour le poste</p><p className="mt-1 text-sm leading-6 text-slate-600">{feedback.relevance}</p></div>}
+    {feedback.improved_answer && <div className="rounded-xl border border-[#BF8813]/25 bg-white p-4"><p className="text-sm font-black text-[#002050]">Exemple de réponse améliorée</p><p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{feedback.improved_answer}</p></div>}
+    {feedback.next_tip && <p className="text-sm font-semibold leading-6 text-[#002050]">Prochaine amélioration : {feedback.next_tip}</p>}
+  </div>;
+}
+
+function InterviewView({ jobId }: { jobId?: string }) {
+  type InterviewTab = 'questions' | 'simulation' | 'answers' | 'advice';
+  const categories = ['Général','RH','Comportemental','Technique','Sectoriel','Lié à une offre'] as const;
+  const [tab,setTab]=useState<InterviewTab>('questions');
+  const [category,setCategory]=useState<typeof categories[number]>(jobId ? 'Lié à une offre' : 'Général');
   const [seed,setSeed]=useState(() => Math.floor(Math.random()*1000));
   const [openQuestion,setOpenQuestion]=useState<string | null>(null);
   const [answers,setAnswers]=useState<Record<string,string>>(() => { try { return JSON.parse(localStorage.getItem('omnia_interview_answers')||'{}'); } catch { return {}; } });
-  const [feedback,setFeedback]=useState<Record<string,string>>({});
+  const [feedback,setFeedback]=useState<Record<string,InterviewFeedback>>({});
   const [aiLoading,setAiLoading]=useState<string | null>(null);
-  const [starStep,setStarStep]=useState(0);
-  const [confirmStep,setConfirmStep]=useState<number | null>(null);
-  const star=[
-    {letter:'S',name:'Situation',role:'Décrivez précisément le contexte : où, quand et dans quelle situation ?'},
-    {letter:'T',name:'Tâche',role:'Expliquez votre objectif, votre responsabilité ou le problème à résoudre.'},
-    {letter:'A',name:'Action',role:'Détaillez ce que vous avez personnellement fait, étape par étape.'},
-    {letter:'R',name:'Résultat',role:'Présentez le résultat concret, observable ou chiffré obtenu.'},
-  ];
-  const questions=[...questionBank[category]].sort((a,b)=>((a.length+seed)%7)-((b.length+seed)%7));
-  function saveAnswer(q:string,value:string){ const next={...answers,[q]:value}; setAnswers(next); localStorage.setItem('omnia_interview_answers',JSON.stringify(next)); }
-  async function submitAi(q:string){ const answer=(answers[q]||'').trim(); if(!answer) return; setAiLoading(q); try { if(!SUPABASE_URL) throw new Error('IA indisponible'); const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'make_professional',text:`Question d'entretien : ${q}\nRéponse du candidat : ${answer}\nAnalyse cette réponse, donne ses points forts, ce qui manque selon STAR, puis propose une version améliorée.`})}); const data=await res.json(); if(!res.ok||data.error) throw new Error(data.message||data.error); setFeedback(f=>({...f,[q]:data.result||'Correction reçue.'})); } catch(e:any){ setFeedback(f=>({...f,[q]:e?.message||'Le service IA n’est pas disponible.'})); } finally { setAiLoading(null); } }
-  return <div className="space-y-5"><PageHeader title="Préparation entretien" subtitle="Questions renouvelées, réponses sauvegardées et méthode STAR guidée."/><div className="flex flex-wrap gap-2">{categories.map(c=><button key={c} onClick={()=>{setCategory(c);setSeed(Math.floor(Math.random()*1000));setOpenQuestion(null)}} className="rounded-full px-4 py-2 text-sm font-semibold" style={{background:category===c?OMNIA_BLUE:'#fff',color:category===c?'#fff':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{c}</button>)}<button onClick={()=>setSeed(Math.floor(Math.random()*1000))} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}><RefreshCw size={15}/>Changer les questions</button></div><div className="grid gap-5 xl:grid-cols-[1fr_360px]"><Card className="p-5"><SectionTitle title="Banque de questions"/><div className="space-y-3">{questions.map(q=><div key={q} className="rounded-xl border" style={{borderColor:BORDER}}><button onClick={()=>setOpenQuestion(openQuestion===q?null:q)} className="flex w-full items-center justify-between p-4 text-left text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}<ChevronDown size={16} className={openQuestion===q?'rotate-180':''}/></button>{openQuestion===q&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm" style={{color:MUTED}}>Répondez avec un exemple concret. Pour une expérience, structurez votre réponse avec STAR.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-36 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/><button onClick={()=>submitAi(q)} disabled={!answers[q]?.trim()||aiLoading===q} className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_BLUE}}><Sparkles size={16}/>{aiLoading===q?'Correction en cours...':'Soumettre à l’IA'}</button>{feedback[q]&&<div className="mt-3 whitespace-pre-wrap rounded-xl border bg-slate-50 p-4 text-sm leading-6" style={{borderColor:BORDER,color:'#334155'}}>{feedback[q]}</div>}</div>}</div>)}</div></Card><Card className="p-5"><SectionTitle title="Checklist STAR"/><p className="mb-4 text-sm leading-6" style={{color:MUTED}}>STAR vous aide à construire une réponse complète. Validez chaque étape seulement si votre réponse contient réellement l’élément demandé.</p>{star.map((item,index)=><div key={item.letter} className={`mb-3 rounded-xl border p-4 ${index>starStep?'opacity-45':''}`} style={{borderColor:index===starStep?OMNIA_GOLD:BORDER,background:index<starStep?'#F0FDF4':'#fff'}}><div className="flex items-start gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold" style={{background:index<starStep?'#16A34A':OMNIA_GOLD,color:'#fff'}}>{index<starStep?<Check size={16}/>:item.letter}</div><div><div className="font-semibold" style={{color:OMNIA_BLUE}}>{item.name}</div><p className="mt-1 text-sm leading-5" style={{color:MUTED}}>{item.role}</p></div></div>{index===starStep&&<button onClick={()=>setConfirmStep(index)} className="mt-3 w-full rounded-xl px-3 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Cette étape est bien présente</button>}</div>)}<div className="text-sm font-semibold" style={{color:OMNIA_BLUE}}>Progression : {starStep}/4</div></Card></div>{confirmStep!==null&&<div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold" style={{color:OMNIA_BLUE}}>Confirmer l’étape {star[confirmStep].name}</h3><p className="mt-2 text-sm leading-6" style={{color:MUTED}}>Êtes-vous sûr que votre réponse contient bien : {star[confirmStep].role}</p><div className="mt-5 flex justify-end gap-3"><button onClick={()=>setConfirmStep(null)} className="rounded-xl border px-4 py-2 text-sm" style={{borderColor:BORDER}}>Annuler</button><button onClick={()=>{setStarStep(Math.min(4,confirmStep+1));setConfirmStep(null)}} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{background:OMNIA_BLUE}}>Confirmer et continuer</button></div></div></div>}</div>;
+  const [applications,setApplications]=useState<CareerTrackedApplication[]>([]);
+  const [selectedJobId,setSelectedJobId]=useState(jobId || '');
+  const [jobContext,setJobContext]=useState<CareerJobContext | null>(null);
+  const [contextLoading,setContextLoading]=useState(false);
+  const [targetRole,setTargetRole]=useState('');
+  const [targetCompany,setTargetCompany]=useState('');
+  const [simulationIndex,setSimulationIndex]=useState(0);
+  const [summaryFeedback,setSummaryFeedback]=useState<InterviewFeedback | null>(null);
+
+  useEffect(()=>{
+    let active=true;
+    void listCareerApplications().then(result=>{if(active)setApplications(result.applications||[])}).catch(()=>{});
+    return()=>{active=false};
+  },[]);
+
+  useEffect(()=>{
+    if(jobId){setSelectedJobId(jobId);setCategory('Lié à une offre');}
+  },[jobId]);
+
+  useEffect(()=>{
+    let active=true;
+    if(!selectedJobId){setJobContext(null);return()=>{active=false};}
+    setContextLoading(true);
+    void getCareerJobContext(selectedJobId).then(({job})=>{
+      if(!active)return;
+      setJobContext(job);
+      if(job){setTargetRole(job.title||'');setTargetCompany(job.recruiter_company||'');setCategory('Lié à une offre');}
+    }).catch(()=>{if(active)setJobContext(null)}).finally(()=>{if(active)setContextLoading(false)});
+    return()=>{active=false};
+  },[selectedJobId]);
+
+  const questionBank = useMemo<Record<string,string[]>>(()=>({
+    Général:['Présentez-vous en deux minutes.','Pourquoi souhaitez-vous rejoindre cette entreprise ?','Pourquoi êtes-vous la bonne personne pour ce poste ?','Quel accomplissement vous rend le plus fier ?'],
+    RH:['Quelles sont vos principales motivations ?','Quel environnement de travail vous convient le mieux ?','Comment gérez-vous un désaccord avec un collègue ?','Où vous voyez-vous dans trois ans ?'],
+    Comportemental:['Parlez d’une situation difficile que vous avez résolue.','Décrivez une erreur et ce que vous en avez appris.','Donnez un exemple de prise d’initiative.','Racontez une situation où vous avez dû convaincre.'],
+    Technique:[`Quelle compétence technique est déterminante pour ${targetRole || 'votre métier'} et comment l’avez-vous utilisée ?`,'Comment contrôlez-vous la qualité de votre travail ?','Décrivez un problème technique complexe que vous avez résolu.','Comment restez-vous à jour dans votre domaine ?'],
+    Sectoriel:['Quels sont les principaux enjeux actuels de votre secteur ?','Comment votre expérience répond-elle aux besoins du secteur ?','Quelle évolution du secteur vous semble la plus importante ?','Quels indicateurs utiliseriez-vous pour mesurer votre performance ?'],
+    'Lié à une offre':[
+      `Pourquoi le poste de ${targetRole || 'cette offre'}${targetCompany ? ` chez ${targetCompany}` : ''} vous intéresse-t-il ?`,
+      `Quelles compétences de votre parcours correspondent le mieux aux attentes du poste de ${targetRole || 'cette offre'} ?`,
+      'Quel exemple concret de votre parcours démontre que vous pouvez répondre au besoin principal de cette offre ?',
+      `Que feriez-vous pendant vos 90 premiers jours${targetCompany ? ` chez ${targetCompany}` : ''} ?`,
+    ],
+  }),[targetRole,targetCompany]);
+
+  const questions=useMemo(()=>[...questionBank[category]].sort((a,b)=>((a.length+seed)%7)-((b.length+seed)%7)),[questionBank,category,seed]);
+  const platformJobs=applications.filter(item=>item.job_id);
+  const selectedApplication=applications.find(item=>item.job_id===selectedJobId) || null;
+  const contextForAi={
+    job_id:selectedJobId||null,title:targetRole||jobContext?.title||null,company:targetCompany||jobContext?.recruiter_company||null,
+    description:jobContext?.description||null,skills_required:jobContext?.skills_required||null,required_level:jobContext?.required_level||null,
+    category:jobContext?.category||null,contract_type:jobContext?.contract_type||selectedApplication?.contract_type||null,
+    location:jobContext?.location||selectedApplication?.location||null,
+  };
+
+  function saveAnswer(q:string,value:string){const next={...answers,[q]:value};setAnswers(next);localStorage.setItem('omnia_interview_answers',JSON.stringify(next));}
+
+  async function requestFeedback(question:string, answer:string, mode:'answer'|'summary'='answer'){
+    if(!SUPABASE_URL) throw new Error('Le service IA n’est pas configuré.');
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{
+      method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({
+        action:'interview_feedback',interview_mode:mode,question,answer,answers:mode==='summary'?answers:undefined,
+        job_context:contextForAi,language:'fr',
+      }),
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||data.error) throw new Error(data.message||data.error||'Analyse IA impossible.');
+    return normalizeInterviewFeedback(data.feedback || (()=>{try{return JSON.parse(data.result||'{}')}catch{return EMPTY_INTERVIEW_FEEDBACK}})());
+  }
+
+  async function submitAi(q:string){const answer=(answers[q]||'').trim();if(!answer)return;setAiLoading(q);try{const result=await requestFeedback(q,answer);setFeedback(current=>({...current,[q]:result}));}catch(error){setFeedback(current=>({...current,[q]:{...EMPTY_INTERVIEW_FEEDBACK,improvements:[error instanceof Error?error.message:'Le service IA n’est pas disponible.']} }));}finally{setAiLoading(null)}}
+  async function generateAdvice(){setAiLoading('summary');try{setSummaryFeedback(await requestFeedback('Bilan global de préparation à l’entretien',JSON.stringify(answers),'summary'));}catch(error){setSummaryFeedback({...EMPTY_INTERVIEW_FEEDBACK,improvements:[error instanceof Error?error.message:'Le service IA n’est pas disponible.']});}finally{setAiLoading(null)}}
+
+  const tabs:Array<{id:InterviewTab;label:string}>=[{id:'questions',label:'Questions fréquentes'},{id:'simulation',label:'Simulation entretien'},{id:'answers',label:'Mes réponses'},{id:'advice',label:'Bilan & conseils'}];
+  const simulationQuestion=questions[simulationIndex%questions.length];
+
+  return <div className="space-y-6">
+    <div className="flex flex-wrap items-start justify-between gap-4"><PageHeader title="Préparer mon entretien" subtitle="Entraînement guidé, contexte de candidature et correction pédagogique par Assistant IA."/><div className="rounded-xl border border-[#BF8813]/25 bg-[#FFF9EC] px-3 py-2 text-xs font-bold text-[#805A0C]">Vos réponses restent liées à votre espace Career.</div></div>
+
+    <Card className="overflow-hidden">
+      <div className="grid gap-0 lg:grid-cols-[1fr_1.1fr]">
+        <div className="bg-[#002050] p-5 text-white sm:p-6"><p className="text-xs font-black uppercase tracking-[0.15em] text-[#E8B94E]">Contexte de préparation</p><h2 className="mt-2 text-xl font-black">Adaptez les questions à une opportunité réelle</h2><p className="mt-2 text-sm leading-6 text-white/70">Sélectionnez une candidature Omnia ou indiquez simplement le poste et l’entreprise visés.</p></div>
+        <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+          <label className="text-sm font-bold text-[#002050] sm:col-span-2">Candidature suivie<select value={selectedJobId} onChange={event=>setSelectedJobId(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Préparation générale / saisie manuelle</option>{platformJobs.map(item=><option key={item.id} value={item.job_id||''}>{item.job_title||'Offre'}{item.company_name?` — ${item.company_name}`:''}</option>)}</select></label>
+          <label className="text-sm font-bold text-[#002050]">Poste visé<input value={targetRole} onChange={event=>setTargetRole(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm" placeholder="Ex. Chef de projet" /></label>
+          <label className="text-sm font-bold text-[#002050]">Entreprise<input value={targetCompany} onChange={event=>setTargetCompany(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm" placeholder="Nom de l’organisation" /></label>
+          {contextLoading&&<p className="text-xs text-slate-400 sm:col-span-2">Chargement de l’offre…</p>}
+          {jobContext&&<div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 sm:col-span-2"><strong className="text-[#002050]">Offre reliée :</strong> {[jobContext.contract_type,jobContext.location,jobContext.required_level].filter(Boolean).join(' · ') || 'contexte disponible'}{jobContext.skills_required&&<div className="mt-1"><strong>Compétences attendues :</strong> {Array.isArray(jobContext.skills_required)?jobContext.skills_required.join(', '):String(jobContext.skills_required)}</div>}</div>}
+        </div>
+      </div>
+    </Card>
+
+    <div className="overflow-x-auto border-b border-slate-200"><div className="flex min-w-max gap-6">{tabs.map(item=><button key={item.id} onClick={()=>setTab(item.id)} className="border-b-2 px-1 pb-3 text-sm font-black" style={{borderColor:tab===item.id?OMNIA_GOLD:'transparent',color:tab===item.id?OMNIA_BLUE:MUTED}}>{item.label}</button>)}</div></div>
+
+    {(tab==='questions'||tab==='simulation')&&<div className="flex flex-wrap gap-2">{categories.map(item=><button key={item} onClick={()=>{setCategory(item);setSeed(Math.floor(Math.random()*1000));setOpenQuestion(null);setSimulationIndex(0)}} className="rounded-full px-4 py-2 text-sm font-semibold" style={{background:category===item?OMNIA_BLUE:'#fff',color:category===item?'#fff':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{item}</button>)}<button onClick={()=>{setSeed(Math.floor(Math.random()*1000));setSimulationIndex(0)}} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}><RefreshCw size={15}/>Changer les questions</button></div>}
+
+    {tab==='questions'&&<div className="grid gap-5 xl:grid-cols-[1fr_330px]"><Card className="p-5"><SectionTitle title="Banque de questions"/><div className="space-y-3">{questions.map(q=><div key={q} className="rounded-xl border" style={{borderColor:BORDER}}><button onClick={()=>setOpenQuestion(openQuestion===q?null:q)} className="flex w-full items-center justify-between gap-4 p-4 text-left text-sm font-semibold" style={{color:OMNIA_BLUE}}>{q}<ChevronDown size={16} className={openQuestion===q?'rotate-180':''}/></button>{openQuestion===q&&<div className="border-t p-4" style={{borderColor:BORDER}}><p className="text-sm leading-6" style={{color:MUTED}}>Répondez avec un exemple réel. L’Assistant IA analysera votre réponse sans inventer d’expérience à votre place.</p><textarea value={answers[q]||''} onChange={e=>saveAnswer(q,e.target.value)} className="mt-3 min-h-40 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Rédigez votre réponse personnelle..."/><div className="mt-3 flex flex-wrap gap-2"><button onClick={()=>submitAi(q)} disabled={!answers[q]?.trim()||aiLoading===q} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:OMNIA_BLUE}}><Sparkles size={16}/>{aiLoading===q?'Analyse en cours...':'Analyser ma réponse'}</button><button onClick={()=>saveAnswer(q,'')} className="rounded-xl border px-4 py-2.5 text-sm font-semibold text-slate-600" style={{borderColor:BORDER}}>Réessayer</button></div>{feedback[q]&&<InterviewFeedbackCard feedback={feedback[q]} />}</div>}</div>)}</div></Card><Card className="p-5"><SectionTitle title="Méthode STAR"/><div className="space-y-3">{[['S','Situation','Contexte précis'],['T','Tâche','Objectif ou responsabilité'],['A','Action','Ce que vous avez personnellement fait'],['R','Résultat','Résultat observable ou chiffré']].map(([letter,name,copy])=><div key={letter} className="flex gap-3 rounded-xl border border-slate-200 p-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#BF8813] text-sm font-black text-white">{letter}</span><div><p className="text-sm font-black text-[#002050]">{name}</p><p className="mt-1 text-xs leading-5 text-slate-500">{copy}</p></div></div>)}</div></Card></div>}
+
+    {tab==='simulation'&&<Card className="overflow-hidden"><div className="border-b border-slate-200 bg-[#F8FAFD] p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-[#8A620D]">Simulation · question {simulationIndex+1}/{questions.length}</p><h3 className="mt-2 max-w-3xl text-xl font-black text-[#002050]">{simulationQuestion}</h3></div><span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-500">{category}</span></div></div><div className="p-5 sm:p-6"><textarea value={answers[simulationQuestion]||''} onChange={e=>saveAnswer(simulationQuestion,e.target.value)} className="min-h-48 w-full rounded-2xl border border-slate-200 p-4 text-sm leading-6" placeholder="Répondez comme si vous étiez face au recruteur..."/><div className="mt-4 flex flex-wrap justify-between gap-3"><button onClick={()=>setSimulationIndex(index=>(index-1+questions.length)%questions.length)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-[#002050]">Question précédente</button><div className="flex flex-wrap gap-2"><button onClick={()=>submitAi(simulationQuestion)} disabled={!answers[simulationQuestion]?.trim()||aiLoading===simulationQuestion} className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white disabled:opacity-40"><Sparkles size={16}/>{aiLoading===simulationQuestion?'Analyse…':'Corriger avec l’IA'}</button><button onClick={()=>setSimulationIndex(index=>(index+1)%questions.length)} className="rounded-xl bg-[#BF8813] px-4 py-2.5 text-sm font-black text-white">Question suivante</button></div></div>{feedback[simulationQuestion]&&<InterviewFeedbackCard feedback={feedback[simulationQuestion]} />}</div></Card>}
+
+    {tab==='answers'&&<Card className="p-5 sm:p-6"><div className="flex items-center justify-between gap-3"><SectionTitle title="Mes réponses sauvegardées"/><span className="text-xs font-bold text-slate-400">{Object.values(answers).filter(value=>value.trim()).length} réponse(s)</span></div>{Object.entries(answers).filter(([,value])=>value.trim()).length? <div className="divide-y divide-slate-200">{Object.entries(answers).filter(([,value])=>value.trim()).map(([question,answer])=><div key={question} className="py-4"><p className="text-sm font-black text-[#002050]">{question}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{answer}</p>{feedback[question]&&<div className="mt-2 text-xs font-bold text-[#8A620D]">Analyse IA disponible · score {Math.round(feedback[question].score)}/100</div>}</div>)}</div>:<div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Aucune réponse sauvegardée. Commencez dans Questions fréquentes ou Simulation.</div>}</Card>}
+
+    {tab==='advice'&&<div className="grid gap-5 lg:grid-cols-[1fr_.75fr]"><Card className="p-5 sm:p-6"><SectionTitle title="Bilan de préparation"/><p className="text-sm leading-6 text-slate-600">L’Assistant IA analyse vos réponses enregistrées et le contexte du poste sélectionné pour établir vos priorités de progression.</p><button onClick={()=>void generateAdvice()} disabled={aiLoading==='summary'||Object.values(answers).every(value=>!value.trim())} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white disabled:opacity-40"><Sparkles size={16}/>{aiLoading==='summary'?'Analyse globale…':'Générer mon bilan'}</button>{summaryFeedback&&<InterviewFeedbackCard feedback={summaryFeedback} />}</Card><Card className="p-5 sm:p-6"><SectionTitle title="Avant l’entretien"/><div className="space-y-3 text-sm leading-6 text-slate-600">{['Relisez l’offre et identifiez les trois attentes essentielles.','Préparez deux exemples STAR réellement vécus.','Reliez chaque compétence annoncée à une preuve concrète.','Préparez deux questions pertinentes à poser au recruteur.'].map(item=><div key={item} className="flex gap-2"><CheckCircle2 size={17} className="mt-1 shrink-0 text-emerald-600"/><span>{item}</span></div>)}</div></Card></div>}
+  </div>;
 }
 
 type TrackedApplication = {

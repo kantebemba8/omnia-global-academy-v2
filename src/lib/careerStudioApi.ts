@@ -267,6 +267,24 @@ export type CareerTrackedApplication = {
   updated_at?: string | null;
 };
 
+export type CareerJobContext = {
+  id: string;
+  title?: string | null;
+  description?: string | null;
+  location?: string | null;
+  contract_type?: string | null;
+  category?: string | null;
+  salary_range?: string | null;
+  required_level?: string | null;
+  skills_required?: string[] | string | null;
+  recruiter_company?: string | null;
+  recruiter_name?: string | null;
+  deadline?: string | null;
+  application_mode?: string | null;
+  application_instructions?: string | null;
+};
+
+
 const CAREER_APPLICATIONS_LOCAL_KEY = 'omnia_manual_applications';
 
 function readLocalApplications(): CareerTrackedApplication[] {
@@ -289,6 +307,19 @@ function replaceLocalApplication(application: CareerTrackedApplication) {
   ];
   writeLocalApplications(next);
   return next;
+}
+
+export async function getCareerJobContext(jobId: string): Promise<{
+  job: CareerJobContext | null;
+  tracked: CareerTrackedApplication | null;
+}> {
+  const normalized = String(jobId || '').trim();
+  if (!normalized) return { job: null, tracked: null };
+  const data = await functionPost<{ job?: CareerJobContext | null; tracked?: CareerTrackedApplication | null }>(
+    'career-application-track',
+    { action: 'get', job_id: normalized },
+  );
+  return { job: data.job || null, tracked: data.tracked || null };
 }
 
 export async function listCareerApplications(): Promise<{
