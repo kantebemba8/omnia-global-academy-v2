@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-import { getAnthropicApiKey, getAnthropicQualityModel } from "../_shared/ai-models.ts";
+import { runAnthropicText, aiErrorPayload } from "../_shared/ai-runtime.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -442,72 +442,15 @@ function parseAiJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-async function callClaude(system: string, prompt: string) {
-  const apiKey = getAnthropicApiKey();
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY_MISSING");
-  const model = getAnthropicQualityModel();
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2048,
-      system,
-      messages: [{ role: "user", content: prompt }],
-    }),
+async function callClaude(sb: ReturnType<typeof createClient>, userId: string, action: string, system: string, prompt: string) {
+  return await runAnthropicText(sb, {
+    context: { module: "career", action, userId },
+    tier: "quality",
+    system,
+    prompt,
+    maxTokens: action === "interview_feedback" ? 7000 : 5000,
+    effort: action === "interview_feedback" ? "medium" : "low",
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error?.message || `ANTHROPIC_HTTP_${response.status}`);
-  const usage = payload?.usage || {};
-  return {
-    text: String(payload?.content?.[0]?.text || ""),
-    provider: "anthropic",
-    model: String(payload?.model || model),
-    messageId: String(payload?.id || crypto.randomUUID()),
-    usage: {
-      input_tokens: Number(usage?.input_tokens || 0),
-      output_tokens: Number(usage?.output_tokens || 0),
-      cache_creation_input_tokens: Number(usage?.cache_creation_input_tokens || 0),
-      cache_read_input_tokens: Number(usage?.cache_read_input_tokens || 0),
-    },
-  };
-}
-
-async function recordAnthropicPlatformUsage(
-  sb: ReturnType<typeof createClient>,
-  userId: string,
-  action: string,
-  result: Awaited<ReturnType<typeof callClaude>>,
-) {
-  const rows: any[] = [];
-  const occurredAt = new Date().toISOString();
-  const add = (suffix: string, quantity: number, unit: string) => {
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
-    rows.push({
-      provider_entry_key: `anthropic-app:${result.messageId}:${suffix}`,
-      provider: "anthropic",
-      entry_type: "usage",
-      source: "platform",
-      occurred_at: occurredAt,
-      quantity,
-      unit,
-      reference: result.messageId,
-      description: `Usage Anthropic Career Studio — ${action}`,
-      metadata: { source: "career_studio", action, model: result.model, provider_message_id: result.messageId },
-      created_by: userId,
-    });
-  };
-  add("input", result.usage.input_tokens, "input_tokens");
-  add("output", result.usage.output_tokens, "output_tokens");
-  add("cache_creation", result.usage.cache_creation_input_tokens, "cache_creation_input_tokens");
-  add("cache_read", result.usage.cache_read_input_tokens, "cache_read_input_tokens");
-  if (!rows.length) return;
-  const { error } = await sb.from("external_service_ledger").upsert(rows, { onConflict: "provider_entry_key", ignoreDuplicates: true });
-  if (error) console.warn("CAREER_ANTHROPIC_TELEMETRY_FAILED", error.message);
 }
 
 async function centralCareerCredits(sb: ReturnType<typeof createClient>, userId: string, quantity: number, consume = false) {
@@ -535,13 +478,67 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
   const text = String(body.text || "");
-  const language = String(body.language || "fr");
-  const languageInstruction = language === "en" ? "Respond in English." : "Réponds en français.";
+  const supportedLanguages: Record<string,string> = { fr:"français", en:"English", es:"español", pt:"português", ar:"العربية", zh:"简体中文", ru:"русский", de:"Deutsch", bm:"bamanankan" };
 
   const [aiConfig, tokenConfig] = await Promise.all([
     loadKeyValueConfig(sb, "career_ai_config"),
     loadKeyValueConfig(sb, "career_token_config", true),
   ]);
+
+  const requestedLanguage = String(body.language || body.document_language || body.preferred_language || aiConfig.default_language || "fr").trim().toLowerCase();
+  const language = supportedLanguages[requestedLanguage] ? requestedLanguage : "fr";
+  const tone = String(aiConfig.default_tone || "professionnel").trim() || "professionnel";
+  const languageInstruction = `Réponds intégralement en ${supportedLanguages[language] || "français"}. Ne change pas de langue sauf demande explicite. Adopte un ton ${tone}.`;
+
+  const featureKeys: Record<string, string[]> = {
+    improve_summary: ["cv_ai_enabled"],
+    rewrite_experience: ["cv_ai_enabled"],
+    improve_project: ["cv_ai_enabled"],
+    suggest_title: ["cv_ai_enabled"],
+    suggest_skills: ["cv_ai_enabled"],
+    generate_cv: ["cv_ai_enabled"],
+    generate_lm: ["lm_ai_enabled"],
+    generate_cv_lm: ["cv_ai_enabled", "lm_ai_enabled"],
+    adapt_to_offer: ["adapt_to_offer_enabled"],
+    ats_score: ["ats_score_enabled"],
+    translate: ["translation_enabled"],
+    fix_grammar: ["reformulation_enabled"],
+    shorten_text: ["reformulation_enabled"],
+    make_professional: ["reformulation_enabled"],
+    interview_feedback: ["interview_feedback_enabled"],
+  };
+  const requiredFeatures = featureKeys[action] || [];
+  if (requiredFeatures.some((key) => String(aiConfig[key] ?? "true") === "false")) {
+    return json({ error: "AI_DISABLED", message: "Cette fonction IA est désactivée par l’administration." }, 403);
+  }
+
+  const now = new Date();
+  const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const dailyLimit = Math.max(0, Number(aiConfig.daily_limit_per_user || 0));
+  const monthlyLimit = Math.max(0, Number(aiConfig.monthly_limit_per_user || 0));
+  if (dailyLimit > 0 || monthlyLimit > 0) {
+    const usageQuery = (from: string) => sb.from("external_service_ledger")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", user.id)
+      .eq("entry_type", "usage")
+      .eq("source", "platform")
+      .eq("unit", "input_tokens")
+      .eq("metadata->>module", "career")
+      .gte("occurred_at", from);
+    const [dailyUsage, monthlyUsage] = await Promise.all([
+      dailyLimit > 0 ? usageQuery(dayStart.toISOString()) : Promise.resolve({ count: 0, error: null }),
+      monthlyLimit > 0 ? usageQuery(monthStart.toISOString()) : Promise.resolve({ count: 0, error: null }),
+    ]);
+    if (dailyUsage.error) throw dailyUsage.error;
+    if (monthlyUsage.error) throw monthlyUsage.error;
+    if (dailyLimit > 0 && Number(dailyUsage.count || 0) >= dailyLimit) {
+      return json({ error: "AI_DAILY_LIMIT_REACHED", message: `Limite quotidienne atteinte (${dailyLimit} action(s) IA).` }, 429);
+    }
+    if (monthlyLimit > 0 && Number(monthlyUsage.count || 0) >= monthlyLimit) {
+      return json({ error: "AI_MONTHLY_LIMIT_REACHED", message: `Limite mensuelle atteinte (${monthlyLimit} action(s) IA).` }, 429);
+    }
+  }
 
   const paidActions: Record<string, string> = {
     generate_cv: "cout_cv_ia",
@@ -555,9 +552,6 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
 
   let tokensToConsume = 0;
   if (paidActions[action]) {
-    if (String(aiConfig[`${action}_enabled`] ?? "true") === "false") {
-      return json({ error: "AI_DISABLED", message: "Cette fonction IA est désactivée." }, 403);
-    }
     tokensToConsume = Number(tokenConfig[paidActions[action]] ?? 1);
     const central = await centralCareerCredits(sb, user.id, tokensToConsume, false);
     if (central.available < tokensToConsume && Number(user.cv_tokens || 0) < tokensToConsume) {
@@ -584,12 +578,9 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   else if (action === "generate_lm") prompt = `${languageInstruction}\nRédige une lettre de motivation à partir de ces seules informations :\nProfil : ${text || JSON.stringify(body.doc_data || {})}\nPoste : ${body.target_job || "non précisé"}\nPays : ${body.target_country || "non précisé"}\nType : ${body.application_type || "emploi"}`;
   else if (action === "generate_cv_lm") prompt = `${languageInstruction}\nProduis en JSON un résumé CV et une lettre de motivation à partir de ces seules informations :\n${text || JSON.stringify(body.doc_data || {})}\nPoste : ${body.target_job || "non précisé"}`;
   else if (action === "adapt_to_offer") prompt = `${languageInstruction}\nAnalyse la correspondance entre le profil et l'offre. Réponds en JSON avec score, missing_keywords, skills_to_add, experiences_to_rewrite, recommendations, cover_letter.\nProfil : ${JSON.stringify(body.doc_data || text)}\nOffre : ${body.offer_text || ""}`;
-  else if (action === "translate") prompt = `Traduis professionnellement ce texte en ${language === "en" ? "anglais" : "français"} :\n\n${text}`;
+  else if (action === "translate") prompt = `Traduis professionnellement ce texte en ${supportedLanguages[language] || "français"} :\n\n${text}`;
   else if (action === "ats_score") prompt = `Analyse ce CV et réponds en JSON avec lisibilite, structure, orthographe, compatibilite_ats, longueur, mots_cles, professionnalisme, score_global et conseils.\nCV : ${JSON.stringify(body.doc_data || text)}`;
   else if (action === "interview_feedback") {
-    if (String(aiConfig.interview_feedback_enabled ?? "true") === "false") {
-      return json({ error: "AI_DISABLED", message: "La correction IA des entretiens est désactivée." }, 403);
-    }
     const mode = String(body.interview_mode || "answer") === "summary" ? "summary" : "answer";
     const question = String(body.question || "").trim();
     const answer = String(body.answer || text || "").trim();
@@ -601,9 +592,13 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
   }
   else return json({ error: "UNKNOWN_AI_ACTION", action }, 400);
 
-  const aiResult = await callClaude(action === "interview_feedback" ? INTERVIEW_SYSTEM_PROMPT : SYSTEM_PROMPT, prompt);
-  await recordAnthropicPlatformUsage(sb, user.id, action, aiResult);
+  const aiResult = await callClaude(sb, user.id, action, action === "interview_feedback" ? INTERVIEW_SYSTEM_PROMPT : SYSTEM_PROMPT, prompt);
   const result = aiResult.text;
+  const structuredActions = new Set(["interview_feedback", "adapt_to_offer", "ats_score", "generate_cv_lm"]);
+  const structuredResult = structuredActions.has(action) ? parseAiJsonObject(result) : null;
+  if (structuredActions.has(action) && !structuredResult) {
+    return json({ error: "AI_RESPONSE_INVALID", message: "La réponse IA reçue est incomplète ou invalide. Aucun crédit n’a été consommé.", provider: aiResult.provider, model: aiResult.model }, 502);
+  }
 
   let tokensRemaining = Number(user.cv_tokens || 0);
   let subscriptionCreditsRemaining: number | null = null;
@@ -626,7 +621,7 @@ async function aiAction(req: Request, sb: ReturnType<typeof createClient>) {
     }
   }
 
-  const interviewFeedback = action === "interview_feedback" ? parseAiJsonObject(result) : null;
+  const interviewFeedback = action === "interview_feedback" ? structuredResult : null;
 
   return json({
     success: true,
@@ -659,9 +654,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION", action }, 400);
   } catch (error) {
     console.error("career-studio-manage", error);
-    return json({
-      error: "SERVER_ERROR",
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    const ai = aiErrorPayload(error);
+    if (ai.error !== "AI_RUNTIME_ERROR") return json({ error: ai.error, provider: ai.provider, message: ai.message }, ai.status);
+    return json({ error: "SERVER_ERROR", message: error instanceof Error ? error.message : String(error) }, 500);
   }
 });

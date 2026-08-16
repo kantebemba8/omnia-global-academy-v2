@@ -53,6 +53,24 @@ type AiConfig = {
   is_active: boolean;
 };
 
+const CAREER_AI_LABELS: Record<string, { label: string; help: string }> = {
+  cv_ai_enabled: { label: 'Assistant CV', help: 'Génération et amélioration des contenus de CV.' },
+  lm_ai_enabled: { label: 'Assistant lettres de motivation', help: 'Génération et amélioration des lettres de motivation.' },
+  adapt_to_offer_enabled: { label: 'Adaptation à une offre', help: 'Compare et adapte un profil à une offre réelle.' },
+  ats_score_enabled: { label: 'Analyse ATS', help: 'Analyse la lisibilité et la compatibilité ATS des CV.' },
+  translation_enabled: { label: 'Traduction Career', help: 'Autorise les traductions professionnelles dans Career.' },
+  reformulation_enabled: { label: 'Reformulation professionnelle', help: 'Correction, raccourcissement et reformulation des textes.' },
+  interview_feedback_enabled: { label: 'Coach d’entretien IA', help: 'Analyse les réponses d’entretien et génère un bilan pédagogique.' },
+  daily_limit_per_user: { label: 'Actions IA par jour et par utilisateur', help: '0 = aucune limite quotidienne.' },
+  monthly_limit_per_user: { label: 'Actions IA par mois et par utilisateur', help: '0 = aucune limite mensuelle.' },
+  default_language: { label: 'Langue par défaut', help: 'Utilisée uniquement lorsqu’aucune langue de document ou de profil n’est disponible.' },
+  default_tone: { label: 'Ton rédactionnel par défaut', help: 'Ton appliqué aux suggestions lorsque l’utilisateur n’en précise pas.' },
+};
+
+function visibleCareerAiConfig(config: AiConfig) {
+  return Boolean(CAREER_AI_LABELS[config.config_key]) && config.config_key !== 'max_tokens';
+}
+
 type Template = {
   id?: string;
   template_key: string;
@@ -731,31 +749,38 @@ export default function AdminCareerStudio() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold" style={{ color: OMNIA_BLUE }}>Paramètres IA</h2>
-                  <p className="mt-1 text-sm" style={{ color: MUTED }}>Activez l’IA, ajustez les limites et les coûts liés aux suggestions CV/LM.</p>
+                  <p className="mt-1 text-sm" style={{ color: MUTED }}>Pilotez les capacités IA Career avec des libellés métier, les langues et des limites réellement appliquées côté serveur.</p>
                 </div>
                 <button onClick={saveAiConfig} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: OMNIA_BLUE }}><Save size={15} /> Sauvegarder</button>
               </div>
               <div className="border-y py-4 text-sm" style={{borderColor:BORDER,color:MUTED}}>
-                <p><strong style={{color:OMNIA_BLUE}}>Fonctionnement :</strong> l’IA assiste la rédaction, l’adaptation à une offre, l’analyse ATS, la traduction et la reformulation. Les interrupteurs activent chaque capacité ; les limites quotidiennes/mensuelles protègent les coûts ; les coûts en jetons restent définis dans la section Coûts en jetons. Désactiver une capacité ici doit la rendre indisponible côté apprenant.</p>
+                <p><strong style={{color:OMNIA_BLUE}}>Fonctionnement :</strong> l’IA assiste CV, lettres, adaptation à une offre, analyse ATS, traduction, reformulation et préparation aux entretiens. Les interrupteurs et limites ci-dessous sont appliqués côté serveur ; les coûts en jetons restent définis dans « Jetons & coûts ».</p>
               </div>
               <div className="rounded-2xl border bg-white p-5" style={{ borderColor: BORDER }}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {aiConfig.map((cfg) => {
+                  {aiConfig.filter(visibleCareerAiConfig).map((cfg) => {
+                    const meta = CAREER_AI_LABELS[cfg.config_key];
                     const isBool = cfg.config_value === 'true' || cfg.config_value === 'false';
-                    const numeric = !isBool && cfg.config_value !== '' && !Number.isNaN(Number(cfg.config_value));
+                    const numeric = ['daily_limit_per_user', 'monthly_limit_per_user'].includes(cfg.config_key);
                     return (
-                      <div key={cfg.config_key} className="flex items-center justify-between rounded-xl border p-4" style={{ borderColor: BORDER, background: '#F8FAFC' }}>
-                        <div className="min-w-0 flex-1 pr-3">
-                          <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{cfg.description_fr || cfg.config_key}</p>
-                          <p className="text-xs" style={{ color: MUTED }}>{cfg.config_key}</p>
+                      <div key={cfg.config_key} className="flex items-center justify-between gap-4 rounded-xl border p-4" style={{ borderColor: BORDER, background: '#F8FAFC' }}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold" style={{ color: OMNIA_BLUE }}>{meta.label}</p>
+                          <p className="mt-1 text-xs leading-5" style={{ color: MUTED }}>{meta.help}</p>
                         </div>
                         {isBool ? (
                           <Toggle checked={cfg.config_value === 'true'} onChange={(v) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: String(v) } : c))} />
                         ) : numeric ? (
-                          <NumberInput value={Number(cfg.config_value)} onChange={(v) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: String(v) } : c))} />
-                        ) : (
-                          <input value={cfg.config_value} onChange={(e) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: e.target.value } : c))} className="h-10 w-48 rounded-lg border px-3 text-sm outline-none focus:border-[#002050]" style={{ borderColor: BORDER }} />
-                        )}
+                          <NumberInput value={Number(cfg.config_value || 0)} onChange={(v) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: String(Math.max(0, v)) } : c))} />
+                        ) : cfg.config_key === 'default_language' ? (
+                          <select value={cfg.config_value || 'fr'} onChange={(e) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: e.target.value } : c))} className="h-10 rounded-lg border bg-white px-3 text-sm" style={{ borderColor: BORDER }}>
+                            <option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ru">Русский</option><option value="de">Deutsch</option>
+                          </select>
+                        ) : cfg.config_key === 'default_tone' ? (
+                          <select value={cfg.config_value || 'professionnel'} onChange={(e) => setAiConfig((prev) => prev.map((c) => c.config_key === cfg.config_key ? { ...c, config_value: e.target.value } : c))} className="h-10 rounded-lg border bg-white px-3 text-sm" style={{ borderColor: BORDER }}>
+                            <option value="professionnel">Professionnel</option><option value="concis">Concis</option><option value="direct">Direct</option><option value="chaleureux">Chaleureux</option>
+                          </select>
+                        ) : null}
                       </div>
                     );
                   })}

@@ -1,13 +1,11 @@
-import { getSessionToken } from '../../lib/session';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Award, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Download,
+  Award, Briefcase, Camera, ChevronDown, ChevronRight, Clock, Download,
   Eye, FileText, Mail, MessageSquare, Mic, Paperclip, Play, Search, Sparkles, Target,
-  Upload, UserCheck, UserRound, Video, X
+  Upload, UserRound, Video, X
 } from 'lucide-react';
 import TemplateLiveCard from './TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
-import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { dashboardGreeting } from '../../lib/dashboardGreeting';
 import { isNativeApp, saveOrShareText } from '../../lib/mobile';
 import {
@@ -21,7 +19,6 @@ const BLUE = '#002050';
 const GOLD = '#bf8813';
 const BORDER = '#E4E7EC';
 const MUTED = '#6B7280';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 type Doc = { id:string; title:string; doc_type:'cv'|'lm'; status?:string; updated_at?:string; created_at?:string };
 type Template = CareerTemplateMeta & { template_key:string; name_fr:string };
@@ -36,13 +33,6 @@ function Stat({label,value,icon:Icon,onClick}:{label:string;value:string|number;
 }
 function readJson<T>(key:string,fallback:T):T{try{return JSON.parse(localStorage.getItem(key)||'') as T}catch{return fallback}}
 function saveJson(key:string,value:any){localStorage.setItem(key,JSON.stringify(value))}
-function token(){return getSessionToken()||''}
-async function callAi(text:string){
-  if(!SUPABASE_URL||!token()) throw new Error('IA indisponible');
-  const response=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({action:'make_professional',text})});
-  const data=await response.json(); if(!response.ok) throw new Error(data?.error||'IA indisponible'); return data.result||data.text||'';
-}
-
 export function EnhancedDashboard({displayName,loading,cvDocs,lmDocs,cvTemplates,lmTemplates,onView,onCreate,onOpen,previewMode=false}:{
   displayName:string;loading:boolean;cvDocs:Doc[];lmDocs:Doc[];cvTemplates:Template[];lmTemplates:Template[];
   onView:(view:string)=>void;onCreate:(type:'cv'|'lm',key?:string)=>void;onOpen:(id?:string,type?:'cv'|'lm')=>void;previewMode?:boolean;
@@ -289,8 +279,6 @@ export function EnhancedProfile({displayName}:{displayName:string}){
 function EditableProfileCard({title,children}:{title:string;children:React.ReactNode}){return <Card className="p-5"><h2 className="mb-4 font-semibold" style={{color:BLUE}}>{title}</h2>{children}</Card>}
 function SelectableCard({title,editing,options,selected,onChange}:{title:string;editing:boolean;options:string[];selected:string[];onChange:(v:string[])=>void}){const shown=editing?options:selected;return <EditableProfileCard title={title}>{shown.length?<div className="flex flex-wrap gap-2">{shown.map(o=><button disabled={!editing} key={o} onClick={()=>onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o])} className="rounded-full border px-3 py-1.5 text-xs font-semibold disabled:cursor-default" style={{borderColor:selected.includes(o)?BLUE:BORDER,background:selected.includes(o)?'rgba(0,32,80,.08)':'#fff',color:BLUE}}>{o}</button>)}</div>:<p className="text-sm" style={{color:MUTED}}>Aucune sélection.</p>}</EditableProfileCard>}
 function ListEditor({title,editing,values,onChange,placeholder}:{title:string;editing:boolean;values:string[];onChange:(v:string[])=>void;placeholder:string}){const [value,setValue]=useState('');return <EditableProfileCard title={title}>{editing&&<div className="flex gap-2"><input value={value} onChange={e=>setValue(e.target.value)} placeholder={placeholder} className="h-10 flex-1 rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}/><button onClick={()=>{if(value.trim()){onChange([...values,value.trim()]);setValue('')}}} className="rounded-xl px-3 text-sm font-semibold text-white" style={{background:BLUE}}>Ajouter</button></div>}<div className={`${editing?'mt-3':''} flex flex-wrap gap-2`}>{values.length?values.map(v=><button disabled={!editing} key={v} onClick={()=>onChange(values.filter(x=>x!==v))} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs">{v}{editing?' ×':''}</button>):<span className="text-sm" style={{color:MUTED}}>Aucune information.</span>}</div></EditableProfileCard>}
-
-export function EnhancedCoaching(){const [question,setQuestion]=useState('');const [answer,setAnswer]=useState('');const [loading,setLoading]=useState(false);const [topic,setTopic]=useState('');const [date,setDate]=useState('');async function ask(){setLoading(true);setAnswer('');try{setAnswer(await callAi(`Réponds comme coach carrière à cette question, sans inventer d'informations personnelles : ${question}`))}catch{setAnswer('Le service IA n’est pas disponible pour le moment.')}finally{setLoading(false)}}return <div className="space-y-5"><div><h1 className="text-2xl font-semibold" style={{color:BLUE}}>Coaching carrière</h1><p className="mt-1 text-sm" style={{color:MUTED}}>Posez une question à l’IA ou réservez un accompagnement humain.</p></div><div className="grid gap-5 xl:grid-cols-2"><Card className="p-6"><div className="flex items-center gap-2"><Sparkles color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Coaching IA</h2></div><textarea value={question} onChange={e=>setQuestion(e.target.value)} className="mt-4 min-h-36 w-full rounded-xl border p-3 text-sm" style={{borderColor:BORDER}} placeholder="Posez votre question…"/><button onClick={ask} disabled={!question.trim()||loading} className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" style={{background:BLUE}}>{loading?'Analyse…':'Poser ma question'}</button>{answer&&<div className="mt-4 whitespace-pre-wrap rounded-xl border p-4 text-sm leading-6" style={{borderColor:BORDER}}>{answer}</div>}</Card><Card className="p-6"><div className="flex items-center gap-2"><UserCheck color={GOLD}/><h2 className="font-semibold" style={{color:BLUE}}>Coaching humain</h2></div><input value={topic} onChange={e=>setTopic(e.target.value)} className="mt-4 h-11 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}} placeholder="Sujet du rendez-vous"/><input value={date} onChange={e=>setDate(e.target.value)} type="datetime-local" className="mt-3 h-11 w-full rounded-xl border px-3 text-sm" style={{borderColor:BORDER}}/><button disabled={!topic||!date} onClick={()=>saveJson('omnia_coaching_request',{topic,date,status:'requested'})} className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-[#002050] disabled:opacity-40" style={{background:GOLD}}><CalendarDays size={17}/>Demander un rendez-vous</button><p className="mt-3 text-xs" style={{color:MUTED}}>La confirmation dépendra des disponibilités du coach dédié.</p></Card></div></div>}
 
 export function EnhancedSettings({tokens,user}:{tokens:number;user:User}){
   const initial=readJson<any>('omnia_career_settings',{profile_visibility:'private',documents_visibility:'private',notifications:{jobs:true,interviews:true,profile_visits:true,news:true}});

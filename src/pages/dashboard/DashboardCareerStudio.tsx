@@ -700,7 +700,7 @@ function InterviewView({ jobId }: { jobId?: string }) {
     const res=await fetch(`${SUPABASE_URL}/functions/v1/career-studio-manage?action=ai`,{
       method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({
         action:'interview_feedback',interview_mode:mode,question,answer,answers:mode==='summary'?answers:undefined,
-        job_context:contextForAi,language:'fr',
+        job_context:contextForAi,language:(localStorage.getItem('omnia_platform_language')||localStorage.getItem('omnia_career_language')||'fr'),
       }),
     });
     const data=await res.json().catch(()=>({}));

@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-import { getAnthropicApiKey, getAnthropicFastModel, getOpenAITextModel } from "../_shared/ai-models.ts";
+import { getAnthropicApiKey } from "../_shared/ai-models.ts";
+import { runAnthropicText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
@@ -42,7 +43,7 @@ function extractTranslationArray(raw: string): string[] | null {
   } catch { return null; }
 }
 
-async function generateTranslationValues(language: string, sources: string[]) {
+async function generateTranslationValues(sb: ReturnType<typeof createClient>, language: string, sources: string[]) {
   const target = UI_LANGUAGE_NAMES[language] || language;
   const prompt = [
     `Translate this French software-interface JSON array into ${target}.`,
@@ -51,35 +52,19 @@ async function generateTranslationValues(language: string, sources: string[]) {
     "Use concise, natural, professional interface language. Do not add explanations.",
     JSON.stringify(sources),
   ].join("\n");
-  const anthropicKey = getAnthropicApiKey();
-  if (anthropicKey) {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: getAnthropicFastModel(), max_tokens: 6000, temperature: 0, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (response.ok) {
-      const payload = await response.json();
-      const raw = Array.isArray(payload?.content) ? payload.content.map((item: { text?: string }) => item?.text || "").join("") : "";
-      const parsed = extractTranslationArray(raw);
-      if (parsed?.length === sources.length) return parsed;
-    } else console.error("Admin i18n Anthropic error", response.status, await response.text());
+  if (getAnthropicApiKey()) {
+    try {
+      const result = await runAnthropicText(sb, { context: { module: "translation", action: `admin_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
+      const parsed = extractTranslationArray(result.text); if (parsed?.length === sources.length) return parsed;
+    } catch (error) { console.error("Admin i18n Anthropic error", error); }
   }
-  const openAiKey = Deno.env.get("OPENAI_API_KEY") || "";
-  if (openAiKey) {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: getOpenAITextModel(), temperature: 0, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (response.ok) {
-      const payload = await response.json();
-      const parsed = extractTranslationArray(String(payload?.choices?.[0]?.message?.content || ""));
-      if (parsed?.length === sources.length) return parsed;
-    } else console.error("Admin i18n OpenAI error", response.status, await response.text());
-  }
+  try {
+    const result = await runOpenAIChatText(sb, { context: { module: "translation", action: `admin_ui_${language}_fallback` }, prompt, temperature: 0, maxTokens: 7000 });
+    const parsed = extractTranslationArray(result.text); if (parsed?.length === sources.length) return parsed;
+  } catch (error) { console.error("Admin i18n OpenAI error", error); }
   return [];
 }
+
 
 // Clés interdites — ne peuvent jamais être modifiées via le CMS
 const FORBIDDEN_KEYS = new Set([
@@ -507,7 +492,7 @@ Deno.serve(async (req: Request) => {
       if (listError) return json({ error: "TRANSLATION_LIST_FAILED", detail: listError.message }, 500);
       const rows = Array.isArray(listData?.rows) ? listData.rows : [];
       if (!rows.length) return json({ success: true, generated: 0, remaining: 0 });
-      const values = await generateTranslationValues(language, rows.map((row: { source_text: string }) => String(row.source_text)));
+      const values = await generateTranslationValues(sb, language, rows.map((row: { source_text: string }) => String(row.source_text)));
       if (values.length !== rows.length) return json({ error: "TRANSLATION_AI_INVALID_RESPONSE" }, 502);
       let generated = 0;
       for (let index = 0; index < rows.length; index += 1) {

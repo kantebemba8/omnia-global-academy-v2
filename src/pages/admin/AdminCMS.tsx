@@ -1087,18 +1087,18 @@ export default function AdminCMS() {
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèle Claude</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèles opérationnels</label>
                       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                         Claude Sonnet 5 (qualité) · Claude Haiku 4.5 (rapide)
                       </div>
-                      <p className="mt-1 text-[11px] text-gray-500">Les modèles opérationnels sont centralisés côté serveur. La gouvernance pédagogique reste gérée dans le Centre Qualité.</p>
+                      <p className="mt-1 text-[11px] text-gray-500">Les modèles sont centralisés côté serveur afin d’éviter les références obsolètes cachées dans les modules.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Max tokens par réponse</label>
-                      <input type="number" min="200" max="4000" step="100"
-                        value={settings['ai_max_tokens_per_response'] || '1000'}
-                        onChange={e => set('ai_max_tokens_per_response', e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Limites et modes pédagogiques</label>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        Gérés dans le Centre Qualité
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">Les quotas, modes autorisés, seuil de similarité et longueur des réponses sont appliqués par le moteur de gouvernance pédagogique.</p>
                     </div>
                   </div>
                 </div>
@@ -1130,7 +1130,7 @@ export default function AdminCMS() {
                 <div className="flex items-center justify-between p-4 rounded-xl border border-gray-200">
                   <div>
                     <p className="text-sm font-semibold text-gray-800">Activer le pipeline de sous-titres</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Consomme des tokens Whisper (OpenAI) et des crédits de traduction (Claude). Désactivé par défaut.</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Utilise les sous-titres Cloudflare Stream lorsqu’ils existent, puis Whisper (OpenAI) si une transcription est nécessaire et Claude uniquement pour une traduction. Désactivé par défaut.</p>
                   </div>
                   <button onClick={() => set('subtitle_pipeline_enabled', settings['subtitle_pipeline_enabled'] === 'true' ? 'false' : 'true')}
                     className="flex-shrink-0">

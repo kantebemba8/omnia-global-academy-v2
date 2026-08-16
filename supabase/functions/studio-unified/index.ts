@@ -7,7 +7,7 @@ import * as XLSX from "npm:xlsx@0.18.5";
 import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
 
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
-import { getAnthropicApiKey, getAnthropicFastModel, getOpenAIImageModel } from "../_shared/ai-models.ts";
+import { runAnthropicText, runOpenAIImage, aiErrorPayload } from "../_shared/ai-runtime.ts";
 import { cloudflareStreamConfigured, createDirectStreamUpload, deleteStreamVideo, getStreamVideo, signedStreamManifest } from "../_shared/cloudflare-stream.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
@@ -418,14 +418,13 @@ function normalizeImportBlueprint(value:any,fallback:CourseImportBlueprint,langu
  })).filter((module:any)=>module.lessons.length);
  return {title:String(source.title||fallback.title).trim().slice(0,500)||fallback.title,short_description:String(source.short_description||fallback.short_description).trim().slice(0,500),objectives:stringList(source.objectives,12).length?stringList(source.objectives,12):fallback.objectives,target_audience:String(source.target_audience||fallback.target_audience).trim().slice(0,2000),learning_outcomes:stringList(source.learning_outcomes,12).length?stringList(source.learning_outcomes,12):fallback.learning_outcomes,modules:modules.length?modules:fallback.modules};
 }
-async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint,language:string){
- const key=getAnthropicApiKey();if(!key)return {blueprint:fallback,ai_used:false};
+async function aiImportBlueprint(sb:any,userId:string,text:string,fallback:CourseImportBlueprint,language:string){
  const excerpt=cleanImportedText(text).slice(0,50000);const prompt=`Langue du contenu : ${language}. Conserve impérativement cette langue pour tous les titres, résumés, objectifs, questions et explications. Ne traduis pas vers le français.\nTransforme le contenu suivant en brouillon de formation éditable. N'invente aucun fait. Réponds uniquement avec un JSON valide, sans Markdown, conforme à ce schéma : {"title":"","short_description":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","lessons":[{"title":"","objective":"","content":"texte brut","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}]}]}. Limites : 8 modules, 10 leçons par module, 2 QCM par leçon. Les questions sont facultatives si le contenu ne permet pas une réponse certaine. Le résultat reste un brouillon non publié.\n\nTITRE SUGGÉRÉ : ${fallback.title}\n\nCONTENU :\n${excerpt}`;
  try{
-  const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:5000,messages:[{role:"user",content:prompt}]})});
-  if(!response.ok)return {blueprint:fallback,ai_used:false};const output=await response.json();const raw=String(output?.content?.[0]?.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false};
+  const result=await runAnthropicText(sb,{context:{module:"studio",action:"import_blueprint",userId,metadata:{language}},tier:"fast",prompt,maxTokens:7000,effort:"low"});
+  const raw=String(result.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false,ai_error:"AI_RESPONSE_INVALID"};
   return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback,language),ai_used:true};
- }catch{return {blueprint:fallback,ai_used:false}}
+ }catch(error){const ai=aiErrorPayload(error);return {blueprint:fallback,ai_used:false,ai_error:ai.error}}
 }
 async function sha256Hex(bytes:Uint8Array){const input=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const digest=await crypto.subtle.digest("SHA-256",input);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("")}
 
@@ -750,7 +749,7 @@ Deno.serve(async(req)=>{
     const extracted=await extractCourseImportText(bytes,originalName);
     if(extracted.length<80)throw new Error("Aucun texte exploitable n’a été détecté. Pour un PDF scanné, utilisez un fichier contenant du texte sélectionnable.");
     const requestedTitle=String(b.title||"").trim()||titleFromFilename(originalName);const importLanguage=normalizedCourseLanguage(String(b.language||"").trim()||detectImportLanguage(extracted));const fallback=heuristicImportBlueprint(extracted,requestedTitle,importLanguage);fallback.title=requestedTitle;
-    const generated=b.allow_ai===true?await aiImportBlueprint(extracted,fallback,importLanguage):{blueprint:fallback,ai_used:false};const blueprint=normalizeImportBlueprint(generated.blueprint,fallback,importLanguage);
+    const generated=b.allow_ai===true?await aiImportBlueprint(sb,userId,extracted,fallback,importLanguage):{blueprint:fallback,ai_used:false};const blueprint=normalizeImportBlueprint(generated.blueprint,fallback,importLanguage);
     const source={bucket,path,name:originalName,mime:String(b.file_mime||blob.type||"application/octet-stream"),size:bytes.byteLength,sha256:sourceHash};
     const created=await createImportedCourse(sb,userId,creatorContext,blueprint,source,generated.ai_used,importLanguage);createdCourseId=created.course.id;
     return json({success:true,...created,message:"Brouillon créé. Vérifiez chaque contenu avant de le soumettre."});
@@ -1396,25 +1395,27 @@ Deno.serve(async(req)=>{
   }
   if(action==="ai_generate_cover_images"){
    const prompt=String(b.prompt||"").trim();if(!prompt)return json({success:false,error:"PROMPT_REQUIRED"},400);
-   const openaiKey=Deno.env.get("OPENAI_API_KEY");if(!openaiKey)return json({success:false,error:"OPENAI_API_KEY_MISSING",message:"Ajoutez OPENAI_API_KEY dans les secrets Supabase."},503);
    const count=Math.min(4,Math.max(1,Number(b.count)||3));const images:string[]=[];
    const safePrompt=`Image de couverture professionnelle pour une formation en ligne. ${prompt}. Format horizontal 16:9, composition claire, lisible en miniature, sans texte, sans logo, sans filigrane, sans personne sauf demande explicite. Style éducatif premium adapté à l'Afrique et au monde.`;
    for(let i=0;i<count;i++){
-    const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Authorization":`Bearer ${openaiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:getOpenAIImageModel(),prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium",n:1})});
-    const out=await r.json();if(!r.ok)throw new Error(out?.error?.message||"IMAGE_GENERATION_FAILED");const b64=out?.data?.[0]?.b64_json;if(!b64)throw new Error("IMAGE_DATA_MISSING");
-    const bytes=Uint8Array.from(atob(b64),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
+    const generated=await runOpenAIImage(sb,{context:{module:"image",action:"course_cover",userId,courseId},prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium"});
+    const bytes=Uint8Array.from(atob(generated.b64),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
     images.push(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/course-images/${path}`);
    }
    await sb.from("courses").update({cover_image_prompt:prompt,cover_image_candidates:images,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"cover_images_generated",{count:images.length});return json({success:true,images});
   }
   if(String(action).startsWith("ai_")){
+   const aliases:Record<string,string>={ai_generate_summary_block:"ai_create_summary",ai_generate_remember:"ai_create_remember"};
+   const normalizedAction=aliases[String(action)]||String(action);
+   const prompts:Record<string,string>={ai_improve_text:"Améliore ce contenu pédagogique sans inventer de faits.",ai_simplify_text:"Simplifie ce contenu pour un public débutant.",ai_correct_grammar:"Corrige uniquement la langue et la grammaire.",ai_summarize:"Résume clairement ce contenu.",ai_generate_qcm:"Génère un QCM avec 1 bonne réponse, 3 mauvaises réponses et une explication. Réponds en JSON valide.",ai_generate_true_false:"Génère une question vrai/faux avec explication. Réponds en JSON valide.",ai_generate_quiz:"Génère 5 questions variées avec corrigés. Réponds en JSON valide.",ai_create_summary:"Crée un résumé pédagogique structuré.",ai_create_remember:"Crée une liste concise de points à retenir.",ai_suggest_structure:"Propose une structure de modules et leçons.",ai_suggest_objectives:"Propose des objectifs pédagogiques mesurables.",ai_suggest_example:"Propose un exemple concret et réaliste."};
+   if(!prompts[normalizedAction])return json({success:false,error:"UNKNOWN_AI_ACTION",action},400);
    const input=String(b.text||b.content||b.topic||"").trim();if(!input)return json({success:false,error:"TEXT_REQUIRED"},400);
-   const key=getAnthropicApiKey();if(!key)return json({success:true,result:"Service IA non configuré. Votre texte original a été conservé.",fallback:true});
-   const prompts:Record<string,string>={ai_improve_text:"Améliore ce contenu pédagogique sans inventer de faits.",ai_simplify_text:"Simplifie ce contenu pour un public débutant.",ai_correct_grammar:"Corrige uniquement la langue et la grammaire.",ai_summarize:"Résume clairement ce contenu.",ai_generate_qcm:"Génère un QCM avec 1 bonne réponse, 3 mauvaises réponses et une explication. Réponds en JSON.",ai_generate_true_false:"Génère une question vrai/faux avec explication. Réponds en JSON.",ai_generate_quiz:"Génère 5 questions variées avec corrigés. Réponds en JSON.",ai_create_summary:"Crée un résumé pédagogique structuré.",ai_create_remember:"Crée une liste concise de points à retenir.",ai_suggest_structure:"Propose une structure de modules et leçons.",ai_suggest_objectives:"Propose des objectifs pédagogiques mesurables.",ai_suggest_example:"Propose un exemple concret et réaliste."};
-   let courseLanguage=String(b.language||"").trim();if(!courseLanguage&&b.course_id){const {data:aiCourse}=await sb.from("courses").select("language,instruction_language,target_language,course_type").eq("id",String(b.course_id)).maybeSingle();courseLanguage=String(aiCourse?.language||aiCourse?.instruction_language||"").trim();}
-   const languageRule=courseLanguage?`Langue principale du contenu : ${courseLanguage}. Réponds impérativement dans cette langue et ne traduis jamais vers le français sauf demande explicite du créateur.`:"Conserve strictement la langue du texte source. Ne traduis pas le contenu sauf demande explicite du créateur.";
-   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:1400,messages:[{role:"user",content:`${languageRule}\n${prompts[action]||"Aide à améliorer ce contenu pédagogique."}\n\n${input}`} ]})});const out=await r.json();return json({success:r.ok,result:out?.content?.[0]?.text||"",error:r.ok?undefined:"AI_ERROR"},r.ok?200:502);
+   let aiCourse:any=null;let courseLanguage=String(b.language||b.instruction_language||"").trim();
+   if(b.course_id){const result=await sb.from("courses").select("language,instruction_language,target_language,course_type,cefr_start_level,cefr_target_level").eq("id",String(b.course_id)).maybeSingle();aiCourse=result.data;if(!courseLanguage)courseLanguage=String(aiCourse?.instruction_language||aiCourse?.language||"").trim();}
+   const languageRule=courseLanguage?`Langue d'enseignement : ${courseLanguage}. ${aiCourse?.course_type==="language_learning"&&aiCourse?.target_language?`Langue cible : ${aiCourse.target_language}. Niveau : ${aiCourse.cefr_start_level||"?"} → ${aiCourse.cefr_target_level||"?"}.`:""} Réponds dans la langue d'enseignement sauf si l'exercice exige explicitement la langue cible.`:"Conserve strictement la langue du texte source. Ne traduis pas le contenu sauf demande explicite du créateur.";
+   const ai=await runAnthropicText(sb,{context:{module:"studio",action:normalizedAction,userId,courseId:String(b.course_id||courseId||"")||null,lessonId:String(b.lesson_id||"")||null,blockId:String(b.block_id||"")||null},tier:"fast",prompt:`${languageRule}\n${prompts[normalizedAction]}\n\nTitre de la leçon : ${String(b.lesson_title||"")}\n\n${input}`,maxTokens:["ai_generate_quiz","ai_suggest_structure"].includes(normalizedAction)?3600:2400,effort:"low"});
+   return json({success:true,result:ai.text,provider:ai.provider,model:ai.model,action:normalizedAction});
   }
   return json({success:false,error:"UNKNOWN_ACTION",action},400);
- }catch(e){console.error("studio-unified",e);return json({success:false,error:"SERVER_ERROR",message:(e as Error).message},500)}
+ }catch(e){console.error("studio-unified",e);const ai=aiErrorPayload(e);if(ai.error!=="AI_RUNTIME_ERROR")return json({success:false,error:ai.error,provider:ai.provider,message:ai.message},ai.status);return json({success:false,error:"SERVER_ERROR",message:(e as Error).message},500)}
 });

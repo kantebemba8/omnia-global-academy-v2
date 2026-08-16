@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { getAnthropicApiKey, getAnthropicFastModel, getOpenAITextModel } from "../_shared/ai-models.ts";
+import { getAnthropicApiKey } from "../_shared/ai-models.ts";
+import { runAnthropicText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get('ALLOWED_ORIGIN') || "https://omniaglobalacademy.com",
@@ -45,7 +46,7 @@ function extractJsonArray(raw: string): string[] | null {
   }
 }
 
-async function generateUiTranslations(language: string, sources: string[]) {
+async function generateUiTranslations(sb: ReturnType<typeof createClient>, language: string, sources: string[]) {
   if (!sources.length) return [];
   const target = LANGUAGE_NAMES[language] || language;
   const prompt = [
@@ -55,53 +56,16 @@ async function generateUiTranslations(language: string, sources: string[]) {
     "Use concise, natural, professional interface language. Do not add explanations.",
     JSON.stringify(sources),
   ].join("\n");
-
-  const anthropicKey = getAnthropicApiKey();
-  if (anthropicKey) {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: getAnthropicFastModel(),
-        max_tokens: 6000,
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (response.ok) {
-      const payload = await response.json();
-      const raw = Array.isArray(payload?.content) ? payload.content.map((item: { text?: string }) => item?.text || "").join("") : "";
-      const parsed = extractJsonArray(raw);
-      if (parsed?.length === sources.length) return parsed;
-    } else {
-      console.error("UI translation Anthropic error", response.status, await response.text());
-    }
+  if (getAnthropicApiKey()) {
+    try {
+      const result = await runAnthropicText(sb, { context: { module: "translation", action: `public_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
+      const parsed = extractJsonArray(result.text); if (parsed?.length === sources.length) return parsed;
+    } catch (error) { console.error("UI translation Anthropic error", error); }
   }
-
-  const openAiKey = Deno.env.get("OPENAI_API_KEY") || "";
-  if (openAiKey) {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: getOpenAITextModel(),
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (response.ok) {
-      const payload = await response.json();
-      const parsed = extractJsonArray(String(payload?.choices?.[0]?.message?.content || ""));
-      if (parsed?.length === sources.length) return parsed;
-    } else {
-      console.error("UI translation OpenAI error", response.status, await response.text());
-    }
-  }
-
+  try {
+    const result = await runOpenAIChatText(sb, { context: { module: "translation", action: `public_ui_${language}_fallback` }, prompt, temperature: 0, maxTokens: 7000 });
+    const parsed = extractJsonArray(result.text); if (parsed?.length === sources.length) return parsed;
+  } catch (error) { console.error("UI translation OpenAI error", error); }
   return [];
 }
 
@@ -196,7 +160,7 @@ async function translateUiBatch(req: Request, sb: ReturnType<typeof createClient
 
   let generated = 0;
   if (missingRows.length) {
-    const generatedValues = await generateUiTranslations(language, missingRows.map(row => String(row.source_text)));
+    const generatedValues = await generateUiTranslations(sb, language, missingRows.map(row => String(row.source_text)));
     if (generatedValues.length === missingRows.length) {
       for (let index = 0; index < missingRows.length; index += 1) {
         const row = missingRows[index];

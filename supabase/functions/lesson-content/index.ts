@@ -16,6 +16,14 @@ function scormBridgeScript(runtime:any){
 
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 
+async function signNestedMediaRefs(sb:any,value:any,depth=0):Promise<any>{
+ if(depth>5||value==null)return value;
+ if(typeof value==="string"){const locator=parseStorageLocator(value);if(locator&&PRIVATE_COURSE_BUCKET_SET.has(locator.bucket)){const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);return signed||null;}return value;}
+ if(Array.isArray(value))return await Promise.all(value.map(item=>signNestedMediaRefs(sb,item,depth+1)));
+ if(typeof value!=="object")return value;
+ const out:any={};for(const [key,item] of Object.entries(value))out[key]=await signNestedMediaRefs(sb,item,depth+1);return out;
+}
+
 Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response(null,{status:200,headers:corsHeaders});
  const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
@@ -85,7 +93,7 @@ Deno.serve(async(req:Request)=>{
     const encodedLaunch=String(content.launch_path).split("/").map((part:string)=>encodeURIComponent(part)).join("/");const launchUrl=`${Deno.env.get("SUPABASE_URL")}/functions/v1/lesson-content/scorm/${runtime.runtime_token}/${encodedLaunch}`;
     return {...block,file_url:launchUrl,content_json:{...content,url:launchUrl,runtime_session_token:runtime.runtime_token,runtime_state:runtime.cmi_data||{}},_signed:true,_scorm:true};
    }
-   const streamUid=String(content.cloudflare_stream_uid||"").trim();if(streamUid){try{const signed=await signedStreamManifest(streamUid,900);return {...block,file_url:signed.iframe_url,content_json:{...content,url:signed.iframe_url,provider:"cloudflare_stream"},_signed:true,_stream:true};}catch{return {...block,file_url:null,content_json:{...content,url:null,provider:"cloudflare_stream"},_signed:false,_stream:true};}}const bucket=String(block.bucket_name||content.bucket||inferBucket(block.block_type));if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return block;const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:{...content,url:null}};const signedUrl=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);if(!signedUrl)return {...block,file_url:null,content_json:{...content,url:null}};return {...block,file_url:signedUrl,content_json:{...content,url:signedUrl},_signed:true};}));}
+   const streamUid=String(content.cloudflare_stream_uid||"").trim();if(streamUid){try{const signed=await signedStreamManifest(streamUid,900);const nested=await signNestedMediaRefs(sb,content);return {...block,file_url:signed.iframe_url,content_json:{...nested,url:signed.iframe_url,provider:"cloudflare_stream"},_signed:true,_stream:true};}catch{const nested=await signNestedMediaRefs(sb,content);return {...block,file_url:null,content_json:{...nested,url:null,provider:"cloudflare_stream"},_signed:false,_stream:true};}}const signedContent=await signNestedMediaRefs(sb,content);const bucket=String(block.bucket_name||content.bucket||inferBucket(block.block_type));if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return {...block,content_json:signedContent};const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:signedContent};const signedUrl=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);if(!signedUrl)return {...block,file_url:null,content_json:signedContent};return {...block,file_url:signedUrl,content_json:{...signedContent,url:signedUrl},_signed:true};}));}
   const lessonForResponse:any={...lesson,content_type:lesson.content_type||(lesson.has_blocks?"blocks":"text")};for(const field of ["video_url","audio_url"]){const raw=lessonForResponse[field];const locator=parseStorageLocator(raw);if(locator&&PRIVATE_COURSE_BUCKET_SET.has(locator.bucket))lessonForResponse[field]=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);}
   return json({lesson:lessonForResponse,blocks,progress:{time_spent_seconds:timeSpent,quiz_passed:quizPassed,is_completed:completed},required_seconds:required,cpd_time_reached:cpdReached,questions:[],next_lesson_id:index<sorted.length-1?sorted[index+1].id:null});
  }catch(error){console.error("lesson-content",error);return json({error:"SERVER_ERROR",message:(error as Error).message},500);}

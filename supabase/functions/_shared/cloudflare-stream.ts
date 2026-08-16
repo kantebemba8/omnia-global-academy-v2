@@ -359,3 +359,17 @@ export function streamConfigurationStatus() {
     token_strategy: localSigningConfigured() ? "local_signing_key" : "api_token_endpoint",
   };
 }
+
+export async function uploadStreamCaption(uid: string, language: string, vttContent: string): Promise<any> {
+  if (!uid) throw new Error("CLOUDFLARE_STREAM_UID_MISSING");
+  const lang = String(language || "").trim();
+  if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(lang)) throw new Error("CLOUDFLARE_STREAM_CAPTION_LANGUAGE_INVALID");
+  const form = new FormData();
+  form.append("file", new Blob([vttContent], { type: "text/vtt" }), `captions-${lang}.vtt`);
+  const response = await fetch(`${apiBase()}/${encodeURIComponent(uid)}/captions/${encodeURIComponent(lang)}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: form,
+  });
+  return await cfJson(response, "CLOUDFLARE_STREAM_CAPTION_UPLOAD_FAILED");
+}

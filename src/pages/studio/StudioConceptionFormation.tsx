@@ -224,6 +224,7 @@ export default function StudioConceptionFormation() {
   const [aiInput, setAiInput] = useState('');
   const [aiResult, setAiResult] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [mediaAiBusy, setMediaAiBusy] = useState<string | null>(null);
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverCandidates, setCoverCandidates] = useState<string[]>([]);
   const [coverGenerating, setCoverGenerating] = useState(false);
@@ -743,13 +744,43 @@ export default function StudioConceptionFormation() {
     if (!aiInput.trim()) return;
     setAiLoading(true); setAiResult('');
     try {
-      const data = await api(aiAction, { text: aiInput, topic: aiInput, content: aiInput, lesson_title: currentLesson?.title });
+      const data = await api(aiAction, { course_id: course?.id, lesson_id: currentLesson?.id, block_id: selectedBlock?.id, language: course?.language, instruction_language: course?.instruction_language, target_language: course?.target_language, course_type: course?.course_type, cefr_start_level: course?.cefr_start_level, cefr_target_level: course?.cefr_target_level, text: aiInput, topic: aiInput, content: aiInput, lesson_title: currentLesson?.title });
       if (data.success) {
         const res = data.result;
         setAiResult(typeof res === 'string' ? res : JSON.stringify(res, null, 2));
-      } else showToast('Erreur IA', 'error');
-    } catch { showToast('Erreur IA', 'error'); }
+      } else showToast(data.message || data.error || 'Assistant IA indisponible', 'error');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Assistant IA indisponible', 'error'); }
     finally { setAiLoading(false); }
+  }
+
+  async function generateTtsForBlock(block: Block, text: string, targetPath: string) {
+    const source = String(text || '').trim();
+    if (!source) { showToast('Ajoutez d’abord le texte à transformer en audio.', 'error'); return; }
+    setMediaAiBusy(`tts:${block.id}:${targetPath}`);
+    try {
+      const response = await fetch(`${SB}/functions/v1/tts-generate`, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ block_id: block.id, text: source, target_path: targetPath }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Synthèse vocale indisponible');
+      const content_json = data.content_json || block.content_json;
+      setBlocks(bs => bs.map(item => item.id === block.id ? { ...item, content_json } : item));
+      if (selectedBlock?.id === block.id) setSelectedBlock({ ...block, content_json });
+      showToast('Audio IA généré et rattaché au bloc.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Synthèse vocale indisponible', 'error'); }
+    finally { setMediaAiBusy(null); }
+  }
+
+  async function generateSubtitlesForBlock(block: Block) {
+    if (!String(block.content_json?.cloudflare_stream_uid || '').trim()) { showToast('Téléversez d’abord la vidéo dans Omnia/Cloudflare Stream.', 'error'); return; }
+    setMediaAiBusy(`subtitle:${block.id}`);
+    try {
+      const sourceLanguage = course?.instruction_language || course?.language || 'fr';
+      const targetLanguage = String(block.content_json?.subtitle_target_language || sourceLanguage);
+      const response = await fetch(`${SB}/functions/v1/subtitle-request`, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ block_id: block.id, source_language: sourceLanguage, target_language: targetLanguage }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Sous-titres indisponibles');
+      showToast('Génération des sous-titres lancée. Ils seront rattachés à ce bloc vidéo.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Sous-titres indisponibles', 'error'); }
+    finally { setMediaAiBusy(null); }
   }
 
   const locked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
@@ -1244,7 +1275,10 @@ export default function StudioConceptionFormation() {
 
                           {/* Contenu du bloc */}
                           <div className="p-4">
-                            <BlockPreview block={block} def={def} locked={locked}
+                            <BlockPreview block={block} def={def} locked={locked} mediaAiBusy={mediaAiBusy}
+                              defaultLanguage={course?.instruction_language || course?.language || 'fr'}
+                              onGenerateTts={(text,targetPath)=>generateTtsForBlock(block,text,targetPath)}
+                              onGenerateSubtitles={()=>generateSubtitlesForBlock(block)}
                               onChange={async (content_json) => {
                                 setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
                                 if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
@@ -1346,8 +1380,8 @@ export default function StudioConceptionFormation() {
                     <option value="ai_generate_qcm">Générer un QCM</option>
                     <option value="ai_generate_true_false">Générer Vrai/Faux</option>
                     <option value="ai_generate_quiz">Générer un quiz complet</option>
-                    <option value="ai_generate_summary_block">Bloc Résumé</option>
-                    <option value="ai_generate_remember">Bloc À retenir</option>
+                    <option value="ai_create_summary">Bloc Résumé</option>
+                    <option value="ai_create_remember">Bloc À retenir</option>
                     <option value="ai_suggest_structure">Suggérer une structure</option>
                     <option value="ai_suggest_objectives">Suggérer des objectifs</option>
                     <option value="ai_suggest_example">Suggérer un exemple</option>
@@ -1612,9 +1646,13 @@ function LanguageBlockEditor({type,c,locked,onChange}:{type:string;c:Record<stri
 function LanguageBlockReadonly({type,c}:{type:string;c:Record<string,any>}){return <div className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-bold uppercase tracking-wide text-[#BF8813]">Activité de langue</p><p className="mt-2 text-sm font-semibold text-[#002050]">{c.title||String(type).replaceAll('_',' ')}</p>{c.prompt&&<p className="mt-2 text-sm text-slate-600">{c.prompt}</p>}{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}</div>}
 
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
-function BlockPreview({ block, def, locked, onChange }: {
+function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateSubtitles, mediaAiBusy, defaultLanguage = 'fr' }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
   onChange: (content: Record<string, any>) => void;
+  onGenerateTts?: (text: string, targetPath: string) => void;
+  onGenerateSubtitles?: () => void;
+  mediaAiBusy?: string | null;
+  defaultLanguage?: string;
 }) {
   const c = block.content_json;
   const inputCls = 'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050] transition-colors';
@@ -1672,6 +1710,15 @@ function BlockPreview({ block, def, locked, onChange }: {
             onChange={e => onChange({ ...c, url: e.target.value })} placeholder="URL de la vidéo (YouTube, Vimeo...)..." disabled={locked} />
         </div>
         {c.eco_data && <p className="text-xs" style={{ color: '#9CA3AF' }}>💡 Mode éco-data : vidéo non chargée automatiquement</p>}
+        {!locked && String(c.cloudflare_stream_uid||'').trim() && <div className="rounded-lg border p-3 space-y-2" style={{borderColor:'#E4E7EC',background:'#F8FAFC'}}>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <select className="px-3 py-2 rounded-lg border text-xs" style={{borderColor:'#E4E7EC'}} value={c.subtitle_target_language||defaultLanguage} onChange={e=>onChange({...c,subtitle_target_language:e.target.value})}>
+              <option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ru">Русский</option><option value="de">Deutsch</option>
+            </select>
+            <button type="button" onClick={()=>onGenerateSubtitles?.()} disabled={mediaAiBusy===`subtitle:${block.id}`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#002050'}}>{mediaAiBusy===`subtitle:${block.id}`?'Lancement…':'Générer les sous-titres'}</button>
+          </div>
+          {Array.isArray(c.subtitles)&&c.subtitles.length>0&&<p className="text-xs text-emerald-700">Sous-titres disponibles : {c.subtitles.map((x:any)=>String(x.language||'').toUpperCase()).join(', ')}</p>}
+        </div>}
       </div>
     );
     case 'qcm': return (
@@ -1711,7 +1758,9 @@ function BlockPreview({ block, def, locked, onChange }: {
     case 'audio': return (
       <div className="space-y-2">
         <input className={inputCls} style={style} value={c.description || ''} onChange={e=>onChange({...c,description:e.target.value})} placeholder="Description de l’audio" disabled={locked}/>
-        <textarea className={inputCls} style={style} rows={4} value={c.transcription || ''} onChange={e=>onChange({...c,transcription:e.target.value})} placeholder="Transcription / texte alternatif" disabled={locked}/>
+        <textarea className={inputCls} style={style} rows={4} value={c.transcription || ''} onChange={e=>onChange({...c,transcription:e.target.value})} placeholder="Texte à convertir en audio / transcription" disabled={locked}/>
+        {c.url&&<audio className="w-full" controls src={c.url}/>}
+        {!locked&&<button type="button" onClick={()=>onGenerateTts?.(String(c.transcription||c.description||''),'url')} disabled={mediaAiBusy===`tts:${block.id}:url`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}>{mediaAiBusy===`tts:${block.id}:url`?'Génération…':'Générer l’audio avec l’IA'}</button>}
       </div>
     );
     case 'quote': return (
@@ -1759,7 +1808,11 @@ function BlockPreview({ block, def, locked, onChange }: {
       <div className="space-y-2">{(c.criteria||[]).map((criterion:any,i:number)=><div key={i} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[180px_1fr_90px]" style={style}><input className={inputCls} style={style} value={criterion.name||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,name:e.target.value};onChange({...c,criteria})}} placeholder="Critère" disabled={locked}/><input className={inputCls} style={style} value={criterion.description||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,description:e.target.value};onChange({...c,criteria})}} placeholder="Description" disabled={locked}/><input type="number" min={0} className={inputCls} style={style} value={criterion.points||0} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,points:Number(e.target.value)||0};onChange({...c,criteria})}} disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,criteria:[...(c.criteria||[]),{name:`Critère ${(c.criteria||[]).length+1}`,description:'',points:10}]})}>+ Ajouter un critère</button>}</div>
     );
 
-    case 'vocabulary': case 'dialogue': case 'cloze': case 'dictation': case 'pronunciation': case 'matching': case 'sentence_order': case 'oral_response': case 'listening_comprehension': case 'written_expression':
+    case 'dictation': case 'listening_comprehension': return <div className="space-y-2"><LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange}/>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>} {!locked&&<button type="button" onClick={()=>onGenerateTts?.(String(c.transcript||c.instructions||''),'audio_url')} disabled={mediaAiBusy===`tts:${block.id}:audio_url`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}>Générer l’audio IA</button>}</div>;
+    case 'oral_response': return <div className="space-y-2"><LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange}/>{c.reference_audio_url&&<audio className="w-full" controls src={c.reference_audio_url}/>} {!locked&&<button type="button" onClick={()=>onGenerateTts?.(String(c.prompt||''),'reference_audio_url')} disabled={mediaAiBusy===`tts:${block.id}:reference_audio_url`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}>Générer l’audio de référence</button>}</div>;
+    case 'pronunciation': return <div className="space-y-2"><LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange}/>{!locked&&(c.items||[]).map((item:any,i:number)=><div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"><span className="truncate text-xs text-slate-600">Audio IA : {item.text||`élément ${i+1}`}</span>{item.audio_url&&<audio className="h-8 max-w-40" controls src={item.audio_url}/>}<button type="button" onClick={()=>onGenerateTts?.(String(item.text||''),`items.${i}.audio_url`)} disabled={!String(item.text||'').trim()||mediaAiBusy===`tts:${block.id}:items.${i}.audio_url`} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40" style={{background:'#BF8813'}}>Générer</button></div>)}</div>;
+    case 'vocabulary': return <div className="space-y-2"><LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange}/>{!locked&&(c.items||[]).map((item:any,i:number)=><div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"><span className="truncate text-xs text-slate-600">Prononcer : {item.term||`élément ${i+1}`}</span>{item.audio_url&&<audio className="h-8 max-w-40" controls src={item.audio_url}/>}<button type="button" onClick={()=>onGenerateTts?.(String(item.term||''),`items.${i}.audio_url`)} disabled={!String(item.term||'').trim()||mediaAiBusy===`tts:${block.id}:items.${i}.audio_url`} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40" style={{background:'#BF8813'}}>Générer</button></div>)}</div>;
+    case 'dialogue': case 'cloze': case 'matching': case 'sentence_order': case 'written_expression':
       return <LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange} />;
     case 'separator': return <hr style={{ borderColor: '#E4E7EC' }} />;
     case 'pdf': case 'word': case 'excel': case 'scorm': case 'download': return (

@@ -772,7 +772,7 @@ export default function CareerStudioEditor() {
         offer_text: offerText,
         target_job: isCvDoc ? (cv?.title || document.target_job || '') : (lm?.subject || document.target_job || ''),
         application_type: document.application_type || document.doc_type,
-        language: 'fr',
+        language: (localStorage.getItem('omnia_platform_language') || localStorage.getItem('omnia_career_language') || 'fr') as any,
       });
 
       if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
@@ -804,7 +804,7 @@ export default function CareerStudioEditor() {
         doc_data: document.doc_data,
         target_job: document.target_job || '',
         application_type: document.application_type || document.doc_type,
-        language: 'fr',
+        language: (localStorage.getItem('omnia_platform_language') || localStorage.getItem('omnia_career_language') || 'fr') as any,
       });
       if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
       if (document.doc_type === 'lm') {
