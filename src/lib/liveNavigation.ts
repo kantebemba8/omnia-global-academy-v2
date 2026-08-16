@@ -60,12 +60,12 @@ const PARTICIPATION: LiveNavGroup = {
   ],
 };
 
-const PRODUCTION: LiveNavGroup = {
-  id: 'production', label: 'Créer & produire', path: '/omnia-live/production', description: 'Transformer une expertise en événement ou formation Live.', icon: Clapperboard,
+const EXPERT_PARTICIPATION: LiveNavGroup = {
+  id: 'expertise', label: 'Expertise & participation', path: '/omnia-live/expertise', description: 'Participer, intervenir et retrouver vos rendez-vous Live.', icon: Clapperboard,
   children: [
-    { label: 'Proposer un Live', path: '/omnia-live/proposer', description: 'Démarrer une proposition et son workflow de validation.', icon: Video },
-    { label: 'Mes Lives', path: '/omnia-live/participant/mes-lives', description: 'Retrouver les Lives auxquels vous participez.', icon: Ticket },
+    { label: 'Mes Lives', path: '/omnia-live/participant/mes-lives', description: 'Retrouver les Lives auxquels vous participez ou intervenez.', icon: Ticket },
     { label: 'Mes documents', path: '/omnia-live/mes-documents', description: 'Retrouver vos documents Live.', icon: FileBadge },
+    { label: 'Devenir Organisateur', path: '/omnia-live/organisateur/candidature', description: 'Demander l’accès Organisateur pour créer vos propres événements.', icon: Video },
   ],
 };
 
@@ -73,7 +73,7 @@ const STRUCTURE_ACTIVITY: LiveNavGroup = {
   id: 'structure', label: 'Pilotage', path: '/omnia-live/structure', description: 'Activité Live de votre Structure et programmation de nouveaux événements.', icon: BarChart3,
   children: [
     { label: 'Rapports Structure', path: '/omnia-live/structure/rapports', description: 'Présence, inscriptions, documents et activité de vos membres.', icon: BarChart3 },
-    { label: 'Proposer un Live', path: '/omnia-live/proposer', description: 'Créer un événement porté par votre Structure.', icon: Video },
+    { label: 'Programmer un Live interne', path: '/omnia-live/proposer?scope=structure', description: 'Créer un événement privé ou interne porté par votre Structure.', icon: Video },
     { label: 'Mes Lives', path: '/omnia-live/participant/mes-lives', description: 'Lives suivis depuis votre compte.', icon: Ticket },
   ],
 };
@@ -116,7 +116,7 @@ const TRUST: LiveNavGroup = {
 const NAV: Record<LiveAudience, LiveNavGroup[]> = {
   public: [HOME, DISCOVER, ABOUT],
   apprenant: [HOME, DISCOVER, PARTICIPATION],
-  professeur: [HOME, DISCOVER, PRODUCTION, PARTICIPATION],
+  professeur: [HOME, DISCOVER, EXPERT_PARTICIPATION, PARTICIPATION],
   structure: [HOME, DISCOVER, STRUCTURE_ACTIVITY, PARTICIPATION],
   moderateur: [HOME, DISCOVER, TRUST],
   recruteur: [HOME, DISCOVER, PARTICIPATION],

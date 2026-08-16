@@ -24,7 +24,7 @@ const STRUCTURE_NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/structure/profil', label: 'Profil de la Structure', icon: Building2 },
       { path: '/structure/membres', label: 'Membres', icon: Users },
-      { path: '/structure/equipe', label: 'Équipe & délégations', icon: Shield },
+      { path: '/structure/equipe', label: 'Équipe & accès', icon: Shield },
       { path: '/structure/rattachements', label: 'Rattachements', icon: UserCheck },
       { path: '/structure/codes', label: 'Codes Structure', icon: QrCode },
     ],

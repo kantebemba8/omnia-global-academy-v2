@@ -36,15 +36,22 @@ function resolvePolicy(pathname: string): AccessPolicy | null {
   if (startsWithSpace(pathname, '/talent/recruteur')) {
     return { allowedRoles: ['recruteur'], previewRole: 'recruteur' };
   }
-  const isLiveCreatorRoute =
+  const isOrganizerWorkspace =
     startsWithSpace(pathname, '/omnia-live/organisateur') ||
     pathname === '/omnia-live/revenus' ||
-    startsWithSpace(pathname, '/omnia-live/proposer') ||
-    startsWithSpace(pathname, '/omnia-live/studio') ||
     /^\/omnia-live\/[^/]+\/(organiser|presence|statistiques)$/.test(pathname);
-  if (isLiveCreatorRoute) {
+  if (isOrganizerWorkspace) {
     return {
-      allowedRoles: ['organisateur', 'professeur', 'structure', 'super_admin'],
+      allowedRoles: ['organisateur', 'super_admin'],
+      previewRole: 'organisateur',
+    };
+  }
+  const isLiveDraftRoute =
+    startsWithSpace(pathname, '/omnia-live/proposer') ||
+    startsWithSpace(pathname, '/omnia-live/studio');
+  if (isLiveDraftRoute) {
+    return {
+      allowedRoles: ['organisateur', 'structure', 'gestionnaire_structure', 'super_admin'],
       previewRole: 'organisateur',
     };
   }

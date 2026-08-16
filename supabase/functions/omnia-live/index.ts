@@ -174,9 +174,13 @@ async function ensureOrganizerLiveCapacity(sb: ReturnType<typeof createClient>, 
   return { allowed: Number(count || 0) < limit, limit, active: Number(count || 0) };
 }
 
+function isIndependentOrganizer(ctx: Awaited<ReturnType<typeof sessionContext>>) {
+  return Boolean(ctx?.roles.some((r) => ["organizer", "organisateur"].includes(r)));
+}
+
 function canOrganize(ctx: Awaited<ReturnType<typeof sessionContext>>) {
   if (!ctx) return false;
-  if (ctx.roles.some((r) => ["super_admin", "organizer", "organisateur", "professeur"].includes(r))) return true;
+  if (isSuperAdmin(ctx) || isIndependentOrganizer(ctx)) return true;
   return canManageStructureLive(ctx);
 }
 
@@ -228,7 +232,7 @@ function organizerKind(ctx: Awaited<ReturnType<typeof sessionContext>>, requeste
   if (ctx.roles.includes("super_admin")) return "omnia";
 
   const structureAllowed = canManageStructureLive(ctx);
-  const independentCreator = ctx.roles.some((r) => ["organizer", "organisateur", "professeur"].includes(r));
+  const independentCreator = isIndependentOrganizer(ctx);
   if (requestedScope === "structure") return structureAllowed ? "structure" : "forbidden";
   if (requestedScope === "personal") return independentCreator ? "user" : "forbidden";
   if (structureAllowed && !independentCreator) return "structure";
@@ -1069,16 +1073,27 @@ async function submitEvent(
     );
   }
 
-  if (!isSuperAdmin(ctx) && ev.organizer_kind !== "omnia") {
+  if (!isSuperAdmin(ctx) && ev.organizer_kind === "user") {
     const capacity = await ensureOrganizerLiveCapacity(sb, ctx.userId, eventId);
     if (!capacity.allowed) {
       return json({
         error: "ORGANIZER_PLAN_LIMIT_REACHED",
-        message: "La limite de lives actifs de votre accès organisateur est atteinte.",
+        message: "La limite de lives actifs de votre plan Organisateur est atteinte.",
         limit: capacity.limit,
         active: capacity.active,
-        action_url: "/omnia-live/organisateur/offres",
+        action_url: "/omnia-live/organisateur/plan-omnia",
       }, 402);
+    }
+  }
+
+  if (!isSuperAdmin(ctx) && ev.organizer_kind === "structure") {
+    const publicOrCommercial = ev.visibility === "public" || Number(ev.price_amount || 0) > 0;
+    if (publicOrCommercial && !isIndependentOrganizer(ctx)) {
+      return json({
+        error: "VALIDATED_ORGANIZER_REQUIRED_FOR_PUBLIC_STRUCTURE_LIVE",
+        message: "Un Live Structure public ou payant doit être porté par un collaborateur disposant aussi d’un accès Organisateur Omnia Live validé. Les Lives internes et privés restent accessibles avec la délégation Structure.",
+        action_url: "/omnia-live/organisateur/candidature",
+      }, 403);
     }
   }
 

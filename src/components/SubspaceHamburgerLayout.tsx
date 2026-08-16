@@ -102,7 +102,7 @@ export default function SubspaceHamburgerLayout({
   const dashboardPath = getDashboardPath(roles);
   const profilePath = getProfilePath(roles);
   const isSuperAdmin = roles.includes('super_admin');
-  const isOrganizer = roles.some(r => ['organizer', 'organisateur', 'professeur', 'formateur', 'responsable_structure', 'gestionnaire_structure', 'structure_admin', 'directeur'].includes(r))
+  const isOrganizer = roles.some(r => ['organizer', 'organisateur'].includes(r))
     || Boolean((user as any)?.omnia_live_organizer);
   const resolvedSearchValue = searchValue ?? internalSearch;
 

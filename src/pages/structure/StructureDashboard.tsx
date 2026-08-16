@@ -334,7 +334,7 @@ export default function StructureDashboard() {
             <div className="space-y-2">
               {[
                 { label: 'Compléter le profil de la structure', icon: Building2, path: '/structure/profil' },
-                { label: 'Gérer l\'équipe de la structure',     icon: Shield,    path: '/structure/equipe' },
+                { label: 'Gérer l\'équipe & les accès',          icon: Shield,    path: '/structure/equipe' },
               ].map(item => {
                 const Icon = item.icon;
                 return (

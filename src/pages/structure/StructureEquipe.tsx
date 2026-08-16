@@ -21,6 +21,7 @@ const INTERNAL_ROLES = [
   { value: 'secretaire',               label: 'Secrétaire' },
   { value: 'gestionnaire_membres',     label: 'Gestionnaire des membres' },
   { value: 'gestionnaire_codes',       label: 'Gestionnaire des codes' },
+  { value: 'gestionnaire_live',        label: 'Gestionnaire Omnia Live' },
   { value: 'lecture_seule',            label: 'Lecture seule' },
 ];
 
@@ -44,6 +45,35 @@ const PERMISSIONS = [
   { key: 'can_manage_omnia_live',         label: 'Gérer Omnia Live pour la Structure' },
   { key: 'can_manage_projects',           label: 'Gérer Omnia Projects pour la Structure' },
 ];
+
+const ROLE_PRESETS: Record<string, Record<string, boolean>> = {
+  administrateur_structure: Object.fromEntries(PERMISSIONS.map(permission => [permission.key, true])),
+  coordinateur_formation: {
+    can_create_courses: true, can_edit_courses: true, can_submit_courses: true,
+    can_assign_trainers: true, can_manage_lessons: true, can_upload_files: true,
+    can_view_statistics: true,
+  },
+  formateur_structure: {
+    can_create_courses: true, can_edit_courses: true, can_manage_lessons: true, can_upload_files: true,
+  },
+  secretaire: {
+    can_manage_members: true, can_approve_memberships: true, can_manage_notifications: true,
+  },
+  gestionnaire_membres: {
+    can_manage_members: true, can_approve_memberships: true, can_view_statistics: true,
+  },
+  gestionnaire_codes: {
+    can_manage_structure_codes: true, can_manage_members: true,
+  },
+  gestionnaire_live: {
+    can_manage_omnia_live: true, can_view_statistics: true,
+  },
+  lecture_seule: {},
+};
+
+function permissionsForRole(role: string) {
+  return { ...(ROLE_PRESETS[role] || {}) };
+}
 
 const DISPLAY: Record<string, string> = {
   ministere: 'Espace Ministère', etablissement: 'Espace Établissement',
@@ -135,7 +165,7 @@ export default function StructureEquipe() {
 
   function openInvite() {
     setEditingMember(null);
-    setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', status: 'active', permissions: {} });
+    setForm({ email: '', firstname: '', lastname: '', internal_role: 'lecture_seule', message: '', status: 'active', permissions: permissionsForRole('lecture_seule') });
     setShowModal(true);
   }
 
@@ -227,9 +257,9 @@ export default function StructureEquipe() {
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe de la structure</h1>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
-              Invitez des collaborateurs par e-mail, qu’ils possèdent déjà ou non un compte Omnia
+            <h1 className="text-2xl font-black" style={{ color: '#002050' }}>Équipe & accès de la Structure</h1>
+            <p className="text-sm mt-1 max-w-3xl" style={{ color: '#6B7280' }}>
+              Invitez vos collaborateurs, attribuez un rôle interne puis ajustez précisément leurs permissions. Ces délégations restent limitées à cette Structure.
             </p>
           </div>
           <div className="flex gap-2">
@@ -246,8 +276,7 @@ export default function StructureEquipe() {
         {/* Info */}
         <div className="flex items-start gap-2 p-3 rounded-xl text-sm" style={{ background: '#EEF2FF', color: '#002050' }}>
           <Shield size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-          <p>Ces utilisateurs ont des rôles <strong>internes</strong> à votre structure uniquement. Ils disposent uniquement des accès internes que vous leur attribuez.
-          Chaque rôle dispose de permissions précises que vous pouvez personnaliser.</p>
+          <p>Ces rôles sont des <strong>délégations internes</strong>, jamais des rôles globaux Omnia. Le profil choisi applique des permissions recommandées que vous pouvez ensuite personnaliser. Pour Omnia Live, « Gestionnaire Omnia Live » autorise les Lives internes de la Structure ; un Live public ou payant exige aussi un Organisateur Omnia Live validé.</p>
         </div>
 
         <section className="rounded-2xl border bg-white p-5" style={{ borderColor: '#E4E7EC' }}>
@@ -428,7 +457,7 @@ export default function StructureEquipe() {
               <div>
                 <label className="block text-xs font-semibold mb-1.5 text-gray-500">Rôle interne *</label>
                 <select className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#002050]"
-                  value={form.internal_role} onChange={e => set('internal_role', e.target.value)}>
+                  value={form.internal_role} onChange={e => { const role = e.target.value; setForm(current => ({ ...current, internal_role: role, permissions: permissionsForRole(role) })); }}>
                   {INTERNAL_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
@@ -445,7 +474,7 @@ export default function StructureEquipe() {
 
               {/* Permissions */}
               <div>
-                <label className="block text-xs font-semibold mb-2 text-gray-500">Permissions personnalisées</label>
+                <div className="mb-2 flex items-center justify-between gap-3"><label className="block text-xs font-semibold text-gray-500">Permissions du rôle interne</label><button type="button" onClick={() => set('permissions', permissionsForRole(form.internal_role))} className="text-[11px] font-bold text-[#5C55C8]">Réappliquer le profil recommandé</button></div>
                 <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto p-1">
                   {PERMISSIONS.map(p => (
                     <label key={p.key} className="flex items-center gap-2 cursor-pointer py-1">
