@@ -47,6 +47,8 @@ Deno.serve(async(req:Request)=>{
     const requiredModuleAssessments=(assessments??[]).filter((a:any)=>a.scope==="module"&&a.required!==false);const allModulesPassed=requiredModuleAssessments.every((a:any)=>!!passedByAssessment[a.id]);
     const finalAssessment=(assessments??[]).find((a:any)=>a.scope==="final"&&a.required!==false);const finalAttempt=finalAssessment?(passedByAssessment[finalAssessment.id]||latestByAssessment[finalAssessment.id]):null;
     const totalLessons=enriched.reduce((n:number,m:any)=>n+m.lessons.length,0);const completed=enriched.reduce((n:number,m:any)=>n+m.lessons.filter((l:any)=>l.is_completed).length,0);
+    const courseCompleted=totalLessons>0&&completed===totalLessons&&allModulesPassed&&(!finalAssessment||Boolean(passedByAssessment[finalAssessment.id]));
+    if(courseCompleted){try{await sb.rpc("oga_referral_record_event",{p_referred_user_id:userId,p_event_type:"course_completed",p_event_key:`course-completed:${courseId}:${userId}`,p_metadata:{course_id:courseId}})}catch{/* le parrainage ne bloque jamais la progression */}}
     return json({modules:enriched,final_validation_unlocked:allModulesPassed,final_validation:finalAttempt?{status:finalAttempt.passed?"passed":finalAttempt.status,score:finalAttempt.score,validation_type:"assessment"}:null,progress:{total_lessons:totalLessons,completed_lessons:completed,percent:totalLessons?Math.round(completed/totalLessons*100):0}});
   }catch(error){console.error("course-progress",error);return json({error:"SERVER_ERROR",message:(error as Error).message},500);}
 });

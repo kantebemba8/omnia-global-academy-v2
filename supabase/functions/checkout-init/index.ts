@@ -141,13 +141,19 @@ Deno.serve(async (req: Request) => {
       if (coupon) {
         const now = new Date().toISOString();
         const expired = coupon.expires_at && coupon.expires_at < now;
+        const notStarted = coupon.starts_at && coupon.starts_at > now;
         const maxed = coupon.max_uses !== null && coupon.used_count >= coupon.max_uses;
         const { data: alreadyUsed } = await sb.from("coupon_usages").select("id").eq("coupon_id", coupon.id).eq("user_id", user.id).maybeSingle();
+        let recipientOk = true;
+        if (coupon.distribution_mode === "targeted_email") {
+          const { data: assignment } = await sb.from("coupon_recipient_assignments").select("id,status").eq("coupon_id", coupon.id).eq("recipient_email", String(user.email || "").toLowerCase()).in("status", ["assigned","sent"]).maybeSingle();
+          recipientOk = Boolean(assignment);
+        }
         const scopeOk = coupon.applicable_to === "all" ||
           (coupon.applicable_to === "category" && coupon.applicable_id === course.category) ||
           (coupon.applicable_to === "course" && coupon.applicable_id === course_id);
 
-        if (!expired && !maxed && !alreadyUsed && scopeOk) {
+        if (!expired && !notStarted && !maxed && !alreadyUsed && recipientOk && scopeOk) {
           const couponDiscount = coupon.discount_type === "percentage"
             ? Math.floor(originalPrice * coupon.discount_value / 100)
             : Math.min(coupon.discount_value, originalPrice);
@@ -204,6 +210,7 @@ Deno.serve(async (req: Request) => {
       if (couponId && freeOrder) {
         await sb.from("coupons").update({ used_count: (await sb.from("coupons").select("used_count").eq("id", couponId).single().then(r => r.data?.used_count || 0)) + 1 }).eq("id", couponId);
         await sb.from("coupon_usages").insert({ coupon_id: couponId, user_id: user.id, order_id: freeOrder.id, discount_applied_xof: discountXof });
+        await sb.from("coupon_recipient_assignments").update({ status: "redeemed", redeemed_at: new Date().toISOString(), user_id: user.id }).eq("coupon_id", couponId).eq("recipient_email", String(user.email || "").toLowerCase()).in("status", ["assigned","sent"]);
       }
       return new Response(JSON.stringify({ enrolled: true, free_license: false, course_id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

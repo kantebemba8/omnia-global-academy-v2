@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
     const userId = sess.user_id;
 
     // User info
-    const { data: user } = await sb.from("users").select("full_name,email,phone_number,country_code,avatar_url,ai_tokens,created_at").eq("id", userId).maybeSingle();
+    const { data: user } = await sb.from("users").select("full_name,email,phone_number,country_code,avatar_url,ai_tokens,created_at,referral_code").eq("id", userId).maybeSingle();
     if (!user) return json({ error: "USER_NOT_FOUND" }, 404);
 
     // Enrollments with course info
@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
         total_filleuls: referralEnabled ? totalFilleuls : 0,
         total_recompenses_xof: referralEnabled ? totalRewards : 0,
         referral_link: referralEnabled
-          ? `${Deno.env.get("SITE_URL") ?? "https://omniaglobalacademy.com"}/inscription?ref=${userId}`
+          ? `${Deno.env.get("SITE_URL") ?? "https://omniaglobalacademy.com"}/inscription?ref=${user.referral_code || userId}`
           : null,
       },
     });

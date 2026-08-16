@@ -116,7 +116,7 @@ const MUTED = '#667085';
 
 const GROUP_LABELS: Record<string, string> = {
   general: 'Règles générales',
-  tokens: 'Jetons CV',
+  tokens: 'Jetons Career',
   exports: 'Téléchargements & exports',
   ai: 'IA & assistance',
   templates: 'Modèles CV / LM',

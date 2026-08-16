@@ -2621,11 +2621,18 @@ async function coachRevenueDashboard(sb: Supabase, actor: Session) {
     sb.from("coaching_advanced_earnings").select("*,order:coaching_payment_orders(id,order_number,payment_status,offer_title_snapshot,product_type,product_id)").eq("coach_id", profile.id).order("created_at", { ascending: false }),
     sb.from("wallets").select("*").eq("user_id", actor.userId).maybeSingle(),
     sb.from("payout_requests").select("id,amount_xof,channel,status,requested_at,processed_at,paid_at,provider_reference,admin_note").eq("user_id", actor.userId).order("requested_at", { ascending: false }).limit(100),
-    sb.from("site_settings").select("key,value").in("key", ["payout_minimum_xof", "payout_delay_label", "canal_mobile_money", "canal_virement_uemoa", "canal_swift"]),
+    sb.from("finance_payout_policy").select("*").eq("id", true).maybeSingle(),
   ]);
   if (earningError) throw earningError;
-  const cfg: Record<string, unknown> = {};
-  for (const row of settings || []) cfg[String(row.key)] = row.value;
+  const cfg: Record<string, unknown> = settings ? {
+    payout_minimum_xof: settings.minimum_xof,
+    payout_processing_min: settings.processing_min,
+    payout_processing_max: settings.processing_max,
+    payout_processing_unit: settings.processing_unit,
+    canal_mobile_money: settings.mobile_money_enabled,
+    canal_virement_uemoa: settings.bank_transfer_enabled,
+    canal_swift: settings.swift_enabled,
+  } : {};
   const rows = earnings || [];
   const advancedRows = advancedEarnings || [];
   const netAfterRefund = (row: Record<string, unknown>) => Math.max(0, Number(row.net_amount_xof || 0) - Number(row.refunded_net_xof || 0));
@@ -2646,10 +2653,19 @@ async function coachCreatePayout(sb: Supabase, actor: Session, body: Record<stri
   const amount = asInteger(body.amount_xof);
   const channel = asText(body.channel, 30);
   if (!amount || !["mobile_money", "bank_transfer", "swift"].includes(channel)) throw new Error("INVALID_PAYOUT");
-  const { data: settings } = await sb.from("site_settings").select("key,value").in("key", ["payout_minimum_xof", "canal_mobile_money", "canal_virement_uemoa", "canal_swift"]);
-  const cfg = new Map((settings || []).map((row: Record<string, unknown>) => [String(row.key), row.value]));
-  const minimum = Number(cfg.get("payout_minimum_xof") || 5000);
+  const { data: settings } = await sb.from("finance_payout_policy").select("*").eq("id", true).maybeSingle();
+  if (!settings) throw new Error("PAYOUT_POLICY_NOT_CONFIGURED");
+  const cfg = new Map<string, unknown>([
+    ["payout_minimum_xof", settings.minimum_xof],
+    ["canal_mobile_money", settings.mobile_money_enabled],
+    ["canal_virement_uemoa", settings.bank_transfer_enabled],
+    ["canal_swift", settings.swift_enabled],
+  ]);
+  const minimum = Number(cfg.get("payout_minimum_xof") || 0);
   if (amount < minimum) throw new Error("PAYOUT_AMOUNT_TOO_LOW");
+  if (channel === "mobile_money" && settings.mobile_money_enabled !== true) throw new Error("PAYOUT_CHANNEL_DISABLED");
+  if (channel === "bank_transfer" && settings.bank_transfer_enabled !== true) throw new Error("PAYOUT_CHANNEL_DISABLED");
+  if (channel === "swift" && settings.swift_enabled !== true) throw new Error("PAYOUT_CHANNEL_DISABLED");
   if (channel === "mobile_money" && (!asText(body.mm_operator, 50) || !asText(body.mm_phone, 50))) throw new Error("PAYOUT_DETAILS_REQUIRED");
   if (["bank_transfer", "swift"].includes(channel) && (!asText(body.bank_name, 180) || !asText(body.account_holder, 180) || !asText(body.account_number, 80))) throw new Error("PAYOUT_DETAILS_REQUIRED");
   if (channel === "swift" && !asText(body.swift, 30)) throw new Error("PAYOUT_DETAILS_REQUIRED");

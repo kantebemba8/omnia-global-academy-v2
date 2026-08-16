@@ -152,6 +152,15 @@ async function processCoachingWebhook(
       });
       if (error) throw error;
 
+      try {
+        await sb.rpc("oga_referral_record_event", {
+          p_referred_user_id: order.user_id,
+          p_event_type: "purchase_amount_reached",
+          p_event_key: `coaching-threshold:${order.id}`,
+          p_metadata: { order_id: order.id, amount_xof: Number(order.amount_xof || 0), source: "coaching" },
+        });
+      } catch { /* le parrainage ne bloque jamais le paiement Coaching */ }
+
       if (advanced) {
         const productType = String(order.product_type || "");
         await Promise.all([
@@ -311,6 +320,32 @@ Deno.serve(async (req: Request) => {
 
     if (approvedStatus(transaction) || eventName === "transaction.approved") {
       const result = await settlePlatformOrder(sb, order, transaction);
+      try {
+        await sb.rpc("oga_referral_record_event", {
+          p_referred_user_id: order.user_id,
+          p_event_type: "first_purchase",
+          p_event_key: `order:${order.id}`,
+          p_metadata: { order_id: order.id, amount_xof: Number(order.final_price_xof || 0) },
+        });
+        await sb.rpc("oga_referral_record_event", {
+          p_referred_user_id: order.user_id,
+          p_event_type: "purchase_amount_reached",
+          p_event_key: `order-threshold:${order.id}`,
+          p_metadata: { order_id: order.id, amount_xof: Number(order.final_price_xof || 0) },
+        });
+      } catch { /* une récompense de parrainage ne bloque jamais le règlement */ }
+      if (order.coupon_id) {
+        try {
+          const { data: buyer } = await sb.from("users").select("email").eq("id", order.user_id).maybeSingle();
+          if (buyer?.email) {
+            await sb.from("coupon_recipient_assignments").update({
+              status: "redeemed",
+              redeemed_at: new Date().toISOString(),
+              redeemed_by: order.user_id,
+            }).eq("coupon_id", order.coupon_id).ilike("email", String(buyer.email).trim());
+          }
+        } catch { /* le journal de coupon ne bloque jamais le règlement */ }
+      }
       await finishWebhookEvent(sb, trackedEventId, "processed", result.resource_type, String(order.id));
       return json({ received: true, resource: result.resource_type, order_id: order.id });
     }

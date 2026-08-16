@@ -141,15 +141,15 @@ Deno.serve(async (req: Request) => {
 
       const courseId = String(data.course_id || "").trim();
       const structureId = String(data.structure_id || "").trim();
-      const licenseCode = String(data.code || "").trim().toUpperCase();
+      const licenseCode = String(data.code || `LIC-${crypto.randomUUID().slice(0,8)}`).trim().toUpperCase();
       const maxSeats = Number(data.max_seats || 0);
 
-      if (!courseId || !structureId || !licenseCode || maxSeats <= 0) {
+      if (!courseId || !structureId || maxSeats <= 0) {
         return json(
           {
             error: "MISSING_FIELDS",
             message:
-              "Formation, Structure, code et nombre de places sont obligatoires.",
+              "Formation, Structure et nombre de places sont obligatoires. Le code est généré automatiquement.",
           },
           400,
         );

@@ -23,6 +23,23 @@ Deno.serve(async (req: Request) => {
       userId = sess?.user_id ?? null;
     }
 
+    if (req.method === "GET") {
+      const courseId = new URL(req.url).searchParams.get("course_id") || "";
+      if (!courseId) return new Response(JSON.stringify({ coupons: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: course } = await sb.from("courses").select("id,category,price_xof").eq("id", courseId).maybeSingle();
+      if (!course) return new Response(JSON.stringify({ coupons: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const now = new Date().toISOString();
+      const { data: coupons } = await sb.from("coupons").select("id,code,name,discount_type,discount_value,applicable_to,applicable_id,expires_at,max_uses,used_count")
+        .eq("is_active", true).eq("distribution_mode", "public")
+        .or(`starts_at.is.null,starts_at.lte.${now}`).or(`expires_at.is.null,expires_at.gte.${now}`);
+      const visible = (coupons || []).filter((coupon:any) => (coupon.max_uses == null || Number(coupon.used_count||0) < Number(coupon.max_uses)) && (
+        coupon.applicable_to === "all" ||
+        (coupon.applicable_to === "category" && coupon.applicable_id === course.category) ||
+        (coupon.applicable_to === "course" && coupon.applicable_id === courseId)
+      ));
+      return new Response(JSON.stringify({ coupons: visible }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const body = await req.json();
     const { coupon_code, course_id } = body;
     if (!coupon_code || !course_id) {
@@ -37,8 +54,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const now = new Date().toISOString();
+    if (coupon.starts_at && coupon.starts_at > now) {
+      return new Response(JSON.stringify({ valid: false, message: "Ce code n’est pas encore actif." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     if (coupon.expires_at && coupon.expires_at < now) {
       return new Response(JSON.stringify({ valid: false, message: "Ce code a expiré." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (coupon.distribution_mode === "targeted_email") {
+      if (!userId) {
+        return new Response(JSON.stringify({ valid: false, message: "Connectez-vous avec l’adresse e-mail destinataire de cet avantage." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: user } = await sb.from("users").select("email").eq("id", userId).maybeSingle();
+      const { data: assignment } = user?.email ? await sb.from("coupon_recipient_assignments").select("id,status")
+        .eq("coupon_id", coupon.id).eq("recipient_email", String(user.email).toLowerCase()).in("status", ["assigned","sent"]).maybeSingle() : { data: null };
+      if (!assignment) {
+        return new Response(JSON.stringify({ valid: false, message: "Ce code est réservé à un autre destinataire." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     if (coupon.max_uses !== null && coupon.used_count >= coupon.max_uses) {

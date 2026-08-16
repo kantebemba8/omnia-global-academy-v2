@@ -55,6 +55,13 @@ const isService = (ctx: UserContext | null) => Boolean(ctx?.roles.includes("serv
 function orderNumber() {
   return `COM-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
+function slugify(value: string) {
+  return String(value || "item").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "item";
+}
+function publicCode(prefix: string) {
+  return `${slugify(prefix).replace(/-/g, "_").toUpperCase()}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
 async function sha256(value: string) {
   const out = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(out)).map(v => v.toString(16).padStart(2, "0")).join("");
@@ -269,6 +276,22 @@ async function activateOrder(sb: SB, orderId: string, providerId?: string, provi
   }
   const entitlement = await grantEntitlements(sb, order);
   const revenue = await applyCreatorRevenue(sb, order);
+  if (Number(order.final_amount_xof || 0) > 0) {
+    try {
+      await sb.rpc("oga_referral_record_event", {
+        p_referred_user_id: order.buyer_user_id,
+        p_event_type: order.order_type === "plan" || order.order_type === "renewal" ? "first_subscription" : "first_purchase",
+        p_event_key: `commerce:${order.id}`,
+        p_metadata: { order_id: order.id, order_type: order.order_type, amount_xof: Number(order.final_amount_xof || 0) },
+      });
+      await sb.rpc("oga_referral_record_event", {
+        p_referred_user_id: order.buyer_user_id,
+        p_event_type: "purchase_amount_reached",
+        p_event_key: `commerce-threshold:${order.id}`,
+        p_metadata: { order_id: order.id, order_type: order.order_type, amount_xof: Number(order.final_amount_xof || 0) },
+      });
+    } catch { /* le commerce reste idempotent même si le programme de parrainage est désactivé */ }
+  }
   return { order: { ...order, payment_status: "completed" }, entitlement, revenue };
 }
 
@@ -814,7 +837,9 @@ Deno.serve(async (req: Request) => {
     if (action === "public_catalog") {
       const { data: plans } = await sb.from("commerce_plans").select("id,code,name,subtitle,description,audience,commercial_type,billing_interval,interval_count,custom_duration_days,price_xof,currency,trial_days,auto_renew,visibility,status,starts_at,ends_at,max_subscribers,country_codes,display_order,badge_label,terms_text,version,commerce_plan_benefits(id,benefit_definition_id,value_json,display_label,display_order,is_active,commerce_benefit_definitions(id,benefit_key,module_key,name,description,value_type,unit_label,reset_period,allowed_audiences,configuration_schema,is_active,is_system))").eq("status", "active").in("visibility", ["public", "code", "structure_only"]).order("display_order");
       const { data: offers } = await sb.from("commerce_creator_offers").select("id,module_key,offer_kind,title,description,billing_interval,price_xof,approved_price_xof,currency,benefits_json,capacity,creator_user_id,users!commerce_creator_offers_creator_user_id_fkey(full_name)").eq("status", "published").order("published_at", { ascending: false });
-      return json({ plans: plans || [], creator_offers: (offers || []).map((offer: any) => ({ ...offer, price_xof: Number(offer.approved_price_xof ?? offer.price_xof) })) });
+      const now = new Date().toISOString();
+      const { data: publicPromotions } = await sb.from("commerce_promotions").select("id,code,name,discount_type,discount_value,applicable_plan_ids,audience,starts_at,ends_at,max_uses,used_count,message").eq("is_active", true).eq("distribution_mode", "public").or(`starts_at.is.null,starts_at.lte.${now}`).or(`ends_at.is.null,ends_at.gte.${now}`);
+      return json({ plans: plans || [], creator_offers: (offers || []).map((offer: any) => ({ ...offer, price_xof: Number(offer.approved_price_xof ?? offer.price_xof) })), public_promotions: (publicPromotions || []).filter((item:any)=>!item.max_uses || Number(item.used_count||0)<Number(item.max_uses)) });
     }
 
     const ctx = await context(sb, req);
@@ -986,15 +1011,16 @@ Deno.serve(async (req: Request) => {
         const offerBenefitKeys = moduleKey === "coaching"
           ? ["coaching_session_credits", "coaching_discount_percent"]
           : ["live_access_count", "live_replay_access"];
-        const [{ data: offers }, { data: balance }, { data: ledger }, { data: payouts }, { data: benefits }] = await Promise.all([
+        const [{ data: offers }, { data: balance }, { data: ledger }, { data: payouts }, { data: benefits }, { data: payoutPolicy }] = await Promise.all([
           sb.from("commerce_creator_offers").select("*").eq("creator_user_id", ctx.id).eq("module_key", moduleKey).order("created_at", { ascending: false }),
           sb.from("commerce_creator_balances").select("*").eq("creator_user_id", ctx.id).maybeSingle(),
           sb.from("commerce_creator_ledger").select("*").eq("creator_user_id", ctx.id).order("created_at", { ascending: false }).limit(30),
           sb.from("commerce_payout_requests").select("*").eq("creator_user_id", ctx.id).order("requested_at", { ascending: false }).limit(20),
           sb.from("commerce_benefit_definitions").select("*").eq("is_active", true).in("benefit_key", offerBenefitKeys).order("name"),
+          sb.from("finance_payout_policy").select("*").eq("id", true).maybeSingle(),
         ]);
         const signedOffers = await Promise.all((offers || []).map(async (offer: any) => ({ ...offer, supporting_documents: await signDocumentList(sb, offer.supporting_documents) })));
-        return json({ offers: signedOffers, balance: balance || { available_xof: 0, pending_xof: 0, reserved_xof: 0 }, ledger: ledger || [], payouts: payouts || [], benefits: benefits || [] });
+        return json({ offers: signedOffers, balance: balance || { available_xof: 0, pending_xof: 0, reserved_xof: 0 }, ledger: ledger || [], payouts: payouts || [], benefits: benefits || [], payout_policy: payoutPolicy || null });
       }
       if (action === "creator_offer_save") {
         const id = body.id ? String(body.id) : null;
@@ -1053,10 +1079,21 @@ Deno.serve(async (req: Request) => {
         const amount = Math.round(Number(body.amount_xof || 0));
         const payoutMethod = String(body.payout_method || "manual");
         const payoutDetails = body.payout_details && typeof body.payout_details === "object" ? body.payout_details : {};
-        const { data: settingRows } = await sb.from("site_settings").select("key,value").eq("key", "payout_minimum_xof");
-        const minimum = Math.max(1, Number(settingRows?.[0]?.value || 5000));
-        if (!Number.isInteger(amount) || amount < minimum) {
-          return json({ error: "PAYOUT_AMOUNT_TOO_LOW", minimum_xof: minimum }, 400);
+        const { data: payoutPolicy } = await sb.from("finance_payout_policy").select("*").eq("id", true).maybeSingle();
+        if (!payoutPolicy) return json({ error: "PAYOUT_POLICY_NOT_CONFIGURED" }, 409);
+        const minimum = Math.max(0, Number(payoutPolicy.minimum_xof || 0));
+        if (!Number.isInteger(amount) || amount < minimum) return json({ error: "PAYOUT_AMOUNT_TOO_LOW", minimum_xof: minimum }, 400);
+        if (payoutMethod === "mobile_money" && payoutPolicy.mobile_money_enabled !== true) return json({ error: "PAYOUT_CHANNEL_DISABLED" }, 409);
+        if (payoutMethod === "bank_uemoa" && payoutPolicy.bank_transfer_enabled !== true) return json({ error: "PAYOUT_CHANNEL_DISABLED" }, 409);
+        if (payoutMethod === "swift" && payoutPolicy.swift_enabled !== true) return json({ error: "PAYOUT_CHANNEL_DISABLED" }, 409);
+        if (payoutMethod === "manual") return json({ error: "PAYOUT_METHOD_MUST_BE_EXPLICIT" }, 400);
+        if (Number(payoutPolicy.cooldown_value || 0) > 0) {
+          const { data: previous } = await sb.from("commerce_payout_requests").select("requested_at").eq("creator_user_id", ctx.id).in("status", ["pending","approved","processing","paid"]).order("requested_at", { ascending: false }).limit(1).maybeSingle();
+          if (previous?.requested_at) {
+            const unitMs = payoutPolicy.cooldown_unit === "hours" ? 3600000 : 86400000;
+            const nextAt = new Date(previous.requested_at).getTime() + Number(payoutPolicy.cooldown_value) * unitMs;
+            if (Date.now() < nextAt) return json({ error: "PAYOUT_COOLDOWN_ACTIVE", next_available_at: new Date(nextAt).toISOString() }, 409);
+          }
         }
         const { data: payoutId, error: payoutError } = await sb.rpc("commerce_create_payout_request", {
           p_creator_user_id: ctx.id,
@@ -1144,9 +1181,70 @@ Deno.serve(async (req: Request) => {
       return json({ store_product: data });
     }
 
+
+    if (action === "admin_finance_config_get") {
+      const [{ data: payoutPolicy }, { data: referralConfig }] = await Promise.all([
+        sb.from("finance_payout_policy").select("*").eq("id", true).maybeSingle(),
+        sb.from("referral_program_config").select("*").eq("id", true).maybeSingle(),
+      ]);
+      return json({ payout_policy: payoutPolicy || null, referral_program: referralConfig || null });
+    }
+
+    if (action === "admin_finance_config_save") {
+      const payout = body.payout_policy || {};
+      const referral = body.referral_program || {};
+      const allowedTriggers = ["account_verified","first_purchase","first_subscription","certificate_earned","purchase_amount_reached","course_completed","live_participation"];
+      const triggers = Array.isArray(referral.triggers) ? referral.triggers.map(String).filter((x:string)=>allowedTriggers.includes(x)) : [];
+      if (Boolean(referral.enabled) && triggers.length === 0) return json({ error: "REFERRAL_TRIGGER_REQUIRED" }, 400);
+      const payoutPayload = {
+        id: true,
+        minimum_xof: Math.max(0, Math.round(Number(payout.minimum_xof || 0))),
+        processing_min: Math.max(0, Math.round(Number(payout.processing_min || 0))),
+        processing_max: Math.max(0, Math.round(Number(payout.processing_max || 0))),
+        processing_unit: ["hours","business_hours","days","business_days"].includes(String(payout.processing_unit)) ? String(payout.processing_unit) : "business_hours",
+        cooldown_value: Math.max(0, Math.round(Number(payout.cooldown_value || 0))),
+        cooldown_unit: ["hours","days"].includes(String(payout.cooldown_unit)) ? String(payout.cooldown_unit) : "days",
+        mobile_money_enabled: payout.mobile_money_enabled !== false,
+        bank_transfer_enabled: payout.bank_transfer_enabled !== false,
+        swift_enabled: payout.swift_enabled === true,
+        updated_by: ctx.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (payoutPayload.processing_max < payoutPayload.processing_min) return json({ error: "PAYOUT_DELAY_RANGE_INVALID" }, 400);
+      const referralPayload = {
+        id: true,
+        enabled: referral.enabled === true,
+        trigger_mode: referral.trigger_mode === "all" ? "all" : "any",
+        triggers,
+        reward_referrer_xof: Math.max(0, Math.round(Number(referral.reward_referrer_xof || 0))),
+        reward_referred_xof: Math.max(0, Math.round(Number(referral.reward_referred_xof || 0))),
+        purchase_threshold_xof: Math.max(0, Math.round(Number(referral.purchase_threshold_xof || 0))),
+        updated_by: ctx.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (referralPayload.enabled && referralPayload.reward_referrer_xof === 0 && referralPayload.reward_referred_xof === 0) return json({ error: "REFERRAL_REWARD_REQUIRED" }, 400);
+      if (referralPayload.enabled && referralPayload.triggers.includes("purchase_amount_reached") && referralPayload.purchase_threshold_xof <= 0) return json({ error: "REFERRAL_PURCHASE_THRESHOLD_REQUIRED" }, 400);
+      const pSave = await sb.from("finance_payout_policy").upsert(payoutPayload, { onConflict: "id" });
+      if (pSave.error) throw pSave.error;
+      const rSave = await sb.from("referral_program_config").upsert(referralPayload, { onConflict: "id" });
+      if (rSave.error) throw rSave.error;
+      for (const [key,value] of Object.entries({
+        referral_enabled: String(referralPayload.enabled),
+        referral_reward_referrer_xof: String(referralPayload.reward_referrer_xof),
+        referral_reward_referred_xof: String(referralPayload.reward_referred_xof),
+      })) {
+        const legacy = await sb.from("site_settings").upsert({ key, value }, { onConflict: "key" });
+        if (legacy.error) throw legacy.error;
+      }
+      await audit(sb, ctx.id, "admin_finance_config_save", "finance_config", "singleton", null, { payout: payoutPayload, referral: referralPayload });
+      return json({ success: true, payout_policy: payoutPayload, referral_program: referralPayload });
+    }
+
     if (action === "admin_benefit_save") {
-      const payload = { benefit_key: String(body.benefit_key || "").trim(), module_key: String(body.module_key || "platform"), name: String(body.name || "").trim(), description: body.description || null, value_type: body.value_type, unit_label: body.unit_label || null, reset_period: body.reset_period || null, allowed_audiences: body.allowed_audiences || [], configuration_schema: body.configuration_schema || {}, is_active: body.is_active !== false, is_system: false, created_by: ctx.id };
-      if (!payload.benefit_key || !payload.name) return json({ error: "KEY_AND_NAME_REQUIRED" }, 400);
+      const autoKey = `${slugify(String(body.name || "avantage")).replace(/-/g, "_")}_${crypto.randomUUID().slice(0,6)}`;
+      const payload = { benefit_key: String(body.benefit_key || autoKey).trim().toLowerCase(), module_key: String(body.module_key || "platform"), name: String(body.name || "").trim(), description: body.description || null, value_type: body.value_type, unit_label: body.unit_label || null, reset_period: body.reset_period || null, allowed_audiences: body.allowed_audiences || [], configuration_schema: body.configuration_schema || {}, is_active: body.is_active !== false, is_system: false, created_by: ctx.id };
+      if (!payload.name) return json({ error: "NAME_REQUIRED" }, 400);
+      if (!Array.isArray(payload.allowed_audiences) || payload.allowed_audiences.length === 0) return json({ error: "AUDIENCE_REQUIRED" }, 400);
       const { data, error } = await sb.from("commerce_benefit_definitions").upsert(payload, { onConflict: "benefit_key" }).select("*").single();
       if (error) throw error; await audit(sb, ctx.id, "admin_benefit_save", "benefit", data.id, null, data); return json({ benefit: data });
     }
@@ -1154,14 +1252,14 @@ Deno.serve(async (req: Request) => {
     if (action === "admin_plan_save") {
       const id = body.id ? String(body.id) : null;
       const planPayload: any = {
-        code: String(body.code || "").trim().toUpperCase(), name: String(body.name || "").trim(), subtitle: body.subtitle || null, description: body.description || null,
+        code: String(body.code || publicCode(String(body.name || "PLAN"))).trim().toUpperCase(), name: String(body.name || "").trim(), subtitle: body.subtitle || null, description: body.description || null,
         audience: body.audience, commercial_type: body.commercial_type, billing_interval: body.billing_interval || "none", interval_count: Math.max(1, Number(body.interval_count || 1)),
         custom_duration_days: body.custom_duration_days || null, price_xof: body.commercial_type === "trial" ? 0 : Math.max(0, Math.round(Number(body.price_xof || 0))), trial_days: Math.max(0, Number(body.trial_days || 0)),
         auto_renew: Boolean(body.auto_renew), visibility: body.visibility || "public", starts_at: body.starts_at || null, ends_at: body.ends_at || null,
-        max_subscribers: body.max_subscribers || null, country_codes: body.country_codes || [], eligibility: body.eligibility || {}, display_order: Number(body.display_order || 0),
+        max_subscribers: body.max_subscribers || null, country_codes: body.country_codes || [], eligibility: body.visibility === "code" && !body.eligibility?.access_code ? { ...(body.eligibility || {}), access_code: publicCode("ACCES") } : (body.eligibility || {}), display_order: Number(body.display_order || 0),
         badge_label: body.badge_label || null, terms_text: body.terms_text || null, updated_by: ctx.id,
       };
-      if (!planPayload.code || !planPayload.name || !planPayload.audience) return json({ error: "PLAN_REQUIRED_FIELDS" }, 400);
+      if (!planPayload.name || !planPayload.audience) return json({ error: "PLAN_REQUIRED_FIELDS" }, 400);
       let plan: any;
       if (id) {
         const { data: current } = await sb.from("commerce_plans").select("*").eq("id", id).single();
@@ -1231,7 +1329,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "admin_promotion_save") {
       const payload = {
-        code: body.code ? String(body.code).trim().toUpperCase() : null,
+        code: String(body.code || publicCode(String(body.name || "PROMO"))).trim().toUpperCase(),
         name: String(body.name || '').trim(),
         discount_type: body.discount_type,
         discount_value: Number(body.discount_value || 0),
@@ -1244,6 +1342,8 @@ Deno.serve(async (req: Request) => {
         starts_at: body.starts_at || null,
         ends_at: body.ends_at || null,
         is_active: body.is_active !== false,
+        distribution_mode: body.distribution_mode || "private",
+        message: body.message || null,
         created_by: ctx.id,
       };
       if (!payload.name || !payload.discount_type) return json({ error: "PROMOTION_REQUIRED_FIELDS" }, 400);

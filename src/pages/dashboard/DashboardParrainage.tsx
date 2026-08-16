@@ -22,6 +22,9 @@ interface ReferralData {
   total_recompenses_xof: number;
   reward_referrer_xof: number;
   reward_referred_xof: number;
+  referral_code?: string | null;
+  trigger_mode?: 'any' | 'all';
+  triggers?: string[];
   filleuls: Filleul[];
 }
 
@@ -97,9 +100,7 @@ export function DashboardParrainage() {
 
   function shareWhatsApp() {
     if (!data?.referral_link) return;
-    const benefit = data.reward_referred_xof > 0
-      ? ` et bénéficiez de ${formatXof(data.reward_referred_xof)} après votre premier achat confirmé`
-      : '';
+    const benefit = data.reward_referred_xof > 0 ? ` et bénéficiez de ${formatXof(data.reward_referred_xof)} lorsque les conditions du programme sont remplies` : '';
     const message = encodeURIComponent(`Rejoignez Omnia Global Academy avec mon lien${benefit} : ${data.referral_link}`);
     void openExternalUrl(`https://wa.me/?text=${message}`);
   }
@@ -141,8 +142,8 @@ export function DashboardParrainage() {
               </h2>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
-                  'Partagez votre lien personnel.',
-                  'Votre filleul crée son compte et effectue son premier achat confirmé.',
+                  'Partagez votre lien personnel et votre code généré par Omnia.',
+                  `La récompense est déclenchée lorsque ${((data.triggers||[]).map(key=>({account_verified:'le compte est vérifié',first_purchase:'le premier achat est payé',first_subscription:'le premier abonnement est payé',certificate_earned:'un premier certificat est obtenu',purchase_amount_reached:'le montant cumulé d’achats requis est atteint',course_completed:'une première formation est terminée',live_participation:'une première participation à un Live est enregistrée'} as Record<string,string>)[key]||key).join(data.trigger_mode==='all'?' ET ':' OU ')) || 'les conditions configurées sont remplies'}.`,
                   `Le parrain reçoit ${formatXof(data.reward_referrer_xof)} et le filleul ${formatXof(data.reward_referred_xof)}.`,
                 ].map((text, index) => (
                   <div key={text} className="flex items-start gap-3 rounded-lg bg-white/10 p-3">
@@ -176,6 +177,7 @@ export function DashboardParrainage() {
               <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900">
                 <Share2 className="h-4 w-4 text-gray-400" /> Votre lien de parrainage
               </h2>
+              {data.referral_code && <p className="mb-3 text-sm text-gray-600">Votre code : <strong className="font-mono" style={{color:'#002050'}}>{data.referral_code}</strong></p>}
               <div className="flex items-center gap-2">
                 <div className="flex-1 truncate rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-xs text-gray-600">
                   {data.referral_link}

@@ -2950,6 +2950,12 @@ async function roomLeave(
         duration_seconds: duration,
       })
       .eq("id", openSegment.id);
+    if(duration>0){
+      try{
+        const {data:room}=await sb.from("live_rooms").select("event_id").eq("id",body.room_id).maybeSingle();
+        if(room?.event_id) await sb.rpc("oga_referral_record_event",{p_referred_user_id:ctx.userId,p_event_type:"live_participation",p_event_key:`live-participation:${room.event_id}:${ctx.userId}`,p_metadata:{event_id:room.event_id,duration_seconds:duration}});
+      }catch{/* le parrainage ne bloque jamais la sortie du Live */}
+    }
   }
 
   return json({ success: true });
@@ -4917,6 +4923,10 @@ async function fedapayWebhook(
       await organizerLedgerCreateForOrder(sb, paidOrder);
     }
     await commerceFinalizePaidOrder(sb, paidOrder);
+    try{
+      await sb.rpc("oga_referral_record_event",{p_referred_user_id:order.user_id,p_event_type:"first_purchase",p_event_key:`live-purchase:${order.id}`,p_metadata:{order_id:order.id,amount_xof:Number(order.amount||0),source:"omnia_live"}});
+      await sb.rpc("oga_referral_record_event",{p_referred_user_id:order.user_id,p_event_type:"purchase_amount_reached",p_event_key:`live-threshold:${order.id}`,p_metadata:{order_id:order.id,amount_xof:Number(order.amount||0),source:"omnia_live"}});
+    }catch{/* le parrainage ne bloque jamais le règlement Live */}
   } else if (failedStatus(transaction) && order.payment_status !== "paid") {
     await sb.from("live_orders").update({
       payment_status: "failed",
@@ -7458,10 +7468,15 @@ async function discountAdminCreate(
 ) {
   if(!ctx||!isSuperAdmin(ctx)) return json({error:"FORBIDDEN"},403);
   const body=await req.json().catch(()=>({})) as any;
-  if(!body.code||!body.discount_type||body.discount_value===undefined) return json({error:"MISSING_PARAMS"},400);
+  if(!body.discount_type||body.discount_value===undefined) return json({error:"MISSING_PARAMS"},400);
+  let generatedCode=String(body.code||"").trim().toUpperCase();
+  if(!generatedCode) generatedCode=`LIVE-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
 
   const {data,error}=await sb.from("live_discount_codes").insert({
-    code:String(body.code).trim().toUpperCase(),
+    code:generatedCode,
+    name:String(body.name||"").trim()||null,
+    distribution_mode:body.distribution_mode||"private",
+    message:String(body.message||"").trim()||null,
     discount_type:body.discount_type,
     discount_value:Number(body.discount_value),
     currency:body.currency||null,
@@ -7487,6 +7502,13 @@ async function discountAdminList(
   const {data,error}=await sb.from("live_discount_codes").select("*").order("created_at",{ascending:false});
   if(error) throw error;
   return json({success:true,discounts:data??[]});
+}
+
+async function discountPublicList(sb: ReturnType<typeof createClient>) {
+  const now=new Date().toISOString();
+  const {data,error}=await sb.from("live_discount_codes").select("id,code,name,discount_type,discount_value,currency,product_type,event_id,media_id,max_uses,used_count,starts_at,ends_at,message").eq("status","active").eq("distribution_mode","public").or(`starts_at.is.null,starts_at.lte.${now}`).or(`ends_at.is.null,ends_at.gte.${now}`);
+  if(error) throw error;
+  return json({success:true,discounts:(data??[]).filter((x:any)=>x.max_uses==null||Number(x.used_count||0)<Number(x.max_uses))});
 }
 
 async function payoutRequestCreate(
@@ -8770,6 +8792,9 @@ Deno.serve(async (req: Request) => {
 
       case "discount_admin_list":
         return await discountAdminList(sb, ctx);
+
+      case "discount_public_list":
+        return await discountPublicList(sb);
 
       case "payout_request_create":
         return await payoutRequestCreate(req, sb, ctx);

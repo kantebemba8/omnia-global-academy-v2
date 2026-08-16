@@ -513,18 +513,22 @@ Deno.serve(async (req: Request) => {
     // l’Administration Omnia ne l'a pas explicitement activé dans les paramètres.
     if (role === "apprenant" && refCode && refCode !== userId) {
       const { data: referralSetting } = await supabase
-        .from("site_settings")
-        .select("value")
-        .eq("key", "referral_enabled")
+        .from("referral_program_config")
+        .select("enabled")
+        .eq("id", true)
         .maybeSingle();
 
-      const referralEnabled = referralSetting?.value === true || referralSetting?.value === "true";
+      const referralEnabled = referralSetting?.enabled === true;
 
       if (referralEnabled) {
-        const { data: referrer } = await supabase.from("users").select("id").eq("id", refCode).maybeSingle();
+        let { data: referrer } = await supabase.from("users").select("id,referral_code").eq("referral_code", refCode.toUpperCase()).maybeSingle();
+        if (!referrer && /^[0-9a-f-]{36}$/i.test(refCode)) {
+          const legacy = await supabase.from("users").select("id,referral_code").eq("id", refCode).maybeSingle();
+          referrer = legacy.data;
+        }
         if (referrer) {
           await supabase.from("referrals").insert({
-            referrer_id: refCode,
+            referrer_id: referrer.id,
             referred_id: userId,
             status: "pending",
             reward_referrer_xof: 0,

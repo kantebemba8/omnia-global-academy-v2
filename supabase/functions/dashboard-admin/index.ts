@@ -1884,7 +1884,7 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
     admin_surfaces: [
       { id: "quality", label: "Centre Qualité", path: "/admin/quality-center", description: "Contrôles, critères, audits, non-conformités et gouvernance de l’assistant pédagogique." },
       { id: "users", label: "Utilisateurs & accès", path: "/admin/section/utilisateurs-acces", description: "Rôles, comptes, sessions, invitations et permissions." },
-      { id: "fintech", label: "Configuration Fintech", path: "/admin/fintech", description: "FedaPay, environnement et sécurité des paiements." },
+      { id: "finance-commerce", label: "Finance & Commerce", path: "/admin/finance-commerce", description: "Plans, paiements, retraits, parrainage, coupons, B2B et gouvernance commerciale." },
       { id: "live", label: "Omnia Live", path: "/admin/live", description: "JaaS, Cloudflare Stream, files et automatisations Live." },
       { id: "credentials", label: "Credentials pédagogiques", path: "/admin/credentials", description: "Open Badges, CLR, Skills Passport, signatures et révocations — distincts des secrets API." },
       { id: "cms", label: "CMS & identité", path: "/admin/cms-branding", description: "Brevo, contenus publics et identité de la plateforme." },

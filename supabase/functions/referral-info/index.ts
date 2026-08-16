@@ -42,20 +42,15 @@ Deno.serve(async (req: Request) => {
     const { data: session } = await getActiveOmniaSessionResult(sb, token);
     if (!session) return json({ error: "SESSION_INVALID" }, 401);
 
-    const { data: settings } = await sb
-      .from("site_settings")
-      .select("key,value")
-      .in("key", [
-        "referral_enabled",
-        "referral_reward_referrer_xof",
-        "referral_reward_referred_xof",
-      ]);
+    const { data: config } = await sb
+      .from("referral_program_config")
+      .select("*")
+      .eq("id", true)
+      .maybeSingle();
 
-    const map = Object.fromEntries((settings ?? []).map((row) => [row.key, row.value]));
-    const enabled = asEnabled(map.referral_enabled);
-    const referrerReward = enabled ? asAmount(map.referral_reward_referrer_xof) : 0;
-    const referredReward = enabled ? asAmount(map.referral_reward_referred_xof) : 0;
-
+    const enabled = config?.enabled === true;
+    const referrerReward = enabled ? asAmount(config?.reward_referrer_xof) : 0;
+    const referredReward = enabled ? asAmount(config?.reward_referred_xof) : 0;
     if (!enabled) {
       return json({
         enabled: false,
@@ -69,6 +64,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const userId = session.user_id;
+    const { data: userRow } = await sb.from("users").select("referral_code").eq("id", userId).maybeSingle();
     const { data: referrals, error: referralsError } = await sb
       .from("referrals")
       .select("id,status,reward_referrer_xof,rewarded_at,created_at,users!referred_id(full_name,country_code)")
@@ -106,9 +102,12 @@ Deno.serve(async (req: Request) => {
 
     return json({
       enabled: true,
-      referral_link: `${siteUrl}/inscription?ref=${userId}`,
+      referral_code: userRow?.referral_code || null,
+      referral_link: userRow?.referral_code ? `${siteUrl}/inscription?ref=${encodeURIComponent(userRow.referral_code)}` : null,
       reward_referrer_xof: referrerReward,
       reward_referred_xof: referredReward,
+      trigger_mode: config?.trigger_mode || "any",
+      triggers: config?.triggers || [],
       total_filleuls: filleuls.length,
       total_recompenses_xof: totalRewards,
       filleuls,

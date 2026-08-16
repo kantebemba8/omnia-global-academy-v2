@@ -11,14 +11,15 @@ const GOLD='#BF8813';
 export default function OmniaLiveCommerceCheckout(){
  const [params]=useSearchParams();
  const productId=params.get('product'),eventId=params.get('event'),mediaId=params.get('media'),type=params.get('type')||undefined;
- const [product,setProduct]=useState<any>(null),[discount,setDiscount]=useState(''),[order,setOrder]=useState<any>(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
+ const [product,setProduct]=useState<any>(null),[discount,setDiscount]=useState(''),[publicDiscounts,setPublicDiscounts]=useState<any[]>([]),[order,setOrder]=useState<any>(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
 
  useEffect(()=>{
-  liveApi('commerce_products',{}, {product_type:type,event_id:eventId||undefined})
-   .then(d=>{
+  Promise.all([liveApi('commerce_products',{}, {product_type:type,event_id:eventId||undefined}),liveApi('discount_public_list')])
+   .then(([d,p])=>{
     const rows=d.products||[];
     const selected=productId?rows.find((x:any)=>x.id===productId):mediaId?rows.find((x:any)=>x.media_id===mediaId):rows[0];
     setProduct(selected||null);
+    setPublicDiscounts((p.discounts||[]).filter((x:any)=>(!x.product_type||x.product_type===selected?.product_type)&&(!x.event_id||x.event_id===(eventId||selected?.event_id))&&(!x.media_id||x.media_id===(mediaId||selected?.media_id))));
    })
    .catch(e=>setMsg(e instanceof Error?e.message:'Produit indisponible.'));
  },[productId,eventId,mediaId,type]);
@@ -67,8 +68,8 @@ export default function OmniaLiveCommerceCheckout(){
     <div className="mt-3 text-lg font-black" style={{color:BLUE}}>{Number(product.price_amount||0).toLocaleString('fr-FR')} {product.currency}</div>
     {!order&&<>
      <label className="mt-5 block"><span className="mb-1 block text-sm font-semibold">Code promotionnel <span className="font-normal text-slate-400">(optionnel)</span></span>
-      <input value={discount} onChange={e=>setDiscount(e.target.value.toUpperCase())} placeholder="Ex. OMNIA10" className="w-full rounded-lg border border-slate-300 p-3 text-sm"/>
-     </label>
+      <input value={discount} onChange={e=>setDiscount(e.target.value.toUpperCase())} placeholder="Code fourni par Omnia" className="w-full rounded-lg border border-slate-300 p-3 text-sm"/>
+     </label>{publicDiscounts.length>0&&<div className="mt-3"><p className="text-xs font-semibold text-slate-500">Promotions publiques disponibles</p><div className="mt-2 flex flex-wrap gap-2">{publicDiscounts.map((x:any)=><button type="button" key={x.id} onClick={()=>setDiscount(x.code)} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold" style={{color:BLUE}}>{x.name||'Promotion Live'} · {x.discount_value}{x.discount_type==='percent'?' %':''}</button>)}</div></div>}
      <button onClick={create} disabled={busy} className="mt-4 w-full rounded-lg px-5 py-3 text-sm font-bold text-white disabled:opacity-40" style={{background:BLUE}}>{busy?'Traitement…':'Créer ma commande'}</button>
     </>}
     {order&&<div className="mt-5 border-t border-slate-200 pt-5">

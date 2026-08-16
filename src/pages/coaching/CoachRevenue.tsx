@@ -33,7 +33,7 @@ export default function CoachRevenue() {
   useEffect(() => { load(); }, []);
 
   const available = Math.max(0, Number(data?.wallet.balance_xof || 0) - Number(data?.wallet.reserved_xof || 0));
-  const minimum = Number(data?.settings.payout_minimum_xof || 5000);
+  const minimum = Number(data?.settings.payout_minimum_xof ?? 0);
 
   return <CoachWorkspaceLayout>
     <div>

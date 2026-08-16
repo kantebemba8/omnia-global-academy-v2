@@ -150,7 +150,7 @@ export default function AdminRetraits() {
 
         <header className="flex items-end justify-between border-b border-gray-200 pb-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Finance & Commercial</p>
+            <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Finance & Commerce</p>
             <h1 className="mt-1 text-2xl font-black" style={{ color: '#002050' }}>Gestion des retraits</h1>
             <p className="mt-1 text-sm text-gray-500">Validation, paiement réel et traçabilité des retraits Professeur, Structure et Organisateur.</p>
           </div>

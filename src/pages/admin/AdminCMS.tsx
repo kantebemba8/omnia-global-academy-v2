@@ -611,7 +611,7 @@ export default function AdminCMS() {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Configuration CMS</h1>
             <p className="text-gray-500 text-sm mt-0.5">Contenu public, identité, règles métier et maintenance de la plateforme</p>
-            <p className="mt-1 text-xs text-gray-400">Jetons, retraits et paramètres financiers sont centralisés dans Configuration Fintech.</p>
+            <p className="mt-1 text-xs text-gray-400">Jetons, retraits et paramètres financiers sont pilotés depuis Finance & Commerce.</p>
           </div>
         </div>
 
@@ -856,8 +856,8 @@ export default function AdminCMS() {
                 </div>
                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
                   <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers centralisés</p>
-                  <p className="text-xs text-gray-500 mt-1">Le parrainage, les jetons, commissions, retraits et autres montants financiers sont centralisés dans Configuration Fintech. Les paliers de prix restent ici car ils font partie directement du moteur Score → Palier → Prix.</p>
-                  <Link to="/admin/fintech" className="inline-flex mt-2 text-xs font-semibold" style={{color:'#BF8813'}}>Ouvrir Configuration Fintech →</Link>
+                  <p className="text-xs text-gray-500 mt-1">Le parrainage, les plans, capacités, commissions, retraits et autres règles financières sont pilotés depuis Finance & Commerce. Les paliers de prix restent ici car ils font partie directement du moteur Score → Palier → Prix.</p>
+                  <Link to="/admin/finance-commerce" className="inline-flex mt-2 text-xs font-semibold" style={{color:'#BF8813'}}>Ouvrir Finance & Commerce →</Link>
                 </div>
               </div>
 

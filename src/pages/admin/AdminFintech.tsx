@@ -1,255 +1,44 @@
-import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
+import { CreditCard, Save, RefreshCw, Gift, Power, Clock3, WalletCards } from 'lucide-react';
+import { commerceRequest } from '../../lib/commerceApi';
+import { getSessionToken } from '../../lib/session';
 import { ENDPOINTS } from '../../lib/config';
-import { CreditCard, Save, ShieldCheck, RefreshCw, Gift, Power } from 'lucide-react';
-import { invalidatePublicSiteSettingsCache } from '../../lib/siteSettingsCache';
 
-type Settings = {
-  payout_minimum_xof: string;
-  payout_delay_label: string;
-  referral_enabled: boolean;
-  referral_reward_referrer_xof: string;
-  referral_reward_referred_xof: string;
-  canal_mobile_money: boolean;
-  canal_virement_uemoa: boolean;
-  canal_swift: boolean;
-};
+const BLUE='#002050', GOLD='#BF8813', BORDER='#E4E7EC';
+type PayoutPolicy={minimum_xof:number;processing_min:number;processing_max:number;processing_unit:string;cooldown_value:number;cooldown_unit:string;mobile_money_enabled:boolean;bank_transfer_enabled:boolean;swift_enabled:boolean};
+type ReferralProgram={enabled:boolean;trigger_mode:'any'|'all';triggers:string[];reward_referrer_xof:number;reward_referred_xof:number;purchase_threshold_xof:number};
+const triggerOptions=[
+ ['account_verified','Compte créé et adresse e-mail vérifiée'],
+ ['first_purchase','Premier achat payé'],
+ ['first_subscription','Premier abonnement payé'],
+ ['certificate_earned','Premier certificat obtenu'],
+ ['purchase_amount_reached','Montant cumulé d’achats atteint'],
+ ['course_completed','Première formation terminée'],
+ ['live_participation','Première participation à un Live'],
+] as const;
+const defaultPayout:PayoutPolicy={minimum_xof:0,processing_min:0,processing_max:0,processing_unit:'business_hours',cooldown_value:0,cooldown_unit:'days',mobile_money_enabled:true,bank_transfer_enabled:true,swift_enabled:false};
+const defaultReferral:ReferralProgram={enabled:false,trigger_mode:'any',triggers:['account_verified'],reward_referrer_xof:0,reward_referred_xof:0,purchase_threshold_xof:0};
 
-const DEFAULTS: Settings = {
-  payout_minimum_xof: '5000',
-  payout_delay_label: '24 à 48 heures ouvrées',
-  referral_enabled: false,
-  referral_reward_referrer_xof: '0',
-  referral_reward_referred_xof: '0',
-  canal_mobile_money: true,
-  canal_virement_uemoa: true,
-  canal_swift: false,
-};
-
-const asBool = (value: unknown, fallback: boolean) =>
-  value === true || value === 'true' ? true : value === false || value === 'false' ? false : fallback;
-
-export default function AdminFintech() {
-  const [settings, setSettings] = useState<Settings>(DEFAULTS);
-  const [provider, setProvider] = useState<any>(null);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState('');
-
-  const token = () => getSessionToken() || '';
-  const headers = () => ({
-    Authorization: `Bearer ${token()}`,
-    'x-omnia-session-token': token(),
-  });
-
-  function notify(message: string) {
-    setToast(message);
-    setTimeout(() => setToast(''), 3500);
-  }
-
-  async function load() {
-    try {
-      const [settingsResponse, providerResponse] = await Promise.all([
-        fetch(ENDPOINTS.adminCmsUpdate, { headers: headers() }),
-        fetch(ENDPOINTS.paymentProviderStatus, { headers: headers() }),
-      ]);
-
-      if (settingsResponse.ok) {
-        const data = await settingsResponse.json();
-        const map: Record<string, unknown> = {};
-        (data.settings || []).forEach((row: { key: string; value: unknown }) => {
-          map[row.key] = row.value;
-        });
-
-        setSettings({
-          payout_minimum_xof: String(map.payout_minimum_xof ?? DEFAULTS.payout_minimum_xof),
-          payout_delay_label: String(map.payout_delay_label ?? DEFAULTS.payout_delay_label),
-          referral_enabled: asBool(map.referral_enabled, false),
-          referral_reward_referrer_xof: String(map.referral_reward_referrer_xof ?? '0'),
-          referral_reward_referred_xof: String(map.referral_reward_referred_xof ?? '0'),
-          canal_mobile_money: asBool(map.canal_mobile_money, true),
-          canal_virement_uemoa: asBool(map.canal_virement_uemoa, true),
-          canal_swift: asBool(map.canal_swift, false),
-        });
-      }
-
-      if (providerResponse.ok) setProvider(await providerResponse.json());
-    } catch {
-      notify('Impossible de charger certains paramètres financiers.');
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function save() {
-    const referrerReward = Number(settings.referral_reward_referrer_xof);
-    const referredReward = Number(settings.referral_reward_referred_xof);
-
-    if (!Number.isFinite(referrerReward) || referrerReward < 0 || !Number.isInteger(referrerReward)) {
-      notify('La récompense du parrain doit être un montant entier positif ou nul.');
-      return;
-    }
-    if (!Number.isFinite(referredReward) || referredReward < 0 || !Number.isInteger(referredReward)) {
-      notify("L'avantage du filleul doit être un montant entier positif ou nul.");
-      return;
-    }
-    if (settings.referral_enabled && referrerReward === 0 && referredReward === 0) {
-      notify('Définissez au moins un montant avant d’activer le parrainage.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const response = await fetch(ENDPOINTS.adminCmsUpdate, {
-        method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates: Object.entries(settings).map(([key, value]) => ({
-            key,
-            value: String(value),
-          })),
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Enregistrement impossible');
-
-      invalidatePublicSiteSettingsCache();
-      notify(settings.referral_enabled
-        ? 'Paramètres enregistrés. Le parrainage est activé.'
-        : 'Paramètres enregistrés. Le parrainage reste désactivé.');
-    } catch (error) {
-      notify(error instanceof Error ? error.message : 'Erreur');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const activeProvider = provider?.providers?.find((item: any) => item.id === provider?.active_provider);
-
-  return (
-    <AdminLayout>
-      <div className="mx-auto max-w-6xl space-y-7 px-6 py-6">
-        {toast && <div className="fixed right-4 top-4 z-50 rounded-lg border bg-white px-4 py-3 text-sm shadow-lg">{toast}</div>}
-
-        <header className="border-b border-gray-200 pb-5">
-          <p className="text-xs font-semibold uppercase tracking-[.14em]" style={{ color: '#BF8813' }}>Finance & Commercial</p>
-          <h1 className="mt-1 text-2xl font-black" style={{ color: '#002050' }}>Configuration Fintech</h1>
-          <p className="mt-1 text-sm text-gray-500">Prestataire de paiement, retraits et programmes financiers contrôlés par l’Administration Omnia.</p>
-        </header>
-
-        <section className="border-y border-gray-200 py-4">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div className="flex items-center gap-3">
-              <CreditCard size={20} style={{ color: '#002050' }} />
-              <div>
-                <p className="font-bold" style={{ color: '#002050' }}>Prestataire de paiement actif : {activeProvider?.label || 'FedaPay'}</p>
-                <p className="text-sm text-gray-500">Les clés secrètes ne sont jamais affichées ni modifiées depuis le navigateur.</p>
-              </div>
-            </div>
-            <div className="text-sm">
-              <span className="font-semibold" style={{ color: activeProvider?.configured ? '#1E7A52' : '#B42318' }}>
-                {activeProvider?.configured ? 'Configuré' : 'Configuration serveur incomplète'}
-              </span>
-              {activeProvider && <span className="text-gray-400"> · webhook {activeProvider.webhook_configured ? 'configuré' : 'à vérifier'}</span>}
-            </div>
-          </div>
-          <div className="mt-4 flex gap-3 text-xs text-gray-500">
-            <ShieldCheck size={15} />
-            <p>Le mode de production FedaPay reste géré côté serveur et n’est pas activé depuis cette page.</p>
-          </div>
-        </section>
-
-        <section className="border-b border-gray-200 pb-6">
-          <h2 className="font-black" style={{ color: '#002050' }}>Configuration des retraits</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="text-sm">
-              Montant minimum (XOF)
-              <input type="number" min="0" value={settings.payout_minimum_xof} onChange={event => setSettings({ ...settings, payout_minimum_xof: event.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2" />
-            </label>
-            <label className="text-sm">
-              Délai affiché
-              <input value={settings.payout_delay_label} onChange={event => setSettings({ ...settings, payout_delay_label: event.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2" />
-            </label>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            {[
-              ['canal_mobile_money', 'Mobile Money'],
-              ['canal_virement_uemoa', 'Virement bancaire UEMOA'],
-              ['canal_swift', 'SWIFT / International'],
-            ].map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between border-b py-3 text-sm">
-                <span>{label}</span>
-                <input type="checkbox" checked={settings[key as keyof Settings] as boolean} onChange={event => setSettings({ ...settings, [key]: event.target.checked })} />
-              </label>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-b border-gray-200 pb-6">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-            <div className="flex items-start gap-3">
-              <Gift size={20} style={{ color: '#BF8813' }} />
-              <div>
-                <h2 className="font-black" style={{ color: '#002050' }}>Programme de parrainage</h2>
-                <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                  Désactivé par défaut. Lorsqu’il est coupé, aucun nouveau parrainage n’est créé et les dossiers encore en attente sont neutralisés.
-                </p>
-              </div>
-            </div>
-            <label className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold" style={{ borderColor: settings.referral_enabled ? '#1E7A52' : '#D0D5DD', color: '#002050' }}>
-              <Power size={17} style={{ color: settings.referral_enabled ? '#1E7A52' : '#667085' }} />
-              <span>{settings.referral_enabled ? 'Activé' : 'Désactivé'}</span>
-              <input
-                type="checkbox"
-                checked={settings.referral_enabled}
-                onChange={event => setSettings({ ...settings, referral_enabled: event.target.checked })}
-              />
-            </label>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className="text-sm">
-              Récompense du parrain (XOF)
-              <input
-                type="number"
-                min="0"
-                step="1"
-                disabled={!settings.referral_enabled}
-                value={settings.referral_reward_referrer_xof}
-                onChange={event => setSettings({ ...settings, referral_reward_referrer_xof: event.target.value })}
-                className="mt-1 w-full rounded-lg border px-3 py-2 disabled:bg-gray-100 disabled:text-gray-400"
-              />
-            </label>
-            <label className="text-sm">
-              Avantage du filleul (XOF)
-              <input
-                type="number"
-                min="0"
-                step="1"
-                disabled={!settings.referral_enabled}
-                value={settings.referral_reward_referred_xof}
-                onChange={event => setSettings({ ...settings, referral_reward_referred_xof: event.target.value })}
-                className="mt-1 w-full rounded-lg border px-3 py-2 disabled:bg-gray-100 disabled:text-gray-400"
-              />
-            </label>
-          </div>
-
-          <p className="mt-4 text-xs leading-5 text-gray-500">
-            La récompense est déclenchée uniquement après le premier achat confirmé du filleul. Les montants restent modifiables avant l’activation.
-          </p>
-        </section>
-
-        <div className="flex justify-end gap-3">
-          <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm">
-            <RefreshCw size={14} /> Actualiser
-          </button>
-          <button onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>
-            <Save size={14} />{saving ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
-        </div>
-      </div>
-    </AdminLayout>
-  );
-}
+export default function AdminFintech(){
+ const[payout,setPayout]=useState<PayoutPolicy>(defaultPayout),[referral,setReferral]=useState<ReferralProgram>(defaultReferral),[provider,setProvider]=useState<any>(null),[saving,setSaving]=useState(false),[toast,setToast]=useState('');
+ const notify=(m:string)=>{setToast(m);setTimeout(()=>setToast(''),3500)};
+ async function load(){try{const[d,p]=await Promise.all([commerceRequest<any>('admin_finance_config_get'),fetch(ENDPOINTS.paymentProviderStatus,{headers:{Authorization:`Bearer ${getSessionToken()||''}`,'x-omnia-session-token':getSessionToken()||''}})]);if(d.payout_policy)setPayout({...defaultPayout,...d.payout_policy});if(d.referral_program)setReferral({...defaultReferral,...d.referral_program});if(p.ok)setProvider(await p.json())}catch(e){notify(e instanceof Error?e.message:'Chargement impossible')}}
+ useEffect(()=>{void load()},[]);
+ async function save(){setSaving(true);try{await commerceRequest('admin_finance_config_save',{payout_policy:payout,referral_program:referral});notify('Règles financières enregistrées.')}catch(e){notify(e instanceof Error?e.message:'Enregistrement impossible')}finally{setSaving(false)}}
+ const activeProvider=provider?.providers?.find((x:any)=>x.id===provider?.active_provider);
+ const toggleTrigger=(key:string)=>setReferral(r=>({...r,triggers:r.triggers.includes(key)?r.triggers.filter(x=>x!==key):[...r.triggers,key]}));
+ return <AdminLayout><div className="mx-auto max-w-6xl space-y-7 px-6 py-6">{toast&&<div className="fixed right-4 top-4 z-50 rounded-lg border bg-white px-4 py-3 text-sm shadow-lg">{toast}</div>}
+ <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{borderColor:BORDER}}><div><p className="text-xs font-bold uppercase tracking-[.16em]" style={{color:GOLD}}>Finance & Commerce</p><h1 className="mt-1 text-3xl font-black" style={{color:BLUE}}>Règles financières & parrainage</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Les valeurs financières sont structurées et appliquées par le serveur. Aucun délai ni montant métier ne dépend d’un texte libre ou d’une valeur cachée.</p></div><div className="flex gap-2"><button onClick={load} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold" style={{borderColor:BORDER,color:BLUE}}><RefreshCw size={15}/>Actualiser</button><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={15}/>Enregistrer</button></div></header>
+ <section className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex gap-3"><CreditCard style={{color:GOLD}}/><div><h2 className="font-black" style={{color:BLUE}}>Prestataire de paiement</h2><p className="mt-1 text-sm text-slate-600">{activeProvider?`${activeProvider.label||activeProvider.id} · ${activeProvider.environment||'environnement non renseigné'}`:'État du prestataire indisponible'}</p><p className="mt-1 text-xs text-slate-500">Les clés et secrets restent côté serveur et ne sont jamais affichés ici.</p></div></div></section>
+ <section className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex items-center gap-2"><WalletCards style={{color:GOLD}}/><h2 className="font-black" style={{color:BLUE}}>Politique de retrait</h2></div><p className="mt-1 text-sm text-slate-600">Définissez des règles calculables. Le texte présenté aux utilisateurs sera généré automatiquement à partir de ces valeurs.</p>
+ <div className="mt-5 grid gap-4 md:grid-cols-3"><Field label="Montant minimum (XOF)"><input type="number" min="0" value={payout.minimum_xof} onChange={e=>setPayout({...payout,minimum_xof:Number(e.target.value)})}/></Field><Field label="Délai minimum"><input type="number" min="0" value={payout.processing_min} onChange={e=>setPayout({...payout,processing_min:Number(e.target.value)})}/></Field><Field label="Délai maximum"><input type="number" min="0" value={payout.processing_max} onChange={e=>setPayout({...payout,processing_max:Number(e.target.value)})}/></Field><Field label="Unité du délai"><select value={payout.processing_unit} onChange={e=>setPayout({...payout,processing_unit:e.target.value})}><option value="hours">Heures</option><option value="business_hours">Heures ouvrées</option><option value="days">Jours</option><option value="business_days">Jours ouvrés</option></select></Field><Field label="Délai entre deux demandes"><input type="number" min="0" value={payout.cooldown_value} onChange={e=>setPayout({...payout,cooldown_value:Number(e.target.value)})}/></Field><Field label="Unité"><select value={payout.cooldown_unit} onChange={e=>setPayout({...payout,cooldown_unit:e.target.value})}><option value="hours">Heures</option><option value="days">Jours</option></select></Field></div>
+ <div className="mt-5 flex flex-wrap gap-4">{[['mobile_money_enabled','Mobile Money'],['bank_transfer_enabled','Virement bancaire'],['swift_enabled','SWIFT']].map(([k,l])=><label key={k} className="flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold" style={{borderColor:BORDER}}><input type="checkbox" checked={(payout as any)[k]} onChange={e=>setPayout({...payout,[k]:e.target.checked})}/>{l}</label>)}</div></section>
+ <section className="rounded-2xl border bg-white p-5" style={{borderColor:BORDER}}><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex gap-3"><Gift style={{color:GOLD}}/><div><h2 className="font-black" style={{color:BLUE}}>Programme de parrainage</h2><p className="mt-1 text-sm text-slate-600">Le système génère automatiquement un code public unique pour chaque utilisateur. Choisissez ici ce qui déclenche réellement la récompense.</p></div></div><label className="flex items-center gap-2 text-sm font-bold" style={{color:BLUE}}><Power size={16}/><input type="checkbox" checked={referral.enabled} onChange={e=>setReferral({...referral,enabled:e.target.checked})}/>{referral.enabled?'Activé':'Désactivé'}</label></div>
+ <div className="mt-5 grid gap-4 md:grid-cols-2"><Field label="Récompense du parrain (XOF)"><input type="number" min="0" value={referral.reward_referrer_xof} onChange={e=>setReferral({...referral,reward_referrer_xof:Number(e.target.value)})}/></Field><Field label="Avantage du filleul (XOF)"><input type="number" min="0" value={referral.reward_referred_xof} onChange={e=>setReferral({...referral,reward_referred_xof:Number(e.target.value)})}/></Field></div>
+ {referral.triggers.includes('purchase_amount_reached')&&<div className="mt-5 max-w-sm"><Field label="Montant cumulé requis (XOF)"><input type="number" min="1" value={referral.purchase_threshold_xof} onChange={e=>setReferral({...referral,purchase_threshold_xof:Number(e.target.value)})}/></Field></div>}
+ <div className="mt-5"><p className="text-sm font-bold" style={{color:BLUE}}>Déclencheurs</p><div className="mt-3 grid gap-2 md:grid-cols-2">{triggerOptions.map(([key,label])=><label key={key} className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm" style={{borderColor:BORDER}}><input type="checkbox" checked={referral.triggers.includes(key)} onChange={()=>toggleTrigger(key)}/><span>{label}</span></label>)}</div></div>
+ <div className="mt-5"><p className="text-sm font-bold" style={{color:BLUE}}>Si plusieurs déclencheurs sont sélectionnés</p><div className="mt-2 flex gap-3"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={referral.trigger_mode==='any'} onChange={()=>setReferral({...referral,trigger_mode:'any'})}/>Un seul suffit</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={referral.trigger_mode==='all'} onChange={()=>setReferral({...referral,trigger_mode:'all'})}/>Tous sont obligatoires</label></div></div>
+ <div className="mt-4 flex gap-2 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-600"><Clock3 size={16} className="shrink-0"/><p>Chaque événement est journalisé avec une clé unique : un même achat, abonnement, certificat ou compte vérifié ne peut pas récompenser deux fois le même parrainage.</p></div></section>
+ </div></AdminLayout>}
+function Field({label,children}:{label:string;children:any}){return <label className="block text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">{label}</span><div className="[&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:px-3 [&_input]:py-2.5 [&_select]:w-full [&_select]:rounded-xl [&_select]:border [&_select]:px-3 [&_select]:py-2.5" style={{borderColor:BORDER}}>{children}</div></label>}

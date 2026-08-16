@@ -45,6 +45,7 @@ export default function Checkout() {
   const [couponResult, setCouponResult] = useState<CouponResult | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [publicCoupons, setPublicCoupons] = useState<Array<{code:string;name?:string;discount_type:string;discount_value:number}>>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -56,6 +57,12 @@ export default function Checkout() {
       .then(d => { setCourse(d.course ?? null); setLoading(false); })
       .catch(() => setLoading(false));
   }, [courseId, navigate]);
+
+  useEffect(() => {
+    if (!courseId) return;
+    fetch(`${ENDPOINTS.checkoutValidateCoupon}?course_id=${encodeURIComponent(courseId)}`, { headers: edgeAuthHeaders() })
+      .then(r => r.json()).then(d => setPublicCoupons(Array.isArray(d.coupons) ? d.coupons : [])).catch(() => setPublicCoupons([]));
+  }, [courseId]);
 
   const applyCode = useCallback(async () => {
     if (!couponInput.trim() || !courseId) return;
@@ -207,6 +214,10 @@ export default function Checkout() {
 
               {/* Coupon section */}
               <div className="border-t border-gray-100 p-6">
+                {publicCoupons.length > 0 && <div className="mb-4 rounded-xl border p-3" style={{borderColor:'#BF881355',background:'#FFF9ED'}}>
+                  <p className="text-xs font-bold" style={{color:'#002050'}}>Offres publiques disponibles</p>
+                  <div className="mt-2 flex flex-wrap gap-2">{publicCoupons.map(c=><button key={c.code} onClick={()=>{setCouponInput(c.code);setCouponResult(null)}} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{borderColor:'#BF8813',color:'#002050'}}>{c.name||c.code} · {c.discount_type==='percentage'?`${c.discount_value}%`:`${fmt(c.discount_value)} XOF`}</button>)}</div>
+                </div>}
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
                   <Tag className="w-4 h-4" style={{ color: '#BF8813' }} /> Code promo
                 </label>

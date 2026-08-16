@@ -127,6 +127,7 @@ const CommerceCatalog = lazy(() => import('./pages/commerce/CommerceCatalog'));
 const CreatorCommerce = lazy(() => import('./pages/commerce/CreatorCommerce'));
 const AdminRetraits = lazy(() => import('./pages/admin/AdminRetraits'));
 const AdminMarketing = lazy(() => import('./pages/admin/AdminMarketing'));
+const AdminFinanceCommerce = lazy(() => import('./pages/admin/AdminFinanceCommerce'));
 const AdminCatalogue = lazy(() => import('./pages/admin/AdminCatalogue'));
 const AdminEquipe = lazy(() => import('./pages/admin/AdminEquipe'));
 const AdminDemoAccess = lazy(() => import('./pages/admin/AdminDemoAccess'));
@@ -722,6 +723,7 @@ export default function App() {
         <Route path="/admin/traductions" element={<AdminTranslations />} />
         <Route path="/admin/moteurs-services" element={<AdminExternalServices />} />
         <Route path="/admin/cms-branding/preview" element={<LandingDraftPreview />} />
+        <Route path="/admin/finance-commerce" element={<AdminFinanceCommerce />} />
         <Route path="/admin/fintech" element={<AdminFintech />} />
         <Route path="/admin/monetization" element={<AdminMonetization />} />
         <Route path="/admin/payouts" element={<AdminRetraits />} />

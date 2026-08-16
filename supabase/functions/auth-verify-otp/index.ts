@@ -150,6 +150,14 @@ Deno.serve(async (req: Request) => {
         .update({ status: "actif", email_status: "valide", updated_at: now })
         .eq("id", user.id);
       if (activationError) throw activationError;
+      try {
+        await supabase.rpc("oga_referral_record_event", {
+          p_referred_user_id: user.id,
+          p_event_type: "account_verified",
+          p_event_key: `account_verified:${user.id}`,
+          p_metadata: { email_status: "valide" },
+        });
+      } catch { /* le parrainage ne bloque jamais l’activation du compte */ }
 
       if (recruiterResult.data && recruiterStatus === "pending") {
         const { data: admins } = await supabase.from("user_roles").select("user_id").eq("role", "super_admin");

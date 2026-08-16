@@ -245,11 +245,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     id: 'commerce-finance', label: 'Commerce & finance', icon: Landmark,
     items: [
-      { path: '/admin/fintech', label: 'Configuration Fintech', icon: CreditCard },
-      { path: '/admin/monetization', label: 'Abonnements & monétisation', icon: Gift },
+      { path: '/admin/finance-commerce', label: 'Vue d’ensemble Finance & Commerce', icon: Landmark },
+      { path: '/admin/monetization', label: 'Plans, abonnements & capacités', icon: Gift },
+      { path: '/admin/marketing', label: 'Coupons & invitations gratuites', icon: Tag },
+      { path: '/admin/fintech', label: 'Règles financières & parrainage', icon: CreditCard },
       { path: '/admin/payouts', label: 'Retraits', icon: Wallet },
       { path: '/admin/structures/b2b', label: 'Contrats B2B', icon: FileSignature },
-      { path: '/admin/marketing', label: 'Offres & licences', icon: Tag },
     ],
   },
   {
