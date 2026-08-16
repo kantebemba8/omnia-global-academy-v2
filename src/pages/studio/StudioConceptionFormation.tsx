@@ -15,7 +15,7 @@ import {
   File, Table, HelpCircle, BookOpen, Lightbulb, Star, Minus,
   AlignLeft, Heading1, Heading2, Download, Layers, ToggleLeft,
   ChevronDown, ChevronUp, Zap, AlertTriangle, Info, BarChart2, ShieldCheck, Monitor, Users, UserCheck,
-  Layout, RefreshCw, MoreVertical, Move, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck
+  Layout, RefreshCw, MoreVertical, Move, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck, Headphones
 } from 'lucide-react';
 
 const SB = import.meta.env.VITE_SUPABASE_URL;
@@ -41,7 +41,7 @@ interface Lesson { id: string; title: string; position: number; has_blocks: bool
 interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
 interface Course {
   id: string; title: string; short_description?: string; long_description?: string;
-  category?: string; level?: string; language?: string; prerequisites?: string;
+  category?: string; level?: string; language?: string; course_type?: 'standard'|'language_learning'; instruction_language?: string; target_language?: string; cefr_start_level?: string; cefr_target_level?: string; language_framework?: string; prerequisites?: string;
   objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
   target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
   course_intro_summary?: string; studio_status: string;
@@ -61,6 +61,12 @@ const EMPTY_COURSE: Course = {
   category: '',
   level: '',
   language: 'fr',
+  course_type: 'standard',
+  instruction_language: 'fr',
+  target_language: '',
+  cefr_start_level: '',
+  cefr_target_level: '',
+  language_framework: 'CEFR',
   prerequisites: '',
   objectives: [],
   cover_image_url: '',
@@ -135,6 +141,16 @@ const BLOCK_DEFS = [
   { type: 'chart', label: 'Graphique', icon: BarChart3, color: '#0369A1', group: 'avance', mode: 'advanced' },
   { type: 'assignment_upload', label: 'Travail à remettre', icon: UploadCloud, color: '#D97706', group: 'evaluation', mode: 'advanced' },
   { type: 'rubric', label: 'Grille d’évaluation', icon: ClipboardCheck, color: '#1E7A52', group: 'evaluation', mode: 'advanced' },
+  { type: 'vocabulary', label: 'Vocabulaire', icon: BookOpen, color: '#7C3AED', group: 'langues', mode: 'advanced' },
+  { type: 'dialogue', label: 'Dialogue', icon: Users, color: '#0369A1', group: 'langues', mode: 'advanced' },
+  { type: 'cloze', label: 'Texte à trous', icon: AlignLeft, color: '#D97706', group: 'langues', mode: 'advanced' },
+  { type: 'dictation', label: 'Dictée', icon: Music, color: '#DC2626', group: 'langues', mode: 'advanced' },
+  { type: 'pronunciation', label: 'Prononciation', icon: Monitor, color: '#1E7A52', group: 'langues', mode: 'advanced' },
+  { type: 'matching', label: 'Association', icon: Layers, color: '#92400E', group: 'langues', mode: 'advanced' },
+  { type: 'sentence_order', label: 'Phrase en ordre', icon: ListOrdered, color: '#374151', group: 'langues', mode: 'advanced' },
+  { type: 'oral_response', label: 'Réponse orale', icon: Music, color: '#7C3AED', group: 'langues', mode: 'advanced' },
+  { type: 'listening_comprehension', label: 'Compréhension orale', icon: Headphones, color: '#0369A1', group: 'langues', mode: 'advanced' },
+  { type: 'written_expression', label: 'Expression écrite', icon: FileText, color: '#002050', group: 'langues', mode: 'advanced' },
 ];
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -367,7 +383,7 @@ export default function StudioConceptionFormation() {
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return;
     }
-    const defaultContent = getDefaultContent(blockType);
+    const defaultContent = contentDefaultForLanguage(getDefaultContent(blockType), course.language || 'fr');
     const data = await api('create_block', {
       course_id: course.id, module_id: currentModule.id, lesson_id: currentLesson.id,
       block_type: blockType, content_json: defaultContent, settings_json: {},
@@ -398,6 +414,16 @@ export default function StudioConceptionFormation() {
       case 'word': return { url: '', title: '', description: '' };
       case 'excel': return { url: '', title: '', sheet: '', preview_rows: [] };
       case 'scorm': return { url: '', title: '', package_type: 'scorm_2004', duration_min: 0, duration_source: 'automatic', scorm_ready: false };
+      case 'vocabulary': return { title: 'Vocabulaire', items: [{ term: '', translation: '', example: '', audio_url: '' }] };
+      case 'dialogue': return { title: 'Dialogue', lines: [{ speaker: 'A', text: '', translation: '' }] };
+      case 'cloze': return { title: 'Texte à trous', text: '', answers: [], instructions: '' };
+      case 'dictation': return { title: 'Dictée', audio_url: '', transcript: '', instructions: '' };
+      case 'pronunciation': return { title: 'Prononciation', items: [{ text: '', phonetic: '', audio_url: '' }], instructions: '' };
+      case 'matching': return { title: 'Association', pairs: [{ left: '', right: '' }], instructions: '' };
+      case 'sentence_order': return { title: 'Remettre la phrase en ordre', sentence: '', tokens: [], instructions: '' };
+      case 'oral_response': return { title: 'Réponse orale', prompt: '', reference_audio_url: '', guidance: '' };
+      case 'listening_comprehension': return { title: 'Compréhension orale', audio_url: '', transcript: '', questions: [{ question: '', answer: '' }] };
+      case 'written_expression': return { title: 'Expression écrite', prompt: '', guidance: '', target_words: 120 };
       case 'download': return { url: '', title: '', description: '' };
       case 'qcm': return { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '' };
       case 'true_false': return { statement: '', answer: true, explanation: '' };
@@ -426,6 +452,24 @@ export default function StudioConceptionFormation() {
       case 'rubric': return { criteria: [{ name: 'Critère 1', description: '', points: 10 }] };
       default: return {};
     }
+  }
+
+  function contentDefaultForLanguage(value: Record<string, any>, language: string): Record<string, any> {
+    if ((language || 'fr').toLowerCase() === 'fr') return value;
+    const frenchDefaults = new Set([
+      'Nouveau titre','Sous-titre','Saisissez votre texte ici...','Information importante...','À retenir','Objectif pédagogique','À la fin de cette leçon, vous serez capable de...',
+      'Exemple','Décrivez ici un exemple concret...','Résumé','Dans cette leçon, vous avez appris...','Vocabulaire','Dialogue','Texte à trous','Dictée','Prononciation','Association',
+      'Remettre la phrase en ordre','Réponse orale','Compréhension orale','Expression écrite','Exercice','Section 1','Recto','Verso','Colonne 1','Colonne 2','Colonne 3','Étape 1',
+      'Important','Saisissez l’information importante...','Étude de cas','Correction','Saisissez ici la correction détaillée...','Citation ou témoignage','Action à réaliser','Ouvrir le lien',
+      'Contenu intégré','Travail à remettre','Critère 1'
+    ]);
+    const clean = (input: any): any => {
+      if (Array.isArray(input)) return input.map(clean);
+      if (input && typeof input === 'object') return Object.fromEntries(Object.entries(input).map(([k,v]) => [k, clean(v)]));
+      if (typeof input === 'string' && frenchDefaults.has(input.replace(/^<p>|<\/p>$/g,''))) return input.startsWith('<p>') ? '<p></p>' : '';
+      return input;
+    };
+    return clean(value);
   }
 
   // ─── Mettre à jour bloc ───────────────────────────────────
@@ -525,6 +569,12 @@ export default function StudioConceptionFormation() {
         category: course.category,
         level: course.level,
         language: course.language,
+        course_type: course.course_type,
+        instruction_language: course.instruction_language || course.language,
+        target_language: course.target_language,
+        cefr_start_level: course.cefr_start_level,
+        cefr_target_level: course.cefr_target_level,
+        language_framework: course.language_framework,
         prerequisites: course.prerequisites,
         objectives: course.objectives,
         target_audience: course.target_audience,
@@ -596,7 +646,14 @@ export default function StudioConceptionFormation() {
         short_description: course.short_description,
         long_description: course.long_description,
         category: course.category, level: course.level,
-        language: course.language, prerequisites: course.prerequisites,
+        language: course.language,
+        course_type: course.course_type,
+        instruction_language: course.instruction_language || course.language,
+        target_language: course.target_language,
+        cefr_start_level: course.cefr_start_level,
+        cefr_target_level: course.cefr_target_level,
+        language_framework: course.language_framework,
+        prerequisites: course.prerequisites,
         objectives: course.objectives, target_audience: course.target_audience,
         learning_outcomes: course.learning_outcomes,
         cover_image_url: course.cover_image_url,
@@ -810,10 +867,10 @@ export default function StudioConceptionFormation() {
             {/* Onglet Blocs */}
             {activeLibTab === 'blocs' && (
               <div>
-                {['structure', 'pedagogique', 'media', 'evaluation', 'avance'].map(group => {
+                {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
                   const groupBlocks = visibleBlocks.filter(b => b.group === group);
                   if (groupBlocks.length === 0) return null;
-                  const groupLabels: Record<string, string> = { structure: 'Structure', pedagogique: 'Pédagogie', media: 'Médias & Fichiers', evaluation: 'Évaluation', avance: 'Avancés' };
+                  const groupLabels: Record<string, string> = { structure: 'Structure', pedagogique: 'Pédagogie', media: 'Médias & Fichiers', evaluation: 'Évaluation', avance: 'Avancés', langues: 'Langues' };
                   return (
                     <div key={group} className="mb-4">
                       <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>
@@ -857,6 +914,9 @@ export default function StudioConceptionFormation() {
                   { label: 'Démonstration technique', blocks: ['code', 'formula', 'chart', 'remember'] },
                   { label: 'Parcours visuel', blocks: ['timeline', 'gallery', 'checklist'] },
                   { label: 'Module SCORM accompagné', blocks: ['objective', 'scorm', 'summary'] },
+                  { label: 'Séquence vocabulaire', blocks: ['vocabulary', 'flashcards', 'matching'] },
+                  { label: 'Séquence compréhension orale', blocks: ['listening_comprehension', 'dictation', 'summary'] },
+                  { label: 'Séquence expression orale', blocks: ['dialogue', 'pronunciation', 'oral_response'] },
                 ].map(section => (
                   <button key={section.label} disabled={locked}
                     onClick={async () => { for (const bt of section.blocks) { await addBlock(bt); } }}
@@ -880,6 +940,7 @@ export default function StudioConceptionFormation() {
                   { key: 'excel_template', label: 'Avec Excel', desc: 'Tableaux et calculs' },
                   { key: 'advanced_interactive', label: 'Interactive avancée', desc: 'Blocs interactifs' },
                   { key: 'scorm_template', label: 'Formation SCORM', desc: 'Package SCORM' },
+                  { key: 'language_learning', label: 'Formation linguistique', desc: 'Vocabulaire, écoute, oral et CECRL' },
                 ].map(tmpl => (
                   <button key={tmpl.key} disabled={locked}
                     onClick={async () => {
@@ -994,7 +1055,7 @@ export default function StudioConceptionFormation() {
                   { field: 'target_audience', label: 'À qui s’adresse cette formation ?', placeholder: 'Ex : débutants, entrepreneurs, responsables administratifs...', type: 'textarea' },
                   { field: 'category', label: 'Catégorie *', placeholder: '', type: 'select', options: [...CATEGORY_LABELS] },
                   { field: 'level', label: 'Niveau *', placeholder: '', type: 'select', options: ['debutant', 'intermediaire', 'avance'] },
-                  { field: 'language', label: 'Langue *', placeholder: '', type: 'select', options: ['fr', 'en', 'ar', 'bm'] },
+                  { field: 'language', label: 'Langue principale du contenu *', placeholder: '', type: 'select', options: ['fr', 'en', 'es', 'pt', 'ar', 'zh', 'ru', 'de', 'bm'] },
                   { field: 'prerequisites', label: 'Prérequis', placeholder: 'Aucun prérequis particulier...', type: 'textarea' },
                 ].map(({ field, label, placeholder, type, options }) => (
                   <div key={field} className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
@@ -1023,6 +1084,23 @@ export default function StudioConceptionFormation() {
                     )}
                   </div>
                 ))}
+
+                <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
+                  <label className="block text-xs font-semibold mb-2" style={{ color: '#002050' }}>Type de formation</label>
+                  <select className="w-full px-3 py-2.5 border rounded-lg text-sm" style={{ borderColor: '#E4E7EC' }} value={course.course_type || 'standard'} onChange={e => updateCourse('course_type', e.target.value as Course['course_type'])} disabled={locked}>
+                    <option value="standard">Formation standard</option><option value="language_learning">Apprentissage d’une langue</option>
+                  </select>
+                </div>
+                {course.course_type === 'language_learning' && <div className="bg-white rounded-xl border p-4 space-y-3" style={{ borderColor: '#BF8813' }}>
+                  <p className="text-xs font-bold" style={{ color: '#92400E' }}>Paramètres linguistiques — CECRL / CEFR</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold">Langue d’enseignement<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.instruction_language || course.language || 'fr'} onChange={e=>updateCourse('instruction_language',e.target.value)} disabled={locked}>{['fr','en','es','pt','ar','zh','ru','de','bm'].map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Langue étudiée<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.target_language || ''} onChange={e=>updateCourse('target_language',e.target.value)} disabled={locked}><option value="">Sélectionner...</option>{['fr','en','es','pt','ar','zh','ru','de','bm'].map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Niveau de départ<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.cefr_start_level || ''} onChange={e=>updateCourse('cefr_start_level',e.target.value)} disabled={locked}><option value="">Non précisé</option>{['A1','A2','B1','B2','C1','C2'].map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Niveau visé<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.cefr_target_level || ''} onChange={e=>updateCourse('cefr_target_level',e.target.value)} disabled={locked}><option value="">Non précisé</option>{['A1','A2','B1','B2','C1','C2'].map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+                  </div>
+                  <p className="text-xs text-slate-500">La langue de l’interface Omnia reste indépendante. Aucune traduction automatique du contenu n’est effectuée.</p>
+                </div>}
 
                 {/* Image de couverture visible avant achat */}
                 <div className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
@@ -1518,6 +1596,21 @@ function PedagogicalEditor({ c, locked, onChange, kind }: { c: Record<string,any
   </div>
 }
 
+
+function LanguageBlockEditor({type,c,locked,onChange}:{type:string;c:Record<string,any>;locked:boolean;onChange:(v:Record<string,any>)=>void}){
+  const cls='w-full px-3 py-2 border rounded-lg text-sm'; const st={borderColor:'#E4E7EC'};
+  if(type==='vocabulary') return <div className="space-y-2">{(c.items||[]).map((x:any,i:number)=><div key={i} className="grid gap-2 md:grid-cols-3"><input className={cls} style={st} value={x.term||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,term:e.target.value};onChange({...c,items})}} placeholder="Mot / expression" disabled={locked}/><input className={cls} style={st} value={x.translation||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,translation:e.target.value};onChange({...c,items})}} placeholder="Sens / traduction" disabled={locked}/><input className={cls} style={st} value={x.example||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,example:e.target.value};onChange({...c,items})}} placeholder="Exemple" disabled={locked}/></div>)}{!locked&&<button className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,items:[...(c.items||[]),{term:'',translation:'',example:'',audio_url:''}]})}>+ Ajouter un mot</button>}</div>;
+  if(type==='dialogue') return <div className="space-y-2">{(c.lines||[]).map((x:any,i:number)=><div key={i} className="grid gap-2 md:grid-cols-[100px_1fr_1fr]"><input className={cls} style={st} value={x.speaker||''} onChange={e=>{const lines=[...(c.lines||[])];lines[i]={...x,speaker:e.target.value};onChange({...c,lines})}} placeholder="Personne" disabled={locked}/><input className={cls} style={st} value={x.text||''} onChange={e=>{const lines=[...(c.lines||[])];lines[i]={...x,text:e.target.value};onChange({...c,lines})}} placeholder="Réplique" disabled={locked}/><input className={cls} style={st} value={x.translation||''} onChange={e=>{const lines=[...(c.lines||[])];lines[i]={...x,translation:e.target.value};onChange({...c,lines})}} placeholder="Aide / traduction" disabled={locked}/></div>)}{!locked&&<button className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,lines:[...(c.lines||[]),{speaker:'',text:'',translation:''}]})}>+ Ajouter une réplique</button>}</div>;
+  if(type==='matching') return <div className="space-y-2">{(c.pairs||[]).map((x:any,i:number)=><div key={i} className="grid grid-cols-2 gap-2"><input className={cls} style={st} value={x.left||''} onChange={e=>{const pairs=[...(c.pairs||[])];pairs[i]={...x,left:e.target.value};onChange({...c,pairs})}} placeholder="Élément A" disabled={locked}/><input className={cls} style={st} value={x.right||''} onChange={e=>{const pairs=[...(c.pairs||[])];pairs[i]={...x,right:e.target.value};onChange({...c,pairs})}} placeholder="Élément B" disabled={locked}/></div>)}{!locked&&<button className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,pairs:[...(c.pairs||[]),{left:'',right:''}]})}>+ Ajouter une paire</button>}</div>;
+  if(type==='pronunciation') return <div className="space-y-2"><textarea className={cls} style={st} rows={2} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes" disabled={locked}/>{(c.items||[]).map((x:any,i:number)=><div key={i} className="grid gap-2 md:grid-cols-3"><input className={cls} style={st} value={x.text||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,text:e.target.value};onChange({...c,items})}} placeholder="Mot / phrase" disabled={locked}/><input className={cls} style={st} value={x.phonetic||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,phonetic:e.target.value};onChange({...c,items})}} placeholder="Phonétique" disabled={locked}/><input className={cls} style={st} value={x.audio_url||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...x,audio_url:e.target.value};onChange({...c,items})}} placeholder="Audio URL" disabled={locked}/></div>)}</div>;
+  if(type==='listening_comprehension'||type==='dictation') return <div className="space-y-2"><input className={cls} style={st} value={c.audio_url||''} onChange={e=>onChange({...c,audio_url:e.target.value})} placeholder="URL audio" disabled={locked}/><textarea className={cls} style={st} rows={4} value={c.transcript||''} onChange={e=>onChange({...c,transcript:e.target.value})} placeholder="Transcription / corrigé" disabled={locked}/>{type==='listening_comprehension'&&(c.questions||[]).map((x:any,i:number)=><input key={i} className={cls} style={st} value={x.question||''} onChange={e=>{const questions=[...(c.questions||[])];questions[i]={...x,question:e.target.value};onChange({...c,questions})}} placeholder={`Question ${i+1}`} disabled={locked}/>)}</div>;
+  if(type==='cloze') return <div className="space-y-2"><textarea className={cls} style={st} rows={4} value={c.text||''} onChange={e=>onChange({...c,text:e.target.value})} placeholder="Texte avec ____ pour les trous" disabled={locked}/><input className={cls} style={st} value={(c.answers||[]).join(' | ')} onChange={e=>onChange({...c,answers:e.target.value.split('|').map((x:string)=>x.trim()).filter(Boolean)})} placeholder="Réponses séparées par |" disabled={locked}/></div>;
+  if(type==='sentence_order') return <input className={cls} style={st} value={c.sentence||''} onChange={e=>onChange({...c,sentence:e.target.value,tokens:e.target.value.split(/\s+/).filter(Boolean)})} placeholder="Phrase correcte" disabled={locked}/>;
+  if(type==='oral_response') return <div className="space-y-2"><textarea className={cls} style={st} rows={3} value={c.prompt||''} onChange={e=>onChange({...c,prompt:e.target.value})} placeholder="Consigne orale" disabled={locked}/><input className={cls} style={st} value={c.reference_audio_url||''} onChange={e=>onChange({...c,reference_audio_url:e.target.value})} placeholder="Audio de référence" disabled={locked}/></div>;
+  return <div className="space-y-2"><textarea className={cls} style={st} rows={4} value={c.prompt||''} onChange={e=>onChange({...c,prompt:e.target.value})} placeholder="Sujet d’expression écrite" disabled={locked}/><input type="number" min={20} className={cls} style={st} value={c.target_words||120} onChange={e=>onChange({...c,target_words:Math.max(20,Number(e.target.value)||120)})} disabled={locked}/></div>;
+}
+function LanguageBlockReadonly({type,c}:{type:string;c:Record<string,any>}){return <div className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-bold uppercase tracking-wide text-[#BF8813]">Activité de langue</p><p className="mt-2 text-sm font-semibold text-[#002050]">{c.title||String(type).replaceAll('_',' ')}</p>{c.prompt&&<p className="mt-2 text-sm text-slate-600">{c.prompt}</p>}{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}</div>}
+
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
 function BlockPreview({ block, def, locked, onChange }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
@@ -1666,6 +1759,8 @@ function BlockPreview({ block, def, locked, onChange }: {
       <div className="space-y-2">{(c.criteria||[]).map((criterion:any,i:number)=><div key={i} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[180px_1fr_90px]" style={style}><input className={inputCls} style={style} value={criterion.name||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,name:e.target.value};onChange({...c,criteria})}} placeholder="Critère" disabled={locked}/><input className={inputCls} style={style} value={criterion.description||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,description:e.target.value};onChange({...c,criteria})}} placeholder="Description" disabled={locked}/><input type="number" min={0} className={inputCls} style={style} value={criterion.points||0} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,points:Number(e.target.value)||0};onChange({...c,criteria})}} disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,criteria:[...(c.criteria||[]),{name:`Critère ${(c.criteria||[]).length+1}`,description:'',points:10}]})}>+ Ajouter un critère</button>}</div>
     );
 
+    case 'vocabulary': case 'dialogue': case 'cloze': case 'dictation': case 'pronunciation': case 'matching': case 'sentence_order': case 'oral_response': case 'listening_comprehension': case 'written_expression':
+      return <LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange} />;
     case 'separator': return <hr style={{ borderColor: '#E4E7EC' }} />;
     case 'pdf': case 'word': case 'excel': case 'scorm': case 'download': return (
       <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: '#F8F9FA', border: '1px solid #E4E7EC' }}>
@@ -2017,11 +2112,8 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                 </div>
                 <div>
                   <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Durée pédagogique SCORM</label>
-                  <input type="number" min={0} className={inputCls} style={style} value={c.duration_min || 0}
-                    onChange={e => onUpdate({ content_json: { ...c, duration_min: Math.max(0, parseInt(e.target.value) || 0), duration_source: 'manual_fallback' } })} disabled={locked || c.duration_source === 'manifest'} />
-                  <p className="mt-1 text-[11px]" style={{ color: '#9CA3AF' }}>
-                    {c.duration_source === 'manifest' ? 'Durée détectée automatiquement dans le package.' : 'Automatique si le package fournit une durée ; saisie manuelle uniquement en secours.'}
-                  </p>
+                  <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: '#E4E7EC', background: '#F8FAFC', color: '#374151' }}>{Number(c.duration_min || 0) > 0 ? `${Math.ceil(Number(c.duration_min))} min` : 'Calcul automatique en attente'}</div>
+                  <p className="mt-1 text-[11px]" style={{ color: '#9CA3AF' }}>Aucune saisie manuelle : la durée est détectée dans le package ou calculée par OGA.</p>
                 </div>
               </div>
             </div>
@@ -2097,6 +2189,7 @@ function BlockPreviewReadonly({ block }: { block: Block }) {
     case 'heading': return <h2 className="text-xl font-black" style={{ color: '#002050' }}>{c.text}</h2>;
     case 'subheading': return <h3 className="text-lg font-bold" style={{ color: '#374151' }}>{c.text}</h3>;
     case 'text': return <div className="text-sm" style={{ color: '#374151', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: c.html || '' }} />;
+    case 'vocabulary': case 'dialogue': case 'cloze': case 'dictation': case 'pronunciation': case 'matching': case 'sentence_order': case 'oral_response': case 'listening_comprehension': case 'written_expression': return <LanguageBlockReadonly type={block.block_type} c={c} />;
     case 'separator': return <hr style={{ borderColor: '#E4E7EC' }} />;
     case 'callout': return (
       <div className="flex gap-2 p-3 rounded-lg" style={{ background: '#EFF6FF' }}>

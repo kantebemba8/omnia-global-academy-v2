@@ -39,12 +39,49 @@ function coursePermissionForAction(action:string){if(action==="submit_course")re
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
+const STUDIO_COPY:Record<string,Record<string,string>>={
+ fr:{intro_module:'Introduction',intro_objective:'Présenter la formation et préparer l’apprenant',welcome:'Bienvenue dans cette formation',intro_body:'Présentez ici le fonctionnement de la formation et les conseils pour réussir.',intro_goal:'Découvrez les objectifs, le déroulement et les ressources de cette formation.',conclusion:'Conclusion',conclusion_lesson:'Conclusion de la formation',conclusion_objective:'Synthétiser la formation et préparer l’évaluation finale',final_summary:'Résumé final',final_summary_body:'Résumez les acquis essentiels de la formation...',final_exam:'Examen final',final_exam_objective:'Évaluer les acquis de toute la formation'},
+ en:{intro_module:'Introduction',intro_objective:'Introduce the course and prepare the learner',welcome:'Welcome to this course',intro_body:'Explain how the course works and share practical tips for success.',intro_goal:'Discover the objectives, structure and resources of this course.',conclusion:'Conclusion',conclusion_lesson:'Course conclusion',conclusion_objective:'Summarize the course and prepare for the final assessment',final_summary:'Final summary',final_summary_body:'Summarize the essential learning outcomes of the course...',final_exam:'Final assessment',final_exam_objective:'Assess learning across the whole course'},
+ es:{intro_module:'Introducción',intro_objective:'Presentar la formación y preparar al estudiante',welcome:'Bienvenido a esta formación',intro_body:'Explique cómo funciona la formación y dé consejos para tener éxito.',intro_goal:'Descubra los objetivos, el desarrollo y los recursos de esta formación.',conclusion:'Conclusión',conclusion_lesson:'Conclusión de la formación',conclusion_objective:'Sintetizar la formación y preparar la evaluación final',final_summary:'Resumen final',final_summary_body:'Resuma los aprendizajes esenciales de la formación...',final_exam:'Evaluación final',final_exam_objective:'Evaluar los aprendizajes de toda la formación'},
+ pt:{intro_module:'Introdução',intro_objective:'Apresentar a formação e preparar o formando',welcome:'Bem-vindo a esta formação',intro_body:'Explique como funciona a formação e dê conselhos para ter sucesso.',intro_goal:'Conheça os objetivos, o percurso e os recursos desta formação.',conclusion:'Conclusão',conclusion_lesson:'Conclusão da formação',conclusion_objective:'Sintetizar a formação e preparar a avaliação final',final_summary:'Resumo final',final_summary_body:'Resuma as aprendizagens essenciais da formação...',final_exam:'Avaliação final',final_exam_objective:'Avaliar as aprendizagens de toda a formação'},
+ de:{intro_module:'Einführung',intro_objective:'Den Kurs vorstellen und die Lernenden vorbereiten',welcome:'Willkommen zu diesem Kurs',intro_body:'Erklären Sie den Ablauf des Kurses und geben Sie Hinweise für den Lernerfolg.',intro_goal:'Lernen Sie Ziele, Ablauf und Ressourcen dieses Kurses kennen.',conclusion:'Abschluss',conclusion_lesson:'Kursabschluss',conclusion_objective:'Den Kurs zusammenfassen und auf die Abschlussbewertung vorbereiten',final_summary:'Abschließende Zusammenfassung',final_summary_body:'Fassen Sie die wichtigsten Lernergebnisse des Kurses zusammen...',final_exam:'Abschlussbewertung',final_exam_objective:'Die Lernergebnisse des gesamten Kurses bewerten'},
+ ar:{intro_module:'مقدمة',intro_objective:'تقديم الدورة وتهيئة المتعلم',welcome:'مرحبًا بك في هذه الدورة',intro_body:'اشرح طريقة عمل الدورة وقدّم نصائح للنجاح.',intro_goal:'تعرّف على أهداف الدورة ومسارها ومواردها.',conclusion:'الخاتمة',conclusion_lesson:'خاتمة الدورة',conclusion_objective:'تلخيص الدورة والاستعداد للتقييم النهائي',final_summary:'الملخص النهائي',final_summary_body:'لخّص أهم ما تم تعلمه في الدورة...',final_exam:'التقييم النهائي',final_exam_objective:'تقييم مكتسبات الدورة كاملة'},
+ zh:{intro_module:'导言',intro_objective:'介绍课程并帮助学习者做好准备',welcome:'欢迎参加本课程',intro_body:'说明课程的学习方式，并提供顺利完成课程的建议。',intro_goal:'了解本课程的目标、结构和学习资源。',conclusion:'总结',conclusion_lesson:'课程总结',conclusion_objective:'总结课程并为最终评估做好准备',final_summary:'最终总结',final_summary_body:'总结本课程的核心学习成果……',final_exam:'最终评估',final_exam_objective:'评估整个课程的学习成果'},
+ ru:{intro_module:'Введение',intro_objective:'Представить курс и подготовить обучающегося',welcome:'Добро пожаловать на курс',intro_body:'Объясните, как проходит курс, и дайте рекомендации для успешного обучения.',intro_goal:'Ознакомьтесь с целями, структурой и ресурсами курса.',conclusion:'Заключение',conclusion_lesson:'Заключение курса',conclusion_objective:'Подвести итоги курса и подготовиться к итоговой оценке',final_summary:'Итоговое резюме',final_summary_body:'Кратко изложите ключевые результаты обучения...',final_exam:'Итоговая оценка',final_exam_objective:'Оценить результаты обучения по всему курсу'}
+};
+function studioCopy(language:unknown,key:string){const lang=String(language||'fr').toLowerCase();return STUDIO_COPY[lang]?.[key]||STUDIO_COPY.en[key]||STUDIO_COPY.fr[key]||key}
+const SUPPORTED_COURSE_LANGS=new Set(["fr","en","es","pt","ar","zh","ru","de","bm"]);
+const CEFR_LEVELS=new Set(["A1","A2","B1","B2","C1","C2"]);
+const AUTO_COPY:Record<string,Record<string,string>>={
+ fr:{module:"Module",module_presentation:"Présentation du module",lesson:"Leçon",import_draft:"Ce brouillon a été généré depuis un fichier. Contrôlez les titres, les explications, les évaluations et les droits d’utilisation avant toute soumission.",source_document:"Document source",not_published:"Aucune publication automatique n’a été effectuée.",pedagogical_objective:"Objectif pédagogique",summary:"Résumé"},
+ en:{module:"Module",module_presentation:"Module overview",lesson:"Lesson",import_draft:"This draft was generated from a file. Review titles, explanations, assessments and usage rights before submission.",source_document:"Source document",not_published:"Nothing was published automatically.",pedagogical_objective:"Learning objective",summary:"Summary"},
+ es:{module:"Módulo",module_presentation:"Presentación del módulo",lesson:"Lección",import_draft:"Este borrador se generó a partir de un archivo. Revise títulos, explicaciones, evaluaciones y derechos de uso antes de enviarlo.",source_document:"Documento fuente",not_published:"No se ha publicado nada automáticamente.",pedagogical_objective:"Objetivo de aprendizaje",summary:"Resumen"},
+ pt:{module:"Módulo",module_presentation:"Apresentação do módulo",lesson:"Lição",import_draft:"Este rascunho foi gerado a partir de um ficheiro. Reveja títulos, explicações, avaliações e direitos de utilização antes da submissão.",source_document:"Documento de origem",not_published:"Nada foi publicado automaticamente.",pedagogical_objective:"Objetivo de aprendizagem",summary:"Resumo"},
+ de:{module:"Modul",module_presentation:"Modulübersicht",lesson:"Lektion",import_draft:"Dieser Entwurf wurde aus einer Datei erstellt. Prüfen Sie Titel, Erklärungen, Bewertungen und Nutzungsrechte vor der Einreichung.",source_document:"Quelldokument",not_published:"Es wurde nichts automatisch veröffentlicht.",pedagogical_objective:"Lernziel",summary:"Zusammenfassung"},
+ ar:{module:"الوحدة",module_presentation:"نظرة عامة على الوحدة",lesson:"الدرس",import_draft:"تم إنشاء هذه المسودة من ملف. راجع العناوين والشروحات والتقييمات وحقوق الاستخدام قبل الإرسال.",source_document:"الوثيقة المصدر",not_published:"لم يتم نشر أي شيء تلقائيًا.",pedagogical_objective:"هدف التعلم",summary:"الملخص"},
+ zh:{module:"模块",module_presentation:"模块概览",lesson:"课",import_draft:"此草稿由文件生成。提交前请检查标题、说明、评估和使用权限。",source_document:"源文件",not_published:"未自动发布任何内容。",pedagogical_objective:"学习目标",summary:"总结"},
+ ru:{module:"Модуль",module_presentation:"Обзор модуля",lesson:"Урок",import_draft:"Этот черновик создан из файла. Перед отправкой проверьте заголовки, пояснения, оценивание и права использования.",source_document:"Исходный документ",not_published:"Ничего не было опубликовано автоматически.",pedagogical_objective:"Цель обучения",summary:"Резюме"}
+};
+function normalizedCourseLanguage(value:unknown,fallback="fr"){const lang=String(value||"").trim().toLowerCase();return SUPPORTED_COURSE_LANGS.has(lang)?lang:fallback}
+function autoCopy(language:unknown,key:string){const lang=normalizedCourseLanguage(language);return AUTO_COPY[lang]?.[key]||AUTO_COPY.en[key]||key}
+function detectImportLanguage(text:string){const t=String(text||'').slice(0,12000);if(/[\u0600-\u06ff]/.test(t))return'ar';if(/[\u4e00-\u9fff]/.test(t))return'zh';if(/[\u0400-\u04ff]/.test(t))return'ru';const low=` ${t.toLowerCase()} `;const scores:any={fr:[' le ',' la ',' les ',' des ',' une ',' pour ',' avec '],en:[' the ',' and ',' with ',' for ',' this ',' course '],es:[' el ',' la ',' los ',' una ',' para ',' con ',' curso '],pt:[' o ',' a ',' os ',' uma ',' para ',' com ',' curso '],de:[' der ',' die ',' das ',' und ',' mit ',' für ',' kurs ']};let best='fr',bestScore=-1;for(const [lang,words] of Object.entries(scores)){const score=(words as string[]).reduce((n,w)=>n+(low.split(w).length-1),0);if(score>bestScore){best=lang;bestScore=score}}return best}
+
 function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
 function wordCount(value:unknown){const text=stripMarkup(value);return text?text.split(/\s+/).filter(Boolean).length:0}
 function blockActiveMinutes(block:any){
  const c=block?.content_json||{};const type=String(block?.block_type||"");
  const explicit=Math.max(0,Number(c.duration_min||c.duration_minutes||0));
  if(["video","audio","scorm"].includes(type)&&explicit>0)return explicit;
+ if(type==="vocabulary")return Math.max(1,(Array.isArray(c.items)?c.items.length:0)*0.5);
+ if(type==="dialogue")return Math.max(1,(Array.isArray(c.lines)?c.lines.length:0)*0.35);
+ if(type==="cloze")return Math.max(2,wordCount(c.text||"")/120);
+ if(type==="dictation")return Math.max(2,wordCount(c.transcript||c.text||"")/110);
+ if(type==="pronunciation")return Math.max(2,(Array.isArray(c.items)?c.items.length:1)*0.75);
+ if(type==="matching")return Math.max(2,(Array.isArray(c.pairs)?c.pairs.length:0)*0.45);
+ if(type==="sentence_order")return Math.max(1.5,(Array.isArray(c.tokens)?c.tokens.length:0)*0.2);
+ if(type==="oral_response")return Math.max(3,wordCount(c.prompt||"")/100+2);
+ if(type==="listening_comprehension")return Math.max(3,(Array.isArray(c.questions)?c.questions.length:0)*1.5);
+ if(type==="written_expression")return Math.max(5,Number(c.target_words||120)/25);
  if(type==="qcm"||type==="true_false")return 1.5;
  if(type==="open_question")return Math.max(3,Number(c.estimated_minutes||5));
  if(type==="exercise")return Math.max(5,Number(c.estimated_minutes||10));
@@ -66,7 +103,7 @@ async function recalculateCourseDuration(sb:any,courseId:string){
  const blockMinutes=(blocks||[]).reduce((sum:number,block:any)=>sum+blockActiveMinutes(block),0);
  const assessmentMinutes=(assessments||[]).filter((a:any)=>a.is_active!==false&&a.required!==false).reduce((sum:number,a:any)=>sum+Math.max(0,Number(a.estimated_minutes||0)),0);
  const minutes=Math.max(1,Math.ceil(blockMinutes+assessmentMinutes));
- await sb.from("courses").update({calculated_duration_minutes:minutes,updated_at:new Date().toISOString()}).eq("id",courseId);
+ await sb.from("courses").update({calculated_duration_minutes:minutes,total_duration_seconds:minutes*60,updated_at:new Date().toISOString()}).eq("id",courseId);
  return minutes;
 }
 function normalizeScormPath(value:unknown){
@@ -119,7 +156,7 @@ async function ingestScormPackage(sb:any,block:any,zipPath:string){
   const relative=normalizeScormPath(entry.name);const body=await entry.async("uint8array");
   const target=`${prefix}/${relative}`;const uploaded=await sb.storage.from("course-scorm").upload(target,body,{contentType:scormMime(relative),upsert:true,cacheControl:"3600"});if(uploaded.error)throw uploaded.error;
  }
- const old=block.content_json||{};const content={...old,url:null,provider:"scorm_private_proxy",scorm_ready:true,package_type:info.packageType,manifest_path:`${prefix}/${manifestPath}`,launch_path:launchRelative,scorm_package_prefix:prefix,duration_min:info.durationMin||Math.max(0,Number(old.duration_min||0)),duration_source:info.durationMin>0?"manifest":"manual_fallback"};
+ const old=block.content_json||{};const content={...old,url:null,provider:"scorm_private_proxy",scorm_ready:true,package_type:info.packageType,manifest_path:`${prefix}/${manifestPath}`,launch_path:launchRelative,scorm_package_prefix:prefix,duration_min:info.durationMin||0,duration_source:info.durationMin>0?"manifest":"automatic_unknown"};
  const updated=await sb.from("lesson_blocks").update({file_url:zipPath,storage_path:zipPath,bucket_name:"course-scorm",content_json:content,updated_at:new Date().toISOString()}).eq("id",block.id).select("*").single();if(updated.error)throw updated.error;
  await recalculateCourseDuration(sb,String(block.course_id));
  return updated.data;
@@ -194,8 +231,14 @@ async function calculateCoursePricing(sb:any,courseId:string){
 }
 
 const defaults:Record<string,any>={
- heading:{text:"Nouveau titre",level:1,alignment:"left"},subheading:{text:"Sous-titre",level:2,alignment:"left"},text:{html:"<p>Saisissez votre texte ici...</p>"},separator:{style:"line"},callout:{type:"info",content:"Information importante..."},remember:{title:"À retenir",points:[""]},objective:{title:"Objectif pédagogique",html:"<p>À la fin de cette leçon, vous serez capable de...</p>"},example:{title:"Exemple",html:"<p>Décrivez ici un exemple concret...</p>"},summary:{title:"Résumé",html:"<p>Dans cette leçon, vous avez appris...</p>"},image:{url:"",alt:"",caption:""},video:{url:"",eco_data:true},audio:{url:"",description:"",transcription:""},pdf:{url:"",title:"",description:"",downloadable:true},word:{url:"",title:"",description:""},excel:{url:"",title:"",sheet:"",preview_rows:[]},scorm:{url:"",title:"",package_type:"scorm_2004",duration_min:0,duration_source:"automatic",scorm_ready:false},download:{url:"",title:"",description:""},qcm:{question:"",options:["","","",""],correctIndex:0,explanation:""},true_false:{statement:"",answer:true,explanation:""},open_question:{question:"",guidance:"",expected_answer:"",points:10,required:true},exercise:{title:"Exercice",instructions:"",task:"",resources:[],accepted_types:["pdf","doc","docx","xls","xlsx"],learner_upload_required:true,points:20},accordion:{items:[{id:crypto.randomUUID(),title:"Section 1",content:""}]},flashcards:{cards:[{id:crypto.randomUUID(),front:"Recto",back:"Verso"}]},interactive_table:{headers:["Colonne 1","Colonne 2"],rows:[["",""]],style:"table"},timeline:{steps:[{id:crypto.randomUUID(),title:"Étape 1",description:""}]},columns:{columns:[{id:crypto.randomUUID(),content:""},{id:crypto.randomUUID(),content:""}]},important:{title:"Important",html:"<p>Saisissez l’information importante...</p>"},case_study:{context:"",data:"",task:"",questions:[]},definition:{term:"",definition:"",example:""},correction:{title:"Correction",html:"<p>Saisissez ici la correction détaillée...</p>",key_points:[]},bullet_list:{items:[""]},numbered_list:{items:[""]},quote:{text:"Citation ou témoignage",author:""},code:{language:"text",code:""},checklist:{items:[{id:crypto.randomUUID(),text:"Action à réaliser",checked:false}]},link_button:{label:"Ouvrir le lien",url:"",open_new_tab:true},embed:{url:"",title:"Contenu intégré"},gallery:{images:[]},formula:{latex:""},chart:{chart_type:"bar",labels:["A","B"],values:[0,0]},assignment_upload:{title:"Travail à remettre",instructions:"",accepted_types:["pdf","docx"],max_size_mb:10},rubric:{criteria:[{name:"Critère 1",description:"",points:10}]}
+ heading:{text:"Nouveau titre",level:1,alignment:"left"},subheading:{text:"Sous-titre",level:2,alignment:"left"},text:{html:"<p>Saisissez votre texte ici...</p>"},separator:{style:"line"},callout:{type:"info",content:"Information importante..."},remember:{title:"À retenir",points:[""]},objective:{title:"Objectif pédagogique",html:"<p>À la fin de cette leçon, vous serez capable de...</p>"},example:{title:"Exemple",html:"<p>Décrivez ici un exemple concret...</p>"},summary:{title:"Résumé",html:"<p>Dans cette leçon, vous avez appris...</p>"},image:{url:"",alt:"",caption:""},video:{url:"",eco_data:true},audio:{url:"",description:"",transcription:""},pdf:{url:"",title:"",description:"",downloadable:true},word:{url:"",title:"",description:""},excel:{url:"",title:"",sheet:"",preview_rows:[]},scorm:{url:"",title:"",package_type:"scorm_2004",duration_min:0,duration_source:"automatic",scorm_ready:false},vocabulary:{title:"Vocabulaire",items:[{term:"",translation:"",example:"",audio_url:""}]},dialogue:{title:"Dialogue",lines:[{speaker:"A",text:"",translation:"",audio_url:""}]},cloze:{title:"Texte à trous",text:"",answers:[],instructions:""},dictation:{title:"Dictée",audio_url:"",transcript:"",instructions:""},pronunciation:{title:"Prononciation",items:[{text:"",phonetic:"",audio_url:""}],instructions:""},matching:{title:"Association",pairs:[{left:"",right:""}],instructions:""},sentence_order:{title:"Remettre la phrase en ordre",sentence:"",tokens:[],instructions:""},oral_response:{title:"Réponse orale",prompt:"",reference_audio_url:"",guidance:""},listening_comprehension:{title:"Compréhension orale",audio_url:"",transcript:"",questions:[{question:"",answer:""}]},written_expression:{title:"Expression écrite",prompt:"",guidance:"",target_words:120},download:{url:"",title:"",description:""},qcm:{question:"",options:["","","",""],correctIndex:0,explanation:""},true_false:{statement:"",answer:true,explanation:""},open_question:{question:"",guidance:"",expected_answer:"",points:10,required:true},exercise:{title:"Exercice",instructions:"",task:"",resources:[],accepted_types:["pdf","doc","docx","xls","xlsx"],learner_upload_required:true,points:20},accordion:{items:[{id:crypto.randomUUID(),title:"Section 1",content:""}]},flashcards:{cards:[{id:crypto.randomUUID(),front:"Recto",back:"Verso"}]},interactive_table:{headers:["Colonne 1","Colonne 2"],rows:[["",""]],style:"table"},timeline:{steps:[{id:crypto.randomUUID(),title:"Étape 1",description:""}]},columns:{columns:[{id:crypto.randomUUID(),content:""},{id:crypto.randomUUID(),content:""}]},important:{title:"Important",html:"<p>Saisissez l’information importante...</p>"},case_study:{context:"",data:"",task:"",questions:[]},definition:{term:"",definition:"",example:""},correction:{title:"Correction",html:"<p>Saisissez ici la correction détaillée...</p>",key_points:[]},bullet_list:{items:[""]},numbered_list:{items:[""]},quote:{text:"Citation ou témoignage",author:""},code:{language:"text",code:""},checklist:{items:[{id:crypto.randomUUID(),text:"Action à réaliser",checked:false}]},link_button:{label:"Ouvrir le lien",url:"",open_new_tab:true},embed:{url:"",title:"Contenu intégré"},gallery:{images:[]},formula:{latex:""},chart:{chart_type:"bar",labels:["A","B"],values:[0,0]},assignment_upload:{title:"Travail à remettre",instructions:"",accepted_types:["pdf","docx"],max_size_mb:10},rubric:{criteria:[{name:"Critère 1",description:"",points:10}]}
 };
+function defaultBlockForLanguage(type:string,language:unknown){
+ const base=structuredClone(defaults[type]||{});if(normalizedCourseLanguage(language)==="fr")return base;
+ const frenchDefaults=new Set(["Nouveau titre","Sous-titre","Information importante...","À retenir","Objectif pédagogique","Exemple","Résumé","Vocabulaire","Dialogue","Texte à trous","Dictée","Prononciation","Association","Remettre la phrase en ordre","Réponse orale","Compréhension orale","Expression écrite","Exercice","Section 1","Recto","Verso","Étape 1","Important","Étude de cas","Correction","Citation ou témoignage","Action à réaliser","Ouvrir le lien","Contenu intégré","Travail à remettre","Critère 1"]);
+ const clean=(value:any):any=>Array.isArray(value)?value.map(clean):(value&&typeof value==="object")?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,clean(v)])):(typeof value==="string"&&(frenchDefaults.has(value)||/^<p>.*<\/p>$/.test(value)))?"":value;
+ return clean(base);
+}
 
 
 type RegistryAssetResolution = {
@@ -340,12 +383,12 @@ async function extractCourseImportText(bytes:Uint8Array,name:string,depth=0){
  return cleanImportedText(new TextDecoder("utf-8",{fatal:false}).decode(bytes));
 }
 
-function heuristicImportBlueprint(text:string,suggestedTitle:string):CourseImportBlueprint{
+function heuristicImportBlueprint(text:string,suggestedTitle:string,language:string):CourseImportBlueprint{
  const clean=cleanImportedText(text);const rawLines=clean.split("\n").map(x=>x.trim()).filter(Boolean);
- const modules:CourseImportModule[]=[];let currentModule:CourseImportModule={title:"Module 1",objective:"Comprendre et appliquer les notions du document importé",lessons:[]};
- let lessonTitle="Leçon 1";let buffer:string[]=[];
- const flushLesson=()=>{const content=cleanImportedText(buffer.join("\n"));if(!content)return;currentModule.lessons.push({title:lessonTitle,objective:firstSentence(content,180),content,summary:firstSentence(content,320)});buffer=[];lessonTitle=`Leçon ${currentModule.lessons.length+1}`};
- const flushModule=()=>{flushLesson();if(currentModule.lessons.length)modules.push(currentModule);currentModule={title:`Module ${modules.length+1}`,objective:"Approfondir les notions extraites du document",lessons:[]};lessonTitle="Leçon 1"};
+ const modules:CourseImportModule[]=[];const lessonWord=autoCopy(language,"lesson");const moduleWord=autoCopy(language,"module");let currentModule:CourseImportModule={title:`${moduleWord} 1`,objective:"",lessons:[]};
+ let lessonTitle=`${lessonWord} 1`;let buffer:string[]=[];
+ const flushLesson=()=>{const content=cleanImportedText(buffer.join("\n"));if(!content)return;currentModule.lessons.push({title:lessonTitle,objective:firstSentence(content,180),content,summary:firstSentence(content,320)});buffer=[];lessonTitle=`${lessonWord} ${currentModule.lessons.length+1}`};
+ const flushModule=()=>{flushLesson();if(currentModule.lessons.length)modules.push(currentModule);currentModule={title:`${moduleWord} ${modules.length+1}`,objective:"",lessons:[]};lessonTitle=`${lessonWord} 1`};
  for(const line of rawLines){
   const moduleMatch=line.match(/^(module|partie|chapitre)\s*([0-9ivx.-]*)\s*[:\-–]?\s*(.*)$/i);
   const lessonMatch=line.match(/^(le[cç]on|section|unit[eé])\s*([0-9ivx.-]*)\s*[:\-–]?\s*(.*)$/i);
@@ -357,57 +400,58 @@ function heuristicImportBlueprint(text:string,suggestedTitle:string):CourseImpor
  flushModule();
  if(!modules.length){
   const chunks=clean.match(/[\s\S]{1,3200}(?:\s|$)/g)||[clean];
-  const lessons=chunks.filter(Boolean).slice(0,18).map((chunk,index)=>({title:`Leçon ${index+1}`,objective:firstSentence(chunk,180),content:cleanImportedText(chunk),summary:firstSentence(chunk,320)}));
-  for(let index=0;index<lessons.length;index+=3)modules.push({title:`Module ${Math.floor(index/3)+1}`,objective:"Étudier les contenus importés et les mettre en pratique",lessons:lessons.slice(index,index+3)});
+  const lessons=chunks.filter(Boolean).slice(0,18).map((chunk,index)=>({title:`${lessonWord} ${index+1}`,objective:firstSentence(chunk,180),content:cleanImportedText(chunk),summary:firstSentence(chunk,320)}));
+  for(let index=0;index<lessons.length;index+=3)modules.push({title:`${moduleWord} ${Math.floor(index/3)+1}`,objective:"",lessons:lessons.slice(index,index+3)});
  }
- const bounded=modules.slice(0,8).map((module,index)=>({...module,title:module.title||`Module ${index+1}`,lessons:module.lessons.slice(0,10)}));
- const title=suggestedTitle.trim()||titleFromFilename(suggestedTitle)||"Formation importée";
- return {title,short_description:`Brouillon créé à partir d’un document importé. ${firstSentence(clean,260)}`.slice(0,500),objectives:["Comprendre les notions principales du document importé","Appliquer les acquis dans des situations pratiques"],target_audience:"Public à préciser par le créateur",learning_outcomes:["Identifier les notions essentielles","Mettre en pratique les contenus étudiés"],modules:bounded};
+ const bounded=modules.slice(0,8).map((module,index)=>({...module,title:module.title||`${moduleWord} ${index+1}`,lessons:module.lessons.slice(0,10)}));
+ const title=suggestedTitle.trim()||titleFromFilename(suggestedTitle)||"Course";
+ return {title,short_description:firstSentence(clean,500),objectives:[],target_audience:"",learning_outcomes:[],modules:bounded};
 }
 
-function normalizeImportBlueprint(value:any,fallback:CourseImportBlueprint):CourseImportBlueprint{
- const source=value&&typeof value==="object"?value:{};const modules=(Array.isArray(source.modules)?source.modules:[]).slice(0,8).map((module:any,moduleIndex:number)=>({
-  title:String(module?.title||`Module ${moduleIndex+1}`).trim().slice(0,500),
+function normalizeImportBlueprint(value:any,fallback:CourseImportBlueprint,language:string):CourseImportBlueprint{
+ const source=value&&typeof value==="object"?value:{};const lessonWord=autoCopy(language,"lesson");const moduleWord=autoCopy(language,"module");const modules=(Array.isArray(source.modules)?source.modules:[]).slice(0,8).map((module:any,moduleIndex:number)=>({
+  title:String(module?.title||`${moduleWord} ${moduleIndex+1}`).trim().slice(0,500),
   objective:String(module?.objective||"").trim().slice(0,2000),
   lessons:(Array.isArray(module?.lessons)?module.lessons:[]).slice(0,10).map((lesson:any,lessonIndex:number)=>({
-   title:String(lesson?.title||`Leçon ${lessonIndex+1}`).trim().slice(0,500),objective:String(lesson?.objective||"").trim().slice(0,1000),content:cleanImportedText(String(lesson?.content||lesson?.text||"" )).slice(0,7000),summary:cleanImportedText(String(lesson?.summary||"" )).slice(0,1200),questions:(Array.isArray(lesson?.questions)?lesson.questions:[]).slice(0,2).map((question:any)=>({question:String(question?.question||"").trim().slice(0,1000),options:stringList(question?.options,4).map(x=>x.slice(0,500)),correctIndex:Math.min(3,Math.max(0,Number(question?.correctIndex)||0)),explanation:String(question?.explanation||"").trim().slice(0,1500)})).filter((question:any)=>question.question&&question.options.length===4)
+   title:String(lesson?.title||`${lessonWord} ${lessonIndex+1}`).trim().slice(0,500),objective:String(lesson?.objective||"").trim().slice(0,1000),content:cleanImportedText(String(lesson?.content||lesson?.text||"" )).slice(0,7000),summary:cleanImportedText(String(lesson?.summary||"" )).slice(0,1200),questions:(Array.isArray(lesson?.questions)?lesson.questions:[]).slice(0,2).map((question:any)=>({question:String(question?.question||"").trim().slice(0,1000),options:stringList(question?.options,4).map(x=>x.slice(0,500)),correctIndex:Math.min(3,Math.max(0,Number(question?.correctIndex)||0)),explanation:String(question?.explanation||"").trim().slice(0,1500)})).filter((question:any)=>question.question&&question.options.length===4)
   })).filter((lesson:any)=>lesson.content)
  })).filter((module:any)=>module.lessons.length);
  return {title:String(source.title||fallback.title).trim().slice(0,500)||fallback.title,short_description:String(source.short_description||fallback.short_description).trim().slice(0,500),objectives:stringList(source.objectives,12).length?stringList(source.objectives,12):fallback.objectives,target_audience:String(source.target_audience||fallback.target_audience).trim().slice(0,2000),learning_outcomes:stringList(source.learning_outcomes,12).length?stringList(source.learning_outcomes,12):fallback.learning_outcomes,modules:modules.length?modules:fallback.modules};
 }
-async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint){
+async function aiImportBlueprint(text:string,fallback:CourseImportBlueprint,language:string){
  const key=getAnthropicApiKey();if(!key)return {blueprint:fallback,ai_used:false};
- const excerpt=cleanImportedText(text).slice(0,50000);const prompt=`Transforme le contenu suivant en brouillon de formation éditable. N'invente aucun fait. Réponds uniquement avec un JSON valide, sans Markdown, conforme à ce schéma : {"title":"","short_description":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","lessons":[{"title":"","objective":"","content":"texte brut","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}]}]}. Limites : 8 modules, 10 leçons par module, 2 QCM par leçon. Les questions sont facultatives si le contenu ne permet pas une réponse certaine. Le résultat reste un brouillon non publié.\n\nTITRE SUGGÉRÉ : ${fallback.title}\n\nCONTENU :\n${excerpt}`;
+ const excerpt=cleanImportedText(text).slice(0,50000);const prompt=`Langue du contenu : ${language}. Conserve impérativement cette langue pour tous les titres, résumés, objectifs, questions et explications. Ne traduis pas vers le français.\nTransforme le contenu suivant en brouillon de formation éditable. N'invente aucun fait. Réponds uniquement avec un JSON valide, sans Markdown, conforme à ce schéma : {"title":"","short_description":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","lessons":[{"title":"","objective":"","content":"texte brut","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}]}]}. Limites : 8 modules, 10 leçons par module, 2 QCM par leçon. Les questions sont facultatives si le contenu ne permet pas une réponse certaine. Le résultat reste un brouillon non publié.\n\nTITRE SUGGÉRÉ : ${fallback.title}\n\nCONTENU :\n${excerpt}`;
  try{
   const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:5000,messages:[{role:"user",content:prompt}]})});
   if(!response.ok)return {blueprint:fallback,ai_used:false};const output=await response.json();const raw=String(output?.content?.[0]?.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false};
-  return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback),ai_used:true};
+  return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback,language),ai_used:true};
  }catch{return {blueprint:fallback,ai_used:false}}
 }
 async function sha256Hex(bytes:Uint8Array){const input=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const digest=await crypto.subtle.digest("SHA-256",input);return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("")}
 
-async function createImportedCourse(sb:any,userId:string,creatorContext:string,blueprint:CourseImportBlueprint,source:any,aiUsed:boolean){
+async function createImportedCourse(sb:any,userId:string,creatorContext:string,blueprint:CourseImportBlueprint,source:any,aiUsed:boolean,requestedLanguage=""){
  let structureId:string|null=null;if(creatorContext==="structure"){const access=await validatedStructureAccess(sb,userId);if(!access)throw new Error("STRUCTURE_NOT_VALIDATED");if(!hasStructurePermission(access,"can_create_courses"))throw new Error("STRUCTURE_COURSE_PERMISSION_REQUIRED");structureId=access.organizationId}
  const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
  const wordCount=blueprint.modules.flatMap(module=>module.lessons).reduce((sum,lesson)=>sum+cleanImportedText(lesson.content).split(/\s+/).filter(Boolean).length,0);
  const learningDesign={delivery_mode:"self_paced",drip_enabled:false,drip_interval_days:7,cohort_start_at:null,estimated_effort_hours:0,completion_policy:"all_required",require_sequential_progress:true,require_video_completion:false,accessibility:{captions:false,transcript:false,keyboard_checked:false,contrast_checked:false,alt_text_checked:false},learner_persona:"",success_outcome:"",import_source:{bucket:source.bucket,path:source.path,name:source.name,mime:source.mime,size:source.size,sha256:source.sha256,imported_at:new Date().toISOString(),ai_assisted:aiUsed}};
- const insert:any={title:blueprint.title||"Formation importée",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,template_used:"file_import",studio_mode:"simple",studio_status:"draft",is_published:false,short_description:blueprint.short_description||"Brouillon créé depuis un fichier",long_description:"",language:"fr",prerequisites:"",objectives:blueprint.objectives,target_audience:blueprint.target_audience,learning_outcomes:blueprint.learning_outcomes,course_intro_title:"Bienvenue dans cette formation",course_intro_summary:"Cette formation a été préparée depuis un document importé. Vérifiez chaque contenu avant soumission.",free_preview_mode:"introduction",lesson_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.lesson_passing_score??80))),module_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.module_passing_score??80))),final_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.final_passing_score??70))),assessment_policy:{default_retry_cooldown_hours:Number(thresholdDefaults.default_retry_cooldown_hours??24),default_remediation_after_attempts:Number(thresholdDefaults.default_remediation_after_attempts??3),competency_mastery_score:Number(thresholdDefaults.competency_mastery_score??80)},learning_design_settings:learningDesign,quality_status:"incomplete",ready_to_submit:false,current_version:"1.0",word_count:wordCount,estimated_read_min:Math.max(1,Math.ceil(wordCount/200))};
+ const importLanguage=normalizedCourseLanguage(requestedLanguage);
+ const insert:any={title:blueprint.title||titleFromFilename(String(source.name||""))||"Course",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,template_used:"file_import",studio_mode:"simple",studio_status:"draft",is_published:false,short_description:blueprint.short_description||"",long_description:"",language:importLanguage,instruction_language:importLanguage,course_type:"standard",prerequisites:"",objectives:blueprint.objectives,target_audience:blueprint.target_audience,learning_outcomes:blueprint.learning_outcomes,course_intro_title:studioCopy(importLanguage,"welcome"),course_intro_summary:studioCopy(importLanguage,"intro_body"),free_preview_mode:"introduction",lesson_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.lesson_passing_score??80))),module_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.module_passing_score??80))),final_passing_score:Math.min(100,Math.max(1,Number(thresholdDefaults.final_passing_score??70))),assessment_policy:{default_retry_cooldown_hours:Number(thresholdDefaults.default_retry_cooldown_hours??24),default_remediation_after_attempts:Number(thresholdDefaults.default_remediation_after_attempts??3),competency_mastery_score:Number(thresholdDefaults.competency_mastery_score??80)},learning_design_settings:learningDesign,quality_status:"incomplete",ready_to_submit:false,current_version:"1.0",word_count:wordCount,estimated_read_min:Math.max(1,Math.ceil(wordCount/200))};
  if(creatorContext==="super_admin")insert.creator_type="plateforme";
  const {data:course,error:courseError}=await sb.from("courses").insert(insert).select("*").single();if(courseError)throw courseError;
  const moduleRows:any[]=[];
- const {data:introModule,error:introModuleError}=await sb.from("course_modules").insert({course_id:course.id,title:"Introduction",objective:"Présenter la formation importée et les vérifications attendues",position:-1,is_intro:true}).select("*").single();if(introModuleError)throw introModuleError;
- const {data:introLesson,error:introLessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:introModule.id,title:"Bienvenue dans cette formation",position:0,is_intro:true}).select("*").single();if(introLessonError)throw introLessonError;
- const introBlocks=[{block_type:"heading",content_json:{text:"Bienvenue dans cette formation",level:1,alignment:"left"}},{block_type:"text",content_json:{html:"<p>Ce brouillon a été généré depuis un fichier. Contrôlez les titres, les explications, les évaluations et les droits d’utilisation avant toute soumission.</p>"}},{block_type:"callout",content_json:{type:"warning",content:`Document source : ${escapeHtml(source.name)}. Aucune publication automatique n’a été effectuée.`}}];
+ const {data:introModule,error:introModuleError}=await sb.from("course_modules").insert({course_id:course.id,title:studioCopy(importLanguage,"intro_module"),objective:studioCopy(importLanguage,"intro_objective"),position:-1,is_intro:true}).select("*").single();if(introModuleError)throw introModuleError;
+ const {data:introLesson,error:introLessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:introModule.id,title:studioCopy(importLanguage,"welcome"),position:0,is_intro:true}).select("*").single();if(introLessonError)throw introLessonError;
+ const introBlocks=[{block_type:"heading",content_json:{text:studioCopy(importLanguage,"welcome"),level:1,alignment:"left"}},{block_type:"text",content_json:{html:`<p>${escapeHtml(autoCopy(importLanguage,"import_draft"))}</p>`}},{block_type:"callout",content_json:{type:"warning",content:`${autoCopy(importLanguage,"source_document")} : ${escapeHtml(source.name)}. ${autoCopy(importLanguage,"not_published")}`}}];
  for(const [position,block] of introBlocks.entries()){const {error}=await sb.from("lesson_blocks").insert({course_id:course.id,module_id:introModule.id,lesson_id:introLesson.id,block_type:block.block_type,position,content_json:block.content_json,settings_json:{},source_type:"file_import",ai_generated:false,created_by:userId});if(error)throw error}
  moduleRows.push({...introModule,lessons:[{...introLesson,has_blocks:true,block_count:introBlocks.length}]});
  for(const [moduleIndex,module] of blueprint.modules.entries()){
   const {data:moduleRow,error:moduleError}=await sb.from("course_modules").insert({course_id:course.id,title:module.title||`Module ${moduleIndex+1}`,objective:module.objective||"",position:moduleIndex,is_intro:false}).select("*").single();if(moduleError)throw moduleError;const lessonRows:any[]=[];
   for(const [lessonIndex,lesson] of module.lessons.entries()){
-   const {data:lessonRow,error:lessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:moduleRow.id,title:lesson.title||`Leçon ${lessonIndex+1}`,position:lessonIndex,is_intro:false,is_module_intro:false,content_text:lesson.content,lesson_summary:lesson.summary||""}).select("*").single();if(lessonError)throw lessonError;
-   const blocks:any[]=[{block_type:"heading",content_json:{text:lesson.title||`Leçon ${lessonIndex+1}`,level:1,alignment:"left"}}];
-   if(lesson.objective)blocks.push({block_type:"objective",content_json:{title:"Objectif pédagogique",html:textToHtml(lesson.objective)}});
+   const {data:lessonRow,error:lessonError}=await sb.from("course_lessons").insert({course_id:course.id,module_id:moduleRow.id,title:lesson.title||`${autoCopy(importLanguage,"lesson")} ${lessonIndex+1}`,position:lessonIndex,is_intro:false,is_module_intro:false,content_text:lesson.content,lesson_summary:lesson.summary||""}).select("*").single();if(lessonError)throw lessonError;
+   const blocks:any[]=[{block_type:"heading",content_json:{text:lesson.title||`${autoCopy(importLanguage,"lesson")} ${lessonIndex+1}`,level:1,alignment:"left"}}];
+   if(lesson.objective)blocks.push({block_type:"objective",content_json:{title:autoCopy(importLanguage,"pedagogical_objective"),html:textToHtml(lesson.objective)}});
    blocks.push({block_type:"text",content_json:{html:textToHtml(lesson.content)}});
-   if(lesson.summary)blocks.push({block_type:"summary",content_json:{title:"Résumé",html:textToHtml(lesson.summary)}});
+   if(lesson.summary)blocks.push({block_type:"summary",content_json:{title:autoCopy(importLanguage,"summary"),html:textToHtml(lesson.summary)}});
    for(const question of lesson.questions||[])blocks.push({block_type:"qcm",content_json:{question:question.question,options:question.options,correctIndex:question.correctIndex,explanation:question.explanation||""}});
    for(const [position,block] of blocks.entries()){const {error}=await sb.from("lesson_blocks").insert({course_id:course.id,module_id:moduleRow.id,lesson_id:lessonRow.id,block_type:block.block_type,position,content_json:block.content_json,settings_json:{draft_from_import:true},source_type:"file_import",ai_generated:aiUsed,created_by:userId});if(error)throw error}
    lessonRows.push({...lessonRow,has_blocks:true,block_count:blocks.length});
@@ -648,10 +692,10 @@ Deno.serve(async(req)=>{
    const insert:any={
     title:b.title||"Nouvelle formation",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
     studio_mode:b.studio_mode||"simple",studio_status:"draft",short_description:b.short_description||"",
-    long_description:b.long_description||"",category:b.category||null,level:b.level||null,language:b.language||"fr",
+    long_description:b.long_description||"",category:b.category||null,level:b.level||null,language:normalizedCourseLanguage(b.language),course_type:b.course_type==="language_learning"?"language_learning":"standard",instruction_language:normalizedCourseLanguage(b.instruction_language||b.language),target_language:b.course_type==="language_learning"?(normalizedCourseLanguage(b.target_language,"")||null):null,cefr_start_level:b.course_type==="language_learning"?(b.cefr_start_level||null):null,cefr_target_level:b.course_type==="language_learning"?(b.cefr_target_level||null):null,language_framework:b.course_type==="language_learning"?(b.language_framework||"CEFR"):null,
     prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",
     learning_outcomes:b.learning_outcomes||[],cover_image_url:b.cover_image_url||null,
-    cover_image_prompt:b.cover_image_prompt||"",course_intro_title:b.course_intro_title||"Bienvenue dans cette formation",
+    cover_image_prompt:b.cover_image_prompt||"",course_intro_title:b.course_intro_title||studioCopy(normalizedCourseLanguage(b.language),"welcome"),
     course_intro_summary:b.course_intro_summary||"",free_preview_mode:"introduction",
     lesson_passing_score:Math.min(100,Math.max(1,Number(b.lesson_passing_score??thresholdDefaults.lesson_passing_score??80))),module_passing_score:Math.min(100,Math.max(1,Number(b.module_passing_score??thresholdDefaults.module_passing_score??80))),final_passing_score:Math.min(100,Math.max(1,Number(b.final_passing_score??thresholdDefaults.final_passing_score??70))),
     assessment_policy:{default_retry_cooldown_hours:Number(thresholdDefaults.default_retry_cooldown_hours??24),default_remediation_after_attempts:Number(thresholdDefaults.default_remediation_after_attempts??3),competency_mastery_score:Number(thresholdDefaults.competency_mastery_score??80)},
@@ -662,12 +706,13 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("courses").insert(insert).select("*").single(); if(error)throw error;
    let modules:any[]=[];
    if(b.create_introduction!==false){
-    const {data:introModule,error:moduleError}=await sb.from("course_modules").insert({course_id:data.id,title:"Introduction",objective:"Présenter la formation et préparer l’apprenant",position:-1,is_intro:true}).select("*").single();if(moduleError)throw moduleError;
-    const {data:introLesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:data.id,module_id:introModule.id,title:b.course_intro_title||"Bienvenue dans cette formation",position:0,is_intro:true}).select("*").single();if(lessonError)throw lessonError;
+    const lang=normalizedCourseLanguage(b.language);
+    const {data:introModule,error:moduleError}=await sb.from("course_modules").insert({course_id:data.id,title:studioCopy(lang,"intro_module"),objective:studioCopy(lang,"intro_objective"),position:-1,is_intro:true}).select("*").single();if(moduleError)throw moduleError;
+    const {data:introLesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:data.id,module_id:introModule.id,title:b.course_intro_title||studioCopy(lang,"welcome"),position:0,is_intro:true}).select("*").single();if(lessonError)throw lessonError;
     const introBlocks=[
-      {block_type:"heading",content_json:{text:b.course_intro_title||"Bienvenue dans cette formation",level:1,alignment:"left"}},
-      {block_type:"text",content_json:{html:`<p>${String(b.course_intro_summary||"Présentez ici le fonctionnement de la formation et les conseils pour réussir.").replace(/[<>]/g,"")}</p>`}},
-      {block_type:"objective",content_json:{text:"Découvrez les objectifs, le déroulement et les ressources de cette formation."}}
+      {block_type:"heading",content_json:{text:b.course_intro_title||studioCopy(lang,"welcome"),level:1,alignment:"left"}},
+      {block_type:"text",content_json:{html:`<p>${String(b.course_intro_summary||studioCopy(lang,"intro_body")).replace(/[<>]/g,"")}</p>`}},
+      {block_type:"objective",content_json:{text:studioCopy(lang,"intro_goal")}}
     ];
     for(const [i,blk] of introBlocks.entries()) await sb.from("lesson_blocks").insert({course_id:data.id,module_id:introModule.id,lesson_id:introLesson.id,block_type:blk.block_type,position:i,content_json:blk.content_json,settings_json:{},created_by:userId});
     modules=[{...introModule,lessons:[{...introLesson,has_blocks:true,block_count:introBlocks.length}]}];
@@ -704,10 +749,10 @@ Deno.serve(async(req)=>{
     if(duplicate)return json({success:false,error:"DUPLICATE_IMPORT",message:"Ce fichier a déjà servi à créer un brouillon.",course_id:duplicate.course_id},409);
     const extracted=await extractCourseImportText(bytes,originalName);
     if(extracted.length<80)throw new Error("Aucun texte exploitable n’a été détecté. Pour un PDF scanné, utilisez un fichier contenant du texte sélectionnable.");
-    const requestedTitle=String(b.title||"").trim()||titleFromFilename(originalName);const fallback=heuristicImportBlueprint(extracted,requestedTitle);fallback.title=requestedTitle;
-    const generated=b.allow_ai===true?await aiImportBlueprint(extracted,fallback):{blueprint:fallback,ai_used:false};const blueprint=normalizeImportBlueprint(generated.blueprint,fallback);
+    const requestedTitle=String(b.title||"").trim()||titleFromFilename(originalName);const importLanguage=normalizedCourseLanguage(String(b.language||"").trim()||detectImportLanguage(extracted));const fallback=heuristicImportBlueprint(extracted,requestedTitle,importLanguage);fallback.title=requestedTitle;
+    const generated=b.allow_ai===true?await aiImportBlueprint(extracted,fallback,importLanguage):{blueprint:fallback,ai_used:false};const blueprint=normalizeImportBlueprint(generated.blueprint,fallback,importLanguage);
     const source={bucket,path,name:originalName,mime:String(b.file_mime||blob.type||"application/octet-stream"),size:bytes.byteLength,sha256:sourceHash};
-    const created=await createImportedCourse(sb,userId,creatorContext,blueprint,source,generated.ai_used);createdCourseId=created.course.id;
+    const created=await createImportedCourse(sb,userId,creatorContext,blueprint,source,generated.ai_used,importLanguage);createdCourseId=created.course.id;
     return json({success:true,...created,message:"Brouillon créé. Vérifiez chaque contenu avant de le soumettre."});
    }catch(error){
     if(createdCourseId)await sb.from("courses").delete().eq("id",createdCourseId).then(()=>{}).catch(()=>{});
@@ -727,18 +772,18 @@ Deno.serve(async(req)=>{
   }
   if(courseId && !["learner_get_assessment","learner_submit_assessment","prepare_assessment_submission_upload","learner_complete_remediation"].includes(action) && !(await owns(sb,userId,courseId,coursePermissionForAction(action))))return json({success:false,error:"FORBIDDEN"},403);
   if(action==="ensure_special_sections"){
-   const {data:courseSettings}=await sb.from("courses").select("final_passing_score").eq("id",courseId).maybeSingle();const finalPassing=Math.min(100,Math.max(1,Number(courseSettings?.final_passing_score||70)));
+   const {data:courseSettings}=await sb.from("courses").select("final_passing_score,language").eq("id",courseId).maybeSingle();const sectionLang=courseSettings?.language||"fr";const finalPassing=Math.min(100,Math.max(1,Number(courseSettings?.final_passing_score||70)));
    const {data:existing}=await sb.from("course_modules").select("*").eq("course_id",courseId).or("is_conclusion.eq.true,is_final_exam.eq.true");
    const result:any[]=[];
    if(!(existing||[]).some((m:any)=>m.is_conclusion)){
-    const {data:m,error}=await sb.from("course_modules").insert({course_id:courseId,title:"Conclusion",objective:"Synthétiser la formation et préparer l’évaluation finale",position:9000,is_intro:false,is_conclusion:true,is_final_exam:false}).select("*").single();if(error)throw error;
-    const {data:l}=await sb.from("course_lessons").insert({course_id:courseId,module_id:m.id,title:"Conclusion de la formation",position:0,is_conclusion:true,is_final_exam:false}).select("*").single();
-    await sb.from("lesson_blocks").insert([{course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"heading",position:0,content_json:{text:"Conclusion",html:"Conclusion",level:1},settings_json:{},created_by:userId},{course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"summary",position:1,content_json:{title:"Résumé final",html:"<p>Résumez les acquis essentiels de la formation...</p>"},settings_json:{},created_by:userId}]); result.push(m);
+    const {data:m,error}=await sb.from("course_modules").insert({course_id:courseId,title:studioCopy(sectionLang,"conclusion"),objective:studioCopy(sectionLang,"conclusion_objective"),position:9000,is_intro:false,is_conclusion:true,is_final_exam:false}).select("*").single();if(error)throw error;
+    const {data:l}=await sb.from("course_lessons").insert({course_id:courseId,module_id:m.id,title:studioCopy(sectionLang,"conclusion_lesson"),position:0,is_conclusion:true,is_final_exam:false}).select("*").single();
+    await sb.from("lesson_blocks").insert([{course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"heading",position:0,content_json:{text:studioCopy(sectionLang,"conclusion"),html:studioCopy(sectionLang,"conclusion"),level:1},settings_json:{},created_by:userId},{course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"summary",position:1,content_json:{title:studioCopy(sectionLang,"final_summary"),html:`<p>${studioCopy(sectionLang,"final_summary_body")}</p>`},settings_json:{},created_by:userId}]); result.push(m);
    }
    if(!(existing||[]).some((m:any)=>m.is_final_exam)){
-    const {data:m,error}=await sb.from("course_modules").insert({course_id:courseId,title:"Examen final",objective:"Évaluer les acquis de toute la formation",position:10000,is_intro:false,is_conclusion:false,is_final_exam:true}).select("*").single();if(error)throw error;
-    const {data:l}=await sb.from("course_lessons").insert({course_id:courseId,module_id:m.id,title:"Examen final",position:0,is_conclusion:false,is_final_exam:true}).select("*").single();
-    await sb.from("lesson_blocks").insert({course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"heading",position:0,content_json:{text:"Examen final",html:"Examen final",level:1},settings_json:{assessment_scope:"final",passing_score:finalPassing},created_by:userId}); result.push(m);
+    const {data:m,error}=await sb.from("course_modules").insert({course_id:courseId,title:studioCopy(sectionLang,"final_exam"),objective:studioCopy(sectionLang,"final_exam_objective"),position:10000,is_intro:false,is_conclusion:false,is_final_exam:true}).select("*").single();if(error)throw error;
+    const {data:l}=await sb.from("course_lessons").insert({course_id:courseId,module_id:m.id,title:studioCopy(sectionLang,"final_exam"),position:0,is_conclusion:false,is_final_exam:true}).select("*").single();
+    await sb.from("lesson_blocks").insert({course_id:courseId,module_id:m.id,lesson_id:l.id,block_type:"heading",position:0,content_json:{text:studioCopy(sectionLang,"final_exam"),html:studioCopy(sectionLang,"final_exam"),level:1},settings_json:{assessment_scope:"final",passing_score:finalPassing},created_by:userId}); result.push(m);
    }
    await log(sb,courseId,userId,"special_sections_ensured"); return json({success:true,created:result});
   }
@@ -751,24 +796,24 @@ Deno.serve(async(req)=>{
    return json({success:true,course,modules});
   }
   if(action==="create_module"){
-   const {data:normalMods}=await sb.from("course_modules").select("id").eq("course_id",courseId).eq("is_intro",false);
-   const normalCount=(normalMods||[]).length;
+   const [{data:normalMods},{data:courseMeta}]=await Promise.all([sb.from("course_modules").select("id").eq("course_id",courseId).eq("is_intro",false),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);
+   const normalCount=(normalMods||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
    const {data,error}=await sb.from("course_modules").insert({course_id:courseId,title:b.title||`Module ${normalCount+1}`,objective:b.objective||"",position:normalCount,is_intro:false}).select("*").single();if(error)throw error;
    let introLesson:any=null;
    if(b.create_module_introduction!==false){
-    const {data:lesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:"Présentation du module",position:-1,is_intro:false,is_module_intro:true}).select("*").single();if(lessonError)throw lessonError;
+    const {data:lesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:autoCopy(lang,"module_presentation"),position:-1,is_intro:false,is_module_intro:true}).select("*").single();if(lessonError)throw lessonError;
     introLesson={...lesson,has_blocks:false,block_count:0};
    }
    await log(sb,courseId,userId,"module_created",{module_id:data.id,with_introduction:!!introLesson});return json({success:true,module:data,intro_lesson:introLesson});
   }
   if(action==="create_lesson"){
-   const {data:normalLessons}=await sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("is_module_intro",false);const count=(normalLessons||[]).length;
-   const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`Leçon ${count+1}`,position:count,is_intro:false,is_module_intro:false}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
+   const [{data:normalLessons},{data:courseMeta}]=await Promise.all([sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("is_module_intro",false),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const count=(normalLessons||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
+   const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`${autoCopy(lang,"lesson")} ${count+1}`,position:count,is_intro:false,is_module_intro:false}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
   }
   if(action==="get_blocks"){const {data,error}=await sb.from("lesson_blocks").select("*").eq("lesson_id",b.lesson_id).order("position");if(error)throw error;const blocks=await Promise.all((data||[]).map((row:any)=>decorateStudioBlock(sb,row)));return json({success:true,blocks})}
   if(action==="create_block"){
-   const {count}=await sb.from("lesson_blocks").select("id",{count:"exact",head:true}).eq("lesson_id",b.lesson_id);const pos=Number.isInteger(b.position)?b.position:(count||0);
-   const {data,error}=await sb.from("lesson_blocks").insert({course_id:courseId,module_id:b.module_id,lesson_id:b.lesson_id,block_type:b.block_type,position:pos,content_json:b.content_json||defaults[b.block_type]||{},settings_json:b.settings_json||{},created_by:userId,ai_generated:!!b.ai_generated,source_type:b.ai_generated?"ai":"manual"}).select("*").single();if(error)throw error;await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"block_created",{block_id:data.id,type:data.block_type});return json({success:true,block:data});
+   const [{count},{data:courseMeta}]=await Promise.all([sb.from("lesson_blocks").select("id",{count:"exact",head:true}).eq("lesson_id",b.lesson_id),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const pos=Number.isInteger(b.position)?b.position:(count||0);
+   const {data,error}=await sb.from("lesson_blocks").insert({course_id:courseId,module_id:b.module_id,lesson_id:b.lesson_id,block_type:b.block_type,position:pos,content_json:b.content_json||defaultBlockForLanguage(b.block_type,courseMeta?.language),settings_json:b.settings_json||{},created_by:userId,ai_generated:!!b.ai_generated,source_type:b.ai_generated?"ai":"manual"}).select("*").single();if(error)throw error;await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"block_created",{block_id:data.id,type:data.block_type});return json({success:true,block:data});
   }
   if(action==="update_block"){
    const {data:blk}=await sb.from("lesson_blocks").select("course_id,storage_path,bucket_name,content_json,block_type").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
@@ -785,21 +830,29 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","learning_design_settings","lesson_passing_score","module_passing_score","final_passing_score","assessment_policy"])if(b[k]!==undefined)updates[k]=b[k]; updates.free_preview_mode="introduction";if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   if(b.language!==undefined&&!SUPPORTED_COURSE_LANGS.has(String(b.language).toLowerCase()))return json({success:false,error:"INVALID_COURSE_LANGUAGE"},400);
+   if(b.instruction_language!==undefined&&String(b.instruction_language||"")&&!SUPPORTED_COURSE_LANGS.has(String(b.instruction_language).toLowerCase()))return json({success:false,error:"INVALID_INSTRUCTION_LANGUAGE"},400);
+   if(b.target_language!==undefined&&String(b.target_language||"")&&!SUPPORTED_COURSE_LANGS.has(String(b.target_language).toLowerCase()))return json({success:false,error:"INVALID_TARGET_LANGUAGE"},400);
+   if(b.cefr_start_level!==undefined&&String(b.cefr_start_level||"")&&!CEFR_LEVELS.has(String(b.cefr_start_level)))return json({success:false,error:"INVALID_CEFR_START_LEVEL"},400);
+   if(b.cefr_target_level!==undefined&&String(b.cefr_target_level||"")&&!CEFR_LEVELS.has(String(b.cefr_target_level)))return json({success:false,error:"INVALID_CEFR_TARGET_LEVEL"},400);
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","course_type","instruction_language","target_language","cefr_start_level","cefr_target_level","language_framework","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","learning_design_settings","lesson_passing_score","module_passing_score","final_passing_score","assessment_policy"])if(b[k]!==undefined)updates[k]=b[k]; if((updates.course_type||b.course_type)==="standard"){updates.target_language=null;updates.cefr_start_level=null;updates.cefr_target_level=null;updates.language_framework=null}else if((updates.course_type||b.course_type)==="language_learning"){updates.language_framework="CEFR";} updates.free_preview_mode="introduction";if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
    const {data:t}=await sb.from("course_studio_templates").select("*").eq("key",b.template_key).eq("is_active",true).maybeSingle();if(!t)return json({success:false,error:"TEMPLATE_NOT_FOUND"},404);
    if(b.replace_existing){await sb.from("course_modules").delete().eq("course_id",courseId).eq("is_intro",false)}
+   const {data:courseMeta}=await sb.from("courses").select("language").eq("id",courseId).maybeSingle();const templateLang=normalizedCourseLanguage(courseMeta?.language);
    for(const [mi,m] of (t.blueprint.modules||[]).entries()){
-    const {data:mod}=await sb.from("course_modules").insert({course_id:courseId,title:m.title,objective:m.objective||"",position:mi,is_intro:false}).select("*").single();
-    await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:"Présentation du module",position:-1,is_intro:false,is_module_intro:true});
+    const localizedModuleTitle=templateLang==="fr"?m.title:(/^Module\s+\d+$/i.test(String(m.title||""))?`Module ${mi+1}`:m.title);const localizedObjective=templateLang==="fr"?(m.objective||""):"";
+    const {data:mod}=await sb.from("course_modules").insert({course_id:courseId,title:localizedModuleTitle,objective:localizedObjective,position:mi,is_intro:false}).select("*").single();
+    await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:autoCopy(templateLang,"module_presentation"),position:-1,is_intro:false,is_module_intro:true});
     for(const [li,l] of (m.lessons||[]).entries()){
-     const {data:lesson}=await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:l.title,position:li,is_intro:false,is_module_intro:false}).select("*").single();
-     for(const [bi,type] of (l.blocks||[]).entries())await sb.from("lesson_blocks").insert({course_id:courseId,module_id:mod.id,lesson_id:lesson.id,block_type:type,position:bi,content_json:defaults[type]||{},settings_json:{},created_by:userId});
+     const localizedLessonTitle=templateLang==="fr"?l.title:`${autoCopy(templateLang,"lesson")} ${li+1}`;
+     const {data:lesson}=await sb.from("course_lessons").insert({course_id:courseId,module_id:mod.id,title:localizedLessonTitle,position:li,is_intro:false,is_module_intro:false}).select("*").single();
+     for(const [bi,type] of (l.blocks||[]).entries())await sb.from("lesson_blocks").insert({course_id:courseId,module_id:mod.id,lesson_id:lesson.id,block_type:type,position:bi,content_json:defaultBlockForLanguage(type,templateLang),settings_json:{},created_by:userId});
     }
    }
-   await sb.from("courses").update({template_used:b.template_key,studio_mode:t.mode,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"template_applied",{template:b.template_key});return json({success:true});
+   await sb.from("courses").update({template_used:b.template_key,studio_mode:t.mode,...(b.template_key==="language_learning"?{course_type:"language_learning",language_framework:"CEFR"}:{}),updated_at:new Date().toISOString()}).eq("id",courseId);await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"template_applied",{template:b.template_key});return json({success:true});
   }
 
   if(action==="ensure_assessments"){
@@ -825,7 +878,7 @@ Deno.serve(async(req)=>{
    const lessonRequired=policy.lesson_assessment_required===true;
    const moduleRequired=policy.module_assessment_required===true;
    const finalRequired=policy.final_assessment_required===true||course.certification_requested===true||course.requested_cpd===true||course.cpd_accredited===true;
-   const evalTypes=["qcm","true_false","open_question","exercise","assignment_upload"];
+   const evalTypes=["qcm","true_false","open_question","exercise","assignment_upload","oral_response","written_expression","dictation","listening_comprehension"];
 
    const ensureOne=async(scope:string,title:string,moduleId?:string,lessonId?:string,passing=80)=>{
     let q=sb.from("course_assessments").select("*").eq("course_id",courseId).eq("scope",scope);
@@ -847,8 +900,10 @@ Deno.serve(async(req)=>{
      const sourceBlocks=(blocks||[]).filter((block:any)=>sourceLessonIds.includes(block.lesson_id)&&evalTypes.includes(block.block_type));
      for(const [position,block] of sourceBlocks.entries()){
       const content=block.content_json||{};
-      const questionType=block.block_type==="assignment_upload"?"exercise":block.block_type;
-      const blockResource=block.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(block.bucket_name||""))?{name:block.file_name||"Ressource",bucket_name:block.bucket_name,storage_path:block.storage_path,url:null}:(block.file_url?{name:block.file_name||"Ressource",url:block.file_url}:null);const questionPayload:any={assessment_id:assessment.id,question_type:questionType,position,prompt:content.question||content.statement||content.title||content.instructions||"Question à compléter",points:Number(content.points||10),grading_mode:["qcm","true_false"].includes(questionType)?"automatic":(content.grading_mode||"human"),options:content.options||[],correct_answer:questionType==="qcm"?content.correctIndex:questionType==="true_false"?content.answer:content.expected_answer||null,explanation:content.explanation||"",resource_files:content.resources||(blockResource?[blockResource]:[]),accepted_submission_types:content.accepted_types||["pdf","doc","docx","xls","xlsx","zip","png","jpg"],rubric:content.rubric||[]};
+      const questionType=["assignment_upload","oral_response"].includes(block.block_type)?"exercise":["written_expression","dictation","listening_comprehension"].includes(block.block_type)?"open_question":block.block_type;
+      const languagePrompt=block.block_type==="listening_comprehension"?(content.questions||[]).map((q:any,i:number)=>`${i+1}. ${q?.question||""}`).filter(Boolean).join("\n"):block.block_type==="dictation"?(content.instructions||"Transcrivez fidèlement l’audio."):block.block_type==="oral_response"?(content.prompt||"Réponse orale"):block.block_type==="written_expression"?(content.prompt||"Expression écrite"):null;
+      const languageAccepted=block.block_type==="oral_response"?["mp3","wav","m4a","ogg","webm"]:null;
+      const blockResource=block.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(block.bucket_name||""))?{name:block.file_name||"Ressource",bucket_name:block.bucket_name,storage_path:block.storage_path,url:null}:(block.file_url?{name:block.file_name||"Ressource",url:block.file_url}:null);const questionPayload:any={assessment_id:assessment.id,question_type:questionType,position,prompt:languagePrompt||content.question||content.statement||content.title||content.instructions||"Question à compléter",points:Number(content.points||10),grading_mode:["qcm","true_false"].includes(questionType)?"automatic":(content.grading_mode||"human"),options:content.options||[],correct_answer:questionType==="qcm"?content.correctIndex:questionType==="true_false"?content.answer:content.expected_answer||null,explanation:content.explanation||"",resource_files:content.resources||(blockResource?[blockResource]:[]),accepted_submission_types:languageAccepted||content.accepted_types||["pdf","doc","docx","xls","xlsx","zip","png","jpg"],rubric:content.rubric||[]};
       const {error:questionError}=await sb.from("assessment_questions").insert(questionPayload);
       if(questionError)throw questionError;
      }
@@ -861,7 +916,7 @@ Deno.serve(async(req)=>{
    if(finalRequired)await ensureOne("final",`Examen final — ${course.title}`,undefined,undefined,course.final_passing_score||70);
 
    const {data:all,error:allError}=await sb.from("course_assessments").select("*,assessment_questions(count)").eq("course_id",courseId).order("scope");
-   if(allError)throw allError;
+   if(allError)throw allError;await recalculateCourseDuration(sb,courseId);
    return json({success:true,assessments:all||[],policy});
   }
   if(action==="assessment_policy_get"){
@@ -935,7 +990,7 @@ Deno.serve(async(req)=>{
    const courseUpdate=await sb.from("courses").update({assessment_policy:policy,lesson_passing_score:first("lesson",80),module_passing_score:first("module",80),final_passing_score:first("final",70),assessment_rules_locked:false,updated_at:nowIso}).eq("id",courseId).select("id").maybeSingle();
    if(courseUpdate.error)throw courseUpdate.error;
    if(!courseUpdate.data)return json({success:false,error:"COURSE_UPDATE_FAILED",message:"Les règles n’ont pas été rattachées à la formation."},409);
-   await log(sb,courseId,userId,"assessment_policy_updated",{count:rows.length});
+   await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"assessment_policy_updated",{count:rows.length});
    return json({success:true,updated_assessments:rows.length});
   }
   if(action==="prepare_assessment_submission_upload"){
@@ -1185,6 +1240,8 @@ Deno.serve(async(req)=>{
    if(!c.cover_image_url?.trim())errors.push("Ajoutez une image de couverture.");
    if(!c.category)errors.push("Sélectionnez une catégorie.");
    if(!c.level)errors.push("Sélectionnez un niveau.");
+   if(!SUPPORTED_COURSE_LANGS.has(String(c.language||"").toLowerCase()))errors.push("Sélectionnez une langue principale de contenu valide.");
+   if(c.course_type==="language_learning"){const start=String(c.cefr_start_level||"");const target=String(c.cefr_target_level||"");if(!SUPPORTED_COURSE_LANGS.has(String(c.instruction_language||"").toLowerCase()))errors.push("Sélectionnez la langue d’enseignement de la formation linguistique.");if(!SUPPORTED_COURSE_LANGS.has(String(c.target_language||"").toLowerCase()))errors.push("Sélectionnez la langue étudiée.");if(!CEFR_LEVELS.has(start))errors.push("Sélectionnez le niveau CECRL / CEFR de départ.");if(!CEFR_LEVELS.has(target))errors.push("Sélectionnez le niveau CECRL / CEFR visé.");const order=["A1","A2","B1","B2","C1","C2"];if(CEFR_LEVELS.has(start)&&CEFR_LEVELS.has(target)&&order.indexOf(target)<order.indexOf(start))errors.push("Le niveau CECRL / CEFR visé ne peut pas être inférieur au niveau de départ.");}
    if(!c.target_audience?.trim())warnings.push("Précisez le public cible.");
    if(!(c.objectives||[]).filter((x:any)=>String(x||"").trim()).length)errors.push("Ajoutez au moins un objectif pédagogique.");
    const design=c.learning_design_settings||{};
@@ -1353,8 +1410,10 @@ Deno.serve(async(req)=>{
   if(String(action).startsWith("ai_")){
    const input=String(b.text||b.content||b.topic||"").trim();if(!input)return json({success:false,error:"TEXT_REQUIRED"},400);
    const key=getAnthropicApiKey();if(!key)return json({success:true,result:"Service IA non configuré. Votre texte original a été conservé.",fallback:true});
-   const prompts:Record<string,string>={ai_improve_text:"Améliore ce contenu pédagogique en français, sans inventer de faits.",ai_simplify_text:"Simplifie ce contenu pour un public débutant.",ai_correct_grammar:"Corrige uniquement la langue et la grammaire.",ai_summarize:"Résume clairement ce contenu.",ai_generate_qcm:"Génère un QCM avec 1 bonne réponse, 3 mauvaises réponses et une explication. Réponds en JSON.",ai_generate_true_false:"Génère une question vrai/faux avec explication. Réponds en JSON.",ai_generate_quiz:"Génère 5 questions variées avec corrigés. Réponds en JSON.",ai_create_summary:"Crée un résumé pédagogique structuré.",ai_create_remember:"Crée une liste concise de points à retenir.",ai_suggest_structure:"Propose une structure de modules et leçons.",ai_suggest_objectives:"Propose des objectifs pédagogiques mesurables.",ai_suggest_example:"Propose un exemple concret et réaliste."};
-   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:1400,messages:[{role:"user",content:`${prompts[action]||"Aide à améliorer ce contenu pédagogique."}\n\n${input}`} ]})});const out=await r.json();return json({success:r.ok,result:out?.content?.[0]?.text||"",error:r.ok?undefined:"AI_ERROR"},r.ok?200:502);
+   const prompts:Record<string,string>={ai_improve_text:"Améliore ce contenu pédagogique sans inventer de faits.",ai_simplify_text:"Simplifie ce contenu pour un public débutant.",ai_correct_grammar:"Corrige uniquement la langue et la grammaire.",ai_summarize:"Résume clairement ce contenu.",ai_generate_qcm:"Génère un QCM avec 1 bonne réponse, 3 mauvaises réponses et une explication. Réponds en JSON.",ai_generate_true_false:"Génère une question vrai/faux avec explication. Réponds en JSON.",ai_generate_quiz:"Génère 5 questions variées avec corrigés. Réponds en JSON.",ai_create_summary:"Crée un résumé pédagogique structuré.",ai_create_remember:"Crée une liste concise de points à retenir.",ai_suggest_structure:"Propose une structure de modules et leçons.",ai_suggest_objectives:"Propose des objectifs pédagogiques mesurables.",ai_suggest_example:"Propose un exemple concret et réaliste."};
+   let courseLanguage=String(b.language||"").trim();if(!courseLanguage&&b.course_id){const {data:aiCourse}=await sb.from("courses").select("language,instruction_language,target_language,course_type").eq("id",String(b.course_id)).maybeSingle();courseLanguage=String(aiCourse?.language||aiCourse?.instruction_language||"").trim();}
+   const languageRule=courseLanguage?`Langue principale du contenu : ${courseLanguage}. Réponds impérativement dans cette langue et ne traduis jamais vers le français sauf demande explicite du créateur.`:"Conserve strictement la langue du texte source. Ne traduis pas le contenu sauf demande explicite du créateur.";
+   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:getAnthropicFastModel(),max_tokens:1400,messages:[{role:"user",content:`${languageRule}\n${prompts[action]||"Aide à améliorer ce contenu pédagogique."}\n\n${input}`} ]})});const out=await r.json();return json({success:r.ok,result:out?.content?.[0]?.text||"",error:r.ok?undefined:"AI_ERROR"},r.ok?200:502);
   }
   return json({success:false,error:"UNKNOWN_ACTION",action},400);
  }catch(e){console.error("studio-unified",e);return json({success:false,error:"SERVER_ERROR",message:(e as Error).message},500)}

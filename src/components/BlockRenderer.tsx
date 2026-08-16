@@ -282,6 +282,27 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
       return <ScormBlock block={block} />;
 
     // ── ÉVALUATION ─────────────────────────────────────────────
+    case 'vocabulary':
+      return <div className="my-4 overflow-hidden rounded-xl border" style={{borderColor:'#E4E7EC'}}>{(c.items||[]).map((x:any,i:number)=><div key={i} className="grid gap-1 border-b p-3 last:border-b-0 sm:grid-cols-2"><div><strong style={{color:'#002050'}}>{x.term}</strong>{x.example&&<p className="mt-1 text-xs text-slate-500">{x.example}</p>}</div><div className="text-sm text-slate-600">{x.translation}{x.audio_url&&<audio className="mt-2 w-full" controls src={x.audio_url}/>}</div></div>)}</div>;
+    case 'dialogue':
+      return <div className="my-4 space-y-2">{(c.lines||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><span className="text-xs font-bold text-[#BF8813]">{x.speaker||`#${i+1}`}</span><p className="mt-1 text-sm font-semibold text-[#002050]">{x.text}</p>{x.translation&&<p className="mt-1 text-xs text-slate-500">{x.translation}</p>}</div>)}</div>;
+    case 'cloze':
+      return <ClozeBlock c={c}/>;
+    case 'matching':
+      return <MatchingBlock c={c}/>;
+    case 'sentence_order':
+      return <SentenceOrderBlock c={c}/>;
+    case 'dictation':
+      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details></div>;
+    case 'pronunciation':
+      return <div className="my-4 space-y-3">{(c.items||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{x.text}</p>{x.phonetic&&<p className="text-xs text-slate-500">{x.phonetic}</p>}{x.audio_url&&<audio className="mt-2 w-full" controls src={x.audio_url}/>}<p className="mt-2 text-xs text-slate-500">Écoutez puis répétez à voix haute.</p></div>)}</div>;
+    case 'oral_response':
+      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.prompt}</p>{c.reference_audio_url&&<audio className="mt-3 w-full" controls src={c.reference_audio_url}/>}<p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Entraînement oral dans la leçon. Lorsqu’une remise audio est exigée, elle est créée dans l’évaluation formelle de la leçon afin d’être enregistrée et corrigée.</p></div>;
+    case 'listening_comprehension':
+      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{(c.questions||[]).map((q:any,i:number)=><label key={i} className="block text-sm font-medium text-[#002050]">{q.question}<input className="mt-1 w-full rounded-lg border p-2 font-normal"/></label>)}</div></div>;
+    case 'written_expression':
+      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.prompt}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea className="mt-3 w-full rounded-lg border p-3 text-sm" rows={7} placeholder={`Votre réponse (~${c.target_words||120} mots)…`}/></div>;
+
     case 'qcm':
       return <QcmBlock block={block} onAnswer={onQuizAnswer} />;
 
@@ -370,6 +391,12 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
 }
 
 // ─── Sous-composants ──────────────────────────────────────────
+
+
+function normAnswer(value:unknown){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,' ')}
+function ClozeBlock({c}:{c:Record<string,any>}){const [values,setValues]=useState<string[]>([]),[checked,setChecked]=useState(false);const parts=String(c.text||'').split('____'),answers=Array.isArray(c.answers)?c.answers:[];const ok=parts.length>1&&parts.length-1===answers.length&&answers.every((a:any,i:number)=>normAnswer(a)===normAnswer(values[i]));return <div className="my-4 rounded-xl border p-4 text-sm leading-8" style={{borderColor:'#E4E7EC'}}>{parts.map((part:string,i:number)=><span key={i}>{part}{i<parts.length-1&&<input className="mx-1 inline-block w-32 rounded border px-2 py-1" value={values[i]||''} onChange={e=>{const v=[...values];v[i]=e.target.value;setValues(v);setChecked(false)}}/>}</span>)}<div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Vérifier</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
+function MatchingBlock({c}:{c:Record<string,any>}){const pairs=Array.isArray(c.pairs)?c.pairs:[],choices=pairs.map((x:any)=>String(x.right||''));const [answers,setAnswers]=useState<string[]>([]),[checked,setChecked]=useState(false);const ok=pairs.length>0&&pairs.every((x:any,i:number)=>normAnswer(x.right)===normAnswer(answers[i]));return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{pairs.map((x:any,i:number)=><label key={i} className="grid gap-2 text-sm sm:grid-cols-2 sm:items-center"><strong className="text-[#002050]">{x.left}</strong><select className="rounded-lg border p-2" value={answers[i]||''} onChange={e=>{const a=[...answers];a[i]=e.target.value;setAnswers(a);setChecked(false)}}><option value="">Associer…</option>{choices.map((v:string,j:number)=><option key={j} value={v}>{v}</option>)}</select></label>)}</div><div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Vérifier</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
+function SentenceOrderBlock({c}:{c:Record<string,any>}){const source=(Array.isArray(c.tokens)&&c.tokens.length?c.tokens:String(c.sentence||'').split(/\s+/).filter(Boolean)).map(String);const [remaining,setRemaining]=useState<string[]>(()=>[...source].sort(()=>Math.random()-0.5)),[chosen,setChosen]=useState<string[]>([]),[checked,setChecked]=useState(false);const pick=(i:number)=>{const t=remaining[i];setRemaining(v=>v.filter((_,j)=>j!==i));setChosen(v=>[...v,t]);setChecked(false)};const reset=()=>{setRemaining([...source].sort(()=>Math.random()-0.5));setChosen([]);setChecked(false)};const ok=normAnswer(chosen.join(' '))===normAnswer(c.sentence||source.join(' '));return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="mb-2 text-xs text-slate-500">Remettez la phrase dans le bon ordre :</p><div className="min-h-10 rounded-lg bg-slate-50 p-2 text-sm">{chosen.join(' ')||'…'}</div><div className="mt-3 flex flex-wrap gap-2">{remaining.map((x,i)=><button type="button" key={`${x}-${i}`} onClick={()=>pick(i)} className="rounded-full bg-slate-100 px-3 py-1 text-sm">{x}</button>)}</div><div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} disabled={remaining.length>0} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button><button type="button" onClick={reset} className="text-xs font-semibold text-slate-600">Recommencer</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
 
 function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: string }) {
   const [loaded, setLoaded] = useState(!eco);

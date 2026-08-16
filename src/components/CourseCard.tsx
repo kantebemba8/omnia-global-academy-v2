@@ -23,6 +23,7 @@ export interface CourseCardData {
   access_mode?: 'public' | 'registered' | 'premium' | 'paid';
   certificate_available?: boolean;
   duration_label?: string | null;
+  total_duration_seconds?: number;
   external_click_count?: number;
 }
 
@@ -32,6 +33,15 @@ const LEVEL_COLORS: Record<string, string> = {
   Avancé: '#DC2626',
   Expert: '#7C3AED',
 };
+
+
+function formatDuration(seconds?: number) {
+  const total = Math.max(0, Number(seconds || 0));
+  if (!total) return '';
+  const minutes = Math.max(1, Math.round(total / 60));
+  const h = Math.floor(minutes / 60); const m = minutes % 60;
+  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+}
 
 function Stars({ rating }: { rating: number }) {
   const normalizedRating = Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0;
@@ -86,6 +96,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
               <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews})</span>
             </div>
           )}
+          {formatDuration(course.total_duration_seconds) && <p className="mt-1 text-xs" style={{ color: '#6B7280' }}>Durée estimée · {formatDuration(course.total_duration_seconds)}</p>}
           <p className="mt-2 text-sm font-bold sm:hidden" style={{ color: isExternal ? '#002050' : course.is_free ? '#1E7A52' : '#002050' }}>
             {isExternal ? externalPriceLabel : course.is_free ? 'Gratuit' : `${course.price_xof.toLocaleString('fr-FR')} XOF`}
           </p>
@@ -142,6 +153,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
             <span className="text-xs" style={{ color: '#6B7280' }}>({course.total_reviews} avis)</span>
           </div>
         )}
+        {formatDuration(course.total_duration_seconds) && <p className="text-xs" style={{ color: '#6B7280' }}>Durée estimée · {formatDuration(course.total_duration_seconds)}</p>}
         {(course.cpd_hours ?? 0) > 0 && <p className="text-xs" style={{ color: '#6B7280' }}>Crédits reconnus · {course.cpd_hours} h</p>}
         {isExternal && <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: course.access_mode === 'premium' || course.access_mode === 'paid' ? '#8A5F09' : '#6B7280' }}>{course.access_mode === 'premium' || course.access_mode === 'paid' ? <LockKeyhole size={12} /> : course.access_mode === 'registered' ? <LogIn size={12} /> : <ExternalLink size={12} />}{accessLabel}{course.access_mode !== 'paid' && course.is_free ? ' · Gratuit chez le fournisseur' : ''}{course.certificate_available ? ' · Certificat disponible' : ''}</p>}
       </div>
