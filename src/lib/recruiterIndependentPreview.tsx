@@ -15,5 +15,5 @@ export type AdminPreviewSpace = {
 export const RECRUITER_INDEPENDENT_PREVIEW_SPACE: AdminPreviewSpace = {
   label: 'Recruteur indépendant',
   icon: UserRoundSearch,
-  path: '/talent/recruteur/dashboard?preview=true',
+  path: '/home?role=recruteur?preview=true',
 };

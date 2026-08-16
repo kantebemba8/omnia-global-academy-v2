@@ -785,7 +785,7 @@ function commerceReturnPath(product: Record<string, any>, isPlan: boolean) {
   if (audience === "structure") return "/structure/abonnements";
   if (audience === "coach") return "/coach/plan-omnia";
   if (audience === "organizer") return "/omnia-live/organisateur/plan-omnia";
-  if (audience === "professor") return "/professeur/dashboard";
+  if (audience === "professor") return "/home?role=professeur";
   return "/dashboard/abonnements";
 }
 

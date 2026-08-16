@@ -50,7 +50,7 @@ const NAV: Record<TalentAudience, TalentNavGroup[]> = {
     {
       id: 'presence', label: 'Ma présence', path: '/talent/presence', description: 'Profil, compétences et preuves que vous choisissez de rendre visibles.', icon: UserRound,
       children: [
-        { label: 'Mon profil', path: '/mon-profil', description: 'Informations publiques et confidentialité.', icon: UserRound },
+        { label: 'Mon profil', path: '/home?section=profil', description: 'Informations publiques et confidentialité.', icon: UserRound },
         { label: 'Skills Passport', path: '/dashboard/skills-passport', description: 'Compétences, preuves et réalisations autorisées.', icon: BadgeCheck },
         { label: 'Portfolio projets', path: '/dashboard/project-portfolio', description: 'Expériences de projets que vous valorisez.', icon: FileText },
       ],

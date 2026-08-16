@@ -62,14 +62,14 @@ export function isInternalSystemRole(role: CanonicalPlatformRole): role is Inter
 
 const ROLE_REDIRECT_PRIORITY: ReadonlyArray<readonly [CanonicalPlatformRole, string]> = [
   ['super_admin', '/admin/dashboard'],
-  ['moderateur', '/moderateur/dashboard'],
-  ['structure', '/structure/dashboard'],
-  ['gestionnaire_structure', '/structure/dashboard'],
-  ['organisateur', '/omnia-live/organisateur'],
-  ['recruteur', '/talent/recruteur/dashboard'],
-  ['professeur', '/professeur/dashboard'],
-  ['coach', '/coach/dashboard'],
-  ['apprenant', '/dashboard'],
+  ['moderateur', '/home?role=moderateur'],
+  ['structure', '/home?role=structure'],
+  ['gestionnaire_structure', '/home?role=structure'],
+  ['organisateur', '/home?role=organisateur'],
+  ['recruteur', '/home?role=recruteur'],
+  ['professeur', '/home?role=professeur'],
+  ['coach', '/home?role=coach'],
+  ['apprenant', '/home?role=apprenant'],
 ];
 
 const CANONICAL_ROLE_BY_STORED_ROLE: Readonly<Record<string, CanonicalPlatformRole>> = {

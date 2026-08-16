@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
             params: {
               ROLE_NAME: "Professeur",
               MESSAGE_SPECIFIQUE: "Votre dossier a bien été reçu. Vous serez notifié dès qu’une décision de l’Administration Omnia sera disponible.",
-              DASHBOARD_URL: `${appUrl}/professeur/dashboard`,
+              DASHBOARD_URL: `${appUrl}/home?role=professeur`,
             },
           },
           sb,
@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
             params: {
               ROLE_NAME: "Structure",
               MESSAGE_SPECIFIQUE: "Votre dossier a bien été reçu. Vous serez notifié dès qu’une décision de l’Administration Omnia sera disponible.",
-              DASHBOARD_URL: `${appUrl}/structure/dashboard`,
+              DASHBOARD_URL: `${appUrl}/home?role=structure`,
             },
           },
           sb,
@@ -90,10 +90,10 @@ Deno.serve(async (req: Request) => {
             params: {
               NOM: nameParts.slice(1).join(" ") || nameParts[0],
               DOMAINE: payload.domaine as string || "",
-              DASHBOARD_URL: `${appUrl}/professeur/dashboard`,
+              DASHBOARD_URL: `${appUrl}/home?role=professeur`,
             },
           },
-          smsMessage: `Omnia Academy : Votre profil Professeur est validé ! Créez votre première formation : ${appUrl}/professeur/dashboard`,
+          smsMessage: `Omnia Academy : Votre profil Professeur est validé ! Créez votre première formation : ${appUrl}/home?role=professeur`,
           sb,
         });
         break;
@@ -108,10 +108,10 @@ Deno.serve(async (req: Request) => {
             params: {
               SCHOOL_NAME: payload.school_name as string,
               DIRECTOR_NAME: payload.director_name as string,
-              DASHBOARD_URL: `${appUrl}/structure/dashboard`,
+              DASHBOARD_URL: `${appUrl}/home?role=structure`,
             },
           },
-          smsMessage: `Omnia Academy : Votre Structure ${payload.school_name} est validée. Accédez à votre espace : ${appUrl}/structure/dashboard`,
+          smsMessage: `Omnia Academy : Votre Structure ${payload.school_name} est validée. Accédez à votre espace : ${appUrl}/home?role=structure`,
           sb,
         });
         break;
@@ -372,7 +372,7 @@ Deno.serve(async (req: Request) => {
               PLATFORM_PERCENT: payload.platform_percent as number,
               SCHOOL_AMOUNT: payload.school_amount as number,
               PLATFORM_AMOUNT: payload.platform_amount as number,
-              ACTION_URL: payload.action_url as string || `${appUrl}/structure/dashboard`,
+              ACTION_URL: payload.action_url as string || `${appUrl}/home?role=structure`,
             },
           },
           sb,

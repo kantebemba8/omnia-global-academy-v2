@@ -1037,7 +1037,7 @@ Deno.serve(async (req: Request) => {
               params: {
                 CONTACT_NAME: String(managerUser.full_name || data.contact_name || ""),
                 ORGANIZATION_NAME: String(data.org_name || "Votre Structure"),
-                DASHBOARD_URL: `${appUrl}/structure/dashboard`,
+                DASHBOARD_URL: `${appUrl}/home?role=structure`,
               },
             });
             await dispatchOmniaInAppNotification({
@@ -1045,7 +1045,7 @@ Deno.serve(async (req: Request) => {
               notificationType: decision === "restore" ? "structure_restored" : "structure_approved",
               title: decision === "restore" ? "Structure réactivée" : "Structure validée",
               message: `${String(data.org_name || "Votre Structure")} est maintenant active sur Omnia Global Academy.`,
-              actionUrl: "/structure/dashboard",
+              actionUrl: "/home?role=structure",
               priority: "high",
               payload: { domain: "structure", organization_id: organizationId, decision },
             });
@@ -1089,7 +1089,7 @@ Deno.serve(async (req: Request) => {
                   ? "La demande de validation de votre Structure n’a pas été approuvée."
                   : "L’accès opérationnel de votre Structure a été suspendu."
               ),
-              actionUrl: decision === "suspend" ? "/mon-profil" : "/structure/dashboard",
+              actionUrl: decision === "suspend" ? "/home?section=profil" : "/home?role=structure",
               priority: "high",
               payload: { domain: "structure", organization_id: organizationId, decision },
             });

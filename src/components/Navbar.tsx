@@ -86,8 +86,8 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
   const dashboardPath = user ? getDashboardPathForRoles(user.roles) : '/accueil';
-  const profilePath = '/mon-profil';
-  const settingsPath = '/mon-profil?tab=notifications';
+  const profilePath = '/home?section=profil';
+  const settingsPath = '/home?section=profil&tab=notifications';
   const isAdministration = user ? normalizePlatformRoles(user.roles).includes('super_admin') : false;
   const brandHomePath = user ? '/home' : '/accueil';
   const audienceNavLinks = audienceLinks && audienceLinks.length > 0

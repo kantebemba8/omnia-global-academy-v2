@@ -88,7 +88,7 @@ const COACH_PRACTICE: CoachingNavGroup = {
   description: 'Piloter vos offres, disponibilités, séances et qualité d’accompagnement.',
   icon: HeartHandshake,
   children: [
-    { label: 'Vue coach', path: '/coach/dashboard', description: 'Activité et priorités de votre pratique.', icon: BarChart3 },
+    { label: 'Vue coach', path: '/home?role=coach', description: 'Activité et priorités de votre pratique.', icon: BarChart3 },
     { label: 'Mes offres', path: '/coach/offres', description: 'Offres individuelles et demandes personnalisées.', icon: Settings2 },
     { label: 'Mon calendrier', path: '/coach/calendrier', description: 'Disponibilités, exceptions et rythme de réservation.', icon: CalendarDays },
     { label: 'Mes sessions', path: '/coach/sessions', description: 'Séances à venir, en cours et terminées.', icon: ListChecks },

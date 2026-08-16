@@ -58,7 +58,6 @@ const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword').then((mo
 const ResetPassword = lazy(() => import('./pages/auth/ResetPassword').then((module) => ({ default: module.ResetPassword })));
 const PendingValidation = lazy(() => import('./pages/auth/PendingValidation').then((module) => ({ default: module.PendingValidation })));
 const ForcePasswordChange = lazy(() => import('./pages/auth/ForcePasswordChange').then((module) => ({ default: module.ForcePasswordChange })));
-const DashboardApprenant = lazy(() => import('./pages/dashboard/DashboardApprenant').then((module) => ({ default: module.DashboardApprenant })));
 const DashboardMesCours = lazy(() => import('./pages/dashboard/DashboardMesCours').then((module) => ({ default: module.DashboardMesCours })));
 const DashboardAssessments = lazy(() => import('./pages/dashboard/DashboardAssessments'));
 const AssessmentSession = lazy(() => import('./pages/AssessmentSession'));
@@ -73,9 +72,7 @@ const CareerStudioEditor = lazy(() => import('./pages/dashboard/CareerStudioEdit
 const OmniaCareerStudio = lazy(() => import('./pages/OmniaCareerStudio'));
 const CareerSectionHub = lazy(() => import('./pages/career/CareerSectionHub'));
 const DashboardParrainage = lazy(() => import('./pages/dashboard/DashboardParrainage').then((module) => ({ default: module.DashboardParrainage })));
-const UnifiedProfilePage = lazy(() => import('./pages/profile/UnifiedProfilePage'));
 const PublicProfilePage = lazy(() => import('./pages/profile/PublicProfilePage'));
-const DashboardProfesseur = lazy(() => import('./pages/professeur/DashboardProfesseur').then((module) => ({ default: module.DashboardProfesseur })));
 const ProfesseurMesFormations = lazy(() => import('./pages/professeur/ProfesseurMesFormations').then((module) => ({ default: module.ProfesseurMesFormations })));
 const ProfesseurAssessmentCenter = lazy(() => import('./pages/professeur/ProfesseurAssessmentCenter'));
 const ProfesseurJuries = lazy(() => import('./pages/professeur/ProfesseurJuries'));
@@ -83,7 +80,6 @@ const ProfesseurPortefeuille = lazy(() => import('./pages/professeur/ProfesseurP
 const ProfesseurAnalytique = lazy(() => import('./pages/professeur/ProfesseurAnalytique').then((module) => ({ default: module.ProfesseurAnalytique })));
 const ProfesseurProfil = lazy(() => import('./pages/professeur/ProfesseurProfil').then((module) => ({ default: module.ProfesseurProfil })));
 const ProfesseurCertificats = lazy(() => import('./pages/professeur/ProfesseurCertificats'));
-const ModerateurDashboard = lazy(() => import('./pages/moderateur/ModerateurDashboard'));
 const ModerateurCours = lazy(() => import('./pages/moderateur/ModerateurCours'));
 const ModerateurKyc = lazy(() => import('./pages/moderateur/ModerateurKyc'));
 const ModerateurUtilisateurs = lazy(() => import('./pages/moderateur/ModerateurUtilisateurs'));
@@ -161,8 +157,6 @@ const CommunitySectionHub = lazy(() => import('./pages/community/CommunitySectio
 const EspaceCarriere = lazy(() => import('./pages/EspaceCarriere'));
 const JobDetail = lazy(() => import('./pages/JobDetail'));
 const FormulaireRecruteur = lazy(() => import('./pages/FormulaireRecruteur'));
-const DemoDashboard = lazy(() => import('./pages/demo/DemoDashboard'));
-const StructureDashboard = lazy(() => import('./pages/structure/StructureDashboard'));
 const StructureMesFormations = lazy(() => import('./pages/structure/StructureMesFormations'));
 const StructureProfil = lazy(() => import('./pages/structure/StructureProfil'));
 const StructureCodes = lazy(() => import('./pages/structure/StructureCodes'));
@@ -179,7 +173,7 @@ const TalentDirectory = lazy(() => import('./pages/TalentDirectory'));
 const TalentHome = lazy(() => import('./pages/talent/TalentHome'));
 const TalentExplore = lazy(() => import('./pages/talent/TalentExplore'));
 const TalentRecruiters = lazy(() => import('./pages/talent/TalentRecruiters'));
-const RecruiterDashboard = lazy(() => import('./pages/talent/RecruiterDashboard'));
+const RecruiterWorkspace = lazy(() => import('./pages/talent/RecruiterWorkspace'));
 const TalentAbout = lazy(() => import('./pages/talent/TalentAbout'));
 const TalentOrganisations = lazy(() => import('./pages/talent/TalentOrganisations'));
 const TalentProfilePublic = lazy(() => import('./pages/talent/TalentProfilePublic'));
@@ -199,7 +193,6 @@ const CoachingCoachProfile = lazy(() => import('./pages/coaching/CoachingCoachPr
 const CoachingBooking = lazy(() => import('./pages/coaching/CoachingBooking'));
 const CoachingPayment = lazy(() => import('./pages/coaching/CoachingPayment'));
 const CoachApplication = lazy(() => import('./pages/coaching/CoachApplication'));
-const CoachDashboard = lazy(() => import('./pages/coaching/CoachDashboard'));
 const CoachOffers = lazy(() => import('./pages/coaching/CoachOffers'));
 const CoachCalendar = lazy(() => import('./pages/coaching/CoachCalendar'));
 const CoachSessions = lazy(() => import('./pages/coaching/CoachSessions'));
@@ -248,14 +241,12 @@ const AdminOmniaLiveMedia = lazy(() => import('./pages/omnia-live/admin/AdminOmn
 const AdminOmniaLiveFinance = lazy(() => import('./pages/omnia-live/admin/AdminOmniaLiveFinance'));
 const AdminOmniaLiveOperations = lazy(() => import('./pages/omnia-live/admin/AdminOmniaLiveOperations'));
 const AdminOmniaLiveSettings = lazy(() => import('./pages/omnia-live/admin/AdminOmniaLiveSettings'));
-const OrganizerDashboard = lazy(() => import('./pages/omnia-live/organizer/OrganizerDashboard'));
 const OrganizerEvents = lazy(() => import('./pages/omnia-live/organizer/OrganizerEvents'));
 const OrganizerEventDetail = lazy(() => import('./pages/omnia-live/organizer/OrganizerEventDetail'));
 const OrganizerParticipants = lazy(() => import('./pages/omnia-live/organizer/OrganizerParticipants'));
 const OrganizerMedia = lazy(() => import('./pages/omnia-live/organizer/OrganizerMedia'));
 const OrganizerAnalytics = lazy(() => import('./pages/omnia-live/organizer/OrganizerAnalytics'));
 const OrganizerSettings = lazy(() => import('./pages/omnia-live/organizer/OrganizerSettings'));
-const ParticipantDashboard = lazy(() => import('./pages/omnia-live/participant/ParticipantDashboard'));
 const ParticipantMyLives = lazy(() => import('./pages/omnia-live/participant/ParticipantMyLives'));
 const ParticipantLibrary = lazy(() => import('./pages/omnia-live/participant/ParticipantLibrary'));
 const NotificationsCenter = lazy(() => import('./pages/NotificationsCenter'));
@@ -533,7 +524,7 @@ export default function App() {
           <Route path="/coaching/sessions/:sessionId/room" element={<CoachingSessionRoom />} />
           <Route path="/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
           <Route path="/dashboard/coaching/sessions/:sessionId/suivi" element={<CoachingSessionFollowUp />} />
-          <Route path="/coach/dashboard" element={<CoachDashboard />} />
+          <Route path="/coach/dashboard" element={<Navigate to="/home?role=coach" replace />} />
           <Route path="/coach/offres" element={<CoachOffers />} />
           <Route path="/coach/calendrier" element={<CoachCalendar />} />
           <Route path="/coach/sessions" element={<CoachSessions />} />
@@ -554,18 +545,18 @@ export default function App() {
           <Route path="/talent/structure/recrutement" element={<TalentSectionHub />} />
           <Route path="/talent/structure/pilotage" element={<TalentSectionHub />} />
           <Route path="/talent/recruteurs" element={<TalentRecruiters />} />
-          <Route path="/talent/recruteur/dashboard" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/dashboard" element={<Navigate to="/home?role=recruteur" replace />} />
           <Route path="/talent/recruteur/sourcing" element={<TalentSectionHub />} />
-          <Route path="/talent/recruteur/offres" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/talents" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/offres" element={<RecruiterWorkspace />} />
+          <Route path="/talent/recruteur/talents" element={<RecruiterWorkspace />} />
           <Route path="/talent/recruteur/competences-verifiees" element={<VerifiedTalentCandidates />} />
           <Route path="/talent/recruteur/competences-verifiees/:userId" element={<VerifiedTalentCandidateDetail />} />
-          <Route path="/talent/recruteur/favoris" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/candidatures" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/entretiens" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/messages" element={<RecruiterDashboard />} />
-          <Route path="/talent/recruteur/profil" element={<Navigate to="/mon-profil" replace />} />
-          <Route path="/talent/recruteur/parametres" element={<RecruiterDashboard />} />
+          <Route path="/talent/recruteur/favoris" element={<RecruiterWorkspace />} />
+          <Route path="/talent/recruteur/candidatures" element={<RecruiterWorkspace />} />
+          <Route path="/talent/recruteur/entretiens" element={<RecruiterWorkspace />} />
+          <Route path="/talent/recruteur/messages" element={<RecruiterWorkspace />} />
+          <Route path="/talent/recruteur/profil" element={<Navigate to="/home?section=profil" replace />} />
+          <Route path="/talent/recruteur/parametres" element={<RecruiterWorkspace />} />
           <Route path="/talent/recruteur/plans" element={<CommerceCatalog audience="recruiter" />} />
           <Route path="/talent/organisations" element={<TalentOrganisations />} />
           <Route path="/talent/a-propos" element={<TalentAbout />} />
@@ -615,13 +606,13 @@ export default function App() {
           <Route path="/omnia-live/mes-acces" element={<OmniaLiveEntitlements />} />
           <Route path="/omnia-live/organisateur/payouts" element={<OrganizerPayouts />} />
           <Route path="/admin/omnia-live/commerce" element={<AdminOmniaLiveCommerce />} />
-          <Route path="/omnia-live/participant" element={<ParticipantDashboard />} />
+          <Route path="/omnia-live/participant" element={<Navigate to="/omnia-live/participant/mes-lives" replace />} />
           <Route path="/omnia-live/participant/mes-lives" element={<ParticipantMyLives />} />
           <Route path="/omnia-live/participant/bibliotheque" element={<ParticipantLibrary />} />
           <Route path="/omnia-live/participant/notifications" element={<Navigate to="/notifications" replace />} />
           <Route path="/omnia-live/notifications" element={<Navigate to="/notifications" replace />} />
           <Route path="/omnia-live/participant/remboursements" element={<ParticipantRefunds />} />
-          <Route path="/omnia-live/organisateur" element={<OrganizerDashboard />} />
+          <Route path="/omnia-live/organisateur" element={<Navigate to="/home?role=organisateur" replace />} />
           <Route path="/omnia-live/organisateur/evenements" element={<OrganizerEvents />} />
           <Route path="/omnia-live/organisateur/evenements/:eventId" element={<OrganizerEventDetail />} />
           <Route path="/omnia-live/organisateur/participants" element={<OrganizerParticipants />} />
@@ -652,7 +643,7 @@ export default function App() {
         <Route path="/recruteur" element={<FormulaireRecruteur />} />
         <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
         <Route path="/verify" element={<VerifyCertificate />} />
-        <Route path="/demo/dashboard" element={<DemoDashboard />} />
+        <Route path="/demo/dashboard" element={<Navigate to="/home" replace />} />
           <Route path="/admin/quality-center" element={<AdminQualityCenter />} />
           <Route path="/admin/recognition-hub" element={<AdminRecognitionHub />} />
         <Route path="/admin/professional-pathways" element={<AdminProfessionalPathways />} />
@@ -687,7 +678,7 @@ export default function App() {
         <Route path="/admin/utilisateurs/:userId" element={<AdminUserDetail />} />
         <Route path="/admin/dashboard/activity-today" element={<AdminActivityToday />} />
         <Route path="/admin/suppressions" element={<AdminDeletionRequests />} />
-        <Route path="/admin/profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/admin/profil" element={<Navigate to="/home?section=profil" replace />} />
         <Route path="/admin/talent" element={<AdminTalent />} />
         <Route path="/admin/coaching" element={<AdminCoaching />} />
         <Route path="/admin/coaching/candidatures" element={<AdminCoaching />} />
@@ -755,8 +746,8 @@ export default function App() {
 <Route path="/admin/structures/b2b" element={<AdminStructureB2B />} />
           
         {/* Moderator — always accessible (English + French paths) */}
-        <Route path="/moderator/dashboard" element={<ModerateurDashboard />} />
-        <Route path="/moderateur/dashboard" element={<ModerateurDashboard />} />
+        <Route path="/moderator/dashboard" element={<Navigate to="/home?role=moderateur" replace />} />
+        <Route path="/moderateur/dashboard" element={<Navigate to="/home?role=moderateur" replace />} />
         <Route path="/moderator/courses" element={<ModerateurCours />} />
         <Route path="/moderateur/cours" element={<ModerateurCours />} />
         <Route path="/moderator/kyc" element={<ModerateurKyc />} />
@@ -778,17 +769,17 @@ export default function App() {
         <Route path="/moderateur/missions" element={<ModerateurMissions />} />
 
         {/* Profil utilisateur unifié — tous les rôles */}
-        <Route path="/mon-profil" element={<UnifiedProfilePage />} />
+        <Route path="/mon-profil" element={<Navigate to="/home?section=profil" replace />} />
         <Route path="/notifications" element={<NotificationsCenter />} />
         <Route path="/profil/:userId" element={<PublicProfilePage />} />
-        <Route path="/moderator/profile" element={<Navigate to="/mon-profil" replace />} />
-        <Route path="/moderateur/profil" element={<Navigate to="/mon-profil" replace />} />
-        <Route path="/structure/mon-profil" element={<Navigate to="/mon-profil" replace />} />
-        <Route path="/coach/profil" element={<Navigate to="/mon-profil" replace />} />
-        <Route path="/omnia-live/organisateur/profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/moderator/profile" element={<Navigate to="/home?section=profil" replace />} />
+        <Route path="/moderateur/profil" element={<Navigate to="/home?section=profil" replace />} />
+        <Route path="/structure/mon-profil" element={<Navigate to="/home?section=profil" replace />} />
+        <Route path="/coach/profil" element={<Navigate to="/home?section=profil" replace />} />
+        <Route path="/omnia-live/organisateur/profil" element={<Navigate to="/home?section=profil" replace />} />
 
         {/* Module 6 — Dashboard apprenant — always accessible */}
-        <Route path="/dashboard" element={<DashboardApprenant />} />
+        <Route path="/dashboard" element={<Navigate to="/home?role=apprenant" replace />} />
         <Route path="/dashboard/mes-cours" element={<DashboardMesCours />} />
         <Route path="/dashboard/abonnements" element={<CommerceCatalog audience="learner" />} />
         <Route path="/dashboard/evaluations" element={<DashboardAssessments />} />
@@ -804,11 +795,11 @@ export default function App() {
           <Route path="/dashboard/career-studio/editor/:docId" element={<CareerStudioEditor />} />
         <Route path="/dashboard/career-studio/editor/new" element={<CareerStudioEditor />} />
         <Route path="/dashboard/parrainage" element={<DashboardParrainage />} />
-        <Route path="/dashboard/profil" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/dashboard/profil" element={<Navigate to="/home?section=profil" replace />} />
           <Route path="/dashboard/structure" element={<DashboardStructure />} />
 
         {/* Espace Professeur */}
-        <Route path="/professeur/dashboard" element={<DashboardProfesseur />} />
+        <Route path="/professeur/dashboard" element={<Navigate to="/home?role=professeur" replace />} />
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
         <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
         <Route path="/professeur/assessment-center" element={<ProfesseurAssessmentCenter />} />
@@ -833,12 +824,12 @@ export default function App() {
 
         <Route path="/professeur/payouts" element={<ProfesseurPortefeuille />} />
         <Route path="/professeur/analytics" element={<ProfesseurAnalytique />} />
-        <Route path="/professeur/profile" element={<Navigate to="/mon-profil" replace />} />
+        <Route path="/professeur/profile" element={<Navigate to="/home?section=profil" replace />} />
         <Route path="/professeur/dossier-professionnel" element={<ProfesseurProfil />} />
           <Route path="/professeur/certificats" element={<ProfesseurCertificats />} />
 
         {/* Espace Structure */}
-          <Route path="/structure/dashboard" element={<StructureDashboard />} />
+          <Route path="/structure/dashboard" element={<Navigate to="/home?role=structure" replace />} />
           <Route path="/structure/formations" element={<StructureMesFormations />} />
           <Route path="/structure/profil" element={<StructureProfil />} />
 <Route path="/structure/codes" element={<StructureCodes />} />
@@ -847,14 +838,15 @@ export default function App() {
 <Route path="/structure/demandes" element={<Navigate to="/structure/rattachements" replace />} />
 <Route path="/structure/statistiques" element={<Navigate to="/structure/suivi-rh" replace />} />
 <Route path="/structure/notifications" element={<Navigate to="/notifications" replace />} />
-<Route path="/structure/parametres" element={<Navigate to="/mon-profil?tab=visibilite" replace />} />
+<Route path="/structure/parametres" element={<Navigate to="/home?section=profil&tab=visibilite" replace />} />
 <Route path="/structure/abonnements" element={<CommerceCatalog audience="structure" />} />
 <Route path="/structure/commerce-b2b" element={<StructureB2B />} />
 <Route path="/structure/organisation" element={<StructureOrganisation />} />
 <Route path="/structure/suivi-rh" element={<StructureRHConformite />} />
 <Route path="/structure/equipe" element={<StructureEquipe />} />
 <Route path="/structure/offres-emploi" element={<StructureJobs />} />
-<Route path="/structure/recrutement/dashboard" element={<StructureRecruitment />} />
+<Route path="/structure/recrutement/dashboard" element={<Navigate to="/structure/recrutement" replace />} />
+<Route path="/structure/recrutement" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/offres" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/talents" element={<StructureRecruitment />} />
 <Route path="/structure/recrutement/competences-verifiees" element={<VerifiedTalentCandidates />} />
@@ -867,8 +859,8 @@ export default function App() {
 <Route path="/structure/recrutement/equipe" element={<StructureRecruitment />} />
 
         {/* Compatibilité des anciennes URL Établissement : aucun ancien Dashboard n'est monté. */}
-        <Route path="/staff/*" element={<Navigate to="/professeur/dashboard" replace />} />
-        <Route path="/school/*" element={<Navigate to="/structure/dashboard" replace />} />
+        <Route path="/staff/*" element={<Navigate to="/home?role=professeur" replace />} />
+        <Route path="/school/*" element={<Navigate to="/home?role=structure" replace />} />
 
         {/* Module 11 — Paiement — always accessible */}
         <Route path="/paiement/:courseId" element={<Checkout />} />

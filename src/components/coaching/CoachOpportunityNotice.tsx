@@ -58,7 +58,7 @@ export default function CoachOpportunityNotice({ disabled = false }: Props) {
     title = 'Votre espace Coach Omnia est disponible';
     text = 'Accédez à vos offres, disponibilités, sessions et outils de coaching.';
     actionLabel = 'Ouvrir mon espace Coach';
-    actionPath = '/coach/dashboard';
+    actionPath = '/home?role=coach';
     Icon = CheckCircle2;
   } else if (['pending', 'under_review'].includes(applicationStatus)) {
     title = 'Votre candidature Coach est en cours d’examen';

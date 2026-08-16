@@ -56,7 +56,7 @@ export default function PaymentConfirmation() {
   const maxPolls = 15; // 30 seconds at 2s interval
 
   useEffect(() => {
-    if (!orderNumber) { navigate('/dashboard'); return; }
+    if (!orderNumber) { navigate('/home?role=apprenant'); return; }
     const token = getSessionToken();
     if (!token) { navigate(`/connexion?redirect=${encodeURIComponent(`/paiement/confirmation?order=${orderNumber}`)}`); return; }
 
@@ -199,7 +199,7 @@ export default function PaymentConfirmation() {
                 <FileText className="w-4 h-4" /> Voir ma facture
               </a>
             )}
-            <button onClick={() => navigate('/dashboard')}
+            <button onClick={() => navigate('/home?role=apprenant')}
               className="w-full py-3 rounded-xl border border-gray-100 font-medium text-sm text-gray-500 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors">
               <LayoutDashboard className="w-4 h-4" /> Retour à mon espace
             </button>
@@ -238,7 +238,7 @@ export default function PaymentConfirmation() {
           <p className="text-xs text-gray-400 font-mono">Réf : {order.order_number}</p>
         )}
 
-        <button onClick={() => navigate('/dashboard')}
+        <button onClick={() => navigate('/home?role=apprenant')}
           className="w-full py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors">
           Retour à mon espace
         </button>

@@ -66,15 +66,14 @@ export async function initializeNativeRuntime(): Promise<void> {
     const rootPaths = new Set([
       '/accueil',
       '/home',
-      '/dashboard',
-      '/professeur/dashboard',
-      '/structure/dashboard',
-      '/structure/recrutement/dashboard',
+      '/home?role=professeur',
+      '/home?role=structure',
+      '/structure/recrutement',
       '/admin/dashboard',
-      '/moderateur/dashboard',
-      '/coach/dashboard',
-      '/omnia-live/organisateur',
-      '/talent/recruteur/dashboard',
+      '/home?role=moderateur',
+      '/home?role=coach',
+      '/home?role=organisateur',
+      '/home?role=recruteur',
     ]);
 
     if (canGoBack && !rootPaths.has(window.location.pathname)) {

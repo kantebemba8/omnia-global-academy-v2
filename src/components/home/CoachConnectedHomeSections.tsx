@@ -165,7 +165,7 @@ function buildActions(data: DashboardData, previewMode: boolean): HomeAction[] {
     actions.push({
       title: 'Affiner votre signature de Coach',
       description: `Votre profil est complété à environ ${completion} %. Les éléments manquants peuvent mieux présenter votre expertise et vos domaines.`,
-      path: '/mon-profil', label: 'Compléter mon profil', icon: UserRound, accent: '#54708F',
+      path: '/home?section=profil', label: 'Compléter mon profil', icon: UserRound, accent: '#54708F',
     });
   }
   if (!activeOffers.length) {

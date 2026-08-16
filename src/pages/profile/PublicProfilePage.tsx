@@ -121,7 +121,7 @@ export default function PublicProfilePage() {
                   <CheckCircle2 size={17} className="text-[#BF8813]" />
                   Aperçu exact · {visibilityLabel(profile.visibility)}
                 </div>
-                <Link to="/mon-profil?tab=visibilite" className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-bold text-white">
+                <Link to="/home?section=profil&tab=visibilite" className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-bold text-white">
                   Modifier la visibilité
                 </Link>
               </div>
@@ -195,7 +195,7 @@ function ProfileHero({ profile, isOwner }: { profile: PublicProfile; isOwner: bo
           </div>
 
           <div className="flex flex-none flex-wrap gap-2 sm:pb-1">
-            {isOwner && <Link to="/mon-profil" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-[#002050]">Modifier</Link>}
+            {isOwner && <Link to="/home?section=profil" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-[#002050]">Modifier</Link>}
           </div>
         </div>
       </div>

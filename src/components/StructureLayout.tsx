@@ -17,7 +17,7 @@ const STRUCTURE_API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/structu
 const STRUCTURE_NAV_GROUPS: NavGroup[] = [
   {
     id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
-    items: [{ path: '/structure/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
+    items: [{ path: '/home?role=structure', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
     id: 'organization', label: 'Organisation & accès', icon: Building2,

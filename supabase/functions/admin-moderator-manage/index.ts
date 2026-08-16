@@ -288,7 +288,7 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
           templateKey: "professor_approved",
           params: {
             FIRST_NAME: String(approvedUser.full_name || "").split(" ")[0],
-            DASHBOARD_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/professeur/dashboard`,
+            DASHBOARD_URL: `${(Deno.env.get("APP_URL") || "https://omniaglobalacademy.com").replace(/\/$/, "")}/home?role=professeur`,
           },
         });
         await dispatchOmniaInAppNotification({
@@ -296,7 +296,7 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
           notificationType: "professor_approved",
           title: "Dossier Professeur validé",
           message: "Votre rôle Professeur est maintenant actif sur Omnia Global Academy.",
-          actionUrl: "/professeur/dashboard",
+          actionUrl: "/home?role=professeur",
           priority: "high",
           payload: { domain: "professeur", decision: "approved" },
         });
@@ -339,7 +339,7 @@ async function reviewRequest(sb: SupabaseClient, adminId: string, body: Record<s
           notificationType: "professor_review_update",
           title: "Mise à jour de votre dossier Professeur",
           message: request.reason || "Votre dossier Professeur nécessite une nouvelle étape avant activation.",
-          actionUrl: "/mon-profil",
+          actionUrl: "/home?section=profil",
           priority: "high",
           payload: { domain: "professeur", decision: "rejected" },
         });

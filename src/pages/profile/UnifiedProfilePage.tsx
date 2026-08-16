@@ -25,7 +25,6 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import { ProfileRoleLayout } from '../../components/profile/ProfileRoleLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
@@ -42,7 +41,7 @@ import {
   type ProfileVisibleField,
   type UnifiedProfileBundle,
 } from '../../lib/profileApi';
-import { clearSession, getDashboardPathForRoles, getSessionToken, saveSession } from '../../lib/session';
+import { clearSession, getSessionToken, saveSession } from '../../lib/session';
 import { PLATFORM_LANGUAGES, useLanguage } from '../../i18n/LanguageContext';
 
 type Tab = 'apercu' | 'identite' | 'professionnel' | 'visibilite' | 'notifications' | 'securite';
@@ -643,11 +642,11 @@ export default function UnifiedProfilePage() {
   function switchTab(next: Tab) {
     setTab(next); setMessage(null);
     const params = new URLSearchParams(location.search); params.set('tab', next);
-    navigate({ pathname: '/mon-profil', search: `?${params.toString()}` }, { replace: true });
+    navigate({ pathname: '/home?section=profil', search: `?${params.toString()}` }, { replace: true });
   }
 
-  if (loading) return <ProfileRoleLayout><div className="flex min-h-[60vh] items-center justify-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-[#002050] border-t-transparent" /></div></ProfileRoleLayout>;
-  if (!bundle) return <ProfileRoleLayout><div className="mx-auto max-w-3xl p-6"><Notice value={message || { ok: false, text: 'Profil indisponible.' }} /></div></ProfileRoleLayout>;
+  if (loading) return <><div className="flex min-h-[60vh] items-center justify-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-[#002050] border-t-transparent" /></div></>;
+  if (!bundle) return <><div className="mx-auto max-w-3xl p-6"><Notice value={message || { ok: false, text: 'Profil indisponible.' }} /></div></>;
 
   const avatar = bundle.user.avatar_url;
   const tabs: Array<{ key: Tab; label: string; icon: ElementType }> = isAdministration
@@ -663,7 +662,7 @@ export default function UnifiedProfilePage() {
         { key: 'notifications', label: 'Notifications', icon: Bell }, { key: 'securite', label: 'Sécurité', icon: Lock },
       ];
 
-  return <ProfileRoleLayout>
+  return <>
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
       <header
         className={`relative overflow-hidden rounded-3xl border p-5 shadow-sm sm:p-7 ${isAdministration ? 'border-[#183D6D] text-white shadow-[0_24px_70px_rgba(0,32,80,.18)]' : 'border-slate-200 bg-white'}`}
@@ -957,7 +956,7 @@ export default function UnifiedProfilePage() {
         </section>
       </div>}
     </div>
-  </ProfileRoleLayout>;
+  </>;
 }
 
 function AccountFeedbackFields({ value, onChange }: { value: ExitFeedbackForm; onChange: (patch: Partial<ExitFeedbackForm>) => void }) {

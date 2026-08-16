@@ -188,7 +188,7 @@ export default function UserAccountMenu({ dashboardPath, buttonClassName = '', s
         <button
           type="button"
           role="menuitem"
-          onClick={() => go('/mon-profil')}
+          onClick={() => go('/home?section=profil')}
           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           {isAdministration ? <Settings size={17} /> : <UserRound size={17} />}

@@ -7,7 +7,7 @@ const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 
 const items = [
-  { path: '/coach/dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard },
+  { path: '/home?role=coach', label: 'Vue d’ensemble', icon: LayoutDashboard },
   { path: '/coach/offres', label: 'Mes offres', icon: Settings2 },
   { path: '/coach/calendrier', label: 'Mon calendrier', icon: CalendarDays },
   { path: '/coach/sessions', label: 'Mes sessions', icon: ListChecks },

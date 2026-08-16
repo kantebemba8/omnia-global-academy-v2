@@ -45,7 +45,7 @@ interface Props {
 const APPRENANT_GROUPS: NavGroup[] = [
   {
     id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
-    items: [{ path: '/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
+    items: [{ path: '/home?role=apprenant', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
     id: 'learner-formations', label: 'Formations', icon: BookOpen,
@@ -82,7 +82,7 @@ const APPRENANT_GROUPS: NavGroup[] = [
 const PROFESSEUR_GROUPS: NavGroup[] = [
   {
     id: 'dashboard', label: 'Accueil', icon: LayoutDashboard,
-    items: [{ path: '/professeur/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
+    items: [{ path: '/home?role=professeur', label: 'Accueil', icon: LayoutDashboard, exact: true }],
   },
   {
     id: 'professor-formations', label: 'Formations', icon: BookOpen,
@@ -275,7 +275,7 @@ export function DashboardLayout({
   const isActive = (item: NavItem) => role === 'super_admin' ? adminNavItemMatchesPath(item, location.pathname) : activeNavigation?.path === item.path;
   const roleSubtitle = roleLabel(role);
   const contextualTitle = headerTitle
-    || (location.pathname === '/mon-profil' ? (role === 'super_admin' ? 'Mon compte' : 'Mon profil') : activeNavigation?.label)
+    || (location.pathname === '/home?section=profil' ? (role === 'super_admin' ? 'Mon compte' : 'Mon profil') : activeNavigation?.label)
     || roleSubtitle;
 
   const adminMode = role === 'super_admin';

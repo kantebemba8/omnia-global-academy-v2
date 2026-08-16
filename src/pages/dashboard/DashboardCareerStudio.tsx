@@ -296,7 +296,7 @@ export default function DashboardCareerStudio() {
         setActiveView('dashboard');
         return;
       }
-      navigate('/mon-profil?tab=professionnel', { replace: true });
+      navigate('/home?section=profil&tab=professionnel', { replace: true });
       return;
     }
     const pathMap: Record<string, ActiveView> = {
@@ -320,7 +320,7 @@ export default function DashboardCareerStudio() {
     }
     const routes: Record<ActiveView, string> = {
       dashboard: '/omnia-career', cv: '/omnia-career/cv-builder', lm: '/omnia-career/lettres', interview: '/omnia-career/entretien',
-      applications: '/omnia-career/candidatures', profile: '/mon-profil?tab=professionnel', settings: '/omnia-career/parametres',
+      applications: '/omnia-career/candidatures', profile: '/home?section=profil&tab=professionnel', settings: '/omnia-career/parametres',
     };
     const currentJob = searchParams.get('job_id');
     const query = currentJob && (view === 'interview' || view === 'applications') ? `?job_id=${encodeURIComponent(currentJob)}` : '';

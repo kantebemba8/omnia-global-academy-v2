@@ -38,23 +38,23 @@ async function logSecurityEvent(
 
 const ROLE_REDIRECT: Record<string, string> = {
   super_admin: "/admin/dashboard",
-  moderateur: "/moderateur/dashboard",
-  responsable_structure: "/structure/dashboard",
-  gestionnaire_partenaire: "/structure/dashboard",
-  gestionnaire_structure: "/structure/dashboard",
-  structure_admin: "/structure/dashboard",
-  directeur: "/structure/dashboard",
-  etablissement_directeur: "/structure/dashboard",
+  moderateur: "/home?role=moderateur",
+  responsable_structure: "/home?role=structure",
+  gestionnaire_partenaire: "/home?role=structure",
+  gestionnaire_structure: "/home?role=structure",
+  structure_admin: "/home?role=structure",
+  directeur: "/home?role=structure",
+  etablissement_directeur: "/home?role=structure",
   organizer: "/omnia-live/organisateur",
   organisateur: "/omnia-live/organisateur",
-  recruteur_independant: "/talent/recruteur/dashboard",
-  recruteur: "/talent/recruteur/dashboard",
-  etablissement_enseignant: "/professeur/dashboard",
-  enseignant: "/professeur/dashboard",
-  professeur: "/professeur/dashboard",
-  formateur: "/professeur/dashboard",
-  coach: "/coach/dashboard",
-  apprenant: "/dashboard",
+  recruteur_independant: "/home?role=recruteur",
+  recruteur: "/home?role=recruteur",
+  etablissement_enseignant: "/home?role=professeur",
+  enseignant: "/home?role=professeur",
+  professeur: "/home?role=professeur",
+  formateur: "/home?role=professeur",
+  coach: "/home?role=coach",
+  apprenant: "/home?role=apprenant",
 };
 
 function getRedirectUrl(roles: string[]): string {
@@ -82,7 +82,7 @@ function getRedirectUrl(roles: string[]): string {
   for (const role of priority) {
     if (roles.includes(role)) return ROLE_REDIRECT[role];
   }
-  return "/dashboard";
+  return "/home?role=apprenant";
 }
 
 const DEMO_EMAIL = "test@omniaglobalacademy.com";

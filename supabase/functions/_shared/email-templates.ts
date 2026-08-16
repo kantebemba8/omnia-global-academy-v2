@@ -209,7 +209,7 @@ export function normalizeBrevoTemplateParams(
         CURRENCY: text(params, "CURRENCY") || "XOF",
         DURATION: text(params, "DURATION") || "—",
         ADDITIONAL_INFORMATION: text(params, "ADDITIONAL_INFORMATION") || splitInfo,
-        PROPOSAL_URL: text(params, "PROPOSAL_URL", "ACTION_URL") || `${appUrl()}/structure/dashboard`,
+        PROPOSAL_URL: text(params, "PROPOSAL_URL", "ACTION_URL") || `${appUrl()}/home?role=structure`,
         EXPIRY_DATE: text(params, "EXPIRY_DATE", "EXPIRES_AT") || "—",
       };
     }
@@ -217,14 +217,14 @@ export function normalizeBrevoTemplateParams(
     case 6:
       return {
         FIRST_NAME,
-        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/professeur/dashboard`,
+        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/home?role=professeur`,
       };
 
     case 7:
       return {
         CONTACT_NAME: text(params, "CONTACT_NAME", "DIRECTOR_NAME") || FIRST_NAME,
         ORGANIZATION_NAME: text(params, "ORGANIZATION_NAME", "SCHOOL_NAME") || "Votre Structure",
-        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/structure/dashboard`,
+        DASHBOARD_URL: text(params, "DASHBOARD_URL", "ACTION_URL") || `${appUrl()}/home?role=structure`,
       };
 
     case 8: {

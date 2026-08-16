@@ -45,17 +45,17 @@ type Props = {
 export function getDashboardPath(roles: string[] = []) {
   if (roles.includes('super_admin')) return '/admin/dashboard';
   if (roles.includes('organizer') || roles.includes('organisateur')) return '/omnia-live/organisateur';
-  if (roles.includes('responsable_structure') || roles.includes('gestionnaire_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/structure/dashboard';
-  if (roles.includes('recruteur')) return '/talent/recruteur/dashboard';
-  if (roles.includes('professeur') || roles.includes('formateur')) return '/professeur/dashboard';
-  if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/professeur/dashboard';
-  if (roles.includes('moderateur')) return '/moderateur/dashboard';
-  return '/dashboard';
+  if (roles.includes('responsable_structure') || roles.includes('gestionnaire_structure') || roles.includes('structure_admin') || roles.includes('directeur')) return '/home?role=structure';
+  if (roles.includes('recruteur')) return '/home?role=recruteur';
+  if (roles.includes('professeur') || roles.includes('formateur')) return '/home?role=professeur';
+  if (roles.includes('enseignant') || roles.includes('etablissement_enseignant')) return '/home?role=professeur';
+  if (roles.includes('moderateur')) return '/home?role=moderateur';
+  return '/home?role=apprenant';
 }
 
 export function getProfilePath(_roles: string[] = []) {
   // Toujours utiliser le rôle authentifié réel. Une prévisualisation ne change jamais le profil personnel.
-  return '/mon-profil';
+  return '/home?section=profil';
 }
 
 function initials(user: StoredUser | null) {

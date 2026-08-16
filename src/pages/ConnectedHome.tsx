@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import UnifiedProfilePage from './profile/UnifiedProfilePage';
 import {
   ArrowRight,
   Award,
@@ -124,7 +125,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Traiter ce qui demande votre intervention.',
     intro: 'Votre accueil met en priorité les contrôles, missions et espaces de modération auxquels vos permissions donnent réellement accès.',
     accent: '#C66A22', soft: '#FFF2E8', secondary: '#6F3D1F', variant: 'moderation',
-    primary: LINK('Ouvrir la modération', 'Retrouver votre tableau de bord et vos missions.', '/moderator/dashboard', ShieldCheck),
+    primary: LINK('Voir mes priorités', 'Retrouver les contrôles et missions qui demandent votre intervention.', '/moderator/missions', ShieldCheck),
     secondaryAction: LINK('Centre de missions', 'Accéder aux contrôles complémentaires qui vous sont attribués.', '/moderator/missions', ClipboardCheck),
     workflow: [
       { label: 'Recevoir', description: 'Identifier les contrôles et demandes qui vous sont attribués.' },
@@ -154,7 +155,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Former, suivre et faire évoluer votre organisation.',
     intro: 'Votre accueil Structure réunit membres, équipe, formations, évaluation, projets, recrutement et opérations organisationnelles sans vous renvoyer vers des contenus apprenants génériques.',
     accent: '#087F79', soft: '#E8F7F5', secondary: '#0B4F54', variant: 'organization',
-    primary: LINK('Ouvrir l’espace Structure', 'Pilotage de votre organisation et de ses activités.', '/structure/dashboard', Building2),
+    primary: LINK('Gérer mon organisation', 'Accéder directement aux membres, équipe et activités de votre Structure.', '/structure/membres', Building2),
     secondaryAction: LINK('Gérer les membres', 'Membres, rattachements, équipe et codes Structure.', '/structure/membres', Users),
     workflow: [
       { label: 'Organiser', description: 'Structurer équipe, membres, rattachements et accès.' },
@@ -176,7 +177,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
         LINK('Jurys', 'Accéder aux jurys et décisions d’évaluation.', '/structure/jurys', Award),
       ]},
       { eyebrow: 'Talents', title: 'Recrutement & compétences', description: 'Relier les besoins de la Structure aux profils et opportunités.', items: [
-        LINK('Recrutement', 'Vue de pilotage du recrutement Structure.', '/structure/recrutement/dashboard', Briefcase),
+        LINK('Recrutement', 'Vue de pilotage du recrutement Structure.', '/structure/recrutement', Briefcase),
         LINK('Talents', 'Explorer les talents disponibles.', '/structure/recrutement/talents', Users),
         LINK('Compétences vérifiées', 'Consulter les preuves utiles au recrutement.', '/structure/recrutement/competences-verifiees', ShieldCheck),
         LINK('Candidats', 'Suivre les candidatures de la Structure.', '/structure/recrutement/candidats', UserCheck),
@@ -201,7 +202,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Piloter le périmètre qui vous a été confié.',
     intro: 'Votre accueil reprend les fonctions Structure accessibles à travers votre délégation. Les permissions restent celles définies par votre organisation.',
     accent: '#087F79', soft: '#E8F7F5', secondary: '#0B4F54', variant: 'organization',
-    primary: LINK('Ouvrir l’espace Structure', 'Accéder au tableau de bord selon vos permissions.', '/structure/dashboard', Building2),
+    primary: LINK('Ouvrir l’espace Structure', 'Accéder au tableau de bord selon vos permissions.', '/home?role=structure', Building2),
     secondaryAction: LINK('Voir les membres', 'Accéder aux membres si votre délégation le permet.', '/structure/membres', Users),
     workflow: [
       { label: 'Accéder', description: 'Retrouver uniquement le périmètre délégué par la Structure.' },
@@ -220,7 +221,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
         LINK('Suivi RH', 'Suivi organisationnel lorsque disponible.', '/structure/suivi-rh', BarChart3),
         LINK('Rattachements', 'Gestion des rattachements autorisés.', '/structure/rattachements', UserCheck),
         LINK('Codes Structure', 'Codes de rattachement lorsque accessibles.', '/structure/codes', BadgeCheck),
-        LINK('Tableau de bord', 'Revenir à votre vue opérationnelle.', '/structure/dashboard', LayoutDashboard),
+        LINK('Tableau de bord', 'Revenir à votre vue opérationnelle.', '/home?role=structure', LayoutDashboard),
       ]},
     ],
     ecosystem: [
@@ -235,7 +236,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Concevoir, diffuser et piloter vos événements.',
     intro: 'Votre accueil Organisateur rassemble le cycle complet Omnia Live : proposition, événements, participants, communications, accès privés, médias, statistiques et revenus.',
     accent: '#7A55B8', soft: '#F2EDFB', secondary: '#49316F', variant: 'live',
-    primary: LINK('Ouvrir l’espace Organisateur', 'Retrouver votre activité Omnia Live.', '/omnia-live/organisateur', Radio),
+    primary: LINK('Gérer mes événements', 'Retrouver votre programmation et votre activité Omnia Live.', '/omnia-live/organisateur/evenements', Radio),
     secondaryAction: LINK('Proposer un événement', 'Démarrer une nouvelle proposition Omnia Live.', '/omnia-live/proposer', Video),
     workflow: [
       { label: 'Proposer', description: 'Présenter un événement ou une expérience Live.' },
@@ -269,7 +270,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Passer du besoin au bon profil.',
     intro: 'Votre accueil Recruteur est organisé autour du pipeline réel : offres, sourcing, compétences vérifiées, favoris, candidatures, entretiens et messages.',
     accent: '#9C436D', soft: '#FAEDF3', secondary: '#62304A', variant: 'pipeline',
-    primary: LINK('Ouvrir l’espace Recruteur', 'Accéder à votre tableau de bord Talent.', '/talent/recruteur/dashboard', Briefcase),
+    primary: LINK('Gérer mes offres', 'Accéder directement à votre pipeline de recrutement.', '/talent/recruteur/offres', Briefcase),
     secondaryAction: LINK('Explorer les talents', 'Rechercher les profils disponibles sur Omnia Talent.', '/talent/recruteur/talents', Users),
     workflow: [
       { label: 'Définir', description: 'Publier et organiser vos besoins de recrutement.' },
@@ -304,7 +305,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Concevoir des formations qui vont jusqu’à la preuve.',
     intro: 'Votre accueil Professeur rassemble création, formations, évaluations, jurys, certificats, projets, analytique et revenus. Le catalogue apprenant n’est plus le centre de votre vue.',
     accent: '#3E63B8', soft: '#EDF2FF', secondary: '#293F75', variant: 'studio',
-    primary: LINK('Ouvrir l’espace Professeur', 'Retrouver votre tableau de bord enseignant.', '/professeur/dashboard', GraduationCap),
+    primary: LINK('Gérer mes formations', 'Accéder directement à vos formations et outils pédagogiques.', '/professeur/courses', GraduationCap),
     secondaryAction: LINK('Créer une formation', 'Démarrer le parcours de création existant.', '/professeur/courses/new', BookOpen),
     workflow: [
       { label: 'Concevoir', description: 'Structurer contenus, modules et expériences.' },
@@ -339,7 +340,7 @@ const HOME_CONFIGS: Record<HomeAudience, HomeConfig> = {
     title: 'Piloter votre activité de coaching de bout en bout.',
     intro: 'Votre accueil Coach réunit offres, calendrier, sessions, avis, produits, commerce et revenus sans vous faire passer par une page pensée pour l’apprenant.',
     accent: '#0F766E', soft: '#E9F8F5', secondary: '#0B4F54', variant: 'coaching',
-    primary: LINK('Ouvrir l’espace Coach', 'Retrouver votre tableau de bord Coach.', '/coach/dashboard', Heart),
+    primary: LINK('Gérer mes sessions', 'Accéder directement à votre activité de coaching.', '/coach/sessions', Heart),
     secondaryAction: LINK('Gérer mes sessions', 'Accéder à vos sessions de coaching.', '/coach/sessions', CalendarDays),
     workflow: [
       { label: 'Proposer', description: 'Structurer vos offres et produits de coaching.' },
@@ -456,7 +457,7 @@ function readModeratorPermissions(): ModeratorPermissions | null {
 function filterModeratorGroups(groups: HomeGroup[], permissions: ModeratorPermissions | null, previewMode: boolean) {
   if (previewMode) return groups;
   if (!permissions) return [];
-  const allowed = new Set<string>(['/moderator/dashboard']);
+  const allowed = new Set<string>(['/home?role=moderateur']);
   const p = permissions;
   if (
     p.can_see_pending_courses || p.can_review_course_content || p.can_request_course_modification ||
@@ -541,6 +542,7 @@ export default function ConnectedHome() {
   const roles = useMemo(() => normalizePlatformRoles(user?.roles || []), [user?.roles]);
   const isSuperAdmin = roles.includes('super_admin');
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const activeSection = params.get('section');
   const requestedRole = isHomeAudience(params.get('role')) ? params.get('role') as HomeAudience : null;
   const requestedPreviewRole = params.get('preview') === 'true' ? requestedRole : null;
   const previewMode = Boolean(isSuperAdmin && requestedPreviewRole && PREVIEWABLE_ROLES.has(requestedPreviewRole));
@@ -560,7 +562,7 @@ export default function ConnectedHome() {
   }, [audience, previewMode, roles, user]);
 
   const config = HOME_CONFIGS[audience];
-  const dashboardPath = user ? getDashboardPathForRoles(user.roles || []) : '/accueil';
+  const dashboardPath = user ? '/home' : '/accueil';
   const moderatorPermissions = useMemo(() => audience === 'moderateur' ? (moderatorPermissionsLive || readModeratorPermissions()) : null, [audience, moderatorPermissionsLive]);
   const continueCourses = learnerData?.courses_en_cours || [];
   const groups = useMemo(
@@ -761,6 +763,21 @@ export default function ConnectedHome() {
       {previewMode && <PreviewReturnBar label={config.label} />}
 
       <main className="oga-connected-home-main">
+        {!previewMode && activeSection === 'profil' ? (
+          <section className="bg-[#F6F8FB]">
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em]" style={{ color: config.accent }}>Profil professionnel Omnia</p>
+                  <h1 className="mt-1 text-2xl font-black text-[#002050]">Mon profil</h1>
+                </div>
+                <Link to={`/home?role=${encodeURIComponent(audience)}`} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-[#002050]">Retour à mon accueil</Link>
+              </div>
+              <UnifiedProfilePage />
+            </div>
+          </section>
+        ) : (
+        <>
         {audience !== 'apprenant' && audience !== 'professeur' && audience !== 'structure' && audience !== 'recruteur' && audience !== 'organisateur' && audience !== 'coach' && audience !== 'moderateur' && (
         <section className="border-b border-[#DCE5F0] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
@@ -975,6 +992,8 @@ export default function ConnectedHome() {
               {otherRoleHomes.map(({ role, home }) => <Link key={role} to={`/home?role=${encodeURIComponent(role)}`} className="font-semibold text-slate-600 hover:text-[#002050] hover:underline">Accueil {home.label}</Link>)}
             </div>
           </section>
+        )}
+        </>
         )}
       </main>
       <PageFooter role={audience as RoleThemeKey} />

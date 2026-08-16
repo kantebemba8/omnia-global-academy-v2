@@ -74,7 +74,7 @@ function buildModeratorNavGroups(permissions: ModeratorPermissions): ModeratorNa
       id: 'dashboard',
       label: 'Accueil',
       icon: LayoutDashboard,
-      items: [{ path: '/moderator/dashboard', label: 'Accueil', icon: LayoutDashboard, exact: true }],
+      items: [{ path: '/home?role=moderateur', label: 'Accueil', icon: LayoutDashboard, exact: true }],
     },
   ];
 

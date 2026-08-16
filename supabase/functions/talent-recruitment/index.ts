@@ -561,7 +561,7 @@ Deno.serve(async (req: Request) => {
             STATUS_LABEL: statusLabel,
             ADDITIONAL_INFORMATION: body.reason || "",
             CTA_LABEL: status === "approved" ? "Accéder à Omnia Talent" : "Consulter Omnia",
-            CTA_URL: status === "approved" ? `${appUrl}/talent/recruteur/dashboard` : `${appUrl}/connexion`,
+            CTA_URL: status === "approved" ? `${appUrl}/home?role=recruteur` : `${appUrl}/connexion`,
           },
         });
       }

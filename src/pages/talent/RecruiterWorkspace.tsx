@@ -61,7 +61,7 @@ function EmptyState({ icon: Icon, title, text, action }: { icon: React.ElementTy
   return <div className="border-y border-gray-200 px-2 py-12 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center"><Icon size={22} color={GOLD} /></div><h2 className="mt-3 text-base font-semibold" style={{ color: BLUE }}>{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">{text}</p>{action && <div className="mt-5">{action}</div>}</div>;
 }
 
-export default function RecruiterDashboard() {
+export default function RecruiterWorkspace() {
   const location = useLocation();
   const navigate = useNavigate();
   const section = sectionFromPath(location.pathname);

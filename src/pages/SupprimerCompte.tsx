@@ -52,7 +52,7 @@ export function SupprimerCompte() {
               <div>
                 <h2 className="font-bold text-blue-950">Vous souhaitez seulement faire une pause ?</h2>
                 <p className="mt-2 text-sm leading-6 text-blue-900">La suspension volontaire conserve vos données, ferme toutes vos sessions et peut être annulée de manière sécurisée depuis la page de connexion avec votre mot de passe.</p>
-                {signedIn && <Link to="/mon-profil?tab=securite#gestion-compte" className="mt-3 inline-flex rounded-lg bg-[#002050] px-4 py-2 text-sm font-bold text-white">Suspendre plutôt mon compte</Link>}
+                {signedIn && <Link to="/home?section=profil&tab=securite#gestion-compte" className="mt-3 inline-flex rounded-lg bg-[#002050] px-4 py-2 text-sm font-bold text-white">Suspendre plutôt mon compte</Link>}
               </div>
             </div>
           </div>
@@ -77,7 +77,7 @@ export function SupprimerCompte() {
             </p>
             {signedIn ? (
               <Link
-                to="/mon-profil?tab=securite"
+                to="/home?section=profil&tab=securite"
                 className="mt-5 inline-flex rounded-xl bg-[#002050] px-5 py-3 text-sm font-bold text-white"
               >
                 Ouvrir les paramètres de sécurité

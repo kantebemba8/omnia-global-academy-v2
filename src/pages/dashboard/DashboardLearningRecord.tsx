@@ -209,7 +209,7 @@ export default function DashboardLearningRecord() {
               <p className="mt-3 text-xs text-slate-400">Version {record?.version || 1} · dernière synchronisation {record?.last_synced_at ? new Date(record.last_synced_at).toLocaleString('fr-FR') : 'non effectuée'}</p>
             </div>
           </div>
-          <Link to={withLearnerPreview('/mon-profil?tab=professionnel')} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15} /> Profil professionnel</Link>
+          <Link to={withLearnerPreview('/home?section=profil&tab=professionnel')} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}><Settings2 size={15} /> Profil professionnel</Link>
         </div>
         <div className="grid grid-cols-2 border-t md:grid-cols-4" style={{ borderColor: BORDER }}>
           <Metric label="Éléments" value={metrics.total} />
