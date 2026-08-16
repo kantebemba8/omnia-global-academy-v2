@@ -83,11 +83,11 @@ function normalize(layout: ManualLayout): ManualLayout {
 export default function ManualDocumentEditor({ open, title, initialLayout, onChange, onClose, onSave, printRef }: Props) {
   const [layout, setLayout] = useState<ManualLayout>(() => normalize(initialLayout));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768 ? 0.42 : 0.72);
   const [history, setHistory] = useState<ManualLayout[]>([]);
   const [future, setFuture] = useState<ManualLayout[]>([]);
-  const [elementsPanelOpen, setElementsPanelOpen] = useState(true);
-  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(true);
+  const [elementsPanelOpen, setElementsPanelOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
+  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const gesture = useRef<{ mode: 'drag' | 'resize'; id: string; startX: number; startY: number; original: ManualBlock } | null>(null);
   const wasOpen = useRef(false);
@@ -290,23 +290,24 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-slate-100">
-      <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm">
+      <header className="flex min-h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 py-2 shadow-sm sm:px-4">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100" title="Fermer"><X className="h-5 w-5" /></button>
           <div><div className="text-sm font-semibold text-[#002050]">Éditeur manuel avancé</div><div className="max-w-[420px] truncate text-xs text-slate-500">{title}</div></div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setElementsPanelOpen(value => !value)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${elementsPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les éléments"><Plus className="h-4 w-4" /><span className="hidden lg:inline">Éléments</span></button>
-          <button onClick={() => setPropertiesPanelOpen(value => !value)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${propertiesPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les propriétés"><Layers className="h-4 w-4" /><span className="hidden lg:inline">Propriétés</span></button>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button onClick={() => { setElementsPanelOpen(value => !value); if (typeof window !== 'undefined' && window.innerWidth < 768) setPropertiesPanelOpen(false); }} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${elementsPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les éléments"><Plus className="h-4 w-4" /><span className="hidden lg:inline">Éléments</span></button>
+          <button onClick={() => { setPropertiesPanelOpen(value => !value); if (typeof window !== 'undefined' && window.innerWidth < 768) setElementsPanelOpen(false); }} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${propertiesPanelOpen ? 'bg-slate-100 text-[#002050]' : 'bg-white'}`} title="Afficher ou masquer les propriétés"><Layers className="h-4 w-4" /><span className="hidden lg:inline">Propriétés</span></button>
           <button onClick={undo} disabled={!history.length} className="rounded-lg border p-2 disabled:opacity-30" title="Annuler"><Undo2 className="h-4 w-4" /></button>
           <button onClick={redo} disabled={!future.length} className="rounded-lg border p-2 disabled:opacity-30" title="Rétablir"><Redo2 className="h-4 w-4" /></button>
-          <button onClick={() => { setLayout(normalize(initialLayout)); onChange(normalize(initialLayout)); }} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><RotateCcw className="h-4 w-4" /> Réinitialiser</button>
-          <button onClick={onSave} className="rounded-lg bg-[#002050] px-4 py-2 text-sm font-semibold text-white">Enregistrer</button>
+          <button onClick={() => { setLayout(normalize(initialLayout)); onChange(normalize(initialLayout)); }} className="hidden items-center gap-2 rounded-lg border px-3 py-2 text-sm sm:inline-flex"><RotateCcw className="h-4 w-4" /> Réinitialiser</button>
+          <button onClick={onSave} className="rounded-lg bg-[#002050] px-3 py-2 text-sm font-semibold text-white sm:px-4">Enregistrer</button>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        {elementsPanelOpen && <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
+      <div className="relative flex min-h-0 flex-1">
+        {(elementsPanelOpen || propertiesPanelOpen) && <button type="button" aria-label="Fermer les panneaux" onClick={() => { setElementsPanelOpen(false); setPropertiesPanelOpen(false); }} className="absolute inset-0 z-20 bg-slate-950/25 md:hidden" />}
+        {elementsPanelOpen && <aside className="absolute inset-y-0 left-0 z-30 w-[min(20rem,88vw)] shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-2xl md:static md:w-64 md:shadow-none">
           <h3 className="mb-3 text-sm font-semibold text-[#002050]">Ajouter</h3>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => addPreset('title')} className="flex flex-col items-center gap-2 rounded-xl border p-3 text-xs font-semibold hover:border-[#bf8813]"><Type className="h-5 w-5" /> Titre</button>
@@ -335,7 +336,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           </div>
         </aside>}
 
-        <main className="relative min-w-0 flex-1 overflow-auto bg-slate-200 p-4 sm:p-8" onPointerMove={moveGesture} onPointerUp={endGesture}>
+        <main className="relative min-w-0 flex-1 overflow-auto bg-slate-200 p-2 sm:p-8" onPointerMove={moveGesture} onPointerUp={endGesture}>
           <div className="mb-4 flex items-center justify-center gap-2">
             <button onClick={() => setZoom(z => Math.max(.35, z-.1))} className="rounded-lg bg-white p-2 shadow"><ZoomOut className="h-4 w-4" /></button>
             <span className="w-16 text-center text-xs font-semibold">{Math.round(zoom*100)}%</span>
@@ -376,7 +377,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           </div>
         </main>
 
-        {propertiesPanelOpen && <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+        {propertiesPanelOpen && <aside className="absolute inset-y-0 right-0 z-30 w-[min(22rem,92vw)] shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-2xl md:static md:w-80 md:shadow-none">
           {!selected ? <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">Sélectionnez un élément pour le modifier.</div> : (
             <div className="space-y-4">
               <div className="flex items-center justify-between"><h3 className="font-semibold text-[#002050]">Propriétés</h3><button onClick={() => patchBlock(selected.id,{locked:!selected.locked})} className="rounded-lg border p-2">{selected.locked?<Unlock className="h-4 w-4"/>:<Lock className="h-4 w-4"/>}</button></div>

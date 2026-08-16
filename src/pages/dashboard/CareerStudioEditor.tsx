@@ -67,6 +67,7 @@ import {
   type CareerSourceProfile,
 } from '../../lib/careerBuilderV2';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
+import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -161,7 +162,7 @@ function PreviewFrame({ children, zoom, onZoomChange, width = 794, height = 1123
         <button type="button" onClick={()=>onZoomChange(Math.min(1.05, zoom+.1))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">+</button>
         <button type="button" onClick={()=>onZoomChange(.62)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">Ajuster</button>
       </div>
-      <div className="mx-auto flex h-[760px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-inner">
+      <div className="mx-auto flex h-[calc(100dvh-280px)] min-h-[420px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-2 shadow-inner sm:h-[760px] sm:p-5">
         <div style={{ width: width * zoom, height: height * zoom }}><div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width, height }}>{children}</div></div>
       </div>
     </div>
@@ -407,7 +408,7 @@ export default function CareerStudioEditor() {
   const printRef = useRef<HTMLDivElement | null>(null);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(0.62);
+  const [previewZoom, setPreviewZoom] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640 ? 0.38 : 0.62);
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingDocumentName, setPendingDocumentName] = useState('');
   const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | 'rename' | null>(null);
@@ -973,7 +974,13 @@ export default function CareerStudioEditor() {
   const workspaceMeta = WORKSPACE_TITLES[workspace];
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
+      <MobileBuilderAdvice
+        storageKey={isCv ? 'career-cv' : 'career-lm'}
+        description={isCv
+          ? 'La création et la modification de votre CV fonctionnent sur mobile. Pour une mise en page très précise, de nombreux blocs ou l’édition manuelle avancée, un ordinateur reste plus confortable.'
+          : 'La création et la modification de votre lettre fonctionnent sur mobile. Pour une mise en page très précise ou une édition manuelle avancée, un ordinateur reste plus confortable.'}
+      />
       {toast && (
         <div className="fixed right-5 top-5 z-[160] rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#002050] shadow-lg">
           {toast}
@@ -981,8 +988,8 @@ export default function CareerStudioEditor() {
       )}
 
       <header className="relative z-40 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex min-h-[76px] items-center justify-between gap-4 px-4 lg:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-h-[64px] items-center justify-between gap-2 px-3 sm:min-h-[76px] sm:gap-4 sm:px-4 lg:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => navigate(withLearnerPreview('/omnia-career/documents'))}
@@ -1082,7 +1089,7 @@ export default function CareerStudioEditor() {
       )}
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <nav className="z-20 flex w-[76px] shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-slate-200 bg-white px-2 py-3" aria-label="Outils du Career Studio">
+        <nav className="absolute inset-x-0 bottom-0 z-40 flex h-[68px] shrink-0 flex-row items-center gap-1 overflow-x-auto border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:static md:h-auto md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:border-t-0 md:py-3 md:shadow-none" aria-label="Outils du Career Studio">
           {WORKSPACE_ITEMS.map(item => {
             const Icon = item.icon;
             const active = workspace === item.key;
@@ -1091,7 +1098,7 @@ export default function CareerStudioEditor() {
                 key={item.key}
                 type="button"
                 onClick={() => { setWorkspace(item.key); setToolPanelOpen(true); }}
-                className={`flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold transition ${active ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-[#002050]'}`}
+                className={`flex min-w-[64px] flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition md:min-w-0 md:w-full md:px-1 ${active ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-[#002050]'}`}
                 aria-pressed={active}
                 title={item.label}
               >
@@ -1107,10 +1114,10 @@ export default function CareerStudioEditor() {
           )}
         </nav>
 
-        {toolPanelOpen && <button type="button" aria-label="Fermer le panneau" onClick={() => setToolPanelOpen(false)} className="absolute inset-0 left-[76px] z-20 bg-slate-950/20 md:hidden" />}
+        {toolPanelOpen && <button type="button" aria-label="Fermer le panneau" onClick={() => setToolPanelOpen(false)} className="absolute inset-x-0 bottom-[68px] top-0 z-20 bg-slate-950/20 md:inset-0 md:left-[76px] md:hidden" />}
 
         {toolPanelOpen && (
-          <aside className="absolute inset-y-0 left-[76px] z-30 flex w-[min(380px,calc(100vw-76px))] flex-col border-r border-slate-200 bg-[#F8FAFC] shadow-xl md:static md:z-auto md:w-[380px] md:shadow-none">
+          <aside className="absolute inset-x-0 bottom-[68px] top-0 z-30 flex w-full flex-col border-r border-slate-200 bg-[#F8FAFC] shadow-xl md:static md:z-auto md:w-[380px] md:shadow-none">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-[#002050]">{workspaceMeta.title}</h2>
@@ -1131,7 +1138,7 @@ export default function CareerStudioEditor() {
           </aside>
         )}
 
-        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100/70 p-3 sm:p-5">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100/70 p-2 pb-[78px] sm:p-5 md:pb-5">
           <div className="mx-auto max-w-[1180px]">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1139,7 +1146,7 @@ export default function CareerStudioEditor() {
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{selectedTemplate?.name_fr || 'Modèle sélectionné'}</span>
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{score === null ? 'Qualité —' : `Qualité ${score}%`}</span>
                 </div>
-                <h1 className="mt-2 text-xl font-semibold text-[#002050]">Aperçu du document</h1>
+                <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Aperçu du document</h1>
               </div>
               {!toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}
             </div>

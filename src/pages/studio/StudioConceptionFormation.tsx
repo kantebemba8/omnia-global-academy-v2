@@ -1,4 +1,5 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
+import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
@@ -200,6 +201,7 @@ export default function StudioConceptionFormation() {
   const [submitting, setSubmitting] = useState(false);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showRolePreview, setShowRolePreview] = useState(false);
@@ -796,7 +798,11 @@ export default function StudioConceptionFormation() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#F0F2F5', fontFamily: 'Arial, sans-serif' }}>
+    <div className="flex flex-col h-[100dvh] overflow-hidden" style={{ background: '#F0F2F5', fontFamily: 'Arial, sans-serif' }}>
+      <MobileBuilderAdvice
+        storageKey="formation-builder"
+        description="La création et la modification d’une formation fonctionnent sur mobile. Pour les gros imports, SCORM, la réorganisation de nombreux modules ou une mise en page complexe, un ordinateur reste plus confortable."
+      />
 
       {/* Toast */}
       {toast && (
@@ -811,14 +817,14 @@ export default function StudioConceptionFormation() {
       )}
 
       {/* ── BARRE SUPÉRIEURE ─────────────────────────────── */}
-      <div className="bg-white border-b flex items-center px-4 h-14 flex-shrink-0" style={{ borderColor: '#E4E7EC' }}>
+      <div className="bg-white border-b flex items-center gap-1 px-2 h-14 flex-shrink-0 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
         <button onClick={() => {
           const back = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
             : window.location.pathname.includes('/partner/') ? '/partner/dashboard'
             : window.location.pathname.includes('/structure/') ? '/structure/formations'
             : '/professeur/courses';
           navigate(back);
-        }} className="flex items-center gap-1.5 mr-4 text-sm" style={{ color: '#6B7280' }}>
+        }} className="flex items-center gap-1 mr-1 text-sm sm:mr-4" style={{ color: '#6B7280' }}>
           <ChevronLeft size={16} /> Retour
         </button>
         <div className="flex items-center gap-2 mr-4">
@@ -827,7 +833,7 @@ export default function StudioConceptionFormation() {
           </div>
           <span className="font-bold text-sm hidden md:block" style={{ color: '#002050' }}>Omnia Global Academy</span>
           <span className="text-sm hidden md:block" style={{ color: '#9CA3AF' }}>|</span>
-          <span className="font-semibold text-sm" style={{ color: '#002050' }}>Studio de Conception de Formation</span>
+          <span className="hidden sm:inline font-semibold text-sm" style={{ color: '#002050' }}>Studio de Conception de Formation</span>
         </div>
 
         {/* Fil d'Ariane */}
@@ -838,7 +844,7 @@ export default function StudioConceptionFormation() {
         </div>
 
         {/* Mode simple/avancé */}
-        <div className="flex items-center gap-1 mx-3 bg-gray-100 rounded-lg p-1 flex-shrink-0">
+        <div className="hidden md:flex items-center gap-1 mx-3 bg-gray-100 rounded-lg p-1 flex-shrink-0">
           <button onClick={() => setAdvancedMode(false)}
             className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
             style={!advancedMode ? { background: '#002050', color: 'white' } : { color: '#6B7280' }}>
@@ -852,39 +858,41 @@ export default function StudioConceptionFormation() {
         </div>
 
         {/* Statut */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold mr-3 flex-shrink-0" style={{ background: statusCfg.bg, color: statusCfg.color }}>
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold mr-3 flex-shrink-0" style={{ background: statusCfg.bg, color: statusCfg.color }}>
           <div className="w-2 h-2 rounded-full" style={{ background: statusCfg.dot }} />
           {statusCfg.label}
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={loadHistory} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+          <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>
           <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } setShowRolePreview(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-            <Eye size={13} /> Prévisualiser
+            <Eye size={13} /><span className="hidden sm:inline">Prévisualiser</span>
           </button>
           <button onClick={save} disabled={saving || locked}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50"
             style={{ borderColor: '#E4E7EC', color: '#374151' }}>
-            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}<span className="hidden sm:inline">Enregistrer</span>
           </button>
           <button onClick={submit} disabled={submitting || locked}
             className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
             style={{ background: locked ? '#9CA3AF' : '#BF8813' }}>
-            <Send size={13} /> {locked ? 'Soumise' : 'Soumettre'}
+            <Send size={13} /><span className="hidden sm:inline">{locked ? 'Soumise' : 'Soumettre'}</span>
           </button>
         </div>
       </div>
 
       {/* ── CORPS PRINCIPAL ──────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden relative">
+        {mobileLibraryOpen && <button type="button" aria-label="Fermer la bibliothèque" onClick={() => setMobileLibraryOpen(false)} className="absolute inset-0 z-30 bg-slate-950/30 md:hidden" />}
         {/* ── COLONNE GAUCHE : Bibliothèque ────────────── */}
-        <div className="bg-white border-r flex flex-col flex-shrink-0" style={{ width: '240px', borderColor: '#E4E7EC' }}>
+        <div className={`${mobileLibraryOpen ? 'absolute inset-y-0 left-0 z-40 flex w-[min(22rem,92vw)] shadow-2xl' : 'hidden'} bg-white border-r flex-col flex-shrink-0 md:flex md:static md:w-[240px] md:shadow-none`} style={{ borderColor: '#E4E7EC' }}>
 
           {/* Tabs bibliothèque */}
-          <div className="flex border-b" style={{ borderColor: '#E4E7EC' }}>
+          <div className="flex items-center border-b" style={{ borderColor: '#E4E7EC' }}>
+            <button type="button" onClick={() => setMobileLibraryOpen(false)} className="ml-2 rounded-lg p-2 text-slate-500 md:hidden" aria-label="Fermer la bibliothèque"><X size={16} /></button>
             {(['blocs', 'sections', 'templates'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveLibTab(tab)}
                 className="flex-1 py-2.5 text-xs font-semibold capitalize transition-all"
@@ -909,7 +917,7 @@ export default function StudioConceptionFormation() {
                       </p>
                       <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
-                          <button key={def.type} onClick={() => addBlock(def.type)} disabled={locked} draggable={!locked && !!currentLesson}
+                          <button key={def.type} onClick={async () => { await addBlock(def.type); setMobileLibraryOpen(false); }} disabled={locked} draggable={!locked && !!currentLesson}
                             onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }}
                             className="flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all hover:shadow-sm disabled:opacity-40"
                             style={{ borderColor: '#E4E7EC', background: 'white' }}>
@@ -1004,6 +1012,14 @@ export default function StudioConceptionFormation() {
 
         {/* ── ZONE CENTRALE : Canevas ──────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b bg-white px-3 py-2 md:hidden" style={{ borderColor: '#E4E7EC' }}>
+            <button type="button" onClick={() => setMobileLibraryOpen(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#002050', color: '#002050' }}><Layers size={14} /> Bibliothèque</button>
+            <button type="button" onClick={() => setShowAI(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#BF8813', color: '#92400E' }}><Sparkles size={14} /> IA</button>
+            <button type="button" onClick={() => setShowPreview(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}><Eye size={14} /> Aperçu</button>
+            <button type="button" onClick={() => setAdvancedMode(v => !v)} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}>{advancedMode ? 'Mode avancé' : 'Mode simple'}</button>
+            <button type="button" onClick={loadHistory} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><History size={14} /> Historique</button>
+            <button type="button" onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Checklist</button>
+          </div>
 
           {/* Navigation structure formation */}
           <div className="bg-white border-b flex items-center px-4 py-2 gap-4 flex-shrink-0 overflow-x-auto" style={{ borderColor: '#E4E7EC' }}>
@@ -1332,7 +1348,7 @@ export default function StudioConceptionFormation() {
           </div>
 
           {/* ── BARRE INFÉRIEURE ─────────────────────── */}
-          <div className="bg-white border-t px-4 py-2 flex items-center justify-between flex-shrink-0 text-xs" style={{ borderColor: '#E4E7EC', color: '#9CA3AF' }}>
+          <div className="hidden md:flex bg-white border-t px-4 py-2 items-center justify-between flex-shrink-0 text-xs" style={{ borderColor: '#E4E7EC', color: '#9CA3AF' }}>
             <div className="flex items-center gap-4">
               <span>Mots : {wordCount}</span>
               {wordCount > 0 && <span>Lecture : ~{Math.ceil(wordCount / 200)} min</span>}
@@ -1358,7 +1374,7 @@ export default function StudioConceptionFormation() {
 
         {/* ── COLONNE DROITE : Réglages ou Aperçu ─────── */}
         {(selectedBlock || showPreview || showAI) && (
-          <div className="bg-white border-l flex flex-col" style={{ width: '300px', borderColor: '#E4E7EC' }}>
+          <div className="absolute inset-0 z-50 flex flex-col border-l bg-white md:static md:w-[300px]" style={{ borderColor: '#E4E7EC' }}>
 
             {/* ── ASSISTANT IA ──────────────────────── */}
             {showAI && !selectedBlock && (
