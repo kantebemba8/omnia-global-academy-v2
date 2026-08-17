@@ -35,7 +35,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_id)!==userId)return false;if(String(data.creator_context||"")!=="structure")return true;if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","create_lesson","create_block","update_block","delete_block","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","create_lesson","create_block","update_block","delete_block","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -685,11 +685,14 @@ Deno.serve(async(req)=>{
      }
    }
    const creatorContext=requestedCreatorContext;
+   const requestedCourseCode=String(b.course_code||"").trim().toUpperCase();
+   if(requestedCourseCode&&!/^[A-Z0-9][A-Z0-9._-]{1,31}$/.test(requestedCourseCode))return json({success:false,error:"INVALID_COURSE_CODE",message:"Le code formation doit contenir 2 à 32 caractères : lettres, chiffres, tiret, point ou underscore."},400);
+   if(requestedCourseCode){const {data:duplicate}=await sb.from("courses").select("id").eq("course_code",requestedCourseCode).limit(1).maybeSingle();if(duplicate)return json({success:false,error:"COURSE_CODE_ALREADY_EXISTS",message:"Ce code de formation est déjà utilisé."},409);}
    let structureId:string|null=null;
    if(creatorContext==="structure"){const access=await validatedStructureAccess(sb,userId);if(!access)return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);if(!hasStructurePermission(access,"can_create_courses"))return json({success:false,error:"STRUCTURE_COURSE_PERMISSION_REQUIRED"},403);structureId=access.organizationId;}
    const thresholdDefaults=await settingJson(sb,"assessment_threshold_defaults",{lesson_passing_score:80,module_passing_score:80,final_passing_score:70,competency_mastery_score:80,default_retry_cooldown_hours:24,default_remediation_after_attempts:3});
    const insert:any={
-    title:b.title||"Nouvelle formation",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
+    course_code:requestedCourseCode||null,title:b.title||"Nouvelle formation",creator_id:userId,instructor_id:userId,creator_context:creatorContext,structure_id:structureId,client_draft_key:b.client_draft_key||null,template_used:b.template_used||"simple_textual",
     studio_mode:b.studio_mode||"simple",studio_status:"draft",short_description:b.short_description||"",
     long_description:b.long_description||"",category:b.category||null,level:b.level||null,language:normalizedCourseLanguage(b.language),course_type:b.course_type==="language_learning"?"language_learning":"standard",instruction_language:normalizedCourseLanguage(b.instruction_language||b.language),target_language:b.course_type==="language_learning"?(normalizedCourseLanguage(b.target_language,"")||null):null,cefr_start_level:b.course_type==="language_learning"?(b.cefr_start_level||null):null,cefr_target_level:b.course_type==="language_learning"?(b.cefr_target_level||null):null,language_framework:b.course_type==="language_learning"?(b.language_framework||"CEFR"):null,
     prerequisites:b.prerequisites||"",objectives:b.objectives||[],target_audience:b.target_audience||"",
@@ -829,12 +832,13 @@ Deno.serve(async(req)=>{
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
+   if(b.course_code!==undefined){const code=String(b.course_code||"").trim().toUpperCase();if(code&&!/^[A-Z0-9][A-Z0-9._-]{1,31}$/.test(code))return json({success:false,error:"INVALID_COURSE_CODE",message:"Le code formation doit contenir 2 à 32 caractères : lettres, chiffres, tiret, point ou underscore."},400);if(code){const {data:duplicate}=await sb.from("courses").select("id").eq("course_code",code).neq("id",courseId).limit(1).maybeSingle();if(duplicate)return json({success:false,error:"COURSE_CODE_ALREADY_EXISTS",message:"Ce code de formation est déjà utilisé."},409);}b.course_code=code||null;}
    if(b.language!==undefined&&!SUPPORTED_COURSE_LANGS.has(String(b.language).toLowerCase()))return json({success:false,error:"INVALID_COURSE_LANGUAGE"},400);
    if(b.instruction_language!==undefined&&String(b.instruction_language||"")&&!SUPPORTED_COURSE_LANGS.has(String(b.instruction_language).toLowerCase()))return json({success:false,error:"INVALID_INSTRUCTION_LANGUAGE"},400);
    if(b.target_language!==undefined&&String(b.target_language||"")&&!SUPPORTED_COURSE_LANGS.has(String(b.target_language).toLowerCase()))return json({success:false,error:"INVALID_TARGET_LANGUAGE"},400);
    if(b.cefr_start_level!==undefined&&String(b.cefr_start_level||"")&&!CEFR_LEVELS.has(String(b.cefr_start_level)))return json({success:false,error:"INVALID_CEFR_START_LEVEL"},400);
    if(b.cefr_target_level!==undefined&&String(b.cefr_target_level||"")&&!CEFR_LEVELS.has(String(b.cefr_target_level)))return json({success:false,error:"INVALID_CEFR_TARGET_LEVEL"},400);
-   const updates:any={updated_at:new Date().toISOString()};for(const k of ["title","short_description","long_description","category","level","language","course_type","instruction_language","target_language","cefr_start_level","cefr_target_level","language_framework","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","learning_design_settings","lesson_passing_score","module_passing_score","final_passing_score","assessment_policy"])if(b[k]!==undefined)updates[k]=b[k]; if((updates.course_type||b.course_type)==="standard"){updates.target_language=null;updates.cefr_start_level=null;updates.cefr_target_level=null;updates.language_framework=null}else if((updates.course_type||b.course_type)==="language_learning"){updates.language_framework="CEFR";} updates.free_preview_mode="introduction";if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
+   const updates:any={updated_at:new Date().toISOString()};for(const k of ["course_code","title","short_description","long_description","category","level","language","course_type","instruction_language","target_language","cefr_start_level","cefr_target_level","language_framework","prerequisites","objectives","target_audience","learning_outcomes","cover_image_url","cover_image_prompt","course_intro_title","course_intro_summary","studio_mode","template_used","word_count","sale_mode","desired_price_amount","sale_currency","promotion_price_amount","structure_payment_mode","structure_fixed_amount","certification_requested","is_assisted","assisted_status","assisted_request_id","learning_design_settings","lesson_passing_score","module_passing_score","final_passing_score","assessment_policy"])if(b[k]!==undefined)updates[k]=b[k]; if((updates.course_type||b.course_type)==="standard"){updates.target_language=null;updates.cefr_start_level=null;updates.cefr_target_level=null;updates.language_framework=null}else if((updates.course_type||b.course_type)==="language_learning"){updates.language_framework="CEFR";} updates.free_preview_mode="introduction";if(b.word_count!==undefined)updates.estimated_read_min=Math.max(1,Math.ceil(Number(b.word_count)/200));if(action==="autosave")updates.last_autosave_at=new Date().toISOString();
    const {data,error}=await sb.from("courses").update(updates).eq("id",courseId).select("*").single();if(error)throw error;if(action!=="autosave")await log(sb,courseId,userId,"course_updated");return json({success:true,course:data});
   }
   if(action==="apply_template"){
@@ -952,8 +956,8 @@ Deno.serve(async(req)=>{
    }
 
    const allowedModes=["none","review_lesson","review_module","exercise","manual"],allowedPeriods=["day","week","month","subscription_period"],allowedTypes=["quiz","exam","case_study","project","practical","oral","assignment"],allowedDelivery=["asynchronous","scheduled_online","scheduled_in_person","hybrid"],allowedRelease=["immediate","after_review","manual"];
-   const policy={...(b.policy&&typeof b.policy==="object"?b.policy:{}),purchased_access:"until_passed",certificate_requires_success:true};
    const nowIso=new Date().toISOString();
+   const policy={...(b.policy&&typeof b.policy==="object"?b.policy:{}),purchased_access:"until_passed",certificate_requires_success:true,builder_configured_at:nowIso,builder_final_reviewed_at:null};
 
    for(const item of rows){
     const competencyInput=Array.isArray(item.competency_mappings)?item.competency_mappings:(Array.isArray(item.competency_ids)?item.competency_ids.map((id:any)=>({competency_id:id})):[]);
@@ -990,7 +994,16 @@ Deno.serve(async(req)=>{
    if(courseUpdate.error)throw courseUpdate.error;
    if(!courseUpdate.data)return json({success:false,error:"COURSE_UPDATE_FAILED",message:"Les règles n’ont pas été rattachées à la formation."},409);
    await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"assessment_policy_updated",{count:rows.length});
-   return json({success:true,updated_assessments:rows.length});
+   return json({success:true,updated_assessments:rows.length,policy});
+  }
+  if(action==="assessment_policy_confirm_review"){
+   if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:row,error}=await sb.from("courses").select("assessment_policy").eq("id",courseId).maybeSingle();if(error)throw error;if(!row)return json({success:false,error:"NOT_FOUND"},404);
+   const policy=row.assessment_policy&&typeof row.assessment_policy==="object"?row.assessment_policy:{};
+   if(!policy.builder_configured_at)return json({success:false,error:"ASSESSMENT_POLICY_NOT_CONFIGURED",message:"Configurez d’abord les règles d’évaluation."},409);
+   const next={...policy,builder_final_reviewed_at:new Date().toISOString()};
+   const {error:updateError}=await sb.from("courses").update({assessment_policy:next,updated_at:new Date().toISOString()}).eq("id",courseId);if(updateError)throw updateError;
+   await log(sb,courseId,userId,"assessment_policy_final_reviewed",{});return json({success:true,policy:next});
   }
   if(action==="prepare_assessment_submission_upload"){
    if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne crée aucune copie."},403);
@@ -1233,6 +1246,7 @@ Deno.serve(async(req)=>{
    const {data:l}=await sb.from("course_lessons").select("id,module_id,title,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");
    const {data:bl}=await sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId);
    const {data:assessments}=await sb.from("course_assessments").select("id,scope,lesson_id,module_id,required,passing_score,retry_cooldown_hours,remediation_after_attempts,remediation_mode,assessment_questions(count)").eq("course_id",courseId);
+   if(!String(c.course_code||"").trim())errors.push("Ajoutez le code unique de la formation.");
    if(!c.title?.trim())errors.push("Le titre de la formation est obligatoire.");
    if(!c.short_description?.trim())errors.push("Ajoutez la description courte visible avant achat.");
    if(!c.long_description?.trim())errors.push("Ajoutez la présentation détaillée de la formation.");
@@ -1254,6 +1268,7 @@ Deno.serve(async(req)=>{
    
    const intro=(m||[]).find((x:any)=>x.is_intro);const conclusion=(m||[]).find((x:any)=>x.is_conclusion);const finalExam=(m||[]).find((x:any)=>x.is_final_exam);
    const assessmentPolicy=c.assessment_policy&&typeof c.assessment_policy==="object"?c.assessment_policy:{};
+   if(!assessmentPolicy.builder_configured_at)errors.push("Configurez les règles d’évaluation, de réussite et de certification.");
    const requireLessonAssessments=assessmentPolicy.lesson_assessment_required===true;
    const requireModuleAssessments=assessmentPolicy.module_assessment_required===true;
    const requireFinalAssessment=assessmentPolicy.final_assessment_required===true||c.certification_requested===true||c.requested_cpd===true||c.cpd_accredited===true;
@@ -1304,6 +1319,7 @@ Deno.serve(async(req)=>{
   if(action==="submit_course"){
    const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version,creator_context,creator_id,pricing_status,admin_selected_price_xof,is_assisted,assisted_status").eq("id",courseId).single();if(error)throw error;
    if(!c.ready_to_submit)return json({success:false,errors:c.quality_report?.errors||["Exécutez le contrôle qualité et corrigez les éléments manquants."],warnings:c.quality_report?.warnings||[]},400);
+   const {data:reviewState}=await sb.from("courses").select("assessment_policy").eq("id",courseId).maybeSingle();const reviewedPolicy=reviewState?.assessment_policy&&typeof reviewState.assessment_policy==="object"?reviewState.assessment_policy:{};if(!reviewedPolicy.builder_final_reviewed_at)return json({success:false,error:"ASSESSMENT_POLICY_FINAL_REVIEW_REQUIRED",errors:["Vérifiez une dernière fois les règles d’évaluation avant la soumission."],warnings:[]},409);
    if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
    if(c.is_assisted&&!["owner_validated","pricing_review","ready_to_publish","completed"].includes(String(c.assisted_status||"")))return json({success:false,errors:["Validez d’abord le brouillon préparé par Omnia, ou demandez les corrections nécessaires."],warnings:[]},409);
    const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
@@ -1396,10 +1412,11 @@ Deno.serve(async(req)=>{
   if(action==="ai_generate_cover_images"){
    const prompt=String(b.prompt||"").trim();if(!prompt)return json({success:false,error:"PROMPT_REQUIRED"},400);
    const count=Math.min(4,Math.max(1,Number(b.count)||3));const images:string[]=[];
-   const safePrompt=`Image de couverture professionnelle pour une formation en ligne. ${prompt}. Format horizontal 16:9, composition claire, lisible en miniature, sans texte, sans logo, sans filigrane, sans personne sauf demande explicite. Style éducatif premium adapté à l'Afrique et au monde.`;
-   for(let i=0;i<count;i++){
-    const generated=await runOpenAIImage(sb,{context:{module:"image",action:"course_cover",userId,courseId},prompt:`${safePrompt} Variante visuelle ${i+1}.`,size:"1536x1024",quality:"medium"});
-    const bytes=Uint8Array.from(atob(generated.b64),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
+   const safePrompt=`Image de couverture professionnelle pour une formation en ligne. ${prompt}. Format horizontal 16:9, composition claire, lisible en miniature, sans texte, sans logo, sans filigrane, sans personne sauf demande explicite. Style éducatif premium adapté à l'Afrique et au monde. Produis ${count} variantes réellement différentes.`;
+   const generated=await runOpenAIImage(sb,{context:{module:"image",action:"course_cover",userId,courseId},prompt:safePrompt,size:"1536x1024",quality:"medium",count});
+   const generatedImages=Array.isArray(generated.images)&&generated.images.length?generated.images:[generated.b64];
+   for(let i=0;i<generatedImages.length;i++){
+    const bytes=Uint8Array.from(atob(generatedImages[i]),(c)=>c.charCodeAt(0));const path=`${courseId}/ai-cover-${Date.now()}-${i+1}.png`;const {error:upErr}=await sb.storage.from("course-images").upload(path,bytes,{contentType:"image/png",upsert:true});if(upErr)throw upErr;
     images.push(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/course-images/${path}`);
    }
    await sb.from("courses").update({cover_image_prompt:prompt,cover_image_candidates:images,updated_at:new Date().toISOString()}).eq("id",courseId);await log(sb,courseId,userId,"cover_images_generated",{count:images.length});return json({success:true,images});

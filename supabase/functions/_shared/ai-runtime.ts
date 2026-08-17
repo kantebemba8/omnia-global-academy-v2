@@ -188,21 +188,24 @@ export async function runOpenAIEmbedding(sb: any, options: { context: RuntimeCon
   return embedding as number[];
 }
 
-export async function runOpenAIImage(sb: any, options: { context: RuntimeContext; prompt: string; size?: string; quality?: string; model?: string }) {
+export async function runOpenAIImage(sb: any, options: { context: RuntimeContext; prompt: string; size?: string; quality?: string; model?: string; count?: number }) {
   const key = String(Deno.env.get("OPENAI_API_KEY") || "").trim();
-  if (!key) throw new AiRuntimeError("OPENAI_NOT_CONFIGURED", "openai", 503);
+  if (!key) throw new AiRuntimeError("OPENAI_NOT_CONFIGURED", "openai", 503, "La clé OpenAI n’est pas configurée dans Supabase.");
   const model = options.model || getOpenAIImageModel();
+  const count = Math.min(4, Math.max(1, Number(options.count || 1)));
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt: options.prompt, size: options.size || "1536x1024", quality: options.quality || "medium", n: 1 }),
+    body: JSON.stringify({ model, prompt: options.prompt, size: options.size || "1536x1024", quality: options.quality || "medium", n: count, output_format: "png" }),
   });
   const payload = await response.json().catch(() => ({} as any));
   if (!response.ok) throw new AiRuntimeError("OPENAI_IMAGE_FAILED", "openai", response.status, cleanDetail(payload?.error?.message || payload));
-  const b64 = String(payload?.data?.[0]?.b64_json || "");
-  if (!b64) throw new AiRuntimeError("OPENAI_IMAGE_EMPTY", "openai", 502);
-  await recordUsage(sb, "openai", model, options.context, { images: 1 }, String(payload?.id || crypto.randomUUID()));
-  return { b64, model };
+  const images = Array.isArray(payload?.data)
+    ? payload.data.map((item: any) => String(item?.b64_json || "")).filter(Boolean)
+    : [];
+  if (!images.length) throw new AiRuntimeError("OPENAI_IMAGE_EMPTY", "openai", 502, "OpenAI n’a retourné aucune image.");
+  await recordUsage(sb, "openai", model, options.context, { images: images.length }, String(payload?.id || crypto.randomUUID()));
+  return { b64: images[0], images, model };
 }
 
 export async function runOpenAITts(sb: any, options: { context: RuntimeContext; text: string; voice?: string; speed?: number; model?: string }) {

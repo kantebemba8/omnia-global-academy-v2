@@ -540,7 +540,7 @@ export function DashboardLayout({
         />
 
         <div className="relative z-40 flex-shrink-0 border-b border-slate-200 bg-white" onMouseLeave={() => setOpenDesktopGroup(null)}>
-          <div className="mx-auto max-w-[1600px] px-4 md:px-6">
+          <div className="mx-auto max-w-[1600px] overflow-x-auto overscroll-x-contain px-4 md:px-6" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
             <nav className="flex min-w-max items-center" aria-label="Navigation principale Super-admin">
               {ACTIVE_NAV_GROUPS?.map((group, groupIndex) => {
                 const GroupIcon = group.icon;
@@ -594,9 +594,9 @@ export function DashboardLayout({
         </div>
 
         {mobileNavigationOpen && (
-          <div className="fixed inset-0 z-[120] flex lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administration">
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation administration">
             <button type="button" className="fixed inset-0 bg-black/50" onClick={() => setMobileNavigationOpen(false)} aria-label="Fermer la navigation" />
-            <aside className="relative z-10 flex h-[100dvh] w-[min(90vw,350px)] flex-col bg-[#002050] shadow-2xl">
+            <aside className="relative z-10 flex max-h-[calc(100dvh-2rem)] w-[min(92vw,420px)] flex-col overflow-hidden rounded-2xl bg-[#002050] shadow-2xl">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <Link to="/admin/dashboard" onClick={() => setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5">
                   <img src="/omnia-sidebar-logo.png" alt="" className="h-9 w-9 shrink-0 object-contain" />

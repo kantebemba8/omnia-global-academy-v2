@@ -110,7 +110,7 @@ async function call(action: string, payload: Record<string, unknown>) {
   return data;
 }
 
-export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId: string; locked?: boolean; onClose: () => void }) {
+export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { courseId: string; locked?: boolean; onClose: () => void; onSaved?: (policy: Record<string, unknown>) => void }) {
   const [rows, setRows] = useState<AssessmentRow[]>([]);
   const [frameworks, setFrameworks] = useState<Framework[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,23 +214,25 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose }: { courseId:
     setMessage('');
     setError('');
     try {
-      await call('assessment_policy_update', {
+      const savedPolicy = {
+        purchased_access: 'until_passed',
+        certificate_requires_success: true,
+        default_retry_cooldown_hours: rows[0]?.retry_cooldown_hours ?? 24,
+        default_remediation_after_attempts: rows[0]?.remediation_after_attempts ?? 3,
+        default_remediation_mode: rows[0]?.remediation_mode ?? 'review_module',
+        lesson_assessment_required: policy.lesson_assessment_required,
+        module_assessment_required: policy.module_assessment_required,
+        final_assessment_required: policy.final_assessment_required,
+      };
+      const result = await call('assessment_policy_update', {
         course_id: courseId,
-        policy: {
-          purchased_access: 'until_passed',
-          certificate_requires_success: true,
-          default_retry_cooldown_hours: rows[0]?.retry_cooldown_hours ?? 24,
-          default_remediation_after_attempts: rows[0]?.remediation_after_attempts ?? 3,
-          default_remediation_mode: rows[0]?.remediation_mode ?? 'review_module',
-          lesson_assessment_required: policy.lesson_assessment_required,
-          module_assessment_required: policy.module_assessment_required,
-          final_assessment_required: policy.final_assessment_required,
-        },
+        policy: savedPolicy,
         assessments: rows,
       });
       await call('ensure_assessments', { course_id: courseId });
-      setMessage('Les règles d’évaluation, de jury, de révision et de compétences ont été enregistrées. Les évaluations ne sont créées que lorsqu’elles sont requises.');
-      await load();
+      setMessage('Les règles d’évaluation ont été enregistrées.');
+      onSaved?.(result.policy || savedPolicy);
+      onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.');
     } finally {

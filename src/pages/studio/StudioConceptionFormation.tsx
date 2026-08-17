@@ -41,7 +41,7 @@ interface Block {
 interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
 interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
 interface Course {
-  id: string; title: string; short_description?: string; long_description?: string;
+  id: string; course_code?: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; course_type?: 'standard'|'language_learning'; instruction_language?: string; target_language?: string; cefr_start_level?: string; cefr_target_level?: string; language_framework?: string; prerequisites?: string;
   objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
   target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
@@ -51,11 +51,12 @@ interface Course {
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
   free_preview_mode?: 'none'|'introduction'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
-  pricing_status?: string; lesson_passing_score?: number; module_passing_score?: number; final_passing_score?: number; learning_design_settings?: Record<string, any>;
+  pricing_status?: string; lesson_passing_score?: number; module_passing_score?: number; final_passing_score?: number; learning_design_settings?: Record<string, any>; assessment_policy?: Record<string, any>;
 }
 
 const EMPTY_COURSE: Course = {
   id: '',
+  course_code: '',
   title: '',
   short_description: '',
   long_description: '',
@@ -166,6 +167,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
+function normalizeCourseCode(value: string) { return value.toUpperCase().replace(/[^A-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32); }
 async function api(action: string, body: Record<string, any> = {}) {
   const res = await fetch(API, {
     method: 'POST',
@@ -208,6 +210,7 @@ export default function StudioConceptionFormation() {
   const [showFinalization, setShowFinalization] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [showAssessmentPolicy, setShowAssessmentPolicy] = useState(false);
+  const [showSubmitReview, setShowSubmitReview] = useState(false);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -566,6 +569,7 @@ export default function StudioConceptionFormation() {
       const data = await api('create_course', {
         creator_context: creatorContext,
         client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
+        course_code: normalizeCourseCode(course.course_code || ''),
         title: course.title,
         short_description: course.short_description,
         long_description: course.long_description,
@@ -645,6 +649,7 @@ export default function StudioConceptionFormation() {
       if (!savedCourse?.id) return;
       const data = await api('update_course', {
         course_id: savedCourse.id, client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
+        course_code: normalizeCourseCode(course.course_code || ''),
         title: course.title,
         short_description: course.short_description,
         long_description: course.long_description,
@@ -703,21 +708,37 @@ export default function StudioConceptionFormation() {
       if (!data.success) throw new Error(data.message || data.error || 'Génération indisponible');
       setCoverCandidates(data.images || []);
       updateCourse('cover_image_prompt', coverPrompt);
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Erreur de génération', 'error'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erreur de génération';
+      showToast(message === 'OPENAI_NOT_CONFIGURED' ? 'La génération d’images OpenAI n’est pas configurée.' : message, 'error');
+    }
     finally { setCoverGenerating(false); }
   }
 
   // ─── Soumettre ────────────────────────────────────────────
   async function submit() {
     if (!course?.id) return;
-    // Valider d'abord
     const check = await api('validate_checklist', { course_id: course.id });
     setChecklist(check);
     if (!check.valid) { setShowChecklist(true); showToast('Corrigez les erreurs avant de soumettre', 'error'); return; }
+    if (!course.assessment_policy?.builder_configured_at) {
+      showToast('Configurez d’abord les règles d’évaluation, de réussite et de certification.', 'error');
+      setShowAssessmentPolicy(true);
+      return;
+    }
+    setShowSubmitReview(true);
+  }
+
+  async function confirmSubmit() {
+    if (!course?.id) return;
     setSubmitting(true);
     try {
+      const reviewed = await api('assessment_policy_confirm_review', { course_id: course.id });
+      if (!reviewed.success) throw new Error(reviewed.message || reviewed.error || 'Vérification finale impossible');
+      setCourse(c => c ? { ...c, assessment_policy: reviewed.policy || c.assessment_policy } : c);
       const data = await api('submit_course', { course_id: course.id });
       if (data.success) {
+        setShowSubmitReview(false);
         if (data.pricing_required) {
           setCourse(c => c ? { ...c, pricing_status: data.pricing_status } : c);
           showToast(data.message || 'La tarification a été transmise pour validation.', 'info');
@@ -726,11 +747,13 @@ export default function StudioConceptionFormation() {
           showToast('✅ Formation soumise pour validation');
         }
       } else {
-        setChecklist({ valid: false, errors: data.errors || [], warnings: data.warnings || [] });
+        setShowSubmitReview(false);
+        setChecklist({ valid: false, errors: data.errors || [data.message || data.error || 'Soumission impossible'], warnings: data.warnings || [] });
         setShowChecklist(true);
       }
-    } catch { showToast('Erreur lors de la soumission', 'error'); }
-    finally { setSubmitting(false); }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Erreur lors de la soumission', 'error');
+    } finally { setSubmitting(false); }
   }
 
   // ─── Charger historique ───────────────────────────────────
@@ -1065,20 +1088,23 @@ export default function StudioConceptionFormation() {
               </button>
               <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
+              {course.assessment_policy?.builder_configured_at && <button type="button" onClick={openAssessmentPolicy} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{borderColor:'#1E7A52',color:'#065F46',background:'#ECFDF5'}}><CheckCircle size={11}/> Évaluations configurées</button>}
             </div>
           </div>
 
-          <div className="flex-shrink-0 border-b bg-white px-3 py-3 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
-            <div className="mx-auto max-w-5xl">
-              <AssessmentRulesCard
-                courseId={course.id || 'new'}
-                durationMinutes={course.calculated_duration_minutes || 0}
-                busy={openingAssessmentPolicy || creatingDraft}
-                locked={locked}
-                onConfigure={openAssessmentPolicy}
-              />
+          {!course.assessment_policy?.builder_configured_at && (
+            <div className="flex-shrink-0 border-b bg-white px-3 py-3 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
+              <div className="mx-auto max-w-5xl">
+                <AssessmentRulesCard
+                  courseId={course.id || 'new'}
+                  durationMinutes={course.calculated_duration_minutes || 0}
+                  busy={openingAssessmentPolicy || creatingDraft}
+                  locked={locked}
+                  onConfigure={openAssessmentPolicy}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Canevas */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
@@ -1096,6 +1122,7 @@ export default function StudioConceptionFormation() {
                 )}
 
                 {[
+                  { field: 'course_code', label: 'Code de la formation *', placeholder: 'Ex : NEG-101', type: 'course_code' },
                   { field: 'title', label: 'Titre de la formation *', placeholder: 'Ex: Comptabilité générale pour débutants', type: 'text' },
                   { field: 'short_description', label: 'Description courte *', placeholder: 'Résumé affiché sur la carte et avant l’achat...', type: 'textarea' },
                   { field: 'long_description', label: 'Présentation détaillée *', placeholder: 'Présentez le contenu, l’approche pédagogique, les bénéfices et ce que l’apprenant saura faire...', type: 'textarea' },
@@ -1111,8 +1138,10 @@ export default function StudioConceptionFormation() {
                       <textarea className="w-full px-3 py-2.5 border rounded-lg text-sm resize-none focus:outline-none focus:border-[#002050]"
                         style={{ borderColor: '#E4E7EC' }} rows={3}
                         value={(course as any)?.[field] || ''}
-                        onChange={e => updateCourse(field as keyof Course, e.target.value)}
-                        placeholder={placeholder} disabled={locked} />
+                        onChange={e => updateCourse(field as keyof Course, field === 'course_code' ? normalizeCourseCode(e.target.value) : e.target.value)}
+                        placeholder={placeholder} disabled={locked}
+                        inputMode={field === 'course_code' ? 'text' : undefined}
+                        autoCapitalize={field === 'course_code' ? 'characters' : undefined} />
                     ) : type === 'select' ? (
                       <select className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
                         style={{ borderColor: '#E4E7EC' }}
@@ -1252,11 +1281,10 @@ export default function StudioConceptionFormation() {
                     const isSelected = selectedBlock?.id === block.id;
                     return (
                       <div key={block.id}
-                        draggable={!locked}
+                        draggable={!locked && typeof window !== 'undefined' && window.innerWidth >= 768}
                         onDragStart={() => onDragStart(idx)}
                         onDragOver={e => onDragOver(e, idx)}
                         onDrop={e => onDrop(e, idx)}
-                        onClick={() => { setSelectedBlock(block); setSelectedBlockDef(def || null); }}
                         className="relative group"
                         style={{ opacity: dragOverIdx === idx ? 0.5 : 1 }}>
                         <div className="absolute left-0 top-0 bottom-0 flex items-center -translate-x-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
@@ -1273,7 +1301,10 @@ export default function StudioConceptionFormation() {
                                 <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#92400E', fontSize: '9px' }}>IA — à valider</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                              <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); }} className="p-1 rounded hover:bg-gray-100">
+                                <Settings size={13} style={{ color: '#002050' }} />
+                              </button>
                               <button title="Déplacer vers le haut" onClick={e => { e.stopPropagation(); moveBlock(idx, -1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === 0}>
                                 <ChevronUp size={12} style={{ color: '#6B7280' }} />
                               </button>
@@ -1485,7 +1516,36 @@ export default function StudioConceptionFormation() {
           courseId={course.id}
           locked={locked}
           onClose={closeAssessmentPolicy}
+          onSaved={(policy) => {
+            setCourse(current => current ? { ...current, assessment_policy: policy as Record<string, any> } : current);
+            showToast('Règles d’évaluation enregistrées. Le panneau a été fermé.');
+          }}
         />
+      )}
+
+      {showSubmitReview && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 px-4 py-6">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b px-5 py-4" style={{ borderColor: '#E4E7EC' }}>
+              <h3 className="font-bold" style={{ color: '#002050' }}>Dernière vérification avant soumission</h3>
+              <p className="mt-1 text-sm text-slate-600">Vérifiez les informations essentielles du brouillon avant de l’envoyer à l’Administration Omnia.</p>
+            </div>
+            <div className="space-y-3 p-5 text-sm">
+              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Code</span><strong className="text-[#002050]">{course.course_code || 'Non renseigné'}</strong></div>
+              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Formation</span><strong className="text-[#002050]">{course.title}</strong></div>
+              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Durée calculée</span><strong>{Math.max(0, course.calculated_duration_minutes || 0)} min</strong></div>
+              <div className="rounded-xl border p-3" style={{ borderColor: '#D1FAE5', background: '#ECFDF5' }}>
+                <p className="font-semibold text-emerald-800">✓ Règles d’évaluation configurées</p>
+                <p className="mt-1 text-xs text-emerald-700">Leçon : {course.assessment_policy?.lesson_assessment_required ? 'obligatoire' : 'facultative'} · Module : {course.assessment_policy?.module_assessment_required ? 'obligatoire' : 'facultative'} · Examen final : {course.assessment_policy?.final_assessment_required ? 'obligatoire' : 'selon certification'}</p>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end" style={{ borderColor: '#E4E7EC' }}>
+              <button type="button" onClick={() => setShowSubmitReview(false)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#E4E7EC' }}>Continuer à modifier</button>
+              <button type="button" onClick={() => { setShowSubmitReview(false); setShowAssessmentPolicy(true); }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#92400E' }}>Revoir les évaluations</button>
+              <button type="button" onClick={confirmSubmit} disabled={submitting} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{submitting ? 'Soumission…' : 'J’ai vérifié — soumettre'}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL CHECKLIST ──────────────────────────── */}
@@ -2232,19 +2292,8 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       )}
 
 
-      {/* IA Assistant */}
-      <div className="p-3 rounded-xl border" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
-        <div className="flex items-center gap-1.5 mb-2">
-          <Sparkles size={12} style={{ color: '#BF8813' }} />
-          <p className="text-xs font-bold" style={{ color: '#002050' }}>IA Assistant</p>
-        </div>
-        <p className="text-xs mb-2" style={{ color: '#6B7280' }}>Obtenez de l'aide pour améliorer votre contenu.</p>
-        <button onClick={() => onAI('ai_improve_text', c.text || c.html || c.question || c.content || '')}
-          className="w-full py-2 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-1.5"
-          style={{ background: '#002050' }}>
-          <Sparkles size={11} /> Ouvrir l'assistant IA
-        </button>
-      </div>
+      {/* L’assistant IA global reste accessible depuis la barre d’outils.
+          Les réglages d’un bloc n’affichent que les aides IA réellement spécifiques au type de bloc. */}
     </div>
   );
 }
