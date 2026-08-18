@@ -20,7 +20,7 @@ interface LessonItem {
   lesson_id: string; title: string; position: number;
   content_type: 'video' | 'audio' | 'text' | 'external'; duration_seconds: number;
   is_free: boolean; is_completed: boolean; time_spent_seconds: number; quiz_passed: boolean;
-  is_external?: boolean;
+  is_unlocked?: boolean; is_external?: boolean;
 }
 interface ModuleItem {
   module_id: string; title: string; position: number; description?: string;
@@ -41,6 +41,11 @@ interface LessonContent {
     reponse?: string;
     texteReference?: string;
   }>;
+}
+
+interface CourseInfoPayload {
+  course?: Record<string, any>;
+  creator?: Record<string, any>;
 }
 
 interface CourseProgressSnapshot {
@@ -307,6 +312,59 @@ function CpdBar({ required, spent, reached, isActive, assessmentPassed, isComple
   );
 }
 
+function CourseInfoView({ info, modules, progressPct, preview, onStart, onSelectLesson }: {
+  info: CourseInfoPayload | null; modules: ModuleItem[]; progressPct: number; preview: boolean;
+  onStart: () => void; onSelectLesson: (id: string) => void;
+}) {
+  const course = info?.course || {};
+  const creator = info?.creator || {};
+  const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.length, 0);
+  const duration = Number(course.total_duration_seconds || 0);
+  const durationLabel = duration > 0 ? `${Math.max(1, Math.round(duration / 60))} min` : null;
+  return (
+    <div className="min-h-screen" style={{ background: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        {preview && <div className="mb-4 rounded-xl border px-4 py-3 text-sm font-semibold" style={{ borderColor: '#BF8813', background: '#FFFBEB', color: '#92400E' }}>Prévisualisation créateur / Administration Omnia — aucune progression apprenant n'est enregistrée.</div>}
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm" style={{ border: '1px solid #E4E7EC' }}>
+          <div className="grid md:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="p-6 sm:p-8">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: '#BF8813' }}>Info formation</p>
+              <h1 className="text-2xl font-black sm:text-3xl" style={{ color: '#002050' }}>{String(course.title || 'Formation')}</h1>
+              {course.short_description && <p className="mt-3 text-base leading-relaxed text-slate-600">{String(course.short_description)}</p>}
+              <div className="mt-5 flex flex-wrap gap-2 text-xs">
+                {course.level && <span className="rounded-full bg-slate-100 px-3 py-1.5">Niveau : {String(course.level)}</span>}
+                {course.language && <span className="rounded-full bg-slate-100 px-3 py-1.5">Langue : {String(course.language).toUpperCase()}</span>}
+                {durationLabel && <span className="rounded-full bg-slate-100 px-3 py-1.5">Durée : {durationLabel}</span>}
+                <span className="rounded-full bg-slate-100 px-3 py-1.5">{totalLessons} étape{totalLessons > 1 ? 's' : ''}</span>
+              </div>
+              {creator.full_name && <p className="mt-4 text-sm text-slate-500">Par <strong className="text-slate-700">{String(creator.full_name)}</strong></p>}
+              {course.long_description && <div className="mt-6 whitespace-pre-line text-sm leading-7 text-slate-700">{String(course.long_description)}</div>}
+              {Array.isArray(course.objectives) && course.objectives.length > 0 && <div className="mt-6"><h2 className="font-bold" style={{ color: '#002050' }}>Ce que vous allez apprendre</h2><ul className="mt-2 space-y-2 text-sm text-slate-700">{course.objectives.map((x:any,i:number)=><li key={i} className="flex gap-2"><CheckCircle size={15} style={{ color:'#1E7A52', flexShrink:0, marginTop:2 }}/><span>{String(x)}</span></li>)}</ul></div>}
+            </div>
+            <div className="border-t bg-slate-50 p-5 md:border-l md:border-t-0" style={{ borderColor: '#E4E7EC' }}>
+              <div className="aspect-video overflow-hidden rounded-xl bg-white" style={{ border: '1px solid #E4E7EC' }}>
+                {course.cover_image_url ? <img src={String(course.cover_image_url)} alt="Couverture de la formation" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">Image de couverture</div>}
+              </div>
+              {!preview && progressPct > 0 && <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-slate-500"><span>Progression</span><span>{progressPct}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width:`${progressPct}%`, background:'#1E7A52' }}/></div></div>}
+              <button onClick={onStart} className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-bold text-white" style={{ background:'#002050' }}>{preview ? 'Commencer la prévisualisation' : progressPct > 0 ? 'Continuer la formation' : 'Commencer la formation'}</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-white p-5 sm:p-6" style={{ border:'1px solid #E4E7EC' }}>
+          <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-xl font-black" style={{ color:'#002050' }}>Étapes de la formation</h2></div></div>
+          <div className="space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
+            <summary className="cursor-pointer list-none px-4 py-3 font-bold" style={{ color:'#002050', background:'#F8FAFC' }}>{mod.title}</summary>
+            <div className="divide-y" style={{ borderColor:'#E4E7EC' }}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={!preview && lesson.is_unlocked === false}>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold" style={{ background:'#EEF2F7', color:'#002050' }}>{li+1}</span><span className="min-w-0 flex-1 text-sm text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}
+            </button>)}</div>
+          </details>)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function CoursLecteur() {
   const { id: courseId, lessonId: routeLessonId } = useParams<{ id: string; lessonId?: string }>();
@@ -321,6 +379,8 @@ export function CoursLecteur() {
   const [finalUnlocked, setFinalUnlocked] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(routeLessonId ?? null);
+  const [readerStarted, setReaderStarted] = useState(Boolean(routeLessonId));
+  const [courseInfo, setCourseInfo] = useState<CourseInfoPayload | null>(null);
   const [lessonData, setLessonData] = useState<LessonDataPayload | null>(null);
   const [progressLoading, setProgressLoading] = useState(true);
   const [lessonLoading, setLessonLoading] = useState(false);
@@ -372,6 +432,13 @@ export function CoursLecteur() {
     if (!authLoading && !user && !isAdminPreview) navigate('/connexion');
   }, [authLoading, user, navigate, isAdminPreview]);
 
+  useEffect(() => {
+    if (!courseId || !sessionToken) return;
+    const suffix = isAdminPreview ? '&preview=admin' : '';
+    fetch(`${ENDPOINTS.courseDetail}?id=${courseId}${suffix}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then(r => r.json()).then(data => { if (data?.course) setCourseInfo(data); }).catch(() => undefined);
+  }, [courseId, sessionToken, isAdminPreview]);
+
   const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
     setModules(snapshot.modules);
     setFinalUnlocked(snapshot.finalUnlocked);
@@ -383,7 +450,7 @@ export function CoursLecteur() {
 
     try {
       if (!isOnline) throw new Error('offline');
-      const response = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}`, {
+      const response = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, {
         headers: { Authorization: `Bearer ${sessionToken}` },
       });
       const data = await response.json();
@@ -418,10 +485,10 @@ export function CoursLecteur() {
         setResilientMessage('Le programme de cette formation n’est pas encore disponible hors connexion sur cet appareil.');
       }
     }
-  }, [sessionToken, courseId, user?.id, isOnline, navigate, applyProgressSnapshot]);
+  }, [sessionToken, courseId, user?.id, isOnline, navigate, applyProgressSnapshot, isAdminPreview]);
 
   const syncOfflineProgress = useCallback(async () => {
-    if (!isOnline || !appActive || !user?.id || !courseId || !sessionToken) return;
+    if (isAdminPreview || !isOnline || !appActive || !user?.id || !courseId || !sessionToken) return;
     const pending = await listOfflineProgress({ userId: user.id, courseId }).catch(() => []);
     if (pending.length === 0) return;
 
@@ -456,7 +523,7 @@ export function CoursLecteur() {
       setResilientMessage('Progression hors connexion synchronisée.');
       await loadProgress();
     }
-  }, [isOnline, appActive, user?.id, courseId, sessionToken, loadProgress]);
+  }, [isOnline, appActive, user?.id, courseId, sessionToken, loadProgress, isAdminPreview]);
 
   useEffect(() => {
     void syncOfflineProgress();
@@ -470,12 +537,12 @@ export function CoursLecteur() {
   }, [sessionToken, loadProgress]);
 
   useEffect(() => {
-    if (modules.length === 0 || currentLessonId) return;
+    if (!readerStarted || modules.length === 0 || currentLessonId) return;
     const first = routeLessonId ?? (isOnline
       ? findFirstIncomplete(modules)
       : findFirstOfflineLesson(modules, offlineLessonSet));
     if (first) setCurrentLessonId(first);
-  }, [modules, routeLessonId, currentLessonId, isOnline, offlineLessonSet]);
+  }, [modules, routeLessonId, currentLessonId, isOnline, offlineLessonSet, readerStarted]);
 
   useEffect(() => {
     if (!currentLessonId || !courseId || !sessionToken || !user?.id) return;
@@ -492,7 +559,7 @@ export function CoursLecteur() {
     (async () => {
       try {
         if (!isOnline) throw new Error('offline');
-        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, {
+        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, {
           headers: { Authorization: `Bearer ${sessionToken}` },
         });
         const data = await response.json();
@@ -534,7 +601,7 @@ export function CoursLecteur() {
     return () => { cancelled = true; };
   // signVideo est stable pour le cours et le jeton courants.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver, isOnline]);
+  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver, isOnline, isAdminPreview]);
 
   const signVideo = useCallback((lessonId: string) => {
     if (!courseId || !sessionToken || !isOnline) return;
@@ -567,19 +634,19 @@ export function CoursLecteur() {
   }, [isOnline]);
 
   const { timeSpent, cpdTimeReached, isActive } = useCpdTimer({
-    lessonId: currentLessonId, courseId: courseId ?? null,
+    lessonId: isAdminPreview ? null : currentLessonId, courseId: isAdminPreview ? null : (courseId ?? null),
     requiredSeconds: lessonData?.required_seconds ?? 0,
     initialSpent: lessonData?.progress.time_spent_seconds ?? 0,
     sessionToken,
     onTimeReached: () => {
-      if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
-      fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
+      fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
         .then(r => r.json()).then(d => { if (!d.error) setLessonData(d); });
     },
   });
 
   useEffect(() => {
-    if (isOnline || !isActive || !appActive || !user?.id || !courseId || !currentLessonId) return;
+    if (isAdminPreview || isOnline || !isActive || !appActive || !user?.id || !courseId || !currentLessonId) return;
     const timer = window.setInterval(() => {
       if (!document.hidden) {
         queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds: 30 }).catch(() => undefined);
@@ -588,7 +655,7 @@ export function CoursLecteur() {
     return () => window.clearInterval(timer);
   }, [isOnline, isActive, appActive, user?.id, courseId, currentLessonId]);
 
-  const goToLesson = (id: string) => { setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}`, { replace: true }); };
+  const goToLesson = (id: string) => { setReaderStarted(true); setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}${isAdminPreview ? '?preview=admin' : ''}`, { replace: true }); };
 
   const handleNext = () => {
     const nextId = lessonData?.next_lesson_id ?? findNext(modules, currentLessonId ?? '');
@@ -733,7 +800,7 @@ export function CoursLecteur() {
   const quizPassed = prog?.quiz_passed ?? false;
   const effectiveCpd = cpdTimeReached || (lessonData?.cpd_time_reached ?? false);
   const submitTrainingResult = useCallback(async (blockId: string, score: number, answer: any, _passedClient: boolean) => {
-    if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
     try {
       const response = await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
@@ -742,7 +809,7 @@ export function CoursLecteur() {
       });
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.message || data.error || 'Enregistrement de l’entraînement impossible');
-      const refreshed = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+      const refreshed = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
       const refreshedData = await refreshed.json();
       if (refreshed.ok && !refreshedData.error) setLessonData(refreshedData);
       await loadProgress();
@@ -750,10 +817,10 @@ export function CoursLecteur() {
       console.error('training_submit', error);
       setResilientMessage(error instanceof Error ? error.message : 'Résultat d’entraînement non synchronisé.');
     }
-  }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress]);
+  }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress, isAdminPreview]);
 
   const saveBlockState = useCallback(async (blockId: string, state: Record<string, any>, completed: boolean) => {
-    if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
     try {
       await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
@@ -761,7 +828,7 @@ export function CoursLecteur() {
         body: JSON.stringify({ action: 'block_state_save', course_id: courseId, lesson_id: currentLessonId, block_id: blockId, state, completed }),
       });
     } catch (error) { console.error('block_state_save', error); }
-  }, [isOnline, currentLessonId, courseId, sessionToken]);
+  }, [isOnline, currentLessonId, courseId, sessionToken, isAdminPreview]);
 
   const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
 
@@ -773,18 +840,20 @@ export function CoursLecteur() {
     </div>
   );
 
+  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isAdminPreview} onStart={() => setReaderStarted(true)} onSelectLesson={goToLesson} />;
+
   return (
     <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
         <button
-          onClick={() => navigate(isAdminPreview ? '/admin/dashboard' : `/cours/${courseId}`)}
+          onClick={() => { setReaderStarted(false); setCurrentLessonId(null); navigate(`/cours/${courseId}/apprendre${isAdminPreview ? '?preview=admin' : ''}`, { replace: true }); }}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
-          title={isAdminPreview ? 'Retour au Centre de pilotage Omnia' : 'Retour à la formation'}
-          aria-label={isAdminPreview ? 'Retour au Centre de pilotage Omnia' : 'Retour à la formation'}
+          title="Retour à Info formation"
+          aria-label="Retour à Info formation"
         >
           <ArrowLeft size={18} style={{ color: '#FFFFFF' }} />
-          {isAdminPreview && <span className="hidden sm:inline text-xs font-semibold text-white">Centre de pilotage Omnia</span>}
+          <span className="hidden sm:inline text-xs font-semibold text-white">Info formation</span>
         </button>
         <button
           type="button"
@@ -947,7 +1016,7 @@ export function CoursLecteur() {
                   {isOnline && externalVisited && !isCompleted && (
                     <button
                       onClick={async () => {
-                        if (!currentLessonId || !courseId || !sessionToken) return;
+                        if (isAdminPreview || !currentLessonId || !courseId || !sessionToken) return;
                         await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}&mark_external_done=1`, {
                           headers: { Authorization: `Bearer ${sessionToken}` },
                         });
@@ -1050,7 +1119,7 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
+              {!isAdminPreview && isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
                 <AssessmentEngine
                   courseId={courseId}
                   lessonId={currentLessonId}

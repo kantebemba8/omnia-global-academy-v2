@@ -35,7 +35,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_id)!==userId)return false;if(String(data.creator_context||"")!=="structure")return true;if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","create_lesson","create_block","update_block","delete_block","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","create_lesson","update_lesson","create_block","update_block","delete_block","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -913,9 +913,19 @@ Deno.serve(async(req)=>{
    }
    await log(sb,courseId,userId,"module_created",{module_id:data.id,with_introduction:!!introLesson});return json({success:true,module:data,intro_lesson:introLesson});
   }
+  if(action==="update_module"){
+   const moduleId=String(b.module_id||"");const title=String(b.title||"").trim();if(!moduleId||!title)return json({success:false,error:"MODULE_ID_AND_TITLE_REQUIRED"},400);
+   const {data:mod}=await sb.from("course_modules").select("id,course_id").eq("id",moduleId).maybeSingle();if(!mod||!(await owns(sb,userId,String(mod.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("course_modules").update({title,updated_at:new Date().toISOString()}).eq("id",moduleId).select("*").single();if(error)throw error;await log(sb,String(mod.course_id),userId,"module_updated",{module_id:moduleId,title});return json({success:true,module:data});
+  }
   if(action==="create_lesson"){
    const [{data:normalLessons},{data:courseMeta}]=await Promise.all([sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("is_module_intro",false),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const count=(normalLessons||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
    const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`${autoCopy(lang,"lesson")} ${count+1}`,position:count,is_intro:false,is_module_intro:false}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
+  }
+  if(action==="update_lesson"){
+   const lessonId=String(b.lesson_id||"");const title=String(b.title||"").trim();if(!lessonId||!title)return json({success:false,error:"LESSON_ID_AND_TITLE_REQUIRED"},400);
+   const {data:lesson}=await sb.from("course_lessons").select("id,course_id").eq("id",lessonId).maybeSingle();if(!lesson||!(await owns(sb,userId,String(lesson.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data,error}=await sb.from("course_lessons").update({title,updated_at:new Date().toISOString()}).eq("id",lessonId).select("*").single();if(error)throw error;await log(sb,String(lesson.course_id),userId,"lesson_updated",{lesson_id:lessonId,title});return json({success:true,lesson:data});
   }
   if(action==="get_blocks"){const {data,error}=await sb.from("lesson_blocks").select("*").eq("lesson_id",b.lesson_id).order("position");if(error)throw error;const blocks=await Promise.all((data||[]).map((row:any)=>decorateStudioBlock(sb,row)));return json({success:true,blocks})}
   if(action==="create_block"){

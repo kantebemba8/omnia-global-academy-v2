@@ -160,6 +160,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
             <Lightbulb size={16} style={{ color: '#D97706' }} />
             <p className="font-bold" style={{ color: '#D97706' }}>{c.title || 'Exemple'}</p>
           </div>
+          {c.content && <div className="text-sm mb-3 leading-relaxed" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.content }} />}
           {c.situation && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Situation :</strong> {c.situation}</p>}
           {c.explication && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Explication :</strong> {c.explication}</p>}
           {c.conclusion && <p className="text-sm italic mt-2 pt-2" style={{ color: '#92400E', borderTop: '1px solid #FDE68A' }}>{c.conclusion}</p>}
@@ -182,6 +183,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
             <BookOpen size={16} style={{ color: '#7C3AED' }} />
             <p className="font-bold" style={{ color: '#7C3AED' }}>Résumé</p>
           </div>
+          {c.content && <div className="text-sm mb-3 leading-relaxed" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.content }} />}
           {c.intro && <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>{c.intro}</p>}
           {(c.points || []).length > 0 && (
             <ul className="space-y-1">

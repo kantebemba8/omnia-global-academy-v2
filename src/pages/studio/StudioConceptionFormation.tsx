@@ -10,6 +10,7 @@ import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel'
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import { CATEGORY_LABELS } from '../../lib/categories';
+import { LessonBlocksRenderer } from '../../components/BlockRenderer';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
   Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check,
@@ -411,8 +412,10 @@ export default function StudioConceptionFormation() {
     });
     if (data.success) {
       setBlocks(bs => [...bs, data.block]);
-      setSelectedBlock(data.block);
-      setSelectedBlockDef(BLOCK_DEFS.find(d => d.type === blockType) || null);
+      // Un nouveau bloc reste directement éditable dans le canevas.
+      // Le panneau Paramètres ne s'ouvre que via l'engrenage, sur PC comme sur mobile.
+      setSelectedBlock(null);
+      setSelectedBlockDef(null);
     }
   }
 
@@ -1034,7 +1037,26 @@ export default function StudioConceptionFormation() {
             <div className="flex items-center gap-2 overflow-x-auto">
               {modules.map(mod => (
                 <div key={mod.id} className="flex-shrink-0">
-                  <div className="text-xs font-semibold mb-1" style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}>{(mod as any).is_intro ? 'Introduction' : (mod as any).is_conclusion ? 'Conclusion' : (mod as any).is_final_exam ? 'Examen final' : mod.title}</div>
+                  <input
+                    className="w-full bg-transparent text-xs font-semibold mb-1 outline-none border-b border-transparent focus:border-[#BF8813]"
+                    style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}
+                    value={mod.title}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => {
+                      const title = e.target.value;
+                      setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title } : m));
+                      if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title } : m);
+                    }}
+                    onBlur={async e => {
+                      const fallback = (mod as any).is_intro ? 'Introduction' : (mod as any).is_conclusion ? 'Conclusion' : (mod as any).is_final_exam ? 'Examen final' : `Module ${Math.max(1, modules.findIndex(m => m.id === mod.id) + 1)}`;
+                      const title = e.target.value.trim() || fallback;
+                      setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title } : m));
+                      if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title } : m);
+                      await api('update_module', { module_id: mod.id, title });
+                    }}
+                    disabled={locked}
+                    aria-label="Titre du module"
+                  />
                   <div className="flex gap-1">
                     {(mod.lessons || []).map(lesson => (
                       <button key={lesson.id}
@@ -1044,7 +1066,7 @@ export default function StudioConceptionFormation() {
                         style={currentLesson?.id === lesson.id
                           ? { background: '#002050', color: 'white', borderColor: '#002050' }
                           : { borderColor: lesson.is_module_intro ? '#BF8813' : '#E4E7EC', color: lesson.is_module_intro ? '#92400E' : '#6B7280', background: lesson.is_module_intro ? '#FFFBEB' : 'white' }}>
-                        {lesson.is_module_intro ? 'Présentation du module' : lesson.title}
+                        {lesson.title}
                       </button>
                     ))}
                     {!mod.is_intro && (
@@ -1233,11 +1255,17 @@ export default function StudioConceptionFormation() {
                   <input className="text-xl font-bold bg-transparent border-none outline-none w-full"
                     style={{ color: '#002050' }}
                     value={currentLesson.title}
-                    onChange={async e => {
+                    onChange={e => {
                       const newTitle = e.target.value;
                       setCurrentLesson(l => l ? { ...l, title: newTitle } : l);
                       setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === currentLesson.id ? { ...l, title: newTitle } : l) })));
-                      await api('update_lesson', { lesson_id: currentLesson.id, title: newTitle });
+                    }}
+                    onBlur={async e => {
+                      const fallback = currentLesson.is_module_intro ? 'Présentation du module' : currentLesson.is_intro ? 'Introduction' : currentLesson.is_conclusion ? 'Conclusion' : currentLesson.is_final_exam ? 'Examen final' : 'Leçon';
+                      const title = e.target.value.trim() || fallback;
+                      setCurrentLesson(l => l ? { ...l, title } : l);
+                      setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === currentLesson.id ? { ...l, title } : l) })));
+                      await api('update_lesson', { lesson_id: currentLesson.id, title });
                     }}
                     disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
                   {!locked && course.id && (
@@ -1496,9 +1524,7 @@ export default function StudioConceptionFormation() {
                   <button onClick={() => setShowPreview(false)}><X size={16} style={{ color: '#9CA3AF' }} /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {blocks.map(block => (
-                    <BlockPreviewReadonly key={block.id} block={block} />
-                  ))}
+                  <LessonBlocksRenderer blocks={blocks as any} />
                   {blocks.length === 0 && (
                     <p className="text-sm text-center py-8" style={{ color: '#9CA3AF' }}>Aucun bloc à prévisualiser</p>
                   )}
