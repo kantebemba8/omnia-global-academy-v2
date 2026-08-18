@@ -435,6 +435,8 @@ export function CoursLecteur() {
   const [courseInfo, setCourseInfo] = useState<CourseInfoPayload | null>(null);
   const [lessonData, setLessonData] = useState<LessonDataPayload | null>(null);
   const [progressLoading, setProgressLoading] = useState(true);
+  const [progressError, setProgressError] = useState('');
+  const [courseInfoError, setCourseInfoError] = useState('');
   const [lessonLoading, setLessonLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [externalVisited, setExternalVisited] = useState(false);
@@ -484,9 +486,20 @@ export function CoursLecteur() {
 
   useEffect(() => {
     if (!courseId || !sessionToken) return;
+    let cancelled = false;
+    setCourseInfoError('');
     const suffix = isPreview ? `&preview=${previewMode}` : '';
-    fetch(`${ENDPOINTS.courseDetail}?id=${courseId}${suffix}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
-      .then(r => r.json()).then(data => { if (data?.course) setCourseInfo(data); }).catch(() => undefined);
+    (async () => {
+      try {
+        const response = await fetch(`${ENDPOINTS.courseDetail}?id=${courseId}${suffix}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+        const data = await response.json();
+        if (!response.ok || !data?.course) throw new Error(data?.message || data?.error || 'Informations de formation indisponibles.');
+        if (!cancelled) setCourseInfo(data);
+      } catch (error) {
+        if (!cancelled) setCourseInfoError(error instanceof Error ? error.message : 'Informations de formation indisponibles.');
+      }
+    })();
+    return () => { cancelled = true; };
   }, [courseId, sessionToken, isPreview, previewMode]);
 
   const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
@@ -505,12 +518,16 @@ export function CoursLecteur() {
       });
       const data = await response.json();
       if (!response.ok || data.error) {
-        if ([401, 403, 404].includes(response.status)) {
-          navigate(`/cours/${courseId}`);
+        const message = data.message || data.error || 'Progression indisponible';
+        if (isPreview) {
+          setProgressError(message);
           return;
         }
-        throw new Error(data.message || data.error || 'Progression indisponible');
+        if (response.status === 401) { navigate('/connexion'); return; }
+        if ([403, 404].includes(response.status)) { navigate(`/cours/${courseId}`); return; }
+        throw new Error(message);
       }
+      setProgressError('');
 
       const snapshot: CourseProgressSnapshot = {
         modules: data.modules ?? [],
@@ -520,13 +537,19 @@ export function CoursLecteur() {
       };
       applyProgressSnapshot(snapshot);
       setUsingLocalProgram(false);
-      await saveResilientCourseProgress({
-        userId: user.id,
-        courseId,
-        expiresAt: courseProgressExpiry(),
-        value: snapshot,
-      });
-    } catch {
+      if (!isPreview) {
+        await saveResilientCourseProgress({
+          userId: user.id,
+          courseId,
+          expiresAt: courseProgressExpiry(),
+          value: snapshot,
+        });
+      }
+    } catch (error) {
+      if (isPreview) {
+        setProgressError(error instanceof Error ? error.message : 'Prévisualisation indisponible.');
+        return;
+      }
       const local = await loadResilientCourseProgress<CourseProgressSnapshot>({ userId: user.id, courseId }).catch(() => null);
       if (local) {
         applyProgressSnapshot(local);
@@ -888,6 +911,10 @@ export function CoursLecteur() {
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
     </div>
+  );
+
+  if (isPreview && (progressError || courseInfoError)) return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10"><div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6" style={{borderColor:'#FCA5A5'}}><div className="flex gap-3"><AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600"/><div><h1 className="font-black text-[#002050]">Prévisualisation indisponible</h1><p className="mt-2 text-sm text-slate-600">{progressError || courseInfoError}</p><p className="mt-3 text-xs text-slate-500">Aucune redirection vers la page publique n’a été effectuée : cette erreur indique maintenant la cause réelle du contrôle de prévisualisation.</p></div></div></div></div>
   );
 
   if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => setReaderStarted(true)} onSelectLesson={goToLesson} />;

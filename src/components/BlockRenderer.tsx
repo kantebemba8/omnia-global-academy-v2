@@ -39,6 +39,19 @@ function fmtSize(bytes?: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
+
+function ResourceUnavailable({ block, label }: { block: Block; label: string }) {
+  return (
+    <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <WifiOff size={18} className="mt-0.5 shrink-0 text-amber-700" />
+      <div>
+        <p className="text-sm font-semibold text-amber-900">{label} indisponible</p>
+        <p className="mt-1 text-xs text-amber-700">{block.file_name ? `${block.file_name} n’a pas pu être chargé.` : 'La ressource n’a pas d’URL exploitable. Vérifiez son téléversement dans le Builder.'}</p>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 // BLOCK RENDERER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
@@ -237,7 +250,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
 
     // ── MÉDIAS ─────────────────────────────────────────────────
     case 'image':
-      if (!block.file_url && !c.url) return null;
+      if (!block.file_url && !c.url) return <ResourceUnavailable block={block} label="Image" />;
       return (
         <figure className="my-5">
           <img
@@ -256,11 +269,11 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
       );
 
     case 'video':
-      if (!c.url && !block.file_url) return null;
+      if (!c.url && !block.file_url) return <ResourceUnavailable block={block} label="Vidéo" />;
       return <VideoBlock url={c.url || block.file_url || ''} eco={c.eco_data !== false} title={block.title} />;
 
     case 'audio':
-      if (!c.url && !block.file_url) return null;
+      if (!c.url && !block.file_url) return <ResourceUnavailable block={block} label="Audio" />;
       return (
         <div className="my-4 p-4 rounded-xl" style={{ background: '#F5F3FF', border: '1px solid #DDD6FE' }}>
           {(block.title || c.description) && (
@@ -376,8 +389,10 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
       return <a href={c.url || '#'} target={c.open_new_tab ? '_blank' : undefined} rel="noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a>;
     case 'embed':
       return c.url ? <div className="overflow-hidden rounded-xl border"><iframe src={c.url} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" /></div> : <p className="text-sm text-gray-400">Aucun contenu intégré.</p>;
-    case 'gallery':
-      return <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{(c.images || []).map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-36 w-full rounded-lg object-cover" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div>;
+    case 'gallery': {
+      const images = (c.images || []).filter((img: any) => String(img?.url || '').trim());
+      return images.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-36 w-full rounded-lg object-cover" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div> : <ResourceUnavailable block={block} label="Galerie" />;
+    }
     case 'formula':
       return <MathFormula latex={c.latex || ''} explanation={c.explanation || ''} />;
     case 'chart':
@@ -388,7 +403,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
       return <div className="overflow-x-auto"><table className="w-full border-collapse text-sm"><thead><tr><th className="border p-2 text-left">Critère</th><th className="border p-2 text-left">Description</th><th className="border p-2 text-right">Points</th></tr></thead><tbody>{(c.criteria || []).map((x: any, i: number) => <tr key={i}><td className="border p-2">{x.name}</td><td className="border p-2">{x.description}</td><td className="border p-2 text-right">{x.points}</td></tr>)}</tbody></table></div>;
 
     default:
-      return null;
+      return <div className="my-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Type de bloc non pris en charge : <strong>{block.block_type}</strong></div>;
   }
 }
 
@@ -469,7 +484,7 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
 function FileDownloadBlock({ block }: { block: Block }) {
   const c = block.content_json;
   const url = block.file_url || c.url || '';
-  if (!url) return null;
+  if (!url) return <ResourceUnavailable block={block} label={block.block_type === 'pdf' ? 'PDF' : block.block_type === 'word' ? 'Document Word' : 'Fichier'} />;
 
   const icons: Record<string, { icon: typeof FileText; color: string }> = {
     pdf:      { icon: FileText, color: '#DC2626' },
@@ -829,7 +844,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
 
   return (
     <div>
-      {blocks
+      {[...blocks]
         .sort((a, b) => a.position - b.position)
         .map(block => (
           <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={onTrainingResult} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} />

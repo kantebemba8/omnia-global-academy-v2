@@ -208,6 +208,7 @@ export default function StudioConceptionFormation() {
   const [currentModule, setCurrentModule] = useState<Module | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const blockSaveQueues = useRef<Record<string, Promise<any>>>({});
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedBlockDef, setSelectedBlockDef] = useState<typeof BLOCK_DEFS[0] | null>(null);
 
@@ -306,15 +307,38 @@ export default function StudioConceptionFormation() {
 
   async function loadBlocks(lessonId: string) {
     const data = await api('get_blocks', { lesson_id: lessonId });
-    if (data.success) {
-      setBlocks(data.blocks || []);
-      // Compter les mots
-      const wc = (data.blocks || []).reduce((acc: number, b: Block) => {
-        const text = b.content_json?.html || b.content_json?.text || b.content_json?.question || '';
-        return acc + text.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-      }, 0);
-      setWordCount(wc);
+    if (!data.success) {
+      showToast(data.message || data.error || 'Impossible de charger les blocs de la leçon.', 'error');
+      return false;
     }
+    setBlocks(data.blocks || []);
+    // Compter les mots
+    const wc = (data.blocks || []).reduce((acc: number, b: Block) => {
+      const text = b.content_json?.html || b.content_json?.text || b.content_json?.question || '';
+      return acc + text.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    }, 0);
+    setWordCount(wc);
+    return true;
+  }
+
+  function queueBlockUpdate(blockId: string, updates: Record<string, any>) {
+    const previous = blockSaveQueues.current[blockId] || Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const result = await api('update_block', { block_id: blockId, ...updates });
+        if (!result.success) {
+          showToast(result.message || result.error || 'Impossible d’enregistrer le bloc.', 'error');
+          if (currentLesson?.id) await loadBlocks(currentLesson.id);
+          throw new Error(result.error || 'BLOCK_UPDATE_FAILED');
+        }
+        return result;
+      });
+    blockSaveQueues.current[blockId] = next;
+    void next.finally(() => {
+      if (blockSaveQueues.current[blockId] === next) delete blockSaveQueues.current[blockId];
+    }).catch(() => undefined);
+    return next;
   }
 
 
@@ -382,6 +406,8 @@ export default function StudioConceptionFormation() {
       setCurrentModule(newMod);
       setCurrentLesson(introLesson || null);
       setBlocks([]);
+    } else {
+      showToast(data.message || data.error || 'Impossible de créer le module.', 'error');
     }
   }
 
@@ -393,10 +419,13 @@ export default function StudioConceptionFormation() {
     const data = await api('create_lesson', { course_id: course.id, module_id: mod.id, title });
     if (data.success) {
       const newLesson = data.lesson;
-      setModules(ms => ms.map(m => m.id === mod.id ? { ...m, lessons: [...(m.lessons || []), newLesson] } : m));
-      setCurrentModule(mod);
+      const nextModule = { ...mod, lessons: [...(mod.lessons || []), newLesson] };
+      setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
+      setCurrentModule(nextModule);
       setCurrentLesson(newLesson);
       setBlocks([]);
+    } else {
+      showToast(data.message || data.error || 'Impossible de créer la leçon.', 'error');
     }
   }
 
@@ -416,6 +445,8 @@ export default function StudioConceptionFormation() {
       // Le panneau Paramètres ne s'ouvre que via l'engrenage, sur PC comme sur mobile.
       setSelectedBlock(null);
       setSelectedBlockDef(null);
+    } else {
+      showToast(data.message || data.error || 'Impossible de créer le bloc.', 'error');
     }
   }
 
@@ -431,7 +462,11 @@ export default function StudioConceptionFormation() {
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string) {
-    await api('delete_block', { block_id: blockId });
+    const result = await api('delete_block', { block_id: blockId });
+    if (!result.success) {
+      showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
+      return;
+    }
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
   }
@@ -451,6 +486,8 @@ export default function StudioConceptionFormation() {
         const idx = bs.findIndex(b => b.id === block.id);
         const next = [...bs]; next.splice(idx + 1, 0, data.block); return next;
       });
+    } else {
+      showToast(data.message || data.error || 'Impossible de dupliquer le bloc.', 'error');
     }
   }
 
@@ -464,7 +501,13 @@ export default function StudioConceptionFormation() {
     const [moved] = next.splice(dragIdx.current, 1);
     next.splice(targetIdx, 0, moved);
     setBlocks(next); setDragOverIdx(null); dragIdx.current = null;
-    if (currentLesson?.id) await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
+    if (currentLesson?.id) {
+      const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
+      if (!result.success) {
+        showToast(result.message || result.error || 'Impossible de réordonner les blocs.', 'error');
+        await loadBlocks(currentLesson.id);
+      }
+    }
   }
 
   async function moveBlock(index: number, delta: -1 | 1) {
@@ -474,7 +517,11 @@ export default function StudioConceptionFormation() {
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved);
     setBlocks(next);
-    await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
+    const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
+    if (!result.success) {
+      showToast(result.message || result.error || 'Impossible de réordonner les blocs.', 'error');
+      await loadBlocks(currentLesson.id);
+    }
   }
 
   async function saveCurrentPage(goNext = false) {
@@ -1052,7 +1099,15 @@ export default function StudioConceptionFormation() {
                       const title = e.target.value.trim() || fallback;
                       setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title } : m));
                       if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title } : m);
-                      await api('update_module', { module_id: mod.id, title });
+                      const result = await api('update_module', { course_id: course.id, module_id: mod.id, title });
+                      if (!result.success) {
+                        showToast(result.message || result.error || 'Le titre du module n’a pas été enregistré.', 'error');
+                        await reloadCourse(course.id);
+                      } else if (result.module?.title) {
+                        const persistedTitle = String(result.module.title);
+                        setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title: persistedTitle } : m));
+                        if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title: persistedTitle } : m);
+                      }
                     }}
                     disabled={locked}
                     aria-label="Titre du module"
@@ -1265,7 +1320,16 @@ export default function StudioConceptionFormation() {
                       const title = e.target.value.trim() || fallback;
                       setCurrentLesson(l => l ? { ...l, title } : l);
                       setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === currentLesson.id ? { ...l, title } : l) })));
-                      await api('update_lesson', { lesson_id: currentLesson.id, title });
+                      const lessonId = currentLesson.id;
+                      const result = await api('update_lesson', { course_id: course.id, lesson_id: lessonId, title });
+                      if (!result.success) {
+                        showToast(result.message || result.error || 'Le titre de la leçon n’a pas été enregistré.', 'error');
+                        await reloadCourse(course.id);
+                      } else if (result.lesson?.title) {
+                        const persistedTitle = String(result.lesson.title);
+                        setCurrentLesson(l => l?.id === lessonId ? { ...l, title: persistedTitle } : l);
+                        setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === lessonId ? { ...l, title: persistedTitle } : l) })));
+                      }
                     }}
                     disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
                   {!locked && course.id && (
@@ -1338,7 +1402,7 @@ export default function StudioConceptionFormation() {
                               onChange={async (content_json) => {
                                 setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
                                 if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
-                                await api('update_block', { block_id: block.id, content_json });
+                                await queueBlockUpdate(block.id, { content_json });
                               }} />
                           </div>
                         </div>
@@ -1503,7 +1567,7 @@ export default function StudioConceptionFormation() {
                     onUpdate={async (updates) => {
                       setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...updates } : b));
                       setSelectedBlock(b => b ? { ...b, ...updates } : b);
-                      await api('update_block', { block_id: selectedBlock.id, ...updates });
+                      await queueBlockUpdate(selectedBlock.id, updates);
                     }}
                     onAI={async (action, prompt) => {
                       setAiAction(action); setAiInput(prompt); setShowAI(true); setSelectedBlock(null);

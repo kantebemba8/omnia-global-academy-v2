@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { makeCorsHeaders, getClientIP, logSecurityEvent } from "../_shared/security.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
+import { canPreviewCourse } from "../_shared/course-preview-access.ts";
 import { signedStreamManifest } from "../_shared/cloudflare-stream.ts";
 import { PRIVATE_COURSE_BUCKET_SET, createSignedObjectUrl, parseStorageLocator } from "../_shared/protected-storage.ts";
 Deno.serve(async (req: Request) => {
@@ -29,22 +29,12 @@ Deno.serve(async (req: Request) => {
     const previewRequested = ["learner", "admin", "true"].includes(previewMode);
     let previewAllowed = false;
     if (previewRequested) {
-      const { data: course } = await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id", course_id).maybeSingle();
-      if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
-      const { data: roleRows } = await sb.from("user_roles").select("role").eq("user_id", userId);
-      if ((roleRows || []).some((row: any) => row.role === "super_admin")) previewAllowed = true;
-      else if (String(course.creator_id || "") === userId) {
-        if (String(course.creator_context || "") !== "structure") previewAllowed = true;
-        else if (course.structure_id) {
-          const access = await validatedStructureAccess(sb, userId, String(course.structure_id));
-          previewAllowed = hasStructurePermission(access, "can_edit_courses");
-        }
-      }
+      previewAllowed = await canPreviewCourse(sb, userId, course_id, "can_edit_courses");
       if (!previewAllowed) return json({ error: "PREVIEW_FORBIDDEN" }, 403);
     }
     const { data: enroll } = await sb.from("user_enrollments").select("id").eq("user_id", userId).eq("course_id", course_id).maybeSingle();
     if (!previewAllowed && !enroll) return json({ error: "NOT_ENROLLED", message: "Cette formation n’est pas accessible avec ce compte." }, 403);
-    const { data: lesson } = await sb.from("course_lessons").select("id,cloudflare_stream_uid,video_url,duration_seconds,module_id").eq("id", lesson_id).maybeSingle();
+    const { data: lesson } = await sb.from("course_lessons").select("id,cloudflare_stream_uid,video_url,cpd_calculated_time_seconds,module_id").eq("id", lesson_id).maybeSingle();
     if (!lesson) return json({ error: "LESSON_NOT_FOUND" }, 404);
     const { data: lessonModule } = await sb.from("course_modules").select("course_id").eq("id", lesson.module_id).maybeSingle();
     if (!lessonModule || lessonModule.course_id !== course_id) {
@@ -78,10 +68,10 @@ Deno.serve(async (req: Request) => {
       const { data: device } = await sb.from("user_resilient_access_devices").select("id,status,expires_at").eq("user_id", userId).eq("course_id", course_id).eq("device_id", body.device_id).maybeSingle();
       const valid = device?.status === "active" && new Date(device.expires_at).getTime() > Date.now();
       const requested = Math.max(0, Math.floor(Number(body.seconds || 0)));
-      const acceptedSeconds = valid ? Math.min(requested, 3600, Math.max(0, Number(lesson.duration_seconds || 0))) : 0;
+      const acceptedSeconds = valid ? Math.min(requested, 3600, Math.max(0, Number(lesson.cpd_calculated_time_seconds || 0))) : 0;
       if (valid && acceptedSeconds > 0) {
         const { data: progress } = await sb.from("user_lesson_progress").select("time_spent_seconds,quiz_passed,is_completed").eq("user_id", userId).eq("lesson_id", lesson_id).maybeSingle();
-        const next = Math.min(Number(lesson.duration_seconds || acceptedSeconds), Number(progress?.time_spent_seconds || 0) + acceptedSeconds);
+        const next = Math.min(Number(lesson.cpd_calculated_time_seconds || acceptedSeconds), Number(progress?.time_spent_seconds || 0) + acceptedSeconds);
         await sb.from("user_lesson_progress").upsert({ user_id: userId, course_id, lesson_id, time_spent_seconds: next, quiz_passed: Boolean(progress?.quiz_passed), is_completed: Boolean(progress?.is_completed), updated_at: new Date().toISOString() }, { onConflict: "user_id,lesson_id" });
         await sb.from("user_resilient_access_devices").update({ last_validated_at: new Date().toISOString() }).eq("id", device.id);
       }

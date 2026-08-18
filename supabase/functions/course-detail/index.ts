@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
+import { canPreviewCourse } from "../_shared/course-preview-access.ts";
+import { loadCourseCurriculum } from "../_shared/course-curriculum.ts";
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -50,17 +51,8 @@ Deno.serve(async (req: Request) => {
 
     let courseQuery = supabase.from("courses").select(courseSelect).eq("id", courseId);
     if (previewRequested && viewerId) {
-      const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", viewerId);
-      const { data: owned } = await supabase.from("courses").select("creator_id,creator_context,structure_id").eq("id", courseId).maybeSingle();
-      const isAdmin = (roleRows ?? []).some((row: any) => row.role === "super_admin");
-      const isDirectOwner = String(owned?.creator_id || "") === viewerId;
-      let structureAllowed = false;
-      if (isDirectOwner && String(owned?.creator_context || "") === "structure" && owned?.structure_id) {
-        const access = await validatedStructureAccess(supabase, viewerId, String(owned.structure_id));
-        structureAllowed = hasStructurePermission(access, "can_edit_courses");
-      }
-      previewAllowed = isAdmin || (isDirectOwner && (String(owned?.creator_context || "") !== "structure" || structureAllowed));
-      if (!previewAllowed) return json({ success: false, message: "Prévisualisation non autorisée" }, 403);
+      previewAllowed = await canPreviewCourse(supabase, viewerId, courseId, "can_edit_courses");
+      if (!previewAllowed) return json({ success: false, error: "PREVIEW_FORBIDDEN", message: "Prévisualisation non autorisée" }, 403);
     } else {
       courseQuery = courseQuery.eq("is_published", true).eq("is_catalog_active", true).eq("is_current_catalog_version", true);
     }
@@ -88,20 +80,10 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Modules + lessons ───────────────────────────────────────────────────
-    const { data: modules } = await supabase
-      .from("course_modules")
-      .select("id, title, objective, position, is_intro, is_conclusion, is_final_exam, is_required")
-      .eq("course_id", courseId)
-      .order("position");
-
-    const moduleIds = (modules ?? []).map(m => m.id);
-    const { data: lessons } = moduleIds.length > 0
-      ? await supabase
-          .from("course_lessons")
-          .select("id, module_id, title, position, is_free_preview, cpd_calculated_time_seconds, duration_seconds, is_external, video_url, audio_url, is_intro, is_module_intro, is_conclusion, is_final_exam, is_required")
-          .in("module_id", moduleIds)
-          .order("position")
-      : { data: [] };
+    const curriculum = await loadCourseCurriculum(supabase, courseId);
+    const modules = curriculum.modules;
+    const lessons = curriculum.lessons;
+    if (curriculum.orphanLessonIds.length) console.warn("course-detail orphan lessons", courseId, curriculum.orphanLessonIds);
 
     const lessonsByModule: Record<string, unknown[]> = {};
     for (const l of lessons ?? []) {
@@ -112,7 +94,7 @@ Deno.serve(async (req: Request) => {
         id: ml.id, title: ml.title, position: ml.position,
         is_free_preview: ml.is_free_preview,
         cpd_calculated_time_seconds: ml.cpd_calculated_time_seconds,
-        duration_seconds: ml.duration_seconds,
+        duration_seconds: ml.cpd_calculated_time_seconds,
         is_external: ml.is_external,
         is_intro: ml.is_intro, is_module_intro: ml.is_module_intro, is_conclusion: ml.is_conclusion, is_final_exam: ml.is_final_exam, is_required: ml.is_required,
         has_video: !!ml.video_url,
