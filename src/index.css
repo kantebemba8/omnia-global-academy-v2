@@ -4523,3 +4523,17 @@ html.oga-native .oga-scorm-fullscreen {
     transition-duration: .01ms !important;
   }
 }
+
+/* Navigation horizontale OGA — barre visible uniquement lorsque le menu dépasse. */
+.oga-horizontal-menu-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 32, 80, 0.42) rgba(226, 232, 240, 0.72);
+  scrollbar-gutter: stable;
+}
+.oga-horizontal-menu-scroll::-webkit-scrollbar { height: 7px; }
+.oga-horizontal-menu-scroll::-webkit-scrollbar-track { background: rgba(226, 232, 240, 0.72); border-radius: 999px; }
+.oga-horizontal-menu-scroll::-webkit-scrollbar-thumb { background: rgba(0, 32, 80, 0.42); border-radius: 999px; }
+.oga-horizontal-menu-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 32, 80, 0.62); }

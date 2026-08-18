@@ -1,5 +1,6 @@
 import { getSessionToken } from '../lib/session';
 import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getPublicSiteSettings } from '../lib/siteSettingsCache';
 import { DashboardTopbar } from './DashboardTopbar';
@@ -148,6 +149,7 @@ export function DashboardLayout({
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [openDesktopGroup, setOpenDesktopGroup] = useState<string | null>(null);
+  const [desktopDropdownAnchor, setDesktopDropdownAnchor] = useState<{ groupId: string; left: number; bottom: number; viewportWidth: number } | null>(null);
   const [expandedMobileGroups, setExpandedMobileGroups] = useState<Record<string, boolean>>({});
   const [referralEnabled, setReferralEnabled] = useState(false);
 
@@ -290,6 +292,17 @@ export function DashboardLayout({
     '--oga-role-secondary': roleSecondary,
   } as React.CSSProperties;
 
+
+  const rememberDesktopDropdownAnchor = (groupId: string, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setDesktopDropdownAnchor({ groupId, left: rect.left, bottom: rect.bottom, viewportWidth: window.innerWidth });
+  };
+
+  const closeDesktopDropdown = () => {
+    setOpenDesktopGroup(null);
+    setDesktopDropdownAnchor(null);
+  };
+
   const navigationContents = (mobile = false) => (
     <>
       {ACTIVE_NAV_GROUPS?.length ? (
@@ -320,7 +333,14 @@ export function DashboardLayout({
                 <div key={group.id} className="relative">
                   <button
                     type="button"
-                    onClick={() => setOpenDesktopGroup(current => current === group.id ? null : group.id)}
+                    onClick={(event) => {
+                      if (openDesktopGroup === group.id) {
+                        closeDesktopDropdown();
+                        return;
+                      }
+                      rememberDesktopDropdownAnchor(group.id, event.currentTarget);
+                      setOpenDesktopGroup(group.id);
+                    }}
                     className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition ${containsActive || open ? 'text-[#002050]' : 'border-transparent text-slate-600 hover:text-[#002050]'}`}
                     style={{ borderColor: containsActive || open ? roleAccent : 'transparent' }}
                     aria-expanded={open}
@@ -329,10 +349,16 @@ export function DashboardLayout({
                     <span>{group.label}</span>
                     <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
                   </button>
-                  {open && (
+                  {open && desktopDropdownAnchor?.groupId === group.id && createPortal(
                     <>
-                      <button type="button" className="fixed inset-0 z-30 cursor-default" onClick={() => setOpenDesktopGroup(null)} aria-label="Fermer le menu" />
-                      <div className="absolute left-0 top-[calc(100%+8px)] z-40 min-w-[270px] border border-slate-200 bg-white py-2 shadow-xl">
+                      <button type="button" className="fixed inset-0 z-[90] cursor-default" onClick={closeDesktopDropdown} aria-label="Fermer le menu" />
+                      <div
+                        className="fixed z-[100] min-w-[270px] border border-slate-200 bg-white py-2 shadow-xl"
+                        style={{
+                          top: desktopDropdownAnchor.bottom + 8,
+                          left: Math.max(12, Math.min(desktopDropdownAnchor.left, desktopDropdownAnchor.viewportWidth - 294)),
+                        }}
+                      >
                         {group.items.map(item => {
                           const ItemIcon = item.icon;
                           const active = isActive(item);
@@ -340,7 +366,7 @@ export function DashboardLayout({
                             <Link
                               key={item.path}
                               to={buildPath(item.path)}
-                              onClick={() => setOpenDesktopGroup(null)}
+                              onClick={closeDesktopDropdown}
                               className={`flex items-center gap-3 px-4 py-2.5 text-sm transition ${active ? 'font-bold text-[#002050]' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-[#002050]'}`}
                               style={active ? { backgroundColor: roleSoft } : undefined}
                             >
@@ -351,7 +377,8 @@ export function DashboardLayout({
                           );
                         })}
                       </div>
-                    </>
+                    </>,
+                    document.body,
                   )}
                 </div>
               );
@@ -539,17 +566,30 @@ export function DashboardLayout({
           administrationBrand
         />
 
-        <div className="relative z-40 flex-shrink-0 border-b border-slate-200 bg-white" onMouseLeave={() => setOpenDesktopGroup(null)}>
-          <div className="mx-auto max-w-[1600px] overflow-x-auto overscroll-x-contain px-4 md:px-6" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+        <div className="relative z-40 flex-shrink-0 border-b border-slate-200 bg-white">
+          <div className="oga-horizontal-menu-scroll mx-auto max-w-[1600px] overflow-x-auto overscroll-x-contain px-4 md:px-6" onScroll={closeDesktopDropdown}>
             <nav className="flex min-w-max items-center" aria-label="Navigation principale Super-admin">
-              {ACTIVE_NAV_GROUPS?.map((group, groupIndex) => {
+              {ACTIVE_NAV_GROUPS?.map((group) => {
                 const GroupIcon = group.icon;
                 const containsActive = activeGroup?.id === group.id;
                 const destination = buildPath(adminGroupHubPath(group.id));
                 const hasPreview = group.id !== 'dashboard' && group.items.length > 0;
                 const open = openDesktopGroup === group.id;
                 return (
-                  <div key={group.id} className="relative" onMouseEnter={() => hasPreview && setOpenDesktopGroup(group.id)} onFocus={() => hasPreview && setOpenDesktopGroup(group.id)}>
+                  <div
+                    key={group.id}
+                    className="relative"
+                    onMouseEnter={(event) => {
+                      if (!hasPreview) return;
+                      rememberDesktopDropdownAnchor(group.id, event.currentTarget);
+                      setOpenDesktopGroup(group.id);
+                    }}
+                    onFocus={(event) => {
+                      if (!hasPreview) return;
+                      rememberDesktopDropdownAnchor(group.id, event.currentTarget);
+                      setOpenDesktopGroup(group.id);
+                    }}
+                  >
                     <Link
                       to={destination}
                       className={`group relative inline-flex min-h-14 items-center gap-2.5 px-3.5 text-[13px] font-bold transition md:px-4 ${containsActive || open ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
@@ -559,11 +599,18 @@ export function DashboardLayout({
                       {hasPreview && <ChevronDown size={13} style={{ color: containsActive || open ? adminAccent : '#94A3B8' }} />}
                       <span className="absolute inset-x-3 bottom-0 h-[2px] transition" style={{ background: containsActive || open ? adminAccent : 'transparent' }} />
                     </Link>
-                    {hasPreview && open && (
-                      <div className={`absolute top-full z-[100] w-[min(680px,calc(100vw-32px))] border border-slate-200 bg-white p-5 shadow-[0_26px_70px_rgba(0,32,80,.18)] ${groupIndex >= (ACTIVE_NAV_GROUPS?.length || 0) - 2 ? 'right-0' : 'left-0'}`}>
+                    {hasPreview && open && desktopDropdownAnchor?.groupId === group.id && createPortal(
+                      <div
+                        className="fixed z-[130] w-[min(680px,calc(100vw-32px))] border border-slate-200 bg-white p-5 shadow-[0_26px_70px_rgba(0,32,80,.18)]"
+                        style={{
+                          top: desktopDropdownAnchor.bottom,
+                          left: Math.max(16, Math.min(desktopDropdownAnchor.left, desktopDropdownAnchor.viewportWidth - Math.min(680, desktopDropdownAnchor.viewportWidth - 32) - 16)),
+                        }}
+                        onMouseLeave={closeDesktopDropdown}
+                      >
                         <div className="flex items-end justify-between gap-6 border-b border-slate-200 pb-4">
                           <div><p className="text-[10px] font-black uppercase tracking-[.16em]" style={{ color: adminAccent }}>Omnia Administration</p><h3 className="mt-1 text-lg font-black text-[#002050]">{group.label}</h3></div>
-                          <Link to={destination} onClick={() => setOpenDesktopGroup(null)} className="text-xs font-black" style={{ color: adminAccent }}>Ouvrir la page →</Link>
+                          <Link to={destination} onClick={closeDesktopDropdown} className="text-xs font-black" style={{ color: adminAccent }}>Ouvrir la page →</Link>
                         </div>
                         <div className="grid gap-x-8 gap-y-1 pt-3 sm:grid-cols-2">
                           {group.items.map(item => {
@@ -571,7 +618,7 @@ export function DashboardLayout({
                             const ecosystemForItem = 'ecosystemId' in item && item.ecosystemId ? findAdminEcosystem(item.path) : null;
                             const itemAccent = ecosystemForItem?.accent || adminAccent;
                             return (
-                              <Link key={item.path} to={buildPath(item.path)} onClick={() => setOpenDesktopGroup(null)} className="flex items-center gap-3 border-b border-slate-100 px-1 py-3 text-sm font-semibold text-slate-600 transition hover:text-[#002050]">
+                              <Link key={item.path} to={buildPath(item.path)} onClick={closeDesktopDropdown} className="flex items-center gap-3 border-b border-slate-100 px-1 py-3 text-sm font-semibold text-slate-600 transition hover:text-[#002050]">
                                 <ItemIcon size={16} style={{ color: itemAccent }} />
                                 <span className="flex-1">{item.label}</span>
                                 <ChevronRight size={13} style={{ color: itemAccent }} />
@@ -579,7 +626,8 @@ export function DashboardLayout({
                             );
                           })}
                         </div>
-                      </div>
+                      </div>,
+                      document.body,
                     )}
                   </div>
                 );
@@ -650,8 +698,8 @@ export function DashboardLayout({
       <PreviewReturnBar label={roleSubtitle} />
 
       {hasNavigation && <div className="relative z-20 hidden flex-shrink-0 border-b border-slate-200 bg-white lg:block">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-2 overflow-visible px-5">
-          <nav className="min-w-0 flex-1" aria-label={`Navigation ${roleSubtitle}`}>
+        <div className="oga-horizontal-menu-scroll mx-auto flex max-w-[1440px] items-center gap-2 overflow-x-auto px-5" onScroll={closeDesktopDropdown}>
+          <nav className="min-w-max flex-1" aria-label={`Navigation ${roleSubtitle}`}>
             {navigationContents(false)}
           </nav>
           {spaceHomePath && (

@@ -219,7 +219,7 @@ export function Navbar({ transparent = false, navigation, showAudienceBar = fals
     <>
       {showAudienceBar && (
         <div className="fixed left-0 right-0 top-0 z-40 h-9 border-b border-white/10 bg-[#002050] text-white">
-          <nav aria-label="Accès par profil" className="mx-auto flex h-full max-w-[1440px] items-center justify-center gap-1 overflow-x-auto px-3 sm:gap-3 lg:gap-7">
+          <nav aria-label="Accès par profil" className="oga-horizontal-menu-scroll mx-auto flex h-full max-w-[1440px] items-center justify-center gap-1 overflow-x-auto px-3 sm:gap-3 lg:gap-7">
             {audienceNavLinks.map(item => {
               const active = pathname === item.href;
               return (
