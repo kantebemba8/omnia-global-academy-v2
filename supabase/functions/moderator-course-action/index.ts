@@ -118,7 +118,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: courses, error: coursesError } = await sb
         .from("courses")
-        .select("id,title,description,category,level,status,score_calcule,prix_provisoire_xof,price_xof,requested_cpd,final_validation_type,instructor_id,created_at,admin_comment,rejection_reason,examen_oral_statut,examen_oral_consignes,examen_oral_justification_moderateur")
+        .select("id,title,description,category,level,status,pricing_engine_version,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof,moderator_price_recommendation_xof,desired_price_amount,price_xof,requested_cpd,final_validation_type,instructor_id,created_at,admin_comment,rejection_reason,examen_oral_statut,examen_oral_consignes,examen_oral_justification_moderateur")
         .in("status", ["en_attente_validation_manuelle", "validee", "rejetee", "modification_demandee"])
         .order("created_at", { ascending: true });
       if (coursesError) throw coursesError;
@@ -145,7 +145,7 @@ Deno.serve(async (req: Request) => {
           ...course,
           instructor_name: String(instructor.full_name || "—"),
           instructor_email: String(instructor.email || "—"),
-          price: course.price_xof ?? course.prix_provisoire_xof ?? null,
+          price: course.price_xof ?? course.pricing_recommended_xof ?? null,
           modules_count: (modules || []).length,
           lessons_count: (lessons || []).length,
           modules: (modules || []).map((module: Record<string, unknown>) => ({
@@ -196,8 +196,8 @@ Deno.serve(async (req: Request) => {
     if (action === "set_price") {
       const price = Number(body.price_xof);
       if (!Number.isFinite(price) || price < 0) return json({ error: "INVALID_PRICE" }, 400);
-      update.prix_provisoire_xof = Math.round(price);
-      logAction = "course_price_recommended";
+      update.moderator_price_recommendation_xof = Math.round(price);
+      logAction = "course_price_recommended_v3";
     } else if (action === "reject") {
       if (!comment) return json({ error: "COMMENT_REQUIRED" }, 400);
       update.status = "rejetee";

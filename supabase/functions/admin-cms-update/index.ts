@@ -22,10 +22,10 @@ async function verifySuperAdmin(sb: ReturnType<typeof createClient>, token: stri
 }
 
 
-const UI_LANGUAGES = new Set(["en", "es", "pt", "ar", "zh", "ru", "de"]);
+const UI_LANGUAGES = new Set(["en", "es", "pt", "ar", "zh", "ru", "de", "bm"]);
 const UI_LANGUAGE_NAMES: Record<string, string> = {
   en: "English", es: "Spanish", pt: "Portuguese", ar: "Arabic",
-  zh: "Simplified Chinese", ru: "Russian", de: "German",
+  zh: "Simplified Chinese", ru: "Russian", de: "German", bm: "Bambara",
 };
 
 function aiTranslationEnabled() {
@@ -390,23 +390,25 @@ Deno.serve(async (req: Request) => {
     if (!adminId) return json({ error: "FORBIDDEN" }, 403);
 
     if (req.method === "GET") {
-      const [settingsResult, pricingResult, partnersResult, landingResult, multipliersResult] = await Promise.all([
+      const [settingsResult, pricingBandsResult, pricingFactorsResult, pricingSettingsResult, partnersResult, landingResult] = await Promise.all([
         sb.from("site_settings").select("key,value"),
-        sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_base_tier,is_protected").order("score_min"),
+        sb.from("professor_pricing_duration_bands").select("*").order("min_minutes"),
+        sb.from("professor_pricing_factors").select("*").order("display_order"),
+        sb.from("professor_pricing_settings").select("*").eq("singleton_key","default").maybeSingle(),
         sb.from("public_partners").select("*").order("display_order").order("name"),
         sb.from("landing_page_cms_state")
           .select("draft,previous_published,published_at,published_by,updated_at,social_networks,mobile_apps")
           .eq("id", 1)
           .maybeSingle(),
-        sb.from("category_multipliers").select("category_name,multiplier").order("category_name"),
       ]);
 
       const readFailure = [
         ["SITE_SETTINGS_READ_FAILED", settingsResult.error],
-        ["PRICING_TIERS_READ_FAILED", pricingResult.error],
+        ["PRICING_BANDS_READ_FAILED", pricingBandsResult.error],
+        ["PRICING_FACTORS_READ_FAILED", pricingFactorsResult.error],
+        ["PRICING_SETTINGS_READ_FAILED", pricingSettingsResult.error],
         ["PARTNERS_READ_FAILED", partnersResult.error],
         ["LANDING_CMS_READ_FAILED", landingResult.error],
-        ["CATEGORY_MULTIPLIERS_READ_FAILED", multipliersResult.error],
       ].find(([, error]) => Boolean(error));
 
       if (readFailure) {
@@ -416,27 +418,23 @@ Deno.serve(async (req: Request) => {
 
       return json({
         settings: settingsResult.data ?? [],
-        pricing_tiers: pricingResult.data ?? [],
+        professor_pricing_duration_bands: pricingBandsResult.data ?? [],
+        professor_pricing_factors: pricingFactorsResult.data ?? [],
+        professor_pricing_settings: pricingSettingsResult.data ?? null,
         partners: partnersResult.data ?? [],
         landing_cms: landingResult.data ?? null,
-        category_multipliers: multipliersResult.data ?? [],
       });
     }
 
     const body = await req.json() as {
       updates?: { key: string; value: unknown }[];
       action?: string;
-      tier_id?: string;
-      tier?: Record<string, unknown>;
       file_name?: string;
       mime_type?: string;
       base64?: string;
       favicon_url?: string;
       partner_id?: string;
       partner?: Record<string, unknown>;
-      category_name?: string;
-      multiplier?: number;
-      multipliers?: Array<{ category_name: string; multiplier: number }>;
       landing_page?: unknown;
       social_networks?: unknown;
       mobile_apps?: unknown;
@@ -705,77 +703,29 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, ...(data || {}) });
     }
 
-    if (body.action === "save_category_multipliers") {
-      if (!Array.isArray(body.multipliers) || body.multipliers.length !== 22) {
-        return json({ error: "EXACTLY_22_MULTIPLIERS_REQUIRED" }, 400);
-      }
-
-      for (const item of body.multipliers) {
-        const categoryName = String(item.category_name || "").trim();
-        const mult = Number(item.multiplier);
-        if (!categoryName || !Number.isFinite(mult) || mult < 0.5 || mult > 2) {
-          return json({ error: "INVALID_MULTIPLIER", category_name: categoryName }, 400);
-        }
-      }
-
-      for (const item of body.multipliers) {
-        const categoryName = String(item.category_name).trim();
-        const mult = Number(item.multiplier);
-        const { data: old } = await sb.from("category_multipliers")
-          .select("multiplier").eq("category_name", categoryName).maybeSingle();
-
-        const { error: upsertError } = await sb.from("category_multipliers").upsert({
-          category_name: categoryName,
-          multiplier: mult,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "category_name" });
-        if (upsertError) return json({ error: "CATEGORY_MULTIPLIER_SAVE_FAILED", category_name: categoryName, detail: upsertError.message }, 500);
-
-        if (Number(old?.multiplier) !== mult) {
-          try {
-            await sb.from("multiplier_audit_log").insert({
-              category_name: categoryName,
-              old_value: old?.multiplier ?? null,
-              new_value: mult,
-              changed_by: adminId,
-            });
-          } catch {}
-        }
-      }
-
-      return json({ success: true, count: body.multipliers.length });
-    }
-
-    if (body.action === "update_category_multiplier") {
-      if (!body.category_name || body.multiplier == null) return json({ error: "INVALID_PARAMS" }, 400);
-      const mult = Number(body.multiplier);
-      if (mult < 0.5 || mult > 2) return json({ error: "MULTIPLIER_OUT_OF_RANGE" }, 400);
-      const { data: old } = await sb.from("category_multipliers").select("multiplier").eq("category_name", body.category_name).maybeSingle();
-      await sb.from("category_multipliers").upsert({ category_name: body.category_name, multiplier: mult, updated_at: new Date().toISOString() }, { onConflict: "category_name" });
-      try { await sb.from("multiplier_audit_log").insert({ category_name: body.category_name, old_value: old?.multiplier ?? null, new_value: mult, changed_by: adminId }); } catch {}
-      return json({ success: true });
-    }
+    // Le moteur historique Score → Palier → Prix et ses multiplicateurs de catégorie
+    // ne sont plus exposés par l’API active. Les anciennes tables restent uniquement
+    // disponibles pour l’historique des décisions antérieures.
 
     // Pricing tier management
-    if (body.action === "delete_pricing_tier") {
-      if (!body.tier_id) return json({ error: "tier_id requis" }, 400);
-      const { data: palier } = await sb.from("pricing_tiers").select("is_protected,label").eq("id", body.tier_id).maybeSingle();
-      if (!palier) return json({ error: "TIER_NOT_FOUND" }, 404);
-      const p = palier as { is_protected: boolean; label: string };
-      if (p.is_protected) return json({ error: "PALIER_PROTECTED", message: `Le palier "${p.label}" est protégé et ne peut pas être supprimé.` }, 403);
-      await sb.from("pricing_tiers").delete().eq("id", body.tier_id);
-      return json({ success: true });
+    if (body.action === "upsert_professor_pricing_band") {
+      const band = (body as any).band || {};
+      const payload:any={label:String(band.label||"Tranche").slice(0,120),min_minutes:Math.max(0,Number(band.min_minutes||0)),max_minutes:band.max_minutes===null||band.max_minutes===""?null:Math.max(1,Number(band.max_minutes)),base_price_xof:Math.max(0,Math.round(Number(band.base_price_xof||0))),display_order:Number(band.display_order||0),is_active:band.is_active!==false,updated_at:new Date().toISOString()};
+      if(payload.max_minutes!==null&&payload.max_minutes<=payload.min_minutes)return json({error:"INVALID_DURATION_BAND"},400);
+      const query=band.id?sb.from("professor_pricing_duration_bands").update(payload).eq("id",band.id):sb.from("professor_pricing_duration_bands").insert(payload);const {error}=await query;if(error)throw error;return json({success:true});
     }
-
-    if (body.action === "upsert_pricing_tier") {
-      if (!body.tier) return json({ error: "tier requis" }, 400);
-      const t = body.tier as { id?: string; label: string; score_min: number; score_max: number; price_xof: number };
-      if (t.id) {
-        await sb.from("pricing_tiers").update({ label: t.label, score_min: t.score_min, score_max: t.score_max, price_xof: t.price_xof }).eq("id", t.id);
-      } else {
-        await sb.from("pricing_tiers").insert({ label: t.label, score_min: t.score_min, score_max: t.score_max, price_xof: t.price_xof, created_by: adminId });
-      }
-      return json({ success: true });
+    if (body.action === "delete_professor_pricing_band") {
+      const {error}=await sb.from("professor_pricing_duration_bands").delete().eq("id",String((body as any).band_id||""));if(error)throw error;return json({success:true});
+    }
+    if (body.action === "upsert_professor_pricing_factor") {
+      const factor=(body as any).factor||{};const key=String(factor.factor_key||factor.name_fr||"factor").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,80);if(!key)return json({error:"FACTOR_KEY_REQUIRED"},400);
+      const allowedTriggers=new Set(["always","human_correction","jury","live","external_certification","cpd","course_field"]);const triggerType=allowedTriggers.has(String(factor.trigger_type||""))?String(factor.trigger_type):"always";const rawConfig=factor.config&&typeof factor.config==="object"?factor.config:{};const allowedCourseFields=new Set(["category","course_type","sale_mode","certification_requested","requested_cpd","cpd_accredited"]);const config:any={...rawConfig};if(triggerType==="course_field"&&!allowedCourseFields.has(String(config.field||"")))return json({error:"INVALID_PRICING_FACTOR_FIELD"},400);
+      const payload:any={factor_key:key,name_fr:String(factor.name_fr||key).slice(0,160),description_fr:String(factor.description_fr||"").slice(0,1000),factor_type:["multiplier","fixed_amount","percentage"].includes(String(factor.factor_type))?factor.factor_type:"multiplier",trigger_type:triggerType,multiplier:Math.max(0,Number(factor.multiplier??1)),fixed_amount_xof:Math.max(0,Math.round(Number(factor.fixed_amount_xof||0))),config,display_order:Number(factor.display_order||0),is_active:factor.is_active!==false,updated_at:new Date().toISOString()};
+      const {error}=await sb.from("professor_pricing_factors").upsert(payload,{onConflict:"factor_key"});if(error)throw error;return json({success:true});
+    }
+    if (body.action === "delete_professor_pricing_factor") {const {error}=await sb.from("professor_pricing_factors").delete().eq("id",String((body as any).factor_id||""));if(error)throw error;return json({success:true});}
+    if (body.action === "save_professor_pricing_settings") {
+      const x=(body as any).pricing_settings||{};const payload={singleton_key:"default",lower_range_percent:Math.max(0,Number(x.lower_range_percent||0)),upper_range_percent:Math.max(0,Number(x.upper_range_percent||0)),rounding_step_xof:Math.max(1,Math.round(Number(x.rounding_step_xof||1))),allow_professor_desired_price:x.allow_professor_desired_price!==false,large_gap_warning_percent:Math.max(0,Number(x.large_gap_warning_percent||0)),is_active:x.is_active!==false,updated_at:new Date().toISOString(),updated_by:adminId};const {error}=await sb.from("professor_pricing_settings").upsert(payload,{onConflict:"singleton_key"});if(error)throw error;return json({success:true});
     }
 
     const { updates } = body;

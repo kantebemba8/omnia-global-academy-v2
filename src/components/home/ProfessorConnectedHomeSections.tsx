@@ -33,7 +33,6 @@ export type ProfessorConnectedHomeData = {
     id: string;
     title: string;
     status: string;
-    score_calcule?: number;
     cover_image_url?: string | null;
     total_students?: number;
     average_rating?: number;

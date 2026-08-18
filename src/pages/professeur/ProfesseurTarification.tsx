@@ -9,8 +9,9 @@ type PricingCourse = {
   id: string;
   title: string;
   pricing_status: string;
-  score_calcule: number;
-  prix_provisoire_xof: number;
+  pricing_recommended_xof?: number;
+  pricing_range_min_xof?: number;
+  pricing_range_max_xof?: number;
   desired_price_amount: number | null;
   admin_selected_price_source: string | null;
   admin_selected_price_xof: number | null;
@@ -84,7 +85,7 @@ export default function ProfesseurTarification() {
       <div className="max-w-6xl mx-auto px-4 py-6 md:px-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>Tarification des formations</h1>
-          <p className="mt-1 text-sm text-gray-500">Lisez le fonctionnement du calcul avant de créer votre formation.</p>
+          <p className="mt-1 text-sm text-gray-500">La recommandation V3 utilise la durée pédagogique calculée et les services réellement inclus. Votre niveau pédagogique n’influence pas le prix.</p>
         </div>
 
         {message && (
@@ -140,7 +141,7 @@ export default function ProfesseurTarification() {
                       <div>
                         <p className="font-semibold text-gray-800">{course.title}</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          Score {course.score_calcule ?? '—'} · Prix automatique {(course.prix_provisoire_xof || 0).toLocaleString()} XOF · Votre prix {(course.desired_price_amount || 0).toLocaleString()} XOF
+                          Recommandation Omnia {(course.pricing_recommended_xof ?? 0).toLocaleString()} XOF · Fourchette {(course.pricing_range_min_xof || 0).toLocaleString()}–{(course.pricing_range_max_xof || 0).toLocaleString()} XOF · Votre prix {(course.desired_price_amount || 0).toLocaleString()} XOF
                         </p>
                       </div>
                       <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-50 text-amber-700">

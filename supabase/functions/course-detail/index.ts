@@ -38,10 +38,12 @@ Deno.serve(async (req: Request) => {
         "total_students, language, subtitles_available, prerequisites, " +
         "objectives, creator_type, creator_id, establishment_id, " +
         "total_duration_seconds, is_published, learning_design_settings, " +
-        "lesson_passing_score, module_passing_score, final_passing_score"
+        "lesson_passing_score, module_passing_score, final_passing_score, is_catalog_active, is_current_catalog_version"
       )
       .eq("id", courseId)
       .eq("is_published", true)
+      .eq("is_catalog_active", true)
+      .eq("is_current_catalog_version", true)
       .maybeSingle();
 
     if (courseErr) throw courseErr;

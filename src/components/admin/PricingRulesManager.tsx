@@ -1,223 +1,38 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ENDPOINTS } from '../../lib/config';
-import { Save } from 'lucide-react';
+import { Plus, Save, Trash2 } from 'lucide-react';
 
-const DEFAULT: any = {
-  module_points: 2,
-  lesson_points: 0.5,
-  hour_points: 1,
-  level_points: { debutant: 2, intermediaire: 5, avance: 8, expert: 12 },
-  validation_points: { qcm: 3, projet_soumettre: 8, projet_corriger: 12 },
-  oral_exam_points: 6,
-  resource_global_cap: 5,
-  resources: {
-    pdf_fiche: { points: 0.5, max: 4 },
-    url_externe: { points: 0.3, max: 5 },
-    glossaire: { points: 1, max: 1 },
-    exercice_pratique: { points: 0.5, max: 3 },
-    audio: { points: 0.5, max: 2 },
-    template: { points: 0.7, max: 3 },
-    etude_de_cas: { points: 1, max: 2 },
-  },
-};
-
-const LEVELS = [
-  ['debutant', 'Débutant'],
-  ['intermediaire', 'Intermédiaire'],
-  ['avance', 'Avancé'],
-  ['expert', 'Expert'],
-] as const;
-
-const VALIDATIONS = [
-  ['qcm', 'QCM'],
-  ['projet_soumettre', 'Projet à soumettre'],
-  ['projet_corriger', 'Projet corrigé'],
-] as const;
-
-const RESOURCE_LABELS: Record<string, string> = {
-  pdf_fiche: 'Document PDF / Fiche',
-  url_externe: 'Lien URL externe',
-  glossaire: 'Glossaire',
-  exercice_pratique: 'Exercice pratique supplémentaire',
-  audio: 'Ressource audio',
-  template: 'Template / fichier téléchargeable',
-  etude_de_cas: 'Étude de cas',
-};
-
-export function PricingRulesManager() {
-  const [rules, setRules] = useState<any>(DEFAULT);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState('');
-  const token = () => getSessionToken() || '';
-
-  useEffect(() => {
-    fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json())
-      .then(d => {
-        const row = (d.settings || []).find((x: any) => x.key === 'course_pricing_rules');
-        if (!row?.value) return;
-        try {
-          const incoming = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-          setRules({
-            ...DEFAULT,
-            ...incoming,
-            level_points: { ...DEFAULT.level_points, ...(incoming.level_points || {}) },
-            validation_points: { ...DEFAULT.validation_points, ...(incoming.validation_points || {}) },
-            resources: { ...DEFAULT.resources, ...(incoming.resources || {}) },
-          });
-        } catch {}
-      });
-  }, []);
-
-  async function save() {
-    setSaving(true);
-    setSaved('');
-    const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: [{ key: 'course_pricing_rules', value: rules }] }),
-    });
-    setSaving(false);
-    setSaved(res.ok ? 'Règles de calcul enregistrées.' : 'Erreur pendant l’enregistrement.');
-    setTimeout(() => setSaved(''), 3000);
-  }
-
-  const num = (label: string, key: string) => (
-    <label className="text-xs text-gray-600">
-      {label}
-      <input
-        type="number" step="0.1" value={rules[key]}
-        onChange={e => setRules({ ...rules, [key]: Number(e.target.value) })}
-        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-      />
-    </label>
-  );
-
-  return <div className="space-y-6">
-    <div>
-      <h3 className="font-semibold" style={{ color: '#002050' }}>Tarification automatique — Professeurs indépendants</h3>
-      <p className="text-xs text-gray-500 mt-1">
-        Ces valeurs sont celles du cahier des charges et alimentent directement le calcul du score.
-      </p>
-    </div>
-
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {num('Points par module', 'module_points')}
-      {num('Points par leçon', 'lesson_points')}
-      {num('Points par heure reconnue', 'hour_points')}
-      {num('Examen oral confirmé', 'oral_exam_points')}
-    </div>
-
-    <div>
-      <p className="text-sm font-semibold mb-2" style={{ color: '#002050' }}>Niveaux</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {LEVELS.map(([key, label]) => (
-          <label key={key} className="text-xs text-gray-600">
-            {label}
-            <input
-              type="number"
-              value={rules.level_points?.[key] ?? DEFAULT.level_points[key]}
-              onChange={e => setRules({
-                ...rules,
-                level_points: { ...rules.level_points, [key]: Number(e.target.value) },
-              })}
-              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2"
-            />
-          </label>
-        ))}
-      </div>
-    </div>
-
-    <div>
-      <p className="text-sm font-semibold mb-2" style={{ color: '#002050' }}>Validation finale</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {VALIDATIONS.map(([key, label]) => (
-          <label key={key} className="text-xs text-gray-600">
-            {label}
-            <input
-              type="number"
-              value={rules.validation_points?.[key] ?? DEFAULT.validation_points[key]}
-              onChange={e => setRules({
-                ...rules,
-                validation_points: { ...rules.validation_points, [key]: Number(e.target.value) },
-              })}
-              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2"
-            />
-          </label>
-        ))}
-      </div>
-    </div>
-
-    <div>
-      <div className="flex items-end justify-between gap-4 mb-2">
-        <div>
-          <p className="text-sm font-semibold" style={{ color: '#002050' }}>Ressources bonus</p>
-          <p className="text-xs text-gray-500 mt-1">
-            « Points par ressource » = bonus ajouté pour chaque ressource reconnue. « Quantité maximale » = nombre maximum pris en compte pour ce type.
-          </p>
-        </div>
-        <label className="text-xs text-gray-600 w-40">
-          Plafond global bonus
-          <input
-            type="number" step="0.1" value={rules.resource_global_cap ?? 5}
-            onChange={e => setRules({ ...rules, resource_global_cap: Number(e.target.value) })}
-            className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2"
-          />
-        </label>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {Object.entries(rules.resources || {}).map(([key, value]: any) => (
-          <div key={key} className="border border-gray-200 rounded-xl p-4">
-            <p className="text-sm font-semibold text-gray-700">{RESOURCE_LABELS[key] || key}</p>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <label className="text-xs text-gray-500">
-                Points par ressource
-                <input
-                  type="number" step="0.1" min="0"
-                  value={value.points}
-                  onChange={e => setRules({
-                    ...rules,
-                    resources: {
-                      ...rules.resources,
-                      [key]: { ...value, points: Number(e.target.value) },
-                    },
-                  })}
-                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="text-xs text-gray-500">
-                Quantité maximale
-                <input
-                  type="number" min="0"
-                  value={value.max}
-                  onChange={e => setRules({
-                    ...rules,
-                    resources: {
-                      ...rules.resources,
-                      [key]: { ...value, max: Number(e.target.value) },
-                    },
-                  })}
-                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="flex items-center justify-end gap-3">
-      {saved && <span className="text-xs text-gray-500">{saved}</span>}
-      <button
-        onClick={save} disabled={saving}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-60"
-        style={{ backgroundColor: '#002050' }}
-      >
-        <Save className="w-4 h-4" />
-        {saving ? 'Enregistrement…' : 'Enregistrer les règles de calcul'}
-      </button>
-    </div>
-  </div>;
+type Factor={id?:string;factor_key:string;name_fr:string;description_fr?:string;factor_type:'multiplier'|'fixed_amount'|'percentage';trigger_type:'always'|'human_correction'|'jury'|'live'|'external_certification'|'cpd'|'course_field';multiplier:number;fixed_amount_xof:number;is_active:boolean;display_order:number;config?:{field?:string;value?:string|boolean}};
+type Settings={lower_range_percent:number;upper_range_percent:number;rounding_step_xof:number;allow_professor_desired_price:boolean;large_gap_warning_percent:number;is_active:boolean};
+const defaults:Settings={lower_range_percent:0,upper_range_percent:0,rounding_step_xof:1,allow_professor_desired_price:true,large_gap_warning_percent:100,is_active:true};
+export function PricingRulesManager(){
+ const [factors,setFactors]=useState<Factor[]>([]),[settings,setSettings]=useState<Settings>(defaults),[message,setMessage]=useState('');const token=()=>getSessionToken()||'';
+ async function load(){const r=await fetch(ENDPOINTS.adminCmsUpdate,{headers:{Authorization:`Bearer ${token()}`}});const d=await r.json();setFactors(d.professor_pricing_factors||[]);setSettings({...defaults,...(d.professor_pricing_settings||{})});}
+ useEffect(()=>{void load()},[]);
+ const edit=(i:number,p:Partial<Factor>)=>setFactors(v=>v.map((x,j)=>i===j?{...x,...p}:x));
+ async function saveSettings(){const r=await fetch(ENDPOINTS.adminCmsUpdate,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'save_professor_pricing_settings',pricing_settings:settings})});setMessage(r.ok?'Paramètres enregistrés.':'Erreur.');}
+ async function saveFactor(f:Factor){const r=await fetch(ENDPOINTS.adminCmsUpdate,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'upsert_professor_pricing_factor',factor:f})});if(r.ok)await load();setMessage(r.ok?'Facteur enregistré.':'Erreur.');}
+ async function remove(f:Factor,i:number){if(!f.id){setFactors(v=>v.filter((_,j)=>j!==i));return;}if(!confirm('Supprimer ce facteur ?'))return;const r=await fetch(ENDPOINTS.adminCmsUpdate,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'delete_professor_pricing_factor',factor_id:f.id})});if(r.ok)await load();}
+ function add(){setFactors(v=>[...v,{factor_key:'',name_fr:'Nouveau facteur',description_fr:'',factor_type:'multiplier',trigger_type:'always',multiplier:1,fixed_amount_xof:0,is_active:true,display_order:v.length,config:{}}]);}
+ return <div className="space-y-6"><div><h3 className="font-semibold" style={{color:'#002050'}}>Paramètres de recommandation — Professeurs indépendants</h3><p className="mt-1 text-xs text-gray-500">Le moteur V3 utilise la durée calculée et les services réellement inclus. L'ancien score modules/leçons/niveau/ressources n'est plus utilisé.</p></div>
+ <div className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-4" style={{borderColor:'#E4E7EC'}}>
+  <label className="text-xs text-gray-600">Marge basse (%)<input type="number" min={0} value={settings.lower_range_percent} onChange={e=>setSettings({...settings,lower_range_percent:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Marge haute (%)<input type="number" min={0} value={settings.upper_range_percent} onChange={e=>setSettings({...settings,upper_range_percent:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Arrondi XOF<input type="number" min={1} value={settings.rounding_step_xof} onChange={e=>setSettings({...settings,rounding_step_xof:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Alerte écart important (%)<input type="number" min={0} value={settings.large_gap_warning_percent} onChange={e=>setSettings({...settings,large_gap_warning_percent:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="flex items-center gap-2 text-xs text-gray-700 md:col-span-3"><input type="checkbox" checked={settings.allow_professor_desired_price} onChange={e=>setSettings({...settings,allow_professor_desired_price:e.target.checked})}/>Permettre au Professeur d'indiquer son prix souhaité</label>
+  <button onClick={()=>void saveSettings()} className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{background:'#002050'}}><Save size={15}/>Enregistrer</button>
+ </div>
+ <div className="flex items-center justify-between"><div><p className="text-sm font-semibold" style={{color:'#002050'}}>Facteurs additionnels</p><p className="text-xs text-gray-500">Ajoutez les coûts ou niveaux d'accompagnement réellement inclus : correction humaine, Live, jury, certification externe, etc.</p></div><button onClick={add} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#BF8813',color:'#002050'}}><Plus size={14}/>Ajouter un facteur</button></div>
+ <div className="space-y-3">{factors.map((f,i)=><div key={f.id||i} className="grid gap-3 rounded-xl border bg-white p-4 lg:grid-cols-2" style={{borderColor:'#E4E7EC'}}>
+  <label className="text-xs text-gray-600">Nom<input value={f.name_fr} onChange={e=>edit(i,{name_fr:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Application<select value={f.trigger_type||'always'} onChange={e=>edit(i,{trigger_type:e.target.value as Factor['trigger_type']})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="always">Toujours</option><option value="human_correction">Correction humaine détectée</option><option value="jury">Jury détecté</option><option value="live">Live / Replay lié</option><option value="external_certification">Certification externe</option><option value="cpd">CPD demandé / accrédité</option><option value="course_field">Condition sur la formation</option></select></label>
+  {f.trigger_type==='course_field'&&<><label className="text-xs text-gray-600">Champ<select value={String(f.config?.field||'category')} onChange={e=>edit(i,{config:{...(f.config||{}),field:e.target.value}})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="category">Catégorie</option><option value="course_type">Type de formation</option><option value="sale_mode">Mode de vente</option><option value="certification_requested">Certification externe demandée</option><option value="requested_cpd">CPD demandé</option><option value="cpd_accredited">CPD accrédité</option></select></label><label className="text-xs text-gray-600">Valeur attendue<input value={String(f.config?.value??'')} onChange={e=>edit(i,{config:{...(f.config||{}),value:e.target.value}})} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Ex. management, language, true..." /></label></>}
+  <label className="text-xs text-gray-600">Type<select value={f.factor_type} onChange={e=>edit(i,{factor_type:e.target.value as Factor['factor_type']})} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="multiplier">Coefficient</option><option value="percentage">Pourcentage</option><option value="fixed_amount">Montant fixe</option></select></label>
+  <label className="text-xs text-gray-600">Coefficient / %<input type="number" step="0.01" min={0} value={f.multiplier} onChange={e=>edit(i,{multiplier:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Montant fixe XOF<input type="number" min={0} value={f.fixed_amount_xof} onChange={e=>edit(i,{fixed_amount_xof:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+  <label className="text-xs text-gray-600">Description<input value={f.description_fr||''} onChange={e=>edit(i,{description_fr:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Expliquez quand et pourquoi ce facteur s'applique." /></label>
+  <div className="flex items-center justify-between gap-3 lg:col-span-2"><label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={f.is_active} onChange={e=>edit(i,{is_active:e.target.checked})}/>Actif</label><div className="flex gap-2"><button onClick={()=>void saveFactor(f)} className="rounded-lg p-2 text-white" style={{background:'#002050'}} title="Enregistrer"><Save size={16}/></button><button onClick={()=>void remove(f,i)} className="rounded-lg border p-2 text-red-600" title="Supprimer"><Trash2 size={16}/></button></div></div>
+ </div>)}</div>{message&&<p className="text-right text-xs text-gray-500">{message}</p>}</div>;
 }

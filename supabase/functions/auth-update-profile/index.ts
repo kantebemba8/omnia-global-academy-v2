@@ -14,7 +14,7 @@ const PROFILE_BUCKET = "profile-avatars";
 const MAX_AVATAR_BYTES = 3 * 1024 * 1024;
 const ALLOWED_AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const PROFILE_VISIBILITIES = new Set(["public", "members", "private"]);
-const PLATFORM_LANGUAGES = new Set(["fr", "en", "es", "pt", "ar", "zh", "ru", "de"]);
+const PLATFORM_LANGUAGES = new Set(["fr", "en", "es", "pt", "ar", "zh", "ru", "de", "bm"]);
 const URL_FIELDS = new Set(["website_url", "linkedin_url", "portfolio_url", "github_url"]);
 
 const SUSPENSION_REASON_LABELS: Record<string, string> = {

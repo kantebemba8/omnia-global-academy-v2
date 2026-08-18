@@ -35,9 +35,9 @@ async function call(action: string, payload: Record<string, unknown>) {
 
 type Question = {
   id: string;
-  question_type: 'qcm' | 'true_false' | 'open_question' | 'exercise';
+  question_type: 'qcm' | 'true_false' | 'open_question' | 'exercise' | 'assignment_upload' | 'case_study' | 'cloze' | 'dictation' | 'pronunciation' | 'matching' | 'sentence_order' | 'oral_response' | 'listening_comprehension' | 'written_expression';
   prompt: string;
-  options?: string[];
+  options?: any;
   points: number;
   explanation?: string;
   accepted_submission_types?: string[];
@@ -53,7 +53,7 @@ type UploadedFile = {
 };
 
 type PendingFile = { file: File; uploaded?: UploadedFile };
-type AnswerValue = string | number | boolean | { files: PendingFile[] };
+type AnswerValue = string | number | boolean | string[] | { files: PendingFile[] };
 
 type Attempt = {
   id: string;
@@ -164,10 +164,12 @@ export function AssessmentEngine({
 
   const complete = useMemo(() => assessment?.questions.every(question => {
     const answer = answers[question.id];
-    if (question.question_type === 'exercise') {
-      return Boolean(answer && typeof answer === 'object' && 'files' in answer && answer.files.length > 0);
+    if (['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) {
+      return Boolean(answer && typeof answer === 'object' && !Array.isArray(answer) && 'files' in answer && answer.files.length > 0);
     }
-    return answer !== undefined && answer !== '';
+    if (['cloze', 'matching', 'listening_comprehension'].includes(question.question_type)) return Array.isArray(answer) && answer.length > 0 && answer.every(value => String(value ?? '').trim().length > 0);
+    if (question.question_type === 'sentence_order') return Array.isArray(answer) ? answer.length > 0 : String(answer ?? '').trim().length > 0;
+    return answer !== undefined && String(answer).trim() !== '';
   }) ?? false, [assessment, answers]);
 
   function pendingFiles(questionId: string): PendingFile[] {
@@ -227,8 +229,8 @@ export function AssessmentEngine({
       const normalizedAnswers = [];
       for (const question of assessment.questions) {
         const raw = answers[question.id];
-        if (question.question_type === 'exercise') {
-          const pending = raw && typeof raw === 'object' && 'files' in raw ? raw.files : [];
+        if (['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) {
+          const pending = raw && typeof raw === 'object' && !Array.isArray(raw) && 'files' in raw ? raw.files : [];
           const files = await uploadFiles(question.id, pending);
           normalizedAnswers.push({ question_id: question.id, answer: { files } });
         } else {
@@ -283,6 +285,14 @@ export function AssessmentEngine({
   const passed = Boolean(latest?.passed);
   const pending = Boolean(latest && ['pending_review', 'submitted', 'in_progress'].includes(latest.status));
   const blocked = !assessment.can_retry && !passed && !pending;
+
+  const setArrayAnswer = (questionId: string, index: number, value: string) => {
+    setAnswers(current => {
+      const existing = Array.isArray(current[questionId]) ? [...current[questionId] as string[]] : [];
+      existing[index] = value;
+      return { ...current, [questionId]: existing };
+    });
+  };
 
   return (
     <section className="mt-8 rounded-2xl border p-5" style={{ borderColor: BORDER }}>
@@ -356,6 +366,16 @@ export function AssessmentEngine({
                 {index + 1}. {question.prompt} <span className="text-xs text-gray-400">({question.points} pts)</span>
               </p>
 
+              {(question.resource_files || []).length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {(question.resource_files || []).map((file, fileIndex) => file.url ? (
+                    /\.(mp3|wav|m4a|ogg|webm)(\?|$)/i.test(file.url) || /audio/i.test(file.name || '')
+                      ? <audio key={fileIndex} controls className="w-full max-w-md" src={file.url} />
+                      : <a key={fileIndex} href={file.url} target="_blank" rel="noreferrer" className="flex gap-1 text-xs underline"><FileText size={13} />{file.name}</a>
+                  ) : null)}
+                </div>
+              )}
+
               {question.question_type === 'qcm' && (
                 <div className="space-y-2">
                   {(question.options || []).map((option, optionIndex) => (
@@ -378,15 +398,38 @@ export function AssessmentEngine({
                 <textarea rows={5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder="Rédigez votre réponse…" />
               )}
 
-              {question.question_type === 'exercise' && (
+              {question.question_type === 'cloze' && (() => {
+                const text = String(question.options?.text || '');
+                const parts = text.split('____');
+                const values = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
+                return <div className="rounded-lg border bg-white p-3 text-sm leading-8">{parts.map((part, partIndex) => <span key={partIndex}>{part}{partIndex < parts.length - 1 && <input className="mx-1 inline-block w-32 rounded border px-2 py-1" value={values[partIndex] || ''} onChange={event => setArrayAnswer(question.id, partIndex, event.target.value)} />}</span>)}</div>;
+              })()}
+
+              {question.question_type === 'matching' && (() => {
+                const left = Array.isArray(question.options?.left) ? question.options.left : [];
+                const choices = Array.isArray(question.options?.choices) ? question.options.choices : [];
+                const values = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
+                return <div className="space-y-2">{left.map((label: string, pairIndex: number) => <label key={pairIndex} className="grid gap-2 text-sm sm:grid-cols-2 sm:items-center"><strong>{label}</strong><select className="rounded-lg border p-2" value={values[pairIndex] || ''} onChange={event => setArrayAnswer(question.id, pairIndex, event.target.value)}><option value="">Associer…</option>{choices.map((choice: string, choiceIndex: number) => <option key={choiceIndex} value={choice}>{choice}</option>)}</select></label>)}</div>;
+              })()}
+
+              {question.question_type === 'sentence_order' && (
+                <input className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={`Remettez les éléments dans l’ordre : ${(question.options?.tokens || []).join(' · ')}`} />
+              )}
+
+              {question.question_type === 'listening_comprehension' && (() => {
+                const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
+                const values = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
+                return <div className="space-y-3">{questions.map((item: any, itemIndex: number) => <label key={itemIndex} className="block text-sm"><span className="font-medium">{item.question || `Question ${itemIndex + 1}`}</span><input className="mt-1 w-full rounded-lg border p-2" value={values[itemIndex] || ''} onChange={event => setArrayAnswer(question.id, itemIndex, event.target.value)} /></label>)}</div>;
+              })()}
+
+              {['dictation', 'written_expression', 'case_study'].includes(question.question_type) && (
+                <textarea rows={question.question_type === 'written_expression' || question.question_type === 'case_study' ? 8 : 5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={question.question_type === 'dictation' ? 'Transcrivez ce que vous entendez…' : 'Rédigez votre réponse…'} />
+              )}
+
+              {['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type) && (
                 <div>
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {(question.resource_files || []).map((file, fileIndex) => (
-                      <a key={fileIndex} href={file.url} target="_blank" rel="noreferrer" className="flex gap-1 text-xs underline"><FileText size={13} />{file.name}</a>
-                    ))}
-                  </div>
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                    <Upload size={15} /> Déposer mon travail
+                    <Upload size={15} /> {question.question_type === 'oral_response' || question.question_type === 'pronunciation' ? 'Déposer mon enregistrement audio' : 'Déposer mon travail'}
                     <input type="file" multiple className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
                   </label>
                   {pendingFiles(question.id).length > 0 && (

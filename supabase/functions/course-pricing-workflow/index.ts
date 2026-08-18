@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await sb
           .from("courses")
           .select(
-            "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+            "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
           )
           .in("pricing_status", [
             "en_attente_validation_prix_admin",
@@ -101,7 +101,7 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await sb
         .from("courses")
         .select(
-          "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,score_calcule,prix_provisoire_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
+          "id,title,creator_id,instructor_id,creator_context,structure_id,status,pricing_status,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof,desired_price_amount,admin_selected_price_source,admin_selected_price_xof,pricing_snapshot,pricing_revision_comment,updated_at",
         )
         .or(`instructor_id.eq.${me.user_id},creator_id.eq.${me.user_id}`)
         .in("pricing_status", [
@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
     const { data: course, error: courseError } = await sb
       .from("courses")
       .select(
-        "id,title,creator_id,instructor_id,creator_context,structure_id,prix_provisoire_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
+        "id,title,creator_id,instructor_id,creator_context,structure_id,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof,desired_price_amount,pricing_status,admin_selected_price_xof",
       )
       .eq("id", body.course_id)
       .maybeSingle();
@@ -146,7 +146,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const selectedPrice = body.source === "automatic"
-        ? Number(course.prix_provisoire_xof ?? 0)
+        ? Number(course.pricing_recommended_xof ?? 0)
         : (body.source === "professor" || body.source === "owner")
           ? Number(course.desired_price_amount ?? 0)
           : Number(body.custom_price_xof ?? 0);

@@ -1,129 +1,42 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin":"*",
-  "Access-Control-Allow-Methods":"POST,OPTIONS",
-  "Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey",
-};
-const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
-
-const DEFAULT_RULES:any={
-  module_points:2,lesson_points:.5,hour_points:1,
-  level_points:{debutant:2,intermediaire:5,avance:8,expert:12},
-  validation_points:{qcm:3,projet_soumettre:8,projet_corriger:12},
-  oral_exam_points:6,resource_global_cap:5,
-  resources:{
-    pdf_fiche:{points:.5,max:4},url_externe:{points:.3,max:5},glossaire:{points:1,max:1},
-    exercice_pratique:{points:.5,max:3},audio:{points:.5,max:2},template:{points:.7,max:3},etude_de_cas:{points:1,max:2}
-  }
-};
-const normalize=(v:string)=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/\s+/g,"_");
-const CATEGORY_ALIASES: Record<string, string> = {
-  "data_&_ia": "Data & Intelligence Artificielle",
-  "intelligence_artificielle": "Data & Intelligence Artificielle",
-  "informatique": "Informatique & Développement",
-  "informatique_de_gestion": "Informatique & Développement",
-  "bureautique_&_productivite": "Informatique & Développement",
-  "developpement_web": "Informatique & Développement",
-  "cybersecurite": "Cybersécurité & Réseaux",
-  "business": "Business & Entrepreneuriat",
-  "entrepreneuriat": "Business & Entrepreneuriat",
-  "gestion_de_projet": "Business & Entrepreneuriat",
-  "management_&_leadership": "Business & Entrepreneuriat",
-  "ressources_humaines": "Business & Entrepreneuriat",
-  "commerce_international": "Business & Entrepreneuriat",
-  "comptabilite_&_finance": "Finance & Comptabilité",
-  "finance": "Finance & Comptabilité",
-  "comptabilite": "Finance & Comptabilité",
-  "fiscalite": "Finance & Comptabilité",
-  "banque_&_microfinance": "Finance & Comptabilité",
-  "droit": "Droit & Juridique",
-  "juridique": "Droit & Juridique",
-  "droit_des_affaires": "Droit & Juridique",
-  "marketing": "Marketing & Communication",
-  "marketing_digital": "Marketing & Communication",
-  "communication_professionnelle": "Marketing & Communication",
-  "vente_&_negociation": "Marketing & Communication",
-  "sante": "Santé & Médecine",
-  "sante_&_securite_au_travail": "Santé & Médecine",
-  "architecture": "Architecture & BTP",
-  "education": "Éducation & Pédagogie",
-  "langues": "Langues & Linguistique",
-  "agriculture": "Agriculture & Agro-business",
-  "agriculture_&_agribusiness": "Agriculture & Agro-business",
-  "tourisme": "Tourisme & Hôtellerie",
-  "energie_&_environnement": "Environnement & Développement durable",
-  "environnement": "Environnement & Développement durable",
-  "developpement_personnel": "Bien-être & Développement personnel",
-  "bien_etre": "Bien-être & Développement personnel",
-  "artisanat": "Artisanat & Métiers manuels",
-  "cuisine": "Cuisine & Gastronomie",
-  "mode": "Mode & Stylisme",
-  "elevage": "Élevage & Pêche",
-  "arts": "Arts & Créativité",
-  "musique": "Musique & Audio",
-  "loisirs": "Loisirs & Hobbies"
-};
-
-async function loadRules(sb:any){
-  const {data}=await sb.from("site_settings").select("value").eq("key","course_pricing_rules").maybeSingle();
-  if(!data?.value)return DEFAULT_RULES;
-  try{return typeof data.value==="string"?{...DEFAULT_RULES,...JSON.parse(data.value)}:{...DEFAULT_RULES,...data.value};}catch{return DEFAULT_RULES;}
-}
-async function resolveMultiplier(sb:any,category:string){
-  const direct=await sb.from("category_multipliers").select("category_name,multiplier").eq("category_name",category).maybeSingle();
-  if(direct.data)return {name:direct.data.category_name,multiplier:Number(direct.data.multiplier||1)};
-  const alias=CATEGORY_ALIASES[normalize(category)];
-  if(alias){
-    const r=await sb.from("category_multipliers").select("category_name,multiplier").eq("category_name",alias).maybeSingle();
-    if(r.data)return {name:r.data.category_name,multiplier:Number(r.data.multiplier||1)};
-  }
-  const {data:rows}=await sb.from("category_multipliers").select("category_name,multiplier");
-  const n=normalize(category);
-  const match=(rows||[]).find((x:any)=>normalize(x.category_name)===n);
-  return match?{name:match.category_name,multiplier:Number(match.multiplier||1)}:{name:category,multiplier:1};
-}
-async function resolveTier(sb:any,score:number){
-  const {data}=await sb.from("pricing_tiers").select("id,label,score_min,score_max,price_xof,is_protected").order("score_min");
-  const tier=(data||[]).find((t:any)=>score>=Number(t.score_min)&&(t.score_max==null||score<=Number(t.score_max)));
-  return tier||{id:null,label:"Non configuré",score_min:0,score_max:null,price_xof:0};
-}
+const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,Authorization,X-Client-Info,Apikey"};
+const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...corsHeaders,"Content-Type":"application/json"}});
+function roundPrice(value:number,step:number){const safe=Math.max(1,Math.round(step||1));return Math.round(Math.max(0,value)/safe)*safe}
 
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response(null,{status:200,headers:corsHeaders});
   if(req.method!=="POST")return json({error:"METHOD_NOT_ALLOWED"},405);
-  const body=await req.json().catch(()=>null);
+  const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
   if(!body)return json({error:"INVALID_BODY"},400);
   try{
     const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
-    const rules=await loadRules(sb);
-    const level=normalize(body.level);
-    const validation=normalize(body.final_validation_type);
-    const breakdown:any={
-      modules:Number(body.modules_count||0)*Number(rules.module_points||2),
-      lessons:Number(body.lessons_count||0)*Number(rules.lesson_points||.5),
-      cpd_hours:Number(body.cpd_hours||0)*Number(rules.hour_points||1),
-      level:Number(rules.level_points?.[level]||0),
-      validation:Number(rules.validation_points?.[validation]||0),
-      oral_exam:body.has_oral_exam?Number(rules.oral_exam_points||6):0,
-      resources_bonus:0,
-    };
-    let bonus=0;
-    for(const r of body.resources||[]){
-      const cfg=rules.resources?.[normalize(r.type)];
-      if(cfg)bonus+=Math.min(Number(r.count||0),Number(cfg.max||0))*Number(cfg.points||0);
+    let durationMinutes=Math.max(0,Math.round(Number(body.duration_minutes||0)));
+    let desiredPrice:number|null=body.desired_price_xof==null?null:Number(body.desired_price_xof);
+    let courseId=String(body.course_id||"").trim();
+    if(courseId){
+      const {data:course,error}=await sb.from("courses").select("id,total_duration_seconds,calculated_duration_minutes,cpd_hours,desired_price_amount,creator_context").eq("id",courseId).maybeSingle();
+      if(error)throw error;if(!course)return json({error:"COURSE_NOT_FOUND"},404);
+      if(String(course.creator_context||"")!=="professeur"&&String(course.creator_context||"")!=="professor")return json({error:"AUTOMATIC_PRICING_PROFESSOR_ONLY"},409);
+      durationMinutes=Math.max(durationMinutes,Math.round(Number(course.total_duration_seconds||0)/60),Math.round(Number(course.calculated_duration_minutes||0)),Math.round(Number(course.cpd_hours||0)*60));
+      if(desiredPrice==null&&course.desired_price_amount!=null)desiredPrice=Number(course.desired_price_amount);
     }
-    breakdown.resources_bonus=Math.min(bonus,Number(rules.resource_global_cap||5));
-    const subtotal=Object.values(breakdown).reduce((a:any,b:any)=>Number(a)+Number(b),0);
-    const mult=await resolveMultiplier(sb,String(body.category||""));
-    const score=Math.round(subtotal*mult.multiplier*10)/10;
-    const tier=await resolveTier(sb,score);
-    return json({
-      score,price_xof:Number(tier.price_xof||0),palier:tier.label,tier_id:tier.id,
-      multiplier:mult.multiplier,multiplier_category:mult.name,
-      breakdown:{...breakdown,subtotal_before_multiplier:Math.round(subtotal*10)/10,multiplier_applied:mult.multiplier},
-      rules_version:"course_pricing_rules",
-    });
-  }catch(e){console.error(e);return json({error:"SERVER_ERROR"},500);}
+    const [{data:bands,error:bandsError},{data:factors,error:factorsError},{data:settings,error:settingsError}]=await Promise.all([
+      sb.from("professor_pricing_duration_bands").select("*").eq("is_active",true).order("min_minutes"),
+      sb.from("professor_pricing_factors").select("*").eq("is_active",true).order("display_order"),
+      sb.from("professor_pricing_settings").select("*").eq("singleton_key","default").maybeSingle(),
+    ]);
+    if(bandsError)throw bandsError;if(factorsError)throw factorsError;if(settingsError)throw settingsError;
+    const band=(bands||[]).find((row:any)=>durationMinutes>=Number(row.min_minutes||0)&&(row.max_minutes==null||durationMinutes<Number(row.max_minutes)))||(bands||[]).slice(-1)[0]||null;
+    let value=Number(band?.base_price_xof||0);const applied:any[]=[];
+    const requestedFactors=new Set(Array.isArray(body.factor_keys)?body.factor_keys.map(String):[]);
+    for(const factor of factors||[]){
+      const cfg=factor.config||{};const applies=cfg.always===true||requestedFactors.has(String(factor.factor_key));if(!applies)continue;
+      const before=value;if(factor.factor_type==="fixed_amount")value+=Number(factor.fixed_amount_xof||0);else if(factor.factor_type==="percentage")value*=1+Number(factor.multiplier||0)/100;else value*=Number(factor.multiplier||1);
+      applied.push({key:factor.factor_key,name:factor.name_fr,type:factor.factor_type,before,after:value});
+    }
+    const step=Number(settings?.rounding_step_xof||1);const recommended=roundPrice(value,step);const lower=roundPrice(recommended*(1-Number(settings?.lower_range_percent||0)/100),step);const upper=Math.max(lower,roundPrice(recommended*(1+Number(settings?.upper_range_percent||0)/100),step));
+    return json({engine:"v3",duration_minutes:durationMinutes,duration_band:band?{id:band.id,label:band.label,min_minutes:band.min_minutes,max_minutes:band.max_minutes,base_price_xof:Number(band.base_price_xof||0)}:null,applied_factors:applied,price_xof:recommended,range_min_xof:Math.max(0,lower),range_max_xof:upper,desired_price_xof:desiredPrice,rounding_step_xof:step,legacy_score_engine:false});
+  }catch(error){console.error("course-score-preview v3",error);return json({error:"SERVER_ERROR",message:error instanceof Error?error.message:String(error)},500)}
 });

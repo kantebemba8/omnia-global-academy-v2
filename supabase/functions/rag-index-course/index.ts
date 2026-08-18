@@ -24,11 +24,16 @@ function collectStrings(value: unknown, out: string[], depth = 0) {
 function blockText(block: any) {
   const type = String(block?.block_type || "");
   // Media-only and technical blocks are indexed only through useful metadata/transcripts.
-  const supported = new Set(["heading","subheading","text","callout","remember","objective","example","summary","quote","checklist","accordion","flashcards","interactive_table","timeline","columns","important","case_study","definition","correction","qcm","true_false","open_question","exercise","rubric","vocabulary","dialogue","cloze","dictation","pronunciation","matching","sentence_order","oral_response","listening_comprehension","written_expression","audio","video"]);
+  const supported = new Set(["heading","subheading","text","callout","remember","objective","example","summary","quote","checklist","accordion","flashcards","interactive_table","timeline","columns","important","case_study","definition","correction","qcm","true_false","open_question","exercise","rubric","vocabulary","dialogue","cloze","dictation","pronunciation","matching","sentence_order","oral_response","listening_comprehension","written_expression","audio","video","pdf","word","excel","download"]);
   if (!supported.has(type)) return "";
   const values: string[] = [];
   if (block?.title) values.push(stripHtml(block.title));
-  collectStrings(block?.content_json || {}, values);
+  const content = block?.content_json || {};
+  if (["pdf","word","excel","download"].includes(type)) {
+    if (content.title) values.push(stripHtml(content.title));
+    if (content.description) values.push(stripHtml(content.description));
+    if (content.rag_extracted_text) values.push(stripHtml(content.rag_extracted_text));
+  } else collectStrings(content, values);
   return [...new Set(values)].join("\n").trim();
 }
 function chunkText(text: string, maxWords = 360) {
@@ -69,7 +74,7 @@ Deno.serve(async (req: Request) => {
     if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
     const { data: lessons, error: lessonError } = await sb.from("course_lessons").select("id,title,content_text,position").eq("course_id", courseId).order("position");
     if (lessonError) throw lessonError;
-    const { data: blocks, error: blockError } = await sb.from("lesson_blocks").select("id,lesson_id,block_type,position,title,content_json").eq("course_id", courseId).order("position");
+    const { data: blocks, error: blockError } = await sb.from("lesson_blocks").select("id,lesson_id,block_type,position,title,content_json,rag_enabled").eq("course_id", courseId).order("position");
     if (blockError) throw blockError;
 
     // Build all new embeddings before replacing the previous index. If the provider
@@ -77,7 +82,7 @@ Deno.serve(async (req: Request) => {
     const newRows: any[] = [];
     let lessonsProcessed = 0;
     for (const lesson of lessons || []) {
-      const lessonBlocks = (blocks || []).filter((block: any) => String(block.lesson_id) === String(lesson.id));
+      const lessonBlocks = (blocks || []).filter((block: any) => String(block.lesson_id) === String(lesson.id) && block.rag_enabled !== false);
       const blockContent = lessonBlocks.map(blockText).filter(text => text.length >= 2).join("\n\n");
       const legacy = stripHtml(lesson.content_text || "");
       const source = blockContent.length >= 20 ? blockContent : legacy;

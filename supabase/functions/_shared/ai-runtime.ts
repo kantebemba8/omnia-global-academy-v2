@@ -149,6 +149,87 @@ export async function runAnthropicText(sb: any, options: {
   } finally { clearTimeout(timer); }
 }
 
+
+
+function bytesToBase64(bytes: Uint8Array) {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+export async function runAnthropicPdfText(sb: any, options: {
+  context: RuntimeContext;
+  pdfBytes: Uint8Array;
+  prompt: string;
+  system?: string;
+  tier?: "fast" | "quality";
+  model?: string;
+  maxTokens?: number;
+  effort?: "low" | "medium" | "high" | "max";
+}) {
+  const key = getAnthropicApiKey();
+  if (!key) throw new AiRuntimeError("ANTHROPIC_NOT_CONFIGURED", "anthropic", 503);
+  if (!(options.pdfBytes instanceof Uint8Array) || !options.pdfBytes.byteLength) {
+    throw new AiRuntimeError("ANTHROPIC_PDF_EMPTY", "anthropic", 400);
+  }
+  // Keep enough headroom for JSON/base64 expansion and Edge Function memory.
+  if (options.pdfBytes.byteLength > 20 * 1024 * 1024) {
+    throw new AiRuntimeError("ANTHROPIC_PDF_TOO_LARGE_FOR_DIRECT_ANALYSIS", "anthropic", 413);
+  }
+  const model = String(options.model || (options.tier === "fast" ? getAnthropicFastModel() : getAnthropicQualityModel()));
+  const maxTokens = Math.max(1024, Math.min(32000, Number(options.maxTokens || 7000)));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
+  try {
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: maxTokens,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: bytesToBase64(options.pdfBytes),
+            },
+          },
+          { type: "text", text: options.prompt },
+        ],
+      }],
+      ...anthropicThinkingConfig(model, options.effort || "low"),
+    };
+    if (options.system) body.system = options.system;
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({} as any));
+    if (!response.ok) {
+      throw new AiRuntimeError("ANTHROPIC_PDF_REQUEST_FAILED", "anthropic", response.status, cleanDetail(payload?.error?.message || payload));
+    }
+    const text = Array.isArray(payload?.content)
+      ? payload.content.filter((item: any) => item?.type === "text" || typeof item?.text === "string").map((item: any) => String(item?.text || "")).join("").trim()
+      : "";
+    if (!text) throw new AiRuntimeError("ANTHROPIC_PDF_EMPTY_RESPONSE", "anthropic", 502);
+    const usage = payload?.usage || {};
+    await recordUsage(sb, "anthropic", String(payload?.model || model), options.context, usage, String(payload?.id || "") || null);
+    return { text, provider: "anthropic", model: String(payload?.model || model), requestId: String(payload?.id || ""), usage };
+  } catch (error) {
+    if (error instanceof AiRuntimeError) throw error;
+    if ((error as Error)?.name === "AbortError") throw new AiRuntimeError("ANTHROPIC_PDF_TIMEOUT", "anthropic", 504);
+    throw new AiRuntimeError("ANTHROPIC_PDF_UNAVAILABLE", "anthropic", 502, cleanDetail((error as Error)?.message));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function runOpenAIChatText(sb: any, options: { context: RuntimeContext; prompt: string; model?: string; temperature?: number; maxTokens?: number }) {
   const key = String(Deno.env.get("OPENAI_API_KEY") || "").trim();
   if (!key) throw new AiRuntimeError("OPENAI_NOT_CONFIGURED", "openai", 503);

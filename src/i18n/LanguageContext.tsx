@@ -28,6 +28,7 @@ export const PLATFORM_LANGUAGES: ReadonlyArray<{
   { code: 'zh', shortLabel: 'ZH', label: '中文', locale: 'zh-CN', direction: 'ltr' },
   { code: 'ru', shortLabel: 'RU', label: 'Русский', locale: 'ru-RU', direction: 'ltr' },
   { code: 'de', shortLabel: 'DE', label: 'Deutsch', locale: 'de-DE', direction: 'ltr' },
+  { code: 'bm', shortLabel: 'BM', label: 'Bambara', locale: 'bm', direction: 'ltr' },
 ];
 
 type LanguageContextValue = {
@@ -90,10 +91,10 @@ function readRuntimeCatalog(language: PlatformLanguage): Record<string, string> 
     const parsed = raw ? JSON.parse(raw) : null;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     return Object.fromEntries(
-      Object.entries(parsed)
+      Object.entries(parsed as Record<string, unknown>)
         .filter(([source, translated]) => typeof source === 'string' && typeof translated === 'string' && source && translated)
         .slice(-CATALOG_MAX_ENTRIES),
-    );
+    ) as Record<string, string>;
   } catch {
     return {};
   }
@@ -140,6 +141,7 @@ function preserveOuterWhitespace(original: string, translated: string) {
 
 function staticTranslation(language: PlatformLanguage, source: string) {
   if (language === 'fr') return source;
+  if (language === 'bm') return undefined; // Bambara est servi par le catalogue runtime/admin jusqu’à constitution d’un catalogue statique revu.
   return STATIC_TRANSLATIONS[language as StaticCatalogLanguage]?.[source];
 }
 

@@ -18,10 +18,12 @@ const BLUE = '#002050';
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const IMPORT_EXTENSIONS = ['pdf', 'docx', 'xlsx', 'zip', 'txt', 'md', 'csv'];
+const IMPORT_EXTENSIONS = ['pdf', 'docx', 'xlsx', 'pptx', 'zip', 'txt', 'md', 'csv'];
 
 type CreatorContext = 'professeur' | 'structure' | 'admin';
 type CreationMode = 'file' | 'assisted' | null;
+type ImportMode = 'faithful' | 'structured' | 'enriched';
+type ImportPreview = { job_id: string; blueprint: any; detected: { modules?: number; lessons?: number; suggested_questions?: number; language?: string; ai_used?: boolean; slides?: number; images?: number; tables?: number }; mode: ImportMode };
 
 async function call(action: string, body: Record<string, unknown> = {}) {
   const response = await fetch(API, {
@@ -84,7 +86,8 @@ export default function ProfessorCourseStart() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
-  const [allowAiStructuring, setAllowAiStructuring] = useState(false);
+  const [importMode, setImportMode] = useState<ImportMode>('structured');
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [serviceType, setServiceType] = useState<'without_certification' | 'with_certification'>('without_certification');
   const [instructions, setInstructions] = useState('');
   const [assistedFiles, setAssistedFiles] = useState<File[]>([]);
@@ -94,13 +97,14 @@ export default function ProfessorCourseStart() {
   function resetPanels(next: CreationMode) {
     setError('');
     setImportStatus('');
+    setImportPreview(null);
     setMode(next);
   }
 
   function validateImportFile(file: File) {
     const extension = fileExtension(file.name);
     if (!IMPORT_EXTENSIONS.includes(extension)) {
-      throw new Error('Format non pris en charge. Utilisez PDF, DOCX, XLSX, ZIP, TXT, MD ou CSV.');
+      throw new Error('Format non pris en charge. Utilisez PDF, DOCX, XLSX, PPTX, ZIP, TXT, MD ou CSV.');
     }
     if (file.size <= 0) throw new Error('Le fichier sélectionné est vide.');
     if (file.size > MAX_IMPORT_BYTES) throw new Error('Le fichier dépasse la limite de 25 Mo.');
@@ -109,7 +113,7 @@ export default function ProfessorCourseStart() {
   async function submitFileImport() {
     setError('');
     setImportStatus('');
-    if (!importFile) return setError('Sélectionnez le fichier à convertir.');
+    if (!importFile) return setError('Sélectionnez le fichier à analyser.');
 
     try {
       validateImportFile(importFile);
@@ -131,23 +135,50 @@ export default function ProfessorCourseStart() {
       });
       if (!upload.ok) throw new Error('Le téléversement du fichier a échoué.');
 
-      setImportStatus('Analyse et création du brouillon…');
-      const converted = await call('convert_course_import', {
+      setImportStatus('Analyse du document et préparation de l’aperçu…');
+      const analyzed = await call('analyze_course_import', {
         creator_context: creatorContext,
+        target_type: 'course',
         bucket_name: prepared.bucket,
         storage_path: prepared.path,
         original_name: importFile.name,
         file_size: importFile.size,
         file_mime: importFile.type || 'application/octet-stream',
         title: title.trim(),
-        allow_ai: allowAiStructuring,
+        mode: importMode,
+        allow_ai: importMode !== 'faithful',
       });
 
-      const courseId = converted.course?.id;
-      if (!courseId) throw new Error('Le brouillon a été créé sans identifiant exploitable.');
-      navigate(`${routes.studio}/${courseId}?source=file-import`, { replace: true });
+      setImportPreview({
+        job_id: analyzed.job_id,
+        blueprint: analyzed.blueprint,
+        detected: analyzed.detected || {},
+        mode: analyzed.mode || importMode,
+      });
+      setImportStatus('Analyse terminée. Vérifiez la structure avant de créer le brouillon.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Impossible de convertir ce fichier.');
+      setError(caught instanceof Error ? caught.message : 'Impossible d’analyser ce fichier.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function applyFileImport() {
+    if (!importPreview) return;
+    setError('');
+    try {
+      setImporting(true);
+      setImportStatus('Création du brouillon à partir de la structure validée…');
+      const applied = await call('apply_course_import', {
+        job_id: importPreview.job_id,
+        creator_context: creatorContext,
+        blueprint: importPreview.blueprint,
+      });
+      const courseId = applied.course?.id || applied.course_id;
+      if (!courseId) throw new Error('Le brouillon a été créé sans identifiant exploitable.');
+      navigate(`${routes.studio}/${courseId}?source=file-import-v3`, { replace: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Impossible de créer le brouillon depuis cet aperçu.');
     } finally {
       setImporting(false);
       setImportStatus('');
@@ -176,7 +207,7 @@ export default function ProfessorCourseStart() {
         long_description: '',
         language: 'fr',
         create_introduction: true,
-        free_preview_mode: 'introduction',
+        free_preview_mode: 'introduction_first_lesson',
         is_assisted: true,
       });
       const courseId = created.course.id;
@@ -297,11 +328,11 @@ export default function ProfessorCourseStart() {
             <label className="mt-4 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-5 text-center" style={{ borderColor: '#CBD5E1', background: '#F8FAFC' }}>
               <FileUp size={24} color={BLUE} />
               <span className="mt-2 text-sm font-semibold" style={{ color: BLUE }}>Sélectionner le fichier à convertir</span>
-              <span className="mt-1 text-xs text-gray-500">PDF, DOCX, XLSX, ZIP, TXT, MD ou CSV · 25 Mo maximum</span>
+              <span className="mt-1 text-xs text-gray-500">PDF, DOCX, XLSX, PPTX, ZIP, TXT, MD ou CSV · 25 Mo maximum</span>
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.xlsx,.zip,.txt,.md,.csv"
+                accept=".pdf,.docx,.xlsx,.pptx,.zip,.txt,.md,.csv"
                 onChange={(event) => {
                   const selected = event.target.files?.[0] || null;
                   setError('');
@@ -317,21 +348,79 @@ export default function ProfessorCourseStart() {
               </div>
             )}
 
-            <label className="mt-4 flex items-start gap-3 rounded-xl border p-3" style={{ borderColor: BORDER }}>
-              <input
-                type="checkbox"
-                checked={allowAiStructuring}
-                onChange={(event) => setAllowAiStructuring(event.target.checked)}
-                className="mt-0.5 h-4 w-4"
-              />
-              <span className="text-xs text-gray-600">
-                <strong style={{ color: BLUE }}>Assistance IA facultative :</strong> autoriser l’envoi du texte extrait au service IA configuré par Omnia afin d’améliorer la proposition de modules et de questions. Sans cette autorisation, la structuration reste automatique et interne.
-              </span>
-            </label>
+            <div className="mt-4">
+              <p className="text-sm font-semibold" style={{ color: BLUE }}>Mode de transformation</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                {[
+                  { value: 'faithful', title: 'Fidèle', text: 'Conserve le document aussi fidèlement que possible, sans enrichissement IA.' },
+                  { value: 'structured', title: 'Structuré', text: 'Organise le contenu en modules, leçons et blocs sans ajouter de connaissances nouvelles.' },
+                  { value: 'enriched', title: 'Enrichi', text: 'Structure et peut proposer objectifs, résumés, exemples, activités et évaluations à vérifier.' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => { setImportMode(option.value as ImportMode); setImportPreview(null); }}
+                    className="rounded-xl border p-3 text-left"
+                    style={{ borderColor: importMode === option.value ? GOLD : BORDER, background: importMode === option.value ? '#FFFBEB' : '#FFFFFF' }}
+                  >
+                    <span className="block text-sm font-semibold" style={{ color: BLUE }}>{option.title}</span>
+                    <span className="mt-1 block text-xs text-gray-500">{option.text}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              Les anciens formats DOC et XLS doivent être enregistrés en DOCX ou XLSX. Les PDF scannés sans texte exploitable pourront être refusés. N’importez pas de données sensibles sans autorisation.
+              Les anciens formats DOC, PPT et XLS doivent être enregistrés en DOCX, PPTX ou XLSX. L’analyse prépare toujours un aperçu avant création. N’importez pas de données sensibles sans autorisation.
             </div>
+
+            {importPreview && (
+              <div className="mt-5 rounded-xl border p-4" style={{ borderColor: '#D7DEE8', background: '#F8FAFC' }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: BLUE }}>Aperçu de la structure détectée</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {importPreview.detected.modules || 0} module(s) · {importPreview.detected.lessons || 0} leçon(s) · {importPreview.detected.suggested_questions || 0} activité(s)/question(s) proposée(s){(importPreview.detected.slides || importPreview.detected.images || importPreview.detected.tables) ? ` · ${importPreview.detected.slides || 0} diapositive(s) · ${importPreview.detected.images || 0} image(s) · ${importPreview.detected.tables || 0} tableau(x)` : ''}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setImportPreview(null)} className="text-xs font-semibold" style={{ color: GOLD }}>Relancer l’analyse</button>
+                </div>
+                <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
+                  {(importPreview.blueprint?.modules || []).map((module: any, moduleIndex: number) => (
+                    <div key={`${moduleIndex}-${module.title || 'module'}`} className="rounded-lg border bg-white p-3" style={{ borderColor: BORDER }}>
+                      <input
+                        value={module.title || ''}
+                        onChange={(event) => {
+                          const blueprint = structuredClone(importPreview.blueprint);
+                          blueprint.modules[moduleIndex].title = event.target.value;
+                          setImportPreview({ ...importPreview, blueprint });
+                        }}
+                        className="w-full border-0 bg-transparent p-0 text-sm font-semibold outline-none"
+                        style={{ color: BLUE }}
+                        aria-label={`Titre du module ${moduleIndex + 1}`}
+                      />
+                      <div className="mt-2 space-y-1">
+                        {(module.lessons || []).map((lesson: any, lessonIndex: number) => (
+                          <input
+                            key={`${lessonIndex}-${lesson.title || 'lesson'}`}
+                            value={lesson.title || ''}
+                            onChange={(event) => {
+                              const blueprint = structuredClone(importPreview.blueprint);
+                              blueprint.modules[moduleIndex].lessons[lessonIndex].title = event.target.value;
+                              setImportPreview({ ...importPreview, blueprint });
+                            }}
+                            className="block w-full rounded-md border px-2 py-1.5 text-xs"
+                            style={{ borderColor: BORDER }}
+                            aria-label={`Titre de la leçon ${lessonIndex + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-500">La Conclusion n’est jamais générée automatiquement. Vous la construirez manuellement avec les blocs dans le Studio.</p>
+              </div>
+            )}
 
             {importStatus && <p className="mt-4 text-sm font-medium" style={{ color: BLUE }}>{importStatus}</p>}
             {error && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
@@ -342,12 +431,12 @@ export default function ProfessorCourseStart() {
               </button>
               <button
                 type="button"
-                onClick={submitFileImport}
-                disabled={importing || !importFile}
+                onClick={importPreview ? applyFileImport : submitFileImport}
+                disabled={importing || (!importPreview && !importFile)}
                 className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: GOLD }}
               >
-                {importing ? 'Conversion en cours…' : 'Créer le brouillon'}
+                {importing ? 'Traitement en cours…' : importPreview ? 'Créer le brouillon depuis cet aperçu' : 'Analyser le document'}
               </button>
             </div>
           </section>

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { CATEGORY_LABELS } from '../../lib/categories';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
   Save, Settings, AlertTriangle, Send, Mail, MessageSquare, Clock, Bot,
@@ -119,32 +118,6 @@ function parseObject<T>(value: unknown, fallback: T): T {
 }
 
 
-const DEFAULT_CATEGORY_MULTIPLIERS: Record<string, string> = {
-  'Data & Intelligence Artificielle': '1.5',
-  'Informatique & Développement': '1.4',
-  'Cybersécurité & Réseaux': '1.4',
-  'Business & Entrepreneuriat': '1.3',
-  'Finance & Comptabilité': '1.3',
-  'Droit & Juridique': '1.3',
-  'Marketing & Communication': '1.2',
-  'Santé & Médecine': '1.2',
-  'Architecture & BTP': '1.2',
-  'Éducation & Pédagogie': '1.1',
-  'Langues & Linguistique': '1.0',
-  'Agriculture & Agro-business': '1.0',
-  'Tourisme & Hôtellerie': '1.0',
-  'Environnement & Développement durable': '1.0',
-  'Bien-être & Développement personnel': '0.9',
-  'Artisanat & Métiers manuels': '0.9',
-  'Cuisine & Gastronomie': '0.9',
-  'Mode & Stylisme': '0.9',
-  'Élevage & Pêche': '0.9',
-  'Arts & Créativité': '0.8',
-  'Musique & Audio': '0.8',
-  'Loisirs & Hobbies': '0.8',
-};
-function getDefaultMultipliers(): Record<string, string> { return { ...DEFAULT_CATEGORY_MULTIPLIERS }; }
-
 export default function AdminCMS() {
   const [settings, setSettings] = useState<Settings>({});
   const [initialSettings, setInitialSettings] = useState<Settings>({});
@@ -152,7 +125,6 @@ export default function AdminCMS() {
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [pageEditorTarget, setPageEditorTarget] = useState<'landing' | 'talent' | 'omnia_live'>('landing');
   const [pageContent, setPageContent] = useState<PublicPageContent>(DEFAULT_PAGE_CONTENT);
-  const [multipliers, setMultipliers] = useState<Record<string, string>>(getDefaultMultipliers());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('general');
@@ -193,13 +165,6 @@ export default function AdminCMS() {
           omnia_live: { ...DEFAULT_PAGE_CONTENT.omnia_live, ...(loadedPageContent.omnia_live || {}) },
         });
 
-        const dbMultipliers: Record<string, string> = getDefaultMultipliers();
-        (d.category_multipliers ?? []).forEach((row: { category_name: string; multiplier: number | string }) => {
-          if (CATEGORY_LABELS.includes(row.category_name as any)) {
-            dbMultipliers[row.category_name] = String(row.multiplier);
-          }
-        });
-        setMultipliers(dbMultipliers);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -376,34 +341,6 @@ export default function AdminCMS() {
     } finally {
       setSaving(false);
       setTimeout(() => setToast(''), 3000);
-    }
-  }
-
-  async function saveMultipliers() {
-    setSaving(true);
-    setToast('');
-    const token = getSessionToken();
-    try {
-      const res = await fetch(ENDPOINTS.adminCmsUpdate, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save_category_multipliers',
-          multipliers: CATEGORY_LABELS.map(category_name => ({
-            category_name,
-            multiplier: Number(multipliers[category_name] ?? 1),
-          })),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
-      setToast('Multiplicateurs enregistrés. Le moteur de tarification utilise immédiatement ces valeurs.');
-      load();
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Erreur pendant l’enregistrement des multiplicateurs.');
-    } finally {
-      setSaving(false);
-      setTimeout(() => setToast(''), 3500);
     }
   }
 
@@ -856,34 +793,9 @@ export default function AdminCMS() {
                 </div>
                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
                   <p className="text-sm font-semibold" style={{color:'#002050'}}>Paramètres financiers centralisés</p>
-                  <p className="text-xs text-gray-500 mt-1">Le parrainage, les plans, capacités, commissions, retraits et autres règles financières sont pilotés depuis Finance & Commerce. Les paliers de prix restent ici car ils font partie directement du moteur Score → Palier → Prix.</p>
+                  <p className="text-xs text-gray-500 mt-1">Le parrainage, les plans, capacités, commissions, retraits et autres règles financières sont pilotés depuis Finance & Commerce. La recommandation tarifaire Professeur V3 repose ici sur les tranches de durée et les facteurs de service configurables ; aucun ancien score par module, leçon ou niveau pédagogique n’est utilisé.</p>
                   <Link to="/admin/finance-commerce" className="inline-flex mt-2 text-xs font-semibold" style={{color:'#BF8813'}}>Ouvrir Finance & Commerce →</Link>
                 </div>
-              </div>
-
-              {/* Multiplicateurs de catégorie */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold" style={{ color: '#002050' }}>Multiplicateurs de catégorie</h3>
-                  <button onClick={saveMultipliers} disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
-                    style={{ backgroundColor: '#BF8813' }}>
-                    <Save className="w-3.5 h-3.5" />
-                    Sauvegarder les multiplicateurs
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {CATEGORY_LABELS.map((cat) => (
-                    <div key={cat} className="flex items-center gap-2 p-2 rounded-lg border border-gray-100">
-                      <span className="text-xs text-gray-600 flex-1 truncate">{cat}</span>
-                      <input type="number" min="0.5" max="2.0" step="0.1"
-                        value={multipliers[cat] ?? '1.0'}
-                        onChange={(e) => setMultipliers((prev) => ({ ...prev, [cat]: e.target.value }))}
-                        className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center focus:outline-none" />
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400 mt-2">Toute modification est enregistrée dans l'audit log avec l'ancienne et la nouvelle valeur.</p>
               </div>
 
               {/* Paramètres d'évaluation et de reconnaissance */}

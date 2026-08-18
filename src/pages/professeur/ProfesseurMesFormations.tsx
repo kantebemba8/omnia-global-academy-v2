@@ -3,7 +3,8 @@ import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ProfessorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
-import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2, Layers3, Users, ClipboardCheck } from 'lucide-react';
+import { CourseLiveLinksManager } from '../../components/formations/CourseLiveLinksManager';
+import { PlusCircle, BookOpen, AlertCircle, CheckCircle, Eye, Edit2, Trash2, Layers3, Users, ClipboardCheck, Radio } from 'lucide-react';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 interface Formation {
@@ -11,7 +12,8 @@ interface Formation {
   cover_image_url: string | null; category: string | null;
   total_students: number; average_rating: number;
   projets_a_corriger: number; created_at: string;
-  prix_provisoire_xof: number | null; price_xof: number | null;
+  pricing_recommended_xof?: number | null; price_xof: number | null;
+  is_catalog_active?: boolean; is_published?: boolean; version_number?: number; course_code?: string | null;
 }
 
 
@@ -36,6 +38,7 @@ export function ProfesseurMesFormations() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [liveCourse, setLiveCourse] = useState<Formation | null>(null);
   const navigate = useNavigate();
 
   const bypassAuth = new URLSearchParams(window.location.search).get('preview') === 'true' &&
@@ -63,7 +66,7 @@ export function ProfesseurMesFormations() {
           total_students: course.total_students || 0,
           average_rating: course.average_rating || 0,
           projets_a_corriger: course.projets_a_corriger || 0,
-          prix_provisoire_xof: course.prix_provisoire_xof || null,
+          pricing_recommended_xof: course.pricing_recommended_xof ?? null,
           price_xof: course.price_xof || null,
         })));
       }
@@ -72,6 +75,42 @@ export function ProfesseurMesFormations() {
   }, [navigate, bypassAuth]);
   useEffect(() => { load(); }, [load]);
 
+
+
+  const callStudio = useCallback(async (action: string, payload: Record<string, unknown> = {}) => {
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
+      method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Action impossible');
+    return data;
+  }, []);
+
+  async function toggleCatalogue(formation: Formation) {
+    const active = formation.is_catalog_active === false;
+    const label = active ? 'activer' : 'désactiver';
+    if (!window.confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} « ${formation.title} » dans le catalogue ? ${active ? 'La formation redeviendra disponible aux nouvelles inscriptions.' : 'Les apprenants déjà inscrits conserveront leur accès.'}`)) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
+        method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'toggle_catalog_active', course_id: formation.id, active }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Modification impossible');
+      setFormations(items => items.map(item => item.id === formation.id ? { ...item, is_catalog_active: active } : item));
+    } catch (e) { window.alert(e instanceof Error ? e.message : 'Modification impossible'); }
+  }
+
+  async function createMajorVersion(formation: Formation) {
+    if (!window.confirm(`Créer une nouvelle version pédagogique de « ${formation.title} » ? La version actuelle restera accessible aux apprenants déjà inscrits.`)) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`, {
+        method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'create_major_version', course_id: formation.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Création de version impossible');
+      if (data?.course?.id) navigate(`/professeur/studio/${data.course.id}`); else await load();
+    } catch (e) { window.alert(e instanceof Error ? e.message : 'Création de version impossible'); }
+  }
 
   async function removeFormation(formation: Formation) {
     const important = !['brouillon', 'draft', 'rejetee', 'rejected', 'modification_demandee', 'changes_requested'].includes(formation.status);
@@ -166,7 +205,7 @@ export function ProfesseurMesFormations() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((f) => {
               const sc = STATUS_CONFIG[f.status] ?? STATUS_CONFIG.brouillon;
-              const price = ['publiee', 'published'].includes(f.status) ? f.price_xof : f.prix_provisoire_xof;
+              const price = ['publiee', 'published'].includes(f.status) ? f.price_xof : f.pricing_recommended_xof;
               return (
                 <div key={f.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                   <div className="h-28 relative flex items-center justify-center" style={{ backgroundColor: '#002050' + '10' }}>
@@ -182,7 +221,7 @@ export function ProfesseurMesFormations() {
                     )}
                   </div>
                   <div className="p-4">
-                    <p className="font-semibold text-gray-900 text-sm line-clamp-2 mb-2">{f.title}</p>
+                    <div className="mb-2 flex items-start justify-between gap-2"><p className="font-semibold text-gray-900 text-sm line-clamp-2">{f.title}</p>{['validated','published','validee','publiee'].includes(f.status) && <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${f.is_catalog_active === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{f.is_catalog_active === false ? 'Désactivée' : 'Active'}</span>}</div>
                     <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
                       <span>{f.total_students} élève{f.total_students !== 1 ? 's' : ''}</span>
                       {f.average_rating > 0 && <span>★ {f.average_rating}/5</span>}
@@ -196,6 +235,13 @@ export function ProfesseurMesFormations() {
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </Link>
                       )}
+                      {['validated','published','validee','publiee'].includes(f.status) && (<>
+                        <button type="button" onClick={() => toggleCatalogue(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border" style={{ borderColor: f.is_catalog_active === false ? '#1E7A52' : '#64748B', color: f.is_catalog_active === false ? '#1E7A52' : '#475569' }}>
+                          {f.is_catalog_active === false ? 'Activer' : 'Désactiver'}
+                        </button>
+                        <button type="button" onClick={() => setLiveCourse(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center gap-1" style={{ borderColor: '#0B817A', color: '#0B817A' }} title="Ajouter ou retirer un Live, Replay ou vidéo complémentaire"><Radio className="w-3.5 h-3.5"/> Live/Replays</button>
+                        <button type="button" onClick={() => createMajorVersion(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border" style={{ borderColor: '#BF8813', color: '#8A650F' }} title="Créer une nouvelle version pédagogique sans modifier les apprenants de la version actuelle">Nouvelle version</button>
+                      </>)}
                       <button type="button" onClick={() => removeFormation(f)}
                         className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center justify-center"
                         style={{ borderColor: '#DC2626', color: '#DC2626' }}
@@ -222,6 +268,7 @@ export function ProfesseurMesFormations() {
           </div>
         )}
       </div>
+      {liveCourse && <CourseLiveLinksManager courseId={liveCourse.id} courseTitle={liveCourse.title} call={callStudio} onClose={() => setLiveCourse(null)} />}
     </ProfessorFormationsLayout>
   );
 }

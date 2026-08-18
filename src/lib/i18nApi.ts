@@ -1,7 +1,7 @@
 import { ENDPOINTS } from './config';
 import { edgeAuthHeaders } from './edgeAuth';
 
-export type UiLanguage = 'fr' | 'en' | 'es' | 'pt' | 'ar' | 'zh' | 'ru' | 'de';
+export type UiLanguage = 'fr' | 'en' | 'es' | 'pt' | 'ar' | 'zh' | 'ru' | 'de' | 'bm';
 
 export type UiTranslationBatchResult = {
   success: boolean;
@@ -116,7 +116,7 @@ export async function getPreferredLanguage(): Promise<UiLanguage | null> {
   if (response.status === 401) return null;
   const payload = await parseJson<{ profile?: { preferred_language?: string } }>(response);
   const language = payload.profile?.preferred_language;
-  return ['fr', 'en', 'es', 'pt', 'ar', 'zh', 'ru', 'de'].includes(String(language))
+  return ['fr', 'en', 'es', 'pt', 'ar', 'zh', 'ru', 'de', 'bm'].includes(String(language))
     ? language as UiLanguage
     : null;
 }

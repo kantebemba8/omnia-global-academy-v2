@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 
-const UI_LANGUAGES = new Set(["en", "es", "pt", "ar", "zh", "ru", "de"]);
+const UI_LANGUAGES = new Set(["en", "es", "pt", "ar", "zh", "ru", "de", "bm"]);
 const LANGUAGE_NAMES: Record<string, string> = {
   en: "English", es: "Spanish", pt: "Portuguese", ar: "Arabic",
   zh: "Simplified Chinese", ru: "Russian", de: "German",

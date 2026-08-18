@@ -49,7 +49,10 @@ type AttemptDetail = {
   answers: Array<{
     id: string;
     answer_json: unknown;
-    assessment_questions?: { prompt?: string; question_type?: string; points?: number };
+    assessment_questions?: { prompt?: string; question_type?: string; points?: number; correct_answer?: unknown; rubric?: any };
+    auto_score?: number | null;
+    final_score?: number | null;
+    review_status?: string;
   }>;
   files: Array<{ id: string; file_name: string; size_bytes?: number; signed_url?: string }>;
   correction?: {
@@ -91,6 +94,7 @@ export function StudioEvaluations() {
   const [selected, setSelected] = useState<AttemptDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [score, setScore] = useState('');
+  const [answerScores, setAnswerScores] = useState<Record<string, string>>({});
   const [comment, setComment] = useState('');
   const [competencyScores, setCompetencyScores] = useState<Record<string, string>>({});
   const [correctedFile, setCorrectedFile] = useState<File | null>(null);
@@ -98,6 +102,8 @@ export function StudioEvaluations() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [aiBusyAnswerId, setAiBusyAnswerId] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, { suggested_points: number; feedback: string; reasoning_summary: string }>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -125,7 +131,12 @@ export function StudioEvaluations() {
       const data = await call('grader_get_attempt', { attempt_id: attemptId });
       const detail: AttemptDetail = data;
       setSelected(detail);
-      setScore(detail.correction?.score !== undefined ? String(detail.correction.score) : '');
+      const initialAnswerScores = Object.fromEntries((detail.answers || []).map(answer => [answer.id, answer.final_score !== null && answer.final_score !== undefined ? String(answer.final_score) : answer.auto_score !== null && answer.auto_score !== undefined ? String(answer.auto_score) : '']));
+      setAnswerScores(initialAnswerScores);
+      const totalPoints = (detail.answers || []).reduce((sum, answer) => sum + Number(answer.assessment_questions?.points || 0), 0);
+      const currentPoints = (detail.answers || []).reduce((sum, answer) => sum + Number(initialAnswerScores[answer.id] || 0), 0);
+      const computed = totalPoints > 0 ? Math.round(currentPoints / totalPoints * 10000) / 100 : 0;
+      setScore(detail.correction?.score !== undefined ? String(detail.correction.score) : String(computed));
       setComment(detail.correction?.comment || '');
       setCompetencyScores(Object.fromEntries((detail.attempt.course_assessments?.competency_labels || []).map(label => [label, detail.correction?.score !== undefined ? String(detail.correction.score) : ''])));
       setUploadedCorrection(detail.correction?.corrected_file_name && detail.correction?.signed_url ? {
@@ -143,11 +154,38 @@ export function StudioEvaluations() {
     }
   }
 
-  const numericScore = useMemo(() => Number(score), [score]);
-  const validScore = Number.isFinite(numericScore) && numericScore >= 0 && numericScore <= 100;
+  const gradingTotals = useMemo(() => {
+    if (!selected) return { points: 0, max: 0, percent: 0, valid: false };
+    let points = 0, max = 0, valid = true;
+    for (const answer of selected.answers) {
+      const qMax = Math.max(0, Number(answer.assessment_questions?.points || 0));
+      max += qMax;
+      const raw = answerScores[answer.id];
+      const value = raw === '' || raw === undefined ? NaN : Number(raw);
+      if (!Number.isFinite(value) || value < 0 || value > qMax) valid = false; else points += value;
+    }
+    const percent = max > 0 ? Math.round(points / max * 10000) / 100 : 0;
+    return { points, max, percent, valid };
+  }, [selected, answerScores]);
+  const numericScore = gradingTotals.percent;
+  const validScore = gradingTotals.valid;
   const correctedFileRequired = Boolean(selected?.files.length);
   const hasCorrectedFile = Boolean(correctedFile || selected?.correction?.corrected_file_name);
   const manualRelease = Boolean(selected?.attempt.status === 'failed' && selected?.attempt.remediation_required && selected?.attempt.course_assessments?.remediation_mode === 'manual');
+
+  async function suggestWithAi(answerId: string) {
+    setAiBusyAnswerId(answerId);
+    setError('');
+    try {
+      const data = await call('grader_ai_suggest_answer', { answer_id: answerId });
+      const suggestion = data.suggestion || {};
+      setAiSuggestions(current => ({ ...current, [answerId]: suggestion }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Suggestion IA indisponible.');
+    } finally {
+      setAiBusyAnswerId('');
+    }
+  }
 
   async function uploadCorrectionIfNeeded(): Promise<UploadedCorrection | null> {
     if (!selected || !correctedFile) return uploadedCorrection;
@@ -206,6 +244,7 @@ export function StudioEvaluations() {
         attempt_id: selected.attempt.id,
         score: numericScore,
         max_score: 100,
+        answer_scores: Object.entries(answerScores).map(([answer_id, value]) => ({ answer_id, score: Number(value) })),
         comment,
         corrected_file: file,
         competency_results: Object.entries(competencyScores).map(([name, value]) => ({ name, score: Number(value || numericScore) })),
@@ -299,6 +338,37 @@ export function StudioEvaluations() {
                           <div key={answer.id} className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
                             <p className="text-sm font-semibold" style={{ color: BLUE }}>{index + 1}. {answer.assessment_questions?.prompt || 'Question'}</p>
                             <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-gray-50 p-3 font-sans text-sm text-gray-700">{renderAnswer(answer.answer_json)}</pre>
+                            {answer.assessment_questions?.correct_answer !== null && answer.assessment_questions?.correct_answer !== undefined && answer.assessment_questions?.question_type !== 'qcm' && answer.assessment_questions?.question_type !== 'true_false' && (
+                              <div className="mt-3 rounded-lg border bg-amber-50 p-3 text-xs text-amber-900" style={{ borderColor: '#FDE68A' }}>
+                                <span className="font-semibold">Repères pour le correcteur : </span>{renderAnswer(answer.assessment_questions.correct_answer)}
+                              </div>
+                            )}
+                            {answer.assessment_questions?.rubric && Array.isArray(answer.assessment_questions.rubric?.criteria) && answer.assessment_questions.rubric.criteria.length > 0 && (
+                              <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-700"><span className="font-semibold">Grille : </span>{answer.assessment_questions.rubric.criteria.map((c: any) => `${c.name || 'Critère'} (${c.points || 0} pts)`).join(' · ')}</div>
+                            )}
+                            {answer.review_status !== 'not_required' && (
+                              <div className="mt-3 rounded-lg border p-3" style={{ borderColor: '#DBEAFE', background: '#F8FBFF' }}>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs font-semibold" style={{ color: BLUE }}>Correction assistée par IA</p>
+                                  <button type="button" disabled={aiBusyAnswerId === answer.id} onClick={() => void suggestWithAi(answer.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ borderColor: BLUE, color: BLUE }}>
+                                    {aiBusyAnswerId === answer.id ? 'Analyse…' : 'Proposer une correction'}
+                                  </button>
+                                </div>
+                                <p className="mt-1 text-[11px] text-gray-500">La proposition n'enregistre aucune note. Le correcteur humain reste décisionnaire.</p>
+                                {aiSuggestions[answer.id] && (
+                                  <div className="mt-3 space-y-2 text-xs text-gray-700">
+                                    <p><strong>Suggestion :</strong> {aiSuggestions[answer.id].suggested_points}/{Number(answer.assessment_questions?.points || 0)} points</p>
+                                    {aiSuggestions[answer.id].feedback && <p><strong>Feedback proposé :</strong> {aiSuggestions[answer.id].feedback}</p>}
+                                    {aiSuggestions[answer.id].reasoning_summary && <p><strong>Justification :</strong> {aiSuggestions[answer.id].reasoning_summary}</p>}
+                                    <button type="button" onClick={() => setAnswerScores(current => ({ ...current, [answer.id]: String(aiSuggestions[answer.id].suggested_points) }))} className="rounded-lg bg-white px-3 py-1.5 font-semibold" style={{ color: BLUE, border: `1px solid ${BORDER}` }}>Utiliser ces points</button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <label className="mt-3 grid grid-cols-[1fr_100px] items-center gap-3 text-xs font-semibold text-gray-600">
+                              <span>Points obtenus / {Number(answer.assessment_questions?.points || 0)}</span>
+                              <input type="number" min={0} max={Number(answer.assessment_questions?.points || 0)} step="0.01" value={answerScores[answer.id] ?? ''} onChange={event => setAnswerScores(current => ({ ...current, [answer.id]: event.target.value }))} className="h-9 rounded-lg border px-2 text-sm" style={{ borderColor: BORDER }} disabled={answer.review_status === 'not_required'} />
+                            </label>
                           </div>
                         ))}
                       </div>
@@ -335,10 +405,12 @@ export function StudioEvaluations() {
                     ) : (
                       <>
                         <h3 className="flex items-center gap-2 font-semibold" style={{ color: BLUE }}><FileCheck2 size={18} style={{ color: GOLD }} />Correction</h3>
-                        <label className="mt-5 block text-xs font-semibold text-gray-600">Note / moyenne sur 100
-                          <input type="number" min={0} max={100} step="0.01" value={score} onChange={event => setScore(event.target.value)} className="mt-1 h-11 w-full rounded-lg border px-3 text-sm" style={{ borderColor: BORDER }} />
-                        </label>
-                        {!validScore && score !== '' && <p className="mt-1 text-xs text-red-600">La note doit être comprise entre 0 et 100.</p>}
+                        <div className="mt-5 rounded-xl border p-4" style={{ borderColor: BORDER }}>
+                          <p className="text-xs font-semibold text-gray-600">Note calculée automatiquement</p>
+                          <p className="mt-1 text-2xl font-bold" style={{ color: BLUE }}>{gradingTotals.percent}%</p>
+                          <p className="mt-1 text-xs text-gray-500">{gradingTotals.points}/{gradingTotals.max} points. Les points automatiques sont conservés ; complétez uniquement les réponses à corriger.</p>
+                        </div>
+                        {!validScore && <p className="mt-2 text-xs text-red-600">Attribuez une note valide à chaque réponse avant de publier.</p>}
 
                         {(selected.attempt.course_assessments?.competency_labels || []).length > 0 && (
                           <div className="mt-4 rounded-lg bg-gray-50 p-3">

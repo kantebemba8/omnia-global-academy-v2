@@ -1,6 +1,6 @@
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Building2, CheckCircle2, ExternalLink, FileUp, HandHelping, Link2, Radio, RefreshCcw, Save, ShieldCheck, Trash2, Video, Wallet } from 'lucide-react';
+import { BadgeCheck, Building2, ExternalLink, Link2, Radio, Save, ShieldCheck, Trash2, Video, Wallet } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const PRICING_API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/course-pricing-workflow`;
@@ -35,13 +35,8 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
   const isProfessor = typeof window !== 'undefined' && window.location.pathname.includes('/professeur/');
   const [saving,setSaving]=useState(false);
   const [rules,setRules]=useState<any>(null);
-  const [files,setFiles]=useState<File[]>([]);
-  const [instructions,setInstructions]=useState('');
-  const [assistedType,setAssistedType]=useState<'with_certification'|'without_certification'>('without_certification');
   const [certifications,setCertifications]=useState<any[]>([]);
   const [organizations,setOrganizations]=useState<OrganizationOption[]>([]);
-  const [assistedRequest,setAssistedRequest]=useState<any>(null);
-  const [ownerReviewComment,setOwnerReviewComment]=useState('');
   const [pricingComment,setPricingComment]=useState('');
   const [liveLinks,setLiveLinks]=useState<any[]>([]);
   const [liveOptions,setLiveOptions]=useState<{events:any[];media:any[]}>({events:[],media:[]});
@@ -49,7 +44,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
   const [linkPosition,setLinkPosition]=useState('0');
   const [newCert,setNewCert]=useState<CertDraft>({...emptyCert,registry_key:'omnia',type:'omnia',organization_name:'Omnia Global Academy',certification_name:'Certification Omnia'});
 
-  useEffect(()=>{ if(!course?.id) return; Promise.all([call('get_commercialization',{course_id:course.id}),call('list_live_content_options',{course_id:course.id}).catch(()=>({events:[],media:[]}))]).then(([d,live])=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]);setOrganizations(d.organization_options||[]);setAssistedRequest(d.assisted_request||null);setOwnerReviewComment(d.assisted_request?.owner_comment||'');setLiveLinks(d.live_links||[]);setLiveOptions({events:live.events||[],media:live.media||[]});if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
+  useEffect(()=>{ if(!course?.id) return; Promise.all([call('get_commercialization',{course_id:course.id}),call('list_live_content_options',{course_id:course.id}).catch(()=>({events:[],media:[]}))]).then(([d,live])=>{setRules(d.revenue_rules||null);setCertifications(d.certifications||[]);setOrganizations(d.organization_options||[]);setLiveLinks(d.live_links||[]);setLiveOptions({events:live.events||[],media:live.media||[]});if(d.course) onPatch(d.course)}).catch(()=>{}); },[course?.id]);
 
   const selectedOrganization=useMemo(()=>organizations.find(item=>item.key===newCert.registry_key)||null,[organizations,newCert.registry_key]);
   const professorShare=useMemo(()=>{
@@ -66,18 +61,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
 
   async function saveCommercial(){
     if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon de la formation.');
-    setSaving(true);try{const d=await call('save_commercialization',{course_id:course.id,sale_mode:course.sale_mode||'paid',desired_price_amount:Number(course.desired_price_amount||0),sale_currency:course.sale_currency||'XOF',promotion_price_amount:course.promotion_price_amount?Number(course.promotion_price_amount):null,structure_payment_mode:course.structure_payment_mode||'free',structure_fixed_amount:course.structure_fixed_amount?Number(course.structure_fixed_amount):null});onPatch(d.course||{});onSaved?.('Commercialisation enregistrée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
-  }
-
-  async function requestAssistance(){
-    if(!course.id) return onSaved?.('Enregistrez d’abord le brouillon.');
-    setSaving(true);try{const uploaded:any[]=[];for(const file of files){const ext=file.name.split('.').pop()||'bin';const path=`${course.id}/assisted/${crypto.randomUUID()}.${ext}`;const signed=await call('prepare_upload',{course_id:course.id,bucket_name:'course-resources',storage_path:path});await fetch(signed.signedUrl,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});uploaded.push({name:file.name,size:file.size,mime:file.type,bucket_name:'course-resources',storage_path:path});}const d=await call('request_assisted_entry',{course_id:course.id,service_type:assistedType,instructions,documents:uploaded});onPatch({is_assisted:true,assisted_status:d.request.status,assisted_request_id:d.request.id});setFiles([]);onSaved?.('Demande de saisie assistée envoyée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
-  }
-
-  async function reviewAssisted(decision:'validated'|'changes_requested'){
-    if(!course.id) return;
-    if(decision==='changes_requested'&&!ownerReviewComment.trim()) return onSaved?.('Expliquez les corrections demandées.');
-    setSaving(true);try{const d=await call('owner_review_assisted_request',{course_id:course.id,decision,comment:ownerReviewComment.trim()});setAssistedRequest(d.request);onPatch({assisted_status:d.request.status});onSaved?.(decision==='validated'?'Brouillon assisté validé. Vous pouvez confirmer le prix puis soumettre la formation.':'Corrections renvoyées à Omnia.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
+    setSaving(true);try{const d=await call('save_commercialization',{course_id:course.id,sale_mode:course.sale_mode||'paid',desired_price_amount:Number(course.desired_price_amount||0),sale_currency:course.sale_currency||'XOF',promotion_price_amount:course.promotion_price_amount?Number(course.promotion_price_amount):null,structure_payment_mode:course.structure_payment_mode||'free',structure_fixed_amount:course.structure_fixed_amount?Number(course.structure_fixed_amount):null});const meta=await call('update_course',{course_id:course.id,certificate_mode:course.certificate_mode||'omnia'});onPatch({...d.course,...meta.course});onSaved?.('Finalisation commerciale enregistrée.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
   async function structurePricingAction(action:'structure_accept'|'structure_revision'){
@@ -116,19 +100,6 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       <button disabled={saving||locked} onClick={saveCommercial} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={14}/>Enregistrer la commercialisation</button>
     </div>
 
-    {assistedRequest&&['draft_ready','changes_requested','owner_validated'].includes(assistedRequest.status)&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><HandHelping size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Brouillon de saisie assistée</h3></div>
-      {assistedRequest.status==='draft_ready'?<><p className="mt-1 text-xs text-gray-500">Omnia a préparé le brouillon. Vérifiez le contenu dans le Studio avant de le valider. Si quelque chose doit changer, renvoyez vos remarques.</p><textarea value={ownerReviewComment} onChange={e=>setOwnerReviewComment(e.target.value)} rows={3} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Remarques facultatives pour validation, obligatoires si vous demandez des corrections."/><div className="mt-3 flex flex-wrap gap-2"><button disabled={saving||locked} onClick={()=>reviewAssisted('validated')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:'#1E7A52'}}><CheckCircle2 size={14}/>Valider mon brouillon</button><button disabled={saving||locked} onClick={()=>reviewAssisted('changes_requested')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{borderColor:GOLD,color:GOLD}}><RefreshCcw size={14}/>Demander des corrections</button></div></>:assistedRequest.status==='changes_requested'?<p className="mt-2 text-xs text-amber-700">Vos corrections ont été transmises à Omnia. Le prochain brouillon reviendra ici pour validation.</p>:<p className="mt-2 text-xs text-emerald-700">Brouillon validé. Confirmez maintenant votre commercialisation puis soumettez la formation au contrôle qualité habituel.</p>}
-    </div>}
-
-    {course.creator_context==='structure'&&course.pricing_status==='en_attente_acceptation_prix_structure'&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><Wallet size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Prix ajusté par Omnia</h3></div>
-      <p className="mt-2 text-sm text-gray-700">Prix retenu : <strong>{Number(course.admin_selected_price_xof||0).toLocaleString('fr-FR')} XOF</strong>. La Structure doit l’accepter uniquement parce que ce montant diffère de sa proposition initiale.</p>
-      {course.pricing_revision_comment&&<p className="mt-1 text-xs text-gray-500">{course.pricing_revision_comment}</p>}
-      <textarea value={pricingComment} onChange={e=>setPricingComment(e.target.value)} rows={2} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Commentaire si vous demandez une nouvelle révision."/>
-      <div className="mt-3 flex flex-wrap gap-2"><button disabled={saving||locked} onClick={()=>structurePricingAction('structure_accept')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:'#1E7A52'}}><CheckCircle2 size={14}/>Accepter le prix</button><button disabled={saving||locked} onClick={()=>structurePricingAction('structure_revision')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{borderColor:GOLD,color:GOLD}}><RefreshCcw size={14}/>Demander une révision</button></div>
-    </div>}
-
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
       <div className="flex items-center gap-2"><Link2 size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Lives & Replays inclus</h3></div>
       <p className="mt-1 text-xs text-gray-500">Reliez sans duplication un Live, une formation synchrone ou un Replay Omnia Live. Toute inscription à cette formation accordera automatiquement l’accès correspondant.</p>
@@ -136,18 +107,18 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       {liveLinks.length>0&&<div className="mt-3 divide-y rounded-lg border" style={{borderColor:BORDER}}>{liveLinks.map(link=>{const ev=link.live_events;const media=link.live_media;return <div key={link.id} className="flex items-center gap-3 px-3 py-2 text-sm"><span className="shrink-0" style={{color:GOLD}}>{media?<Video size={15}/>:<Radio size={15}/>}</span><div className="min-w-0 flex-1"><p className="truncate font-medium" style={{color:BLUE}}>{link.title_override||media?.title||ev?.title||'Contenu Omnia Live'}</p><p className="text-[11px] text-gray-500">{media?(media.media_type==='replay'?'Replay':'Vidéo'):String(ev?.delivery_type||'Live').replaceAll('_',' ')} · ordre {link.position||0}</p></div><button disabled={locked||saving} onClick={()=>removeLiveLink(link.id)} className="p-1 text-red-600 disabled:opacity-40" title="Retirer la liaison"><Trash2 size={14}/></button></div>})}</div>}
     </div>
 
-    {!isProfessor&&<div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><HandHelping size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Saisie assistée par Omnia</h3></div>
-      <p className="mt-1 text-xs text-gray-500">Envoyez vos documents et consignes. Omnia saisira la formation dans votre Studio, puis vous la retrouverez prête à valider.</p>
-      <div className="mt-3 grid gap-3 md:grid-cols-2"><select value={assistedType} onChange={e=>{setAssistedType(e.target.value as any);if(e.target.value==='without_certification')setInstructions('')}} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="without_certification">Sans certification externe</option><option value="with_certification">Avec certification externe</option></select><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><FileUp size={15}/>Ajouter des documents<input multiple type="file" className="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,image/*" onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label></div>
-      {files.length>0&&<p className="mt-2 text-xs text-gray-500">{files.map(f=>f.name).join(', ')}</p>}
-      {assistedType==='with_certification'&&<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} rows={3} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Organisme, certification et contraintes particulières."/>}
-      <button disabled={saving||locked||(assistedType==='with_certification'&&!instructions.trim())} onClick={requestAssistance} className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:GOLD}}>Envoyer la demande</button>
-      {course.assisted_status&&<span className="ml-3 text-xs text-gray-500">Statut : {course.assisted_status}</span>}
-    </div>}
+
 
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certifications et partenaires</h3></div>
+      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certification</h3></div>
+      <p className="mt-1 text-xs text-gray-500">Choisissez ce que reçoit l’apprenant après réussite. Les détails externes ne sont demandés que lorsqu’ils sont réellement nécessaires.</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {[['omnia','Certificat Omnia'],['external','Omnia + certification externe'],['none','Aucun certificat']].map(([value,label])=><label key={value} className={`rounded-xl border p-3 text-xs font-semibold ${course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?'bg-blue-50':'bg-white'}`} style={{borderColor:course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?BLUE:BORDER,color:BLUE}}><input type="radio" className="mr-2" name="certificate-mode" value={value} disabled={locked} checked={(course.certificate_mode||'omnia')===value} onChange={()=>onPatch({certificate_mode:value,certification_requested:value==='external'})}/>{label}</label>)}
+      </div>
+    </div>
+
+    {(course.certificate_mode||'omnia')==='external' && <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+      <div className="flex items-center gap-2"><BadgeCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certification externe et partenaire</h3></div>
       <p className="mt-1 text-xs text-gray-500">Choisissez de préférence un organisme déjà validé. Ses logos et autorisations seront repris automatiquement après validation de l’Administration Omnia.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="text-xs font-medium text-gray-600 md:col-span-2">Organisme validé<select disabled={locked} value={newCert.registry_key} onChange={e=>chooseOrganization(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="custom">Nouvel organisme / saisie manuelle</option>{organizations.map(o=><option key={o.key} value={o.key}>{o.name}{o.default_certification_name?` — ${o.default_certification_name}`:''}</option>)}</select></label>
@@ -166,6 +137,6 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
       <button disabled={saving||locked||!newCert.organization_name.trim()||!newCert.certification_name.trim()} onClick={addCertification} className="mt-4 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><BadgeCheck size={14}/>Ajouter et soumettre</button>
 
       <div className="mt-5 space-y-2">{certifications.map(cert=><div key={cert.id} className="flex items-center gap-3 rounded-lg border p-3" style={{borderColor:BORDER}}>{(cert.immutable_asset_snapshot?.logo_url||cert.logo_url||cert.badge_url)?<img src={cert.immutable_asset_snapshot?.logo_url||cert.logo_url||cert.badge_url} alt="" className="h-10 w-16 object-contain"/>:<Building2 size={18} className="text-slate-400"/>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold" style={{color:BLUE}}>{cert.certification_name}</p><p className="text-xs text-gray-500">{cert.organization_name} · {cert.status}</p></div><div className="text-right text-[11px] text-gray-500"><p>{cert.display_on_course?'Page formation':'Masqué page'}</p><p>{cert.display_on_certificate?'Certificat':'Masqué certificat'}</p></div></div>)}</div>
-    </div>
+    </div>}
   </div>;
 }

@@ -44,9 +44,9 @@ Deno.serve(async (req: Request) => {
     const { course_id, action, final_price_xof, school_split, comment } = body;
     if (!course_id || !["publish", "reject", "request_modification"].includes(action)) return json({ error: "INVALID_PARAMS" }, 400);
 
-    const { data: course } = await sb.from("courses").select("id,title,instructor_id,establishment_id,status,category").eq("id", course_id).maybeSingle();
+    const { data: course } = await sb.from("courses").select("id,title,instructor_id,establishment_id,status,category,version_family_id,version_number").eq("id", course_id).maybeSingle();
     if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
-    const cr = course as { id: string; title: string; instructor_id: string; establishment_id: string | null; status: string; category: string | null };
+    const cr = course as { id: string; title: string; instructor_id: string; establishment_id: string | null; status: string; category: string | null; version_family_id?: string | null; version_number?: number | null };
     const now = new Date().toISOString();
 
     if (action === "publish") {
@@ -58,8 +58,12 @@ Deno.serve(async (req: Request) => {
         if (!s?.accepted_by_director) return json({ error: "SPLIT_NOT_ACCEPTED", message: "Le Directeur n'a pas encore accepté la répartition." }, 400);
       }
 
+      if (cr.version_family_id) {
+        await sb.from("courses").update({ is_current_catalog_version: false, is_catalog_active: false, catalog_deactivated_at: now, superseded_at: now })
+          .eq("version_family_id", cr.version_family_id).neq("id", course_id).eq("is_current_catalog_version", true);
+      }
       await sb.from("courses").update({
-        status: "publiee", is_published: true, moderated_by: adminId, moderated_at: now,
+        status: "publiee", studio_status: "published", is_published: true, is_catalog_active: true, is_current_catalog_version: true, catalog_activated_at: now, catalog_deactivated_at: null, moderated_by: adminId, moderated_at: now,
         ...(final_price_xof != null ? { price_xof: final_price_xof } : {}),
       }).eq("id", course_id);
 

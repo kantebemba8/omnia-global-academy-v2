@@ -2,8 +2,9 @@ import { getSessionToken } from '../../lib/session';
 import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2, Building2, GitBranch, ShieldCheck } from 'lucide-react';
+import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2, Building2, GitBranch, ShieldCheck, Radio } from 'lucide-react';
 import { StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
+import { CourseLiveLinksManager } from '../../components/formations/CourseLiveLinksManager';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
 
 type Formation = {
@@ -15,6 +16,7 @@ type Formation = {
   cover_image_url?: string | null;
   updated_at?: string | null;
   admin_comment?: string | null;
+  is_catalog_active?: boolean; is_published?: boolean; version_number?: number; course_code?: string | null;
 };
 
 const API = `${API_BASE_URL}/studio-unified`;
@@ -39,6 +41,7 @@ export default function StructureMesFormations() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [liveCourse, setLiveCourse] = useState<Formation | null>(null);
 
   const load = useCallback(async () => {
     const token = getSessionToken();
@@ -87,6 +90,39 @@ export default function StructureMesFormations() {
   }, [navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+
+  const callStudio = useCallback(async (action: string, payload: Record<string, unknown> = {}) => {
+    const token = getSessionToken();
+    if (!token) throw new Error('AUTH_REQUIRED');
+    const res = await fetch(API, { method: 'POST', headers: gatewayHeaders(), body: JSON.stringify({ action, session_token: token, ...payload }) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Action impossible');
+    return data;
+  }, []);
+
+  async function toggleCatalogue(formation: Formation) {
+    const active = formation.is_catalog_active === false;
+    if (!window.confirm(`${active ? 'Activer' : 'Désactiver'} « ${formation.title || 'Formation'} » dans le catalogue ? ${active ? 'Elle sera de nouveau proposée aux nouvelles inscriptions.' : 'Les accès existants seront conservés.'}`)) return;
+    try {
+      const token = getSessionToken();
+      const res = await fetch(API, { method: 'POST', headers: gatewayHeaders(), body: JSON.stringify({ action: 'toggle_catalog_active', session_token: token, course_id: formation.id, active }) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Modification impossible');
+      setFormations(items => items.map(item => item.id === formation.id ? { ...item, is_catalog_active: active } : item));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Modification impossible'); }
+  }
+
+  async function createMajorVersion(formation: Formation) {
+    if (!window.confirm(`Créer une nouvelle version pédagogique de « ${formation.title || 'Formation'} » ? La version actuelle restera accessible aux apprenants déjà inscrits.`)) return;
+    try {
+      const token = getSessionToken();
+      const res = await fetch(API, { method: 'POST', headers: gatewayHeaders(), body: JSON.stringify({ action: 'create_major_version', session_token: token, course_id: formation.id }) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Création de version impossible');
+      if (data?.course?.id) navigate(`/structure/studio/${data.course.id}`); else await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Création de version impossible'); }
+  }
 
   async function removeFormation(formation: Formation) {
     const status = formation.studio_status || 'draft';
@@ -153,7 +189,7 @@ export default function StructureMesFormations() {
                     <span className="absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: state.color, background: state.bg }}>{state.label}</span>
                   </div>
                   <div className="p-4">
-                    <h2 className="line-clamp-2 text-sm font-semibold" style={{ color: '#002050' }}>{formation.title || 'Formation sans titre'}</h2>
+                    <div className="flex items-start justify-between gap-2"><h2 className="line-clamp-2 text-sm font-semibold" style={{ color: '#002050' }}>{formation.title || 'Formation sans titre'}</h2>{['validated','published'].includes(formation.studio_status || '') && <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${formation.is_catalog_active === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{formation.is_catalog_active === false ? 'Désactivée' : 'Active'}</span>}</div>
                     <p className="mt-2 text-xs text-gray-500">{[formation.category, formation.level].filter(Boolean).join(' · ') || 'Informations à compléter'}</p>
                     {formation.admin_comment && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{formation.admin_comment}</p>}
                     <div className="mt-4 flex gap-2">
@@ -164,6 +200,7 @@ export default function StructureMesFormations() {
                       ) : (
                         <div className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-gray-50 py-2 text-xs text-gray-500"><CheckCircle size={14} /> {state.label}</div>
                       )}
+                      {['validated','published'].includes(formation.studio_status || '') && <><button type="button" onClick={() => toggleCatalogue(formation)} className="rounded-lg border px-2.5 py-2 text-xs font-semibold" style={{ borderColor: formation.is_catalog_active === false ? '#1E7A52' : '#64748B', color: formation.is_catalog_active === false ? '#1E7A52' : '#475569' }}>{formation.is_catalog_active === false ? 'Activer' : 'Désactiver'}</button><button type="button" onClick={() => setLiveCourse(formation)} className="rounded-lg border px-2.5 py-2 text-xs font-semibold inline-flex items-center gap-1" style={{ borderColor: '#0B817A', color: '#0B817A' }} title="Ajouter ou retirer un Live, Replay ou vidéo complémentaire"><Radio size={13}/> Live/Replays</button><button type="button" onClick={() => createMajorVersion(formation)} className="rounded-lg border px-2.5 py-2 text-xs font-semibold" style={{ borderColor: '#BF8813', color: '#8A650F' }} title="Créer une nouvelle version pédagogique">Nouvelle version</button></>}
                       <button type="button" onClick={() => removeFormation(formation)}
                         className="flex items-center justify-center rounded-lg border px-2.5 py-2 text-xs font-semibold"
                         style={{ borderColor: '#DC2626', color: '#DC2626' }}
@@ -179,6 +216,7 @@ export default function StructureMesFormations() {
         )}
         </div>
       </div>
+      {liveCourse && <CourseLiveLinksManager courseId={liveCourse.id} courseTitle={liveCourse.title || 'Formation'} call={callStudio} onClose={() => setLiveCourse(null)} />}
     </StructureFormationsLayout>
   );
 }

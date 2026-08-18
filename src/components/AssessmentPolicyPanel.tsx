@@ -17,8 +17,6 @@ type ProctoringSettings = {
   screen_share_required?: boolean;
   tab_switch_tracking?: boolean;
   fullscreen_required?: boolean;
-  human_proctor_required?: boolean;
-  recording_required?: boolean;
 };
 
 type CompetencyMapping = {
@@ -59,6 +57,8 @@ type AssessmentRow = {
   allowed_materials?: string;
   candidate_instructions?: string;
   integrity_rules?: string;
+  randomize_questions?: boolean;
+  random_question_count?: number;
 };
 
 type Framework = {
@@ -176,6 +176,8 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
         jury_decision_mode: row.jury_decision_mode || 'majority',
         appeal_enabled: row.appeal_enabled !== false,
         appeal_deadline_days: Number(row.appeal_deadline_days ?? 7),
+        randomize_questions: row.randomize_questions === true,
+        random_question_count: Number(row.random_question_count || 0),
       } as AssessmentRow)));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Chargement impossible.');
@@ -257,8 +259,8 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
             <p className="mt-1 text-xs leading-5 text-gray-600">Les évaluations de leçon et de module sont facultatives par défaut. L’examen final peut être imposé par votre politique ; il reste automatiquement requis lorsqu’une certification ou un parcours CPD l’exige.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
-                ['lesson_assessment_required', 'Évaluation à chaque leçon'],
-                ['module_assessment_required', 'Évaluation à chaque module'],
+                ['lesson_assessment_required', 'Évaluations de leçon obligatoires par défaut'],
+                ['module_assessment_required', 'Évaluations de module obligatoires par défaut'],
                 ['final_assessment_required', 'Examen final obligatoire'],
               ].map(([key, label]) => (
                 <label key={key} className="flex items-center gap-3 rounded-xl border bg-white p-3 text-sm font-semibold" style={{ borderColor: BORDER, color: BLUE }}>
@@ -361,7 +363,21 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
               ]} />
             </div>
 
-            <div className="mt-4 rounded-xl bg-gray-50 p-4">
+            <div className="mt-4 rounded-xl border p-4" style={{ borderColor: BORDER }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: BLUE }}>Questions et randomisation</p>
+                  <p className="mt-1 text-xs text-gray-500">Réutilisez votre banque de questions et, si nécessaire, tirez un sous-ensemble différent pour chaque tentative.</p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={row.randomize_questions === true} disabled={locked} onChange={event => onUpdate(row.id, { randomize_questions: event.target.checked })}/> Mélanger les questions</label>
+              </div>
+              {row.randomize_questions && <div className="mt-3 max-w-xs"><NumberField label="Nombre de questions tirées (0 = toutes)" value={Number(row.random_question_count || 0)} min={0} disabled={locked} onChange={value => onUpdate(row.id, { random_question_count: Math.max(0, value) })}/></div>}
+              <QuestionBankPanel assessmentId={row.id} locked={locked} />
+            </div>
+
+            <details className="mt-4 rounded-xl bg-gray-50 p-4">
+              <summary className="cursor-pointer text-sm font-semibold" style={{ color: BLUE }}>Options avancées de l'épreuve</summary>
+              <div className="mt-4">
               <div className="mb-3 flex items-center gap-2"><Video size={16} color={GOLD} /><p className="text-sm font-semibold" style={{ color: BLUE }}>Mesures de surveillance proposées</p></div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Toggle label="Session programmée" checked={row.session_required} disabled={locked} onChange={checked => onUpdate(row.id, { session_required: checked })} />
@@ -371,7 +387,6 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
                 <Toggle label="Partage d’écran" checked={row.proctoring_settings.screen_share_required === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, screen_share_required: checked } })} />
                 <Toggle label="Changements d’onglet" checked={row.proctoring_settings.tab_switch_tracking === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, tab_switch_tracking: checked } })} />
                 <Toggle label="Plein écran" checked={row.proctoring_settings.fullscreen_required === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, fullscreen_required: checked } })} />
-                <Toggle label="Surveillant humain" checked={row.proctoring_settings.human_proctor_required === true} disabled={locked} onChange={checked => onUpdate(row.id, { proctoring_settings: { ...row.proctoring_settings, human_proctor_required: checked } })} />
               </div>
               <p className="mt-3 flex items-center gap-2 text-xs text-gray-500"><Eye size={14} />Aucun enregistrement audio ou vidéo n’est activé automatiquement.</p>
             </div>
@@ -415,12 +430,37 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
               <TextArea label="Instructions au candidat" value={row.candidate_instructions || ''} disabled={locked} onChange={value => onUpdate(row.id, { candidate_instructions: value })} placeholder="Consignes avant le démarrage de l’épreuve…" />
               <TextArea label="Règles d’intégrité" value={row.integrity_rules || ''} disabled={locked} onChange={value => onUpdate(row.id, { integrity_rules: value })} placeholder="Comportements autorisés, incidents et conditions d’annulation…" />
             </div>
+            </details>
             <TextField className="mt-4" label="Instructions après un échec" value={row.retry_instructions || ''} disabled={locked} onChange={value => onUpdate(row.id, { retry_instructions: value })} placeholder="Ex. Revoyez le module avant de reprendre l’évaluation." />
           </div>
         );
       })}</div>
     </section>
   );
+}
+
+function QuestionBankPanel({ assessmentId, locked }: { assessmentId: string; locked?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [message, setMessage] = useState('');
+  const [draft, setDraft] = useState({ title: '', question_type: 'qcm', prompt: '', options: ['', ''], correct_answer: 0, points: 1, category: '', tags: '' });
+  async function load() { setLoading(true); setMessage(''); try { const data = await call('question_bank_list', {}); setQuestions(data.questions || []); } catch (e) { setMessage(e instanceof Error ? e.message : 'Banque indisponible.'); } finally { setLoading(false); } }
+  async function toggle() { const next = !open; setOpen(next); if (next && !questions.length) await load(); }
+  async function addSelected() { if (!selected.length) return; setLoading(true); try { await call('question_bank_add_to_assessment', { assessment_id: assessmentId, question_bank_ids: selected }); setMessage(`${selected.length} question(s) ajoutée(s) à l'évaluation.`); setSelected([]); } catch (e) { setMessage(e instanceof Error ? e.message : 'Ajout impossible.'); } finally { setLoading(false); } }
+  async function addTrainingActivities() { setLoading(true); try { const data = await call('assessment_add_training_blocks', { assessment_id: assessmentId }); setMessage(data.message || `${data.added || 0} activité(s) ajoutée(s).`); } catch (e) { setMessage(e instanceof Error ? e.message : 'Import des entraînements impossible.'); } finally { setLoading(false); } }
+  async function saveDraft() { if (!draft.title.trim() || !draft.prompt.trim()) return setMessage('Renseignez le nom et la question.'); setLoading(true); try { const content_json:any = { prompt: draft.prompt, points: Number(draft.points || 1) }; if (draft.question_type === 'qcm') { content_json.options = draft.options.filter(Boolean); content_json.correct_answer = Number(draft.correct_answer || 0); } if (draft.question_type === 'true_false') content_json.correct_answer = Boolean(draft.correct_answer); await call('question_bank_save', { question: { title: draft.title, question_type: draft.question_type, category: draft.category || null, tags: draft.tags.split(',').map(x => x.trim()).filter(Boolean), content_json } }); setDraft({ title: '', question_type: 'qcm', prompt: '', options: ['', ''], correct_answer: 0, points: 1, category: '', tags: '' }); setMessage('Question enregistrée dans votre banque.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Enregistrement impossible.'); } finally { setLoading(false); } }
+  return <div className="mt-3">
+    <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void toggle()} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: BORDER, color: BLUE }}>{open ? 'Fermer la banque de questions' : 'Banque de questions'}</button><button type="button" disabled={locked || loading} onClick={() => void addTrainingActivities()} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: GOLD, color: '#8A650F' }}>Ajouter les entraînements de ce périmètre</button></div>
+    {open && <div className="mt-3 space-y-4 rounded-xl bg-slate-50 p-3">
+      {loading && <p className="text-xs text-gray-500">Chargement…</p>}
+      <div className="max-h-48 space-y-2 overflow-y-auto">{questions.length ? questions.map(q => <label key={q.id} className="flex items-start gap-2 rounded-lg bg-white p-2 text-xs"><input type="checkbox" disabled={locked} checked={selected.includes(q.id)} onChange={e => setSelected(v => e.target.checked ? [...v, q.id] : v.filter(id => id !== q.id))}/><span><strong style={{ color: BLUE }}>{q.title}</strong><br/><span className="text-gray-500">{q.question_type}{q.category ? ` · ${q.category}` : ''}</span></span></label>) : !loading && <p className="text-xs text-gray-500">Aucune question enregistrée.</p>}</div>
+      <button type="button" disabled={locked || loading || !selected.length} onClick={() => void addSelected()} className="rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>Ajouter la sélection à cette évaluation</button>
+      {!locked && <details className="rounded-lg border bg-white p-3" style={{ borderColor: BORDER }}><summary className="cursor-pointer text-xs font-semibold" style={{ color: BLUE }}>Créer une question dans la banque</summary><div className="mt-3 grid gap-2 md:grid-cols-2"><input value={draft.title} onChange={e => setDraft(d => ({...d,title:e.target.value}))} placeholder="Nom de la question" className="rounded-lg border p-2 text-xs"/><select value={draft.question_type} onChange={e => setDraft(d => ({...d,question_type:e.target.value}))} className="rounded-lg border p-2 text-xs"><option value="qcm">QCM</option><option value="true_false">Vrai / Faux</option><option value="open_question">Réponse ouverte</option></select><textarea value={draft.prompt} onChange={e => setDraft(d => ({...d,prompt:e.target.value}))} placeholder="Question" className="rounded-lg border p-2 text-xs md:col-span-2" rows={2}/>{draft.question_type==='qcm' && <><input value={draft.options[0]} onChange={e => setDraft(d => ({...d,options:[e.target.value,d.options[1]||'']}))} placeholder="Réponse 1" className="rounded-lg border p-2 text-xs"/><input value={draft.options[1]} onChange={e => setDraft(d => ({...d,options:[d.options[0]||'',e.target.value]}))} placeholder="Réponse 2" className="rounded-lg border p-2 text-xs"/><label className="text-xs">Bonne réponse<select value={String(draft.correct_answer)} onChange={e => setDraft(d => ({...d,correct_answer:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border p-2"><option value="0">Réponse 1</option><option value="1">Réponse 2</option></select></label></>}<input value={draft.category} onChange={e => setDraft(d => ({...d,category:e.target.value}))} placeholder="Catégorie" className="rounded-lg border p-2 text-xs"/><input value={draft.tags} onChange={e => setDraft(d => ({...d,tags:e.target.value}))} placeholder="Tags séparés par des virgules" className="rounded-lg border p-2 text-xs"/><input type="number" min="0.1" step="0.1" value={draft.points} onChange={e => setDraft(d => ({...d,points:Number(e.target.value||1)}))} className="rounded-lg border p-2 text-xs"/><button type="button" disabled={loading} onClick={() => void saveDraft()} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: GOLD }}>Enregistrer dans la banque</button></div></details>}
+      {message && <p className="text-xs text-gray-600">{message}</p>}
+    </div>}
+  </div>;
 }
 
 function NumberField({ label, value, min, max, step, disabled, onChange }: { label: string; value: number; min: number; max?: number; step?: number; disabled?: boolean; onChange: (value: number) => void }) {

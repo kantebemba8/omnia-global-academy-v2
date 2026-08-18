@@ -1,104 +1,29 @@
 import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ENDPOINTS } from '../../lib/config';
-import { Save, Lock } from 'lucide-react';
+import { Plus, Save, Trash2 } from 'lucide-react';
 
-type Tier = {
-  id: string;
-  label: string;
-  score_min: number;
-  score_max: number | null;
-  price_xof: number;
-  is_protected?: boolean;
-};
+type Band = { id?: string; label: string; min_minutes: number; max_minutes: number | null; base_price_xof: number; display_order: number; is_active: boolean };
+const emptyBand = (): Band => ({ label: 'Nouvelle tranche', min_minutes: 0, max_minutes: null, base_price_xof: 0, display_order: 0, is_active: true });
 
 export function PricingTiersManager() {
-  const [tiers, setTiers] = useState<Tier[]>([]);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
-  const token = () => getSessionToken() || '';
-
-  async function load() {
-    const r = await fetch(ENDPOINTS.adminCmsUpdate, { headers: { Authorization: `Bearer ${token()}` } });
-    const d = await r.json();
-    setTiers((d.pricing_tiers || []).sort((a: Tier, b: Tier) => Number(a.score_min) - Number(b.score_min)));
-  }
-
-  useEffect(() => { load(); }, []);
-
-  async function savePrice(tier: Tier) {
-    setSaving(tier.id);
-    setMessage('');
-    const r = await fetch(ENDPOINTS.adminCmsUpdate, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'upsert_pricing_tier',
-        tier: {
-          id: tier.id,
-          label: tier.label,
-          score_min: tier.score_min,
-          score_max: tier.score_max,
-          price_xof: tier.price_xof,
-        },
-      }),
-    });
-    setSaving(null);
-    setMessage(r.ok ? 'Prix du palier enregistré.' : 'Erreur pendant l’enregistrement.');
-    if (r.ok) await load();
-    setTimeout(() => setMessage(''), 2500);
-  }
-
+  const [bands,setBands]=useState<Band[]>([]); const [busy,setBusy]=useState<string>(''); const [message,setMessage]=useState('');
+  const token=()=>getSessionToken()||'';
+  async function load(){const r=await fetch(ENDPOINTS.adminCmsUpdate,{headers:{Authorization:`Bearer ${token()}`}});const d=await r.json();setBands((d.professor_pricing_duration_bands||[]).sort((a:Band,b:Band)=>a.min_minutes-b.min_minutes));}
+  useEffect(()=>{void load()},[]);
+  async function save(band:Band,index:number){setBusy(String(band.id||index));const r=await fetch(ENDPOINTS.adminCmsUpdate,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'upsert_professor_pricing_band',band})});setBusy('');setMessage(r.ok?'Tranche enregistrée.':'Enregistrement impossible.');if(r.ok)await load();}
+  async function remove(band:Band,index:number){if(!band.id){setBands(v=>v.filter((_,i)=>i!==index));return;}if(!confirm('Supprimer cette tranche de durée ?'))return;const r=await fetch(ENDPOINTS.adminCmsUpdate,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'delete_professor_pricing_band',band_id:band.id})});if(r.ok)await load();}
+  const edit=(index:number,patch:Partial<Band>)=>setBands(v=>v.map((x,i)=>i===index?{...x,...patch}:x));
   return <div className="space-y-4">
-    <div>
-      <h3 className="font-semibold" style={{ color: '#002050' }}>Paliers de prix du score</h3>
-      <p className="text-xs text-gray-500 mt-1">
-        Les tranches de score définies dans le cahier des charges sont fixes et protégées. Seul le prix peut être modifié.
-      </p>
-    </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {tiers.map(tier => (
-        <div key={tier.id} className="rounded-xl border border-gray-200 p-4 bg-white">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">{tier.label}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Score {tier.score_min} à {tier.score_max == null ? '∞' : tier.score_max}
-              </p>
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700">
-              <Lock className="w-3 h-3" /> Score protégé
-            </span>
-          </div>
-          <label className="block text-xs text-gray-600">
-            Prix (XOF) — modifiable
-            <input
-              type="number" min="0" step="500"
-              value={tier.price_xof}
-              onChange={e => setTiers(prev => prev.map(x => x.id === tier.id ? { ...x, price_xof: Number(e.target.value) } : x))}
-              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="mt-3 flex justify-end">
-            <button
-              onClick={() => savePrice(tier)}
-              disabled={saving === tier.id}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-              style={{ backgroundColor: '#002050' }}
-            >
-              <Save className="w-3.5 h-3.5" />
-              {saving === tier.id ? 'Enregistrement…' : 'Enregistrer le prix'}
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-    {tiers.length === 0 && (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
-        Les paliers de base ne sont pas disponibles. Vérifiez la configuration tarifaire avant de continuer.
-      </div>
-    )}
-    {message && <p className="text-xs text-gray-500 text-right">{message}</p>}
+    <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold" style={{color:'#002050'}}>Tranches de durée — tarification Professeur V3</h3><p className="mt-1 text-xs text-gray-500">La durée pédagogique est calculée automatiquement. Les niveaux Débutant, Intermédiaire, Avancé et Expert n'influencent pas le prix.</p></div><button onClick={()=>setBands(v=>[...v,emptyBand()])} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#BF8813',color:'#002050'}}><Plus size={14}/>Ajouter</button></div>
+    <div className="space-y-3">{bands.map((band,index)=><div key={band.id||`new-${index}`} className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto]" style={{borderColor:'#E4E7EC'}}>
+      <label className="text-xs text-gray-600">Nom<input value={band.label} onChange={e=>edit(index,{label:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label>
+      <label className="text-xs text-gray-600">Minimum (min)<input type="number" min={0} value={band.min_minutes} onChange={e=>edit(index,{min_minutes:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label>
+      <label className="text-xs text-gray-600">Maximum (min)<input type="number" min={1} value={band.max_minutes??''} placeholder="Sans limite" onChange={e=>edit(index,{max_minutes:e.target.value===''?null:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label>
+      <label className="text-xs text-gray-600">Prix de base XOF<input type="number" min={0} step={500} value={band.base_price_xof} onChange={e=>edit(index,{base_price_xof:Number(e.target.value)})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label>
+      <div className="flex items-end gap-2"><button onClick={()=>void save(band,index)} disabled={busy===String(band.id||index)} className="rounded-lg p-2 text-white" style={{background:'#002050'}} title="Enregistrer"><Save size={16}/></button><button onClick={()=>void remove(band,index)} className="rounded-lg border p-2 text-red-600" title="Supprimer"><Trash2 size={16}/></button></div>
+    </div>)}</div>
+    {bands.length===0&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Aucune tranche active. Ajoutez vos montants avant d'utiliser la recommandation automatique.</div>}
+    {message&&<p className="text-right text-xs text-gray-500">{message}</p>}
   </div>;
 }

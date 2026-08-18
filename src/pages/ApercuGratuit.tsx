@@ -31,11 +31,17 @@ type PreviewPayload = {
     category?: string;
     level?: string;
     sale_mode?: 'free' | 'paid';
+    price_xof?: number;
     desired_price_amount?: number;
     sale_currency?: string;
     current_version?: string;
   };
   introduction: null | {
+    id: string;
+    title: string;
+    blocks: PreviewBlock[];
+  };
+  first_lesson: null | {
     id: string;
     title: string;
     blocks: PreviewBlock[];
@@ -92,10 +98,10 @@ export function ApercuGratuit() {
     );
   }
 
-  const { course, introduction, program } = data;
+  const { course, introduction, first_lesson: firstLesson, program } = data;
   const priceLabel = course.sale_mode === 'free'
     ? 'Gratuit'
-    : `${Number(course.desired_price_amount || 0).toLocaleString('fr-FR')} ${course.sale_currency || 'XOF'}`;
+    : `${Number(course.price_xof ?? course.desired_price_amount ?? 0).toLocaleString('fr-FR')} ${course.sale_currency || 'XOF'}`;
 
   return (
     <div className="min-h-screen pb-28" style={{ background: '#F8F9FA', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -106,7 +112,7 @@ export function ApercuGratuit() {
           </button>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm truncate" style={{ color: '#002050' }}>{course.title}</p>
-            <p className="text-xs" style={{ color: '#6B7280' }}>Aperçu gratuit de l’introduction</p>
+            <p className="text-xs" style={{ color: '#6B7280' }}>Aperçu gratuit : introduction et première leçon</p>
           </div>
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: '#FFFBEB', color: '#92400E' }}>APERÇU</span>
         </div>
@@ -128,12 +134,26 @@ export function ApercuGratuit() {
           </div>
 
           {data.preview_enabled && introduction ? (
-            <article className="rounded-2xl border bg-white p-5 md:p-7" style={{ borderColor: '#E4E7EC' }}>
-              <div className="flex items-center gap-2 mb-5"><BookOpen size={18} style={{ color: '#BF8813' }} /><h2 className="font-bold" style={{ color: '#002050' }}>{introduction.title || 'Introduction'}</h2></div>
-              <div className="space-y-2">
-                {introduction.blocks.map((block) => <BlockRenderer key={block.id} block={block as any} />)}
-              </div>
-            </article>
+            <>
+              <article className="rounded-2xl border bg-white p-5 md:p-7" style={{ borderColor: '#E4E7EC' }}>
+                <div className="flex items-center gap-2 mb-5"><BookOpen size={18} style={{ color: '#BF8813' }} /><h2 className="font-bold" style={{ color: '#002050' }}>{introduction.title || 'Introduction'}</h2></div>
+                <div className="space-y-2">
+                  {introduction.blocks.map((block) => <BlockRenderer key={block.id} block={block as any} />)}
+                </div>
+              </article>
+              {firstLesson && (
+                <article className="rounded-2xl border bg-white p-5 md:p-7" style={{ borderColor: '#E4E7EC' }}>
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold uppercase tracking-[.12em]" style={{ color: '#1E7A52' }}>Première leçon offerte</p>
+                    <h2 className="mt-1 font-bold" style={{ color: '#002050' }}>{firstLesson.title}</h2>
+                    <p className="mt-1 text-xs" style={{ color: '#6B7280' }}>Les entraînements, évaluations, notes et progression officielle restent verrouillés jusqu’à l’inscription ou l’achat.</p>
+                  </div>
+                  <div className="space-y-2">
+                    {firstLesson.blocks.map((block) => <BlockRenderer key={block.id} block={block as any} />)}
+                  </div>
+                </article>
+              )}
+            </>
           ) : (
             <div className="rounded-2xl border bg-white p-10 text-center" style={{ borderColor: '#E4E7EC' }}>
               <Lock size={28} className="mx-auto mb-3" style={{ color: '#9CA3AF' }} />

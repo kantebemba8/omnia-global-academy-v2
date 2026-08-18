@@ -224,7 +224,7 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", userId)
         .maybeSingle(),
       sb.from("courses")
-        .select("id,title,status,studio_status,score_calcule,price_xof,prix_provisoire_xof,cover_image_url,category,cpd_accredited,requested_cpd,admin_comment,rejection_reason,created_at,updated_at,final_validation_type")
+        .select("id,title,status,studio_status,price_xof,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof,desired_price_amount,pricing_status,cover_image_url,category,cpd_accredited,requested_cpd,admin_comment,rejection_reason,created_at,updated_at,final_validation_type")
         .eq("instructor_id", userId),
     ]);
     if (userError) throw userError;

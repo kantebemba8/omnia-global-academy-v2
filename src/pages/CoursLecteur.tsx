@@ -57,6 +57,8 @@ interface LessonDataPayload {
   cpd_time_reached: boolean;
   next_lesson_id: string | null;
   blocks?: Array<Record<string, unknown>>;
+  training?: { required_count: number; passed_count: number; passed: boolean; latest_attempts?: Array<Record<string, any>> };
+  block_states?: Array<{ block_id: string; state_json: Record<string, any>; completed: boolean }>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -730,6 +732,39 @@ export function CoursLecteur() {
   const isCompleted = prog?.is_completed ?? false;
   const quizPassed = prog?.quiz_passed ?? false;
   const effectiveCpd = cpdTimeReached || (lessonData?.cpd_time_reached ?? false);
+  const submitTrainingResult = useCallback(async (blockId: string, score: number, answer: any, _passedClient: boolean) => {
+    if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    try {
+      const response = await fetch(ENDPOINTS.lessonContent, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ action: 'training_submit', course_id: courseId, lesson_id: currentLessonId, block_id: blockId, score, answer }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.message || data.error || 'Enregistrement de l’entraînement impossible');
+      const refreshed = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+      const refreshedData = await refreshed.json();
+      if (refreshed.ok && !refreshedData.error) setLessonData(refreshedData);
+      await loadProgress();
+    } catch (error) {
+      console.error('training_submit', error);
+      setResilientMessage(error instanceof Error ? error.message : 'Résultat d’entraînement non synchronisé.');
+    }
+  }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress]);
+
+  const saveBlockState = useCallback(async (blockId: string, state: Record<string, any>, completed: boolean) => {
+    if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    try {
+      await fetch(ENDPOINTS.lessonContent, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ action: 'block_state_save', course_id: courseId, lesson_id: currentLessonId, block_id: blockId, state, completed }),
+      });
+    } catch (error) { console.error('block_state_save', error); }
+  }, [isOnline, currentLessonId, courseId, sessionToken]);
+
+  const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
+
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
 
   if (progressLoading) return (
@@ -972,7 +1007,10 @@ export function CoursLecteur() {
                     blocks={lessonData.blocks as any[]}
                     contentText={lesson.text_content}
                     isOnline={isOnline}
-                    onQuizAnswer={(_blockId, _answer, _correct) => {}}
+                    onQuizAnswer={(blockId, answer, correct) => submitTrainingResult(blockId, correct ? 100 : 0, answer, correct)}
+                    onTrainingResult={submitTrainingResult}
+                    learnerStateByBlock={learnerStateByBlock}
+                    onStateChange={saveBlockState}
                   />
                 </div>
               )}

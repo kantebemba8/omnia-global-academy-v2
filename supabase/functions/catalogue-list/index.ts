@@ -149,6 +149,8 @@ Deno.serve(async (req: Request) => {
         "id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_type,language,subtitles_available,total_duration_seconds,creator_id,establishment_id,created_at",
       )
       .eq("is_published", true)
+      .eq("is_catalog_active", true)
+      .eq("is_current_catalog_version", true)
       .limit(500);
 
     if (q) internalQuery = internalQuery.ilike("title", `%${q}%`);

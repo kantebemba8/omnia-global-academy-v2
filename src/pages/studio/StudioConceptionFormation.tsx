@@ -2,12 +2,13 @@ import { openInternalPreviewUrl } from '../../lib/mobile';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AssessmentRulesCard } from '../../components/AssessmentRulesCard';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { COURSE_LANGUAGE_OPTIONS, COURSE_LEVEL_OPTIONS, BLOCK_SEARCH_ALIASES, ESSENTIAL_BLOCK_TYPES, TRAINING_CAPABLE_BLOCKS, ASSESSMENT_CAPABLE_BLOCKS, canonicalizeBlockContent, emptyBlockContent } from '../../lib/courseBuilderV3';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
+import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import {
   ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
@@ -26,6 +27,12 @@ const API = `${SB}/functions/v1/studio-unified`;
 interface Block {
   id: string;
   block_type: string;
+  interaction_mode?: 'content'|'training'|'assessment';
+  assessment_scope?: 'lesson'|'module'|'final'|null;
+  is_required?: boolean;
+  training_passing_score?: number;
+  rag_enabled?: boolean;
+  preview_allowed?: boolean;
   position: number;
   title?: string;
   content_json: Record<string, any>;
@@ -38,8 +45,8 @@ interface Block {
   ai_generated?: boolean;
 }
 
-interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
-interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
+interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_required?: boolean; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
+interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_required?: boolean; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
 interface Course {
   id: string; course_code?: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; course_type?: 'standard'|'language_learning'; instruction_language?: string; target_language?: string; cefr_start_level?: string; cefr_target_level?: string; language_framework?: string; prerequisites?: string;
@@ -50,8 +57,9 @@ interface Course {
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
-  free_preview_mode?: 'none'|'introduction'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
+  free_preview_mode?: 'none'|'introduction'|'introduction_first_lesson'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
   pricing_status?: string; lesson_passing_score?: number; module_passing_score?: number; final_passing_score?: number; learning_design_settings?: Record<string, any>; assessment_policy?: Record<string, any>;
+  builder_version?: 'v2'|'v3'; is_catalog_active?: boolean; cover_ai_generation_count?: number; preview_first_lesson_enabled?: boolean;
 }
 
 const EMPTY_COURSE: Course = {
@@ -75,7 +83,7 @@ const EMPTY_COURSE: Course = {
   cover_image_prompt: '',
   target_audience: '',
   learning_outcomes: [],
-  course_intro_title: 'Bienvenue dans cette formation',
+  course_intro_title: '',
   course_intro_summary: '',
   studio_status: 'draft',
   studio_mode: 'simple',
@@ -92,6 +100,10 @@ const EMPTY_COURSE: Course = {
   quality_status: 'incomplete',
   ready_to_submit: false,
   current_version: '1.0',
+  builder_version: 'v3',
+  is_catalog_active: true,
+  cover_ai_generation_count: 0,
+  preview_first_lesson_enabled: true,
   lesson_passing_score: 80,
   module_passing_score: 80,
   final_passing_score: 70,
@@ -101,7 +113,7 @@ const EMPTY_COURSE: Course = {
 const BLOCK_DEFS = [
   // Simples
   { type: 'heading',    label: 'Titre',        icon: Heading1,   color: '#002050', group: 'structure',   mode: 'simple' },
-  { type: 'subheading', label: 'Sous-titre',   icon: Heading2,   color: '#374151', group: 'structure',   mode: 'simple' },
+  { type: 'subheading', label: 'Titre secondaire',   icon: Heading2,   color: '#374151', group: 'structure',   mode: 'simple' },
   { type: 'text',       label: 'Texte',        icon: AlignLeft,  color: '#374151', group: 'structure',   mode: 'simple' },
   { type: 'separator',  label: 'Séparateur',   icon: Minus,      color: '#9CA3AF', group: 'structure',   mode: 'simple' },
   { type: 'callout',    label: 'Encadré',      icon: Info,       color: '#0369A1', group: 'structure',   mode: 'simple' },
@@ -187,6 +199,7 @@ export default function StudioConceptionFormation() {
   const [searchParams] = useSearchParams();
   const requestedPanel = searchParams.get('panel');
   const isNew = !courseId || courseId === 'new';
+  const creatorContext: 'professeur'|'structure'|'admin' = typeof window !== 'undefined' && window.location.pathname.includes('/structure/') ? 'structure' : typeof window !== 'undefined' && window.location.pathname.includes('/admin/') ? 'admin' : 'professeur';
 
   // État principal
   const [course, setCourse] = useState<Course>(EMPTY_COURSE);
@@ -218,8 +231,10 @@ export default function StudioConceptionFormation() {
   const [lastSave, setLastSave] = useState('');
   const [wordCount, setWordCount] = useState(0);
 
-  // Checklist
-  const [checklist, setChecklist] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
+  // Qualité
+  const [checklist, setChecklist] = useState<{ valid: boolean; errors: string[]; warnings: string[]; issues?: Array<{severity:'error'|'warning';message:string;target?:string;lesson_id?:string;module_id?:string}> } | null>(null);
+  const [qualityWritingLoading, setQualityWritingLoading] = useState(false);
+  const [qualityWritingSuggestions, setQualityWritingSuggestions] = useState<any[]>([]);
 
   // Historique
   const [logs, setLogs] = useState<any[]>([]);
@@ -235,6 +250,8 @@ export default function StudioConceptionFormation() {
   const [coverGenerating, setCoverGenerating] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [openingAssessmentPolicy, setOpeningAssessmentPolicy] = useState(false);
+  const [builderImportTarget, setBuilderImportTarget] = useState<{ type: 'module'|'lesson'|'block'; id: string } | null>(null);
+  const [quickBlockQuery, setQuickBlockQuery] = useState('');
 
   // Autosave ref
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -364,7 +381,6 @@ export default function StudioConceptionFormation() {
       setCurrentModule(newMod);
       setCurrentLesson(introLesson || null);
       setBlocks([]);
-      showToast('Module ajouté. Vous pouvez présenter le module avant les leçons.');
     }
   }
 
@@ -380,7 +396,6 @@ export default function StudioConceptionFormation() {
       setCurrentModule(mod);
       setCurrentLesson(newLesson);
       setBlocks([]);
-      showToast('Leçon ajoutée');
     }
   }
 
@@ -398,138 +413,55 @@ export default function StudioConceptionFormation() {
       setBlocks(bs => [...bs, data.block]);
       setSelectedBlock(data.block);
       setSelectedBlockDef(BLOCK_DEFS.find(d => d.type === blockType) || null);
-      showToast(`Bloc "${BLOCK_DEFS.find(d => d.type === blockType)?.label}" ajouté`);
     }
   }
 
   function getDefaultContent(type: string): Record<string, any> {
-    switch (type) {
-      case 'heading': return { text: 'Nouveau titre', level: 1, alignment: 'left' };
-      case 'subheading': return { text: 'Sous-titre', level: 2, alignment: 'left' };
-      case 'text': return { html: '<p>Saisissez votre texte ici...</p>' };
-      case 'separator': return { style: 'line' };
-      case 'callout': return { type: 'info', content: 'Information importante...' };
-      case 'remember': return { title: 'À retenir', points: [''] };
-      case 'objective': return { title: 'Objectif pédagogique', html: '<p>À la fin de cette leçon, vous serez capable de...</p>' };
-      case 'example': return { title: 'Exemple', html: '<p>Décrivez ici un exemple concret...</p>' };
-      case 'summary': return { title: 'Résumé', html: '<p>Dans cette leçon, vous avez appris...</p>' };
-      case 'image': return { url: '', alt: '', caption: '', source: 'upload' };
-      case 'video': return { url: '', thumbnail: '', eco_data: true };
-      case 'audio': return { url: '', description: '', transcription: '' };
-      case 'pdf': return { url: '', title: '', description: '', downloadable: true };
-      case 'word': return { url: '', title: '', description: '' };
-      case 'excel': return { url: '', title: '', sheet: '', preview_rows: [] };
-      case 'scorm': return { url: '', title: '', package_type: 'scorm_2004', duration_min: 0, duration_source: 'automatic', scorm_ready: false };
-      case 'vocabulary': return { title: 'Vocabulaire', items: [{ term: '', translation: '', example: '', audio_url: '' }] };
-      case 'dialogue': return { title: 'Dialogue', lines: [{ speaker: 'A', text: '', translation: '' }] };
-      case 'cloze': return { title: 'Texte à trous', text: '', answers: [], instructions: '' };
-      case 'dictation': return { title: 'Dictée', audio_url: '', transcript: '', instructions: '' };
-      case 'pronunciation': return { title: 'Prononciation', items: [{ text: '', phonetic: '', audio_url: '' }], instructions: '' };
-      case 'matching': return { title: 'Association', pairs: [{ left: '', right: '' }], instructions: '' };
-      case 'sentence_order': return { title: 'Remettre la phrase en ordre', sentence: '', tokens: [], instructions: '' };
-      case 'oral_response': return { title: 'Réponse orale', prompt: '', reference_audio_url: '', guidance: '' };
-      case 'listening_comprehension': return { title: 'Compréhension orale', audio_url: '', transcript: '', questions: [{ question: '', answer: '' }] };
-      case 'written_expression': return { title: 'Expression écrite', prompt: '', guidance: '', target_words: 120 };
-      case 'download': return { url: '', title: '', description: '' };
-      case 'qcm': return { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '' };
-      case 'true_false': return { statement: '', answer: true, explanation: '' };
-      case 'open_question': return { question: '', guidance: '', expected_answer: '', points: 10, required: true };
-      case 'exercise': return { title: 'Exercice', instructions: '', task: '', resources: [], accepted_types: ['pdf','doc','docx','xls','xlsx'], learner_upload_required: true, points: 20 };
-      case 'accordion': return { items: [{ id: uid(), title: 'Section 1', content: '' }] };
-      case 'flashcards': return { cards: [{ id: uid(), front: 'Recto', back: 'Verso' }] };
-      case 'interactive_table': return { headers: ['Colonne 1', 'Colonne 2', 'Colonne 3'], rows: [['', '', '']], style: 'table' };
-      case 'timeline': return { steps: [{ id: uid(), title: 'Étape 1', description: '' }] };
-      case 'columns': return { columns: [{ id: uid(), content: '' }, { id: uid(), content: '' }] };
-      case 'important': return { title: 'Important', html: '<p>Saisissez l’information importante...</p>' };
-      case 'case_study': return { title: 'Étude de cas', context: '', data: '', task: '', questions: [''] };
-      case 'definition': return { term: '', definition: '', example: '' };
-      case 'correction': return { title: 'Correction', html: '<p>Saisissez ici la correction détaillée...</p>', key_points: [] };
-      case 'bullet_list': return { items: [''] };
-      case 'numbered_list': return { items: [''] };
-      case 'quote': return { text: 'Citation ou témoignage', author: '' };
-      case 'code': return { language: 'text', code: '' };
-      case 'checklist': return { items: [{ id: uid(), text: 'Action à réaliser', checked: false }] };
-      case 'link_button': return { label: 'Ouvrir le lien', url: '', open_new_tab: true };
-      case 'embed': return { url: '', title: 'Contenu intégré' };
-      case 'gallery': return { images: [] };
-      case 'formula': return { latex: '' };
-      case 'chart': return { chart_type: 'bar', labels: ['A', 'B'], values: [0, 0] };
-      case 'assignment_upload': return { title: 'Travail à remettre', instructions: '', accepted_types: ['pdf', 'docx'], max_size_mb: 10 };
-      case 'rubric': return { criteria: [{ name: 'Critère 1', description: '', points: 10 }] };
-      default: return {};
-    }
+    return emptyBlockContent(type);
   }
 
-  function contentDefaultForLanguage(value: Record<string, any>, language: string): Record<string, any> {
-    if ((language || 'fr').toLowerCase() === 'fr') return value;
-    const frenchDefaults = new Set([
-      'Nouveau titre','Sous-titre','Saisissez votre texte ici...','Information importante...','À retenir','Objectif pédagogique','À la fin de cette leçon, vous serez capable de...',
-      'Exemple','Décrivez ici un exemple concret...','Résumé','Dans cette leçon, vous avez appris...','Vocabulaire','Dialogue','Texte à trous','Dictée','Prononciation','Association',
-      'Remettre la phrase en ordre','Réponse orale','Compréhension orale','Expression écrite','Exercice','Section 1','Recto','Verso','Colonne 1','Colonne 2','Colonne 3','Étape 1',
-      'Important','Saisissez l’information importante...','Étude de cas','Correction','Saisissez ici la correction détaillée...','Citation ou témoignage','Action à réaliser','Ouvrir le lien',
-      'Contenu intégré','Travail à remettre','Critère 1'
-    ]);
-    const clean = (input: any): any => {
-      if (Array.isArray(input)) return input.map(clean);
-      if (input && typeof input === 'object') return Object.fromEntries(Object.entries(input).map(([k,v]) => [k, clean(v)]));
-      if (typeof input === 'string' && frenchDefaults.has(input.replace(/^<p>|<\/p>$/g,''))) return input.startsWith('<p>') ? '<p></p>' : '';
-      return input;
-    };
-    return clean(value);
+  function contentDefaultForLanguage(value: Record<string, any>, _language: string): Record<string, any> {
+    // V3 : les exemples sont des placeholders UI, jamais du contenu réellement enregistré.
+    return value;
   }
 
-  // ─── Mettre à jour bloc ───────────────────────────────────
-  async function updateBlock(blockId: string, updates: Partial<Block>) {
-    setBlocks(bs => bs.map(b => b.id === blockId ? { ...b, ...updates } : b));
-    if (selectedBlock?.id === blockId) setSelectedBlock(b => b ? { ...b, ...updates } : b);
-    // Debounce save
-    await api('update_block', { block_id: blockId, ...updates });
-  }
 
-  // ─── Supprimer bloc ───────────────────────────────────────
+  // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string) {
     await api('delete_block', { block_id: blockId });
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
-    showToast('Bloc supprimé');
   }
 
-  // ─── Dupliquer bloc ───────────────────────────────────────
   async function duplicateBlock(block: Block) {
     if (!course?.id || !currentModule?.id || !currentLesson?.id) return;
     const data = await api('create_block', {
       course_id: course.id, module_id: currentModule.id, lesson_id: currentLesson.id,
-      block_type: block.block_type, content_json: block.content_json,
-      settings_json: block.settings_json, position: block.position + 1,
+      block_type: block.block_type, content_json: block.content_json, settings_json: block.settings_json,
+      interaction_mode: block.interaction_mode || 'content', assessment_scope: block.assessment_scope || null,
+      is_required: block.is_required ?? false, training_passing_score: block.training_passing_score ?? 80,
+      rag_enabled: block.rag_enabled ?? true, preview_allowed: block.preview_allowed ?? false,
+      position: block.position + 1,
     });
     if (data.success) {
       setBlocks(bs => {
         const idx = bs.findIndex(b => b.id === block.id);
-        const next = [...bs];
-        next.splice(idx + 1, 0, data.block);
-        return next;
+        const next = [...bs]; next.splice(idx + 1, 0, data.block); return next;
       });
-      showToast('Bloc dupliqué');
     }
   }
 
-  // ─── Drag & Drop ──────────────────────────────────────────
   const dragIdx = useRef<number | null>(null);
-
   function onDragStart(idx: number) { dragIdx.current = idx; }
   function onDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setDragOverIdx(idx); }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     e.preventDefault();
     if (dragIdx.current === null || dragIdx.current === targetIdx) { setDragOverIdx(null); return; }
-    const newBlocks = [...blocks];
-    const [moved] = newBlocks.splice(dragIdx.current, 1);
-    newBlocks.splice(targetIdx, 0, moved);
-    setBlocks(newBlocks);
-    setDragOverIdx(null);
-    dragIdx.current = null;
-    if (currentLesson?.id) {
-      await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: newBlocks.map(b => b.id) });
-    }
+    const next = [...blocks];
+    const [moved] = next.splice(dragIdx.current, 1);
+    next.splice(targetIdx, 0, moved);
+    setBlocks(next); setDragOverIdx(null); dragIdx.current = null;
+    if (currentLesson?.id) await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
   }
 
   async function moveBlock(index: number, delta: -1 | 1) {
@@ -540,14 +472,12 @@ export default function StudioConceptionFormation() {
     next.splice(target, 0, moved);
     setBlocks(next);
     await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
-    showToast(delta < 0 ? 'Bloc déplacé vers le haut' : 'Bloc déplacé vers le bas');
   }
 
   async function saveCurrentPage(goNext = false) {
     if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; }
     await api('autosave', { course_id: courseRef.current.id, title: courseRef.current.title, short_description: courseRef.current.short_description, word_count: wordCount });
     setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-    showToast('Page enregistrée');
     if (!goNext || !currentModule || !currentLesson) return;
     const modIndex = modules.findIndex(m => m.id === currentModule.id);
     const lessonIndex = (currentModule.lessons || []).findIndex(l => l.id === currentLesson.id);
@@ -668,13 +598,12 @@ export default function StudioConceptionFormation() {
         cover_image_prompt: course.cover_image_prompt,
         course_intro_title: course.course_intro_title,
         course_intro_summary: course.course_intro_summary,
-        word_count: wordCount, free_preview_mode: 'introduction',
+        word_count: wordCount, free_preview_mode: 'introduction', builder_version: 'v3', preview_first_lesson_enabled: true,
       });
       if (data.success) {
         setCourse(data.course);
         await api('ensure_assessments', { course_id: savedCourse.id });
         setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-        showToast('✅ Informations enregistrées. Vous pouvez construire l’introduction, les modules et les leçons.');
       } else showToast(data.message || data.error || 'Erreur de sauvegarde', 'error');
     } catch { showToast('Erreur de sauvegarde', 'error'); }
     finally { setSaving(false); }
@@ -694,7 +623,6 @@ export default function StudioConceptionFormation() {
       const url = `${SB}/storage/v1/object/public/course-images/${path}`;
       updateCourse('cover_image_url', url);
       await api('update_course', { course_id: c.id, cover_image_url: url });
-      showToast('Image de couverture ajoutée');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Erreur image', 'error'); }
   }
 
@@ -704,7 +632,7 @@ export default function StudioConceptionFormation() {
     if (!c.id) { const created = await ensureCourseCreated(); if (!created) return; c = created; }
     setCoverGenerating(true); setCoverCandidates([]);
     try {
-      const data = await api('ai_generate_cover_images', { course_id: c.id, prompt: coverPrompt, count: 3 });
+      const data = await api('ai_generate_cover_images', { course_id: c.id, prompt: coverPrompt, count: 2 });
       if (!data.success) throw new Error(data.message || data.error || 'Génération indisponible');
       setCoverCandidates(data.images || []);
       updateCourse('cover_image_prompt', coverPrompt);
@@ -713,6 +641,30 @@ export default function StudioConceptionFormation() {
       showToast(message === 'OPENAI_NOT_CONFIGURED' ? 'La génération d’images OpenAI n’est pas configurée.' : message, 'error');
     }
     finally { setCoverGenerating(false); }
+  }
+
+  async function goToQualityIssue(issue: { target?: string; lesson_id?: string; module_id?: string }) {
+    setShowChecklist(false);
+    if (issue.target === 'finalization') { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
+    if (issue.target === 'information') { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
+    const module = modules.find(m => m.id === issue.module_id || m.lessons?.some(l => l.id === issue.lesson_id));
+    if (!module) return;
+    if (issue.lesson_id) { const lesson = module.lessons?.find(l => l.id === issue.lesson_id); if (lesson) { await selectLesson(module, lesson); return; } }
+    setShowFinalization(false); setCurrentModule(module); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null);
+  }
+
+  async function runQualityWritingReview() {
+    if (!course?.id || qualityWritingLoading) return;
+    setQualityWritingLoading(true);
+    setQualityWritingSuggestions([]);
+    try {
+      const data = await api('quality_spelling_review', { course_id: course.id });
+      if (!data.success) throw new Error(data.message || data.error || 'Analyse rédactionnelle indisponible');
+      setQualityWritingSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+      if (!data.suggestions?.length) showToast('Aucune correction rédactionnelle importante détectée.', 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Analyse rédactionnelle indisponible', 'error');
+    } finally { setQualityWritingLoading(false); }
   }
 
   // ─── Soumettre ────────────────────────────────────────────
@@ -744,7 +696,7 @@ export default function StudioConceptionFormation() {
           showToast(data.message || 'La tarification a été transmise pour validation.', 'info');
         } else {
           setCourse(c => c ? { ...c, studio_status: 'pending_validation' } : c);
-          showToast('✅ Formation soumise pour validation');
+          showToast('Formation soumise pour validation');
         }
       } else {
         setShowSubmitReview(false);
@@ -812,6 +764,14 @@ export default function StudioConceptionFormation() {
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const visibleBlocks = BLOCK_DEFS;
 
+  const quickBlockMatches = quickBlockQuery.trim()
+    ? BLOCK_DEFS.filter(def => {
+        const query = quickBlockQuery.trim().toLowerCase().replace(/^\//, '');
+        const aliases = BLOCK_SEARCH_ALIASES[def.type] || [];
+        return def.label.toLowerCase().includes(query) || def.type.toLowerCase().includes(query) || aliases.some(alias => alias.toLowerCase().includes(query));
+      }).slice(0, 8)
+    : BLOCK_DEFS.filter(def => ESSENTIAL_BLOCK_TYPES.includes(def.type)).slice(0, 8);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen" style={{ background: '#F0F2F5' }}>
@@ -828,6 +788,22 @@ export default function StudioConceptionFormation() {
       />
 
       {/* Toast */}
+
+      {builderImportTarget && course.id && (
+        <BuilderImportDialog
+          open
+          onClose={() => setBuilderImportTarget(null)}
+          courseId={course.id}
+          targetType={builderImportTarget.type}
+          targetId={builderImportTarget.id}
+          creatorContext={creatorContext}
+          onApplied={async () => {
+            await reloadCourse(course.id);
+            if (currentLesson?.id) await loadBlocks(currentLesson.id);
+            showToast('Import appliqué au Builder.', 'success');
+          }}
+        />
+      )}
       {toast && (
         <div className="fixed top-4 right-4 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg border"
           style={{
@@ -1010,7 +986,7 @@ export default function StudioConceptionFormation() {
                       const replaceExisting = modules.length === 0 || window.confirm('Appliquer ce modèle remplacera les modules et leçons actuels. Continuer ?');
                       if (!replaceExisting) return;
                       const data = await api('apply_template', { course_id: course.id, template_key: tmpl.key, replace_existing: modules.length > 0 });
-                      if (data.success) { showToast('Modèle appliqué'); window.location.reload(); } else showToast('Impossible d’appliquer le modèle', 'error');
+                      if (data.success) { window.location.reload(); } else showToast('Impossible d’appliquer le modèle', 'error');
                     }}
                     className="w-full text-left p-3 rounded-lg border text-xs transition-all hover:shadow-sm disabled:opacity-40"
                     style={{ borderColor: course?.template_used === tmpl.key ? '#002050' : '#E4E7EC', background: 'white' }}>
@@ -1028,7 +1004,7 @@ export default function StudioConceptionFormation() {
           {/* Aide */}
           <div className="border-t p-3" style={{ borderColor: '#E4E7EC' }}>
             <p className="text-xs" style={{ color: '#9CA3AF' }}>
-              💡 Glissez un bloc dans la leçon pour construire votre contenu.
+              Glissez un bloc dans la leçon ou utilisez la recherche rapide avec /.
             </p>
           </div>
         </div>
@@ -1041,7 +1017,7 @@ export default function StudioConceptionFormation() {
             <button type="button" onClick={() => setShowPreview(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}><Eye size={14} /> Aperçu</button>
             <button type="button" onClick={() => setAdvancedMode(v => !v)} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}>{advancedMode ? 'Mode avancé' : 'Mode simple'}</button>
             <button type="button" onClick={loadHistory} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><History size={14} /> Historique</button>
-            <button type="button" onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Checklist</button>
+            <button type="button" onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Qualité</button>
           </div>
 
           {/* Navigation structure formation */}
@@ -1072,11 +1048,18 @@ export default function StudioConceptionFormation() {
                       </button>
                     ))}
                     {!mod.is_intro && (
-                      <button onClick={() => addLesson(mod)} disabled={locked}
-                        className="text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
-                        style={{ borderColor: '#BF8813', color: '#BF8813' }}>
-                        + Leçon
-                      </button>
+                      <>
+                        <button onClick={() => setBuilderImportTarget({ type: 'module', id: mod.id })} disabled={locked || !course.id}
+                          className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
+                          style={{ borderColor: '#E4E7EC', color: '#002050' }} title="Importer un document dans ce module">
+                          <UploadCloud size={10} /> Importer
+                        </button>
+                        <button onClick={() => addLesson(mod)} disabled={locked}
+                          className="text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
+                          style={{ borderColor: '#BF8813', color: '#BF8813' }}>
+                          + Leçon
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1086,32 +1069,19 @@ export default function StudioConceptionFormation() {
                 style={{ borderColor: '#002050', color: '#002050' }}>
                 <Plus size={11} /> Module
               </button>
-              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>
+              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion prête à construire');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion</button>
+              <button onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{background:'white',color:'#1E7A52',borderColor:'#1E7A52'}}><CheckCircle size={11}/> Qualité</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
-              {course.assessment_policy?.builder_configured_at && <button type="button" onClick={openAssessmentPolicy} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{borderColor:'#1E7A52',color:'#065F46',background:'#ECFDF5'}}><CheckCircle size={11}/> Évaluations configurées</button>}
             </div>
           </div>
 
-          {!course.assessment_policy?.builder_configured_at && (
-            <div className="flex-shrink-0 border-b bg-white px-3 py-3 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
-              <div className="mx-auto max-w-5xl">
-                <AssessmentRulesCard
-                  courseId={course.id || 'new'}
-                  durationMinutes={course.calculated_duration_minutes || 0}
-                  busy={openingAssessmentPolicy || creatingDraft}
-                  locked={locked}
-                  onConfigure={openAssessmentPolicy}
-                />
-              </div>
-            </div>
-          )}
 
           {/* Canevas */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && !showFinalization && (
-              <div className="max-w-2xl mx-auto space-y-4">
+              <div className="max-w-5xl mx-auto space-y-4">
                 <h2 className="text-lg font-bold" style={{ color: '#002050' }}>Informations de la formation</h2>
 
                 {course?.admin_comment && (
@@ -1128,8 +1098,8 @@ export default function StudioConceptionFormation() {
                   { field: 'long_description', label: 'Présentation détaillée *', placeholder: 'Présentez le contenu, l’approche pédagogique, les bénéfices et ce que l’apprenant saura faire...', type: 'textarea' },
                   { field: 'target_audience', label: 'À qui s’adresse cette formation ?', placeholder: 'Ex : débutants, entrepreneurs, responsables administratifs...', type: 'textarea' },
                   { field: 'category', label: 'Catégorie *', placeholder: '', type: 'select', options: [...CATEGORY_LABELS] },
-                  { field: 'level', label: 'Niveau *', placeholder: '', type: 'select', options: ['debutant', 'intermediaire', 'avance'] },
-                  { field: 'language', label: 'Langue principale du contenu *', placeholder: '', type: 'select', options: ['fr', 'en', 'es', 'pt', 'ar', 'zh', 'ru', 'de', 'bm'] },
+                  { field: 'level', label: 'Niveau *', placeholder: '', type: 'select', options: COURSE_LEVEL_OPTIONS },
+                  { field: 'language', label: 'Langue principale du contenu *', placeholder: '', type: 'select', options: COURSE_LANGUAGE_OPTIONS },
                   { field: 'prerequisites', label: 'Prérequis', placeholder: 'Aucun prérequis particulier...', type: 'textarea' },
                 ].map(({ field, label, placeholder, type, options }) => (
                   <div key={field} className="bg-white rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}>
@@ -1149,7 +1119,7 @@ export default function StudioConceptionFormation() {
                         onChange={e => updateCourse(field as keyof Course, e.target.value)}
                         disabled={locked}>
                         <option value="">Sélectionner...</option>
-                        {options?.map(o => <option key={o} value={o}>{o}</option>)}
+                        {options?.map((o: any) => { const value = typeof o === 'string' ? o : o.value; const text = typeof o === 'string' ? o : o.label; return <option key={value} value={value}>{text}</option>; })}
                       </select>
                     ) : (
                       <input className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]"
@@ -1170,8 +1140,8 @@ export default function StudioConceptionFormation() {
                 {course.course_type === 'language_learning' && <div className="bg-white rounded-xl border p-4 space-y-3" style={{ borderColor: '#BF8813' }}>
                   <p className="text-xs font-bold" style={{ color: '#92400E' }}>Paramètres linguistiques — CECRL / CEFR</p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-semibold">Langue d’enseignement<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.instruction_language || course.language || 'fr'} onChange={e=>updateCourse('instruction_language',e.target.value)} disabled={locked}>{['fr','en','es','pt','ar','zh','ru','de','bm'].map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select></label>
-                    <label className="text-xs font-semibold">Langue étudiée<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.target_language || ''} onChange={e=>updateCourse('target_language',e.target.value)} disabled={locked}><option value="">Sélectionner...</option>{['fr','en','es','pt','ar','zh','ru','de','bm'].map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Langue d’enseignement<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.instruction_language || course.language || 'fr'} onChange={e=>updateCourse('instruction_language',e.target.value)} disabled={locked}>{COURSE_LANGUAGE_OPTIONS.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
+                    <label className="text-xs font-semibold">Langue étudiée<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.target_language || ''} onChange={e=>updateCourse('target_language',e.target.value)} disabled={locked}><option value="">Sélectionner...</option>{COURSE_LANGUAGE_OPTIONS.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
                     <label className="text-xs font-semibold">Niveau de départ<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.cefr_start_level || ''} onChange={e=>updateCourse('cefr_start_level',e.target.value)} disabled={locked}><option value="">Non précisé</option>{['A1','A2','B1','B2','C1','C2'].map(x=><option key={x} value={x}>{x}</option>)}</select></label>
                     <label className="text-xs font-semibold">Niveau visé<select className="mt-1 w-full px-3 py-2 border rounded-lg font-normal" value={course.cefr_target_level || ''} onChange={e=>updateCourse('cefr_target_level',e.target.value)} disabled={locked}><option value="">Non précisé</option>{['A1','A2','B1','B2','C1','C2'].map(x=><option key={x} value={x}>{x}</option>)}</select></label>
                   </div>
@@ -1200,8 +1170,8 @@ export default function StudioConceptionFormation() {
                   <div className="rounded-xl p-3" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                     <div className="flex items-center gap-2 mb-2"><Sparkles size={15} style={{ color: '#BF8813' }} /><p className="text-xs font-semibold" style={{ color: '#92400E' }}>Générer des propositions avec l’IA</p></div>
                     <textarea rows={3} className="w-full px-3 py-2 border rounded-lg text-sm resize-none" style={{ borderColor: '#FDE68A' }} value={coverPrompt} onChange={e => setCoverPrompt(e.target.value)} placeholder="Décrivez le thème, le public et l’ambiance souhaitée. Ex : formation pratique en comptabilité SYSCOHADA pour entrepreneurs africains, style professionnel, sans personnage..." />
-                    <button type="button" onClick={generateCoverImages} disabled={coverGenerating || locked} className="mt-2 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{coverGenerating ? 'Génération en cours…' : 'Générer 3 images'}</button>
-                    {coverCandidates.length > 0 && <div className="grid grid-cols-3 gap-2 mt-3">{coverCandidates.map((url, i) => <button type="button" key={url} onClick={async () => { updateCourse('cover_image_url', url); if(course.id) await api('update_course',{course_id:course.id,cover_image_url:url,cover_image_prompt:coverPrompt}); showToast(`Image ${i+1} sélectionnée`); }} className="rounded-lg overflow-hidden border hover:ring-2" style={{ borderColor: course.cover_image_url===url ? '#BF8813' : '#E4E7EC' }}><img src={url} alt={`Proposition ${i+1}`} className="w-full aspect-video object-cover" /></button>)}</div>}
+                    <button type="button" onClick={generateCoverImages} disabled={coverGenerating || locked || Number(course.cover_ai_generation_count || 0) >= 2} className="mt-2 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{coverGenerating ? 'Génération en cours…' : Number(course.cover_ai_generation_count || 0) >= 2 ? 'Limite atteinte' : `Générer 2 images (${Number(course.cover_ai_generation_count || 0)}/2)`}</button>
+                    {coverCandidates.length > 0 && <div className="grid grid-cols-2 gap-2 mt-3">{coverCandidates.map((url, i) => <button type="button" key={url} onClick={async () => { updateCourse('cover_image_url', url); if(course.id) await api('update_course',{course_id:course.id,cover_image_url:url,cover_image_prompt:coverPrompt}); }} className="rounded-lg overflow-hidden border hover:ring-2" style={{ borderColor: course.cover_image_url===url ? '#BF8813' : '#E4E7EC' }}><img src={url} alt={`Proposition ${i+1}`} className="w-full aspect-video object-cover" /></button>)}</div>}
                   </div>
                 </div>
 
@@ -1241,10 +1211,11 @@ export default function StudioConceptionFormation() {
             {showFinalization && (
               <div className="max-w-4xl mx-auto space-y-4">
                 <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
-                  <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation avant soumission</h2>
-                  <p className="mt-1 text-sm text-gray-500">Configurez en dernier la commercialisation, la saisie assistée et les certifications, puis soumettez la formation.</p>
+                  <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation</h2>
+                  <p className="mt-1 text-sm text-gray-500">Configurez les évaluations et la réussite, la certification, la commercialisation et les contenus Live/Replays avant la vérification finale.</p>
+                  <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Évaluations, réussite et progression</button>
                 </div>
-                {course.id && <StudioQualityStatusPanel courseId={course.id} />}
+                {course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <StudioQualityStatusPanel courseId={course.id} />}
                 <CourseAdvancedSettingsPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
@@ -1256,7 +1227,7 @@ export default function StudioConceptionFormation() {
 
             {/* ── VUE LEÇON + BLOCS ────────────────────── */}
             {currentLesson && (
-              <div className="max-w-3xl mx-auto">
+              <div className="max-w-6xl mx-auto">
                 {/* Header leçon */}
                 <div className="bg-white rounded-xl border p-4 mb-4" style={{ borderColor: '#E4E7EC' }}>
                   <input className="text-xl font-bold bg-transparent border-none outline-none w-full"
@@ -1268,7 +1239,12 @@ export default function StudioConceptionFormation() {
                       setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => l.id === currentLesson.id ? { ...l, title: newTitle } : l) })));
                       await api('update_lesson', { lesson_id: currentLesson.id, title: newTitle });
                     }}
-                    disabled={locked} spellCheck lang="fr" />
+                    disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
+                  {!locked && course.id && (
+                    <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
+                      <UploadCloud size={13} /> Importer un document dans cette leçon
+                    </button>
+                  )}
                   {currentLesson.is_module_intro && (
                     <p className="text-xs mt-2" style={{ color: '#6B7280' }}>Cette présentation est facultative. Utilisez les blocs pour expliquer le module, ses objectifs, sa méthode ou ses ressources avant la première leçon.</p>
                   )}
@@ -1302,6 +1278,11 @@ export default function StudioConceptionFormation() {
                               )}
                             </div>
                             <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                              {course.id && ['text','heading','subtitle','objective','summary','example','definition','important','key_takeaway','callout','quote','list','table','code'].includes(block.block_type) && (
+                                <button title="Remplir ce bloc depuis un document" onClick={e => { e.stopPropagation(); setBuilderImportTarget({ type: 'block', id: block.id }); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
+                                  <UploadCloud size={13} style={{ color: '#BF8813' }} />
+                                </button>
+                              )}
                               <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); }} className="p-1 rounded hover:bg-gray-100">
                                 <Settings size={13} style={{ color: '#002050' }} />
                               </button>
@@ -1321,7 +1302,7 @@ export default function StudioConceptionFormation() {
                           </div>
 
                           {/* Contenu du bloc */}
-                          <div className="p-4">
+                          <div className="p-4" style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
                             <BlockPreview block={block} def={def} locked={locked} mediaAiBusy={mediaAiBusy}
                               defaultLanguage={course?.instruction_language || course?.language || 'fr'}
                               onGenerateTts={(text,targetPath)=>generateTtsForBlock(block,text,targetPath)}
@@ -1337,14 +1318,31 @@ export default function StudioConceptionFormation() {
                     );
                   })}
 
-                  {/* Zone de drop vide */}
                   {!locked && (
-                    <div className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all"
-                      style={{ borderColor: '#E4E7EC' }}
-                      onDragOver={e => { e.preventDefault(); }}
-                      onDrop={e => { e.preventDefault(); }}>
-                      <Plus size={20} className="mx-auto mb-2" style={{ color: '#9CA3AF' }} />
-                      <p className="text-sm" style={{ color: '#9CA3AF' }}>+ Glissez un bloc ici ou cliquez dans la bibliothèque</p>
+                    <div className="rounded-xl border bg-white p-3" style={{ borderColor: '#E4E7EC' }}>
+                      <div className="flex items-center gap-2">
+                        <Plus size={16} style={{ color: '#9CA3AF' }} />
+                        <input
+                          value={quickBlockQuery}
+                          onChange={(event) => setQuickBlockQuery(event.target.value)}
+                          onKeyDown={async (event) => {
+                            if (event.key === 'Enter' && quickBlockMatches[0]) {
+                              event.preventDefault();
+                              await addBlock(quickBlockMatches[0].type);
+                              setQuickBlockQuery('');
+                            }
+                          }}
+                          className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm outline-none"
+                          placeholder="Écrivez / puis le nom d’un bloc, ex. /image, /qcm, /tableau…"
+                          aria-label="Ajouter rapidement un bloc"
+                        />
+                        <button type="button" onClick={() => setMobileLibraryOpen(true)} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>Tous les blocs</button>
+                      </div>
+                      {(quickBlockQuery.trim() || blocks.length === 0) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {quickBlockMatches.map(def => <button key={def.type} type="button" onClick={async()=>{await addBlock(def.type);setQuickBlockQuery('');}} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#374151' }}><def.icon size={12} style={{ color: def.color }}/>{def.label}</button>)}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row justify-between gap-2 pt-3">
@@ -1392,7 +1390,7 @@ export default function StudioConceptionFormation() {
               <button onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-medium"
                 style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
-                <CheckCircle size={12} /> Checklist
+                <CheckCircle size={12} /> Qualité
               </button>
               {lastSave && (
                 <span className="flex items-center gap-1" style={{ color: '#1E7A52' }}>
@@ -1443,14 +1441,14 @@ export default function StudioConceptionFormation() {
                   <button onClick={runAI} disabled={aiLoading || !aiInput.trim()}
                     className="w-full py-2 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
                     style={{ background: '#002050' }}>
-                    {aiLoading ? '⏳ Génération...' : '✨ Générer'}
+                    {aiLoading ? 'Génération...' : 'Générer'}
                   </button>
                   {aiResult && (
                     <div className="space-y-2">
                       <div className="p-3 rounded-xl border text-sm" style={{ borderColor: '#E4E7EC', background: '#F8F9FA', color: '#374151', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' }}>
                         {aiResult}
                       </div>
-                      <button onClick={() => { navigator.clipboard?.writeText(aiResult); showToast('Copié'); }}
+                      <button onClick={() => { navigator.clipboard?.writeText(aiResult); }}
                         className="w-full py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: '#1E7A52', color: '#1E7A52' }}>
                         Copier le résultat
                       </button>
@@ -1518,7 +1516,6 @@ export default function StudioConceptionFormation() {
           onClose={closeAssessmentPolicy}
           onSaved={(policy) => {
             setCourse(current => current ? { ...current, assessment_policy: policy as Record<string, any> } : current);
-            showToast('Règles d’évaluation enregistrées. Le panneau a été fermé.');
           }}
         />
       )}
@@ -1548,38 +1545,46 @@ export default function StudioConceptionFormation() {
         </div>
       )}
 
-      {/* ── MODAL CHECKLIST ──────────────────────────── */}
+      {/* ── MODAL QUALITÉ ────────────────────────────── */}
       {showChecklist && checklist && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: '#E4E7EC' }}>
-              <h3 className="font-bold" style={{ color: '#002050' }}>Contrôle qualité Omnia</h3>
+              <h3 className="font-bold" style={{ color: '#002050' }}>Qualité de la formation</h3>
               <button onClick={() => setShowChecklist(false)}><X size={18} style={{ color: '#6B7280' }} /></button>
             </div>
             <div className="p-6 space-y-3">
               {checklist.errors.length === 0 && (
                 <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#D1FAE5' }}>
                   <CheckCircle size={16} style={{ color: '#065F46' }} />
-                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Conforme aux standards Omnia — prête à soumettre</p>
+                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Prête pour finalisation</p>
                 </div>
               )}
-              {checklist.errors.map((err, i) => (
-                <div key={i} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: '#FEE2E2' }}>
-                  <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
-                  <p className="text-sm" style={{ color: '#DC2626' }}>{err}</p>
-                </div>
-              ))}
-              {checklist.warnings.map((w, i) => (
-                <div key={i} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: '#FEF3C7' }}>
-                  <AlertTriangle size={14} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />
-                  <p className="text-sm" style={{ color: '#92400E' }}>{w}</p>
-                </div>
-              ))}
+              {(checklist.issues || [
+                ...checklist.errors.map(message => ({ severity: 'error' as const, message })),
+                ...checklist.warnings.map(message => ({ severity: 'warning' as const, message })),
+              ]).map((issue, i) => {
+                const isError = issue.severity === 'error';
+                return <div key={`${issue.severity}-${i}`} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: isError ? '#FEE2E2' : '#FEF3C7' }}>
+                  {isError ? <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} /> : <AlertTriangle size={14} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />}
+                  <div className="min-w-0 flex-1"><p className="text-sm" style={{ color: isError ? '#DC2626' : '#92400E' }}>{issue.message}</p>
+                    {issue.target && <button type="button" onClick={() => goToQualityIssue(issue)} className="mt-1 text-xs font-semibold underline" style={{ color: '#002050' }}>Corriger</button>}
+                  </div>
+                </div>;
+              })}
+              <div className="rounded-xl border p-3 text-sm" style={{ borderColor: '#E4E7EC', background: '#F9FAFB', color: '#4B5563' }}>
+                <p className="font-semibold" style={{ color: '#002050' }}>Orthographe et rédaction</p>
+                <p className="mt-1 text-xs">Le correcteur automatique reste actif pendant la saisie. Une analyse rédactionnelle globale peut être lancée ici sans bloquer la finalisation.</p>
+                <button type="button" onClick={runQualityWritingReview} disabled={!course.id || qualityWritingLoading} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: '#002050', color: '#002050' }}>
+                  {qualityWritingLoading ? 'Analyse en cours…' : 'Analyser l’orthographe et la rédaction'}
+                </button>
+                {qualityWritingSuggestions.length > 0 && <div className="mt-3 space-y-2">{qualityWritingSuggestions.map((item:any, index:number)=><div key={`${item.block_id||item.source||'text'}-${index}`} className="rounded-lg bg-white p-2 text-xs"><p className="font-semibold text-gray-800">{item.original || item.source || 'Suggestion'}</p>{item.replacement && <p className="mt-1 text-emerald-700">Proposition : {item.replacement}</p>}{item.reason && <p className="mt-1 text-gray-500">{item.reason}</p>}{item.lesson_id && <button type="button" onClick={() => goToQualityIssue({target:'lesson',lesson_id:item.lesson_id,module_id:item.module_id})} className="mt-1 font-semibold underline" style={{color:'#002050'}}>Voir le bloc</button>}</div>)}</div>}
+              </div>
               {checklist.valid && (
-                <button onClick={() => { setShowChecklist(false); submit(); }}
+                <button onClick={() => { setShowChecklist(false); setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); }}
                   className="w-full py-3 rounded-xl font-bold text-white mt-2"
                   style={{ background: '#BF8813' }}>
-                  Soumettre pour validation
+                  Continuer vers Finalisation
                 </button>
               )}
             </div>
@@ -1597,7 +1602,7 @@ export default function StudioConceptionFormation() {
               <button onClick={() => setShowRolePreview(false)}><X size={18} style={{ color: '#6B7280' }} /></button>
             </div>
             <div className="p-6 grid gap-3">
-              <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apercu`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Monitor size={18} style={{ color: '#BF8813' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Visiteur avant achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Fiche publique et introduction gratuite uniquement.</p></div></button>
+              <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apercu`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Monitor size={18} style={{ color: '#BF8813' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Visiteur avant achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Informations publiques, Introduction et première leçon sans activités évaluatives.</p></div></button>
               <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apprendre?preview=learner`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><Users size={18} style={{ color: '#002050' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Apprenant après achat</p><p className="text-xs" style={{ color: '#6B7280' }}>Lecteur complet avec modules, leçons et évaluations.</p></div></button>
               <button onClick={() => openInternalPreviewUrl(`/cours/${course.id}/apprendre?preview=admin`)} className="flex items-center gap-3 p-4 rounded-xl border text-left hover:bg-gray-50" style={{ borderColor: '#E4E7EC' }}><UserCheck size={18} style={{ color: '#1E7A52' }} /><div><p className="text-sm font-semibold" style={{ color: '#002050' }}>Contrôle créateur / Administration Omnia</p><p className="text-xs" style={{ color: '#6B7280' }}>Rendu complet destiné au contrôle qualité avant soumission.</p></div></button>
             </div>
@@ -1640,49 +1645,53 @@ function stripHtml(html: string) {
   return div.textContent || div.innerText || '';
 }
 
-function RichTextEditor({ value, onChange, locked, placeholder, headingLevel }: {
-  value: string; onChange: (html: string) => void; locked: boolean; placeholder: string; headingLevel?: 1 | 2;
+function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, language = 'fr' }: {
+  value: string; onChange: (html: string) => void; locked: boolean; placeholder: string; headingLevel?: 1 | 2; language?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [color, setColor] = useState('#002050');
-  const [fontSize, setFontSize] = useState(headingLevel === 1 ? '5' : headingLevel === 2 ? '4' : '3');
+  const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => { if (ref.current && ref.current.innerHTML !== value) ref.current.innerHTML = value || ''; }, [value]);
   function command(cmd: string, arg?: string) {
     ref.current?.focus();
     document.execCommand(cmd, false, arg);
     if (ref.current) onChange(ref.current.innerHTML);
+    window.setTimeout(updateSelectionToolbar, 0);
+  }
+  function updateSelectionToolbar() {
+    if (locked || !ref.current) return setSelectionToolbar(null);
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return setSelectionToolbar(null);
+    const range = selection.getRangeAt(0);
+    if (!ref.current.contains(range.commonAncestorContainer)) return setSelectionToolbar(null);
+    const rect = range.getBoundingClientRect();
+    const host = ref.current.getBoundingClientRect();
+    setSelectionToolbar({ left: Math.max(8, Math.min(host.width - 150, rect.left - host.left)), top: Math.max(4, rect.top - host.top - 38) });
+  }
+  function addLink() {
+    const url = window.prompt('Adresse du lien HTTPS');
+    if (!url) return;
+    if (!/^https:\/\//i.test(url.trim())) { window.alert('Utilisez une adresse HTTPS valide.'); return; }
+    command('createLink', url.trim());
   }
   return (
-    <div className="rounded-xl border overflow-hidden bg-white" style={{ borderColor: '#E4E7EC' }}>
-      {!locked && (
-        <div className="flex flex-wrap items-center gap-1 px-2 py-2 border-b" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
-          <select value={fontSize} onChange={e => { setFontSize(e.target.value); command('fontSize', e.target.value); }} className="text-xs border rounded px-1.5 py-1" aria-label="Taille du texte">
-            <option value="2">Petit</option><option value="3">Normal</option><option value="4">Grand</option><option value="5">Très grand</option><option value="6">Titre</option>
-          </select>
-          <select onChange={e => command('fontName', e.target.value)} className="text-xs border rounded px-1.5 py-1" aria-label="Police">
-            <option value="Inter">Inter</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option>
-          </select>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('bold')} className="px-2 py-1 text-xs font-bold rounded hover:bg-white">B</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('italic')} className="px-2 py-1 text-xs italic rounded hover:bg-white">I</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('underline')} className="px-2 py-1 text-xs underline rounded hover:bg-white">U</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('strikeThrough')} className="px-2 py-1 text-xs line-through rounded hover:bg-white">S</button>
-          <input type="color" value={color} onChange={e => { setColor(e.target.value); command('foreColor', e.target.value); }} className="w-7 h-7 rounded border p-0.5" title="Couleur du texte" />
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('removeFormat')} className="px-2 py-1 text-xs rounded hover:bg-white">Effacer le style</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('undo')} className="px-2 py-1 text-xs rounded hover:bg-white">↶</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('redo')} className="px-2 py-1 text-xs rounded hover:bg-white">↷</button>
+    <div className="relative rounded-xl border bg-white" style={{ borderColor: '#E4E7EC' }}>
+      {!locked && selectionToolbar && (
+        <div className="absolute z-20 flex items-center gap-1 rounded-lg border bg-white p-1 shadow-lg" style={{ left: selectionToolbar.left, top: selectionToolbar.top, borderColor: '#E4E7EC' }}>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('bold')} className="h-7 min-w-7 rounded px-2 text-xs font-bold hover:bg-slate-50" title="Gras">B</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('italic')} className="h-7 min-w-7 rounded px-2 text-xs italic hover:bg-slate-50" title="Italique">I</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={addLink} className="h-7 rounded px-2 text-xs font-semibold hover:bg-slate-50" title="Ajouter un lien">Lien</button>
         </div>
       )}
-      <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang="fr" data-placeholder={placeholder}
+      <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} data-placeholder={placeholder}
         onInput={() => ref.current && onChange(ref.current.innerHTML)}
+        onMouseUp={updateSelectionToolbar} onKeyUp={updateSelectionToolbar} onBlur={() => window.setTimeout(() => setSelectionToolbar(null), 120)}
         className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor`}
         style={{ color: headingLevel ? '#002050' : '#374151' }} />
-      {!locked && <div className="px-3 py-1.5 border-t text-[11px]" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>Correction automatique du navigateur activée. Pour une correction approfondie, utilisez « Corriger l’orthographe et la grammaire » dans l’Assistant IA.</div>}
     </div>
   );
 }
 
-
-function EditableItems({ items, ordered, locked, onChange, placeholder }: { items: string[]; ordered?: boolean; locked: boolean; onChange: (items: string[]) => void; placeholder: string }) {
+function EditableItems({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items: string[]; ordered?: boolean; locked: boolean; onChange: (items: string[]) => void; placeholder: string; language?: string }) {
   const list = items?.length ? items : [''];
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   function update(index: number, value: string) { const next=[...list]; next[index]=value; onChange(next); }
@@ -1690,7 +1699,7 @@ function EditableItems({ items, ordered, locked, onChange, placeholder }: { item
   function remove(index: number) { if(list.length===1){onChange(['']);return;} const next=list.filter((_,i)=>i!==index); onChange(next); setTimeout(()=>refs.current[Math.max(0,index-1)]?.focus(),0); }
   return <div className="space-y-2">{list.map((item,index)=><div key={index} className="flex items-start gap-2">
     <span className="mt-2 text-sm font-semibold min-w-[20px]" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
-    <input ref={el=>{refs.current[index]=el}} className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050]" style={{borderColor:'#E4E7EC'}} value={item} placeholder={placeholder} disabled={locked} spellCheck lang="fr"
+    <input ref={el=>{refs.current[index]=el}} className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050]" style={{borderColor:'#E4E7EC'}} value={item} placeholder={placeholder} disabled={locked} spellCheck lang={language}
       onChange={e=>update(index,e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addAfter(index)} if(e.key==='Backspace'&&!item){e.preventDefault();remove(index)}}}/>
     {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-1 p-1.5 rounded hover:bg-red-50" title="Supprimer la ligne"><X size={13} style={{color:'#DC2626'}}/></button>}
   </div>)}
@@ -1698,11 +1707,11 @@ function EditableItems({ items, ordered, locked, onChange, placeholder }: { item
   </div>
 }
 
-function PedagogicalEditor({ c, locked, onChange, kind }: { c: Record<string,any>; locked:boolean; onChange:(c:Record<string,any>)=>void; kind:string }) {
+function PedagogicalEditor({ c, locked, onChange, kind, language = 'fr' }: { c: Record<string,any>; locked:boolean; onChange:(c:Record<string,any>)=>void; kind:string; language?:string }) {
   const labels:Record<string,string>={objective:'Objectif pédagogique',example:'Exemple',summary:'Résumé',important:'Important',correction:'Correction'};
   return <div className="space-y-2 p-3 rounded-xl border" style={{borderColor:'#E4E7EC',background:'#FBFCFE'}}>
-    <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang="fr"/>
-    <RichTextEditor value={c.html||''} locked={locked} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
+    <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang={language}/>
+    <RichTextEditor value={c.html||''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
   </div>
 }
 
@@ -1737,11 +1746,11 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
   switch (block.block_type) {
     case 'heading': return (
       <RichTextEditor value={c.html || c.text || ''} locked={locked} headingLevel={1}
-        placeholder="Titre..." onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
+        placeholder="Titre..." language={defaultLanguage} onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'subheading': return (
       <RichTextEditor value={c.html || c.text || ''} locked={locked} headingLevel={2}
-        placeholder="Sous-titre..." onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
+        placeholder="Sous-titre..." language={defaultLanguage} onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'text': return (
       <RichTextEditor value={c.html || ''} locked={locked} placeholder="Saisissez votre texte..."
@@ -1789,7 +1798,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
         {!locked && String(c.cloudflare_stream_uid||'').trim() && <div className="rounded-lg border p-3 space-y-2" style={{borderColor:'#E4E7EC',background:'#F8FAFC'}}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <select className="px-3 py-2 rounded-lg border text-xs" style={{borderColor:'#E4E7EC'}} value={c.subtitle_target_language||defaultLanguage} onChange={e=>onChange({...c,subtitle_target_language:e.target.value})}>
-              <option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ru">Русский</option><option value="de">Deutsch</option>
+              <option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="pt">Portugais</option><option value="ar">Arabe</option><option value="zh">Chinois</option><option value="ru">Russe</option><option value="de">Allemand</option><option value="bm">Bambara</option>
             </select>
             <button type="button" onClick={()=>onGenerateSubtitles?.()} disabled={mediaAiBusy===`subtitle:${block.id}`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#002050'}}>{mediaAiBusy===`subtitle:${block.id}`?'Lancement…':'Générer les sous-titres'}</button>
           </div>
@@ -1857,19 +1866,21 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
     );
     case 'link_button': return <div className="grid gap-2 sm:grid-cols-2"><input className={inputCls} style={style} value={c.label||''} onChange={e=>onChange({...c,label:e.target.value})} placeholder="Libellé du bouton" disabled={locked}/><input className={inputCls} style={style} value={c.url||''} onChange={e=>onChange({...c,url:e.target.value})} placeholder="https://..." disabled={locked}/></div>;
     case 'accordion': return (
-      <div className="space-y-3">{(c.items||[]).map((item:any,i:number)=><div key={item.id||i} className="rounded-xl border p-3" style={style}><input className={inputCls} style={style} value={item.title||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,title:e.target.value};onChange({...c,items})}} placeholder={`Section ${i+1}`} disabled={locked}/><textarea className={`${inputCls} mt-2`} style={style} rows={3} value={item.content||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,content:e.target.value};onChange({...c,items})}} placeholder="Contenu" disabled={locked}/>{!locked&&<button type="button" className="mt-2 text-xs text-red-600" onClick={()=>onChange({...c,items:(c.items||[]).filter((_:any,index:number)=>index!==i)})}>Supprimer</button>}</div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,items:[...(c.items||[]),{id:crypto.randomUUID(),title:`Section ${(c.items||[]).length+1}`,content:''}]})}>+ Ajouter une section</button>}</div>
+      <div className="space-y-3">{(c.items||[]).map((item:any,i:number)=><div key={item.id||i} className="rounded-xl border p-3" style={style}><input className={inputCls} style={style} value={item.title||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,title:e.target.value};onChange({...c,items})}} placeholder={`Section ${i+1}`} disabled={locked}/><textarea className={`${inputCls} mt-2`} style={style} rows={3} value={item.content||''} onChange={e=>{const items=[...(c.items||[])];items[i]={...item,content:e.target.value};onChange({...c,items})}} placeholder="Contenu" disabled={locked}/>{!locked&&<button type="button" className="mt-2 text-xs text-red-600" onClick={()=>onChange({...c,items:(c.items||[]).filter((_:any,index:number)=>index!==i)})}>Supprimer</button>}</div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,items:[...(c.items||[]),{id:crypto.randomUUID(),title:'',content:''}]})}>+ Ajouter une section</button>}</div>
     );
     case 'flashcards': return (
       <div className="space-y-3">{(c.cards||[]).map((card:any,i:number)=><div key={card.id||i} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2" style={style}><textarea className={inputCls} style={style} rows={2} value={card.front||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,front:e.target.value};onChange({...c,cards})}} placeholder="Recto" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={card.back||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,back:e.target.value};onChange({...c,cards})}} placeholder="Verso" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,cards:[...(c.cards||[]),{id:crypto.randomUUID(),front:'',back:''}]})}>+ Ajouter une carte</button>}</div>
     );
     case 'interactive_table': return (
       <div className="space-y-2">
-        <input className={inputCls} style={style} value={(c.headers||[]).join(' | ')} onChange={e=>onChange({...c,headers:e.target.value.split('|').map((x:string)=>x.trim())})} placeholder="Colonnes séparées par |" disabled={locked}/>
+        <input className={inputCls} style={style} value={(c.headers||[]).join(' | ')} onChange={e=>onChange({...c,headers:e.target.value.split('|').map((x:string)=>x.trim()),training_column_indexes:(c.training_column_indexes||[]).filter((i:number)=>i<e.target.value.split('|').length)})} placeholder="Colonnes séparées par |" disabled={locked}/>
         <textarea className={inputCls} style={style} rows={5} value={(c.rows||[]).map((r:any[])=>r.join(' | ')).join('\n')} onChange={e=>onChange({...c,rows:e.target.value.split('\n').map((line:string)=>line.split('|').map(x=>x.trim()))})} placeholder={"Une ligne par rangée, cellules séparées par |\nValeur 1 | Valeur 2"} disabled={locked}/>
+        <select className={inputCls} style={style} value={c.mode||'explore'} onChange={e=>onChange({...c,mode:e.target.value})} disabled={locked}><option value="explore">Exploration / lecture</option><option value="training">Entraînement à compléter</option></select>
+        {c.mode==='training'&&<div className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-semibold text-[#002050]">Colonnes que l’apprenant doit compléter</p><div className="mt-2 flex flex-wrap gap-3">{(c.headers||[]).map((header:string,i:number)=><label key={i} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={(c.training_column_indexes||[]).includes(i)} onChange={e=>{const current=new Set<number>(c.training_column_indexes||[]);e.target.checked?current.add(i):current.delete(i);onChange({...c,training_column_indexes:[...current].sort((a,b)=>a-b)})}} disabled={locked}/><span>{header||`Colonne ${i+1}`}</span></label>)}</div></div>}
       </div>
     );
     case 'timeline': return (
-      <div className="space-y-2">{(c.steps||[]).map((step:any,i:number)=><div key={step.id||i} className="grid gap-2 sm:grid-cols-[180px_1fr]"><input className={inputCls} style={style} value={step.title||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,title:e.target.value};onChange({...c,steps})}} placeholder={`Étape ${i+1}`} disabled={locked}/><input className={inputCls} style={style} value={step.description||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,description:e.target.value};onChange({...c,steps})}} placeholder="Description" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,steps:[...(c.steps||[]),{id:crypto.randomUUID(),title:`Étape ${(c.steps||[]).length+1}`,description:''}]})}>+ Ajouter une étape</button>}</div>
+      <div className="space-y-2">{(c.steps||[]).map((step:any,i:number)=><div key={step.id||i} className="grid gap-2 sm:grid-cols-[180px_1fr]"><input className={inputCls} style={style} value={step.title||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,title:e.target.value};onChange({...c,steps})}} placeholder={`Étape ${i+1}`} disabled={locked}/><input className={inputCls} style={style} value={step.description||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,description:e.target.value};onChange({...c,steps})}} placeholder="Description" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,steps:[...(c.steps||[]),{id:crypto.randomUUID(),date:'',title:'',description:''}]})}>+ Ajouter une étape</button>}</div>
     );
     case 'columns': return <div className="grid gap-3 md:grid-cols-2">{(c.columns||[]).map((col:any,i:number)=><textarea key={col.id||i} className={inputCls} style={style} rows={5} value={col.content||''} onChange={e=>{const columns=[...(c.columns||[])];columns[i]={...col,content:e.target.value};onChange({...c,columns})}} placeholder={`Colonne ${i+1}`} disabled={locked}/>)}</div>;
     case 'code': return <div className="space-y-2"><input className={inputCls} style={style} value={c.language||'text'} onChange={e=>onChange({...c,language:e.target.value})} placeholder="Langage" disabled={locked}/><textarea className={`${inputCls} font-mono`} style={style} rows={8} value={c.code||''} onChange={e=>onChange({...c,code:e.target.value})} placeholder="Code..." disabled={locked}/></div>;
@@ -1881,7 +1892,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
     case 'chart': return <div className="space-y-2"><select className={inputCls} style={style} value={c.chart_type||'bar'} onChange={e=>onChange({...c,chart_type:e.target.value})} disabled={locked}><option value="bar">Barres</option><option value="line">Courbe</option><option value="pie">Camembert</option></select><input className={inputCls} style={style} value={(c.labels||[]).join(', ')} onChange={e=>onChange({...c,labels:e.target.value.split(',').map((x:string)=>x.trim())})} placeholder="Libellés séparés par des virgules" disabled={locked}/><input className={inputCls} style={style} value={(c.values||[]).join(', ')} onChange={e=>onChange({...c,values:e.target.value.split(',').map((x:string)=>Number(x.trim())||0)})} placeholder="Valeurs séparées par des virgules" disabled={locked}/></div>;
     case 'assignment_upload': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du travail" disabled={locked}/><textarea className={inputCls} style={style} rows={5} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes détaillées" disabled={locked}/><input type="number" min={1} className={inputCls} style={style} value={c.max_size_mb||10} onChange={e=>onChange({...c,max_size_mb:Math.max(1,Number(e.target.value)||10)})} disabled={locked}/></div>;
     case 'rubric': return (
-      <div className="space-y-2">{(c.criteria||[]).map((criterion:any,i:number)=><div key={i} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[180px_1fr_90px]" style={style}><input className={inputCls} style={style} value={criterion.name||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,name:e.target.value};onChange({...c,criteria})}} placeholder="Critère" disabled={locked}/><input className={inputCls} style={style} value={criterion.description||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,description:e.target.value};onChange({...c,criteria})}} placeholder="Description" disabled={locked}/><input type="number" min={0} className={inputCls} style={style} value={criterion.points||0} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,points:Number(e.target.value)||0};onChange({...c,criteria})}} disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,criteria:[...(c.criteria||[]),{name:`Critère ${(c.criteria||[]).length+1}`,description:'',points:10}]})}>+ Ajouter un critère</button>}</div>
+      <div className="space-y-2">{(c.criteria||[]).map((criterion:any,i:number)=><div key={i} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[180px_1fr_90px]" style={style}><input className={inputCls} style={style} value={criterion.name||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,name:e.target.value};onChange({...c,criteria})}} placeholder="Critère" disabled={locked}/><input className={inputCls} style={style} value={criterion.description||''} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,description:e.target.value};onChange({...c,criteria})}} placeholder="Description" disabled={locked}/><input type="number" min={0} className={inputCls} style={style} value={criterion.points||0} onChange={e=>{const criteria=[...(c.criteria||[])];criteria[i]={...criterion,points:Number(e.target.value)||0};onChange({...c,criteria})}} disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,criteria:[...(c.criteria||[]),{name:'',description:'',points:10}]})}>+ Ajouter un critère</button>}</div>
     );
 
     case 'dictation': case 'listening_comprehension': return <div className="space-y-2"><LanguageBlockEditor type={block.block_type} c={c} locked={locked} onChange={onChange}/>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>} {!locked&&<button type="button" onClick={()=>onGenerateTts?.(String(c.transcript||c.instructions||''),'audio_url')} disabled={mediaAiBusy===`tts:${block.id}:audio_url`} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}>Générer l’audio IA</button>}</div>;
@@ -1929,6 +1940,8 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const showOptionalBlockTitle = ['video','audio','pdf','word','excel','scorm','download','embed','assignment_upload','exercise','case_study','oral_response','listening_comprehension','written_expression'].includes(block.block_type);
+  const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
 
   // ── Upload fichier vers Supabase Storage ──────────────────
   async function handleFileUpload(file: File, blockType: string) {
@@ -2047,13 +2060,18 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
       setUploadProgress(100);
       if (!saveRes.success) throw new Error(saveRes.message || saveRes.error || 'Impossible d’enregistrer le fichier');
       const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
+      const nextContent = { ...c, url: secureUrl, title: c.title || file.name, provider: 'supabase_storage', cloudflare_stream_uid: null };
       onUpdate({
         file_url: secureUrl,
         file_name: file.name,
         file_size: file.size,
         file_mime: file.type,
-        content_json: { ...c, url: secureUrl, title: c.title || file.name, provider: 'supabase_storage', cloudflare_stream_uid: null },
+        content_json: nextContent,
       });
+      if (resourceRagCapable && block.rag_enabled === true) {
+        const rag = await api('resource_rag_update', { course_id: courseId, block_id: block.id, enabled: true });
+        if (rag.success && rag.block) onUpdate({ rag_enabled: true, content_json: rag.block.content_json || nextContent });
+      }
     } catch (err) {
       console.error('Upload error:', err);
     } finally {
@@ -2064,12 +2082,54 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
 
   return (
     <div className="space-y-4">
-      {/* Titre du bloc */}
-      <div>
-        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Titre du bloc</label>
+      {showOptionalBlockTitle && <div>
+        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Nom affiché (facultatif)</label>
         <input className={inputCls} style={style} value={block.title || ''}
-          onChange={e => onUpdate({ title: e.target.value })} placeholder="Titre optionnel..." disabled={locked} />
-      </div>
+          onChange={e => onUpdate({ title: e.target.value })} placeholder="Ex. Ressource complémentaire" disabled={locked} />
+      </div>}
+
+      {['heading','subheading','text','bullet_list','numbered_list','quote','callout','remember','objective','example','summary','important','definition','correction'].includes(block.block_type) && (
+        <details className="rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>
+          <summary className="cursor-pointer text-xs font-bold" style={{ color: '#002050' }}>Apparence</summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="text-xs font-semibold text-slate-600">Style de texte<select className={`${inputCls} mt-1`} style={style} value={String(block.settings_json?.font_scale || 'normal')} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),font_scale:e.target.value}})}><option value="small">Petit</option><option value="normal">Normal</option><option value="large">Grand</option></select></label>
+            <label className="text-xs font-semibold text-slate-600">Police<select className={`${inputCls} mt-1`} style={style} value={String(block.settings_json?.font_family || 'Inter')} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),font_family:e.target.value}})}><option value="Inter">Inter</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option></select></label>
+            <label className="text-xs font-semibold text-slate-600">Alignement<select className={`${inputCls} mt-1`} style={style} value={String(block.settings_json?.text_align || 'left')} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),text_align:e.target.value}})}><option value="left">Gauche</option><option value="center">Centre</option><option value="right">Droite</option></select></label>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">La mise en forme avancée reste dans Options afin de garder le bloc centré sur la rédaction.</p>
+        </details>
+      )}
+
+      {TRAINING_CAPABLE_BLOCKS.has(block.block_type) && (
+        <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: '#DDE5F0', background: '#F8FAFC' }}>
+          <div>
+            <p className="text-xs font-bold" style={{ color: '#002050' }}>Usage pédagogique</p>
+            <p className="mt-1 text-[11px] text-gray-500">Une activité d’entraînement produit une note d’entraînement distincte. Une activité d’évaluation alimente l’évaluation officielle choisie.</p>
+          </div>
+          <select className={inputCls} style={style} value={block.interaction_mode || 'training'} disabled={locked}
+            onChange={e => onUpdate({ interaction_mode: e.target.value as Block['interaction_mode'], assessment_scope: e.target.value === 'assessment' ? (block.assessment_scope || 'lesson') : null })}>
+            {['flashcards','interactive_table','checklist'].includes(block.block_type) && <option value="content">Contenu interactif</option>}
+            <option value="training">Entraînement</option>
+            {ASSESSMENT_CAPABLE_BLOCKS.has(block.block_type) && <option value="assessment">Évaluation officielle</option>}
+          </select>
+          {(block.interaction_mode || 'training') === 'training' && <>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.is_required === true} disabled={locked} onChange={e => onUpdate({ is_required: e.target.checked })}/> Obligatoire pour progresser</label>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Seuil de réussite de l’entraînement (%)</label>
+              <input type="number" min={1} max={100} className={inputCls} style={style} value={Number(block.training_passing_score || 80)} disabled={locked} onChange={e => onUpdate({ training_passing_score: Math.min(100, Math.max(1, Number(e.target.value) || 80)) })}/>
+            </div>
+          </>}
+          {block.interaction_mode === 'assessment' && <div>
+            <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Compte dans</label>
+            <select className={inputCls} style={style} value={block.assessment_scope || 'lesson'} disabled={locked} onChange={e => onUpdate({ assessment_scope: e.target.value as Block['assessment_scope'] })}>
+              <option value="lesson">Évaluation de la leçon</option>
+              <option value="module">Évaluation du module</option>
+              <option value="final">Évaluation finale</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">Le caractère obligatoire de l’évaluation et son seuil sont configurés dans Finalisation.</p>
+          </div>}
+        </div>
+      )}
 
       {/* Source image */}
       {block.block_type === 'image' && (
@@ -2256,6 +2316,20 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                 style={{ accentColor: '#002050' }} disabled={locked} />
               <span className="text-sm" style={{ color: '#374151' }}>Autoriser le téléchargement</span>
             </label>
+          )}
+          {resourceRagCapable && (
+            <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={block.rag_enabled === true} disabled={locked || !block.file_name}
+                  onChange={async e => { const enabled = e.target.checked; const data = await api('resource_rag_update', { course_id: courseId, block_id: block.id, enabled }); if (data.success) onUpdate({ rag_enabled: enabled, content_json: data.block?.content_json || c }); }}
+                  style={{ accentColor: '#002050', marginTop: 2 }} />
+                <span><span className="block text-sm font-medium text-gray-700">Accessible à l’Assistant pédagogique</span><span className="block text-[11px] text-gray-500">Le texte du document est extrait de façon privée pour le RAG. Le fichier lui-même reste protégé.</span></span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={block.preview_allowed === true} disabled={locked} onChange={e => onUpdate({ preview_allowed: e.target.checked })} style={{ accentColor: '#002050', marginTop: 2 }} />
+                <span><span className="block text-sm font-medium text-gray-700">Autoriser dans l’aperçu gratuit</span><span className="block text-[11px] text-gray-500">Désactivé par défaut pour protéger les ressources premium.</span></span>
+              </label>
+            </div>
           )}
         </div>
       ))}

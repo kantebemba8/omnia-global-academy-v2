@@ -15,6 +15,24 @@ function scormBridgeScript(runtime:any){
 }
 
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
+async function computeLessonGate(sb:any,userId:string,courseId:string,lessonId:string){
+ const {data:lesson}=await sb.from("course_lessons").select("id,duration_seconds").eq("id",lessonId).maybeSingle();
+ if(!lesson)return {completed:false,cpdReached:false,timeSpent:0,required:0,trainingPassed:false,trainingRequired:0,trainingPassedCount:0,assessmentPassed:false,assessmentRequired:false};
+ const {data:progress}=await sb.from("user_lesson_progress").select("time_spent_seconds,quiz_passed,is_completed").eq("user_id",userId).eq("lesson_id",lessonId).maybeSingle();
+ const timeSpent=Number(progress?.time_spent_seconds||0),required=Number(lesson.duration_seconds||0),cpdReached=required===0||timeSpent>=required;
+ const {data:trainingBlocks}=await sb.from("lesson_blocks").select("id,training_passing_score,is_required").eq("lesson_id",lessonId).eq("interaction_mode","training").eq("is_required",true);
+ const requiredIds=(trainingBlocks||[]).map((b:any)=>b.id);let passedIds=new Set<string>();
+ if(requiredIds.length){const {data:attempts}=await sb.from("training_attempts").select("block_id,passed").eq("user_id",userId).eq("lesson_id",lessonId).in("block_id",requiredIds).eq("passed",true);passedIds=new Set((attempts||[]).map((a:any)=>String(a.block_id)));}
+ const trainingRequired=requiredIds.length,trainingPassedCount=passedIds.size,trainingPassed=trainingRequired===0||trainingPassedCount===trainingRequired;
+ const {data:assessment}=await sb.from("course_assessments").select("id,required").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle();
+ let assessmentPassed=false;if(assessment){const {data:passed}=await sb.from("assessment_attempts").select("id").eq("assessment_id",assessment.id).eq("user_id",userId).eq("passed",true).limit(1).maybeSingle();assessmentPassed=!!passed;}
+ const assessmentRequired=Boolean(assessment?.required);
+ const completed=cpdReached&&trainingPassed&&(!assessmentRequired||assessmentPassed);
+ const quizPassed=!assessmentRequired||assessmentPassed;
+ if(completed!==Boolean(progress?.is_completed)||quizPassed!==Boolean(progress?.quiz_passed)){await sb.from("user_lesson_progress").upsert({user_id:userId,course_id:courseId,lesson_id:lessonId,time_spent_seconds:timeSpent,quiz_passed:quizPassed,is_completed:completed,completed_at:completed?new Date().toISOString():null,updated_at:new Date().toISOString()},{onConflict:"user_id,lesson_id"});}
+ return {completed,cpdReached,timeSpent,required,trainingPassed,trainingRequired,trainingPassedCount,assessmentPassed,assessmentRequired};
+}
+
 
 async function signNestedMediaRefs(sb:any,value:any,depth=0):Promise<any>{
  if(depth>5||value==null)return value;
@@ -67,7 +85,26 @@ Deno.serve(async(req:Request)=>{
  try{
   const {data:sess}=await getActiveOmniaSessionResult(sb, token);if(!sess)return json({error:"SESSION_INVALID"},401);const userId=sess.user_id;
 
-  if(req.method==="POST")return json({error:"METHOD_NOT_ALLOWED"},405);
+  if(req.method==="POST"){
+   const body=((req as any)._omniaBody||{}) as Record<string,any>;
+   const action=String(body.action||"");
+   const courseId=String(body.course_id||"").trim(),lessonId=String(body.lesson_id||"").trim(),blockId=String(body.block_id||"").trim();
+   if(!courseId||!lessonId||!blockId)return json({error:"course_id + lesson_id + block_id requis"},400);
+   const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(!enroll)return json({error:"NOT_ENROLLED"},403);
+   const {data:block}=await sb.from("lesson_blocks").select("id,lesson_id,interaction_mode,is_required,training_passing_score").eq("id",blockId).eq("lesson_id",lessonId).maybeSingle();if(!block)return json({error:"BLOCK_NOT_FOUND"},404);
+   if(action==="training_submit"){
+    if(block.interaction_mode!=="training")return json({error:"BLOCK_NOT_TRAINING"},409);
+    const score=Math.max(0,Math.min(100,Number(body.score||0)));const threshold=Math.max(0,Math.min(100,Number(block.training_passing_score??80)));const passed=score>=threshold;
+    const {data:last}=await sb.from("training_attempts").select("attempt_number").eq("user_id",userId).eq("block_id",blockId).order("attempt_number",{ascending:false}).limit(1).maybeSingle();
+    const {error}=await sb.from("training_attempts").insert({user_id:userId,course_id:courseId,lesson_id:lessonId,block_id:blockId,attempt_number:Number(last?.attempt_number||0)+1,score,passed,answer_json:body.answer??{},completed_at:new Date().toISOString()});if(error)throw error;
+    const gate=await computeLessonGate(sb,userId,courseId,lessonId);return json({success:true,score,threshold,passed,lesson_gate:gate});
+   }
+   if(action==="block_state_save"){
+    const state=body.state&&typeof body.state==="object"?body.state:{};const completed=Boolean(body.completed);const {error}=await sb.from("learner_block_state").upsert({user_id:userId,course_id:courseId,lesson_id:lessonId,block_id:blockId,state_json:state,completed,updated_at:new Date().toISOString()},{onConflict:"user_id,block_id"});if(error)throw error;
+    return json({success:true});
+   }
+   return json({error:"UNKNOWN_ACTION"},400);
+  }
   if(req.method!=="GET")return json({error:"METHOD_NOT_ALLOWED"},405);
   const lessonId=url.searchParams.get("lesson_id"),courseId=url.searchParams.get("course_id");if(!lessonId||!courseId)return json({error:"lesson_id + course_id requis"},400);
   const {data:enroll}=await sb.from("user_enrollments").select("id,enrolled_at").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(!enroll)return json({error:"NOT_ENROLLED"},403);
@@ -80,11 +117,10 @@ Deno.serve(async(req:Request)=>{
   if(cohortStart&&!Number.isNaN(cohortStart.getTime())&&cohortStart.getTime()>Date.now())return json({error:"COURSE_NOT_STARTED",message:"Cette cohorte n'a pas encore commencé.",available_at:cohortStart.toISOString()},403);
   if(design.drip_enabled===true){const interval=Math.max(1,Number(design.drip_interval_days||7));const moduleIndex=Math.max(0,(modules??[]).findIndex((m:any)=>m.id===lesson.module_id));const base=cohortStart&&!Number.isNaN(cohortStart.getTime())?cohortStart:new Date(enroll.enrolled_at||Date.now());const releaseAt=new Date(base.getTime()+moduleIndex*interval*86400000);if(releaseAt.getTime()>Date.now())return json({error:"LESSON_NOT_RELEASED",message:"Ce module sera disponible selon le calendrier de diffusion.",available_at:releaseAt.toISOString()},403);}
   if(design.require_sequential_progress!==false&&index>0){const previous=sorted[index-1];const {data:previousProgress}=await sb.from("user_lesson_progress").select("is_completed").eq("user_id",userId).eq("lesson_id",previous.id).maybeSingle();if(previousProgress?.is_completed!==true)return json({error:"LESSON_LOCKED",message:"Complétez la leçon précédente d'abord."},403);}
-  const {data:progress}=await sb.from("user_lesson_progress").select("time_spent_seconds,quiz_passed,is_completed").eq("user_id",userId).eq("lesson_id",lessonId).maybeSingle();const timeSpent=Number(progress?.time_spent_seconds||0),required=Number(lesson.duration_seconds||0),cpdReached=required===0||timeSpent>=required;
-  const {data:assessment}=await sb.from("course_assessments").select("id").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle();let assessmentPassed=false;if(assessment){const {data:passed}=await sb.from("assessment_attempts").select("id").eq("assessment_id",assessment.id).eq("user_id",userId).eq("passed",true).limit(1).maybeSingle();assessmentPassed=!!passed;}
-  const quizPassed=assessmentPassed||!!progress?.quiz_passed;const completed=cpdReached&&(!assessment||quizPassed);
-  if(completed!==!!progress?.is_completed||quizPassed!==!!progress?.quiz_passed){await sb.from("user_lesson_progress").upsert({user_id:userId,course_id:courseId,lesson_id:lessonId,time_spent_seconds:timeSpent,quiz_passed:quizPassed,is_completed:completed,completed_at:completed?new Date().toISOString():null,updated_at:new Date().toISOString()},{onConflict:"user_id,lesson_id"});}
-  let blocks:any[]=[];if(lesson.has_blocks&&Number(lesson.block_count||0)>0){const {data:raw}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,source_type,ai_generated").eq("lesson_id",lessonId).order("position");blocks=raw??[];blocks=await Promise.all(blocks.map(async(block:any)=>{const content={...(block.content_json||{})};
+  const gate=await computeLessonGate(sb,userId,courseId,lessonId);
+  const {timeSpent,required,cpdReached,completed,assessmentPassed,assessmentRequired,trainingPassed,trainingRequired,trainingPassedCount}=gate;
+  const quizPassed=!assessmentRequired||assessmentPassed;
+  let blocks:any[]=[];if(lesson.has_blocks&&Number(lesson.block_count||0)>0){const {data:raw}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,source_type,ai_generated,interaction_mode,is_required,training_passing_score,rag_enabled,source_provenance").eq("lesson_id",lessonId).order("position");blocks=raw??[];blocks=await Promise.all(blocks.map(async(block:any)=>{const content={...(block.content_json||{})};
    if(block.block_type==="scorm"&&content.scorm_ready===true&&content.scorm_package_prefix&&content.launch_path){
     const {data:existing}=await sb.from("scorm_runtime_sessions").select("*").eq("user_id",userId).eq("block_id",block.id).maybeSingle();
     const runtimeToken=existing?.runtime_token||crypto.randomUUID().replace(/-/g,"")+crypto.randomUUID().replace(/-/g,"");
@@ -94,8 +130,9 @@ Deno.serve(async(req:Request)=>{
     return {...block,file_url:launchUrl,content_json:{...content,url:launchUrl,runtime_session_token:runtime.runtime_token,runtime_state:runtime.cmi_data||{}},_signed:true,_scorm:true};
    }
    const streamUid=String(content.cloudflare_stream_uid||"").trim();if(streamUid){try{const signed=await signedStreamManifest(streamUid,900);const nested=await signNestedMediaRefs(sb,content);return {...block,file_url:signed.iframe_url,content_json:{...nested,url:signed.iframe_url,provider:"cloudflare_stream"},_signed:true,_stream:true};}catch{const nested=await signNestedMediaRefs(sb,content);return {...block,file_url:null,content_json:{...nested,url:null,provider:"cloudflare_stream"},_signed:false,_stream:true};}}const signedContent=await signNestedMediaRefs(sb,content);const bucket=String(block.bucket_name||content.bucket||inferBucket(block.block_type));if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return {...block,content_json:signedContent};const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:signedContent};const signedUrl=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);if(!signedUrl)return {...block,file_url:null,content_json:signedContent};return {...block,file_url:signedUrl,content_json:{...signedContent,url:signedUrl},_signed:true};}));}
+  const blockIds=blocks.map((b:any)=>b.id);let blockStates:any[]=[];let latestTraining:any[]=[];if(blockIds.length){const statesRes=await sb.from("learner_block_state").select("block_id,state_json,completed,updated_at").eq("user_id",userId).eq("lesson_id",lessonId).in("block_id",blockIds);blockStates=statesRes.data||[];const attemptsRes=await sb.from("training_attempts").select("block_id,attempt_number,score,passed,completed_at").eq("user_id",userId).eq("lesson_id",lessonId).in("block_id",blockIds).order("attempt_number",{ascending:false});const seen=new Set<string>();for(const a of attemptsRes.data||[]){if(!seen.has(String(a.block_id))){seen.add(String(a.block_id));latestTraining.push(a);}}}
   const lessonForResponse:any={...lesson,content_type:lesson.content_type||(lesson.has_blocks?"blocks":"text")};for(const field of ["video_url","audio_url"]){const raw=lessonForResponse[field];const locator=parseStorageLocator(raw);if(locator&&PRIVATE_COURSE_BUCKET_SET.has(locator.bucket))lessonForResponse[field]=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);}
-  return json({lesson:lessonForResponse,blocks,progress:{time_spent_seconds:timeSpent,quiz_passed:quizPassed,is_completed:completed},required_seconds:required,cpd_time_reached:cpdReached,questions:[],next_lesson_id:index<sorted.length-1?sorted[index+1].id:null});
+  return json({lesson:lessonForResponse,blocks,progress:{time_spent_seconds:timeSpent,quiz_passed:quizPassed,is_completed:completed},required_seconds:required,cpd_time_reached:cpdReached,training:{required_count:trainingRequired,passed_count:trainingPassedCount,passed:trainingPassed,latest_attempts:latestTraining},block_states:blockStates,questions:[],next_lesson_id:index<sorted.length-1?sorted[index+1].id:null});
  }catch(error){console.error("lesson-content",error);return json({error:"SERVER_ERROR",message:(error as Error).message},500);}
 });
 function inferBucket(type:string){switch(type){case"video":return"course-videos";case"audio":return"course-audios";case"pdf":case"word":return"course-documents";case"excel":return"course-excel";case"scorm":return"course-scorm";default:return"course-resources";}}

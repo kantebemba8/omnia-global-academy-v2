@@ -39,7 +39,7 @@ const STUDIO_STATUS: Record<string, { label: string; color: string; bg: string; 
 };
 
 const LEVEL_LABELS: Record<string, string> = {
-  debutant: 'Débutant', intermediaire: 'Intermédiaire', avance: 'Avancé',
+  debutant: 'Débutant', intermediaire: 'Intermédiaire', avance: 'Avancé', expert: 'Expert',
 };
 
 export default function AdminMesFormations() {

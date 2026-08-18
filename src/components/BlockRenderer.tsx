@@ -2,14 +2,18 @@ import { useState } from 'react';
 import {
   Star, Info, AlertTriangle, Lightbulb, BookOpen, CheckCircle,
   Download, Play, FileText, Table, Layers, ChevronDown, ChevronUp,
-  RotateCcw, Check, X, WifiOff
+  RotateCcw, Check, X, WifiOff, Mic, Square
 } from 'lucide-react';
 import { ScormPlayer } from './ScormPlayer';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { canonicalizeBlockContent } from '../lib/courseBuilderV3';
 
 interface Block {
   id: string;
   block_type: string;
   position: number;
+  interaction_mode?: 'content' | 'training' | 'assessment';
+  training_passing_score?: number;
   title?: string;
   content_json: Record<string, any>;
   settings_json?: Record<string, any>;
@@ -22,6 +26,9 @@ interface Block {
 interface BlockRendererProps {
   block: Block;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
+  onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
+  learnerState?: Record<string, any>;
+  onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
 }
 
@@ -35,8 +42,8 @@ function fmtSize(bytes?: number) {
 // ══════════════════════════════════════════════════════════════
 // BLOCK RENDERER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
-export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRendererProps) {
-  const c = block.content_json;
+export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerState, onStateChange, isOnline = true }: BlockRendererProps) {
+  const c = canonicalizeBlockContent(block.block_type, block.content_json);
   const onlineOnlyTypes = new Set(['video', 'audio', 'pdf', 'word', 'download', 'excel', 'scorm', 'embed']);
   if (!isOnline && onlineOnlyTypes.has(block.block_type)) {
     return (
@@ -287,47 +294,40 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
     case 'dialogue':
       return <div className="my-4 space-y-2">{(c.lines||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><span className="text-xs font-bold text-[#BF8813]">{x.speaker||`#${i+1}`}</span><p className="mt-1 text-sm font-semibold text-[#002050]">{x.text}</p>{x.translation&&<p className="mt-1 text-xs text-slate-500">{x.translation}</p>}</div>)}</div>;
     case 'cloze':
-      return <ClozeBlock c={c}/>;
+      return <ClozeBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'matching':
-      return <MatchingBlock c={c}/>;
+      return <MatchingBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'sentence_order':
-      return <SentenceOrderBlock c={c}/>;
+      return <SentenceOrderBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'dictation':
-      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details></div>;
+      return <DictationTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'pronunciation':
-      return <div className="my-4 space-y-3">{(c.items||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{x.text}</p>{x.phonetic&&<p className="text-xs text-slate-500">{x.phonetic}</p>}{x.audio_url&&<audio className="mt-2 w-full" controls src={x.audio_url}/>}<p className="mt-2 text-xs text-slate-500">Écoutez puis répétez à voix haute.</p></div>)}</div>;
+      return <SelfAssessedOralTraining title={c.title || 'Prononciation'} prompt={c.instructions || 'Écoutez puis répétez les éléments à voix haute.'} audios={(c.items||[]).map((x:any)=>({label:x.text,phonetic:x.phonetic,url:x.audio_url}))} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'oral_response':
-      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.prompt}</p>{c.reference_audio_url&&<audio className="mt-3 w-full" controls src={c.reference_audio_url}/>}<p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Entraînement oral dans la leçon. Lorsqu’une remise audio est exigée, elle est créée dans l’évaluation formelle de la leçon afin d’être enregistrée et corrigée.</p></div>;
+      return <SelfAssessedOralTraining title="Réponse orale" prompt={c.prompt || ''} audios={c.reference_audio_url?[{label:'Audio de référence',url:c.reference_audio_url}]:[]} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'listening_comprehension':
-      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{(c.questions||[]).map((q:any,i:number)=><label key={i} className="block text-sm font-medium text-[#002050]">{q.question}<input className="mt-1 w-full rounded-lg border p-2 font-normal"/></label>)}</div></div>;
+      return <ListeningTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'written_expression':
-      return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.prompt}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea className="mt-3 w-full rounded-lg border p-3 text-sm" rows={7} placeholder={`Votre réponse (~${c.target_words||120} mots)…`}/></div>;
+      return <WrittenTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
 
     case 'qcm':
-      return <QcmBlock block={block} onAnswer={onQuizAnswer} />;
+      return <QcmBlock block={{...block, content_json:c}} onAnswer={(id,a,correct)=>{onQuizAnswer?.(id,a,correct);onTrainingResult?.(id,correct?100:0,a,correct);}} />;
 
     case 'true_false':
-      return <TrueFalseBlock block={block} onAnswer={onQuizAnswer} />;
+      return <TrueFalseBlock block={{...block, content_json:c}} onAnswer={(id,a,correct)=>{onQuizAnswer?.(id,a,correct);onTrainingResult?.(id,correct?100:0,a,correct);}} />;
 
     case 'open_question':
-      return (
-        <div className="p-5 rounded-xl my-4 border" style={{ borderColor: '#E4E7EC' }}>
-          <p className="font-semibold mb-3" style={{ color: '#002050' }}>{c.question || ''}</p>
-          {c.guidance && <p className="text-xs mb-2" style={{ color: '#6B7280' }}>{c.guidance}</p>}
-          <textarea className="w-full px-3 py-2.5 border rounded-lg text-sm resize-none focus:outline-none"
-            style={{ borderColor: '#E4E7EC' }} rows={4} placeholder="Votre réponse..." />
-        </div>
-      );
+      return <OpenQuestionTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
 
     // ── AVANCÉS ────────────────────────────────────────────────
     case 'accordion':
       return <AccordionBlock items={c.items || []} />;
 
     case 'flashcards':
-      return <FlashcardsBlock cards={c.cards || []} />;
+      return <FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},score>=Number((block as any).training_passing_score||80))} />;
 
     case 'interactive_table':
-      return <InteractiveTableBlock headers={c.headers || []} rows={c.rows || []} style={c.style} />;
+      return <InteractiveTableBlock headers={c.headers || []} rows={c.rows || []} style={c.style} training={block.interaction_mode==='training'||c.mode==='training'} trainingColumns={Array.isArray(c.training_column_indexes)?c.training_column_indexes:[]} threshold={Number(block.training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)} />;
 
     case 'timeline':
       return (
@@ -350,7 +350,7 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
 
     case 'columns':
       return (
-        <div className="grid gap-4 my-4" style={{ gridTemplateColumns: `repeat(${(c.columns || []).length}, 1fr)` }}>
+        <div className={`grid gap-4 my-4 ${(c.columns||[]).length===2?'md:grid-cols-2':(c.columns||[]).length>=3?'md:grid-cols-3':''}`}>
           {(c.columns || []).map((col: any, i: number) => (
             <div key={col.id || i} className="p-4 rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
               <div className="text-sm" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: col.content || '' }} />
@@ -369,7 +369,7 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
     case 'code':
       return <pre className="overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100"><code>{c.code || ''}</code></pre>;
     case 'checklist':
-      return <div className="space-y-2">{(c.items || []).map((x: any, i: number) => <label key={x.id || i} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!x.checked} readOnly /> <span>{x.text}</span></label>)}</div>;
+      return <ChecklistBlock items={c.items || []} initialState={learnerState || {}} onChange={(state,completed)=>{onStateChange?.(block.id,state,completed); if((block as any).interaction_mode==='training'){const total=(c.items||[]).filter((x:any)=>x.required!==false).length||1; const done=(c.items||[]).filter((x:any,i:number)=>x.required!==false&&state[String(x.id||i)]).length; const score=Math.round(done/total*100); onTrainingResult?.(block.id,score,state,completed);}}}/>;
     case 'link_button':
       return <a href={c.url || '#'} target={c.open_new_tab ? '_blank' : undefined} rel="noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a>;
     case 'embed':
@@ -377,9 +377,9 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
     case 'gallery':
       return <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{(c.images || []).map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-36 w-full rounded-lg object-cover" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div>;
     case 'formula':
-      return <div className="rounded-xl border bg-white p-4 text-center font-mono text-lg" style={{ borderColor: '#E4E7EC' }}>{c.latex || 'Formule non renseignée'}</div>;
+      return <MathFormula latex={c.latex || ''} explanation={c.explanation || ''} />;
     case 'chart':
-      return <div className="space-y-2 rounded-xl border p-4" style={{ borderColor: '#E4E7EC' }}><p className="text-sm font-semibold">Graphique</p>{(c.labels || []).map((label: string, i: number) => <div key={i}><div className="mb-1 flex justify-between text-xs"><span>{label}</span><span>{Number(c.values?.[i] || 0)}</span></div><div className="h-2 rounded bg-gray-100"><div className="h-2 rounded" style={{ width: `${Math.min(100, Math.max(0, Number(c.values?.[i] || 0)))}%`, background: '#002050' }} /></div></div>)}</div>;
+      return <ChartBlock c={c} />;
     case 'assignment_upload':
       return <div className="rounded-xl border border-dashed p-4"><p className="font-semibold" style={{ color: '#002050' }}>{c.title || 'Travail à remettre'}</p><p className="mt-1 text-sm text-gray-600">{c.instructions || ''}</p><p className="mt-2 text-xs text-gray-500">Formats : {(c.accepted_types || []).join(', ')} · maximum {c.max_size_mb || 10} Mo</p></div>;
     case 'rubric':
@@ -393,11 +393,38 @@ export function BlockRenderer({ block, onQuizAnswer, isOnline = true }: BlockRen
 // ─── Sous-composants ──────────────────────────────────────────
 
 
-function normAnswer(value:unknown){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,' ')}
-function ClozeBlock({c}:{c:Record<string,any>}){const [values,setValues]=useState<string[]>([]),[checked,setChecked]=useState(false);const parts=String(c.text||'').split('____'),answers=Array.isArray(c.answers)?c.answers:[];const ok=parts.length>1&&parts.length-1===answers.length&&answers.every((a:any,i:number)=>normAnswer(a)===normAnswer(values[i]));return <div className="my-4 rounded-xl border p-4 text-sm leading-8" style={{borderColor:'#E4E7EC'}}>{parts.map((part:string,i:number)=><span key={i}>{part}{i<parts.length-1&&<input className="mx-1 inline-block w-32 rounded border px-2 py-1" value={values[i]||''} onChange={e=>{const v=[...values];v[i]=e.target.value;setValues(v);setChecked(false)}}/>}</span>)}<div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Vérifier</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
-function MatchingBlock({c}:{c:Record<string,any>}){const pairs=Array.isArray(c.pairs)?c.pairs:[],choices=pairs.map((x:any)=>String(x.right||''));const [answers,setAnswers]=useState<string[]>([]),[checked,setChecked]=useState(false);const ok=pairs.length>0&&pairs.every((x:any,i:number)=>normAnswer(x.right)===normAnswer(answers[i]));return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{pairs.map((x:any,i:number)=><label key={i} className="grid gap-2 text-sm sm:grid-cols-2 sm:items-center"><strong className="text-[#002050]">{x.left}</strong><select className="rounded-lg border p-2" value={answers[i]||''} onChange={e=>{const a=[...answers];a[i]=e.target.value;setAnswers(a);setChecked(false)}}><option value="">Associer…</option>{choices.map((v:string,j:number)=><option key={j} value={v}>{v}</option>)}</select></label>)}</div><div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Vérifier</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
-function SentenceOrderBlock({c}:{c:Record<string,any>}){const source=(Array.isArray(c.tokens)&&c.tokens.length?c.tokens:String(c.sentence||'').split(/\s+/).filter(Boolean)).map(String);const [remaining,setRemaining]=useState<string[]>(()=>[...source].sort(()=>Math.random()-0.5)),[chosen,setChosen]=useState<string[]>([]),[checked,setChecked]=useState(false);const pick=(i:number)=>{const t=remaining[i];setRemaining(v=>v.filter((_,j)=>j!==i));setChosen(v=>[...v,t]);setChecked(false)};const reset=()=>{setRemaining([...source].sort(()=>Math.random()-0.5));setChosen([]);setChecked(false)};const ok=normAnswer(chosen.join(' '))===normAnswer(c.sentence||source.join(' '));return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="mb-2 text-xs text-slate-500">Remettez la phrase dans le bon ordre :</p><div className="min-h-10 rounded-lg bg-slate-50 p-2 text-sm">{chosen.join(' ')||'…'}</div><div className="mt-3 flex flex-wrap gap-2">{remaining.map((x,i)=><button type="button" key={`${x}-${i}`} onClick={()=>pick(i)} className="rounded-full bg-slate-100 px-3 py-1 text-sm">{x}</button>)}</div><div className="mt-3 flex items-center gap-2"><button type="button" onClick={()=>setChecked(true)} disabled={remaining.length>0} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button><button type="button" onClick={reset} className="text-xs font-semibold text-slate-600">Recommencer</button>{checked&&<span className={`text-xs font-semibold ${ok?'text-emerald-700':'text-red-700'}`}>{ok?'Correct':'À revoir'}</span>}</div></div>}
 
+function similarityScore(expected:string,actual:string){const a=normAnswer(expected),b=normAnswer(actual);if(!a||!b)return 0;const aw=new Set(a.split(' ').filter(Boolean)),bw=new Set(b.split(' ').filter(Boolean));const common=[...aw].filter(x=>bw.has(x)).length;const union=new Set([...aw,...bw]).size||1;const lexical=Math.round(common/union*100);const lengthRatio=Math.round(Math.min(a.length,b.length)/Math.max(a.length,b.length)*100);return Math.round(lexical*.75+lengthRatio*.25)}
+function DictationTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){const [value,setValue]=useState(''),[score,setScore]=useState<number|null>(null);const verify=()=>{const s=similarityScore(String(c.transcript||''),value);setScore(s);onResult?.(s,{text:value},s>=threshold)};return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><button type="button" onClick={verify} disabled={!value.trim()||!String(c.transcript||'').trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<div className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</div>}{score!==null&&<details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details>}</div>}
+function SelfAssessedOralTraining({title,prompt,audios,threshold,onResult}:{title:string;prompt:string;audios:Array<{label?:string;phonetic?:string;url?:string}>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const [score,setScore]=useState<number|null>(null);
+  const [recording,setRecording]=useState(false);
+  const [audioUrl,setAudioUrl]=useState('');
+  const recorderRef=useState<{recorder:MediaRecorder|null;stream:MediaStream|null;chunks:Blob[]}>({recorder:null,stream:null,chunks:[]})[0];
+  const startRecording=async()=>{
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const recorder=new MediaRecorder(stream);recorderRef.stream=stream;recorderRef.recorder=recorder;recorderRef.chunks=[];
+      recorder.ondataavailable=e=>{if(e.data.size)recorderRef.chunks.push(e.data)};
+      recorder.onstop=()=>{const blob=new Blob(recorderRef.chunks,{type:recorder.mimeType||'audio/webm'});if(audioUrl)URL.revokeObjectURL(audioUrl);setAudioUrl(URL.createObjectURL(blob));recorderRef.stream?.getTracks().forEach(t=>t.stop());recorderRef.stream=null;setRecording(false)};
+      recorder.start();setRecording(true);
+    }catch{setRecording(false)}
+  };
+  const stopRecording=()=>{if(recorderRef.recorder&&recorderRef.recorder.state!=='inactive')recorderRef.recorder.stop()};
+  const choose=(value:number)=>{setScore(value);onResult?.(value,{self_assessment:value,recorded:Boolean(audioUrl)},value>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
+    <p className="font-semibold text-[#002050]">{title}</p>{prompt&&<p className="mt-1 text-sm text-slate-600">{prompt}</p>}
+    {audios.map((x,i)=><div key={i} className="mt-3"><div className="text-xs font-semibold text-slate-600">{x.label}</div>{x.phonetic&&<div className="text-xs text-slate-400">{x.phonetic}</div>}{x.url&&<audio className="mt-1 w-full" controls src={x.url}/>}</div>)}
+    <div className="mt-4 rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-[#002050]">Enregistrez-vous puis réécoutez votre réponse</p><div className="mt-2 flex flex-wrap items-center gap-2">{!recording?<button type="button" onClick={startRecording} className="inline-flex items-center gap-2 rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white"><Mic size={14}/>Enregistrer</button>:<button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white"><Square size={12}/>Arrêter</button>}{audioUrl&&<audio controls src={audioUrl} className="h-9 max-w-full"/>}</div></div>
+    <p className="mt-3 text-xs text-slate-500">Lorsque l’analyse automatique n’est pas suffisamment fiable pour la langue, Omnia conserve une auto-évaluation explicite plutôt qu’une fausse note automatique.</p>
+    <div className="mt-3 flex gap-2"><button type="button" onClick={()=>choose(100)} disabled={!audioUrl} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Maîtrisé</button><button type="button" onClick={()=>choose(0)} disabled={!audioUrl} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40">À retravailler</button></div>
+    {score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}%</p>}
+  </div>;
+}
+
+function MathFormula({latex,explanation}:{latex:string;explanation?:string}){const math=latexToMathMl(latex);return <div className="rounded-xl border bg-white p-5 text-center" style={{borderColor:'#E4E7EC'}}>{math?<div className="overflow-x-auto text-xl" aria-label={`Formule ${latex}`} dangerouslySetInnerHTML={{__html:math}}/>:<div className="text-sm text-slate-400">Formule non renseignée</div>}{explanation&&<p className="mt-2 text-sm text-slate-600">{explanation}</p>}</div>}
+
+function ChartBlock({c}:{c:Record<string,any>}){const data=(c.labels||[]).map((label:string,i:number)=>({name:label,value:Number(c.values?.[i]||0)}));if(!data.length)return <div className="rounded-xl border p-4 text-sm text-slate-400" style={{borderColor:'#E4E7EC'}}>Ajoutez des données au graphique.</div>;const grid=<CartesianGrid strokeDasharray="3 3"/>;return <div className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="mb-3 text-sm font-semibold text-[#002050]">{c.title||'Graphique'}{c.unit?` · ${c.unit}`:''}</p><div className="h-72 w-full"><ResponsiveContainer width="100%" height="100%">{c.chart_type==='line'?<LineChart data={data}>{grid}<XAxis dataKey="name"/><YAxis/><Tooltip/><Legend/><Line type="monotone" dataKey="value" stroke="#002050"/></LineChart>:c.chart_type==='pie'?<PieChart><Tooltip/><Legend/><Pie data={data} dataKey="value" nameKey="name" outerRadius={90} label>{data.map((_:any,i:number)=><Cell key={i} fill={['#002050','#BF8813','#1E7A52','#7C3AED','#0369A1','#D97706'][i%6]}/>)}</Pie></PieChart>:<BarChart data={data}>{grid}<XAxis dataKey="name"/><YAxis/><Tooltip/><Legend/><Bar dataKey="value" fill="#002050"/></BarChart>}</ResponsiveContainer></div></div>}
 function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: string }) {
   const [loaded, setLoaded] = useState(!eco);
   const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
@@ -694,7 +721,7 @@ function AccordionBlock({ items }: { items: Array<{ id: string; title: string; c
   );
 }
 
-function FlashcardsBlock({ cards }: { cards: Array<{ id: string; front: string; back: string }> }) {
+function FlashcardsBlock({ cards, onComplete }: { cards: Array<{ id: string; front: string; back: string }>; onComplete?: (score:number)=>void }) {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const card = cards[idx];
@@ -727,12 +754,24 @@ function FlashcardsBlock({ cards }: { cards: Array<{ id: string; front: string; 
           Suivante →
         </button>
       </div>
+      <div className="mt-4 flex justify-center gap-2"><button type="button" onClick={()=>onComplete?.(100)} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Je maîtrise</button><button type="button" onClick={()=>onComplete?.(0)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">À revoir</button></div>
     </div>
   );
 }
 
-function InteractiveTableBlock({ headers, rows, style }: { headers: string[]; rows: string[][]; style?: string }) {
-  if (style === 'cards') {
+function InteractiveTableBlock({ headers, rows, style, training = false, trainingColumns = [], threshold = 80, onResult }: { headers: string[]; rows: string[][]; style?: string; training?: boolean; trainingColumns?: number[]; threshold?: number; onResult?: (score:number, answer:any, passed:boolean)=>void }) {
+  const [answers,setAnswers]=useState<Record<string,string>>({});
+  const [score,setScore]=useState<number|null>(null);
+  const targetColumns=(trainingColumns.length?trainingColumns:headers.map((_,i)=>i).filter(i=>i>0)).filter(i=>i>=0&&i<headers.length);
+  const norm=(v:any)=>String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' ');
+  const check=()=>{
+    const targets:Array<{key:string;expected:string}>=[];
+    rows.forEach((row,ri)=>targetColumns.forEach(ci=>{const expected=String(row?.[ci]??'').trim();if(expected)targets.push({key:`${ri}:${ci}`,expected})}));
+    const correct=targets.filter(t=>norm(answers[t.key])===norm(t.expected)).length;
+    const next=targets.length?Math.round(correct/targets.length*100):100;
+    setScore(next);onResult?.(next,{answers,target_columns:targetColumns},next>=threshold);
+  };
+  if (style === 'cards' && !training) {
     return (
       <div className="my-4 grid gap-3 md:grid-cols-2">
         {rows.map((row, ri) => (
@@ -749,36 +788,28 @@ function InteractiveTableBlock({ headers, rows, style }: { headers: string[]; ro
     );
   }
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
-      <table className="w-full text-sm">
-        {headers.length > 0 && (
-          <thead>
-            <tr style={{ background: '#F8F9FA', borderBottom: '2px solid #E4E7EC' }}>
-              {headers.map((h, i) => (
-                <th key={i} className="px-4 py-3 text-left font-bold" style={{ color: '#002050' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} style={{ borderBottom: ri < rows.length - 1 ? '1px solid #E4E7EC' : 'none', background: ri % 2 === 0 ? 'white' : '#F9FAFB' }}>
-              {row.map((cell, ci) => (
-                <td key={ci} className="px-4 py-3" style={{ color: '#374151' }}>{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="my-4">
+      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
+        <table className="w-full text-sm">
+          {headers.length > 0 && <thead><tr style={{ background: '#F8F9FA', borderBottom: '2px solid #E4E7EC' }}>{headers.map((h,i)=><th key={i} className="px-4 py-3 text-left font-bold" style={{color:'#002050'}}>{h}</th>)}</tr></thead>}
+          <tbody>{rows.map((row,ri)=><tr key={ri} style={{borderBottom:ri<rows.length-1?'1px solid #E4E7EC':'none',background:ri%2===0?'white':'#F9FAFB'}}>{headers.map((_,ci)=>{
+            const key=`${ri}:${ci}`; const editable=training&&targetColumns.includes(ci)&&String(row?.[ci]??'').trim();
+            return <td key={ci} className="px-4 py-3" style={{color:'#374151'}}>{editable?<input value={answers[key]||''} onChange={e=>{setAnswers(a=>({...a,[key]:e.target.value}));setScore(null)}} className="w-full rounded-lg border px-2 py-1.5 outline-none focus:ring-2" style={{borderColor:'#D1D5DB'}} placeholder="Votre réponse"/>:(row?.[ci]||'')}</td>;
+          })}</tr>)}</tbody>
+        </table>
+      </div>
+      {training&&<div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" onClick={check} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Vérifier le tableau</button>{score!==null&&<span className={`text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}% · seuil {threshold}%</span>}</div>}
     </div>
   );
 }
-
 // ─── Export : Rendu d'une leçon complète ─────────────────────
-export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, isOnline = true }: {
+export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, learnerStateByBlock = {}, onStateChange, isOnline = true }: {
   blocks: Block[];
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
+  onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
+  learnerStateByBlock?: Record<string, Record<string, any>>;
+  onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
 }) {
   // Compatibilité ascendante : si pas de blocs, afficher content_text
@@ -799,7 +830,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, isOnli
       {blocks
         .sort((a, b) => a.position - b.position)
         .map(block => (
-          <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} isOnline={isOnline} />
+          <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={onTrainingResult} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} />
         ))}
     </div>
   );
